@@ -23,6 +23,7 @@ use super::{
     FetchResult, Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
 use crate::models::AccountKind;
 use crate::money::json_number_to_cents;
 
@@ -144,7 +145,7 @@ fn extract_code(input: &str, expected_state: &str) -> CoreResult<String> {
                 "state" => state = Some(v.to_string()),
                 "error" => {
                     return Err(CoreError::Authentication {
-                        message: format!("consent refused: {v}"),
+                        message: trf("Zustimmung verweigert: {0}", &[&v]),
                     })
                 }
                 _ => {}
@@ -153,17 +154,18 @@ fn extract_code(input: &str, expected_state: &str) -> CoreResult<String> {
         if let Some(s) = state {
             if !expected_state.is_empty() && s != expected_state {
                 return Err(CoreError::Authentication {
-                    message: "state mismatch – please start the consent again".into(),
+                    message: tr("Status stimmt nicht überein – bitte die Zustimmung neu starten")
+                        .into(),
                 });
             }
         }
         return code.ok_or_else(|| CoreError::InvalidInput {
-            message: "no 'code' in the pasted address".into(),
+            message: tr("Kein „code“ in der eingefügten Adresse").into(),
         });
     }
     if input.is_empty() {
         return Err(CoreError::InvalidInput {
-            message: "paste the address you were redirected to".into(),
+            message: tr("Bitte die Adresse einfügen, auf die Sie weitergeleitet wurden").into(),
         });
     }
     Ok(input.to_string())
@@ -215,7 +217,7 @@ impl BankConnector for EnableBankingConnector {
                 Err(CoreError::Bank { code, message }) if code.starts_with('4') => {
                     last_err = Some(CoreError::Bank {
                         code,
-                        message: format!("ASPSP „{name}“: {message}"),
+                        message: trf("ASPSP „{0}“: {1}", &[&name, &message]),
                     });
                 }
                 Err(e) => return Err(e),
@@ -229,9 +231,9 @@ impl BankConnector for EnableBankingConnector {
         })?;
         Ok(Phase::Challenge(Challenge {
             kind: ChallengeKind::Redirect,
-            title: "Zustimmung beim Kartenherausgeber erteilen".into(),
-            message: "Seite öffnen, anmelden und Zugriff erlauben. Danach die Adresse einfügen, auf die der Browser weitergeleitet wurde.".into(),
-            method_name: "PSD2-Weiterleitung".into(),
+            title: tr("Zustimmung beim Kartenherausgeber erteilen").into(),
+            message: tr("Seite öffnen, anmelden und Zugriff erlauben. Danach die Adresse einfügen, auf die der Browser weitergeleitet wurde.").into(),
+            method_name: tr("PSD2-Weiterleitung").into(),
             redirect_url: Some(url.to_string()),
             image: None,
             expires_in_seconds: Some(900),
@@ -246,7 +248,7 @@ impl BankConnector for EnableBankingConnector {
     ) -> CoreResult<Phase> {
         let ChallengeResponse::Code(input) = response else {
             return Err(CoreError::InvalidInput {
-                message: "Bitte die Weiterleitungsadresse einfügen".into(),
+                message: tr("Bitte die Weiterleitungsadresse einfügen").into(),
             });
         };
         let code = extract_code(input.expose(), &self.expected_state)?;

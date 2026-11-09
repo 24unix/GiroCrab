@@ -9,6 +9,7 @@ use super::{
 };
 use crate::demo::DEMO_ACCOUNTS;
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
 use crate::models::ConnectorKind;
 
 pub struct DemoConnector {
@@ -34,8 +35,8 @@ impl BankConnector for DemoConnector {
         let c = match self.kind {
             ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822 | ConnectorKind::Comdirect => Challenge {
                 kind: ChallengeKind::DecoupledPush,
-                title: "Bitte in der Banking-App freigeben".into(),
-                message: "Demo: Eine Push-Nachricht wurde „gesendet“. Die Freigabe wird nach wenigen Sekunden simuliert.".into(),
+                title: tr("Bitte in der Banking-App freigeben").into(),
+                message: tr("Demo: Eine Push-Nachricht wurde „gesendet“. Die Freigabe wird nach wenigen Sekunden simuliert.").into(),
                 method_name: match self.kind {
                     ConnectorKind::VolksbankKasselGoettingen => "SecureGo plus (Demo)".into(),
                     ConnectorKind::Direkt1822 => "pushTAN (Demo)".into(),
@@ -49,8 +50,8 @@ impl BankConnector for DemoConnector {
             ConnectorKind::TradeRepublic => Challenge {
                 kind: ChallengeKind::Code,
                 title: "Trade Republic 2FA".into(),
-                message: "Demo: beliebigen 4-stelligen Code eingeben.".into(),
-                method_name: "App-Code (Demo)".into(),
+                message: tr("Demo: beliebigen 4-stelligen Code eingeben.").into(),
+                method_name: tr("App-Code (Demo)").into(),
                 redirect_url: None,
                 image: None,
                 expires_in_seconds: Some(120),
@@ -58,9 +59,9 @@ impl BankConnector for DemoConnector {
             },
             ConnectorKind::AmericanExpress | ConnectorKind::AmazonVisa => Challenge {
                 kind: ChallengeKind::Redirect,
-                title: "Zustimmung beim Kartenherausgeber erteilen".into(),
-                message: "Demo: Es wird keine echte Seite geöffnet. Beliebigen Text einfügen (z. B. https://localhost/cb?code=demo).".into(),
-                method_name: "PSD2-Weiterleitung (Demo)".into(),
+                title: tr("Zustimmung beim Kartenherausgeber erteilen").into(),
+                message: tr("Demo: Es wird keine echte Seite geöffnet. Beliebigen Text einfügen (z. B. https://localhost/cb?code=demo).").into(),
+                method_name: tr("PSD2-Weiterleitung (Demo)").into(),
                 redirect_url: Some("https://example.org/psd2-consent-demo".into()),
                 image: None,
                 expires_in_seconds: Some(900),
@@ -95,7 +96,7 @@ impl BankConnector for DemoConnector {
                         && code.expose().chars().all(|c| c.is_ascii_digit()))
                 {
                     return Err(CoreError::Authentication {
-                        message: "Demo: Der Code muss 4 Ziffern haben".into(),
+                        message: tr("Demo: Der Code muss 4 Ziffern haben").into(),
                     });
                 }
                 Ok(Phase::Ready)
@@ -111,11 +112,13 @@ impl BankConnector for DemoConnector {
         self.polls = 0;
         let c = Challenge {
             kind: ChallengeKind::DecoupledPush,
-            title: "Überweisung in der Banking-App freigeben".into(),
-            message: format!(
-                "Demo: {} an {} wird nach wenigen Sekunden „freigegeben“.",
-                crate::money::format_cents(job.amount_cents, "EUR".into()),
-                job.recipient_name
+            title: tr("Überweisung in der Banking-App freigeben").into(),
+            message: trf(
+                "Demo: {0} an {1} wird nach wenigen Sekunden „freigegeben“.",
+                &[
+                    &crate::money::format_cents(job.amount_cents, "EUR".into()),
+                    &job.recipient_name,
+                ],
             ),
             method_name: "pushTAN (Demo)".into(),
             redirect_url: None,

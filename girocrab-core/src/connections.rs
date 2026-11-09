@@ -5,6 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::connectors::trade_republic::normalize_phone;
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
 use crate::models::ConnectorKind;
 use crate::vault::Vault;
 
@@ -132,7 +133,7 @@ impl Vault {
             )
             .optional()?
             .ok_or_else(|| CoreError::NotFound {
-                what: format!("Bankzugang {connection_id}"),
+                what: trf("Bankzugang {0}", &[&connection_id]),
             })?;
         let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::InvalidInput {
             message: kind.clone(),
@@ -186,7 +187,7 @@ impl Vault {
     ) -> Result<(), CoreError> {
         if !cookies.contains('=') {
             return Err(CoreError::InvalidInput {
-                message: "Keine Sitzungs-Cookies übergeben".into(),
+                message: tr("Keine Sitzungs-Cookies übergeben").into(),
             });
         }
         let db = self.db()?;
@@ -198,7 +199,7 @@ impl Vault {
             )
             .optional()?
             .ok_or_else(|| CoreError::NotFound {
-                what: format!("Bankzugang {connection_id}"),
+                what: trf("Bankzugang {0}", &[&connection_id]),
             })?;
         let mut v: serde_json::Value =
             serde_json::from_str(&state).unwrap_or(serde_json::json!({}));
@@ -254,7 +255,7 @@ impl Vault {
             )
             .optional()?
             .ok_or_else(|| CoreError::NotFound {
-                what: format!("Bankzugang {connection_id}"),
+                what: trf("Bankzugang {0}", &[&connection_id]),
             })?;
         let v: serde_json::Value = serde_json::from_str(&state).unwrap_or(serde_json::json!({}));
         let has_pin: bool = db.query_row(

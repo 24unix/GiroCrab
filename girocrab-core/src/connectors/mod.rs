@@ -19,6 +19,7 @@ use rusqlite::{params, OptionalExtension};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, ConnectorKind, KnownRecipient, SepaTransferRequest};
 use crate::secret::SecretString;
 use crate::vault::Vault;
@@ -128,10 +129,10 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             protocol: "FinTS 3.0 PIN/TAN".into(),
             bank_code: "52090000".into(),
             sf_symbol: "building.columns.fill".into(),
-            login_label: "VR-NetKey oder Alias".into(),
-            secret_label: "Online-Banking-PIN".into(),
+            login_label: tr("VR-NetKey oder Alias").into(),
+            secret_label: tr("Online-Banking-PIN").into(),
             required_settings: s(&["fints.product_id", "fints.url.52090000"]),
-            note: "Freigabe in der SecureGo-plus-App (Decoupled, TAN-Prozess 4, HKTAN v7). Server: fints1.atruvia.de".into(),
+            note: tr("Freigabe in der SecureGo-plus-App (Decoupled, TAN-Prozess 4, HKTAN v7). Server: fints1.atruvia.de").into(),
         },
         ConnectorKind::Direkt1822 => BankDescriptor {
             kind,
@@ -139,65 +140,65 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             protocol: "FinTS 3.0 PIN/TAN".into(),
             bank_code: "50050201".into(),
             sf_symbol: "building.columns".into(),
-            login_label: "Anmeldename / Kontonummer".into(),
-            secret_label: "Online-Banking-PIN".into(),
+            login_label: tr("Anmeldename / Kontonummer").into(),
+            secret_label: tr("Online-Banking-PIN").into(),
             required_settings: s(&["fints.product_id", "fints.url.50050201"]),
-            note: "pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs5.s-fints-pt-hs.de".into(),
+            note: tr("pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs5.s-fints-pt-hs.de").into(),
         },
         ConnectorKind::Comdirect => BankDescriptor {
             kind,
             name: "comdirect".into(),
-            protocol: "comdirect REST-API (OAuth2 + Session-TAN)".into(),
+            protocol: tr("comdirect REST-API (OAuth2 + Session-TAN)").into(),
             bank_code: "20041111".into(),
             sf_symbol: "building.2".into(),
-            login_label: "Zugangsnummer".into(),
+            login_label: tr("Zugangsnummer").into(),
             secret_label: "PIN".into(),
             required_settings: s(&["comdirect.client_id", "comdirect.client_secret"]),
-            note: "Session-TAN per photoTAN-Push, photoTAN-Grafik oder mobileTAN.".into(),
+            note: tr("Session-TAN per photoTAN-Push, photoTAN-Grafik oder mobileTAN.").into(),
         },
         ConnectorKind::PayPal => BankDescriptor {
             kind,
             name: "PayPal".into(),
-            protocol: "PayPal Transaction Search REST-API".into(),
+            protocol: tr("PayPal Transaction Search REST-API").into(),
             bank_code: String::new(),
             sf_symbol: "p.circle".into(),
-            login_label: "E-Mail (nur Anzeige)".into(),
-            secret_label: "(nicht nötig – nutzt Ihre REST-App)".into(),
+            login_label: tr("E-Mail (nur Anzeige)").into(),
+            secret_label: tr("(nicht nötig – nutzt Ihre REST-App)").into(),
             required_settings: s(&["paypal.client_id", "paypal.client_secret"]),
-            note: "OAuth2 Client Credentials; Historie in 31-Tage-Fenstern.".into(),
+            note: tr("OAuth2 Client Credentials; Historie in 31-Tage-Fenstern.").into(),
         },
         ConnectorKind::TradeRepublic => BankDescriptor {
             kind,
             name: "Trade Republic".into(),
-            protocol: "WebSocket-API + 2FA".into(),
+            protocol: tr("WebSocket-API + 2FA").into(),
             bank_code: String::new(),
             sf_symbol: "chart.line.uptrend.xyaxis.circle".into(),
-            login_label: "Telefonnummer (+49…)".into(),
-            secret_label: "4-stellige App-PIN".into(),
+            login_label: tr("Telefonnummer (+49…)").into(),
+            secret_label: tr("4-stellige App-PIN").into(),
             required_settings: vec![],
-            note: "Web-Login mit 4-stelligem Code aus der App/SMS. Inoffizielle Schnittstelle – kann sich jederzeit ändern.".into(),
+            note: tr("Web-Login mit 4-stelligem Code aus der App/SMS. Inoffizielle Schnittstelle – kann sich jederzeit ändern.").into(),
         },
         ConnectorKind::AmericanExpress => BankDescriptor {
             kind,
             name: "American Express".into(),
-            protocol: "Direkt-Login (Web-Session) oder CSV/PDF-Kontoauszug".into(),
+            protocol: tr("Direkt-Login (Web-Session) oder CSV/PDF-Kontoauszug").into(),
             bank_code: String::new(),
             sf_symbol: "creditcard.fill".into(),
-            login_label: "Kartenbezeichnung".into(),
-            secret_label: "(Anmeldung im Browser-Fenster)".into(),
+            login_label: tr("Kartenbezeichnung").into(),
+            secret_label: tr("(Anmeldung im Browser-Fenster)").into(),
             required_settings: vec![],
-            note: "Anmeldung im eingebetteten Browser (Benutzername, Passwort, 2FA wie gewohnt) – keine API-Schlüssel nötig. Optional: eigene PSD2-/Enable-Banking-API unter „Erweitert“.".into(),
+            note: tr("Anmeldung im eingebetteten Browser (Benutzername, Passwort, 2FA wie gewohnt) – keine API-Schlüssel nötig. Optional: eigene PSD2-/Enable-Banking-API unter „Erweitert“.").into(),
         },
         ConnectorKind::AmazonVisa => BankDescriptor {
             kind,
             name: "Amazon Visa".into(),
-            protocol: "Direkt-Login (Web-Session) oder CSV/PDF-Kontoauszug".into(),
+            protocol: tr("Direkt-Login (Web-Session) oder CSV/PDF-Kontoauszug").into(),
             bank_code: String::new(),
             sf_symbol: "creditcard".into(),
-            login_label: "Kartenbezeichnung".into(),
-            secret_label: "(Anmeldung im Browser-Fenster)".into(),
+            login_label: tr("Kartenbezeichnung").into(),
+            secret_label: tr("(Anmeldung im Browser-Fenster)").into(),
             required_settings: vec![],
-            note: "Herausgeber: Open Bank S.A. (Zinia). Anmeldung im eingebetteten Browser – keine API-Schlüssel nötig. Optional: eigene PSD2-/Enable-Banking-API unter „Erweitert“.".into(),
+            note: tr("Herausgeber: Open Bank S.A. (Zinia). Anmeldung im eingebetteten Browser – keine API-Schlüssel nötig. Optional: eigene PSD2-/Enable-Banking-API unter „Erweitert“.").into(),
         },
     }
 }
@@ -335,7 +336,7 @@ pub trait BankConnector: Send {
         _job: &TransferJob,
     ) -> CoreResult<Phase> {
         Err(CoreError::InvalidInput {
-            message: "Für diese Bank werden Überweisungen nicht unterstützt.".into(),
+            message: tr("Für diese Bank werden Überweisungen nicht unterstützt.").into(),
         })
     }
 }
@@ -731,7 +732,7 @@ impl Vault {
                 )
                 .optional()?
                 .ok_or_else(|| CoreError::NotFound {
-                    what: format!("bank connection {connection_id}"),
+                    what: trf("Bankverbindung {0}", &[&connection_id]),
                 })?;
             let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::InvalidInput {
                 message: format!("unknown connector {kind}"),
@@ -902,12 +903,12 @@ impl Vault {
         use crate::connectors::fints::sepa;
         if request.amount_cents <= 0 {
             return Err(CoreError::InvalidInput {
-                message: "Der Betrag muss größer als 0 sein.".into(),
+                message: tr("Der Betrag muss größer als 0 sein.").into(),
             });
         }
         if !sepa::validate_iban(&request.recipient_iban) {
             return Err(CoreError::InvalidInput {
-                message: "Die Empfänger-IBAN ist ungültig.".into(),
+                message: tr("Die Empfänger-IBAN ist ungültig.").into(),
             });
         }
         if let Some(b) = request
@@ -917,18 +918,18 @@ impl Vault {
         {
             if !sepa::validate_bic(b) {
                 return Err(CoreError::InvalidInput {
-                    message: "Die BIC ist ungültig.".into(),
+                    message: tr("Die BIC ist ungültig.").into(),
                 });
             }
         }
         if request.recipient_name.trim().is_empty() {
             return Err(CoreError::InvalidInput {
-                message: "Der Empfängername fehlt.".into(),
+                message: tr("Der Empfängername fehlt.").into(),
             });
         }
         if request.purpose.chars().count() > 140 {
             return Err(CoreError::InvalidInput {
-                message: "Der Verwendungszweck darf höchstens 140 Zeichen lang sein.".into(),
+                message: tr("Der Verwendungszweck darf höchstens 140 Zeichen lang sein.").into(),
             });
         }
         let (connection_id, iban, owner) = {
@@ -941,10 +942,10 @@ impl Vault {
                 )
                 .optional()?
                 .ok_or_else(|| CoreError::NotFound {
-                    what: format!("account {}", request.account_id),
+                    what: trf("Konto {0}", &[&request.account_id]),
                 })?;
             let cid = row.0.ok_or_else(|| CoreError::InvalidInput {
-                message: "Dieses Konto hat keine Bankverbindung.".into(),
+                message: tr("Dieses Konto hat keine Bankverbindung.").into(),
             })?;
             (cid, row.1, row.2)
         };
@@ -964,12 +965,12 @@ impl Vault {
             ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822
         ) {
             return Err(CoreError::InvalidInput {
-                message: "Überweisungen sind nur für FinTS-Konten möglich.".into(),
+                message: tr("Überweisungen sind nur für FinTS-Konten möglich.").into(),
             });
         }
         if iban.is_empty() {
             return Err(CoreError::InvalidInput {
-                message: "Das Konto hat keine IBAN.".into(),
+                message: tr("Das Konto hat keine IBAN.").into(),
             });
         }
         // Reuse the sync session set-up (settings, PIN, connector state).

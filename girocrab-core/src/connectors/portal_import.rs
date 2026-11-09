@@ -18,6 +18,7 @@ use serde_json::Value;
 
 use super::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
 use crate::error::CoreError;
+use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, ConnectorKind};
 use crate::vault::Vault;
 
@@ -797,7 +798,7 @@ impl Vault {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(|_| CoreError::NotFound {
-                what: format!("bank connection {connection_id}"),
+                what: trf("Bankverbindung {0}", &[&connection_id]),
             })?;
         let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::InvalidInput {
             message: format!("unknown connector {kind}"),
@@ -814,7 +815,7 @@ impl Vault {
         let (kind, name) = self.portal_connection(connection_id)?;
         if parsed.is_empty() {
             return Err(CoreError::InvalidInput {
-                message: "Keine Umsätze erkannt.".into(),
+                message: tr("Keine Umsätze erkannt.").into(),
             });
         }
         store_fetch(

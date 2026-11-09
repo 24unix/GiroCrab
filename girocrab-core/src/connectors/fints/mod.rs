@@ -40,6 +40,7 @@ use super::{
     RemoteAccount, TransferJob,
 };
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
 use crate::models::AccountKind;
 use crate::money::parse_cents;
 
@@ -613,14 +614,14 @@ impl FinTsConnector {
         }
         let challenge_text = hitan.map(|h| h.get(4, 0).to_string()).unwrap_or_default();
         let method = if self.st.tan_method_name.is_empty() {
-            format!("TAN-Verfahren {}", self.st.sec_func)
+            trf("TAN-Verfahren {0}", &[&self.st.sec_func])
         } else {
             self.st.tan_method_name.clone()
         };
         if reply.has("3955") || reply.has("3956") {
             let c = Challenge {
                 kind: ChallengeKind::DecoupledPush,
-                title: "Bitte in der Banking-App freigeben".into(),
+                title: tr("Bitte in der Banking-App freigeben").into(),
                 message: if challenge_text.is_empty() {
                     reply
                         .code("3955")
@@ -654,7 +655,7 @@ impl FinTsConnector {
                 } else {
                     ChallengeKind::Code
                 },
-                title: "TAN eingeben".into(),
+                title: tr("TAN eingeben").into(),
                 message: clean_challenge(&challenge_text),
                 method_name: method,
                 redirect_url: None,
@@ -736,7 +737,7 @@ impl FinTsConnector {
                 .task_reference
                 .clone()
                 .ok_or_else(|| CoreError::Protocol {
-                    message: format!("{seg_id}: Freigabe ohne Auftragsreferenz"),
+                    message: trf("{0}: Freigabe ohne Auftragsreferenz", &[&seg_id]),
                 })?;
             for _ in 0..60 {
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
@@ -757,7 +758,7 @@ impl FinTsConnector {
         } else if reply.has("0030") {
             return Err(CoreError::Bank {
                 code: "0030".into(),
-                message: format!("Die Bank verlangt für {seg_id} eine TAN-Eingabe. Bitte ein Push-/App-Verfahren (z. B. SecureGo plus) verwenden oder „Tage beim ersten Abruf“ auf höchstens 90 setzen."),
+                message: trf("Die Bank verlangt für {0} eine TAN-Eingabe. Bitte ein Push-/App-Verfahren (z. B. SecureGo plus) verwenden oder „Tage beim ersten Abruf“ auf höchstens 90 setzen.", &[&seg_id]),
             });
         }
         reply.check()?;
@@ -795,7 +796,7 @@ impl FinTsConnector {
                         }
                     }
                 }
-                Err(e) => errors.push(format!("Kontenliste (HKSPA) – {e}")),
+                Err(e) => errors.push(trf("Kontenliste (HKSPA) – {0}", &[&e])),
             }
         }
         let mut out: Vec<(SepaAccount, Option<UpdAccount>)> = Vec::new();
@@ -1014,7 +1015,7 @@ impl FinTsConnector {
                                 docs.push(crate::documents::RemoteDocument {
                                     account_ref: label.to_string(),
                                     booking_external_id: None,
-                                    title: format!("Kontoauszug {period}"),
+                                    title: trf("Kontoauszug {0}", &[&period]),
                                     doc_type: "kontoauszug".into(),
                                     mime_type: "application/pdf".into(),
                                     file_name: format!("Kontoauszug_{}_{}.pdf", label, date),
@@ -1052,7 +1053,7 @@ impl FinTsConnector {
         let not_allowed = || {
             CoreError::Bank {
             code: "HKCCS".into(),
-            message: "Dieses Konto oder diese Bank erlaubt keine SEPA-Überweisungen per FinTS (HKCCS). Bitte in der Banking-App überweisen.".into(),
+            message: tr("Dieses Konto oder diese Bank erlaubt keine SEPA-Überweisungen per FinTS (HKCCS). Bitte in der Banking-App überweisen.").into(),
         }
         };
         if !self.bank_supports("HKCCS") {
@@ -1062,7 +1063,7 @@ impl FinTsConnector {
         if sec == "999" {
             return Err(CoreError::Bank {
                 code: "HKTAN".into(),
-                message: "Für Überweisungen ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen.".into(),
+                message: tr("Für Überweisungen ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen.").into(),
             });
         }
         let mut errors = Vec::new();
@@ -1072,14 +1073,16 @@ impl FinTsConnector {
             .into_iter()
             .find(|(a, _)| sepa::normalize_iban(&a.iban) == want)
             .ok_or_else(|| CoreError::NotFound {
-                what: format!(
-                    "Konto {} bei der Bank{}",
-                    job.source_iban,
-                    if errors.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" ({})", errors.join(" / "))
-                    }
+                what: trf(
+                    "Konto {0} bei der Bank{1}",
+                    &[
+                        &job.source_iban,
+                        &if errors.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" ({})", errors.join(" / "))
+                        },
+                    ],
                 ),
             })?;
         if let Some(u) = &upd {
@@ -1160,24 +1163,24 @@ impl FinTsConnector {
     }
 }
 
-/// German text for a bank return code (HIRMG/HIRMS) during a transfer.
+/// Localised text for a bank return code (HIRMG/HIRMS) during a transfer.
 fn explain_transfer_code(c: &(String, Option<u32>, String, Vec<String>)) -> String {
     let hint = match c.0.as_str() {
-        "9050" => "Die Nachricht enthält Fehler.",
-        "9010" => "Die Bank hat die Nachricht nicht verarbeitet.",
+        "9050" => tr("Die Nachricht enthält Fehler."),
+        "9010" => tr("Die Bank hat die Nachricht nicht verarbeitet."),
         "9120" | "9130" | "9140" | "9160" => {
-            "Ein Pflichtfeld der Überweisung fehlt oder ist ungültig."
+            tr("Ein Pflichtfeld der Überweisung fehlt oder ist ungültig.")
         }
-        "9210" => "Der Auftrag wurde abgelehnt (Daten ungültig oder nicht erlaubt).",
-        "9340" => "Der Auftrag ist ungültig; bitte IBAN, Betrag und Name prüfen.",
-        "9380" => "Der Betrag überschreitet das Limit des Kontos.",
-        "9390" => "Das Konto lässt diese Überweisung nicht zu.",
-        "9391" => "Das Konto ist für Überweisungen gesperrt.",
-        "9931" | "9942" => "PIN oder Zugangsdaten wurden abgelehnt.",
-        "9941" => "Die TAN ist ungültig oder abgelaufen.",
-        "9955" | "9956" => "Die Freigabe wurde abgelehnt oder ist abgelaufen.",
+        "9210" => tr("Der Auftrag wurde abgelehnt (Daten ungültig oder nicht erlaubt)."),
+        "9340" => tr("Der Auftrag ist ungültig; bitte IBAN, Betrag und Name prüfen."),
+        "9380" => tr("Der Betrag überschreitet das Limit des Kontos."),
+        "9390" => tr("Das Konto lässt diese Überweisung nicht zu."),
+        "9391" => tr("Das Konto ist für Überweisungen gesperrt."),
+        "9931" | "9942" => tr("PIN oder Zugangsdaten wurden abgelehnt."),
+        "9941" => tr("Die TAN ist ungültig oder abgelaufen."),
+        "9955" | "9956" => tr("Die Freigabe wurde abgelehnt oder ist abgelaufen."),
         "9075" => {
-            "Starke Kundenauthentifizierung ist erforderlich, wurde aber nicht abgeschlossen."
+            tr("Starke Kundenauthentifizierung ist erforderlich, wurde aber nicht abgeschlossen.")
         }
         _ => "",
     };
@@ -1187,12 +1190,12 @@ fn explain_transfer_code(c: &(String, Option<u32>, String, Vec<String>)) -> Stri
         format!(" ({})", c.3.join(", "))
     };
     if hint.is_empty() {
-        format!(
-            "{} Die Bank hat die Überweisung abgelehnt: {}{params}",
-            c.0, c.2
+        trf(
+            "{0} Die Bank hat die Überweisung abgelehnt: {1}{2}",
+            &[&c.0, &c.2, &params],
         )
     } else {
-        format!("{} {hint} Bank: {}{params}", c.0, c.2)
+        trf("{0} {1} Bank: {2}{3}", &[&c.0, &hint, &c.2, &params])
     }
 }
 
@@ -1255,7 +1258,7 @@ impl BankConnector for FinTsConnector {
         self.product_version = ctx.setting_or("fints.product_version", "0.1").to_string();
         if ctx.secret.is_empty() {
             return Err(CoreError::Authentication {
-                message: "PIN ist leer".into(),
+                message: tr("PIN ist leer").into(),
             });
         }
         if let Ok(st) = serde_json::from_value::<FinTsState>(ctx.state.clone()) {
@@ -1371,7 +1374,7 @@ impl BankConnector for FinTsConnector {
                         ok_any = true;
                     }
                     Ok(None) => {}
-                    Err(e) => errors.push(format!("{label}: Saldo – {e}")),
+                    Err(e) => errors.push(trf("{0}: Saldo – {1}", &[&label, &e])),
                 }
             }
 
@@ -1398,7 +1401,9 @@ impl BankConnector for FinTsConnector {
                             done = !empty_loan;
                             ok_any = true;
                         }
-                        Err(e) => errors.push(format!("{label}: Umsätze (HKCAZ/camt.052) – {e}")),
+                        Err(e) => {
+                            errors.push(trf("{0}: Umsätze (HKCAZ/camt.052) – {1}", &[&label, &e]))
+                        }
                     }
                 }
                 if !done && can_mt940 {
@@ -1412,7 +1417,9 @@ impl BankConnector for FinTsConnector {
                             }
                             ok_any = true;
                         }
-                        Err(e) => errors.push(format!("{label}: Umsätze (HKKAZ/MT940) – {e}")),
+                        Err(e) => {
+                            errors.push(trf("{0}: Umsätze (HKKAZ/MT940) – {1}", &[&label, &e]))
+                        }
                     }
                 }
             }

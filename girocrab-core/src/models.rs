@@ -352,7 +352,10 @@ pub struct SettingEntry {
     pub key: String,
     pub label: String,
     pub help: String,
+    /// Stable (German) section id; use `group_title` for display.
     pub group: String,
+    /// Localised section title.
+    pub group_title: String,
     /// Empty when `is_secret` (use `get_setting` to reveal).
     pub value: String,
     pub is_secret: bool,

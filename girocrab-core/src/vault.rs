@@ -13,6 +13,7 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension, ToSql};
 use zeroize::Zeroizing;
 
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::{display_name, display_path, tr, trf};
 use crate::merchants::{classify, clean_purpose, payment_method, FlowKind, MerchantResolver};
 use crate::models::*;
 use crate::money::parse_cents;
@@ -707,7 +708,7 @@ impl Vault {
                     .sum();
                 AccountGroup {
                     id,
-                    name,
+                    name: display_name(&name),
                     sf_symbol: sym,
                     sort_order: order,
                     balance_cents: balance,
@@ -778,7 +779,7 @@ impl Vault {
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
-                what: format!("account {account_id}"),
+                what: trf("Konto {0}", &[&account_id]),
             });
         }
         Ok(())
@@ -797,7 +798,7 @@ impl Vault {
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
-                what: format!("account {account_id}"),
+                what: trf("Konto {0}", &[&account_id]),
             });
         }
         Ok(())
@@ -896,12 +897,12 @@ impl Vault {
                     out.push(Category {
                         id: k.0,
                         parent_id: k.1,
-                        name: k.2.clone(),
+                        name: display_name(&k.2),
                         sf_symbol: k.3.clone(),
                         color_hex: k.4.clone(),
                         sort_order: k.5,
                         depth,
-                        path: path.clone(),
+                        path: display_path(&path),
                         own_total_cents: own.0,
                         total_cents: total,
                         transaction_count: count,
@@ -925,7 +926,7 @@ impl Vault {
         let name = name.trim().to_string();
         if name.is_empty() {
             return Err(CoreError::InvalidInput {
-                message: "category name is empty".into(),
+                message: tr("Der Kategoriename ist leer.").into(),
             });
         }
         let db = self.db()?;
@@ -956,7 +957,8 @@ impl Vault {
             loop {
                 if p == id {
                     return Err(CoreError::InvalidInput {
-                        message: "a category cannot be moved into itself".into(),
+                        message: tr("Eine Kategorie kann nicht in sich selbst verschoben werden.")
+                            .into(),
                     });
                 }
                 guard += 1;
@@ -971,6 +973,17 @@ impl Vault {
                 }
             }
         }
+        // The UI shows built-in names translated; saving that unchanged
+        // display name keeps the stored German default (and its logic).
+        let stored: Option<String> = db
+            .query_row("SELECT name FROM categories WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        let name = match stored {
+            Some(stored) if stored != name && display_name(&stored) == name => stored,
+            _ => name,
+        };
         db.execute(
             "UPDATE categories SET name = ?1, parent_id = ?2, sf_symbol = ?3, color_hex = ?4 WHERE id = ?5",
             params![name, parent_id, sf_symbol, color_hex, id],
@@ -1183,6 +1196,9 @@ impl Vault {
                 t.category_symbol = sym.clone();
             }
             enrich(&mut t);
+            // Localise after `enrich`: flow classification needs the stored names.
+            t.category_name = display_name(&t.category_name);
+            t.category_path = display_path(&t.category_path);
             if let Some(d) = overrides.get(&t.merchant.key) {
                 t.merchant.domain = d.clone();
                 t.merchant.domain_candidates = vec![d.clone()];
@@ -1251,7 +1267,7 @@ impl Vault {
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
-                what: format!("transaction {transaction_id}"),
+                what: trf("Buchung {0}", &[&transaction_id]),
             });
         }
         Ok(())
@@ -1282,7 +1298,7 @@ impl Vault {
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
-                what: format!("transaction {transaction_id}"),
+                what: trf("Buchung {0}", &[&transaction_id]),
             });
         }
         Ok(())
@@ -1300,7 +1316,7 @@ impl Vault {
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
-                what: format!("transaction {transaction_id}"),
+                what: trf("Buchung {0}", &[&transaction_id]),
             });
         }
         Ok(())
@@ -1318,7 +1334,7 @@ impl Vault {
         crate::rules::CompiledRule::compile(rule.clone())?;
         if rule.pattern.trim().is_empty() {
             return Err(CoreError::InvalidInput {
-                message: "pattern is empty".into(),
+                message: tr("Das Suchmuster ist leer.").into(),
             });
         }
         let db = self.db()?;
@@ -1405,9 +1421,10 @@ impl Vault {
             let value = stored.clone().unwrap_or_else(|| default.to_string());
             out.push(SettingEntry {
                 key: key.to_string(),
-                label: label.to_string(),
-                help: help.to_string(),
+                label: tr(label).to_string(),
+                help: tr(help).to_string(),
                 group: group.to_string(),
+                group_title: tr(group).to_string(),
                 value: if *secret {
                     String::new()
                 } else {

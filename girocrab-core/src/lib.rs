@@ -28,6 +28,7 @@ pub mod connectors;
 pub mod demo;
 pub mod documents;
 pub mod error;
+pub mod i18n;
 pub mod insights;
 pub mod merchants;
 pub mod models;

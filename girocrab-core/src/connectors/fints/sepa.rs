@@ -2,6 +2,7 @@
 //! ISO 9362) and a `pain.001.001.03` generator for single transfers.
 
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::tr;
 
 pub const PAIN_DESCRIPTOR: &str = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03";
 
@@ -189,17 +190,17 @@ pub struct Pain001<'a> {
 pub fn build_pain001(p: &Pain001) -> CoreResult<String> {
     if p.amount_cents <= 0 {
         return Err(CoreError::InvalidInput {
-            message: "Der Betrag muss größer als 0 sein.".into(),
+            message: tr("Der Betrag muss größer als 0 sein.").into(),
         });
     }
     if !validate_iban(p.creditor_iban) {
         return Err(CoreError::InvalidInput {
-            message: "Die Empfänger-IBAN ist ungültig.".into(),
+            message: tr("Die Empfänger-IBAN ist ungültig.").into(),
         });
     }
     if p.creditor_name.trim().is_empty() {
         return Err(CoreError::InvalidInput {
-            message: "Der Empfängername fehlt.".into(),
+            message: tr("Der Empfängername fehlt.").into(),
         });
     }
     let amount = format_amount(p.amount_cents);
