@@ -2,9 +2,47 @@ import SwiftUI
 import UniformTypeIdentifiers
 import GiroCrabCore
 
-/// "Aus MoneyMoney importieren…": migrates a multi-year MoneyMoney export
-/// (CSV or XML) incl. categories and notes. Re-importing never duplicates.
+/// "Aus MoneyMoney importieren…": either reads MoneyMoney's own database
+/// (recommended, everything in one go) or a per-account CSV/XML export.
 struct MoneyMoneyImportSheet: View {
+    @Environment(AppModel.self) private var model
+
+    enum Source: Hashable { case database, export }
+    @State private var source: Source = .database
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: "square.and.arrow.down.on.square").font(.title2).foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Aus MoneyMoney importieren").font(.headline)
+                    Text("Komplette Historie, Kategorien und Notizen – ohne Duplikate bei späteren Abrufen.")
+                        .font(.caption).foregroundStyle(Theme.secondary)
+                }
+            }
+            Picker("Quelle", selection: $source) {
+                Text("MoneyMoney-Datenbank (empfohlen)").tag(Source.database)
+                Text("Export-Datei (CSV/XML)").tag(Source.export)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            switch source {
+            case .database: MoneyMoneyDatabaseImportView()
+            case .export: MoneyMoneyExportImportView()
+            }
+        }
+        .padding(20)
+        .frame(width: source == .database ? 900 : 560)
+        .background(Theme.card)
+        .onAppear {
+            if model.demoImportPreview != nil { source = .export }
+            if model.demoDbPreview != nil { source = .database }
+        }
+    }
+}
+
+/// Per-account CSV/XML export (one account at a time).
+struct MoneyMoneyExportImportView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
@@ -25,14 +63,6 @@ struct MoneyMoneyImportSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
-                Image(systemName: "square.and.arrow.down.on.square").font(.title2).foregroundStyle(Theme.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Aus MoneyMoney importieren").font(.headline)
-                    Text("Komplette Historie, Kategorien und Notizen – ohne Duplikate bei späteren Abrufen.")
-                        .font(.caption).foregroundStyle(Theme.secondary)
-                }
-            }
             guide
             dropZone
             if fileData != nil {
@@ -55,9 +85,6 @@ struct MoneyMoneyImportSheet: View {
                     .disabled(preview == nil || importing || (preview?.totalRows ?? 0) == 0)
             }
         }
-        .padding(20)
-        .frame(width: 560)
-        .background(Theme.card)
         .interactiveDismissDisabled(importing)
         .onAppear {
             if let demo = model.demoImportPreview {

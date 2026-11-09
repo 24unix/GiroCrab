@@ -39,6 +39,9 @@ pub struct MmRow {
     pub booking_text: String,
     /// Raw category as exported (`A\B`, `A / B`).
     pub category: String,
+    /// Exact category path when known (database import); takes precedence over
+    /// splitting `category`, so names containing " / " stay intact.
+    pub category_parts: Vec<String>,
     pub note: String,
     pub checkmark: bool,
     pub mandate_ref: String,
@@ -72,6 +75,15 @@ pub fn fingerprint(date: &str, cents: i64, iban: &str, name: &str, purpose: &str
 }
 
 impl MmRow {
+    /// Category path parts (empty = uncategorised).
+    pub(crate) fn category_path(&self) -> Vec<String> {
+        if self.category_parts.is_empty() {
+            split_category(&self.category)
+        } else {
+            self.category_parts.clone()
+        }
+    }
+
     fn fp(&self) -> String {
         fingerprint(
             &self.booking_date,
@@ -270,6 +282,7 @@ fn build_row(get: impl Fn(Field) -> String) -> Option<MmRow> {
         purpose: clean(get(Field::Purpose)),
         booking_text: clean(get(Field::Text)),
         category: get(Field::Category).trim().to_string(),
+        category_parts: Vec::new(),
         note: get(Field::Note).trim().to_string(),
         checkmark: truthy(&get(Field::Check)),
         mandate_ref: get(Field::Mandate).trim().to_string(),
@@ -398,16 +411,16 @@ pub fn parse_export(data: &[u8]) -> CoreResult<Vec<MmRow>> {
 // ------------------------------------------------------------------ import
 
 #[derive(Default)]
-struct Stats {
-    total: u32,
-    new: u32,
-    duplicates: u32,
-    enriched: u32,
-    notes: u32,
-    categories_created: u32,
-    account_id: i64,
-    account_created: bool,
-    balance_cents: i64,
+pub(crate) struct Stats {
+    pub(crate) total: u32,
+    pub(crate) new: u32,
+    pub(crate) duplicates: u32,
+    pub(crate) enriched: u32,
+    pub(crate) notes: u32,
+    pub(crate) categories_created: u32,
+    pub(crate) account_id: i64,
+    pub(crate) account_created: bool,
+    pub(crate) balance_cents: i64,
 }
 
 struct Existing {
@@ -416,7 +429,7 @@ struct Existing {
     note: String,
 }
 
-fn find_or_create_category(
+pub(crate) fn find_or_create_category(
     conn: &Connection,
     path: &[String],
     cache: &mut HashMap<String, i64>,
@@ -526,6 +539,44 @@ fn run(
         }
     }
 
+    let mut cat_cache = HashMap::new();
+    merge_rows(
+        conn,
+        rows,
+        &account_currency,
+        preserve_categories,
+        preserve_notes,
+        &mut cat_cache,
+        &mut st,
+    )?;
+    if st.account_created {
+        let last = rows
+            .iter()
+            .map(|r| r.booking_date.as_str())
+            .max()
+            .unwrap_or("");
+        conn.execute(
+            "UPDATE accounts SET balance_cents = ?1, balance_date = ?2 WHERE id = ?3",
+            params![st.balance_cents, last, st.account_id],
+        )?;
+    }
+    // Rows without a MoneyMoney category get the regular rule treatment.
+    Vault::apply_rules_inner(conn, true)?;
+    Ok(st)
+}
+
+/// Merges normalised rows into the account `st.account_id`: new rows are
+/// inserted, rows already present (same fingerprint, counted as a multiset) are
+/// only enriched with category / note. Rules are *not* run here.
+pub(crate) fn merge_rows(
+    conn: &Connection,
+    rows: &[MmRow],
+    account_currency: &str,
+    preserve_categories: bool,
+    preserve_notes: bool,
+    cat_cache: &mut HashMap<String, i64>,
+    st: &mut Stats,
+) -> CoreResult<()> {
     // Existing bookings of the account, bucketed by fingerprint (multiset: two
     // identical coffees on one day stay two rows).
     let mut existing: HashMap<String, Vec<Existing>> = HashMap::new();
@@ -563,9 +614,7 @@ fn run(
         }
     }
 
-    let mut cat_cache = HashMap::new();
     let mut seen: HashMap<String, usize> = HashMap::new();
-    let mut tmp_categories = 0u32;
     for r in rows {
         let fp = r.fp();
         let k = {
@@ -574,16 +623,16 @@ fn run(
             *n += 1;
             k
         };
-        let cat_id = if preserve_categories && !r.category.is_empty() {
-            let path = split_category(&r.category);
+        let cat_id = if preserve_categories {
+            let path = r.category_path();
             if path.is_empty() {
                 None
             } else {
                 Some(find_or_create_category(
                     conn,
                     &path,
-                    &mut cat_cache,
-                    &mut tmp_categories,
+                    cat_cache,
+                    &mut st.categories_created,
                 )?)
             }
         } else {
@@ -623,7 +672,7 @@ fn run(
                 r.booking_date,
                 r.value_date,
                 r.amount_cents,
-                if r.currency.is_empty() { &account_currency } else { &r.currency },
+                if r.currency.is_empty() { account_currency } else { &r.currency },
                 r.name,
                 r.iban,
                 r.stored_purpose(),
@@ -640,21 +689,7 @@ fn run(
             st.notes += 1;
         }
     }
-    st.categories_created = tmp_categories;
-    if st.account_created {
-        let last = rows
-            .iter()
-            .map(|r| r.booking_date.as_str())
-            .max()
-            .unwrap_or("");
-        conn.execute(
-            "UPDATE accounts SET balance_cents = ?1, balance_date = ?2 WHERE id = ?3",
-            params![st.balance_cents, last, st.account_id],
-        )?;
-    }
-    // Rows without a MoneyMoney category get the regular rule treatment.
-    Vault::apply_rules_inner(conn, true)?;
-    Ok(st)
+    Ok(())
 }
 
 /// A FinTS/API booking arrives that was already imported from MoneyMoney:
