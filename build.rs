@@ -1,7 +1,8 @@
 //! Builds the native SwiftUI app as part of `cargo build`:
 //!   1. ./build-xcframework.sh --macos-only   (Rust core + UniFFI Swift package)
 //!   2. swift build -c release --product GiroCrabMac
-//!   3. wraps the executable into target/GiroCrab.app (ad-hoc signed)
+//!   3. wraps the executable into target/GiroCrab.app (ad-hoc signed), with the
+//!      UI translations compiled from the String Catalogs (xcstringstool)
 //!
 //! The launcher binary (src/main.rs) then starts that app.
 //!
@@ -66,6 +67,8 @@ fn main() {
         "GiroCrabApp/Sources",
         "GiroCrabApp/Package.swift",
         "GiroCrabApp/Xcode/App/Assets.xcassets",
+        "GiroCrabApp/Xcode/App/Localizable.xcstrings",
+        "GiroCrabApp/Xcode/App/InfoPlist.xcstrings",
         "uniffi-bindgen",
     ] {
         println!("cargo:rerun-if-changed={}", root.join(p).display());
@@ -138,6 +141,7 @@ fn make_bundle(app_dir: &Path, exe: &Path) {
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>CFBundleDevelopmentRegion</key><string>de</string>
+    <key>CFBundleLocalizations</key><array><string>de</string><string>en</string></array>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.finance</string>
     <key>NSHighResolutionCapable</key><true/>
@@ -146,6 +150,7 @@ fn make_bundle(app_dir: &Path, exe: &Path) {
 </plist>
 "#;
     std::fs::write(app_dir.join("Contents/Info.plist"), plist).unwrap();
+    compile_localizations(app_dir);
     // Ad-hoc signature so Keychain + LocalAuthentication accept the bundle.
     let _ = Command::new("codesign")
         .args(["--force", "--sign", "-"])
@@ -157,6 +162,39 @@ fn make_bundle(app_dir: &Path, exe: &Path) {
         .arg("-f")
         .arg(app_dir)
         .status();
+}
+
+/// String Catalogs -> Contents/Resources/<lang>.lproj/{Localizable,InfoPlist}.strings(dict).
+/// The SwiftUI code (GiroCrabUI) looks strings up in Bundle.main, i.e. this bundle.
+fn compile_localizations(app_dir: &Path) {
+    let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let res = app_dir.join("Contents/Resources");
+    let _ = std::fs::create_dir_all(&res);
+    // Drop translations of a previous build (a removed language must not linger).
+    if let Ok(entries) = std::fs::read_dir(&res) {
+        for e in entries.flatten() {
+            if e.path().extension().is_some_and(|x| x == "lproj") {
+                let _ = std::fs::remove_dir_all(e.path());
+            }
+        }
+    }
+    // InfoPlist: only English; German stays the Info.plist value written above.
+    for (catalog, langs) in [
+        ("Localizable.xcstrings", &[][..]),
+        ("InfoPlist.xcstrings", &["en"][..]),
+    ] {
+        let src = root.join("GiroCrabApp/Xcode/App").join(catalog);
+        let mut cmd = Command::new("xcrun");
+        cmd.args(["xcstringstool", "compile"])
+            .arg(&src)
+            .arg("--output-directory")
+            .arg(&res);
+        for l in langs {
+            cmd.args(["--language", l]);
+        }
+        clean_env(&mut cmd);
+        run(&mut cmd, &format!("xcstringstool compile {catalog}"));
+    }
 }
 
 /// AppIcon.appiconset (generated from icon.jpeg with sips) -> Contents/Resources/AppIcon.icns

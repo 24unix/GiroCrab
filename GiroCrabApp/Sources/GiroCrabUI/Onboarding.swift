@@ -49,7 +49,7 @@ struct EmptyVaultCard: View {
                 }
                 .labelsHidden()
                 .frame(width: 230)
-                TextField(bankCatalog().first { $0.kind == addKind }?.loginLabel ?? "Anmeldename", text: $login)
+                TextField(bankCatalog().first { $0.kind == addKind }?.loginLabel ?? String(localized: "Anmeldename"), text: $login)
                     .textFieldStyle(.roundedBorder)
                 Button("Hinzufügen") {
                     model.addConnection(addKind, login: login)
@@ -70,9 +70,9 @@ struct EmptyVaultCard: View {
         .card()
     }
 
-    private func step(_ n: Int, _ text: String) -> some View {
+    private func step(_ n: Int, _ text: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Text("\(n)")
+            Text(verbatim: "\(n)")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 20, height: 20)

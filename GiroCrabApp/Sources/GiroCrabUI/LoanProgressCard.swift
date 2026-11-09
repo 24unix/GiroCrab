@@ -16,19 +16,11 @@ struct LoanProgressCard: View {
         return max(0, min(1, 1 - Double(abs(account.balanceCents)) / Double(p)))
     }
 
-    /// "280.000,50" / "280000.5" / "280000" -> cents (Decimal, never Double).
-    private static func parseCents(_ s: String) -> Int64? {
-        var t = s.replacingOccurrences(of: "€", with: "").replacingOccurrences(of: " ", with: "")
-        if t.contains(",") { t = t.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: ".") }
-        guard let d = Decimal(string: t, locale: Locale(identifier: "en_US")), d > 0 else { return nil }
-        return NSDecimalNumber(decimal: d * 100).rounding(accordingToBehavior: nil).int64Value
-    }
-
     private func commit() {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty {
             model.setAccountInitialBalance(account.id, cents: nil)
-        } else if let c = Self.parseCents(trimmed) {
+        } else if let c = Money.parseCents(trimmed) {
             model.setAccountInitialBalance(account.id, cents: c)
         }
         editing = false
@@ -39,13 +31,13 @@ struct LoanProgressCard: View {
             HStack {
                 if !compact { Label("Tilgung", systemImage: "house").font(.headline) }
                 if let repaid {
-                    Text(String(format: "%.0f %% getilgt", repaid * 100)).font(.callout.weight(.semibold)).foregroundStyle(Theme.loan)
+                    Text("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt").font(.callout.weight(.semibold)).foregroundStyle(Theme.loan)
                 } else {
                     Text("Ursprünglicher Kreditbetrag fehlt").font(.caption).foregroundStyle(Theme.secondary)
                 }
                 Spacer()
                 if editing {
-                    TextField("z. B. 280.000,00", text: $text)
+                    TextField("z. B. \(Money.plain(28_000_000))", text: $text)
                         .textFieldStyle(.roundedBorder).frame(width: 130).onSubmit(commit)
                     Button("OK", action: commit).controlSize(.small)
                 } else {

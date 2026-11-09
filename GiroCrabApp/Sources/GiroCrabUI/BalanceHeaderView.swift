@@ -57,21 +57,21 @@ struct StreamHeaderCard: View {
             HStack(spacing: 12) {
                 Menu {
                     Picker("Zeitraum", selection: $model.period) {
-                        ForEach(Period.allCases) { Text($0.rawValue).tag($0) }
+                        ForEach(Period.allCases) { Text($0.title).tag($0) }
                     }
                     .pickerStyle(.inline)
                 } label: {
-                    Label(model.period.rawValue, systemImage: "calendar")
+                    Label(model.period.title, systemImage: "calendar")
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 Menu {
                     Picker("Status", selection: $model.statusFilter) {
-                        ForEach(StatusFilter.allCases) { Text($0.rawValue).tag($0) }
+                        ForEach(StatusFilter.allCases) { Text($0.title).tag($0) }
                     }
                     .pickerStyle(.inline)
                 } label: {
-                    Label("Status: \(model.statusFilter.rawValue)", systemImage: "line.3.horizontal.decrease")
+                    Label("Status: \(model.statusFilter.title)", systemImage: "line.3.horizontal.decrease")
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -88,8 +88,8 @@ struct StreamHeaderCard: View {
 }
 
 struct KPI: View {
-    let title: String
-    let subtitle: String
+    let title: LocalizedStringKey
+    let subtitle: LocalizedStringKey
     let value: String
     let tint: Color
 

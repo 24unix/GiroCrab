@@ -22,36 +22,37 @@ struct CommandPaletteView: View {
 
     private var items: [Item] {
         var out: [Item] = []
+        let action = String(localized: "Aktion")
         for s in BookingScope.ordered {
-            out.append(Item(title: s.title, subtitle: "Ansicht", symbol: "rectangle.split.3x1") { model.scope = s })
+            out.append(Item(title: s.title, subtitle: String(localized: "Ansicht"), symbol: "rectangle.split.3x1") { model.scope = s })
         }
         if model.canTransfer {
-            out.append(Item(title: "Überweisung senden", subtitle: "Aktion · ⌘N", symbol: "paperplane") { model.openTransfer() })
+            out.append(Item(title: String(localized: "Überweisung senden"), subtitle: "\(action) · ⌘N", symbol: "paperplane") { model.openTransfer() })
         }
-        out.append(Item(title: "Alle Konten abrufen", subtitle: "Aktion · ⇧⌘R", symbol: "arrow.triangle.2.circlepath") { model.requestSyncAll() })
-        out.append(Item(title: "Regeln bearbeiten", subtitle: "Aktion", symbol: "wand.and.stars") { model.openRuleEditor() })
+        out.append(Item(title: String(localized: "Alle Konten abrufen"), subtitle: "\(action) · ⇧⌘R", symbol: "arrow.triangle.2.circlepath") { model.requestSyncAll() })
+        out.append(Item(title: String(localized: "Regeln bearbeiten"), subtitle: action, symbol: "wand.and.stars") { model.openRuleEditor() })
         if let b = model.selectedBooking {
-            out.append(Item(title: "„\(b.merchant.name)“ kategorisieren", subtitle: "Aktion · C", symbol: "tag") { model.showCategorizer = true })
-            out.append(Item(title: "Regel für „\(b.merchant.name)“ erstellen", subtitle: "Aktion · R", symbol: "wand.and.stars") { model.openRuleEditor(from: b) })
+            out.append(Item(title: String(localized: "„\(b.merchant.name)“ kategorisieren"), subtitle: "\(action) · C", symbol: "tag") { model.showCategorizer = true })
+            out.append(Item(title: String(localized: "Regel für „\(b.merchant.name)“ erstellen"), subtitle: "\(action) · R", symbol: "wand.and.stars") { model.openRuleEditor(from: b) })
         }
-        out.append(Item(title: "MoneyMoney Historie & Kategorien importieren", subtitle: "Aktion", symbol: "square.and.arrow.down.on.square") { model.showMoneyMoneyImport = true })
-        out.append(Item(title: "Regeln jetzt anwenden", subtitle: "Aktion", symbol: "play") { model.applyAllRules() })
+        out.append(Item(title: String(localized: "MoneyMoney Historie & Kategorien importieren"), subtitle: action, symbol: "square.and.arrow.down.on.square") { model.showMoneyMoneyImport = true })
+        out.append(Item(title: String(localized: "Regeln jetzt anwenden"), subtitle: action, symbol: "play") { model.applyAllRules() })
         #if os(macOS)
-        out.append(Item(title: "Einstellungen", subtitle: "Aktion · ⌘,", symbol: "gearshape") { openSettings() })
+        out.append(Item(title: String(localized: "Einstellungen"), subtitle: "\(action) · ⌘,", symbol: "gearshape") { openSettings() })
         #else
-        out.append(Item(title: "Einstellungen", subtitle: "Aktion", symbol: "gearshape") { model.showSettings = true })
+        out.append(Item(title: String(localized: "Einstellungen"), subtitle: action, symbol: "gearshape") { model.showSettings = true })
         #endif
-        out.append(Item(title: "Übersicht", subtitle: "Konten", symbol: "square.grid.2x2") { model.sidebarSelection = .allAccounts })
+        out.append(Item(title: String(localized: "Übersicht"), subtitle: String(localized: "Konten"), symbol: "square.grid.2x2") { model.sidebarSelection = .allAccounts })
         for a in model.allAccounts {
-            out.append(Item(title: a.name, subtitle: "Konto · \(a.bankName)", symbol: a.sfSymbol) { model.sidebarSelection = .account(a.id) })
+            out.append(Item(title: a.name, subtitle: String(localized: "Konto · \(a.bankName)"), symbol: a.sfSymbol) { model.sidebarSelection = .account(a.id) })
         }
         for c in model.categories {
-            out.append(Item(title: c.name, subtitle: "Kategorie · \(c.path)", symbol: c.sfSymbol) { model.sidebarSelection = .category(c.id) })
+            out.append(Item(title: c.name, subtitle: String(localized: "Kategorie · \(c.path)"), symbol: c.sfSymbol) { model.sidebarSelection = .category(c.id) })
         }
         var seen = Set<String>()
         for b in model.bookings where seen.insert(b.merchant.key).inserted && seen.count < 300 {
             let name = b.merchant.name
-            out.append(Item(title: name, subtitle: "Händler suchen", symbol: "magnifyingglass") { model.searchText = name })
+            out.append(Item(title: name, subtitle: String(localized: "Händler suchen"), symbol: "magnifyingglass") { model.searchText = name })
         }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return Array(out.prefix(14)) }

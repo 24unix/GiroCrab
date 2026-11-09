@@ -1,0 +1,24 @@
+{
+  "sourceLanguage" : "de",
+  "strings" : {
+    "NSFaceIDUsageDescription" : {
+      "comment" : "Privacy - Face ID Usage Description. The German value matches the Xcode target's INFOPLIST_KEY_NSFaceIDUsageDescription; build.rs and package-macos-app.sh compile only English and keep their own German Info.plist text.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab nutzt Face ID, um Ihren verschlüsselten Tresor zu entsperren."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab uses Face ID or Touch ID to unlock your encrypted vault."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

@@ -21,6 +21,16 @@ enum Period: String, CaseIterable, Identifiable {
     case thisYear = "Dieses Jahr"
     var id: String { rawValue }
 
+    var title: String {
+        switch self {
+        case .all: return String(localized: "Gesamter Zeitraum")
+        case .thisMonth: return String(localized: "Dieser Monat")
+        case .lastMonth: return String(localized: "Letzter Monat")
+        case .last3Months: return String(localized: "Letzte 3 Monate")
+        case .thisYear: return String(localized: "Dieses Jahr")
+        }
+    }
+
     var range: (String?, String?) {
         let cal = Calendar(identifier: .gregorian)
         let now = Date()
@@ -43,14 +53,22 @@ enum StatusFilter: String, CaseIterable, Identifiable {
     case new = "Neu"
     case checked = "Geprüft"
     var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return String(localized: "Alle")
+        case .new: return String(localized: "Neu")
+        case .checked: return String(localized: "Geprüft")
+        }
+    }
 }
 
 extension BookingScope {
     var title: String {
         switch self {
-        case .all: return "Alle Buchungen"
-        case .everyday: return "Alltag & Konsum"
-        case .investments: return "Sparpläne & Perks"
+        case .all: return String(localized: "Alle Buchungen")
+        case .everyday: return String(localized: "Alltag & Konsum")
+        case .investments: return String(localized: "Sparpläne & Perks")
         }
     }
     static let ordered: [BookingScope] = [.all, .everyday, .investments]
@@ -214,7 +232,7 @@ public final class AppModel {
             openTransfer()
             transferDraft.name = "Stadtwerke München"
             transferDraft.iban = TransferSheetView.groupedIBAN("DE89370400440532013000")
-            transferDraft.amountText = "85,00"
+            transferDraft.amountText = Money.plain(8500)
             transferDraft.purpose = "Abschlag Strom Kd-Nr 482910"
         case "moneymoney":
             demoImportPreview = MoneyMoneyImportPreview(
@@ -297,7 +315,7 @@ public final class AppModel {
                 if try v.accountCount() == 0 && self.connectionsExist(v) == false {
                     // Nothing synced yet: show demo bookings so the UI can be judged.
                     self.openDemoVault()
-                    self.toast = "Ihr Tresor ist noch leer – Sie sehen Demo-Daten"
+                    self.toast = String(localized: "Ihr Tresor ist noch leer – Sie sehen Demo-Daten")
                 } else {
                     self.useVault(v, demo: false)
                 }
@@ -534,7 +552,7 @@ public final class AppModel {
         guard let vault else { return }
         run {
             let stored = try vault.setMerchantDomain(merchantKey: merchant.key, domain: domain)
-            toast = stored.map { "Domain für \(merchant.name): \($0) – Logo wird geladen" } ?? "Domain-Zuordnung entfernt"
+            toast = stored.map { String(localized: "Domain für \(merchant.name): \($0) – Logo wird geladen") } ?? String(localized: "Domain-Zuordnung entfernt")
         }
         logoCache = [:]
         logoVersion += 1
@@ -562,7 +580,7 @@ public final class AppModel {
         guard let vault else { return }
         run { _ = try vault.clearLogoCache() }
         logoCache = [:]
-        toast = "Logo-Cache geleert"
+        toast = String(localized: "Logo-Cache geleert")
     }
 
     // MARK: - Derived
@@ -611,32 +629,33 @@ public final class AppModel {
 
     var title: String {
         switch sidebarSelection {
-        case .allAccounts, .none: return "Übersicht"
-        case .group(let id): return groups.first { $0.id == id }?.name ?? "Gruppe"
-        case .account(let id): return allAccounts.first { $0.id == id }?.name ?? "Konto"
-        case .category(let id): return categories.first { $0.id == id }?.path ?? "Kategorie"
-        case .uncategorized: return "Ohne Kategorie"
-        case .documents: return "Belege & PostBox"
+        case .allAccounts, .none: return String(localized: "Übersicht")
+        case .group(let id): return groups.first { $0.id == id }?.name ?? String(localized: "Gruppe")
+        case .account(let id): return allAccounts.first { $0.id == id }?.name ?? String(localized: "Konto")
+        case .category(let id): return categories.first { $0.id == id }?.path ?? String(localized: "Kategorie")
+        case .uncategorized: return String(localized: "Ohne Kategorie")
+        case .documents: return String(localized: "Belege & PostBox")
         }
     }
 
     var headerBalance: (label: String, cents: Int64)? {
         switch sidebarSelection {
-        case .account(let id): return allAccounts.first { $0.id == id }.map { ("Kontostand", $0.balanceCents) }
-        case .group(let id): return groups.first { $0.id == id }.map { ("Summe", $0.balanceCents) }
-        case .allAccounts, .none: return ("Verfügbar (Giro, Tagesgeld, Karten)", liquidBalance)
-        case .category(let id): return categories.first { $0.id == id }.map { ("Summe im Zeitraum", $0.totalCents) }
+        case .account(let id): return allAccounts.first { $0.id == id }.map { (String(localized: "Kontostand"), $0.balanceCents) }
+        case .group(let id): return groups.first { $0.id == id }.map { (String(localized: "Summe"), $0.balanceCents) }
+        case .allAccounts, .none: return (String(localized: "Verfügbar (Giro, Tagesgeld, Karten)"), liquidBalance)
+        case .category(let id): return categories.first { $0.id == id }.map { (String(localized: "Summe im Zeitraum"), $0.totalCents) }
         case .uncategorized, .documents: return nil
         }
     }
 
     var lastSyncText: String {
         let latest = connections.compactMap(\.lastSyncUnix).max()
-        guard let latest else { return "Noch nie aktualisiert" }
+        guard let latest else { return String(localized: "Noch nie aktualisiert") }
         let f = RelativeDateTimeFormatter()
-        f.locale = Locale(identifier: "de_DE")
+        f.locale = .autoupdatingCurrent
         f.unitsStyle = .full
-        return "Aktualisiert " + f.localizedString(for: Date(timeIntervalSince1970: TimeInterval(latest)), relativeTo: Date())
+        let relative = f.localizedString(for: Date(timeIntervalSince1970: TimeInterval(latest)), relativeTo: Date())
+        return String(localized: "Aktualisiert \(relative)")
     }
 
     func account(for id: Int64) -> Account? { allAccounts.first { $0.id == id } }
@@ -693,7 +712,7 @@ public final class AppModel {
     func newRuleDraft(from booking: Booking? = nil) -> Rule {
         Rule(
             id: 0,
-            name: booking.map { "\($0.merchant.name)" } ?? "Neue Regel",
+            name: booking.map { "\($0.merchant.name)" } ?? String(localized: "Neue Regel"),
             categoryId: booking?.categoryId ?? categories.first(where: { $0.depth > 0 })?.id ?? categories.first?.id ?? 0,
             field: booking == nil ? .any : .counterparty,
             matchKind: .keyword,
@@ -742,7 +761,7 @@ public final class AppModel {
         guard let vault else { return }
         run {
             let n = try vault.applyRules(onlyUncategorized: false)
-            toast = "Regeln angewendet – \(n) Buchungen neu zugeordnet"
+            toast = String(localized: "Regeln angewendet – \(n) Buchungen neu zugeordnet")
         }
         reloadAll()
     }
@@ -764,7 +783,7 @@ public final class AppModel {
         run { newID = try vault.addBankConnection(connector: kind, displayName: "", loginName: login) }
         reloadAccounts()
         if let id = newID, let conn = connections.first(where: { $0.id == id }) {
-            toast = "\(conn.displayName) hinzugefügt"
+            toast = String(localized: "\(conn.displayName) hinzugefügt")
             requestSync(conn)
         }
     }
@@ -834,7 +853,7 @@ public final class AppModel {
             guard let data = try? Data(contentsOf: url) else { continue }
             run { _ = try vault.attachDocumentToBooking(bookingId: booking.id, fileName: url.lastPathComponent, bytes: data); n += 1 }
         }
-        if n > 0 { toast = "\(n) Beleg\(n == 1 ? "" : "e") an „\(booking.merchantName)“ angehängt" }
+        if n > 0 { toast = String(localized: "\(n) Belege an „\(booking.merchantName)“ angehängt") }
         documentsChanged()
     }
 
@@ -860,9 +879,9 @@ public final class AppModel {
                 }
             }
             if !linked.isEmpty {
-                toast = "Beleg zugeordnet: " + linked.joined(separator: ", ")
+                toast = String(localized: "Beleg zugeordnet: \(linked.joined(separator: ", "))")
             } else if unmatched > 0 {
-                toast = "Kein passender Umsatz gefunden – in „Belege & PostBox“ abgelegt"
+                toast = String(localized: "Kein passender Umsatz gefunden – in „Belege & PostBox“ abgelegt")
             }
             documentsChanged()
         }
@@ -895,7 +914,7 @@ public final class AppModel {
         defer { if ok { folder.stopAccessingSecurityScopedResource() } }
         run {
             let n = try vault.exportAllDocuments(destDir: folder.path)
-            toast = "\(n) Belege nach „\(folder.lastPathComponent)/GiroCrab-Belege“ exportiert"
+            toast = String(localized: "\(n) Belege nach „\(folder.lastPathComponent)/GiroCrab-Belege“ exportiert")
         }
     }
 
@@ -917,7 +936,7 @@ public final class AppModel {
     func clearSession(_ id: Int64) {
         guard let vault else { return }
         run { try vault.clearConnectionSession(connectionId: id) }
-        toast = "Sitzung gelöscht"
+        toast = String(localized: "Sitzung gelöscht")
     }
 
     func revealSetting(_ key: String) -> String {
@@ -930,7 +949,7 @@ public final class AppModel {
         webLoginConnection = nil
         do {
             try vault.setConnectionSession(connectionId: connection.id, cookies: cookies)
-            toast = "Trade-Republic-Sitzung übernommen"
+            toast = String(localized: "Trade-Republic-Sitzung übernommen")
             startSync(connection, secret: "")
         } catch {
             errorMessage = describe(error)
@@ -1017,7 +1036,7 @@ public final class AppModel {
             activeChallenge = nil
             syncingConnectionID = nil
             activeSession = nil
-            toast = "\(connection.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert"
+            toast = String(localized: "\(connection.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert")
             reloadAll()
             syncNextInQueue()
         }
@@ -1078,7 +1097,7 @@ public final class AppModel {
             activeTransfer = nil
             activeChallenge = nil
             transferBusy = false
-            transferError = "Überweisung abgebrochen – es wurde nichts gesendet, solange die TAN nicht bestätigt wurde."
+            transferError = String(localized: "Überweisung abgebrochen – es wurde nichts gesendet, solange die TAN nicht bestätigt wurde.")
             showTransferSheet = true
             Task { await t.cancel() }
             return
@@ -1164,7 +1183,7 @@ extension AppModel {
                 purpose: transferDraft.purpose)
             let stored = connectionStatus(connection.id)?.hasPin ?? false
             if !isDemo && !stored && transferDraft.pin.isEmpty {
-                transferError = "Bitte die Banking-PIN eingeben."
+                transferError = String(localized: "Bitte die Banking-PIN eingeben.")
                 return
             }
             let session = try vault.beginTransfer(request: request, secret: isDemo ? "demo" : transferDraft.pin, demo: isDemo)
@@ -1203,7 +1222,7 @@ extension AppModel {
             activeTransfer = nil
             transferBusy = false
             transferDraft = TransferDraft(accountID: transferDraft.accountID)
-            toast = "Überweisung freigegeben und vorgemerkt"
+            toast = String(localized: "Überweisung freigegeben und vorgemerkt")
             reloadAll()
         }
     }
@@ -1219,36 +1238,38 @@ extension AppModel {
     }
 }
 
-/// German, human-readable text for core errors (instead of
+/// Human-readable (localised) text for core errors (instead of
 /// "GiroCrabCore.CoreError.MissingSetting(key: …)").
 func describe(_ error: Error) -> String {
     guard let e = error as? CoreError else { return error.localizedDescription }
     switch e {
-    case .Database(let m): return "Datenbankfehler: \(m)"
-    case .WrongKey: return "Der Tresor konnte nicht entsperrt werden (falscher Schlüssel oder beschädigte Datei)."
-    case .NotFound(let what): return "Nicht gefunden: \(what)"
-    case .InvalidInput(let m): return "Ungültige Eingabe: \(m)"
-    case .MissingSetting(let key): return "Für diese Bank fehlt noch eine Einstellung: \(settingLabels[key] ?? key). Bitte in den Einstellungen unter „FinTS & API-Schlüssel“ eintragen."
-    case .Network(let m): return "Netzwerkfehler: \(m)"
-    case .Bank(let code, let m): return "Die Bank hat abgelehnt (\(code)): \(m)"
-    case .Authentication(let m): return "Anmeldung fehlgeschlagen: \(m)"
-    case .Protocol(let m): return "Protokollfehler: \(m)"
-    case .SessionClosed: return "Dieser Abruf ist nicht mehr aktiv."
+    case .Database(let m): return String(localized: "Datenbankfehler: \(m)")
+    case .WrongKey: return String(localized: "Der Tresor konnte nicht entsperrt werden (falscher Schlüssel oder beschädigte Datei).")
+    case .NotFound(let what): return String(localized: "Nicht gefunden: \(what)")
+    case .InvalidInput(let m): return String(localized: "Ungültige Eingabe: \(m)")
+    case .MissingSetting(let key):
+        let label = settingLabels[key] ?? key
+        return String(localized: "Für diese Bank fehlt noch eine Einstellung: \(label). Bitte in den Einstellungen unter „FinTS & API-Schlüssel“ eintragen.")
+    case .Network(let m): return String(localized: "Netzwerkfehler: \(m)")
+    case .Bank(let code, let m): return String(localized: "Die Bank hat abgelehnt (\(code)): \(m)")
+    case .Authentication(let m): return String(localized: "Anmeldung fehlgeschlagen: \(m)")
+    case .Protocol(let m): return String(localized: "Protokollfehler: \(m)")
+    case .SessionClosed: return String(localized: "Dieser Abruf ist nicht mehr aktiv.")
     case .BrowserLoginRequired(let m): return m
     }
 }
 
 let settingLabels: [String: String] = [
-    "fints.product_id": "FinTS-Produktregistrierung",
-    "fints.url.52090000": "FinTS-Server Volksbank Kassel Göttingen",
-    "fints.url.50050201": "FinTS-Server 1822direkt",
-    "comdirect.client_id": "comdirect Client-ID",
-    "comdirect.client_secret": "comdirect Client-Secret",
-    "paypal.client_id": "PayPal Client-ID",
-    "paypal.client_secret": "PayPal Secret",
-    "enablebanking.application_id": "Enable Banking Application-ID",
-    "enablebanking.private_key_pem": "Enable Banking Private Key",
-    "enablebanking.redirect_url": "Enable Banking Redirect-URL",
+    "fints.product_id": String(localized: "FinTS-Produktregistrierung"),
+    "fints.url.52090000": String(localized: "FinTS-Server Volksbank Kassel Göttingen"),
+    "fints.url.50050201": String(localized: "FinTS-Server 1822direkt"),
+    "comdirect.client_id": String(localized: "comdirect Client-ID"),
+    "comdirect.client_secret": String(localized: "comdirect Client-Secret"),
+    "paypal.client_id": String(localized: "PayPal Client-ID"),
+    "paypal.client_secret": String(localized: "PayPal Secret"),
+    "enablebanking.application_id": String(localized: "Enable Banking Application-ID"),
+    "enablebanking.private_key_pem": String(localized: "Enable Banking Private Key"),
+    "enablebanking.redirect_url": String(localized: "Enable Banking Redirect-URL"),
 ]
 
 func formatIBAN(_ iban: String) -> String {

@@ -48,20 +48,20 @@ enum Money {
     private static let currency: NumberFormatter = {
         let f = NumberFormatter()
         f.numberStyle = .currency
-        f.locale = Locale(identifier: "de_DE")
+        f.locale = .autoupdatingCurrent
         f.currencyCode = "EUR"
         return f
     }()
     private static let decimal: NumberFormatter = {
         let f = NumberFormatter()
-        f.locale = Locale(identifier: "de_DE")
+        f.locale = .autoupdatingCurrent
         f.numberStyle = .decimal
         f.minimumFractionDigits = 2
         f.maximumFractionDigits = 2
         return f
     }()
 
-    /// i64 cents -> "1.234,56 €" (Decimal, never Double).
+    /// i64 cents -> "1.234,56 €" / "€1,234.56" in the user's locale (Decimal, never Double).
     static func format(_ cents: Int64, currency code: String = "EUR") -> String {
         currency.currencyCode = code
         let s = currency.string(from: (Decimal(cents) / 100) as NSDecimalNumber) ?? "\(cents)"
@@ -77,6 +77,30 @@ enum Money {
         (decimal.string(from: (Decimal(cents) / 100) as NSDecimalNumber) ?? "\(cents)").replacingOccurrences(of: "-", with: "−")
     }
 
+    /// User input -> cents, accepting the user's locale ("280.000,50" in German,
+    /// "280,000.50" in English) as well as plain "280000.5" (Decimal, never Double).
+    /// Both separators present: the last one is the decimal separator. Only one
+    /// kind present: it is a grouping separator if it is the locale's grouping
+    /// separator and every group after it has exactly three digits.
+    static func parseCents(_ input: String) -> Int64? {
+        let t = input.filter { !($0 == "€" || $0.isWhitespace || $0 == "'") }
+        guard !t.isEmpty else { return nil }
+        let seps: Set<Character> = [".", ","]
+        let used = Set(t.filter { seps.contains($0) })
+        var normalized = t
+        if used.count == 2, let last = t.last(where: { seps.contains($0) }) {
+            let grouping: Character = last == "," ? "." : ","
+            normalized = t.replacingOccurrences(of: String(grouping), with: "").replacingOccurrences(of: String(last), with: ".")
+        } else if let sep = used.first {
+            let groups = t.split(separator: sep, omittingEmptySubsequences: false)
+            let localeGrouping = Locale.autoupdatingCurrent.groupingSeparator.flatMap(\.first)
+            let isGrouping = (sep == localeGrouping || groups.count > 2) && groups.dropFirst().allSatisfy { $0.count == 3 }
+            normalized = isGrouping ? t.replacingOccurrences(of: String(sep), with: "") : t.replacingOccurrences(of: String(sep), with: ".")
+        }
+        guard let d = Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX")) else { return nil }
+        return NSDecimalNumber(decimal: d * 100).rounding(accordingToBehavior: nil).int64Value
+    }
+
     static func ink(_ cents: Int64) -> Color { cents > 0 ? Theme.inflow : Theme.outflow }
 }
 
@@ -87,18 +111,20 @@ enum DateText {
         f.dateFormat = "yyyy-MM-dd"
         return f
     }()
-    private static func make(_ format: String) -> DateFormatter {
+    /// Display formats follow the user's locale: the templates give
+    /// "9. November" / "09.11.2026" in German and "November 9" / "11/09/2026" in English.
+    private static func make(template: String) -> DateFormatter {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "de_DE")
-        f.dateFormat = format
+        f.locale = .autoupdatingCurrent
+        f.setLocalizedDateFormatFromTemplate(template)
         return f
     }
-    private static let dayMonth = make("d. MMMM")
-    private static let dayMonthYear = make("d. MMMM yyyy")
-    private static let weekday = make("EEEE")
-    private static let medium = make("dd.MM.yyyy")
-    private static let full = make("EEEE, d. MMMM yyyy")
-    private static let monthShort = make("MMM yy")
+    private static let dayMonth = make(template: "dMMMM")
+    private static let dayMonthYear = make(template: "dMMMMyyyy")
+    private static let weekday = make(template: "EEEE")
+    private static let medium = make(template: "ddMMyyyy")
+    private static let full = make(template: "EEEEdMMMMyyyy")
+    private static let monthShort = make(template: "MMMyy")
 
     static func date(_ s: String) -> Date? { iso.date(from: s) }
     static func iso(_ d: Date) -> String { iso.string(from: d) }
@@ -111,9 +137,10 @@ enum DateText {
         let cal = Calendar(identifier: .gregorian)
         let sameYear = cal.component(.year, from: d) == cal.component(.year, from: Date())
         let dm = sameYear ? dayMonth.string(from: d) : dayMonthYear.string(from: d)
-        if cal.isDateInToday(d) { return "Heute, \(dm)" }
-        if cal.isDateInYesterday(d) { return "Gestern, \(dm)" }
-        return "\(weekday.string(from: d)), \(dm)"
+        if cal.isDateInToday(d) { return String(localized: "Heute, \(dm)") }
+        if cal.isDateInYesterday(d) { return String(localized: "Gestern, \(dm)") }
+        let wd = weekday.string(from: d)
+        return String(localized: "\(wd), \(dm)", comment: "Day header: weekday, day and month")
     }
 
     /// "2026-11" -> "Nov. 26"
@@ -191,12 +218,12 @@ extension ConnectorKind {
 extension FlowKind {
     var label: String {
         switch self {
-        case .consumption: return "Konsum"
-        case .income: return "Einnahme"
-        case .investment: return "Investment"
-        case .perk: return "Perk"
-        case .transfer: return "Umbuchung"
-        case .loan: return "Darlehen"
+        case .consumption: return String(localized: "Konsum")
+        case .income: return String(localized: "Einnahme")
+        case .investment: return String(localized: "Investment")
+        case .perk: return String(localized: "Perk")
+        case .transfer: return String(localized: "Umbuchung")
+        case .loan: return String(localized: "Darlehen")
         }
     }
 }
@@ -204,7 +231,7 @@ extension FlowKind {
 extension Booking {
     /// "Supermarkt · Kartenzahlung"
     var subtitle: String {
-        let cat = categoryName.isEmpty ? "Ohne Kategorie" : categoryName
+        let cat = categoryName.isEmpty ? String(localized: "Ohne Kategorie") : categoryName
         return paymentMethod.isEmpty ? cat : "\(cat) · \(paymentMethod)"
     }
 }
