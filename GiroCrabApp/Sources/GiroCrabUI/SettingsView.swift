@@ -121,8 +121,8 @@ struct CredentialsSettings: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        // Group names come from the core and may be translated, so match on keys
-        // (logo settings have their own tab) and keep the core's group order.
+        // Group by the core's stable group id, show its translated title, match
+        // on keys (logo settings have their own tab) and keep the core's order.
         let entries = model.settings.filter { !$0.key.hasPrefix("merchants.") }
         let grouped = Dictionary(grouping: entries, by: \.group)
         let order = entries.map(\.group).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
@@ -133,7 +133,7 @@ struct CredentialsSettings: View {
                     .foregroundStyle(.secondary)
             }
             ForEach(order.filter { grouped[$0] != nil }, id: \.self) { g in
-                Section(g) {
+                Section(grouped[g]?.first?.groupTitle ?? g) {
                     ForEach(grouped[g] ?? []) { entry in
                         SettingField(entry: entry)
                     }

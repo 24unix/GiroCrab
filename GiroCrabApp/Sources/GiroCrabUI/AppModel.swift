@@ -190,6 +190,9 @@ public final class AppModel {
 
     public init(options: LaunchOptions = .current) {
         self.options = options
+        // Core texts follow the language the app bundle actually resolved, so
+        // UI and core never disagree (German without an .app bundle).
+        GiroCrabCore.setLanguage(code: Bundle.main.preferredLocalizations.first ?? "de")
         if options.freshVault {
             openFreshVault()
             return
