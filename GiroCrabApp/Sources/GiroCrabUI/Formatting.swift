@@ -11,25 +11,31 @@ extension SettingEntry: Identifiable { public var id: String { key } }
 extension BankDescriptor: Identifiable { public var id: ConnectorKind { kind } }
 extension SavingsPlan: Identifiable { public var id: String { merchant.key } }
 
-/// "Daylight" design tokens: calm, high-contrast light UI.
+/// "Daylight" / "Nightfall" design tokens: calm, high-contrast UI that follows
+/// the system appearance (light: slate on white, dark: slate on deep navy).
 enum Theme {
-    static let canvas = Color(hex: "#F8FAFC")      // light warm slate
-    static let sidebar = Color(hex: "#F3F4F6")
-    static let card = Color.white
-    static let border = Color(hex: "#E2E8F0")
-    static let text = Color(hex: "#0F172A")
-    static let secondary = Color(hex: "#64748B")
-    static let tertiary = Color(hex: "#94A3B8")
-    static let outflow = Color(hex: "#0F172A")
-    static let inflow = Color(hex: "#059669")
-    static let inflowBadge = Color(hex: "#ECFDF5")
-    static let accent = Color(hex: "#2563EB")
-    static let selection = Color(hex: "#EEF2FF")
-    static let loan = Color(hex: "#64748B")
-    static let warning = Color(hex: "#B45309")
+    static let canvas = Color(light: "#F8FAFC", dark: "#0F172A")
+    static let sidebar = Color(light: "#F3F4F6", dark: "#0B1220")
+    static let card = Color(light: "#FFFFFF", dark: "#1E293B")
+    static let border = Color(light: "#E2E8F0", dark: "#334155")
+    static let text = Color(light: "#0F172A", dark: "#F1F5F9")
+    static let secondary = Color(light: "#64748B", dark: "#94A3B8")
+    static let tertiary = Color(light: "#94A3B8", dark: "#64748B")
+    static let outflow = Color(light: "#0F172A", dark: "#F1F5F9")
+    static let inflow = Color(light: "#059669", dark: "#34D399")
+    static let inflowBadge = Color(light: "#ECFDF5", dark: "#064E3B")
+    static let accent = Color(light: "#2563EB", dark: "#3B82F6")
+    static let selection = Color(light: "#EEF2FF", dark: "#1E3A5F")
+    static let loan = Color(light: "#64748B", dark: "#94A3B8")
+    static let warning = Color(light: "#B45309", dark: "#F59E0B")
+    static let invest = Color(light: "#1F7A5C", dark: "#5EC79F")
+    static let negative = Color(light: "#B91C1C", dark: "#F87171")
+    static let personFill = Color(light: "#E2E8F0", dark: "#334155")
+    static let personText = Color(light: "#475569", dark: "#CBD5E1")
+    static let neutralTile = Color(light: "#F1F3F5", dark: "#273449")
 }
 
-/// White card with a 1px hairline border.
+/// Card with a 1px hairline border.
 struct CardBackground: ViewModifier {
     var padding: CGFloat = 16
     func body(content: Content) -> some View {
@@ -135,7 +141,22 @@ extension Color {
         }
     }
 
-    /// Brand colours that are too light for text (yellow, pink) get a dark fallback.
+    /// Light/dark pair that follows the system appearance.
+    init(light: String, dark: String) {
+        #if os(macOS)
+        let l = NSColor(Color(hex: light)), d = NSColor(Color(hex: dark))
+        self.init(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? d : l
+        })
+        #else
+        let l = UIColor(Color(hex: light)), d = UIColor(Color(hex: dark))
+        self.init(uiColor: UIColor { $0.userInterfaceStyle == .dark ? d : l })
+        #endif
+    }
+
+    /// Brand colours used as text: too light for the light theme (yellow, pink)
+    /// get a dark fallback, too dark for the dark theme (near-black brands) get
+    /// lightened towards white.
     static func readable(hex: String) -> Color {
         var s = hex
         if s.hasPrefix("#") { s.removeFirst() }
@@ -143,7 +164,17 @@ extension Color {
         Scanner(string: s).scanHexInt64(&v)
         let r = Double((v >> 16) & 0xFF), g = Double((v >> 8) & 0xFF), b = Double(v & 0xFF)
         let lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-        return lum > 0.72 ? Theme.outflow : Color(hex: hex)
+        let light = lum > 0.72 ? "#0F172A" : "#" + s
+        let dark: String
+        if lum < 0.45 {
+            // mix with white so the hue survives but contrast on #1E293B is enough
+            let t = 0.55
+            let mix = { (c: Double) in Int((c + (255 - c) * t).rounded()) }
+            dark = String(format: "#%02X%02X%02X", mix(r), mix(g), mix(b))
+        } else {
+            dark = "#" + s
+        }
+        return Color(light: light, dark: dark)
     }
 }
 
@@ -173,7 +204,7 @@ extension ConnectorKind {
         }
     }
 
-    var tint: Color { Color(hex: tintHex) }
+    var tint: Color { Color.readable(hex: tintHex) }
 
     var monogram: String {
         switch self {

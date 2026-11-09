@@ -94,7 +94,7 @@ struct CommandPaletteView: View {
             .frame(height: 380)
         }
         .frame(width: 560)
-        .background(Color.white)
+        .background(Theme.card)
         .onAppear { focused = true }
         .onChange(of: query) { _, _ in index = 0 }
     }

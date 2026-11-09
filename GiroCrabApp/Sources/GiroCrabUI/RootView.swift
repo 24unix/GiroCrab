@@ -15,7 +15,6 @@ public struct GiroCrabScenes: Scene {
         WindowGroup("GiroCrab", id: "main") {
             GiroCrabRootView()
                 .environment(model)
-                .preferredColorScheme(.light)
         }
         #if os(macOS)
         .defaultSize(width: 1500, height: 900)
@@ -69,7 +68,6 @@ public struct GiroCrabScenes: Scene {
         Settings {
             SettingsView()
                 .environment(model)
-                .preferredColorScheme(.light)
                 .frame(width: 760, height: 600)
         }
         #endif

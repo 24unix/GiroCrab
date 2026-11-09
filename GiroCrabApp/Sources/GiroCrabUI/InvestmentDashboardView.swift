@@ -12,9 +12,9 @@ struct InvestmentDashboardView: View {
         if let d = model.dashboard {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
-                    KPI(title: "Monatlich investiert", subtitle: "\(d.plans.filter(\.active).count) aktive Sparpläne", value: Money.format(d.totalMonthlyCents), tint: Color(hex: "#1F7A5C"))
+                    KPI(title: "Monatlich investiert", subtitle: "\(d.plans.filter(\.active).count) aktive Sparpläne", value: Money.format(d.totalMonthlyCents), tint: Theme.invest)
                     KPI(title: "Saveback (1 %)", subtitle: "\(d.savebackCount)× gutgeschrieben", value: Money.format(d.savebackEarnedCents), tint: Theme.inflow)
-                    KPI(title: "Round up", subtitle: "\(d.roundupCount)× investiert", value: Money.format(d.roundupInvestedCents), tint: Color(hex: "#1F7A5C"))
+                    KPI(title: "Round up", subtitle: "\(d.roundupCount)× investiert", value: Money.format(d.roundupInvestedCents), tint: Theme.invest)
                 }
                 PlanGrid(dashboard: d)
                 PerksCard(dashboard: d)
@@ -60,7 +60,7 @@ struct PlanGrid: View {
                         ForEach(plan.executions, id: \.month) { e in
                             ZStack {
                                 if e.amountCents > 0 {
-                                    Circle().fill(Color(hex: "#1F7A5C").opacity(0.85)).frame(width: 12, height: 12)
+                                    Circle().fill(Theme.invest.opacity(0.85)).frame(width: 12, height: 12)
                                 } else {
                                     Circle().strokeBorder(Theme.border, lineWidth: 1.5).frame(width: 12, height: 12)
                                 }
@@ -119,7 +119,7 @@ struct PerksCard: View {
     private func perk(title: String, value: Int64, count: UInt32, text: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.caption.weight(.medium)).foregroundStyle(Theme.secondary)
-            Text(Money.format(value)).font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(Color(hex: "#1F7A5C"))
+            Text(Money.format(value)).font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(Theme.invest)
             Text("\(count) Ausführungen").font(.caption2).foregroundStyle(Theme.tertiary)
             Text(text).font(.caption2).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
         }
@@ -151,7 +151,7 @@ struct FlowChartCard: View {
                     .foregroundStyle(by: .value("Art", b.kind))
                     .position(by: .value("Art", b.kind))
             }
-            .chartForegroundStyleScale(["Konsum": Color(hex: "#94A3B8"), "Investiert": Color(hex: "#1F7A5C")])
+            .chartForegroundStyleScale(["Konsum": Theme.tertiary, "Investiert": Theme.invest])
             .chartYAxis { AxisMarks(position: .leading) { AxisGridLine().foregroundStyle(Theme.border) ; AxisValueLabel() } }
             .frame(height: 140)
         }

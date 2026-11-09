@@ -206,7 +206,7 @@ struct FlowBadge: View {
 
     var body: some View {
         let color: Color = switch flow {
-        case .investment, .perk: Color(hex: "#1F7A5C")
+        case .investment, .perk: Theme.invest
         case .income: Theme.inflow
         case .loan: Theme.loan
         case .transfer: Theme.secondary
@@ -337,7 +337,7 @@ struct CategoryChip: View {
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             .foregroundStyle(selected ? Theme.accent : Theme.text)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(selected ? Theme.selection : (filled ? Theme.canvas : Color.white)))
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(selected ? Theme.selection : (filled ? Theme.canvas : Theme.card)))
             .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(selected ? Theme.accent.opacity(0.5) : Theme.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
@@ -405,7 +405,7 @@ struct ShortcutHintCard: View {
         HStack {
             Text(key).font(.caption.monospaced().weight(.semibold))
                 .padding(.horizontal, 5).padding(.vertical, 1)
-                .background(RoundedRectangle(cornerRadius: 4).fill(Color.white))
+                .background(RoundedRectangle(cornerRadius: 4).fill(Theme.card))
                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.border))
             Text(text).font(.caption).foregroundStyle(Theme.secondary)
         }

@@ -21,10 +21,10 @@ struct MerchantSignet: View {
         ZStack {
             if merchant.isPerson {
                 // private person: calm circular initials, never a company logo
-                Circle().fill(Color(hex: "#E2E8F0"))
+                Circle().fill(Theme.personFill)
                 Text(merchant.monogram)
                     .font(.system(size: size * 0.36, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color(hex: "#475569"))
+                    .foregroundStyle(Theme.personText)
             } else if let img = sharpLogo {
                 // downloaded favicon (Google s2, 128 px) – real brand logo
                 shape.fill(Color.white)
@@ -40,7 +40,7 @@ struct MerchantSignet: View {
                 shape.fill(Color.white)
                 small.resizable().interpolation(.high).scaledToFit().padding(size * 0.2)
             } else if !merchant.known && !categorySymbol.isEmpty {
-                shape.fill(Color(hex: "#F1F3F5"))
+                shape.fill(Theme.neutralTile)
                 Image(systemName: categorySymbol)
                     .font(.system(size: size * 0.42, weight: .medium))
                     .foregroundStyle(Theme.secondary)
@@ -59,7 +59,7 @@ struct MerchantSignet: View {
         .overlay(alignment: .topTrailing) {
             if showNewDot {
                 Circle().fill(Theme.accent).frame(width: 8, height: 8)
-                    .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                    .overlay(Circle().stroke(Theme.card, lineWidth: 1.5))
                     .offset(x: 2, y: -2)
             }
         }

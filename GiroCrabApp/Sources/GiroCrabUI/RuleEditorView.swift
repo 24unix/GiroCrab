@@ -16,7 +16,7 @@ struct RuleEditorView: View {
                 ForEach(model.rules) { rule in
                     HStack {
                         Image(systemName: rule.enabled ? "wand.and.stars" : "pause.circle")
-                            .foregroundStyle(rule.enabled ? Color(hex: color(of: rule)) : .secondary)
+                            .foregroundStyle(rule.enabled ? Color.readable(hex: color(of: rule)) : .secondary)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(rule.name).lineLimit(1)
                             Text("→ " + categoryName(rule.categoryId)).font(.caption).foregroundStyle(.secondary).lineLimit(1)

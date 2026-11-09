@@ -50,7 +50,7 @@ struct StreamHeaderCard: View {
 
             HStack(spacing: 10) {
                 KPI(title: "Konsumausgaben", subtitle: "diesen Monat", value: Money.format(-model.consumptionThisMonth), tint: Theme.outflow)
-                KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: Money.format(model.investedThisMonth), tint: Color(hex: "#1F7A5C"))
+                KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: Money.format(model.investedThisMonth), tint: Theme.invest)
                 KPI(title: "Einnahmen", subtitle: "diesen Monat", value: Money.format(model.incomeThisMonth), tint: Theme.inflow)
             }
 

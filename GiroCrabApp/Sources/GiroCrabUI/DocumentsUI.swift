@@ -44,7 +44,7 @@ struct PDFPreview: NSViewRepresentable {
         let v = PDFView()
         v.autoScales = true
         v.displayMode = .singlePageContinuous
-        v.backgroundColor = .white
+        v.backgroundColor = .windowBackgroundColor
         v.document = PDFDocument(data: data)
         return v
     }
