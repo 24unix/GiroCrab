@@ -28,8 +28,8 @@ struct PinSheet: View {
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(d?.loginLabel ?? "Anmeldung").font(.caption).foregroundStyle(Theme.secondary)
-                TextField(d?.loginLabel ?? "Anmeldung", text: $login)
+                Text(d?.loginLabel ?? String(localized: "Anmeldung")).font(.caption).foregroundStyle(Theme.secondary)
+                TextField(d?.loginLabel ?? String(localized: "Anmeldung"), text: $login)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     #if os(iOS)
@@ -42,8 +42,8 @@ struct PinSheet: View {
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(d?.secretLabel ?? "PIN").font(.caption).foregroundStyle(Theme.secondary)
-                SecureField(d?.secretLabel ?? "PIN", text: $secret)
+                Text(d?.secretLabel ?? String(localized: "PIN")).font(.caption).foregroundStyle(Theme.secondary)
+                SecureField(d?.secretLabel ?? String(localized: "PIN"), text: $secret)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(start)
                 Toggle("PIN im Tresor speichern", isOn: $savePin)
@@ -169,7 +169,7 @@ struct ConnectionEditSheet: View {
             Form {
                 Section("Zugang") {
                     TextField("Anzeigename", text: $name)
-                    TextField(descriptor?.loginLabel ?? "Benutzerkennung", text: $login)
+                    TextField(descriptor?.loginLabel ?? String(localized: "Benutzerkennung"), text: $login)
                         .autocorrectionDisabled()
                     if isTR && !login.isEmpty {
                         LabeledContent("Gespeichert als", value: normalizePhoneNumber(input: login))
@@ -285,10 +285,11 @@ struct ConnectionEditSheet: View {
     }
 
     private func sessionText(_ st: ConnectionStatus) -> String {
-        guard let t = st.sessionSavedUnix else { return "gespeichert" }
+        guard let t = st.sessionSavedUnix else { return String(localized: "gespeichert") }
         let f = RelativeDateTimeFormatter()
-        f.locale = Locale(identifier: "de_DE")
-        return "gespeichert " + f.localizedString(for: Date(timeIntervalSince1970: TimeInterval(t)), relativeTo: Date())
+        f.locale = .autoupdatingCurrent
+        let relative = f.localizedString(for: Date(timeIntervalSince1970: TimeInterval(t)), relativeTo: Date())
+        return String(localized: "gespeichert \(relative)")
     }
 
     @ViewBuilder
@@ -398,7 +399,7 @@ struct WebLoginSheet: View {
     @Environment(\.dismiss) private var dismiss
     let connection: BankConnection
     @State private var found: String?
-    @State private var info = "Melden Sie sich wie gewohnt an (Telefonnummer, PIN, Code aus der App)."
+    @State private var info = String(localized: "Melden Sie sich wie gewohnt an (Telefonnummer, PIN, Code aus der App).")
 
     var body: some View {
         VStack(spacing: 0) {
@@ -439,7 +440,7 @@ struct WebLoginSheet: View {
                 if let c = await Self.trCookies(), c.contains("tr_session=") {
                     if found == nil {
                         found = c
-                        info = "Angemeldet – Sitzung wird übernommen …"
+                        info = String(localized: "Angemeldet – Sitzung wird übernommen …")
                         try? await Task.sleep(nanoseconds: 800_000_000)
                         model.applyBrowserSession(connection, cookies: c)
                         dismiss()

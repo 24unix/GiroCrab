@@ -22,11 +22,11 @@ public final class VaultKeyManager: @unchecked Sendable {
 
         public var errorDescription: String? {
             switch self {
-            case .biometryUnavailable(let why): return "Face ID / Touch ID ist nicht verfügbar: \(why)"
-            case .cancelled: return "Entsperren abgebrochen."
+            case .biometryUnavailable(let why): return String(localized: "Face ID / Touch ID ist nicht verfügbar: \(why)")
+            case .cancelled: return String(localized: "Entsperren abgebrochen.")
             case .keychain(let status):
                 let msg = SecCopyErrorMessageString(status, nil) as String? ?? "unknown"
-                return "Schlüsselbund-Fehler \(status): \(msg)"
+                return String(localized: "Schlüsselbund-Fehler \(status): \(msg)")
             }
         }
     }
@@ -46,26 +46,28 @@ public final class VaultKeyManager: @unchecked Sendable {
         case .faceID: return "Face ID"
         case .touchID: return "Touch ID"
         case .opticID: return "Optic ID"
-        default: return "Gerätecode"
+        default: return String(localized: "Gerätecode")
         }
     }
 
     public var biometrySymbol: String {
-        switch biometryName {
-        case "Face ID": return "faceid"
-        case "Touch ID": return "touchid"
-        case "Optic ID": return "opticid"
+        let ctx = LAContext()
+        _ = ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+        switch ctx.biometryType {
+        case .faceID: return "faceid"
+        case .touchID: return "touchid"
+        case .opticID: return "opticid"
         default: return "lock.fill"
         }
     }
 
     /// Authenticates the user and returns the master key, creating it on first use.
-    public func unlock(reason: String = "GiroCrab-Tresor entsperren") async throws -> Data {
+    public func unlock(reason: String = String(localized: "GiroCrab-Tresor entsperren")) async throws -> Data {
         let context = LAContext()
-        context.localizedCancelTitle = "Abbrechen"
+        context.localizedCancelTitle = String(localized: "Abbrechen")
         var err: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
-            throw KeyError.biometryUnavailable(err?.localizedDescription ?? "kein Gerätecode eingerichtet")
+            throw KeyError.biometryUnavailable(err?.localizedDescription ?? String(localized: "kein Gerätecode eingerichtet"))
         }
         do {
             let ok = try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)

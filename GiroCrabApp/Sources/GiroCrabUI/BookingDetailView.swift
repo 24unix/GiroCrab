@@ -152,11 +152,11 @@ struct MerchantDomainRow: View {
 
     private var sourceLabel: String {
         switch merchant.domainSource {
-        case "dictionary": return "Wörterbuch"
-        case "company": return "Firmenname"
-        case "person": return "Privatperson"
-        case "override": return "manuell"
-        default: return "keine Domain"
+        case "dictionary": return String(localized: "Wörterbuch")
+        case "company": return String(localized: "Firmenname")
+        case "person": return String(localized: "Privatperson")
+        case "override": return String(localized: "manuell")
+        default: return String(localized: "keine Domain")
         }
     }
 
@@ -179,7 +179,7 @@ struct MerchantDomainRow: View {
         } else {
             HStack(spacing: 4) {
                 Image(systemName: "globe").font(.system(size: 9))
-                Text(merchant.domain.isEmpty ? (merchant.isPerson ? "Privatperson – kein Logo" : "Domain festlegen") : merchant.domain)
+                Text(merchant.domain.isEmpty ? (merchant.isPerson ? String(localized: "Privatperson – kein Logo") : String(localized: "Domain festlegen")) : merchant.domain)
                     .font(.caption.monospaced())
                 if !merchant.domain.isEmpty {
                     Text("· \(sourceLabel)").font(.caption2)
@@ -251,7 +251,7 @@ struct MerchantHistoryCard: View {
         .card()
     }
 
-    private func stat(_ title: String, _ value: String) -> some View {
+    private func stat(_ title: LocalizedStringKey, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.caption2).foregroundStyle(Theme.secondary)
             Text(value).font(.callout.weight(.semibold).monospacedDigit()).foregroundStyle(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
@@ -259,7 +259,7 @@ struct MerchantHistoryCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func labeled(_ title: String, _ value: String) -> some View {
+    private func labeled(_ title: LocalizedStringKey, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title).font(.caption2).foregroundStyle(Theme.secondary)
             Text(value).font(.caption.monospaced()).textSelection(.enabled)
@@ -285,7 +285,7 @@ struct CategoryGridCard: View {
             HStack {
                 Text("Kategorie").font(.subheadline.weight(.semibold))
                 Spacer()
-                Text(booking.categoryPath.isEmpty ? "Ohne Kategorie" : booking.categoryPath)
+                Text(booking.categoryPath.isEmpty ? String(localized: "Ohne Kategorie") : booking.categoryPath)
                     .font(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 6)], spacing: 6) {
@@ -377,7 +377,7 @@ struct RawDataCard: View {
         .card()
     }
 
-    private func row(_ title: String, _ value: String) -> some View {
+    private func row(_ title: LocalizedStringKey, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title).font(.caption2).foregroundStyle(Theme.secondary)
             Text(value).font(.caption.monospaced()).foregroundStyle(Theme.text).textSelection(.enabled)
@@ -401,7 +401,7 @@ struct ShortcutHintCard: View {
         .background(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.border, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
     }
 
-    private func hint(_ key: String, _ text: String) -> some View {
+    private func hint(_ key: String, _ text: LocalizedStringKey) -> some View {
         HStack {
             Text(key).font(.caption.monospaced().weight(.semibold))
                 .padding(.horizontal, 5).padding(.vertical, 1)

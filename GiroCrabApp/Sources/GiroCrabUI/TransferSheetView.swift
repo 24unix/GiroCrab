@@ -134,7 +134,7 @@ struct TransferSheetView: View {
             }
             field("Betrag") {
                 HStack(spacing: 6) {
-                    TextField("0,00", text: draft.amountText)
+                    TextField(Money.plain(0), text: draft.amountText)
                         .textFieldStyle(.roundedBorder)
                         .multilineTextAlignment(.trailing)
                         .font(.body.monospacedDigit())
@@ -164,7 +164,7 @@ struct TransferSheetView: View {
         }
     }
 
-    private func field<C: View>(_ label: String, @ViewBuilder content: () -> C) -> some View {
+    private func field<C: View>(_ label: LocalizedStringKey, @ViewBuilder content: () -> C) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(label).foregroundStyle(Theme.secondary).frame(width: 140, alignment: .trailing)
             content().frame(maxWidth: .infinity, alignment: .leading)
@@ -185,7 +185,7 @@ struct TransferSheetView: View {
                 summaryRow("Zweck", d.purpose.isEmpty ? "–" : d.purpose)
                 Divider()
                 summaryRow("Von", account.map { "\($0.name) · \(formatIBAN($0.iban))" } ?? "–")
-                summaryRow("Ausführung", "Heute (SEPA-Überweisung)")
+                summaryRow("Ausführung", String(localized: "Heute (SEPA-Überweisung)"))
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -197,7 +197,7 @@ struct TransferSheetView: View {
         }
     }
 
-    private func summaryRow(_ k: String, _ v: String) -> some View {
+    private func summaryRow(_ k: LocalizedStringKey, _ v: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(k).foregroundStyle(Theme.secondary).frame(width: 90, alignment: .leading)
             Text(v).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
