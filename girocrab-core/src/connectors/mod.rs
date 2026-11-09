@@ -27,6 +27,7 @@ pub mod comdirect;
 pub mod demo;
 pub mod enable_banking;
 pub mod fints;
+pub mod moneymoney_import;
 pub mod paypal;
 pub mod portal_import;
 pub mod template;
@@ -508,6 +509,19 @@ pub(crate) fn store_fetch(
                 let Some(acc_id) = account_ids.get(&t.account_ref) else {
                     continue;
                 };
+                // Already imported from MoneyMoney? Adopt that row (keeps category + note).
+                if moneymoney_import::adopt_import(
+                    &tx,
+                    *acc_id,
+                    &t.external_id,
+                    &t.booking_date,
+                    t.amount_cents,
+                    &t.counterparty_iban,
+                    &t.counterparty,
+                    &t.purpose,
+                )? {
+                    continue;
+                }
                 let n = ins.execute(params![
                     acc_id,
                     t.external_id,

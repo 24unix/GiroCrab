@@ -211,6 +211,39 @@ pub struct Booking {
     pub account_kind: AccountKind,
     /// Attached PDFs / receipts (paperclip badge).
     pub document_count: u32,
+    /// Free-text user note (imported from MoneyMoney or typed in the detail view).
+    pub note: String,
+}
+
+/// Dry-run result of a MoneyMoney import (nothing stored).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MoneyMoneyImportPreview {
+    pub total_rows: u32,
+    pub new_bookings: u32,
+    /// Rows already in the vault (identical re-import or FinTS overlap); they are
+    /// skipped or only enriched with category / note.
+    pub duplicates_skipped_or_enriched: u32,
+    pub notes_count: u32,
+    pub date_range_start: Option<String>,
+    pub date_range_end: Option<String>,
+    pub detected_categories: Vec<String>,
+    pub sample_bookings: Vec<Booking>,
+    pub suggested_account_name: String,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MoneyMoneyImportResult {
+    pub account_id: i64,
+    pub account_created: bool,
+    pub total_rows: u32,
+    pub imported: u32,
+    pub duplicates: u32,
+    /// Existing rows that received a MoneyMoney category and/or note.
+    pub enriched: u32,
+    pub notes_imported: u32,
+    pub categories_created: u32,
+    /// Sum of imported bookings (= balance of a newly created archive account).
+    pub balance_cents: i64,
 }
 
 /// Top segmented control: everything / everyday life / savings plans & perks.

@@ -34,6 +34,7 @@ struct CommandPaletteView: View {
             out.append(Item(title: "„\(b.merchant.name)“ kategorisieren", subtitle: "Aktion · C", symbol: "tag") { model.showCategorizer = true })
             out.append(Item(title: "Regel für „\(b.merchant.name)“ erstellen", subtitle: "Aktion · R", symbol: "wand.and.stars") { model.openRuleEditor(from: b) })
         }
+        out.append(Item(title: "MoneyMoney Historie & Kategorien importieren", subtitle: "Aktion", symbol: "square.and.arrow.down.on.square") { model.showMoneyMoneyImport = true })
         out.append(Item(title: "Regeln jetzt anwenden", subtitle: "Aktion", symbol: "play") { model.applyAllRules() })
         #if os(macOS)
         out.append(Item(title: "Einstellungen", subtitle: "Aktion · ⌘,", symbol: "gearshape") { openSettings() })

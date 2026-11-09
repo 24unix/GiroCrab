@@ -24,6 +24,19 @@ Native SwiftUI-App auf einem Rust-Kern: verschlüsseltes Kassenbuch (SQLCipher),
 Regeln, Händler-Erkennung, Sparplan-Ansicht, Darlehens-Tilgungsbalken und direkte Verbindungen
 zu Ihren Banken – ohne Server, ohne Tracking.
 
+### 🚚 Umzug von MoneyMoney in 60 Sekunden
+
+Mehrjährige Historien, Kategorien und Notizen lassen sich verlustfrei übernehmen – ohne Abo-Bindung:
+
+1. In MoneyMoney das Konto wählen, **⌘A**, **Umsätze exportieren …** → **XML** oder **CSV**.
+2. In GiroCrab: *Von MoneyMoney wechseln* (Onboarding), *MoneyMoney-Import* (Seitenleiste) oder `⌘K` → „MoneyMoney Historie & Kategorien importieren“. Datei hineinziehen.
+3. Zielkonto wählen (oder neues Archivkonto anlegen), Vorschau prüfen, **Importieren**.
+
+Kategorien (`Haushalt\Lebensmittel`) bleiben als Baum erhalten, Notizen stehen in der Buchungsdetail-Ansicht.
+Jeder Umsatz erhält einen Fingerabdruck (Datum, Betrag, IBAN/Name, Verwendungszweck): Ein erneuter Import
+oder später per FinTS abgerufene, überlappende Tage erzeugen **keine Duplikate** – vorhandene Buchungen werden
+nur um Kategorie und Notiz ergänzt.
+
 ### Funktionen im Überblick
 
 <p align="center"><img src="docs/screenshots/overview.png" alt="GiroCrab – Übersicht mit fiktiven Demo-Konten" width="900"></p>
@@ -104,6 +117,18 @@ sind Referenzdaten ohne Gewähr. Marken gehören ihren Inhabern und dienen nur d
 A native SwiftUI app on a Rust core: encrypted ledger (SQLCipher), category tree, rules, merchant
 recognition, savings-plan view, loan repayment progress and direct connections to your banks –
 no server, no tracking. Money is always `i64` cents, never floats.
+
+### 🚚 Migrating from MoneyMoney
+
+Full multi-year histories, categories and notes import seamlessly – no subscription lock-in:
+
+1. In MoneyMoney select the account, press **⌘A**, then **Export Transactions …** → **XML** or **CSV**.
+2. In GiroCrab: *Switch from MoneyMoney* (onboarding), *MoneyMoney-Import* (sidebar) or `⌘K` → "MoneyMoney Historie & Kategorien importieren". Drop the file in.
+3. Pick the target account (or create an archive account), check the preview, hit **Import**.
+
+Hierarchical categories (`Household\Groceries`) are kept as a tree, notes show in the booking detail view.
+Every booking gets a fingerprint (date, amount, IBAN/name, purpose), so re-importing the file or overlapping days
+fetched later via FinTS **never create duplicates** – existing bookings are only enriched with category and note.
 
 ### Features & Screenshots
 

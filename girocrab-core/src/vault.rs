@@ -44,7 +44,7 @@ pub(crate) fn enrich(t: &mut Booking) {
     t.clean_purpose = clean_purpose(&t.purpose);
 }
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS bank_connections (
@@ -129,11 +129,14 @@ CREATE TABLE IF NOT EXISTS transactions (
     rule_id            INTEGER REFERENCES rules(id) ON DELETE SET NULL,
     checked            INTEGER NOT NULL DEFAULT 0,
     imported_unix      INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    note               TEXT    NOT NULL DEFAULT '',        -- user note (MoneyMoney import / detail view)
+    import_fp          TEXT    NOT NULL DEFAULT '',        -- MoneyMoney de-duplication fingerprint
     UNIQUE (account_id, external_id)
 );
 CREATE INDEX IF NOT EXISTS tx_account_date ON transactions(account_id, booking_date DESC);
 CREATE INDEX IF NOT EXISTS tx_date ON transactions(booking_date DESC);
 CREATE INDEX IF NOT EXISTS tx_category ON transactions(category_id);
+CREATE INDEX IF NOT EXISTS tx_import_fp ON transactions(account_id, import_fp) WHERE import_fp != '';
 
 CREATE TABLE IF NOT EXISTS merchant_logo_cache (
     domain        TEXT PRIMARY KEY,
@@ -222,6 +225,21 @@ impl Vault {
                     "DROP TABLE IF EXISTS merchant_logo_cache;
                      CREATE TABLE merchant_logo_cache (domain TEXT PRIMARY KEY, image_bytes BLOB,
                         updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), source TEXT NOT NULL DEFAULT '');",
+                )?;
+            }
+        }
+        // v6: user notes + import fingerprint (idempotent, also for pre-v5 files)
+        if version > 0 && version < 6 {
+            let has: i64 = conn.query_row(
+                "SELECT count(*) FROM pragma_table_info('transactions') WHERE name = 'note'",
+                [],
+                |r| r.get(0),
+            )?;
+            if has == 0 {
+                conn.execute_batch(
+                    "ALTER TABLE transactions ADD COLUMN note TEXT NOT NULL DEFAULT '';
+                     ALTER TABLE transactions ADD COLUMN import_fp TEXT NOT NULL DEFAULT '';
+                     CREATE INDEX IF NOT EXISTS tx_import_fp ON transactions(account_id, import_fp) WHERE import_fp != '';",
                 )?;
             }
         }
@@ -1108,7 +1126,7 @@ impl Vault {
         let sql = format!(
             "{cte}SELECT t.id, t.account_id, a.name, t.booking_date, t.value_date, t.amount_cents, t.currency, t.counterparty,
                     t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.category_source, t.rule_id, t.checked, a.kind,
-                    (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id)
+                    (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note
              {from_sql} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC"
         );
         let mut stmt = db.prepare(&sql)?;
@@ -1149,6 +1167,7 @@ impl Vault {
                 clean_purpose: String::new(),
                 account_kind: AccountKind::from_str(&r.get::<_, String>(15)?),
                 document_count: r.get::<_, i64>(16)? as u32,
+                note: r.get(17)?,
             })
         })?;
         let mut txs = Vec::new();
@@ -1260,6 +1279,24 @@ impl Vault {
         let n = self.db()?.execute(
             "UPDATE transactions SET counterparty = ?1, purpose = ?2 WHERE id = ?3",
             params![counterparty.trim(), purpose.trim(), transaction_id],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound {
+                what: format!("transaction {transaction_id}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Free-text user note of a booking (empty clears it).
+    pub fn update_transaction_note(
+        &self,
+        transaction_id: i64,
+        note: String,
+    ) -> Result<(), CoreError> {
+        let n = self.db()?.execute(
+            "UPDATE transactions SET note = ?1 WHERE id = ?2",
+            params![note.trim(), transaction_id],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {

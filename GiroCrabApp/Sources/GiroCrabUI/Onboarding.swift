@@ -57,6 +57,9 @@ struct EmptyVaultCard: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
+            Button { model.showMoneyMoneyImport = true } label: {
+                Label("Von MoneyMoney wechseln", systemImage: "square.and.arrow.down.on.square")
+            }
             Divider()
             HStack {
                 Text("Erst einmal ansehen?").font(.caption).foregroundStyle(Theme.secondary)

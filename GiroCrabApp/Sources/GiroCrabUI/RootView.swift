@@ -163,6 +163,10 @@ struct MainSplitView: View {
             CommandPaletteView()
                 .environment(model)
         }
+        .sheet(isPresented: $model.showMoneyMoneyImport) {
+            MoneyMoneyImportSheet()
+                .environment(model)
+        }
         .sheet(isPresented: $model.showCategorizer) {
             CategorizerSheet()
                 .environment(model)

@@ -29,6 +29,14 @@ struct SidebarView: View {
                 Spacer()
             }
             .tag(SidebarItem.documents)
+            Button { model.showMoneyMoneyImport = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.and.arrow.down.on.square").foregroundStyle(Theme.secondary).frame(width: 20)
+                    Text("MoneyMoney-Import").fontWeight(.medium)
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
 
             ForEach(model.groups) { group in
                 let open = !model.collapsedGroups.contains(group.id)

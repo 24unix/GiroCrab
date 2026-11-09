@@ -13,6 +13,7 @@ struct InspectorView: View {
                 }
                 if let b = model.selectedBooking {
                     ReceiptCard(booking: b)
+                    NoteCard(booking: b).id(b.id)
                     MerchantHistoryCard(booking: b)
                     CategoryGridCard(booking: b)
                     DocumentsCard(booking: b)
@@ -110,6 +111,35 @@ struct ReceiptCard: View {
                 .font(.caption)
         }
         .card()
+    }
+}
+
+/// Free-text user note (imported from MoneyMoney or typed here).
+struct NoteCard: View {
+    @Environment(AppModel.self) private var model
+    let booking: Booking
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Notiz", systemImage: "note.text").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+            TextEditor(text: $draft)
+                .font(.callout)
+                .frame(minHeight: 54, maxHeight: 120)
+                .scrollContentBackground(.hidden)
+                .focused($focused)
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.border))
+                .onChange(of: focused) { _, f in if !f { save() } }
+        }
+        .card()
+        .onAppear { draft = booking.note }
+        .onDisappear { save() }
+        .onChange(of: booking.note) { _, n in if !focused { draft = n } }
+    }
+
+    private func save() {
+        if draft.trimmingCharacters(in: .whitespacesAndNewlines) != booking.note { model.updateNote(draft, for: booking) }
     }
 }
 

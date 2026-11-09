@@ -144,6 +144,7 @@ public final class AppModel {
     var showSettings = false
     var showCommandPalette = false
     var showCategorizer = false
+    var showMoneyMoneyImport = false
     var pendingLogin: PendingLogin?
     var setupRequest: SetupRequest?
     /// Trade Republic in-app browser login (WKWebView).
@@ -639,6 +640,12 @@ public final class AppModel {
         guard let vault else { return }
         run { try vault.updateTransactionText(transactionId: booking.id, counterparty: counterparty, purpose: purpose) }
         reloadBookings(); reloadMerchantStats()
+    }
+
+    func updateNote(_ note: String, for booking: Booking) {
+        guard let vault else { return }
+        run { try vault.updateTransactionNote(transactionId: booking.id, note: note) }
+        reloadBookings()
     }
 
     func createCategory(name: String, parent: Int64?, symbol: String, color: String) {
