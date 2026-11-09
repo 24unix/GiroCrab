@@ -1435,12 +1435,12 @@ fn to_info(e: &Entry) -> MerchantInfo {
         known: true,
         isin: e.isin.to_string(),
         wkn: e.wkn.to_string(),
-        asset_class: match e.kind {
+        asset_class: crate::i18n::tr(match e.kind {
             K::Etf => "ETF",
             K::Crypto => "Krypto",
             K::Stock => "Aktie",
             _ => "",
-        }
+        })
         .to_string(),
     }
 }
@@ -1729,7 +1729,8 @@ pub fn payment_method(
     } else {
         "Buchung"
     };
-    m.to_string()
+    // Labels are German source strings; translated for display only.
+    crate::i18n::tr(m).to_string()
 }
 
 /// Human purpose without SEPA keys and terminal noise.

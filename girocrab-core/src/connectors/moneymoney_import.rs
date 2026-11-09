@@ -17,6 +17,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::connectors::portal_import::{parse_date, split_csv};
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
 use crate::merchants::{FlowKind, MerchantResolver};
 use crate::models::*;
 use crate::money::parse_cents;
@@ -294,7 +295,8 @@ pub fn parse_csv_export(text: &str) -> CoreResult<Vec<MmRow>> {
                 .then_some((i, map))
         })
         .ok_or_else(|| CoreError::InvalidInput {
-            message: "Keine MoneyMoney-Kopfzeile (Datum/Buchungstag und Betrag) gefunden.".into(),
+            message: tr("Keine MoneyMoney-Kopfzeile (Datum/Buchungstag und Betrag) gefunden.")
+                .into(),
         })?;
     let mut out = Vec::new();
     for r in rows.iter().skip(hi + 1) {
@@ -387,7 +389,7 @@ pub fn parse_export(data: &[u8]) -> CoreResult<Vec<MmRow>> {
     };
     if rows.is_empty() {
         return Err(CoreError::InvalidInput {
-            message: "Keine Umsätze erkannt.".into(),
+            message: tr("Keine Umsätze erkannt.").into(),
         });
     }
     Ok(rows)
@@ -497,7 +499,7 @@ fn run(
                 })
                 .optional()?
                 .ok_or_else(|| CoreError::NotFound {
-                    what: format!("account {id}"),
+                    what: trf("Konto {0}", &[&id]),
                 })?;
             st.account_id = id;
         }

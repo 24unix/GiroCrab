@@ -1,33 +1,43 @@
+use std::fmt;
+
 use thiserror::Error;
+
+use crate::i18n::{tr, trf};
 
 /// Every error that can cross the FFI boundary.
 #[derive(Debug, Error, uniffi::Error)]
 pub enum CoreError {
-    #[error("Datenbankfehler: {message}")]
-    Database { message: String },
-    #[error(
-        "Der Tresor konnte nicht entsperrt werden (falscher Schlüssel oder beschädigte Datei)"
-    )]
+    Database {
+        message: String,
+    },
     WrongKey,
-    #[error("Nicht gefunden: {what}")]
-    NotFound { what: String },
-    #[error("Ungültige Eingabe: {message}")]
-    InvalidInput { message: String },
-    #[error("Einstellung fehlt: {key}. Bitte in den Einstellungen eintragen.")]
-    MissingSetting { key: String },
-    #[error("Netzwerkfehler: {message}")]
-    Network { message: String },
-    #[error("Die Bank hat die Anfrage abgelehnt: {code} {message}")]
-    Bank { code: String, message: String },
-    #[error("Anmeldung fehlgeschlagen: {message}")]
-    Authentication { message: String },
-    #[error("Protokollfehler: {message}")]
-    Protocol { message: String },
+    NotFound {
+        what: String,
+    },
+    InvalidInput {
+        message: String,
+    },
+    MissingSetting {
+        key: String,
+    },
+    Network {
+        message: String,
+    },
+    Bank {
+        code: String,
+        message: String,
+    },
+    Authentication {
+        message: String,
+    },
+    Protocol {
+        message: String,
+    },
     /// Trade Republic: AWS WAF blocks direct logins – the app must open the
     /// in-app browser login (WKWebView) and hand over the session cookies.
-    #[error("Browser-Anmeldung nötig: {message}")]
-    BrowserLoginRequired { message: String },
-    #[error("Dieser Abruf ist nicht mehr aktiv")]
+    BrowserLoginRequired {
+        message: String,
+    },
     SessionClosed,
 }
 
@@ -65,6 +75,39 @@ impl From<regex::Error> for CoreError {
         CoreError::InvalidInput {
             message: format!("Regular expression: {e}"),
         }
+    }
+}
+
+/// Localised (German/English) message, see `crate::i18n`.
+impl fmt::Display for CoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let text = match self {
+            CoreError::Database { message } => trf("Datenbankfehler: {0}", &[message]),
+            CoreError::WrongKey => tr(
+                "Der Tresor konnte nicht entsperrt werden (falscher Schlüssel oder beschädigte Datei)",
+            )
+            .to_string(),
+            CoreError::NotFound { what } => trf("Nicht gefunden: {0}", &[what]),
+            CoreError::InvalidInput { message } => trf("Ungültige Eingabe: {0}", &[message]),
+            CoreError::MissingSetting { key } => trf(
+                "Einstellung fehlt: {0}. Bitte in den Einstellungen eintragen.",
+                &[key],
+            ),
+            CoreError::Network { message } => trf("Netzwerkfehler: {0}", &[message]),
+            CoreError::Bank { code, message } => trf(
+                "Die Bank hat die Anfrage abgelehnt: {0} {1}",
+                &[code, message],
+            ),
+            CoreError::Authentication { message } => {
+                trf("Anmeldung fehlgeschlagen: {0}", &[message])
+            }
+            CoreError::Protocol { message } => trf("Protokollfehler: {0}", &[message]),
+            CoreError::BrowserLoginRequired { message } => {
+                trf("Browser-Anmeldung nötig: {0}", &[message])
+            }
+            CoreError::SessionClosed => tr("Dieser Abruf ist nicht mehr aktiv").to_string(),
+        };
+        f.write_str(&text)
     }
 }
 

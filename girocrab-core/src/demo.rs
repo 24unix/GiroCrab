@@ -1186,4 +1186,77 @@ mod tests {
         assert!(matches!(wrong, Err(crate::error::CoreError::WrongKey)));
         let _ = std::fs::remove_file(&dir);
     }
+
+    #[test]
+    fn default_names_are_shown_in_english_but_stored_in_german() {
+        use crate::i18n::{with_language, Lang};
+        let dir = std::env::temp_dir().join(format!("girocrab-i18n-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(dir.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let groups_en = with_language(Lang::En, || v.list_account_groups().unwrap());
+        assert!(groups_en.iter().any(|g| g.name == "Checking & savings"));
+        assert!(groups_en.iter().any(|g| g.name == "Loans"));
+        let de = v.list_categories(None, None).unwrap();
+        let en = with_language(Lang::En, || v.list_categories(None, None).unwrap());
+        // Every starter category has an English name.
+        for (d, e) in de.iter().zip(&en) {
+            assert_eq!(d.id, e.id);
+            assert_ne!(d.name, e.name, "{} is not translated", d.name);
+        }
+        let sm = en.iter().find(|c| c.name == "Supermarket").unwrap();
+        assert_eq!(sm.path, "Food › Supermarket");
+        // Classification still sees the stored German names.
+        let filter = || BookingFilter {
+            limit: 100,
+            ..Default::default()
+        };
+        let page_de = v.list_transactions(filter()).unwrap();
+        let page_en = with_language(Lang::En, || v.list_transactions(filter()).unwrap());
+        let flows = |p: &crate::models::BookingPage| {
+            p.transactions.iter().map(|t| t.flow).collect::<Vec<_>>()
+        };
+        assert_eq!(flows(&page_de), flows(&page_en));
+        assert!(page_en.transactions.iter().any(|t| t.category_path
+            == "Saving & investing › ETF savings plans"
+            && t.flow == FlowKind::Investment));
+        // Saving the unchanged English display name keeps the German default;
+        // a real rename is stored as written.
+        let sm_de = de.iter().find(|c| c.name == "Supermarkt").unwrap();
+        with_language(Lang::En, || {
+            v.update_category(
+                sm_de.id,
+                "Supermarket".into(),
+                sm_de.parent_id,
+                sm_de.sf_symbol.clone(),
+                sm_de.color_hex.clone(),
+            )
+            .unwrap()
+        });
+        let after = v.list_categories(None, None).unwrap();
+        assert!(after
+            .iter()
+            .any(|c| c.id == sm_de.id && c.name == "Supermarkt"));
+        with_language(Lang::En, || {
+            v.update_category(
+                sm_de.id,
+                "Groceries".into(),
+                sm_de.parent_id,
+                sm_de.sf_symbol.clone(),
+                sm_de.color_hex.clone(),
+            )
+            .unwrap()
+        });
+        let after = v.list_categories(None, None).unwrap();
+        assert!(after
+            .iter()
+            .any(|c| c.id == sm_de.id && c.name == "Groceries"));
+        // Settings: `group` stays a stable id, `group_title` is localised.
+        let s = with_language(Lang::En, || v.list_settings().unwrap());
+        let days = s.iter().find(|e| e.key == "sync.days_back").unwrap();
+        assert_eq!(days.group, "Allgemein");
+        assert_eq!(days.group_title, "General");
+        assert_eq!(days.label, "Days on first sync");
+        drop(v);
+        let _ = std::fs::remove_file(&dir);
+    }
 }

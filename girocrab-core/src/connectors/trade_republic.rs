@@ -36,6 +36,7 @@ use super::{
     RemoteAccount, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
 use crate::models::AccountKind;
 use crate::money::json_number_to_cents;
 
@@ -202,15 +203,18 @@ impl TradeRepublicConnector {
 
     fn http_error(step: &str, status: u16, body: &str) -> CoreError {
         let hint = match status {
-            403 | 405 => " – AWS-WAF-Schutz von Trade Republic. Bitte „Im Browser-Fenster anmelden“ verwenden.",
-            426 => " – CLIENT_VERSION_OUTDATED: Trade Republic verlangt einen neueren Client. Bitte „Im Browser-Fenster anmelden“ verwenden.",
-            401 => " – PIN, Code oder Sitzung ungültig.",
-            429 => " – zu viele Versuche, bitte etwas warten.",
+            403 | 405 => tr(" – AWS-WAF-Schutz von Trade Republic. Bitte „Im Browser-Fenster anmelden“ verwenden."),
+            426 => tr(" – CLIENT_VERSION_OUTDATED: Trade Republic verlangt einen neueren Client. Bitte „Im Browser-Fenster anmelden“ verwenden."),
+            401 => tr(" – PIN, Code oder Sitzung ungültig."),
+            429 => tr(" – zu viele Versuche, bitte etwas warten."),
             _ => "",
         };
         CoreError::Bank {
             code: format!("HTTP {status}"),
-            message: format!("Trade Republic {step}{hint} Antwort: {}", snippet(body)),
+            message: trf(
+                "Trade Republic {0}{1} Antwort: {2}",
+                &[&step, &hint, &snippet(body)],
+            ),
         }
     }
 
@@ -219,7 +223,7 @@ impl TradeRepublicConnector {
             kind: ChallengeKind::Code,
             title: "Trade Republic 2FA".into(),
             message,
-            method_name: "App-Code (oder SMS)".into(),
+            method_name: tr("App-Code (oder SMS)").into(),
             redirect_url: None,
             image: None,
             expires_in_seconds: countdown,
@@ -293,14 +297,14 @@ impl BankConnector for TradeRepublicConnector {
         let waf = cookie_value(&self.cookies, "aws-waf-token");
         if waf.is_none() {
             return Err(CoreError::BrowserLoginRequired {
-                message: "Trade Republic schützt die Anmeldung mit AWS WAF. Bitte im Browser-Fenster anmelden – die Sitzung wird danach gespeichert und wiederverwendet.".into(),
+                message: tr("Trade Republic schützt die Anmeldung mit AWS WAF. Bitte im Browser-Fenster anmelden – die Sitzung wird danach gespeichert und wiederverwendet.").into(),
             });
         }
         if self.phone.len() < 8 {
-            return Err(CoreError::InvalidInput { message: format!("Telefonnummer fehlt oder ist ungültig („{}“). Bitte z. B. +4915112345678 eintragen.", ctx.login_name) });
+            return Err(CoreError::InvalidInput { message: trf("Telefonnummer fehlt oder ist ungültig („{0}“). Bitte z. B. +4915112345678 eintragen.", &[&ctx.login_name]) });
         }
         if ctx.secret.is_empty() {
-            return Err(CoreError::Authentication { message: "Bitte die 4-stellige Trade-Republic-PIN eingeben (oder „Im Browser-Fenster anmelden“).".into() });
+            return Err(CoreError::Authentication { message: tr("Bitte die 4-stellige Trade-Republic-PIN eingeben (oder „Im Browser-Fenster anmelden“).").into() });
         }
         let client = self.client()?;
         let body = json!({"phoneNumber": self.phone, "pin": ctx.secret.expose()});
@@ -319,11 +323,15 @@ impl BankConnector for TradeRepublicConnector {
                 let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
                 self.process_id = v["processId"].as_str().unwrap_or_default().to_string();
                 if self.process_id.is_empty() {
-                    return Err(Self::http_error("Login (keine processId)", status, &text));
+                    return Err(Self::http_error(
+                        tr("Login (keine processId)"),
+                        status,
+                        &text,
+                    ));
                 }
                 let countdown = v["countdownInSeconds"].as_u64().map(|s| s as u32);
                 return Ok(self.code_challenge(
-                    "Geben Sie den 4-stelligen Code ein, der in der Trade-Republic-App angezeigt wird. Keine Push-Nachricht erhalten? „Code per SMS“ wählen.".into(),
+                    tr("Geben Sie den 4-stelligen Code ein, der in der Trade-Republic-App angezeigt wird. Keine Push-Nachricht erhalten? „Code per SMS“ wählen.").into(),
                     countdown,
                 ));
             }
@@ -334,9 +342,9 @@ impl BankConnector for TradeRepublicConnector {
         }
         if matches!(last.0, 403 | 405) {
             return Err(CoreError::BrowserLoginRequired {
-                message: format!(
-                    "AWS WAF hat den Login abgelehnt (HTTP {}). Bitte im Browser-Fenster anmelden.",
-                    last.0
+                message: trf(
+                    "AWS WAF hat den Login abgelehnt (HTTP {0}). Bitte im Browser-Fenster anmelden.",
+                    &[&last.0],
                 ),
             });
         }
@@ -350,7 +358,7 @@ impl BankConnector for TradeRepublicConnector {
     ) -> CoreResult<Phase> {
         let ChallengeResponse::Code(code) = response else {
             return Err(CoreError::InvalidInput {
-                message: "Trade Republic benötigt den 4-stelligen Code".into(),
+                message: tr("Trade Republic benötigt den 4-stelligen Code").into(),
             });
         };
         let client = self.client()?;
@@ -365,16 +373,16 @@ impl BankConnector for TradeRepublicConnector {
                 .await?;
             let (status, _, text) = Self::read(resp).await;
             if !(200..300).contains(&status) {
-                return Err(Self::http_error("SMS-Anforderung", status, &text));
+                return Err(Self::http_error(tr("SMS-Anforderung"), status, &text));
             }
             return Ok(self.code_challenge(
-                "Der Code wurde per SMS gesendet. Bitte die 4 Ziffern eingeben.".into(),
+                tr("Der Code wurde per SMS gesendet. Bitte die 4 Ziffern eingeben.").into(),
                 None,
             ));
         }
         if !(code.len() == 4 && code.chars().all(|c| c.is_ascii_digit())) {
             return Err(CoreError::InvalidInput {
-                message: "Der Code muss aus 4 Ziffern bestehen.".into(),
+                message: tr("Der Code muss aus 4 Ziffern bestehen.").into(),
             });
         }
         let resp = client
@@ -386,7 +394,7 @@ impl BankConnector for TradeRepublicConnector {
             .await?;
         let (status, set, text) = Self::read(resp).await;
         if !(200..300).contains(&status) {
-            return Err(Self::http_error("2FA-Bestätigung", status, &text));
+            return Err(Self::http_error(tr("2FA-Bestätigung"), status, &text));
         }
         // HTTP 200 with an EMPTY body (or {}) is normal: the session comes as Set-Cookie.
         self.cookies = merge_cookies(&self.cookies, &set);
@@ -405,7 +413,10 @@ impl BankConnector for TradeRepublicConnector {
         }
         if !self.cookies.contains("tr_session") && self.session_token.is_empty() {
             return Err(CoreError::Authentication {
-                message: format!("Trade Republic hat keine Sitzung (tr_session) gesetzt. HTTP {status}, Antwort: {}", snippet(&text)),
+                message: trf(
+                    "Trade Republic hat keine Sitzung (tr_session) gesetzt. HTTP {0}, Antwort: {1}",
+                    &[&status, &snippet(&text)],
+                ),
             });
         }
         Ok(Phase::Ready)
@@ -434,9 +445,9 @@ impl BankConnector for TradeRepublicConnector {
                 other => other.to_string(),
             };
             if detail.starts_with("HTTP 401") || detail.starts_with("HTTP 403") {
-                return CoreError::BrowserLoginRequired { message: format!("Trade-Republic-Sitzung abgelaufen ({detail}). Bitte im Browser-Fenster neu anmelden.") };
+                return CoreError::BrowserLoginRequired { message: trf("Trade-Republic-Sitzung abgelaufen ({0}). Bitte im Browser-Fenster neu anmelden.", &[&detail]) };
             }
-            CoreError::Network { message: format!("WebSocket-Verbindung abgelehnt: {detail}") }
+            CoreError::Network { message: trf("WebSocket-Verbindung abgelehnt: {0}", &[&detail]) }
         })?;
         let hello = json!({"locale": "de", "platformId": "webtrading", "platformVersion": "safari - 18.0.0", "clientId": "app.traderepublic.com", "clientVersion": "1.2.0"});
         ws.send(Message::text(format!("connect 31 {hello}")))
@@ -448,13 +459,16 @@ impl BankConnector for TradeRepublicConnector {
             let msg = tokio::time::timeout_at(deadline, ws.next())
                 .await
                 .map_err(|_| CoreError::Network {
-                    message:
-                        "Trade Republic hat „connect 31“ nicht bestätigt (Zeitüberschreitung)."
-                            .into(),
+                    message: tr(
+                        "Trade Republic hat „connect 31“ nicht bestätigt (Zeitüberschreitung).",
+                    )
+                    .into(),
                 })?
                 .ok_or_else(|| CoreError::Network {
-                    message: "WebSocket wurde vor „connected“ geschlossen – Sitzung abgelaufen?"
-                        .into(),
+                    message: tr(
+                        "WebSocket wurde vor „connected“ geschlossen – Sitzung abgelaufen?",
+                    )
+                    .into(),
                 })?
                 .map_err(Self::ws_err)?;
             if let Message::Text(t) = msg {
@@ -464,7 +478,7 @@ impl BankConnector for TradeRepublicConnector {
                 }
                 return Err(CoreError::Bank {
                     code: "WS".into(),
-                    message: format!("Unerwartete Antwort auf connect: {}", snippet(&t)),
+                    message: trf("Unerwartete Antwort auf connect: {0}", &[&snippet(&t)]),
                 });
             }
         }
@@ -495,10 +509,10 @@ impl BankConnector for TradeRepublicConnector {
                 let msg = tokio::time::timeout_at(deadline, ws.next())
                     .await
                     .map_err(|_| CoreError::Network {
-                        message: format!("Trade Republic hat auf „{kind}“ nicht geantwortet."),
+                        message: trf("Trade Republic hat auf „{0}“ nicht geantwortet.", &[&kind]),
                     })?
                     .ok_or_else(|| CoreError::Network {
-                        message: format!("WebSocket während „{kind}“ geschlossen."),
+                        message: trf("WebSocket während „{0}“ geschlossen.", &[&kind]),
                     })?
                     .map_err(TradeRepublicConnector::ws_err)?;
                 let Message::Text(text) = msg else { continue };
@@ -516,7 +530,7 @@ impl BankConnector for TradeRepublicConnector {
                     "A" => Ok(serde_json::from_str(body)?),
                     "E" => Err(CoreError::Bank {
                         code: format!("WS {kind}"),
-                        message: format!("Fehler-Frame: {}", snippet(body)),
+                        message: trf("Fehler-Frame: {0}", &[&snippet(body)]),
                     }),
                     _ => Ok(Value::Null),
                 };

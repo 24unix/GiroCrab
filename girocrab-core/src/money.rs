@@ -1,6 +1,7 @@
 //! Integer money helpers. Amounts are i64 cents; parsing never uses floats.
 
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
 
 /// Parses a decimal amount ("1234,56", "-12.5", "1.234,56", "+0,07", "12")
 /// into cents without any floating point arithmetic.
@@ -16,7 +17,7 @@ pub fn parse_cents(text: &str) -> CoreResult<i64> {
     let t = text.trim();
     if t.is_empty() {
         return Err(CoreError::InvalidInput {
-            message: "empty amount".into(),
+            message: tr("Kein Betrag angegeben").into(),
         });
     }
     let (neg, body) = match t.as_bytes()[0] {
@@ -51,19 +52,19 @@ pub fn parse_cents(text: &str) -> CoreResult<i64> {
         .any(|c| !(c.is_ascii_digit() || matches!(c, '.' | ',' | ' ' | '\'' | '\u{a0}')))
     {
         return Err(CoreError::InvalidInput {
-            message: format!("not an amount: '{text}'"),
+            message: trf("Kein gültiger Betrag: „{0}“", &[&text]),
         });
     }
     if !frac_part.chars().all(|c| c.is_ascii_digit()) {
         return Err(CoreError::InvalidInput {
-            message: format!("not an amount: '{text}'"),
+            message: trf("Kein gültiger Betrag: „{0}“", &[&text]),
         });
     }
     if frac_part.len() > 2 {
         // Allow trailing zeros only ("1.500" from some JSON APIs)
         if frac_part[2..].chars().any(|c| c != '0') {
             return Err(CoreError::InvalidInput {
-                message: format!("too many decimals in '{text}'"),
+                message: trf("Zu viele Nachkommastellen in „{0}“", &[&text]),
             });
         }
     }
@@ -75,7 +76,7 @@ pub fn parse_cents(text: &str) -> CoreResult<i64> {
         0
     } else {
         int_digits.parse().map_err(|_| CoreError::InvalidInput {
-            message: format!("amount too large: '{text}'"),
+            message: trf("Betrag zu groß: „{0}“", &[&text]),
         })?
     };
     let frac_val: i64 = frac.parse().unwrap_or(0);
@@ -83,7 +84,7 @@ pub fn parse_cents(text: &str) -> CoreResult<i64> {
         .checked_mul(100)
         .and_then(|v| v.checked_add(frac_val))
         .ok_or_else(|| CoreError::InvalidInput {
-            message: format!("amount too large: '{text}'"),
+            message: trf("Betrag zu groß: „{0}“", &[&text]),
         })?;
     Ok(if neg { -cents } else { cents })
 }
