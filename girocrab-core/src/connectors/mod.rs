@@ -19,7 +19,7 @@ use rusqlite::{params, OptionalExtension};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::error::{CoreError, CoreResult};
-use crate::models::{AccountKind, ConnectorKind};
+use crate::models::{AccountKind, ConnectorKind, KnownRecipient, SepaTransferRequest};
 use crate::secret::SecretString;
 use crate::vault::Vault;
 
@@ -82,6 +82,19 @@ pub enum SyncStep {
     Finished {
         summary: SyncSummary,
     },
+}
+
+/// Progress of a SEPA transfer (`TransferSession`).
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum TransferStep {
+    NeedsChallenge {
+        challenge: Challenge,
+    },
+    StillWaiting {
+        challenge: Challenge,
+    },
+    /// Bank accepted the transfer; an optimistic booking was stored.
+    Finished,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -313,6 +326,29 @@ pub trait BankConnector: Send {
     async fn fetch(&mut self, ctx: &ConnectContext) -> CoreResult<FetchResult>;
     /// Close the bank session (FinTS dialog end, logout). Best effort.
     async fn finish(&mut self, _ctx: &ConnectContext) {}
+    /// Submit a SEPA credit transfer (only valid after `Ready`). `Ready`
+    /// means the bank accepted it; challenges are answered via `respond`.
+    async fn send_transfer(
+        &mut self,
+        _ctx: &ConnectContext,
+        _job: &TransferJob,
+    ) -> CoreResult<Phase> {
+        Err(CoreError::InvalidInput {
+            message: "Für diese Bank werden Überweisungen nicht unterstützt.".into(),
+        })
+    }
+}
+
+/// Transfer request plus the source account data resolved from the vault.
+#[derive(Debug, Clone)]
+pub struct TransferJob {
+    pub source_iban: String,
+    pub source_owner: String,
+    pub recipient_name: String,
+    pub recipient_iban: String,
+    pub recipient_bic: Option<String>,
+    pub amount_cents: i64,
+    pub purpose: String,
 }
 
 pub fn make_connector(kind: ConnectorKind, demo: bool) -> Box<dyn BankConnector> {
@@ -519,6 +555,17 @@ pub(crate) fn store_fetch(
                 }
             }
         }
+        // Drop optimistic transfer bookings once the bank's real booking arrived
+        // (same account, amount and recipient IBAN) or after 14 days.
+        tx.execute(
+            "DELETE FROM transactions WHERE external_id LIKE 'pending-%' AND (
+                imported_unix < strftime('%s','now') - 14*86400 OR EXISTS (
+                    SELECT 1 FROM transactions r WHERE r.account_id = transactions.account_id
+                      AND r.external_id NOT LIKE 'pending-%' AND r.amount_cents = transactions.amount_cents
+                      AND r.counterparty_iban = transactions.counterparty_iban
+                      AND r.booking_date >= transactions.booking_date))",
+            [],
+        )?;
         for d in &data.documents {
             let Some(acc_id) = account_ids
                 .get(&d.account_ref)
@@ -731,9 +778,301 @@ impl Vault {
     }
 }
 
+// ------------------------------------------------------------------ SEPA transfer session
+
+struct TransferState {
+    connector: Box<dyn BankConnector>,
+    ctx: ConnectContext,
+    job: TransferJob,
+    account_id: i64,
+    /// false = still logging in, true = transfer submitted (waiting for TAN).
+    submitted: bool,
+    done: bool,
+}
+
+/// One SEPA transfer. Created by `Vault::begin_transfer`; same two-phase
+/// challenge handling as `SyncSession` (login SCA, then transfer SCA).
+#[derive(uniffi::Object)]
+pub struct TransferSession {
+    vault: Arc<Vault>,
+    state: AsyncMutex<TransferState>,
+}
+
+impl TransferSession {
+    async fn advance(
+        &self,
+        phase: CoreResult<Phase>,
+        st: &mut TransferState,
+    ) -> CoreResult<TransferStep> {
+        let mut phase = phase;
+        loop {
+            match phase {
+                Err(e) => {
+                    st.done = true;
+                    st.connector.finish(&st.ctx).await;
+                    return Err(e);
+                }
+                Ok(Phase::Challenge(c)) => {
+                    return Ok(TransferStep::NeedsChallenge { challenge: c })
+                }
+                Ok(Phase::Pending(c)) => return Ok(TransferStep::StillWaiting { challenge: c }),
+                Ok(Phase::Ready) if !st.submitted => {
+                    st.submitted = true;
+                    phase = st.connector.send_transfer(&st.ctx, &st.job).await;
+                }
+                Ok(Phase::Ready) => {
+                    st.connector.finish(&st.ctx).await;
+                    st.done = true;
+                    self.vault.record_pending_transfer(st.account_id, &st.job)?;
+                    return Ok(TransferStep::Finished);
+                }
+            }
+        }
+    }
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl TransferSession {
+    pub async fn start(&self) -> Result<TransferStep, CoreError> {
+        let mut st = self.state.lock().await;
+        if st.done {
+            return Err(CoreError::SessionClosed);
+        }
+        let TransferState { connector, ctx, .. } = &mut *st;
+        let phase = connector.begin(ctx).await;
+        self.advance(phase, &mut st).await
+    }
+
+    pub async fn submit_code(&self, code: String) -> Result<TransferStep, CoreError> {
+        let mut st = self.state.lock().await;
+        if st.done {
+            return Err(CoreError::SessionClosed);
+        }
+        let TransferState { connector, ctx, .. } = &mut *st;
+        let phase = connector
+            .respond(ctx, ChallengeResponse::Code(SecretString::new(code)))
+            .await;
+        self.advance(phase, &mut st).await
+    }
+
+    pub async fn poll(&self) -> Result<TransferStep, CoreError> {
+        let mut st = self.state.lock().await;
+        if st.done {
+            return Err(CoreError::SessionClosed);
+        }
+        let TransferState { connector, ctx, .. } = &mut *st;
+        let phase = connector.respond(ctx, ChallengeResponse::Poll).await;
+        self.advance(phase, &mut st).await
+    }
+
+    pub async fn cancel(&self) {
+        let mut st = self.state.lock().await;
+        if !st.done {
+            let TransferState { connector, ctx, .. } = &mut *st;
+            connector.finish(ctx).await;
+            st.done = true;
+        }
+    }
+}
+
+#[uniffi::export]
+impl Vault {
+    /// Prepares a SEPA transfer from a FinTS account. `secret` = PIN (empty =
+    /// PIN stored in the vault). `demo` simulates the bank.
+    pub fn begin_transfer(
+        self: Arc<Self>,
+        request: SepaTransferRequest,
+        secret: String,
+        demo: bool,
+    ) -> Result<Arc<TransferSession>, CoreError> {
+        use crate::connectors::fints::sepa;
+        if request.amount_cents <= 0 {
+            return Err(CoreError::InvalidInput {
+                message: "Der Betrag muss größer als 0 sein.".into(),
+            });
+        }
+        if !sepa::validate_iban(&request.recipient_iban) {
+            return Err(CoreError::InvalidInput {
+                message: "Die Empfänger-IBAN ist ungültig.".into(),
+            });
+        }
+        if let Some(b) = request
+            .recipient_bic
+            .as_deref()
+            .filter(|b| !b.trim().is_empty())
+        {
+            if !sepa::validate_bic(b) {
+                return Err(CoreError::InvalidInput {
+                    message: "Die BIC ist ungültig.".into(),
+                });
+            }
+        }
+        if request.recipient_name.trim().is_empty() {
+            return Err(CoreError::InvalidInput {
+                message: "Der Empfängername fehlt.".into(),
+            });
+        }
+        if request.purpose.chars().count() > 140 {
+            return Err(CoreError::InvalidInput {
+                message: "Der Verwendungszweck darf höchstens 140 Zeichen lang sein.".into(),
+            });
+        }
+        let (connection_id, iban, owner) = {
+            let db = self.db()?;
+            let row: (Option<i64>, String, String) = db
+                .query_row(
+                    "SELECT connection_id, iban, owner FROM accounts WHERE id = ?1",
+                    [request.account_id],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .optional()?
+                .ok_or_else(|| CoreError::NotFound {
+                    what: format!("account {}", request.account_id),
+                })?;
+            let cid = row.0.ok_or_else(|| CoreError::InvalidInput {
+                message: "Dieses Konto hat keine Bankverbindung.".into(),
+            })?;
+            (cid, row.1, row.2)
+        };
+        let kind: String = {
+            let db = self.db()?;
+            db.query_row(
+                "SELECT connector FROM bank_connections WHERE id = ?1",
+                [connection_id],
+                |r| r.get(0),
+            )?
+        };
+        let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::InvalidInput {
+            message: format!("unknown connector {kind}"),
+        })?;
+        if !matches!(
+            kind,
+            ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822
+        ) {
+            return Err(CoreError::InvalidInput {
+                message: "Überweisungen sind nur für FinTS-Konten möglich.".into(),
+            });
+        }
+        if iban.is_empty() {
+            return Err(CoreError::InvalidInput {
+                message: "Das Konto hat keine IBAN.".into(),
+            });
+        }
+        // Reuse the sync session set-up (settings, PIN, connector state).
+        let sync = self.clone().begin_sync(connection_id, secret, demo)?;
+        let ctx = {
+            let st = sync
+                .state
+                .try_lock()
+                .map_err(|_| CoreError::SessionClosed)?;
+            ConnectContext {
+                connection_id: st.ctx.connection_id,
+                login_name: st.ctx.login_name.clone(),
+                secret: SecretString::new(st.ctx.secret.expose().to_string()),
+                settings: st.ctx.settings.clone(),
+                state: st.ctx.state.clone(),
+                since: st.ctx.since.clone(),
+            }
+        };
+        let job = TransferJob {
+            source_iban: iban,
+            source_owner: owner,
+            recipient_name: request.recipient_name.trim().to_string(),
+            recipient_iban: sepa::normalize_iban(&request.recipient_iban),
+            recipient_bic: request
+                .recipient_bic
+                .filter(|b| !b.trim().is_empty())
+                .map(|b| sepa::normalize_iban(&b)),
+            amount_cents: request.amount_cents,
+            purpose: request.purpose.trim().to_string(),
+        };
+        Ok(Arc::new(TransferSession {
+            vault: self.clone(),
+            state: AsyncMutex::new(TransferState {
+                connector: make_connector(kind, demo),
+                ctx,
+                job,
+                account_id: request.account_id,
+                submitted: false,
+                done: false,
+            }),
+        }))
+    }
+
+    /// Known recipients (name + IBAN) from past outgoing bookings, most used
+    /// first. `query` filters by name/IBAN substring (empty = all).
+    pub fn suggest_recipients(
+        &self,
+        query: String,
+        limit: u32,
+    ) -> Result<Vec<KnownRecipient>, CoreError> {
+        let db = self.db()?;
+        let q = query.trim().replace(' ', "").to_lowercase();
+        let mut stmt = db.prepare(
+            "SELECT counterparty, counterparty_iban, count(*) AS n FROM transactions
+             WHERE counterparty_iban <> '' AND counterparty <> '' AND amount_cents < 0
+             GROUP BY counterparty, counterparty_iban
+             ORDER BY n DESC, MAX(booking_date) DESC",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(KnownRecipient {
+                name: r.get(0)?,
+                iban: r.get(1)?,
+                times_used: r.get(2)?,
+            })
+        })?;
+        Ok(rows
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter(|r| {
+                q.is_empty()
+                    || r.name.replace(' ', "").to_lowercase().contains(&q)
+                    || r.iban.replace(' ', "").to_lowercase().contains(&q)
+            })
+            .filter(|r| crate::connectors::fints::sepa::validate_iban(&r.iban))
+            .take(limit as usize)
+            .collect())
+    }
+}
+
+impl Vault {
+    /// Optimistic booking after a confirmed transfer. It disappears as soon
+    /// as the bank's own booking for it arrives in a sync.
+    pub(crate) fn record_pending_transfer(
+        &self,
+        account_id: i64,
+        job: &TransferJob,
+    ) -> CoreResult<()> {
+        let db = self.db()?;
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency,
+                     counterparty, counterparty_iban, purpose, booking_text)
+             VALUES (?1, ?2, ?3, ?3, ?4, 'EUR', ?5, ?6, ?7, 'Überweisung (vorgemerkt)')",
+            params![
+                account_id,
+                format!("pending-{}", uuid::Uuid::new_v4()),
+                today(),
+                -job.amount_cents,
+                job.recipient_name,
+                job.recipient_iban,
+                job.purpose
+            ],
+        )?;
+        Vault::apply_rules_inner(&db, true)?;
+        Ok(())
+    }
+}
+
+/// ISO 13616 Mod-97 IBAN check (whitespace and case ignored).
+#[uniffi::export]
+pub fn validate_iban(iban: String) -> bool {
+    crate::connectors::fints::sepa::validate_iban(&iban)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{BookingFilter, BookingScope};
     use crate::vault::Vault;
 
     fn demo_vault() -> (Arc<Vault>, std::path::PathBuf) {
@@ -843,6 +1182,73 @@ mod tests {
             v.clone().begin_sync(pp.id, String::new(), false),
             Err(CoreError::MissingSetting { .. })
         ));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn demo_transfer_flow_adds_pending_booking_and_suggests_recipient() {
+        let (v, path) = demo_vault();
+        let acc = v
+            .list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.name == "Musterbank Girokonto" && a.connection_id.is_some())
+            .unwrap();
+        let req = |iban: &str, amount: i64| SepaTransferRequest {
+            account_id: acc.id,
+            recipient_name: "Müller GmbH".into(),
+            recipient_iban: iban.into(),
+            recipient_bic: None,
+            amount_cents: amount,
+            purpose: "Rechnung 42".into(),
+        };
+        assert!(v
+            .clone()
+            .begin_transfer(req("DE89370400440532013001", 100), "pin".into(), true)
+            .is_err());
+        assert!(v
+            .clone()
+            .begin_transfer(req("DE89370400440532013000", 0), "pin".into(), true)
+            .is_err());
+        let s = v
+            .clone()
+            .begin_transfer(req("DE89 3704 0044 0532 0130 00", 1250), "pin".into(), true)
+            .unwrap();
+        let mut step = s.start().await.unwrap();
+        let mut challenges = 0;
+        while matches!(
+            step,
+            TransferStep::NeedsChallenge { .. } | TransferStep::StillWaiting { .. }
+        ) {
+            challenges += 1;
+            step = s.poll().await.unwrap();
+        }
+        assert!(challenges >= 2, "login + transfer challenge");
+        let page = v
+            .list_transactions(BookingFilter {
+                account_ids: vec![acc.id],
+                category_id: None,
+                include_subcategories: false,
+                uncategorized_only: false,
+                search: Some("Müller GmbH".into()),
+                date_from: None,
+                date_to: None,
+                limit: 10,
+                offset: 0,
+                scope: BookingScope::All,
+                merchant_key: None,
+            })
+            .unwrap();
+        assert_eq!(page.transactions.len(), 1);
+        assert_eq!(page.transactions[0].amount_cents, -1250);
+        assert_eq!(
+            page.transactions[0].counterparty_iban,
+            "DE89370400440532013000"
+        );
+        let sug = v.suggest_recipients("müller".into(), 5).unwrap();
+        assert_eq!(sug.len(), 1);
+        assert_eq!(sug[0].iban, "DE89370400440532013000");
+        assert!(matches!(s.poll().await, Err(CoreError::SessionClosed)));
         let _ = std::fs::remove_file(path);
     }
 }

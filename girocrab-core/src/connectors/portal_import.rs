@@ -448,7 +448,7 @@ pub fn parse_json_bodies(bodies: &[String], kind: ConnectorKind) -> (Vec<Parsed>
     }
     // The portal re-sends overlapping pages; drop exact repeats of the same source id.
     let mut seen = std::collections::HashSet::new();
-    txs.retain(|t| t.id.as_ref().map_or(true, |id| seen.insert(id.clone())));
+    txs.retain(|t| t.id.as_ref().is_none_or(|id| seen.insert(id.clone())));
     (txs, balance)
 }
 
@@ -592,8 +592,8 @@ pub fn parse_csv(text: &str, kind: ConnectorKind) -> Vec<Parsed> {
             r,
             &["betrag", "amount", "umsatz", "betrag (eur)", "amount (eur)"],
         );
-        if d.is_some() && a.is_some() {
-            header_idx = Some((i, d.unwrap(), a.unwrap(), r.clone()));
+        if let (Some(d), Some(a)) = (d, a) {
+            header_idx = Some((i, d, a, r.clone()));
             break;
         }
     }

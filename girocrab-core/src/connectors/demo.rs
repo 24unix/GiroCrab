@@ -5,7 +5,7 @@ use async_trait::async_trait;
 
 use super::{
     BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, RemoteTransaction,
+    RemoteAccount, RemoteTransaction, TransferJob,
 };
 use crate::demo::DEMO_ACCOUNTS;
 use crate::error::{CoreError, CoreResult};
@@ -101,6 +101,30 @@ impl BankConnector for DemoConnector {
                 Ok(Phase::Ready)
             }
         }
+    }
+
+    async fn send_transfer(
+        &mut self,
+        _ctx: &ConnectContext,
+        job: &TransferJob,
+    ) -> CoreResult<Phase> {
+        self.polls = 0;
+        let c = Challenge {
+            kind: ChallengeKind::DecoupledPush,
+            title: "Überweisung in der Banking-App freigeben".into(),
+            message: format!(
+                "Demo: {} an {} wird nach wenigen Sekunden „freigegeben“.",
+                crate::money::format_cents(job.amount_cents, "EUR".into()),
+                job.recipient_name
+            ),
+            method_name: "pushTAN (Demo)".into(),
+            redirect_url: None,
+            image: None,
+            expires_in_seconds: Some(300),
+            poll_interval_seconds: 2,
+        };
+        self.challenge = Some(c.clone());
+        Ok(Phase::Challenge(c))
     }
 
     async fn fetch(&mut self, _ctx: &ConnectContext) -> CoreResult<FetchResult> {

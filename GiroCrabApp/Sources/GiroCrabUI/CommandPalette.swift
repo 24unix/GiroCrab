@@ -25,6 +25,9 @@ struct CommandPaletteView: View {
         for s in BookingScope.ordered {
             out.append(Item(title: s.title, subtitle: "Ansicht", symbol: "rectangle.split.3x1") { model.scope = s })
         }
+        if model.canTransfer {
+            out.append(Item(title: "Überweisung senden", subtitle: "Aktion · ⌘N", symbol: "paperplane") { model.openTransfer() })
+        }
         out.append(Item(title: "Alle Konten abrufen", subtitle: "Aktion · ⇧⌘R", symbol: "arrow.triangle.2.circlepath") { model.requestSyncAll() })
         out.append(Item(title: "Regeln bearbeiten", subtitle: "Aktion", symbol: "wand.and.stars") { model.openRuleEditor() })
         if let b = model.selectedBooking {

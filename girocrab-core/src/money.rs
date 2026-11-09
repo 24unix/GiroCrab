@@ -109,7 +109,7 @@ pub fn format_cents(cents: i64, currency: String) -> String {
     let digits = euros.to_string();
     let mut grouped = String::new();
     for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
             grouped.push('.');
         }
         grouped.push(ch);

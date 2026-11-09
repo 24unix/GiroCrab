@@ -27,9 +27,9 @@ fn fields(text: &str) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
     for line in text.split(['\n']) {
         let line = line.trim_end_matches('\r');
-        if line.starts_with(':') {
-            if let Some(end) = line[1..].find(':') {
-                let tag = line[1..1 + end].to_string();
+        if let Some(rest) = line.strip_prefix(':') {
+            if let Some(end) = rest.find(':') {
+                let tag = rest[..end].to_string();
                 if tag.len() <= 3
                     && tag
                         .chars()

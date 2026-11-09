@@ -1014,7 +1014,7 @@ impl Vault {
                 // Relaxed: last 4+ significant digits of the loan number in purpose/counterparty.
                 if trimmed.len() >= 4 {
                     args.push(Box::new(
-                        trimmed[trimmed.len() - trimmed.len().min(6).max(4)..].to_string(),
+                        trimmed[trimmed.len() - trimmed.len().clamp(4, 6)..].to_string(),
                     ));
                     let n = args.len();
                     ors.push(format!("t.purpose LIKE '%' || ?{n} || '%' OR t.counterparty LIKE '%' || ?{n} || '%'"));

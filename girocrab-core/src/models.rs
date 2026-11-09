@@ -391,3 +391,24 @@ pub struct InvestmentDashboard {
     pub perks_this_month_cents: i64,
     pub monthly: Vec<MonthFlow>,
 }
+
+/// A single SEPA credit transfer ("Überweisung") to be sent via FinTS.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SepaTransferRequest {
+    pub account_id: i64,
+    pub recipient_name: String,
+    pub recipient_iban: String,
+    pub recipient_bic: Option<String>,
+    /// Must be > 0.
+    pub amount_cents: i64,
+    /// Verwendungszweck, max. 140 characters.
+    pub purpose: String,
+}
+
+/// Recipient suggested from past bookings (auto-completion).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct KnownRecipient {
+    pub name: String,
+    pub iban: String,
+    pub times_used: u32,
+}

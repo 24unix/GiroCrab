@@ -11,6 +11,16 @@
 //! Everything public is exported to Swift (and Kotlin, if you want) through
 //! Mozilla UniFFI proc-macros.
 
+// Stylistic lints: amounts are written as `euros_cents` (e.g. 27_65), bank
+// rows are plain tuples, and `from_str` constructors return Option for UniFFI.
+#![allow(
+    clippy::inconsistent_digit_grouping,
+    clippy::type_complexity,
+    clippy::too_many_arguments,
+    clippy::should_implement_trait,
+    clippy::if_same_then_else
+)]
+
 uniffi::setup_scaffolding!();
 
 pub mod connections;
@@ -28,7 +38,8 @@ pub mod text;
 pub mod vault;
 
 pub use connectors::{
-    bank_catalog, BankDescriptor, Challenge, ChallengeKind, SyncSession, SyncStep,
+    bank_catalog, BankDescriptor, Challenge, ChallengeKind, SyncSession, SyncStep, TransferSession,
+    TransferStep,
 };
 pub use error::CoreError;
 pub use merchants::{resolve_merchant, FlowKind, MerchantInfo, MerchantKind, MerchantResolver};

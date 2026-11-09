@@ -81,6 +81,9 @@ struct BookingStreamView: View {
                 .help("⌘1 / ⌘2 / ⌘3")
             }
             ToolbarItemGroup(placement: .primaryAction) {
+                Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
+                    .help("Neue Überweisung (⌘N)")
+                    .disabled(!model.canTransfer)
                 Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
                     .help("Alle Konten abrufen (⇧⌘R)")
                 Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }

@@ -25,6 +25,7 @@
 
 pub mod camt;
 pub mod mt940;
+pub mod sepa;
 pub mod syntax;
 
 use std::collections::{HashMap, HashSet};
@@ -36,7 +37,7 @@ use serde::{Deserialize, Serialize};
 use self::syntax::{escape, parse_response, Segment, SegmentBuilder};
 use super::{
     BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount,
+    RemoteAccount, TransferJob,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::models::AccountKind;
@@ -65,6 +66,7 @@ struct FinTsState {
 const IMPLEMENTED: &[(&str, &[u32])] = &[
     ("HKSAL", &[5, 6, 7, 8]),
     ("HKCAZ", &[1]),
+    ("HKCCS", &[1]),
     ("HKKAZ", &[5, 6, 7]),
     ("HKTAN", &[6, 7]),
     ("HKSPA", &[1, 2, 3]),
@@ -191,6 +193,23 @@ impl BankReply {
         format!("{} {} {}{}", code.0, seg, code.2, params)
     }
 
+    /// Like `check`, but with German explanations for typical HKCCS rejections.
+    fn check_transfer(&self) -> CoreResult<()> {
+        let errs = self.errors();
+        let Some(first) = errs.first() else {
+            return Ok(());
+        };
+        let msg = errs
+            .iter()
+            .map(|e| explain_transfer_code(e))
+            .collect::<Vec<_>>()
+            .join(" / ");
+        Err(CoreError::Bank {
+            code: first.0.clone(),
+            message: msg,
+        })
+    }
+
     fn check(&self) -> CoreResult<()> {
         let errs = self.errors();
         if let Some(e) = errs.first() {
@@ -221,6 +240,8 @@ pub struct FinTsConnector {
     product_version: String,
     /// Accounts from the user parameter data (HIUPD).
     upd: Vec<UpdAccount>,
+    /// A SEPA transfer (HKCCS) is awaiting its TAN.
+    transferring: bool,
 }
 
 impl FinTsConnector {
@@ -238,6 +259,7 @@ impl FinTsConnector {
             product_id: String::new(),
             product_version: String::new(),
             upd: Vec::new(),
+            transferring: false,
         }
     }
 
@@ -1013,6 +1035,99 @@ impl FinTsConnector {
         Ok(docs)
     }
 
+    fn check_reply(&self, reply: &BankReply) -> CoreResult<()> {
+        if self.transferring {
+            reply.check_transfer()
+        } else {
+            reply.check()
+        }
+    }
+
+    /// Sends HKCCS + HKTAN (process 4) and returns the bank's reply.
+    async fn submit_hkccs(
+        &mut self,
+        ctx: &ConnectContext,
+        job: &TransferJob,
+    ) -> CoreResult<BankReply> {
+        let not_allowed = || {
+            CoreError::Bank {
+            code: "HKCCS".into(),
+            message: "Dieses Konto oder diese Bank erlaubt keine SEPA-Überweisungen per FinTS (HKCCS). Bitte in der Banking-App überweisen.".into(),
+        }
+        };
+        if !self.bank_supports("HKCCS") {
+            return Err(not_allowed());
+        }
+        let sec = self.sec();
+        if sec == "999" {
+            return Err(CoreError::Bank {
+                code: "HKTAN".into(),
+                message: "Für Überweisungen ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen.".into(),
+            });
+        }
+        let mut errors = Vec::new();
+        let accounts = self.account_list(ctx, &mut errors).await;
+        let want = sepa::normalize_iban(&job.source_iban);
+        let (acc, upd) = accounts
+            .into_iter()
+            .find(|(a, _)| sepa::normalize_iban(&a.iban) == want)
+            .ok_or_else(|| CoreError::NotFound {
+                what: format!(
+                    "Konto {} bei der Bank{}",
+                    job.source_iban,
+                    if errors.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({})", errors.join(" / "))
+                    }
+                ),
+            })?;
+        if let Some(u) = &upd {
+            if !u.allowed.is_empty() && !u.allowed.contains("HKCCS") {
+                return Err(not_allowed());
+            }
+        }
+        let (date, time) = Self::now();
+        let created = format!(
+            "{}-{}-{}T{}:{}:{}",
+            &date[..4],
+            &date[4..6],
+            &date[6..],
+            &time[..2],
+            &time[2..4],
+            &time[4..]
+        );
+        let exec = format!("{}-{}-{}", &date[..4], &date[4..6], &date[6..]);
+        let msg_id = format!("GC{date}{time}{}", rand::random::<u16>());
+        let owner = if job.source_owner.trim().is_empty() {
+            "Kontoinhaber"
+        } else {
+            job.source_owner.trim()
+        };
+        let xml = sepa::build_pain001(&sepa::Pain001 {
+            message_id: &msg_id,
+            created: &created,
+            execution_date: &exec,
+            debtor_name: owner,
+            debtor_iban: &acc.iban,
+            debtor_bic: &acc.bic,
+            creditor_name: &job.recipient_name,
+            creditor_iban: &job.recipient_iban,
+            creditor_bic: job.recipient_bic.as_deref(),
+            amount_cents: job.amount_cents,
+            purpose: &job.purpose,
+        })?;
+        let hkccs = SegmentBuilder::new("HKCCS", 3, self.version("HKCCS"))
+            .raw(&Self::kti(&acc))
+            .de(&[sepa::PAIN_DESCRIPTOR])
+            .binary(xml.as_bytes())
+            .build();
+        let payload = vec![hkccs, self.hktan_process4(4, "HKCCS")];
+        let reply = self.send(ctx, payload, &sec, None).await?;
+        reply.check_transfer()?;
+        Ok(reply)
+    }
+
     fn sec(&self) -> String {
         if self.st.sec_func.is_empty() {
             "999".into()
@@ -1042,6 +1157,42 @@ impl FinTsConnector {
             escape(&acc.sub_account),
             acc.blz
         )
+    }
+}
+
+/// German text for a bank return code (HIRMG/HIRMS) during a transfer.
+fn explain_transfer_code(c: &(String, Option<u32>, String, Vec<String>)) -> String {
+    let hint = match c.0.as_str() {
+        "9050" => "Die Nachricht enthält Fehler.",
+        "9010" => "Die Bank hat die Nachricht nicht verarbeitet.",
+        "9120" | "9130" | "9140" | "9160" => {
+            "Ein Pflichtfeld der Überweisung fehlt oder ist ungültig."
+        }
+        "9210" => "Der Auftrag wurde abgelehnt (Daten ungültig oder nicht erlaubt).",
+        "9340" => "Der Auftrag ist ungültig; bitte IBAN, Betrag und Name prüfen.",
+        "9380" => "Der Betrag überschreitet das Limit des Kontos.",
+        "9390" => "Das Konto lässt diese Überweisung nicht zu.",
+        "9391" => "Das Konto ist für Überweisungen gesperrt.",
+        "9931" | "9942" => "PIN oder Zugangsdaten wurden abgelehnt.",
+        "9941" => "Die TAN ist ungültig oder abgelaufen.",
+        "9955" | "9956" => "Die Freigabe wurde abgelehnt oder ist abgelaufen.",
+        "9075" => {
+            "Starke Kundenauthentifizierung ist erforderlich, wurde aber nicht abgeschlossen."
+        }
+        _ => "",
+    };
+    let params = if c.3.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", c.3.join(", "))
+    };
+    if hint.is_empty() {
+        format!(
+            "{} Die Bank hat die Überweisung abgelehnt: {}{params}",
+            c.0, c.2
+        )
+    } else {
+        format!("{} {hint} Bank: {}{params}", c.0, c.2)
     }
 }
 
@@ -1158,7 +1309,7 @@ impl BankConnector for FinTsConnector {
                     .raw("N")
                     .build();
                 let reply = self.send(ctx, vec![seg], &sec, None).await?;
-                reply.check()?;
+                self.check_reply(&reply)?;
                 if reply.has("3956") {
                     let c = self.challenge.clone().ok_or(CoreError::SessionClosed)?;
                     return Ok(Phase::Pending(c));
@@ -1176,7 +1327,7 @@ impl BankConnector for FinTsConnector {
                     .build();
                 self.tan_for_next = None;
                 let reply = self.send(ctx, vec![seg], &sec, Some(tan.expose())).await?;
-                reply.check()?;
+                self.check_reply(&reply)?;
                 Ok(Phase::Ready)
             }
         }
@@ -1309,6 +1460,24 @@ impl BankConnector for FinTsConnector {
     async fn finish(&mut self, ctx: &ConnectContext) {
         let sec = self.sec();
         self.end_dialog(ctx, &sec).await;
+    }
+
+    async fn send_transfer(
+        &mut self,
+        ctx: &ConnectContext,
+        job: &TransferJob,
+    ) -> CoreResult<Phase> {
+        self.transferring = true;
+        let reply = self.submit_hkccs(ctx, job).await;
+        if reply.is_err() {
+            self.transferring = false;
+        }
+        let reply = reply?;
+        if let Some(p) = self.challenge_from(&reply)? {
+            return Ok(p);
+        }
+        self.transferring = false;
+        Ok(Phase::Ready)
     }
 }
 

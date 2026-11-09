@@ -768,6 +768,6 @@ mod tests {
     fn float_amounts_round_to_cents() {
         assert_eq!(amount_cents(&json!(-4.040000000000001)), -4_04);
         assert_eq!(amount_cents(&json!(-5.78)), -5_78);
-        assert_eq!(amount_cents(&json!(47.32)), 47_32);
+        assert_eq!(amount_cents(&json!(47.32)), 4732);
     }
 }

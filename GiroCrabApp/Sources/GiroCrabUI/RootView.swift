@@ -20,7 +20,10 @@ public struct GiroCrabScenes: Scene {
         #if os(macOS)
         .defaultSize(width: 1500, height: 900)
         .commands {
-            CommandGroup(after: .newItem) {
+            CommandGroup(replacing: .newItem) {
+                Button("Neue Überweisung …") { model.openTransfer() }
+                    .keyboardShortcut("n", modifiers: .command)
+                    .disabled(!model.canTransfer)
                 Button("Befehlspalette …") { model.showCommandPalette = true }
                     .keyboardShortcut("k", modifiers: .command)
                     .disabled(model.vault == nil)
@@ -163,6 +166,11 @@ struct MainSplitView: View {
         .sheet(isPresented: $model.showCategorizer) {
             CategorizerSheet()
                 .environment(model)
+        }
+        .sheet(isPresented: $model.showTransferSheet) {
+            TransferSheetView()
+                .environment(model)
+                .interactiveDismissDisabled(model.transferBusy)
         }
         .sheet(item: $model.activeChallenge) { _ in
             TwoFactorSheet()

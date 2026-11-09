@@ -2,6 +2,7 @@
 //!   1. ./build-xcframework.sh --macos-only   (Rust core + UniFFI Swift package)
 //!   2. swift build -c release --product GiroCrabMac
 //!   3. wraps the executable into target/GiroCrab.app (ad-hoc signed)
+//!
 //! The launcher binary (src/main.rs) then starts that app.
 //!
 //! Set GIROCRAB_SKIP_SWIFT=1 to skip (e.g. on Linux CI for core-only work).

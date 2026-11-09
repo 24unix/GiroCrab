@@ -79,6 +79,17 @@ struct SetupRequest: Identifiable {
     let keys: [String]
 }
 
+/// Form state of "Neue Überweisung" (kept while the TAN sheet is shown).
+struct TransferDraft {
+    var accountID: Int64?
+    var name = ""
+    var iban = ""
+    var bic = ""
+    var amountText = ""
+    var purpose = ""
+    var pin = ""
+}
+
 struct PendingLogin: Identifiable {
     let id = UUID()
     let connection: BankConnection
@@ -147,6 +158,11 @@ public final class AppModel {
     var errorMessage: String?
 
     private var activeSession: SyncSession?
+    private var activeTransfer: TransferSession?
+    var showTransferSheet = false
+    var transferDraft = TransferDraft()
+    var transferError: String?
+    var transferBusy = false
     private var syncQueue: [BankConnection] = []
     private var pollTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
@@ -971,11 +987,20 @@ public final class AppModel {
         }
     }
 
-    private func schedulePoll(connection: BankConnection, interval: UInt32) {
+    fileprivate func schedulePoll(connection: BankConnection, interval: UInt32) {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(max(interval, 1)) * 1_000_000_000)
-            guard !Task.isCancelled, let self, let session = self.activeSession else { return }
+            guard !Task.isCancelled, let self else { return }
+            if let transfer = self.activeTransfer {
+                do {
+                    self.handleTransfer(try await transfer.poll(), connection: connection)
+                } catch {
+                    self.finishTransfer(error: error)
+                }
+                return
+            }
+            guard let session = self.activeSession else { return }
             do {
                 let step = try await session.poll()
                 self.handle(step, connection: connection)
@@ -986,6 +1011,18 @@ public final class AppModel {
     }
 
     func submitCode(_ code: String) {
+        if let transfer = activeTransfer, let ch = activeChallenge {
+            activeChallenge?.busy = true
+            activeChallenge?.error = nil
+            Task {
+                do {
+                    self.handleTransfer(try await transfer.submitCode(code: code), connection: ch.connection)
+                } catch {
+                    self.finishTransfer(error: error)
+                }
+            }
+            return
+        }
         guard let session = activeSession, let ch = activeChallenge else { return }
         activeChallenge?.busy = true
         activeChallenge?.error = nil
@@ -1001,6 +1038,15 @@ public final class AppModel {
 
     func cancelSync() {
         pollTask?.cancel()
+        if let t = activeTransfer {
+            activeTransfer = nil
+            activeChallenge = nil
+            transferBusy = false
+            transferError = "Überweisung abgebrochen – es wurde nichts gesendet, solange die TAN nicht bestätigt wurde."
+            showTransferSheet = true
+            Task { await t.cancel() }
+            return
+        }
         let s = activeSession
         activeSession = nil
         activeChallenge = nil
@@ -1032,6 +1078,108 @@ public final class AppModel {
             return
         }
         errorMessage = describe(error)
+    }
+}
+
+// MARK: - SEPA-Überweisung
+
+extension AppModel {
+    /// Checking accounts that are connected via FinTS (HKCCS-capable banks).
+    var transferAccounts: [Account] {
+        allAccounts.filter {
+            $0.kind == .checking && !$0.iban.isEmpty
+                && ($0.connector == .volksbankKasselGoettingen || $0.connector == .direkt1822)
+        }
+    }
+
+    var canTransfer: Bool { vault != nil && !transferAccounts.isEmpty && syncingConnectionID == nil && activeTransfer == nil }
+
+    /// Pre-selects the sidebar account if it can send transfers, else the first one.
+    func openTransfer() {
+        guard canTransfer else { return }
+        var selected: Int64?
+        if case .account(let id) = sidebarSelection, transferAccounts.contains(where: { $0.id == id }) { selected = id }
+        if transferDraft.accountID == nil || !transferAccounts.contains(where: { $0.id == transferDraft.accountID }) {
+            transferDraft.accountID = selected ?? transferAccounts.first?.id
+        } else if let selected {
+            transferDraft.accountID = selected
+        }
+        transferError = nil
+        showTransferSheet = true
+    }
+
+    func suggestRecipients(_ query: String) -> [KnownRecipient] {
+        (try? vault?.suggestRecipients(query: query, limit: 6)) ?? []
+    }
+
+    func startTransfer() {
+        guard let vault, let accID = transferDraft.accountID,
+              let account = allAccounts.first(where: { $0.id == accID }),
+              let connection = connections.first(where: { $0.id == account.connectionId }) else { return }
+        do {
+            let cents = try parseAmountToCents(text: transferDraft.amountText)
+            let bic = transferDraft.bic.trimmingCharacters(in: .whitespaces)
+            let request = SepaTransferRequest(
+                accountId: accID,
+                recipientName: transferDraft.name,
+                recipientIban: transferDraft.iban,
+                recipientBic: bic.isEmpty ? nil : bic,
+                amountCents: cents,
+                purpose: transferDraft.purpose)
+            let stored = connectionStatus(connection.id)?.hasPin ?? false
+            if !isDemo && !stored && transferDraft.pin.isEmpty {
+                transferError = "Bitte die Banking-PIN eingeben."
+                return
+            }
+            let session = try vault.beginTransfer(request: request, secret: isDemo ? "demo" : transferDraft.pin, demo: isDemo)
+            transferError = nil
+            transferBusy = true
+            showTransferSheet = false
+            activeTransfer = session
+            Task {
+                do {
+                    self.handleTransfer(try await session.start(), connection: connection)
+                } catch {
+                    self.finishTransfer(error: error)
+                }
+            }
+        } catch {
+            transferError = describe(error)
+        }
+    }
+
+    fileprivate func handleTransfer(_ step: TransferStep, connection: BankConnection) {
+        switch step {
+        case .needsChallenge(let c):
+            activeChallenge = ActiveChallenge(connection: connection, challenge: c, waiting: false)
+            if c.kind == .decoupledPush { schedulePoll(connection: connection, interval: c.pollIntervalSeconds) }
+        case .stillWaiting(let c):
+            if activeChallenge == nil {
+                activeChallenge = ActiveChallenge(connection: connection, challenge: c, waiting: true)
+            } else {
+                activeChallenge?.waiting = true
+                activeChallenge?.busy = false
+            }
+            schedulePoll(connection: connection, interval: c.pollIntervalSeconds)
+        case .finished:
+            pollTask?.cancel()
+            activeChallenge = nil
+            activeTransfer = nil
+            transferBusy = false
+            transferDraft = TransferDraft(accountID: transferDraft.accountID)
+            toast = "Überweisung freigegeben und vorgemerkt"
+            reloadAll()
+        }
+    }
+
+    fileprivate func finishTransfer(error: Error) {
+        pollTask?.cancel()
+        activeChallenge = nil
+        activeTransfer = nil
+        transferBusy = false
+        transferDraft.pin = ""
+        transferError = describe(error)
+        showTransferSheet = true
     }
 }
 

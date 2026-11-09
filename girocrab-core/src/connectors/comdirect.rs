@@ -4,7 +4,7 @@
 //!  1. POST /oauth/token  grant_type=password            -> pre-session token
 //!  2. GET  /api/session/clients/user/v1/sessions          -> session identifier
 //!  3. POST .../sessions/{id}/validate                     -> header x-once-authentication-info
-//!        typ P_TAN_PUSH (decoupled) | P_TAN (photoTAN image) | M_TAN (SMS)
+//!     typ P_TAN_PUSH (decoupled) | P_TAN (photoTAN image) | M_TAN (SMS)
 //!  4. PATCH .../sessions/{id} (+ x-once-authentication: TAN for P_TAN/M_TAN)
 //!  5. POST /oauth/token  grant_type=cd_secondary          -> banking token
 //!  6. GET  /api/banking/clients/user/v2/accounts/balances

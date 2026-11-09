@@ -255,7 +255,10 @@ pub fn fix_replacement_chars(s: &str) -> String {
         let variants = [
             (bad.to_string(), good.to_string()),
             (bad.to_lowercase(), good.to_lowercase()),
-            (capitalize_first(&bad.to_lowercase()), capitalize_first(&good.to_lowercase())),
+            (
+                capitalize_first(&bad.to_lowercase()),
+                capitalize_first(&good.to_lowercase()),
+            ),
             (bad.to_uppercase(), good.to_uppercase()),
         ];
         for (b, g) in variants {
