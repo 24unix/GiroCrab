@@ -74,6 +74,7 @@ fn main() {
         println!("cargo:rerun-if-changed={}", root.join(p).display());
     }
     println!("cargo:rerun-if-env-changed=GIROCRAB_SKIP_SWIFT");
+    println!("cargo:rerun-if-env-changed=GIROCRAB_CODESIGN_IDENTITY");
 
     let app_dir = root.join("target").join("GiroCrab.app");
     let app_bin = app_dir.join("Contents/MacOS/GiroCrab");
@@ -151,11 +152,21 @@ fn make_bundle(app_dir: &Path, exe: &Path) {
 "#;
     std::fs::write(app_dir.join("Contents/Info.plist"), plist).unwrap();
     compile_localizations(app_dir);
-    // Ad-hoc signature so Keychain + LocalAuthentication accept the bundle.
-    let _ = Command::new("codesign")
-        .args(["--force", "--sign", "-"])
+    // Signature so Keychain + LocalAuthentication accept the bundle. Ad-hoc by
+    // default; set GIROCRAB_CODESIGN_IDENTITY (e.g. "Apple Development: …") to
+    // sign with a real identity, so the Keychain's "Always Allow" survives
+    // rebuilds instead of being tied to one build's hash.
+    let identity = env::var("GIROCRAB_CODESIGN_IDENTITY")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "-".to_string());
+    let signed = Command::new("codesign")
+        .args(["--force", "--sign", &identity])
         .arg(app_dir)
         .status();
+    if !matches!(signed, Ok(s) if s.success()) {
+        println!("cargo:warning=codesign with identity '{identity}' failed – app bundle is unsigned");
+    }
     // Refresh Finder/Dock icon caches for the (re)built bundle.
     let _ = Command::new("touch").arg(app_dir).status();
     let _ = Command::new("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
