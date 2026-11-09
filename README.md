@@ -76,6 +76,8 @@ Voraussetzungen: macOS 14+, Xcode 15+, [rustup](https://rustup.rs).
 ./build-xcframework.sh          # Rust-Kern + Swift-Bindings (macOS, iOS, Simulator)
 cargo run -- --demo-seed        # App mit erfundenen Demo-Daten starten
 # oder: GIROCRAB_DEMO_SEED=1 cargo run
+
+[![Freiwillige Zuwendung](https://img.shields.io/badge/PayPal-Freiwillige%20Zuwendung%20%E2%98%95-00457C?logo=paypal&logoColor=white)](https://paypal.me/aprinz)
 cargo test -p girocrab-core     # Tests
 ```
 
