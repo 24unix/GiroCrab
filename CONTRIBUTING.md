@@ -1,0 +1,51 @@
+# Contributing to GiroCrab
+
+Thanks for helping! / Danke für die Mitarbeit! Issues and PRs may be in English or German.
+
+**Privacy first:** never commit or attach real IBANs, account numbers, phone numbers, PINs, API keys,
+bank exports (MT940/CAMT/CSV) or real people's names. Use invented data (e.g. the public example IBAN
+`DE89 3704 0044 0532 0130 00`, "Max Mustermann").
+
+## Setup
+
+```bash
+./build-xcframework.sh                 # only needed when the Rust API changes
+cargo test -p girocrab-core -q
+cargo run -- --demo-seed               # or GIROCRAB_DEMO_SEED=1
+```
+
+Swift-only changes: `cd GiroCrabApp && swift build -q` (no core rebuild needed).
+
+## Adding a bank in 3 steps
+
+1. **Copy the template.** `cp girocrab-core/src/connectors/template.rs girocrab-core/src/connectors/<bank>.rs`
+   and implement `begin` (login / challenge), `respond` (TAN/poll) and `fetch` (accounts + bookings).
+   Amounts are `i64` cents, debits negative; `external_id` must be stable for de-duplication.
+2. **Register it.** Add a variant to `ConnectorKind` (`models.rs`), a `BankDescriptor` in
+   `descriptor()` and a line in `make_connector()` (`connectors/mod.rs`), plus `pub mod <bank>;`.
+   Add the Swift display name/colour in `GiroCrabUI/Formatting.swift`.
+3. **Test it with fake data.** Unit-test your parser with invented fixtures, then check the UI via
+   `GIROCRAB_DEMO_SEED=1`. Run `cargo fmt`, `cargo clippy` and `cargo test -p girocrab-core`.
+
+Open a *New bank request* issue first if unsure – ING, DKB, N26, Scalable Capital, Consorsbank and
+Santander are wanted.
+
+## Adding merchants
+
+Edit `girocrab-core/src/merchants.rs`: add an entry with `e("key", "Display Name", &["needle", …],
+"domain.de", "#RRGGBB", "sf.symbol", Kind)` (or `etf(...)` for funds with ISIN/WKN). Needles are
+matched against the normalised counterparty, so use lower-case fragments. Add a assertion to the
+tests at the bottom of the file. Private persons (first name + surname) automatically get a monogram,
+never a logo.
+
+## Testing with demo data
+
+`GIROCRAB_DEMO_SEED=1 cargo run` (or `cargo run -- --demo-seed`) opens a throw-away vault with
+5 fictional accounts and exactly 50 invented bookings (`girocrab-core/src/demo.rs`). Change the data
+there only with invented names and amounts.
+
+## Pull requests
+
+* Keep PRs focused; describe what and why.
+* CI runs `cargo fmt --check`, `cargo clippy`, `cargo test -p girocrab-core` and a Swift build.
+* By contributing you agree to license your work under GPL-3.0-or-later.

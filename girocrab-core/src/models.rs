@@ -1,0 +1,393 @@
+//! Records and enums shared with Swift. Dates are ISO `YYYY-MM-DD` strings,
+//! money is always `i64` cents.
+
+/// The seven supported institutions. The connector implementation is picked
+/// from this value; endpoints/BLZ are listed in `bank_catalog()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum ConnectorKind {
+    /// Volksbank Kassel Göttingen, FinTS 3.0, BLZ 52090000
+    VolksbankKasselGoettingen,
+    /// 1822direkt, FinTS 3.0, BLZ 50050201
+    Direkt1822,
+    /// comdirect official REST API
+    Comdirect,
+    /// PayPal Transaction Search REST API
+    PayPal,
+    /// Trade Republic WebSocket API (+ 2FA code)
+    TradeRepublic,
+    /// American Express via Enable Banking PSD2 aggregation
+    AmericanExpress,
+    /// Amazon Visa via Enable Banking PSD2 aggregation
+    AmazonVisa,
+}
+
+impl ConnectorKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ConnectorKind::VolksbankKasselGoettingen => "fints:52090000",
+            ConnectorKind::Direkt1822 => "fints:50050201",
+            ConnectorKind::Comdirect => "comdirect",
+            ConnectorKind::PayPal => "paypal",
+            ConnectorKind::TradeRepublic => "traderepublic",
+            ConnectorKind::AmericanExpress => "enablebanking:amex",
+            ConnectorKind::AmazonVisa => "enablebanking:amazonvisa",
+        }
+    }
+    pub fn from_str(s: &str) -> Option<Self> {
+        Self::all().into_iter().find(|k| k.as_str() == s)
+    }
+    pub fn all() -> Vec<Self> {
+        vec![
+            ConnectorKind::VolksbankKasselGoettingen,
+            ConnectorKind::Direkt1822,
+            ConnectorKind::Comdirect,
+            ConnectorKind::PayPal,
+            ConnectorKind::TradeRepublic,
+            ConnectorKind::AmericanExpress,
+            ConnectorKind::AmazonVisa,
+        ]
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AccountKind {
+    Checking,
+    Savings,
+    CreditCard,
+    PaymentService,
+    Brokerage,
+    Cash,
+    /// Planned loan / mortgage (Darlehen) – shown neutral, not alarming.
+    Loan,
+}
+
+impl AccountKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AccountKind::Checking => "checking",
+            AccountKind::Savings => "savings",
+            AccountKind::CreditCard => "credit_card",
+            AccountKind::PaymentService => "payment_service",
+            AccountKind::Brokerage => "brokerage",
+            AccountKind::Cash => "cash",
+            AccountKind::Loan => "loan",
+        }
+    }
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "savings" => AccountKind::Savings,
+            "credit_card" => AccountKind::CreditCard,
+            "payment_service" => AccountKind::PaymentService,
+            "brokerage" => AccountKind::Brokerage,
+            "cash" => AccountKind::Cash,
+            "loan" => AccountKind::Loan,
+            _ => AccountKind::Checking,
+        }
+    }
+    /// SF Symbol used instead of any bank logo.
+    pub fn sf_symbol(&self) -> &'static str {
+        match self {
+            AccountKind::Checking => "building.columns",
+            AccountKind::Savings => "banknote",
+            AccountKind::CreditCard => "creditcard",
+            AccountKind::PaymentService => "envelope.circle",
+            AccountKind::Brokerage => "chart.line.uptrend.xyaxis",
+            AccountKind::Cash => "eurosign.circle",
+            AccountKind::Loan => "house",
+        }
+    }
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct BankConnection {
+    pub id: i64,
+    pub connector: ConnectorKind,
+    pub display_name: String,
+    pub login_name: String,
+    pub bank_code: String,
+    pub sf_symbol: String,
+    pub last_sync_unix: Option<i64>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Account {
+    pub id: i64,
+    pub connection_id: Option<i64>,
+    pub connector: Option<ConnectorKind>,
+    pub group_id: i64,
+    pub name: String,
+    pub bank_name: String,
+    pub owner: String,
+    pub iban: String,
+    pub account_number: String,
+    pub currency: String,
+    pub kind: AccountKind,
+    pub balance_cents: i64,
+    pub balance_date: String,
+    pub sf_symbol: String,
+    pub sort_order: i32,
+    pub transaction_count: u32,
+    pub uncategorized_count: u32,
+    /// Bookings not yet marked as checked ("new").
+    pub new_count: u32,
+    /// Original loan amount ("Ursprünglicher Kreditbetrag", positive cents).
+    /// Auto-derived from statement history, editable by the user.
+    pub initial_balance_cents: Option<i64>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct AccountGroup {
+    pub id: i64,
+    pub name: String,
+    pub sf_symbol: String,
+    pub sort_order: i32,
+    /// Sum of all EUR account balances in this group.
+    pub balance_cents: i64,
+    pub accounts: Vec<Account>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Category {
+    pub id: i64,
+    pub parent_id: Option<i64>,
+    pub name: String,
+    pub sf_symbol: String,
+    pub color_hex: String,
+    pub sort_order: i32,
+    /// 0 for top-level categories.
+    pub depth: u32,
+    /// "Food › Groceries"
+    pub path: String,
+    /// Sum of transactions directly in this category (within the period).
+    pub own_total_cents: i64,
+    /// Sum including all sub-categories.
+    pub total_cents: i64,
+    pub transaction_count: u32,
+    pub budget_cents: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum CategorySource {
+    None,
+    Rule,
+    Manual,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Booking {
+    pub id: i64,
+    pub account_id: i64,
+    pub account_name: String,
+    pub booking_date: String,
+    pub value_date: String,
+    pub amount_cents: i64,
+    pub currency: String,
+    pub counterparty: String,
+    pub counterparty_iban: String,
+    pub purpose: String,
+    pub booking_text: String,
+    pub category_id: Option<i64>,
+    pub category_name: String,
+    pub category_path: String,
+    pub category_color_hex: String,
+    pub category_symbol: String,
+    pub category_source: CategorySource,
+    pub rule_id: Option<i64>,
+    pub checked: bool,
+    /// Cleaned merchant (logo engine).
+    pub merchant: crate::merchants::MerchantInfo,
+    /// Flat copies for convenience in the UI layer.
+    pub merchant_name: String,
+    /// None for private persons and unknown merchants (no logo).
+    pub merchant_domain: Option<String>,
+    /// simple-icons SVG path ("" = none) – render in a 24×24 viewBox.
+    pub merchant_svg_path: Option<String>,
+    pub merchant_hex_color: String,
+    /// "Kartenzahlung", "Lastschrift", "Sparplan", …
+    pub payment_method: String,
+    pub flow: crate::merchants::FlowKind,
+    /// Purpose without SEPA keys / terminal codes.
+    pub clean_purpose: String,
+    pub account_kind: AccountKind,
+    /// Attached PDFs / receipts (paperclip badge).
+    pub document_count: u32,
+}
+
+/// Top segmented control: everything / everyday life / savings plans & perks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
+pub enum BookingScope {
+    #[default]
+    All,
+    /// Alltag & Konsum: everything except investments and perks.
+    Everyday,
+    /// Sparpläne & Perks: investments, Saveback, Round up.
+    Investments,
+}
+
+#[derive(Debug, Clone, Default, uniffi::Record)]
+pub struct BookingFilter {
+    /// Empty = all accounts.
+    pub account_ids: Vec<i64>,
+    pub category_id: Option<i64>,
+    pub include_subcategories: bool,
+    pub uncategorized_only: bool,
+    pub search: Option<String>,
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+    pub limit: u32,
+    pub offset: u32,
+    pub scope: BookingScope,
+    /// Only bookings of this merchant key.
+    pub merchant_key: Option<String>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct BookingPage {
+    pub transactions: Vec<Booking>,
+    pub total_count: u32,
+    pub income_cents: i64,
+    pub expense_cents: i64,
+    /// Everyday spending only (negative), never includes ETF plans or perks.
+    pub consumption_cents: i64,
+    /// Invested via savings plans / purchases (negative).
+    pub investment_cents: i64,
+    /// Saveback + Round up movements (net).
+    pub perk_cents: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum RuleField {
+    /// Counterparty, purpose and booking text.
+    Any,
+    Counterparty,
+    Purpose,
+    BookingText,
+    CounterpartyIban,
+}
+
+impl RuleField {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RuleField::Any => "any",
+            RuleField::Counterparty => "counterparty",
+            RuleField::Purpose => "purpose",
+            RuleField::BookingText => "booking_text",
+            RuleField::CounterpartyIban => "iban",
+        }
+    }
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "counterparty" => RuleField::Counterparty,
+            "purpose" => RuleField::Purpose,
+            "booking_text" => RuleField::BookingText,
+            "iban" => RuleField::CounterpartyIban,
+            _ => RuleField::Any,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum MatchKind {
+    /// Pipe-separated keywords, any of them matches ("REWE|EDEKA|ALDI").
+    Keyword,
+    /// A full regular expression.
+    Regex,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Rule {
+    /// 0 when creating a new rule.
+    pub id: i64,
+    pub name: String,
+    pub category_id: i64,
+    pub field: RuleField,
+    pub match_kind: MatchKind,
+    pub pattern: String,
+    pub case_sensitive: bool,
+    pub min_amount_cents: Option<i64>,
+    pub max_amount_cents: Option<i64>,
+    pub account_id: Option<i64>,
+    /// Lower number = evaluated first.
+    pub priority: i32,
+    pub enabled: bool,
+    /// Filled when listing: how many transactions this rule categorised.
+    pub match_count: u32,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SettingEntry {
+    pub key: String,
+    pub label: String,
+    pub help: String,
+    pub group: String,
+    /// Empty when `is_secret` (use `get_setting` to reveal).
+    pub value: String,
+    pub is_secret: bool,
+    pub has_value: bool,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PeriodSummary {
+    pub income_cents: i64,
+    pub expense_cents: i64,
+    pub balance_cents: i64,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DailyBalance {
+    pub date: String,
+    pub balance_cents: i64,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MerchantStats {
+    pub key: String,
+    pub name: String,
+    pub count: u32,
+    /// Net sum of all bookings at this merchant.
+    pub total_cents: i64,
+    pub average_cents: i64,
+    pub first_date: String,
+    pub last_date: String,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PlanExecution {
+    /// "2026-11"
+    pub month: String,
+    /// Invested amount in that month (positive cents, 0 = not executed).
+    pub amount_cents: i64,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SavingsPlan {
+    pub merchant: crate::merchants::MerchantInfo,
+    pub monthly_cents: i64,
+    pub day_of_month: u32,
+    pub last_date: String,
+    pub active: bool,
+    pub total_invested_cents: i64,
+    pub executions: Vec<PlanExecution>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MonthFlow {
+    pub month: String,
+    pub consumption_cents: i64,
+    pub investment_cents: i64,
+    pub income_cents: i64,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct InvestmentDashboard {
+    pub months: Vec<String>,
+    pub plans: Vec<SavingsPlan>,
+    /// Sum of all active plans per month (positive cents).
+    pub total_monthly_cents: i64,
+    pub saveback_earned_cents: i64,
+    pub saveback_count: u32,
+    pub roundup_invested_cents: i64,
+    pub roundup_count: u32,
+    pub perks_this_month_cents: i64,
+    pub monthly: Vec<MonthFlow>,
+}

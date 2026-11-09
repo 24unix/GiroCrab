@@ -1,0 +1,1077 @@
+import Foundation
+import SwiftUI
+import Observation
+import GiroCrabCore
+
+enum SidebarItem: Hashable {
+    case allAccounts
+    case group(Int64)
+    case account(Int64)
+    case category(Int64)
+    case uncategorized
+    /// "Belege & PostBox"
+    case documents
+}
+
+enum Period: String, CaseIterable, Identifiable {
+    case all = "Gesamter Zeitraum"
+    case thisMonth = "Dieser Monat"
+    case lastMonth = "Letzter Monat"
+    case last3Months = "Letzte 3 Monate"
+    case thisYear = "Dieses Jahr"
+    var id: String { rawValue }
+
+    var range: (String?, String?) {
+        let cal = Calendar(identifier: .gregorian)
+        let now = Date()
+        let startOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: now))!
+        switch self {
+        case .all: return (nil, nil)
+        case .thisMonth: return (DateText.iso(startOfMonth), nil)
+        case .lastMonth:
+            let start = cal.date(byAdding: .month, value: -1, to: startOfMonth)!
+            let end = cal.date(byAdding: .day, value: -1, to: startOfMonth)!
+            return (DateText.iso(start), DateText.iso(end))
+        case .last3Months: return (DateText.iso(cal.date(byAdding: .month, value: -2, to: startOfMonth)!), nil)
+        case .thisYear: return (DateText.iso(cal.date(from: cal.dateComponents([.year], from: now))!), nil)
+        }
+    }
+}
+
+enum StatusFilter: String, CaseIterable, Identifiable {
+    case all = "Alle"
+    case new = "Neu"
+    case checked = "Geprüft"
+    var id: String { rawValue }
+}
+
+extension BookingScope {
+    var title: String {
+        switch self {
+        case .all: return "Alle Buchungen"
+        case .everyday: return "Alltag & Konsum"
+        case .investments: return "Sparpläne & Perks"
+        }
+    }
+    static let ordered: [BookingScope] = [.all, .everyday, .investments]
+}
+
+struct DayGroup: Identifiable {
+    let date: String
+    let bookings: [Booking]
+    var id: String { date }
+    var sum: Int64 { bookings.reduce(0) { $0 + $1.amountCents } }
+}
+
+struct ActiveChallenge: Identifiable {
+    let id = UUID()
+    let connection: BankConnection
+    var challenge: Challenge
+    var waiting: Bool
+    var busy: Bool = false
+    var error: String?
+}
+
+/// Missing FinTS product ID / API keys for a bank: shown as a setup form.
+struct SetupRequest: Identifiable {
+    let id = UUID()
+    let connection: BankConnection
+    let keys: [String]
+}
+
+struct PendingLogin: Identifiable {
+    let id = UUID()
+    let connection: BankConnection
+}
+
+struct CategoryNode: Identifiable, Hashable {
+    let category: GiroCrabCore.Category
+    var children: [CategoryNode]?
+    var id: Int64 { category.id }
+}
+
+@MainActor
+@Observable
+public final class AppModel {
+    enum VaultState: Equatable {
+        case locked
+        case unlocking
+        case open
+        case failed(String)
+    }
+
+    let options: LaunchOptions
+    private(set) var vault: Vault?
+    var vaultState: VaultState = .locked
+
+    // Data
+    var groups: [AccountGroup] = []
+    var categories: [GiroCrabCore.Category] = []
+    var categoryTree: [CategoryNode] = []
+    var bookings: [Booking] = []
+    var page: BookingPage?
+    var dashboard: InvestmentDashboard?
+    var merchantStats: MerchantStats?
+    var rules: [Rule] = []
+    var history: [DailyBalance] = []
+    var connections: [BankConnection] = []
+    var settings: [SettingEntry] = []
+    var onlineLogos = false
+    private var logoCache: [String: (image: Image, pixels: Int)] = [:]
+
+    // UI state
+    var sidebarSelection: SidebarItem? = .allAccounts { didSet { reloadBookings(); reloadHistory() } }
+    var scope: BookingScope = .all { didSet { reloadBookings() } }
+    var period: Period = .all { didSet { reloadCategories(); reloadBookings() } }
+    var statusFilter: StatusFilter = .all
+    var searchText: String = "" { didSet { scheduleSearch() } }
+    var selectedBookingID: Booking.ID? { didSet { reloadMerchantStats() } }
+    var collapsedGroups: Set<Int64> = []
+    var expandedCategories: Set<Int64> = []
+    var showRuleEditor = false
+    var ruleDraft: Rule?
+    var showSettings = false
+    var showCommandPalette = false
+    var showCategorizer = false
+    var pendingLogin: PendingLogin?
+    var setupRequest: SetupRequest?
+    /// Trade Republic in-app browser login (WKWebView).
+    var webLoginConnection: BankConnection?
+    /// Showing the throw-away demo vault (also when the own vault is still empty).
+    var demoActive = false
+    /// The personal vault while demo data is shown (nil if never unlocked).
+    private(set) var ownVault: Vault?
+    var activeChallenge: ActiveChallenge?
+    var syncingConnectionID: Int64?
+    var toast: String?
+    var errorMessage: String?
+
+    private var activeSession: SyncSession?
+    private var syncQueue: [BankConnection] = []
+    private var pollTask: Task<Void, Never>?
+    private var searchTask: Task<Void, Never>?
+
+    public init(options: LaunchOptions = .current) {
+        self.options = options
+        if options.freshVault {
+            openFreshVault()
+            return
+        }
+        if options.demoSeed {
+            openDemoVault()
+            switch options.initialView {
+            case "alltag": scope = .everyday
+            case "sparplaene", "sparpläne", "investments": scope = .investments
+            default: break
+            }
+            if let q = options.selectAccount, let a = allAccounts.first(where: { $0.name.lowercased().contains(q) }) {
+                sidebarSelection = .account(a.id)
+                selectedBookingID = bookings.first?.id
+            }
+            reloadBookings()
+            if let q = options.pickBooking, let b = bookings.first(where: { $0.merchantName.lowercased().contains(q) || $0.counterparty.lowercased().contains(q) }) {
+                selectedBookingID = b.id
+            }
+            if options.demoSync {
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    self?.requestSyncAll()
+                }
+            }
+        }
+    }
+
+    var isDemo: Bool { demoActive }
+    var hasOwnVault: Bool { ownVault != nil }
+
+    // MARK: - Vault lifecycle
+
+    private func openDemoVault() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Demo.girocrab")
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(atPath: url.path + suffix)
+        }
+        // Throw-away demo key (the demo vault holds only fictitious data).
+        let key = Data((0..<32).map { UInt8(($0 * 7 + 3) & 0xFF) })
+        do {
+            let v = try Vault.open(path: url.path, key: key)
+            _ = try v.seedDemoData()
+            vault = v
+            demoActive = true
+            vaultState = .open
+            selectedBookingID = nil
+            sidebarSelection = .allAccounts
+            reloadAll()
+            selectedBookingID = (bookings.first(where: { $0.flow == .consumption && $0.documentCount > 0 }) ?? bookings.first(where: { $0.flow == .consumption }))?.id
+        } catch {
+            vaultState = .failed(describe(error))
+        }
+    }
+
+    /// Developer switch --fresh-vault: empty personal vault without Keychain.
+    private func openFreshVault() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Fresh.girocrab")
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(atPath: url.path + suffix)
+        }
+        do {
+            let v = try Vault.open(path: url.path, key: Data(repeating: 0x5A, count: 32))
+            _ = try v.seedStarterCategories()
+            ownVault = v
+            useVault(v, demo: false)
+            if let bank = options.tryAddBank,
+               let kind = bankCatalog().first(where: { $0.name.lowercased().contains(bank) })?.kind {
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    self?.addConnection(kind, login: "kunde-4711")
+                }
+            }
+        } catch {
+            vaultState = .failed(describe(error))
+        }
+    }
+
+    static var vaultURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("GiroCrab", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base.appendingPathComponent("tresor.girocrab")
+    }
+
+    func unlock() {
+        guard vaultState != .unlocking else { return }
+        vaultState = .unlocking
+        Task {
+            do {
+                var key = try await VaultKeyManager.shared.unlock()
+                defer { key.resetBytes(in: 0..<key.count) }
+                let v = try Vault.open(path: Self.vaultURL.path, key: key)
+                _ = try v.seedStarterCategories()
+                self.ownVault = v
+                if try v.accountCount() == 0 && self.connectionsExist(v) == false {
+                    // Nothing synced yet: show demo bookings so the UI can be judged.
+                    self.openDemoVault()
+                    self.toast = "Ihr Tresor ist noch leer – Sie sehen Demo-Daten"
+                } else {
+                    self.useVault(v, demo: false)
+                }
+            } catch {
+                self.vaultState = .failed(describe(error))
+            }
+        }
+    }
+
+    private func connectionsExist(_ v: Vault) -> Bool {
+        ((try? v.listBankConnections()) ?? []).isEmpty == false
+    }
+
+    private func useVault(_ v: Vault, demo: Bool) {
+        vault = v
+        demoActive = demo
+        vaultState = .open
+        selectedBookingID = nil
+        sidebarSelection = .allAccounts
+        logoCache = [:]
+        reloadAll()
+        selectedBookingID = bookings.first?.id
+    }
+
+    /// Switch to the demo data (own vault stays unlocked in the background).
+    func showDemo() {
+        guard !demoActive else { return }
+        openDemoVault()
+    }
+
+    /// Switch back to the personal vault (unlocks it first if needed).
+    func showOwnVault() {
+        if let ov = ownVault {
+            useVault(ov, demo: false)
+        } else {
+            vaultState = .locked
+            unlock()
+        }
+    }
+
+    func lock() {
+        guard ownVault != nil else { return }
+        ownVault = nil
+        demoActive = false
+        vault = nil
+        groups = []; bookings = []; categories = []; categoryTree = []; rules = []; connections = []; settings = []
+        page = nil; dashboard = nil; merchantStats = nil; logoCache = [:]
+        vaultState = .locked
+    }
+
+    // MARK: - Loading
+
+    func reloadAll() {
+        reloadAccounts()
+        reloadHistory()
+        reloadCategories()
+        reloadBookings()
+        reloadRules()
+        reloadSettings()
+        reloadDashboard()
+    }
+
+    func reloadAccounts() {
+        guard let vault else { return }
+        run {
+            groups = try vault.listAccountGroups()
+            connections = try vault.listBankConnections()
+        }
+    }
+
+    func reloadCategories() {
+        guard let vault else { return }
+        let (from, to) = period.range
+        run {
+            categories = try vault.listCategories(dateFrom: from, dateTo: to)
+            categoryTree = Self.buildTree(categories)
+        }
+    }
+
+    func reloadDashboard() {
+        guard let vault else { return }
+        run { dashboard = try vault.investmentDashboard(months: 6) }
+    }
+
+    func reloadMerchantStats() {
+        guard let vault, let b = selectedBooking else { merchantStats = nil; return }
+        merchantStats = try? vault.merchantStats(merchantKey: b.merchant.key)
+    }
+
+    static func buildTree(_ flat: [GiroCrabCore.Category]) -> [CategoryNode] {
+        func children(of parent: Int64?) -> [CategoryNode] {
+            flat.filter { $0.parentId == parent }.map { c in
+                let kids = children(of: c.id)
+                return CategoryNode(category: c, children: kids.isEmpty ? nil : kids)
+            }
+        }
+        return children(of: nil)
+    }
+
+    var currentFilter: BookingFilter {
+        let (from, to) = period.range
+        var accountIDs: [Int64] = []
+        var category: Int64?
+        var uncategorized = false
+        switch sidebarSelection {
+        case .account(let id): accountIDs = [id]
+        case .group(let gid): accountIDs = groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
+        case .category(let id): category = id
+        case .uncategorized: uncategorized = true
+        case .allAccounts, .documents, .none: break
+        }
+        return BookingFilter(
+            accountIds: accountIDs,
+            categoryId: category,
+            includeSubcategories: true,
+            uncategorizedOnly: uncategorized,
+            search: searchText.isEmpty ? nil : searchText,
+            dateFrom: from,
+            dateTo: to,
+            limit: 3000,
+            offset: 0,
+            scope: scope,
+            merchantKey: nil
+        )
+    }
+
+    func reloadBookings() {
+        guard let vault else { return }
+        run {
+            let p = try vault.listTransactions(filter: currentFilter)
+            page = p
+            bookings = p.transactions
+        }
+        if let sel = selectedBookingID, !bookings.contains(where: { $0.id == sel }) {
+            selectedBookingID = bookings.first?.id
+        }
+    }
+
+    func reloadHistory() {
+        guard let vault else { return }
+        var ids: [Int64]
+        switch sidebarSelection {
+        case .account(let id): ids = [id]
+        case .group(let gid): ids = groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
+        default: ids = liquidAccounts.map(\.id)
+        }
+        if ids.isEmpty { ids = [-1] }
+        run { history = try vault.balanceHistory(accountIds: ids, days: 120) }
+    }
+
+    func reloadRules() {
+        guard let vault else { return }
+        run { rules = try vault.listRules() }
+    }
+
+    func reloadSettings() {
+        guard let vault else { return }
+        run {
+            settings = try vault.listSettings()
+            onlineLogos = try vault.onlineLogosEnabled()
+        }
+    }
+
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else { return }
+            self?.reloadBookings()
+        }
+    }
+
+    private func run(_ body: () throws -> Void) {
+        do { try body() } catch { errorMessage = describe(error) }
+    }
+
+    // MARK: - Logos (Tier 2)
+
+    /// Bumped whenever a domain override changes -> signets refetch.
+    var logoVersion = 0
+    private var logoInflight: [String: Task<(image: Image, pixels: Int)?, Never>] = [:]
+
+    /// Dual-source pipeline, stage 2: cached PNG/ICO from the vault or the
+    /// Google S2 / DuckDuckGo favicon for the first candidate domain that
+    /// yields a real logo (default globe rejected in Rust). Requests for the
+    /// same merchant are shared; results pop into every row automatically.
+    func logo(for merchant: MerchantInfo) async -> (image: Image, pixels: Int)? {
+        var candidates = merchant.domainCandidates
+        if candidates.isEmpty && !merchant.domain.isEmpty { candidates = [merchant.domain] }
+        guard !candidates.isEmpty, let vault else { return nil }
+        let key = candidates.joined(separator: "|")
+        if let hit = logoCache[key] { return hit }
+        if let running = logoInflight[key] { return await running.value }
+        let online = onlineLogos
+        let task = Task<(image: Image, pixels: Int)?, Never> { @MainActor in
+            var data: Data?
+            for d in candidates {
+                if let cached = try? vault.getMerchantLogoPng(domain: d) { data = cached; break }
+            }
+            if data == nil, online {
+                data = (try? await vault.fetchMerchantLogo(candidates: candidates))??.bytes
+            }
+            guard let data, let img = AppModel.image(from: data) else { return nil }
+            return (image: img, pixels: AppModel.pixelWidth(of: data))
+        }
+        logoInflight[key] = task
+        let result = await task.value
+        logoInflight[key] = nil
+        if let result { logoCache[key] = result }
+        return result
+    }
+
+    /// Kept for callers that only know a domain.
+    func logo(for domain: String) async -> (image: Image, pixels: Int)? {
+        guard !domain.isEmpty, let vault else { return nil }
+        if let hit = logoCache[domain] { return hit }
+        var data = try? vault.getMerchantLogoPng(domain: domain)
+        if data == nil, onlineLogos { data = try? await vault.fetchLogo(domain: domain) }
+        guard let data, let img = Self.image(from: data) else { return nil }
+        let entry = (image: img, pixels: Self.pixelWidth(of: data))
+        logoCache[domain] = entry
+        return entry
+    }
+
+    /// Sets / clears the original loan amount ("Ursprünglicher Kreditbetrag").
+    func setAccountInitialBalance(_ accountId: Int64, cents: Int64?) {
+        guard let vault else { return }
+        run { try vault.setAccountInitialBalance(accountId: accountId, cents: cents) }
+        reloadAccounts()
+    }
+
+    /// Manual domain from the inspector; nil/empty removes the override.
+    func setMerchantDomain(_ merchant: MerchantInfo, _ domain: String?) {
+        guard let vault else { return }
+        run {
+            let stored = try vault.setMerchantDomain(merchantKey: merchant.key, domain: domain)
+            toast = stored.map { "Domain für \(merchant.name): \($0) – Logo wird geladen" } ?? "Domain-Zuordnung entfernt"
+        }
+        logoCache = [:]
+        logoVersion += 1
+        reloadBookings()
+        reloadMerchantStats()
+    }
+
+    static func pixelWidth(of data: Data) -> Int {
+        #if os(macOS)
+        return NSImage(data: data)?.representations.map(\.pixelsWide).max() ?? 0
+        #else
+        return UIImage(data: data).map { Int($0.size.width * $0.scale) } ?? 0
+        #endif
+    }
+
+    static func image(from data: Data) -> Image? {
+        #if os(macOS)
+        NSImage(data: data).map { Image(nsImage: $0) }
+        #else
+        UIImage(data: data).map { Image(uiImage: $0) }
+        #endif
+    }
+
+    func clearLogoCache() {
+        guard let vault else { return }
+        run { _ = try vault.clearLogoCache() }
+        logoCache = [:]
+        toast = "Logo-Cache geleert"
+    }
+
+    // MARK: - Derived
+
+    var visibleBookings: [Booking] {
+        bookings.filter { b in
+            switch statusFilter {
+            case .all: return true
+            case .new: return !b.checked
+            case .checked: return b.checked
+            }
+        }
+    }
+
+    var dayGroups: [DayGroup] {
+        var out: [DayGroup] = []
+        var current: [Booking] = []
+        var day = ""
+        for b in visibleBookings {
+            if b.bookingDate != day, !current.isEmpty {
+                out.append(DayGroup(date: day, bookings: current))
+                current = []
+            }
+            day = b.bookingDate
+            current.append(b)
+        }
+        if !current.isEmpty { out.append(DayGroup(date: day, bookings: current)) }
+        return out
+    }
+
+    var selectedBooking: Booking? {
+        guard let id = selectedBookingID else { return nil }
+        return bookings.first { $0.id == id }
+    }
+
+    var allAccounts: [Account] { groups.flatMap(\.accounts) }
+    var liquidAccounts: [Account] { allAccounts.filter { [.checking, .savings, .paymentService, .creditCard, .cash].contains($0.kind) } }
+    var liquidBalance: Int64 { liquidAccounts.reduce(0) { $0 + $1.balanceCents } }
+    var newCount: Int { allAccounts.reduce(0) { $0 + Int($1.newCount) } }
+    var uncategorizedCount: Int { allAccounts.filter { $0.kind != .loan }.reduce(0) { $0 + Int($1.uncategorizedCount) } }
+
+    /// Everyday spending this month (never includes ETF plans / perks).
+    var consumptionThisMonth: Int64 { dashboard?.monthly.last?.consumptionCents ?? 0 }
+    var investedThisMonth: Int64 { dashboard?.monthly.last?.investmentCents ?? 0 }
+    var incomeThisMonth: Int64 { dashboard?.monthly.last?.incomeCents ?? 0 }
+
+    var title: String {
+        switch sidebarSelection {
+        case .allAccounts, .none: return "Übersicht"
+        case .group(let id): return groups.first { $0.id == id }?.name ?? "Gruppe"
+        case .account(let id): return allAccounts.first { $0.id == id }?.name ?? "Konto"
+        case .category(let id): return categories.first { $0.id == id }?.path ?? "Kategorie"
+        case .uncategorized: return "Ohne Kategorie"
+        case .documents: return "Belege & PostBox"
+        }
+    }
+
+    var headerBalance: (label: String, cents: Int64)? {
+        switch sidebarSelection {
+        case .account(let id): return allAccounts.first { $0.id == id }.map { ("Kontostand", $0.balanceCents) }
+        case .group(let id): return groups.first { $0.id == id }.map { ("Summe", $0.balanceCents) }
+        case .allAccounts, .none: return ("Verfügbar (Giro, Tagesgeld, Karten)", liquidBalance)
+        case .category(let id): return categories.first { $0.id == id }.map { ("Summe im Zeitraum", $0.totalCents) }
+        case .uncategorized, .documents: return nil
+        }
+    }
+
+    var lastSyncText: String {
+        let latest = connections.compactMap(\.lastSyncUnix).max()
+        guard let latest else { return "Noch nie aktualisiert" }
+        let f = RelativeDateTimeFormatter()
+        f.locale = Locale(identifier: "de_DE")
+        f.unitsStyle = .full
+        return "Aktualisiert " + f.localizedString(for: Date(timeIntervalSince1970: TimeInterval(latest)), relativeTo: Date())
+    }
+
+    func account(for id: Int64) -> Account? { allAccounts.first { $0.id == id } }
+
+    // MARK: - Keyboard navigation
+
+    func moveSelection(_ delta: Int) {
+        let list = visibleBookings
+        guard !list.isEmpty else { return }
+        let idx = selectedBookingID.flatMap { id in list.firstIndex { $0.id == id } } ?? -1
+        let next = max(0, min(list.count - 1, idx + delta))
+        selectedBookingID = list[next].id
+    }
+
+    // MARK: - Editing
+
+    func setCategory(_ categoryID: Int64?, for booking: Booking) {
+        guard let vault else { return }
+        run { try vault.setTransactionCategory(transactionId: booking.id, categoryId: categoryID) }
+        reloadBookings(); reloadCategories(); reloadAccounts(); reloadRules(); reloadDashboard(); reloadMerchantStats()
+    }
+
+    func setChecked(_ checked: Bool, for booking: Booking) {
+        guard let vault else { return }
+        run { try vault.setTransactionChecked(transactionId: booking.id, checked: checked) }
+        reloadBookings(); reloadAccounts()
+    }
+
+    func updateText(counterparty: String, purpose: String, for booking: Booking) {
+        guard let vault else { return }
+        run { try vault.updateTransactionText(transactionId: booking.id, counterparty: counterparty, purpose: purpose) }
+        reloadBookings(); reloadMerchantStats()
+    }
+
+    func createCategory(name: String, parent: Int64?, symbol: String, color: String) {
+        guard let vault else { return }
+        run { _ = try vault.createCategory(name: name, parentId: parent, sfSymbol: symbol, colorHex: color) }
+        reloadCategories()
+    }
+
+    func deleteCategory(_ id: Int64) {
+        guard let vault else { return }
+        run { try vault.deleteCategory(id: id) }
+        if sidebarSelection == .category(id) { sidebarSelection = .allAccounts }
+        reloadAll()
+    }
+
+    func newRuleDraft(from booking: Booking? = nil) -> Rule {
+        Rule(
+            id: 0,
+            name: booking.map { "\($0.merchant.name)" } ?? "Neue Regel",
+            categoryId: booking?.categoryId ?? categories.first(where: { $0.depth > 0 })?.id ?? categories.first?.id ?? 0,
+            field: booking == nil ? .any : .counterparty,
+            matchKind: .keyword,
+            pattern: booking.map { $0.merchant.known ? $0.merchant.name : $0.counterparty.split(separator: " ").prefix(2).joined(separator: " ") } ?? "",
+            caseSensitive: false,
+            minAmountCents: nil,
+            maxAmountCents: booking.map { $0.amountCents < 0 ? 0 : nil } ?? nil,
+            accountId: nil,
+            priority: Int32((rules.map(\.priority).max() ?? 0) + 10),
+            enabled: true,
+            matchCount: 0
+        )
+    }
+
+    func openRuleEditor(from booking: Booking? = nil) {
+        ruleDraft = booking.map { newRuleDraft(from: $0) }
+        showRuleEditor = true
+    }
+
+    @discardableResult
+    func saveRule(_ rule: Rule) -> Int64? {
+        guard let vault else { return nil }
+        do {
+            let id = try vault.saveRule(rule: rule)
+            _ = try vault.applyRules(onlyUncategorized: false)
+            reloadAll()
+            return id
+        } catch {
+            errorMessage = describe(error)
+            return nil
+        }
+    }
+
+    func deleteRule(_ id: Int64) {
+        guard let vault else { return }
+        run { try vault.deleteRule(ruleId: id) }
+        reloadAll()
+    }
+
+    func preview(_ rule: Rule) -> (matches: [Booking], error: String?) {
+        guard let vault else { return ([], nil) }
+        do { return (try vault.previewRule(rule: rule, limit: 200), nil) } catch { return ([], describe(error)) }
+    }
+
+    func applyAllRules() {
+        guard let vault else { return }
+        run {
+            let n = try vault.applyRules(onlyUncategorized: false)
+            toast = "Regeln angewendet – \(n) Buchungen neu zugeordnet"
+        }
+        reloadAll()
+    }
+
+    func saveSetting(_ key: String, _ value: String) {
+        guard let vault else { return }
+        run { try vault.setSetting(key: key, value: value) }
+        reloadSettings()
+    }
+
+    /// Adds a bank login. While demo data is shown, the login goes into the
+    /// personal vault (switching to it), then setup / PIN entry starts.
+    func addConnection(_ kind: ConnectorKind, login: String) {
+        if demoActive, let ov = ownVault {
+            useVault(ov, demo: false)
+        }
+        guard let vault else { return }
+        var newID: Int64?
+        run { newID = try vault.addBankConnection(connector: kind, displayName: "", loginName: login) }
+        reloadAccounts()
+        if let id = newID, let conn = connections.first(where: { $0.id == id }) {
+            toast = "\(conn.displayName) hinzugefügt"
+            requestSync(conn)
+        }
+    }
+
+    /// Setting keys a bank still needs (FinTS product ID, API keys …).
+    func missingSettings(for connection: BankConnection) -> [String] {
+        guard let d = bankCatalog().first(where: { $0.kind == connection.connector }) else { return [] }
+        return d.requiredSettings.filter { key in !(settings.first { $0.key == key }?.hasValue ?? false) }
+    }
+
+    func settingEntry(_ key: String) -> SettingEntry? { settings.first { $0.key == key } }
+
+    /// Saves the setup form and continues with the sync.
+    func completeSetup(_ request: SetupRequest, values: [String: String]) {
+        for (k, v) in values where !v.trimmingCharacters(in: .whitespaces).isEmpty {
+            saveSetting(k, v)
+        }
+        setupRequest = nil
+        let still = missingSettings(for: request.connection)
+        if still.isEmpty {
+            requestSync(request.connection)
+        } else {
+            setupRequest = SetupRequest(connection: request.connection, keys: still)
+        }
+    }
+
+    func removeConnection(_ id: Int64) {
+        guard let vault else { return }
+        run { try vault.deleteBankConnection(connectionId: id) }
+        reloadAll()
+    }
+
+    // MARK: - Sync (two-phase)
+
+    // MARK: - Belege & PostBox
+
+    var documentsVersion = 0
+    var quickLookURL: URL?
+
+    func documents(for booking: Booking) -> [DocumentInfo] {
+        _ = documentsVersion
+        return (try? vault?.listDocumentsForBooking(bookingId: booking.id)) ?? []
+    }
+
+    func allDocuments(search: String = "", unlinkedOnly: Bool = false) -> [DocumentInfo] {
+        _ = documentsVersion
+        let f = DocumentFilter(accountId: nil, docType: nil, search: search.isEmpty ? nil : search, unlinkedOnly: unlinkedOnly)
+        return (try? vault?.listAllDocuments(filter: f)) ?? []
+    }
+
+    func documentData(_ doc: DocumentInfo) -> Data? {
+        try? vault?.getDocumentBytes(docId: doc.id)
+    }
+
+    private func documentsChanged() {
+        documentsVersion += 1
+        reloadBookings()
+    }
+
+    /// Dropped onto a booking row / the inspector drop zone.
+    func attach(_ urls: [URL], to booking: Booking) {
+        guard let vault else { return }
+        var n = 0
+        for url in urls {
+            let ok = url.startAccessingSecurityScopedResource()
+            defer { if ok { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else { continue }
+            run { _ = try vault.attachDocumentToBooking(bookingId: booking.id, fileName: url.lastPathComponent, bytes: data); n += 1 }
+        }
+        if n > 0 { toast = "\(n) Beleg\(n == 1 ? "" : "e") an „\(booking.merchantName)“ angehängt" }
+        documentsChanged()
+    }
+
+    /// Dropped anywhere: Rust matches amount/date/merchant (with PDFKit/Vision text as hint).
+    func dropAnywhere(_ urls: [URL]) {
+        guard let vault else { return }
+        Task {
+            var linked: [String] = []
+            var unmatched = 0
+            for url in urls {
+                let ok = url.startAccessingSecurityScopedResource()
+                defer { if ok { url.stopAccessingSecurityScopedResource() } }
+                guard let data = try? Data(contentsOf: url) else { continue }
+                let text = await ReceiptText.extract(data: data, fileName: url.lastPathComponent)
+                do {
+                    if let hit = try vault.autoMatchDocument(fileName: url.lastPathComponent, bytes: data, textHint: text) {
+                        linked.append(hit)
+                    } else {
+                        unmatched += 1
+                    }
+                } catch {
+                    errorMessage = describe(error)
+                }
+            }
+            if !linked.isEmpty {
+                toast = "Beleg zugeordnet: " + linked.joined(separator: ", ")
+            } else if unmatched > 0 {
+                toast = "Kein passender Umsatz gefunden – in „Belege & PostBox“ abgelegt"
+            }
+            documentsChanged()
+        }
+    }
+
+    func deleteDocument(_ doc: DocumentInfo) {
+        guard let vault else { return }
+        run { try vault.deleteDocument(docId: doc.id) }
+        documentsChanged()
+    }
+
+    func linkDocument(_ doc: DocumentInfo, to booking: Booking?) {
+        guard let vault else { return }
+        run { try vault.linkDocument(docId: doc.id, bookingId: booking?.id) }
+        documentsChanged()
+    }
+
+    /// Writes the document to a temp file and shows it in QuickLook.
+    func quickLook(_ doc: DocumentInfo) {
+        guard let data = documentData(doc) else { return }
+        let ext = doc.mimeType == "image/png" ? "png" : doc.mimeType == "image/jpeg" ? "jpg" : "pdf"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Beleg-\(doc.id).\(ext)")
+        try? data.write(to: url)
+        quickLookURL = url
+    }
+
+    func exportAllDocuments(to folder: URL) {
+        guard let vault else { return }
+        let ok = folder.startAccessingSecurityScopedResource()
+        defer { if ok { folder.stopAccessingSecurityScopedResource() } }
+        run {
+            let n = try vault.exportAllDocuments(destDir: folder.path)
+            toast = "\(n) Belege nach „\(folder.lastPathComponent)/GiroCrab-Belege“ exportiert"
+        }
+    }
+
+    func connectionStatus(_ id: Int64) -> ConnectionStatus? {
+        try? vault?.connectionStatus(connectionId: id)
+    }
+
+    func updateConnection(_ id: Int64, name: String, login: String) {
+        guard let vault else { return }
+        run { try vault.updateBankConnection(connectionId: id, displayName: name, loginName: login) }
+        reloadAccounts()
+    }
+
+    func setConnectionPin(_ id: Int64, _ pin: String?) {
+        guard let vault else { return }
+        run { try vault.setConnectionPin(connectionId: id, pin: pin) }
+    }
+
+    func clearSession(_ id: Int64) {
+        guard let vault else { return }
+        run { try vault.clearConnectionSession(connectionId: id) }
+        toast = "Sitzung gelöscht"
+    }
+
+    func revealSetting(_ key: String) -> String {
+        ((try? vault?.getSetting(key: key)) ?? nil) ?? ""
+    }
+
+    /// Cookies from the in-app browser login -> vault -> sync without 2FA.
+    func applyBrowserSession(_ connection: BankConnection, cookies: String) {
+        guard let vault else { return }
+        webLoginConnection = nil
+        do {
+            try vault.setConnectionSession(connectionId: connection.id, cookies: cookies)
+            toast = "Trade-Republic-Sitzung übernommen"
+            startSync(connection, secret: "")
+        } catch {
+            errorMessage = describe(error)
+        }
+    }
+
+    func requestSync(_ connection: BankConnection) {
+        // Amex / Amazon Visa: embedded web-portal login (no API keys needed).
+        if usesPortal(connection) {
+            webLoginConnection = connection
+            return
+        }
+        // Trade Republic: AWS WAF blocks raw logins – without a stored
+        // session the in-app browser login is the default flow.
+        if !isDemo, connection.connector == .tradeRepublic, !(connectionStatus(connection.id)?.hasSession ?? false) {
+            webLoginConnection = connection
+            return
+        }
+        if !isDemo, let st = connectionStatus(connection.id), (st.hasPin || (connection.connector == .tradeRepublic && st.hasSession)),
+           missingSettings(for: connection).isEmpty {
+            startSync(connection, secret: "")
+            return
+        }
+        if !isDemo {
+            let missing = missingSettings(for: connection)
+            if !missing.isEmpty {
+                setupRequest = SetupRequest(connection: connection, keys: missing)
+                return
+            }
+        }
+        let needsSecret = !(bankCatalog().first { $0.kind == connection.connector }?.secretLabel.hasPrefix("(") ?? false)
+        if isDemo || !needsSecret {
+            startSync(connection, secret: isDemo ? "demo" : "")
+        } else {
+            pendingLogin = PendingLogin(connection: connection)
+        }
+    }
+
+    func requestSyncAll() {
+        guard syncingConnectionID == nil else { return }
+        // portal connections need an interactive login – not part of "sync all"
+        let batch = connections.filter { !usesPortal($0) }
+        guard let head = batch.first else { return }
+        syncQueue = Array(batch.dropFirst())
+        requestSync(head)
+    }
+
+    private func syncNextInQueue() {
+        guard !syncQueue.isEmpty else { return }
+        requestSync(syncQueue.removeFirst())
+    }
+
+    func startSync(_ connection: BankConnection, secret: String) {
+        guard let vault else { return }
+        if usesPortal(connection) { webLoginConnection = connection; return }
+        pendingLogin = nil
+        syncingConnectionID = connection.id
+        Task {
+            do {
+                let session = try vault.beginSync(connectionId: connection.id, secret: secret, demo: isDemo)
+                self.activeSession = session
+                let step = try await session.start()
+                self.handle(step, connection: connection)
+            } catch {
+                self.finishSync(error: error)
+            }
+        }
+    }
+
+    private func handle(_ step: SyncStep, connection: BankConnection) {
+        switch step {
+        case .needsChallenge(let c):
+            activeChallenge = ActiveChallenge(connection: connection, challenge: c, waiting: false)
+            if c.kind == .decoupledPush { schedulePoll(connection: connection, interval: c.pollIntervalSeconds) }
+        case .stillWaiting(let c):
+            if activeChallenge == nil {
+                activeChallenge = ActiveChallenge(connection: connection, challenge: c, waiting: true)
+            } else {
+                activeChallenge?.waiting = true
+                activeChallenge?.busy = false
+            }
+            schedulePoll(connection: connection, interval: c.pollIntervalSeconds)
+        case .finished(let s):
+            activeChallenge = nil
+            syncingConnectionID = nil
+            activeSession = nil
+            toast = "\(connection.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert"
+            reloadAll()
+            syncNextInQueue()
+        }
+    }
+
+    private func schedulePoll(connection: BankConnection, interval: UInt32) {
+        pollTask?.cancel()
+        pollTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(interval, 1)) * 1_000_000_000)
+            guard !Task.isCancelled, let self, let session = self.activeSession else { return }
+            do {
+                let step = try await session.poll()
+                self.handle(step, connection: connection)
+            } catch {
+                self.finishSync(error: error)
+            }
+        }
+    }
+
+    func submitCode(_ code: String) {
+        guard let session = activeSession, let ch = activeChallenge else { return }
+        activeChallenge?.busy = true
+        activeChallenge?.error = nil
+        Task {
+            do {
+                let step = try await session.submitCode(code: code)
+                self.handle(step, connection: ch.connection)
+            } catch {
+                self.finishSync(error: error)
+            }
+        }
+    }
+
+    func cancelSync() {
+        pollTask?.cancel()
+        let s = activeSession
+        activeSession = nil
+        activeChallenge = nil
+        syncingConnectionID = nil
+        syncQueue = []
+        Task { await s?.cancel() }
+    }
+
+    private var syncingConnectionIDBeforeError: Int64?
+
+    private func finishSync(error: Error) {
+        syncingConnectionIDBeforeError = syncingConnectionID
+        pollTask?.cancel()
+        activeSession = nil
+        activeChallenge = nil
+        syncingConnectionID = nil
+        syncQueue = []
+        if let ce = error as? CoreError, case .BrowserLoginRequired(let m) = ce,
+           let conn = connections.first(where: { $0.id == syncingConnectionIDBeforeError }) {
+            toast = m
+            webLoginConnection = conn
+            return
+        }
+        if let ce = error as? CoreError, case .MissingSetting(let key) = ce,
+           let conn = connections.first(where: { $0.id == syncingConnectionIDBeforeError }) {
+            var keys = missingSettings(for: conn)
+            if !keys.contains(key) { keys.insert(key, at: 0) }
+            setupRequest = SetupRequest(connection: conn, keys: keys)
+            return
+        }
+        errorMessage = describe(error)
+    }
+}
+
+/// German, human-readable text for core errors (instead of
+/// "GiroCrabCore.CoreError.MissingSetting(key: …)").
+func describe(_ error: Error) -> String {
+    guard let e = error as? CoreError else { return error.localizedDescription }
+    switch e {
+    case .Database(let m): return "Datenbankfehler: \(m)"
+    case .WrongKey: return "Der Tresor konnte nicht entsperrt werden (falscher Schlüssel oder beschädigte Datei)."
+    case .NotFound(let what): return "Nicht gefunden: \(what)"
+    case .InvalidInput(let m): return "Ungültige Eingabe: \(m)"
+    case .MissingSetting(let key): return "Für diese Bank fehlt noch eine Einstellung: \(settingLabels[key] ?? key). Bitte in den Einstellungen unter „FinTS & API-Schlüssel“ eintragen."
+    case .Network(let m): return "Netzwerkfehler: \(m)"
+    case .Bank(let code, let m): return "Die Bank hat abgelehnt (\(code)): \(m)"
+    case .Authentication(let m): return "Anmeldung fehlgeschlagen: \(m)"
+    case .Protocol(let m): return "Protokollfehler: \(m)"
+    case .SessionClosed: return "Dieser Abruf ist nicht mehr aktiv."
+    case .BrowserLoginRequired(let m): return m
+    }
+}
+
+let settingLabels: [String: String] = [
+    "fints.product_id": "FinTS-Produktregistrierung",
+    "fints.url.52090000": "FinTS-Server Volksbank Kassel Göttingen",
+    "fints.url.50050201": "FinTS-Server 1822direkt",
+    "comdirect.client_id": "comdirect Client-ID",
+    "comdirect.client_secret": "comdirect Client-Secret",
+    "paypal.client_id": "PayPal Client-ID",
+    "paypal.client_secret": "PayPal Secret",
+    "enablebanking.application_id": "Enable Banking Application-ID",
+    "enablebanking.private_key_pem": "Enable Banking Private Key",
+    "enablebanking.redirect_url": "Enable Banking Redirect-URL",
+]
+
+func formatIBAN(_ iban: String) -> String {
+    var out = ""
+    for (i, ch) in iban.enumerated() {
+        if i > 0 && i % 4 == 0 { out.append(" ") }
+        out.append(ch)
+    }
+    return out
+}

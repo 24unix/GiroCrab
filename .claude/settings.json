@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./generated/**)",
+      "Read(**/girocrab_core.swift)",
+      "Read(**/*.xcframework/**)",
+      "Read(./cashcrab-core/**)",
+      "Read(./CashCrabApp/**)",
+      "Read(**/*.jsonl)",
+      "Read(**/*.log)",
+      "Read(./shots/**)",
+      "Read(./capture/**)"
+    ]
+  }
+}

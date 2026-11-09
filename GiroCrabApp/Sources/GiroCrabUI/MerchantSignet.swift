@@ -1,0 +1,104 @@
+import SwiftUI
+import GiroCrabCore
+
+/// 36×36 squircle signet for a merchant:
+///  Tier 2 – cached favicon (only if the user enabled online logos),
+///  Tier 1 – monogram in a subtle brand colour,
+///  Tier 3 – category SF Symbol for unknown merchants.
+struct MerchantSignet: View {
+    @Environment(AppModel.self) private var model
+    let merchant: MerchantInfo
+    var categorySymbol: String = ""
+    var size: CGFloat = 36
+    var showNewDot = false
+
+    @State private var logo: (image: Image, pixels: Int)?
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+        let brand = Color(hex: merchant.colorHex)
+        let sharpLogo = logo.flatMap { $0.pixels >= 48 ? $0.image : nil }
+        ZStack {
+            if merchant.isPerson {
+                // private person: calm circular initials, never a company logo
+                Circle().fill(Color(hex: "#E2E8F0"))
+                Text(merchant.monogram)
+                    .font(.system(size: size * 0.36, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color(hex: "#475569"))
+            } else if let img = sharpLogo {
+                // downloaded favicon (Google s2, 128 px) – real brand logo
+                shape.fill(Color.white)
+                img.resizable().interpolation(.high).scaledToFit().padding(size * 0.14)
+            } else if !merchant.svgPath.isEmpty {
+                // simple-icons vector glyph in the brand colour
+                shape.fill(brand.opacity(0.09))
+                SVGPathShape(d: merchant.svgPath)
+                    .fill(Color.readable(hex: merchant.colorHex), style: FillStyle(eoFill: false))
+                    .padding(size * 0.2)
+            } else if let small = logo?.image, merchant.domainSource == "dictionary" || merchant.domainSource == "override" {
+                // small favicons only for known brands – a guessed domain must deliver a sharp logo
+                shape.fill(Color.white)
+                small.resizable().interpolation(.high).scaledToFit().padding(size * 0.2)
+            } else if !merchant.known && !categorySymbol.isEmpty {
+                shape.fill(Color(hex: "#F1F3F5"))
+                Image(systemName: categorySymbol)
+                    .font(.system(size: size * 0.42, weight: .medium))
+                    .foregroundStyle(Theme.secondary)
+            } else {
+                shape.fill(brand.opacity(0.10))
+                Text(merchant.monogram)
+                    .font(.system(size: size * (merchant.monogram.count > 2 ? 0.30 : 0.40), weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.readable(hex: merchant.colorHex))
+                    .minimumScaleFactor(0.6)
+            }
+            if !merchant.isPerson {
+                shape.strokeBorder(sharpLogo == nil ? brand.opacity(0.16) : Theme.border, lineWidth: 1)
+            }
+        }
+        .frame(width: size, height: size)
+        .overlay(alignment: .topTrailing) {
+            if showNewDot {
+                Circle().fill(Theme.accent).frame(width: 8, height: 8)
+                    .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                    .offset(x: 2, y: -2)
+            }
+        }
+        .task(id: merchant.domainCandidates.joined(separator: "|") + merchant.domain + (model.onlineLogos ? "1" : "0") + "\(model.logoVersion)") {
+            logo = await model.logo(for: merchant)
+        }
+        .accessibilityLabel(merchant.name)
+    }
+}
+
+/// Small signet for accounts (no bank logos: monogram + subtle tint).
+struct AccountSignet: View {
+    let account: Account
+    var size: CGFloat = 22
+
+    var body: some View {
+        let tint = account.kind == .loan ? Theme.loan : (account.connector?.tint ?? Theme.secondary)
+        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+            .fill(tint.opacity(0.12))
+            .overlay(
+                Image(systemName: account.sfSymbol)
+                    .font(.system(size: size * 0.48, weight: .semibold))
+                    .foregroundStyle(tint)
+            )
+            .frame(width: size, height: size)
+    }
+}
+
+/// Rounded square with an SF Symbol – used instead of bank logos.
+struct SymbolTile: View {
+    let symbol: String
+    let tint: Color
+    var size: CGFloat = 22
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.5, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).fill(tint.opacity(0.12)))
+    }
+}

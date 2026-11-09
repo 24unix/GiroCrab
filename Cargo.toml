@@ -1,0 +1,30 @@
+[workspace]
+members = ["girocrab-core", "uniffi-bindgen"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/girocrab/girocrab"
+
+# The root package is a small macOS launcher. `cargo build` here also builds
+# the Rust core, generates the UniFFI Swift bindings (via build-xcframework.sh
+# --macos-only) and compiles the SwiftUI macOS app, so `cargo run -- --demo-seed`
+# opens the real native app.
+[package]
+name = "girocrab"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Launcher for the GiroCrab SwiftUI app (builds core + Swift app)"
+build = "build.rs"
+
+[[bin]]
+name = "girocrab"
+path = "src/main.rs"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "debuginfo"

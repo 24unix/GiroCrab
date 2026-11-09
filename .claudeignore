@@ -1,0 +1,45 @@
+# Build output
+target/
+.build/
+.swiftpm/
+DerivedData/
+*.xcframework/
+**/Generated/
+generated/
+**/girocrabFFI*
+**/girocrab_coreFFI*
+**/cashcrab_coreFFI*
+# Legacy CashCrab era
+cashcrab-core/
+CashCrabApp/
+# Evidence / captures / logs
+capture/
+captures/
+checks/
+reference/
+inbox/
+investigation.cany/
+*.cany/
+shots/
+screenshots/
+!docs/screenshots/
+!docs/screenshots/*.png
+*.log
+agent-session.jsonl
+craft.json
+feed.json
+# Data
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
+*.girocrab*
+*.csv
+*.mt940
+# Raw icon datasets
+GiroCrabApp/Assets/
+GiroCrabApp/Branding/
+**/icons/*.json
+**/icons/*.svg
+**/merchants/*.json
+**/merchants/*.svg

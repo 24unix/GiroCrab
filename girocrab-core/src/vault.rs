@@ -1,0 +1,1410 @@
+//! The encrypted ledger ("vault"): one SQLCipher database file.
+//!
+//! Schema (clean-room design, see `SCHEMA` below):
+//!   bank_connections  1─n accounts 1─n transactions n─1 categories (tree)
+//!   rules             n─1 categories, optional n─1 accounts
+//!   settings          key/value, secrets flagged, all inside the encrypted file
+//!   account_groups    sidebar grouping (Giro, Credit cards, ...)
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, MutexGuard};
+
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension, ToSql};
+use zeroize::Zeroizing;
+
+use crate::error::{CoreError, CoreResult};
+use crate::merchants::{classify, clean_purpose, payment_method, FlowKind, MerchantResolver};
+use crate::models::*;
+use crate::money::parse_cents;
+use crate::rules::{RuleInput, RuleSet};
+
+/// Adds merchant, flow kind, payment method and clean purpose to a booking.
+pub(crate) fn enrich(t: &mut Booking) {
+    t.merchant = MerchantResolver::resolve(&t.counterparty, &t.purpose);
+    t.merchant_name = t.merchant.name.clone();
+    t.merchant_domain = Some(t.merchant.domain.clone()).filter(|d| !d.is_empty());
+    t.merchant_svg_path = Some(t.merchant.svg_path.clone()).filter(|d| !d.is_empty());
+    t.merchant_hex_color = t.merchant.color_hex.clone();
+    let top = t
+        .category_path
+        .split(" › ")
+        .next()
+        .unwrap_or("")
+        .to_string();
+    t.flow = classify(
+        t.amount_cents,
+        &t.counterparty,
+        &t.purpose,
+        &t.booking_text,
+        &t.merchant,
+        &top,
+        t.account_kind,
+    );
+    t.payment_method = payment_method(&t.booking_text, &t.purpose, t.account_kind, t.amount_cents);
+    t.clean_purpose = clean_purpose(&t.purpose);
+}
+
+const SCHEMA_VERSION: i64 = 5;
+
+const SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS bank_connections (
+    id              INTEGER PRIMARY KEY,
+    connector       TEXT    NOT NULL,              -- ConnectorKind::as_str()
+    display_name    TEXT    NOT NULL,
+    login_name      TEXT    NOT NULL DEFAULT '',
+    bank_code       TEXT    NOT NULL DEFAULT '',
+    sf_symbol       TEXT    NOT NULL DEFAULT 'building.columns',
+    state_json      TEXT    NOT NULL DEFAULT '{}',  -- connector state (FinTS system id, BPD, PSD2 session ...)
+    last_sync_unix  INTEGER,
+    created_unix    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
+
+CREATE TABLE IF NOT EXISTS account_groups (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT    NOT NULL UNIQUE,
+    sf_symbol   TEXT    NOT NULL DEFAULT 'folder',
+    sort_order  INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS accounts (
+    id              INTEGER PRIMARY KEY,
+    connection_id   INTEGER REFERENCES bank_connections(id) ON DELETE SET NULL,
+    group_id        INTEGER NOT NULL REFERENCES account_groups(id),
+    external_ref    TEXT    NOT NULL DEFAULT '',   -- IBAN / bank account id / PSD2 uid
+    name            TEXT    NOT NULL,
+    bank_name       TEXT    NOT NULL DEFAULT '',
+    owner           TEXT    NOT NULL DEFAULT '',
+    iban            TEXT    NOT NULL DEFAULT '',
+    account_number  TEXT    NOT NULL DEFAULT '',
+    currency        TEXT    NOT NULL DEFAULT 'EUR',
+    kind            TEXT    NOT NULL DEFAULT 'checking',
+    balance_cents   INTEGER NOT NULL DEFAULT 0,    -- i64 cents
+    balance_date    TEXT    NOT NULL DEFAULT '',
+    sf_symbol       TEXT    NOT NULL DEFAULT 'building.columns',
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    initial_balance_cents INTEGER,                 -- original amount of a Darlehen (i64 cents)
+    UNIQUE (connection_id, external_ref)
+);
+
+CREATE TABLE IF NOT EXISTS categories (
+    id            INTEGER PRIMARY KEY,
+    parent_id     INTEGER REFERENCES categories(id) ON DELETE CASCADE,
+    name          TEXT    NOT NULL,
+    sf_symbol     TEXT    NOT NULL DEFAULT 'tag',
+    color_hex     TEXT    NOT NULL DEFAULT '#8E8E93',
+    budget_cents  INTEGER,                         -- optional monthly budget, i64 cents
+    sort_order    INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS categories_unique_name ON categories(IFNULL(parent_id, 0), name);
+
+CREATE TABLE IF NOT EXISTS rules (
+    id                INTEGER PRIMARY KEY,
+    name              TEXT    NOT NULL,
+    category_id       INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    field             TEXT    NOT NULL DEFAULT 'any',
+    match_kind        TEXT    NOT NULL DEFAULT 'keyword',   -- keyword | regex
+    pattern           TEXT    NOT NULL,
+    case_sensitive    INTEGER NOT NULL DEFAULT 0,
+    min_amount_cents  INTEGER,
+    max_amount_cents  INTEGER,
+    account_id        INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+    priority          INTEGER NOT NULL DEFAULT 100,
+    enabled           INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+    id                 INTEGER PRIMARY KEY,
+    account_id         INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    external_id        TEXT    NOT NULL,           -- de-duplication key from the bank
+    booking_date       TEXT    NOT NULL,           -- YYYY-MM-DD
+    value_date         TEXT    NOT NULL DEFAULT '',
+    amount_cents       INTEGER NOT NULL,           -- i64 cents, negative = debit
+    currency           TEXT    NOT NULL DEFAULT 'EUR',
+    counterparty       TEXT    NOT NULL DEFAULT '',
+    counterparty_iban  TEXT    NOT NULL DEFAULT '',
+    purpose            TEXT    NOT NULL DEFAULT '',
+    booking_text       TEXT    NOT NULL DEFAULT '',
+    category_id        INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+    category_source    TEXT    NOT NULL DEFAULT 'none',   -- none | rule | manual
+    rule_id            INTEGER REFERENCES rules(id) ON DELETE SET NULL,
+    checked            INTEGER NOT NULL DEFAULT 0,
+    imported_unix      INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    UNIQUE (account_id, external_id)
+);
+CREATE INDEX IF NOT EXISTS tx_account_date ON transactions(account_id, booking_date DESC);
+CREATE INDEX IF NOT EXISTS tx_date ON transactions(booking_date DESC);
+CREATE INDEX IF NOT EXISTS tx_category ON transactions(category_id);
+
+CREATE TABLE IF NOT EXISTS merchant_logo_cache (
+    domain        TEXT PRIMARY KEY,
+    image_bytes   BLOB,                            -- PNG/ICO; NULL/empty = nothing found (negative cache)
+    updated_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    source        TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    is_secret  INTEGER NOT NULL DEFAULT 0
+);
+"#;
+
+/// Known settings shown in the Settings UI. Nothing is pre-filled: every user
+/// registers their own FinTS product and API applications.
+/// (key, label, help, group, is_secret, default)
+pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
+    ("fints.product_id", "FinTS-Produktregistrierung", "Kostenlos bei der Deutschen Kreditwirtschaft registrieren (fints.org › Hersteller › Produktregistrierung). Pflicht für alle FinTS-Banken.", "FinTS 3.0", false, ""),
+    ("fints.product_version", "FinTS-Produktversion", "Versionsangabe, die mit HKVVB gesendet wird.", "FinTS 3.0", false, "0.1"),
+    ("fints.url.52090000", "Server Volksbank Kassel Göttingen (BLZ 52090000)", "FinTS-PIN/TAN-Adresse laut öffentlicher DK-Institutsliste.", "FinTS 3.0", false, "https://fints1.atruvia.de/cgi-bin/hbciservlet"),
+    ("fints.url.50050201", "Server 1822direkt (BLZ 50050201)", "FinTS-PIN/TAN-Adresse laut öffentlicher DK-Institutsliste.", "FinTS 3.0", false, "https://banking-hs5.s-fints-pt-hs.de/fints30"),
+    ("comdirect.client_id", "comdirect Client-ID", "Aus dem comdirect-Entwicklerportal (Persönlicher Bereich › Einstellungen › API).", "comdirect REST-API", false, ""),
+    ("comdirect.client_secret", "comdirect Client-Secret", "Wird beim Freischalten des API-Zugangs einmalig angezeigt.", "comdirect REST-API", true, ""),
+    ("paypal.client_id", "PayPal Client-ID", "REST-App auf developer.paypal.com mit aktivierter „Transaction Search“ anlegen.", "PayPal", false, ""),
+    ("paypal.client_secret", "PayPal Secret", "Secret derselben REST-App.", "PayPal", true, ""),
+    ("paypal.environment", "PayPal-Umgebung", "live oder sandbox", "PayPal", false, "live"),
+    ("enablebanking.application_id", "Enable Banking Application-ID", "Anwendung auf enablebanking.com registrieren (wird als JWT-„kid“ verwendet).", "Enable Banking (PSD2)", false, ""),
+    ("enablebanking.private_key_pem", "Enable Banking Private Key (PEM)", "RSA-Schlüssel der Anwendung; signiert das RS256-JWT.", "Enable Banking (PSD2)", true, ""),
+    ("enablebanking.redirect_url", "Redirect-URL", "Muss in Ihrer Enable-Banking-Anwendung freigegeben sein.", "Enable Banking (PSD2)", false, "https://localhost/girocrab/callback"),
+    ("enablebanking.aspsp.amex", "ASPSP-Name American Express", "Exakter Name aus GET /aspsps.", "Enable Banking (PSD2)", false, "American Express"),
+    ("enablebanking.country.amex", "Land American Express", "Zweistelliger Ländercode.", "Enable Banking (PSD2)", false, "DE"),
+    ("enablebanking.aspsp.amazonvisa", "ASPSP-Name Amazon Visa", "Herausgeber in Deutschland: Open Bank S.A. (Marke Zinia). Je nach Listung „Open Bank“ oder „Zinia“ eintragen.", "Enable Banking (PSD2)", false, "Open Bank"),
+    ("enablebanking.country.amazonvisa", "Land Amazon Visa", "Zweistelliger Ländercode.", "Enable Banking (PSD2)", false, "DE"),
+    ("merchants.online_logos", "Händler-Logos online laden", "Logos per Google-Favicon-Dienst (Ersatz: DuckDuckGo) laden und verschlüsselt zwischenspeichern. Dabei wird nur die Händler-Domain (z. B. lidl.de) übertragen. Standard: an.", "Händler-Logos", false, "1"),
+    ("sync.days_back", "Tage beim ersten Abruf", "Ältere Umsätze werden nur einmal abgefragt.", "Allgemein", false, "90"),
+];
+
+#[derive(uniffi::Object)]
+pub struct Vault {
+    conn: Mutex<Connection>,
+    path: String,
+}
+
+impl Vault {
+    pub(crate) fn db(&self) -> CoreResult<MutexGuard<'_, Connection>> {
+        self.conn.lock().map_err(|_| CoreError::Database {
+            message: "vault lock poisoned".into(),
+        })
+    }
+
+    fn apply_key(conn: &Connection, key: &[u8]) -> CoreResult<()> {
+        if key.len() < 16 {
+            return Err(CoreError::InvalidInput {
+                message: "master key must be at least 16 bytes".into(),
+            });
+        }
+        // Raw key syntax: x'..hex..' -> no PBKDF2 on every open, key comes from Keychain.
+        let pragma = Zeroizing::new(format!("PRAGMA key = \"x'{}'\";", hex::encode(key)));
+        conn.execute_batch(&pragma)?;
+        Ok(())
+    }
+
+    fn migrate(conn: &Connection) -> CoreResult<()> {
+        // Fails with NotADatabase if the key is wrong.
+        conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
+            r.get::<_, i64>(0)
+        })?;
+        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if version == 0 {
+            conn.execute_batch(SCHEMA)?;
+        } else {
+            if version == 1 {
+                conn.execute_batch(
+                    "ALTER TABLE accounts ADD COLUMN initial_balance_cents INTEGER;",
+                )?;
+            } else if version <= 4 {
+                // v5: loan_principal_cents -> initial_balance_cents
+                conn.execute_batch("ALTER TABLE accounts RENAME COLUMN loan_principal_cents TO initial_balance_cents;")?;
+            }
+            if version <= 2 {
+                // v3: merchant_logo_cache(domain, image_bytes, updated_at)
+                conn.execute_batch(
+                    "DROP TABLE IF EXISTS merchant_logo_cache;
+                     CREATE TABLE merchant_logo_cache (domain TEXT PRIMARY KEY, image_bytes BLOB,
+                        updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), source TEXT NOT NULL DEFAULT '');",
+                )?;
+            }
+        }
+        // v4: encrypted documents (Beleg-Abruf & PostBox) – idempotent
+        conn.execute_batch(crate::documents::DOC_SCHEMA)?;
+        conn.execute_batch(crate::insights::OVERRIDE_SCHEMA)?;
+        if version < SCHEMA_VERSION {
+            conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
+        }
+        Ok(())
+    }
+
+    /// Fills `initial_balance_cents` from the largest historical absolute
+    /// balance, reconstructed backwards from the current balance over the
+    /// account's own bookings. Never overwrites an existing value.
+    pub(crate) fn derive_initial_balance(conn: &Connection, account_id: i64) -> CoreResult<()> {
+        let (balance, existing): (i64, Option<i64>) = conn.query_row(
+            "SELECT balance_cents, initial_balance_cents FROM accounts WHERE id = ?1",
+            [account_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        if existing.is_some() {
+            return Ok(());
+        }
+        let mut stmt = conn.prepare("SELECT amount_cents FROM transactions WHERE account_id = ?1 ORDER BY booking_date DESC, id DESC")?;
+        let amounts: Vec<i64> = stmt
+            .query_map([account_id], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        if amounts.is_empty() {
+            return Ok(());
+        }
+        let mut running = balance;
+        let mut max_abs = running.abs();
+        for a in amounts {
+            running -= a; // balance before this booking
+            max_abs = max_abs.max(running.abs());
+        }
+        if max_abs > 0 {
+            conn.execute(
+                "UPDATE accounts SET initial_balance_cents = ?1 WHERE id = ?2",
+                params![max_abs, account_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn rule_set(conn: &Connection) -> CoreResult<RuleSet> {
+        RuleSet::new(Self::load_rules(conn)?)
+    }
+
+    fn load_rules(conn: &Connection) -> CoreResult<Vec<Rule>> {
+        let mut stmt = conn.prepare(
+            "SELECT r.id, r.name, r.category_id, r.field, r.match_kind, r.pattern, r.case_sensitive,
+                    r.min_amount_cents, r.max_amount_cents, r.account_id, r.priority, r.enabled,
+                    (SELECT count(*) FROM transactions t WHERE t.rule_id = r.id)
+             FROM rules r ORDER BY r.priority, r.id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Rule {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                category_id: r.get(2)?,
+                field: RuleField::from_str(&r.get::<_, String>(3)?),
+                match_kind: if r.get::<_, String>(4)? == "regex" {
+                    MatchKind::Regex
+                } else {
+                    MatchKind::Keyword
+                },
+                pattern: r.get(5)?,
+                case_sensitive: r.get::<_, i64>(6)? != 0,
+                min_amount_cents: r.get(7)?,
+                max_amount_cents: r.get(8)?,
+                account_id: r.get(9)?,
+                priority: r.get(10)?,
+                enabled: r.get::<_, i64>(11)? != 0,
+                match_count: r.get::<_, i64>(12)? as u32,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Re-runs rules over transactions that are not manually categorised.
+    /// Returns the number of transactions whose category changed.
+    pub(crate) fn apply_rules_inner(
+        conn: &Connection,
+        only_uncategorised: bool,
+    ) -> CoreResult<u32> {
+        let set = Self::rule_set(conn)?;
+        let sql = if only_uncategorised {
+            "SELECT id, account_id, amount_cents, counterparty, counterparty_iban, purpose, booking_text, category_id, rule_id
+             FROM transactions WHERE category_source = 'none'"
+        } else {
+            "SELECT id, account_id, amount_cents, counterparty, counterparty_iban, purpose, booking_text, category_id, rule_id
+             FROM transactions WHERE category_source != 'manual'"
+        };
+        let mut stmt = conn.prepare(sql)?;
+        let rows: Vec<(
+            i64,
+            i64,
+            i64,
+            String,
+            String,
+            String,
+            String,
+            Option<i64>,
+            Option<i64>,
+        )> = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                    r.get(7)?,
+                    r.get(8)?,
+                ))
+            })?
+            .collect::<Result<_, _>>()?;
+        let mut changed = 0u32;
+        let mut upd_rule = conn.prepare("UPDATE transactions SET category_id = ?1, rule_id = ?2, category_source = 'rule' WHERE id = ?3")?;
+        let mut upd_none = conn.prepare("UPDATE transactions SET category_id = NULL, rule_id = NULL, category_source = 'none' WHERE id = ?1")?;
+        for (id, account_id, amount, cp, iban, purpose, bt, cat, rule) in rows {
+            let input = RuleInput {
+                account_id,
+                amount_cents: amount,
+                counterparty: &cp,
+                counterparty_iban: &iban,
+                purpose: &purpose,
+                booking_text: &bt,
+            };
+            match set.categorise(&input) {
+                Some((rule_id, cat_id)) => {
+                    if cat != Some(cat_id) || rule != Some(rule_id) {
+                        upd_rule.execute(params![cat_id, rule_id, id])?;
+                        changed += 1;
+                    }
+                }
+                None => {
+                    if rule.is_some() {
+                        upd_none.execute(params![id])?;
+                        changed += 1;
+                    }
+                }
+            }
+        }
+        Ok(changed)
+    }
+
+    pub(crate) fn setting_inner(conn: &Connection, key: &str) -> CoreResult<Option<String>> {
+        let stored: Option<String> = conn
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        let stored = stored.filter(|v| !v.is_empty());
+        if stored.is_some() {
+            return Ok(stored);
+        }
+        Ok(KNOWN_SETTINGS
+            .iter()
+            .find(|s| s.0 == key)
+            .map(|s| s.5.to_string())
+            .filter(|v| !v.is_empty()))
+    }
+
+    fn category_rows(
+        conn: &Connection,
+    ) -> CoreResult<Vec<(i64, Option<i64>, String, String, String, i32, Option<i64>)>> {
+        let mut stmt = conn.prepare("SELECT id, parent_id, name, sf_symbol, color_hex, sort_order, budget_cents FROM categories")?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    fn category_paths(
+        conn: &Connection,
+    ) -> CoreResult<HashMap<i64, (String, String, String, String)>> {
+        // id -> (name, path, color, symbol)
+        let rows = Self::category_rows(conn)?;
+        let by_id: HashMap<i64, &(i64, Option<i64>, String, String, String, i32, Option<i64>)> =
+            rows.iter().map(|r| (r.0, r)).collect();
+        let mut out = HashMap::new();
+        for r in &rows {
+            let mut parts = vec![r.2.clone()];
+            let mut cur = r.1;
+            let mut guard = 0;
+            while let Some(pid) = cur {
+                guard += 1;
+                if guard > 32 {
+                    break;
+                }
+                if let Some(p) = by_id.get(&pid) {
+                    parts.push(p.2.clone());
+                    cur = p.1;
+                } else {
+                    break;
+                }
+            }
+            parts.reverse();
+            out.insert(
+                r.0,
+                (r.2.clone(), parts.join(" › "), r.4.clone(), r.3.clone()),
+            );
+        }
+        Ok(out)
+    }
+
+    pub(crate) fn ensure_group(
+        conn: &Connection,
+        name: &str,
+        symbol: &str,
+        order: i32,
+    ) -> CoreResult<i64> {
+        if let Some(id) = conn
+            .query_row(
+                "SELECT id FROM account_groups WHERE name = ?1",
+                [name],
+                |r| r.get(0),
+            )
+            .optional()?
+        {
+            return Ok(id);
+        }
+        conn.execute(
+            "INSERT INTO account_groups(name, sf_symbol, sort_order) VALUES (?1, ?2, ?3)",
+            params![name, symbol, order],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+}
+
+#[uniffi::export]
+impl Vault {
+    /// Opens (or creates) the encrypted vault at `path` with the raw 32-byte
+    /// master key. The key bytes are wiped from memory after use.
+    #[uniffi::constructor]
+    pub fn open(path: String, key: Vec<u8>) -> Result<Arc<Self>, CoreError> {
+        let key = Zeroizing::new(key);
+        let conn = Connection::open(&path)?;
+        Self::apply_key(&conn, &key)?;
+        Self::migrate(&conn)?;
+        // merge duplicate bank logins left by older versions (keeps bookings)
+        let _ = crate::connections::deduplicate(&conn);
+        // repair "MÃ¼ller" -> "Müller" stored by older versions
+        let _ = crate::text::repair_stored_text(&conn);
+        // one-time purge of favicons that don't belong to a known brand
+        let _ = crate::insights::purge_untrusted_logos(&conn);
+        Ok(Arc::new(Vault {
+            conn: Mutex::new(conn),
+            path,
+        }))
+    }
+
+    /// Changes the master key (SQLCipher `PRAGMA rekey`).
+    pub fn rekey(&self, new_key: Vec<u8>) -> Result<(), CoreError> {
+        let key = Zeroizing::new(new_key);
+        if key.len() < 16 {
+            return Err(CoreError::InvalidInput {
+                message: "master key must be at least 16 bytes".into(),
+            });
+        }
+        let pragma = Zeroizing::new(format!("PRAGMA rekey = \"x'{}'\";", hex::encode(&*key)));
+        self.db()?.execute_batch(&pragma)?;
+        Ok(())
+    }
+
+    pub fn file_path(&self) -> String {
+        self.path.clone()
+    }
+
+    pub fn is_empty(&self) -> Result<bool, CoreError> {
+        let db = self.db()?;
+        let n: i64 = db.query_row(
+            "SELECT (SELECT count(*) FROM accounts) + (SELECT count(*) FROM categories)",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(n == 0)
+    }
+
+    // ---------------------------------------------------------------- bank connections
+
+    pub fn list_bank_connections(&self) -> Result<Vec<BankConnection>, CoreError> {
+        let db = self.db()?;
+        let mut stmt = db.prepare(
+            "SELECT id, connector, display_name, login_name, bank_code, sf_symbol, last_sync_unix FROM bank_connections ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            let kind: String = r.get(1)?;
+            Ok((
+                kind,
+                BankConnection {
+                    id: r.get(0)?,
+                    connector: ConnectorKind::VolksbankKasselGoettingen,
+                    display_name: r.get(2)?,
+                    login_name: r.get(3)?,
+                    bank_code: r.get(4)?,
+                    sf_symbol: r.get(5)?,
+                    last_sync_unix: r.get(6)?,
+                },
+            ))
+        })?;
+        let mut out = vec![];
+        for row in rows {
+            let (kind, mut c) = row?;
+            if let Some(k) = ConnectorKind::from_str(&kind) {
+                c.connector = k;
+                out.push(c);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Adds a bank login. Credentials (PIN/password) are *not* stored here;
+    /// they are passed to `begin_sync` each time.
+    pub fn add_bank_connection(
+        &self,
+        connector: ConnectorKind,
+        display_name: String,
+        login_name: String,
+    ) -> Result<i64, CoreError> {
+        let info = crate::connectors::descriptor(connector);
+        let login_name = crate::connections::normalize_login(connector, &login_name);
+        let db = self.db()?;
+        // Same provider + same login: update instead of creating a duplicate.
+        let existing: Vec<(i64, String)> = {
+            let mut st =
+                db.prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1")?;
+            let r = st
+                .query_map([connector.as_str()], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            r
+        };
+        if let Some((id, _)) = existing.iter().find(|(_, l)| {
+            !login_name.is_empty()
+                && crate::connections::normalize_login(connector, l)
+                    .eq_ignore_ascii_case(&login_name)
+        }) {
+            if !display_name.trim().is_empty() {
+                db.execute(
+                    "UPDATE bank_connections SET display_name = ?1 WHERE id = ?2",
+                    params![display_name.trim(), id],
+                )?;
+            }
+            return Ok(*id);
+        }
+        db.execute(
+            "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                connector.as_str(),
+                if display_name.trim().is_empty() { info.name.clone() } else { display_name },
+                login_name,
+                info.bank_code,
+                info.sf_symbol
+            ],
+        )?;
+        Ok(db.last_insert_rowid())
+    }
+
+    pub fn delete_bank_connection(&self, connection_id: i64) -> Result<(), CoreError> {
+        let db = self.db()?;
+        db.execute(
+            "DELETE FROM accounts WHERE connection_id = ?1",
+            [connection_id],
+        )?;
+        db.execute(
+            "DELETE FROM bank_connections WHERE id = ?1",
+            [connection_id],
+        )?;
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------- accounts
+
+    pub fn list_accounts(&self) -> Result<Vec<Account>, CoreError> {
+        let db = self.db()?;
+        let mut stmt = db.prepare(
+            "SELECT a.id, a.connection_id, c.connector, a.group_id, a.name, a.bank_name, a.owner, a.iban, a.account_number,
+                    a.currency, a.kind, a.balance_cents, a.balance_date, a.sf_symbol, a.sort_order,
+                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id),
+                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.category_id IS NULL),
+                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0),
+                    a.initial_balance_cents
+             FROM accounts a LEFT JOIN bank_connections c ON c.id = a.connection_id
+             ORDER BY a.sort_order, a.id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(Account {
+                id: r.get(0)?,
+                connection_id: r.get(1)?,
+                connector: r
+                    .get::<_, Option<String>>(2)?
+                    .and_then(|s| ConnectorKind::from_str(&s)),
+                group_id: r.get(3)?,
+                name: r.get(4)?,
+                bank_name: r.get(5)?,
+                owner: r.get(6)?,
+                iban: r.get(7)?,
+                account_number: r.get(8)?,
+                currency: r.get(9)?,
+                kind: AccountKind::from_str(&r.get::<_, String>(10)?),
+                balance_cents: r.get(11)?,
+                balance_date: r.get(12)?,
+                sf_symbol: r.get(13)?,
+                sort_order: r.get(14)?,
+                transaction_count: r.get::<_, i64>(15)? as u32,
+                uncategorized_count: r.get::<_, i64>(16)? as u32,
+                new_count: r.get::<_, i64>(17)? as u32,
+                initial_balance_cents: r
+                    .get::<_, Option<i64>>(18)?
+                    .map(i64::abs)
+                    .filter(|c| *c > 0),
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Sidebar data: groups with their accounts and summed balances.
+    pub fn list_account_groups(&self) -> Result<Vec<AccountGroup>, CoreError> {
+        let accounts = self.list_accounts()?;
+        let db = self.db()?;
+        let mut stmt = db.prepare(
+            "SELECT id, name, sf_symbol, sort_order FROM account_groups ORDER BY sort_order, id",
+        )?;
+        let groups = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, i32>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(groups
+            .into_iter()
+            .map(|(id, name, sym, order)| {
+                let accs: Vec<Account> = accounts
+                    .iter()
+                    .filter(|a| a.group_id == id)
+                    .cloned()
+                    .collect();
+                let balance = accs
+                    .iter()
+                    .filter(|a| a.currency == "EUR")
+                    .map(|a| a.balance_cents)
+                    .sum();
+                AccountGroup {
+                    id,
+                    name,
+                    sf_symbol: sym,
+                    sort_order: order,
+                    balance_cents: balance,
+                    accounts: accs,
+                }
+            })
+            .filter(|g| !g.accounts.is_empty())
+            .collect())
+    }
+
+    /// End-of-day balances for the last `days` days (oldest first), for the
+    /// header chart. Empty `account_ids` = all EUR accounts. Computed backwards
+    /// from the current balance, so it is exact in cents.
+    pub fn balance_history(
+        &self,
+        account_ids: Vec<i64>,
+        days: u32,
+    ) -> Result<Vec<DailyBalance>, CoreError> {
+        let accounts = self.list_accounts()?;
+        let chosen: Vec<&Account> = accounts
+            .iter()
+            .filter(|a| {
+                a.currency == "EUR" && (account_ids.is_empty() || account_ids.contains(&a.id))
+            })
+            .collect();
+        let mut balance: i64 = chosen.iter().map(|a| a.balance_cents).sum();
+        let ids: Vec<i64> = chosen.iter().map(|a| a.id).collect();
+        let today = chrono::Local::now().date_naive();
+        let start = today - chrono::Duration::days(days.max(1) as i64 - 1);
+        let mut per_day: HashMap<String, i64> = HashMap::new();
+        if !ids.is_empty() {
+            let db = self.db()?;
+            let list = ids
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            let mut stmt = db.prepare(&format!(
+                "SELECT booking_date, SUM(amount_cents) FROM transactions WHERE account_id IN ({list}) AND booking_date > ?1 GROUP BY booking_date"
+            ))?;
+            let rows = stmt.query_map([start.format("%Y-%m-%d").to_string()], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            })?;
+            for row in rows {
+                let (d, s) = row?;
+                per_day.insert(d, s);
+            }
+        }
+        let mut out = Vec::with_capacity(days as usize);
+        let mut day = today;
+        while day >= start {
+            let key = day.format("%Y-%m-%d").to_string();
+            out.push(DailyBalance {
+                date: key.clone(),
+                balance_cents: balance,
+            });
+            balance -= per_day.get(&key).copied().unwrap_or(0);
+            day -= chrono::Duration::days(1);
+        }
+        out.reverse();
+        Ok(out)
+    }
+
+    pub fn rename_account(&self, account_id: i64, name: String) -> Result<(), CoreError> {
+        let n = self.db()?.execute(
+            "UPDATE accounts SET name = ?1 WHERE id = ?2",
+            params![name, account_id],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound {
+                what: format!("account {account_id}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Sets (or clears with `None`) the original loan amount of an account.
+    pub fn set_account_initial_balance(
+        &self,
+        account_id: i64,
+        cents: Option<i64>,
+    ) -> Result<(), CoreError> {
+        let cents = cents.map(|c| c.abs()).filter(|c| *c > 0);
+        let n = self.db()?.execute(
+            "UPDATE accounts SET initial_balance_cents = ?1 WHERE id = ?2",
+            params![cents, account_id],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound {
+                what: format!("account {account_id}"),
+            });
+        }
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------- categories
+
+    /// All categories in tree order (depth-first, siblings by sort order) with
+    /// totals for the optional period.
+    pub fn list_categories(
+        &self,
+        date_from: Option<String>,
+        date_to: Option<String>,
+    ) -> Result<Vec<Category>, CoreError> {
+        let db = self.db()?;
+        let rows = Self::category_rows(&db)?;
+        let mut totals: HashMap<Option<i64>, (i64, u32)> = HashMap::new();
+        {
+            let mut stmt = db.prepare(
+                "SELECT category_id, SUM(amount_cents), COUNT(*) FROM transactions
+                 WHERE (?1 IS NULL OR booking_date >= ?1) AND (?2 IS NULL OR booking_date <= ?2)
+                 GROUP BY category_id",
+            )?;
+            let it = stmt.query_map(params![date_from, date_to], |r| {
+                Ok((
+                    r.get::<_, Option<i64>>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)? as u32,
+                ))
+            })?;
+            for row in it {
+                let (c, s, n) = row?;
+                totals.insert(c, (s, n));
+            }
+        }
+        let mut children: HashMap<
+            Option<i64>,
+            Vec<&(i64, Option<i64>, String, String, String, i32, Option<i64>)>,
+        > = HashMap::new();
+        for r in &rows {
+            children.entry(r.1).or_default().push(r);
+        }
+        for list in children.values_mut() {
+            list.sort_by(|a, b| {
+                a.5.cmp(&b.5)
+                    .then_with(|| a.2.to_lowercase().cmp(&b.2.to_lowercase()))
+            });
+        }
+        fn subtotal(
+            id: i64,
+            children: &HashMap<
+                Option<i64>,
+                Vec<&(i64, Option<i64>, String, String, String, i32, Option<i64>)>,
+            >,
+            totals: &HashMap<Option<i64>, (i64, u32)>,
+            depth: u32,
+        ) -> (i64, u32) {
+            let own = totals.get(&Some(id)).copied().unwrap_or((0, 0));
+            if depth > 32 {
+                return own;
+            }
+            let mut sum = own;
+            if let Some(kids) = children.get(&Some(id)) {
+                for k in kids {
+                    let (s, n) = subtotal(k.0, children, totals, depth + 1);
+                    sum.0 += s;
+                    sum.1 += n;
+                }
+            }
+            sum
+        }
+        let mut out = Vec::with_capacity(rows.len());
+        fn walk(
+            parent: Option<i64>,
+            depth: u32,
+            prefix: &str,
+            children: &HashMap<
+                Option<i64>,
+                Vec<&(i64, Option<i64>, String, String, String, i32, Option<i64>)>,
+            >,
+            totals: &HashMap<Option<i64>, (i64, u32)>,
+            out: &mut Vec<Category>,
+        ) {
+            if depth > 32 {
+                return;
+            }
+            if let Some(kids) = children.get(&parent) {
+                for k in kids {
+                    let path = if prefix.is_empty() {
+                        k.2.clone()
+                    } else {
+                        format!("{prefix} › {}", k.2)
+                    };
+                    let own = totals.get(&Some(k.0)).copied().unwrap_or((0, 0));
+                    let (total, count) = subtotal(k.0, children, totals, 0);
+                    out.push(Category {
+                        id: k.0,
+                        parent_id: k.1,
+                        name: k.2.clone(),
+                        sf_symbol: k.3.clone(),
+                        color_hex: k.4.clone(),
+                        sort_order: k.5,
+                        depth,
+                        path: path.clone(),
+                        own_total_cents: own.0,
+                        total_cents: total,
+                        transaction_count: count,
+                        budget_cents: k.6,
+                    });
+                    walk(Some(k.0), depth + 1, &path, children, totals, out);
+                }
+            }
+        }
+        walk(None, 0, "", &children, &totals, &mut out);
+        Ok(out)
+    }
+
+    pub fn create_category(
+        &self,
+        name: String,
+        parent_id: Option<i64>,
+        sf_symbol: String,
+        color_hex: String,
+    ) -> Result<i64, CoreError> {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return Err(CoreError::InvalidInput {
+                message: "category name is empty".into(),
+            });
+        }
+        let db = self.db()?;
+        let order: i32 = db.query_row(
+            "SELECT IFNULL(MAX(sort_order), 0) + 1 FROM categories WHERE parent_id IS ?1",
+            [parent_id],
+            |r| r.get(0),
+        )?;
+        db.execute(
+            "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![parent_id, name, if sf_symbol.is_empty() { "tag".to_string() } else { sf_symbol }, color_hex, order],
+        )?;
+        Ok(db.last_insert_rowid())
+    }
+
+    pub fn update_category(
+        &self,
+        id: i64,
+        name: String,
+        parent_id: Option<i64>,
+        sf_symbol: String,
+        color_hex: String,
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        // Refuse moving a category below itself.
+        if let Some(mut p) = parent_id {
+            let mut guard = 0;
+            loop {
+                if p == id {
+                    return Err(CoreError::InvalidInput {
+                        message: "a category cannot be moved into itself".into(),
+                    });
+                }
+                guard += 1;
+                match db
+                    .query_row("SELECT parent_id FROM categories WHERE id = ?1", [p], |r| {
+                        r.get::<_, Option<i64>>(0)
+                    })
+                    .optional()?
+                {
+                    Some(Some(next)) if guard < 32 => p = next,
+                    _ => break,
+                }
+            }
+        }
+        db.execute(
+            "UPDATE categories SET name = ?1, parent_id = ?2, sf_symbol = ?3, color_hex = ?4 WHERE id = ?5",
+            params![name, parent_id, sf_symbol, color_hex, id],
+        )?;
+        Ok(())
+    }
+
+    /// Deletes a category and its sub-categories; their transactions become
+    /// uncategorised.
+    pub fn delete_category(&self, id: i64) -> Result<(), CoreError> {
+        let db = self.db()?;
+        db.execute("DELETE FROM categories WHERE id = ?1", [id])?;
+        db.execute("UPDATE transactions SET category_source = 'none', rule_id = NULL WHERE category_id IS NULL AND category_source != 'none'", [])?;
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------- transactions
+
+    pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
+        let db = self.db()?;
+        let paths = Self::category_paths(&db)?;
+        let mut wh: Vec<String> = vec!["1=1".into()];
+        let mut args: Vec<Box<dyn ToSql>> = vec![];
+        let mut cte = String::new();
+        if !filter.account_ids.is_empty() {
+            let ph: Vec<String> = filter
+                .account_ids
+                .iter()
+                .map(|id| {
+                    args.push(Box::new(*id));
+                    format!("?{}", args.len())
+                })
+                .collect();
+            let mut clause = format!("t.account_id IN ({})", ph.join(","));
+            // Loan view: also surface bookings of other accounts (e.g. the Girokonto's
+            // monthly "Zins / Tilgung" debits) that reference the loan's IBAN / account number.
+            let loans: Vec<(i64, String, String)> = {
+                let mut q = db
+                    .prepare("SELECT id, iban, account_number FROM accounts WHERE kind = 'loan'")?;
+                let rows = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            };
+            let loan_ids: Vec<i64> = loans.iter().map(|l| l.0).collect();
+            for (id, iban, number) in loans.iter().filter(|l| filter.account_ids.contains(&l.0)) {
+                let digits: String = number.chars().filter(|c| c.is_ascii_digit()).collect();
+                let trimmed = digits.trim_start_matches('0').to_string();
+                let mut ors: Vec<String> = Vec::new();
+                if iban.len() >= 15 {
+                    args.push(Box::new(iban.clone()));
+                    ors.push(format!("t.counterparty_iban = ?{0} OR REPLACE(t.purpose,' ','') LIKE '%' || ?{0} || '%'", args.len()));
+                }
+                if trimmed.len() >= 6 {
+                    args.push(Box::new(trimmed.clone()));
+                    let n = args.len();
+                    ors.push(format!(
+                        "t.counterparty_iban LIKE '%' || ?{n} OR t.purpose LIKE '%' || ?{n} || '%'"
+                    ));
+                }
+                // Relaxed: last 4+ significant digits of the loan number in purpose/counterparty.
+                if trimmed.len() >= 4 {
+                    args.push(Box::new(
+                        trimmed[trimmed.len() - trimmed.len().min(6).max(4)..].to_string(),
+                    ));
+                    let n = args.len();
+                    ors.push(format!("t.purpose LIKE '%' || ?{n} || '%' OR t.counterparty LIKE '%' || ?{n} || '%'"));
+                }
+                // German loan-instalment keywords (user has a loan account).
+                ors.push(
+                    [
+                        "DARLEHEN",
+                        "ZINS",
+                        "TILGUNG",
+                        "ANNUITAET",
+                        "ANNUITÄT",
+                        "KREDITRATE",
+                    ]
+                    .iter()
+                    .map(|k| {
+                        format!(
+                            "UPPER(t.purpose) LIKE '%{k}%' OR UPPER(t.counterparty) LIKE '%{k}%'"
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" OR "),
+                );
+                if !ors.is_empty() {
+                    let own: Vec<String> = loan_ids.iter().map(|i| i.to_string()).collect();
+                    clause.push_str(&format!(
+                        " OR (t.account_id NOT IN ({}) AND ({}))",
+                        own.join(","),
+                        ors.join(" OR ")
+                    ));
+                }
+                let _ = id;
+            }
+            wh.push(format!("({clause})"));
+        }
+        if filter.uncategorized_only {
+            wh.push("t.category_id IS NULL".into());
+        } else if let Some(cat) = filter.category_id {
+            args.push(Box::new(cat));
+            let n = args.len();
+            if filter.include_subcategories {
+                cte = format!(
+                    "WITH RECURSIVE sub(id) AS (SELECT ?{n} UNION ALL SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id) "
+                );
+                wh.push("t.category_id IN (SELECT id FROM sub)".into());
+            } else {
+                wh.push(format!("t.category_id = ?{n}"));
+            }
+        }
+        if let Some(from) = filter.date_from.as_ref().filter(|s| !s.is_empty()) {
+            args.push(Box::new(from.clone()));
+            wh.push(format!("t.booking_date >= ?{}", args.len()));
+        }
+        if let Some(to) = filter.date_to.as_ref().filter(|s| !s.is_empty()) {
+            args.push(Box::new(to.clone()));
+            wh.push(format!("t.booking_date <= ?{}", args.len()));
+        }
+        if let Some(q) = filter
+            .search
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            let mut ors = Vec::new();
+            for term in q.split_whitespace() {
+                let like = format!(
+                    "%{}%",
+                    term.replace('\\', "\\\\")
+                        .replace('%', "\\%")
+                        .replace('_', "\\_")
+                );
+                args.push(Box::new(like));
+                let n = args.len();
+                let mut alt = format!(
+                    "(t.counterparty LIKE ?{n} ESCAPE '\\' OR t.purpose LIKE ?{n} ESCAPE '\\' OR t.booking_text LIKE ?{n} ESCAPE '\\' \
+                     OR t.counterparty_iban LIKE ?{n} ESCAPE '\\' OR cat.name LIKE ?{n} ESCAPE '\\' OR a.name LIKE ?{n} ESCAPE '\\'"
+                );
+                if term.chars().any(|c| c.is_ascii_digit()) {
+                    if let Ok(cents) = parse_cents(term) {
+                        args.push(Box::new(cents.abs()));
+                        alt.push_str(&format!(" OR ABS(t.amount_cents) = ?{}", args.len()));
+                    }
+                }
+                alt.push(')');
+                ors.push(alt);
+            }
+            wh.push(ors.join(" AND "));
+        }
+        let where_sql = wh.join(" AND ");
+        let from_sql = "FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN categories cat ON cat.id = t.category_id";
+        let sql = format!(
+            "{cte}SELECT t.id, t.account_id, a.name, t.booking_date, t.value_date, t.amount_cents, t.currency, t.counterparty,
+                    t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.category_source, t.rule_id, t.checked, a.kind,
+                    (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id)
+             {from_sql} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC"
+        );
+        let mut stmt = db.prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(args.iter().map(|b| b.as_ref())), |r| {
+            let cat: Option<i64> = r.get(11)?;
+            let src: String = r.get(12)?;
+            Ok(Booking {
+                id: r.get(0)?,
+                account_id: r.get(1)?,
+                account_name: r.get(2)?,
+                booking_date: r.get(3)?,
+                value_date: r.get(4)?,
+                amount_cents: r.get(5)?,
+                currency: r.get(6)?,
+                counterparty: r.get(7)?,
+                counterparty_iban: r.get(8)?,
+                purpose: r.get(9)?,
+                booking_text: r.get(10)?,
+                category_id: cat,
+                category_name: String::new(),
+                category_path: String::new(),
+                category_color_hex: String::new(),
+                category_symbol: String::new(),
+                category_source: match src.as_str() {
+                    "rule" => CategorySource::Rule,
+                    "manual" => CategorySource::Manual,
+                    _ => CategorySource::None,
+                },
+                rule_id: r.get(13)?,
+                checked: r.get::<_, i64>(14)? != 0,
+                merchant: MerchantResolver::resolve("", ""),
+                merchant_name: String::new(),
+                merchant_domain: None,
+                merchant_svg_path: None,
+                merchant_hex_color: String::new(),
+                payment_method: String::new(),
+                flow: FlowKind::Consumption,
+                clean_purpose: String::new(),
+                account_kind: AccountKind::from_str(&r.get::<_, String>(15)?),
+                document_count: r.get::<_, i64>(16)? as u32,
+            })
+        })?;
+        let mut txs = Vec::new();
+        let overrides = crate::insights::load_overrides(&db).unwrap_or_default();
+        let (mut income, mut expense, mut consumption, mut investment, mut perk) =
+            (0i64, 0i64, 0i64, 0i64, 0i64);
+        for row in rows {
+            let mut t = row?;
+            if let Some((name, path, color, sym)) = t.category_id.and_then(|c| paths.get(&c)) {
+                t.category_name = name.clone();
+                t.category_path = path.clone();
+                t.category_color_hex = color.clone();
+                t.category_symbol = sym.clone();
+            }
+            enrich(&mut t);
+            if let Some(d) = overrides.get(&t.merchant.key) {
+                t.merchant.domain = d.clone();
+                t.merchant.domain_candidates = vec![d.clone()];
+                t.merchant.domain_source = "override".into();
+                t.merchant_domain = Some(d.clone());
+            }
+            let keep = match filter.scope {
+                BookingScope::All => true,
+                BookingScope::Everyday => !matches!(t.flow, FlowKind::Investment | FlowKind::Perk),
+                BookingScope::Investments => {
+                    matches!(t.flow, FlowKind::Investment | FlowKind::Perk)
+                }
+            } && filter
+                .merchant_key
+                .as_ref()
+                .map(|k| *k == t.merchant.key)
+                .unwrap_or(true);
+            if !keep {
+                continue;
+            }
+            if t.amount_cents > 0 {
+                income += t.amount_cents;
+            } else {
+                expense += t.amount_cents;
+            }
+            match t.flow {
+                FlowKind::Consumption => consumption += t.amount_cents,
+                FlowKind::Investment => investment += t.amount_cents,
+                FlowKind::Perk => perk += t.amount_cents,
+                _ => {}
+            }
+            txs.push(t);
+        }
+        let total = txs.len() as u32;
+        let limit = if filter.limit == 0 {
+            usize::MAX
+        } else {
+            filter.limit as usize
+        };
+        let txs: Vec<Booking> = txs
+            .into_iter()
+            .skip(filter.offset as usize)
+            .take(limit)
+            .collect();
+        Ok(BookingPage {
+            transactions: txs,
+            total_count: total,
+            income_cents: income,
+            expense_cents: expense,
+            consumption_cents: consumption,
+            investment_cents: investment,
+            perk_cents: perk,
+        })
+    }
+
+    /// Manual categorisation (wins over rules). `None` = uncategorised.
+    pub fn set_transaction_category(
+        &self,
+        transaction_id: i64,
+        category_id: Option<i64>,
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let n = db.execute(
+            "UPDATE transactions SET category_id = ?1, rule_id = NULL, category_source = CASE WHEN ?1 IS NULL THEN 'none' ELSE 'manual' END WHERE id = ?2",
+            params![category_id, transaction_id],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound {
+                what: format!("transaction {transaction_id}"),
+            });
+        }
+        Ok(())
+    }
+
+    pub fn set_transaction_checked(
+        &self,
+        transaction_id: i64,
+        checked: bool,
+    ) -> Result<(), CoreError> {
+        self.db()?.execute(
+            "UPDATE transactions SET checked = ?1 WHERE id = ?2",
+            params![checked as i64, transaction_id],
+        )?;
+        Ok(())
+    }
+
+    /// Manual text correction of a booking's counterparty / purpose.
+    pub fn update_transaction_text(
+        &self,
+        transaction_id: i64,
+        counterparty: String,
+        purpose: String,
+    ) -> Result<(), CoreError> {
+        let n = self.db()?.execute(
+            "UPDATE transactions SET counterparty = ?1, purpose = ?2 WHERE id = ?3",
+            params![counterparty.trim(), purpose.trim(), transaction_id],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound {
+                what: format!("transaction {transaction_id}"),
+            });
+        }
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------- rules
+
+    pub fn list_rules(&self) -> Result<Vec<Rule>, CoreError> {
+        let db = self.db()?;
+        Self::load_rules(&db)
+    }
+
+    /// Creates (id == 0) or updates a rule. Validates the pattern first.
+    pub fn save_rule(&self, rule: Rule) -> Result<i64, CoreError> {
+        crate::rules::CompiledRule::compile(rule.clone())?;
+        if rule.pattern.trim().is_empty() {
+            return Err(CoreError::InvalidInput {
+                message: "pattern is empty".into(),
+            });
+        }
+        let db = self.db()?;
+        let kind = if rule.match_kind == MatchKind::Regex {
+            "regex"
+        } else {
+            "keyword"
+        };
+        if rule.id == 0 {
+            db.execute(
+                "INSERT INTO rules(name, category_id, field, match_kind, pattern, case_sensitive, min_amount_cents, max_amount_cents, account_id, priority, enabled)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![rule.name, rule.category_id, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
+                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64],
+            )?;
+            Ok(db.last_insert_rowid())
+        } else {
+            db.execute(
+                "UPDATE rules SET name=?1, category_id=?2, field=?3, match_kind=?4, pattern=?5, case_sensitive=?6, min_amount_cents=?7,
+                        max_amount_cents=?8, account_id=?9, priority=?10, enabled=?11 WHERE id=?12",
+                params![rule.name, rule.category_id, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
+                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64, rule.id],
+            )?;
+            Ok(rule.id)
+        }
+    }
+
+    pub fn delete_rule(&self, rule_id: i64) -> Result<(), CoreError> {
+        let db = self.db()?;
+        db.execute("UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL WHERE rule_id = ?1", [rule_id])?;
+        db.execute("DELETE FROM rules WHERE id = ?1", [rule_id])?;
+        Ok(())
+    }
+
+    /// Transactions the (unsaved) rule would match, for the live preview in the
+    /// rule editor.
+    pub fn preview_rule(&self, rule: Rule, limit: u32) -> Result<Vec<Booking>, CoreError> {
+        let compiled = crate::rules::CompiledRule::compile(Rule {
+            enabled: true,
+            ..rule
+        })?;
+        let page = self.list_transactions(BookingFilter {
+            limit: 20000,
+            ..Default::default()
+        })?;
+        Ok(page
+            .transactions
+            .into_iter()
+            .filter(|t| {
+                compiled.matches(&RuleInput {
+                    account_id: t.account_id,
+                    amount_cents: t.amount_cents,
+                    counterparty: &t.counterparty,
+                    counterparty_iban: &t.counterparty_iban,
+                    purpose: &t.purpose,
+                    booking_text: &t.booking_text,
+                })
+            })
+            .take(limit.max(1) as usize)
+            .collect())
+    }
+
+    /// Runs all rules. `only_uncategorized = false` also re-evaluates
+    /// transactions previously categorised by a rule (never manual ones).
+    pub fn apply_rules(&self, only_uncategorized: bool) -> Result<u32, CoreError> {
+        let db = self.db()?;
+        let tx = db.unchecked_transaction()?;
+        let n = Self::apply_rules_inner(&tx, only_uncategorized)?;
+        tx.commit()?;
+        Ok(n)
+    }
+
+    // ---------------------------------------------------------------- settings
+
+    pub fn list_settings(&self) -> Result<Vec<SettingEntry>, CoreError> {
+        let db = self.db()?;
+        let mut out = vec![];
+        for (key, label, help, group, secret, default) in KNOWN_SETTINGS {
+            let stored: Option<String> = db
+                .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+                    r.get(0)
+                })
+                .optional()?;
+            let value = stored.clone().unwrap_or_else(|| default.to_string());
+            out.push(SettingEntry {
+                key: key.to_string(),
+                label: label.to_string(),
+                help: help.to_string(),
+                group: group.to_string(),
+                value: if *secret {
+                    String::new()
+                } else {
+                    value.clone()
+                },
+                is_secret: *secret,
+                has_value: !value.is_empty(),
+            });
+        }
+        Ok(out)
+    }
+
+    pub fn get_setting(&self, key: String) -> Result<Option<String>, CoreError> {
+        let db = self.db()?;
+        Self::setting_inner(&db, &key)
+    }
+
+    /// Stores a setting inside the encrypted database. Empty value deletes it.
+    pub fn set_setting(&self, key: String, value: String) -> Result<(), CoreError> {
+        let value = Zeroizing::new(value);
+        let db = self.db()?;
+        if value.trim().is_empty() {
+            db.execute("DELETE FROM settings WHERE key = ?1", [&key])?;
+        } else {
+            let secret = KNOWN_SETTINGS.iter().any(|s| s.0 == key && s.4)
+                || key.contains("secret")
+                || key.contains("private")
+                || key.starts_with("pin.");
+            db.execute(
+                "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, is_secret = excluded.is_secret",
+                params![key, value.trim(), secret as i64],
+            )?;
+        }
+        Ok(())
+    }
+}

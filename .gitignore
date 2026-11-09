@@ -1,0 +1,106 @@
+# ------------------------------------------------------------------
+# GiroCrab – strict ignore list. Nothing personal may ever be committed.
+# ------------------------------------------------------------------
+
+# --- Legacy folders from the CashCrab era (kept locally, not part of the repo) ---
+cashcrab-core/
+CashCrabApp/
+generated/CashCrabCorePackage/
+/Sources/
+
+# --- Your money data (encrypted or not, never commit it) ---
+*.girocrab
+*.girocrab-wal
+*.girocrab-shm
+*.cashcrab
+*.cashcrab-wal
+*.cashcrab-shm
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlcipher
+vault/
+vaults/
+tresor/
+*.mt940
+*.sta
+*.camt
+*.csv
+exports/
+
+# --- Secrets / credentials ---
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.mobileprovision
+secrets*
+credentials*
+**/fints-product-id*
+**/api-keys*
+
+# --- Craft Anything capture / evidence / investigation folders ---
+capture/
+captures/
+checks/
+evidence/
+reference/
+inbox/
+investigation.cany/
+*.cany/
+craft.json
+feed.json
+build-activity.log
+shots/
+screenshots/
+!docs/screenshots/
+!docs/screenshots/*.png
+
+# --- Rust ---
+target/
+**/*.rs.bk
+
+# --- Generated bindings / XCFramework (rebuild with ./build-xcframework.sh) ---
+generated/
+
+# --- Swift / Xcode ---
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+Package.resolved
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# --- OS / editors ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.idea/
+.vscode/
+*.swp
+*~
+
+# --- Token/build hygiene (added) ---
+*.xcframework/
+**/Generated/
+**/girocrabFFI*
+**/girocrab_coreFFI*
+**/icons/*.json
+**/icons/*.svg
+**/merchants/*.json
+**/merchants/*.svg
+
+# --- Logs / dumps ---
+*.log
+*.jsonl
+.claude/settings.local.json
+dist/
