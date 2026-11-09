@@ -59,6 +59,13 @@ struct MoneyMoneyImportSheet: View {
         .frame(width: 560)
         .background(Color.white)
         .interactiveDismissDisabled(importing)
+        .onAppear {
+            if let demo = model.demoImportPreview {
+                preview = demo
+                fileName = "MoneyMoney-Umsaetze.xml"
+                fileData = Data([0])
+            }
+        }
         .onChange(of: target) { _, _ in refreshPreview() }
         .onChange(of: keepCategories) { _, _ in refreshPreview() }
         .fileImporter(isPresented: $picking, allowedContentTypes: types) { result in
@@ -108,7 +115,7 @@ struct MoneyMoneyImportSheet: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 18) {
                 stat(years, "Zeitraum")
-                stat("\(p.newBookings)", "neue Buchungen")
+                stat(p.newBookings.formatted(.number.locale(Locale(identifier: "de_DE"))), "neue Buchungen")
                 stat("\(p.notesCount)", "Notizen")
                 stat("\(p.duplicatesSkippedOrEnriched)", "bereits vorhanden")
             }

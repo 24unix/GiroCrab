@@ -32,6 +32,8 @@ Mehrjährige Historien, Kategorien und Notizen lassen sich verlustfrei übernehm
 2. In GiroCrab: *Von MoneyMoney wechseln* (Onboarding), *MoneyMoney-Import* (Seitenleiste) oder `⌘K` → „MoneyMoney Historie & Kategorien importieren“. Datei hineinziehen.
 3. Zielkonto wählen (oder neues Archivkonto anlegen), Vorschau prüfen, **Importieren**.
 
+<p align="center"><img src="docs/screenshots/moneymoney-import.png" alt="MoneyMoney-Import mit Vorschau: 4.820 Buchungen, 2012 – 2026, erkannte Kategorien" width="480"></p>
+
 Kategorien (`Haushalt\Lebensmittel`) bleiben als Baum erhalten, Notizen stehen in der Buchungsdetail-Ansicht.
 Jeder Umsatz erhält einen Fingerabdruck (Datum, Betrag, IBAN/Name, Verwendungszweck): Ein erneuter Import
 oder später per FinTS abgerufene, überlappende Tage erzeugen **keine Duplikate** – vorhandene Buchungen werden
@@ -52,6 +54,10 @@ nur um Kategorie und Notiz ergänzt.
 | Darlehen mit Tilgungsbalken | Inspektor mit Händler-Logo |
 |---|---|
 | <img src="docs/screenshots/loan-progress.png" alt="Immobilien-Darlehen, 27 % getilgt"> | <img src="docs/screenshots/analytics-or-inspector.png" alt="Inspektor mit EnBW-Buchung"> |
+
+| SEPA-Überweisung mit IBAN-Prüfung | MoneyMoney-Import mit Vorschau |
+|---|---|
+| <img src="docs/screenshots/sepa-transfer.png" alt="Neue Überweisung an Stadtwerke München, IBAN geprüft"> | <img src="docs/screenshots/moneymoney-import.png" alt="MoneyMoney-Import: 4.820 Buchungen, 2012 – 2026"> |
 
 ### Architektur
 
@@ -126,6 +132,8 @@ Full multi-year histories, categories and notes import seamlessly – no subscri
 2. In GiroCrab: *Switch from MoneyMoney* (onboarding), *MoneyMoney-Import* (sidebar) or `⌘K` → "MoneyMoney Historie & Kategorien importieren". Drop the file in.
 3. Pick the target account (or create an archive account), check the preview, hit **Import**.
 
+<p align="center"><img src="docs/screenshots/moneymoney-import.png" alt="MoneyMoney import with preview: 4,820 bookings, 2012 – 2026, detected categories" width="480"></p>
+
 Hierarchical categories (`Household\Groceries`) are kept as a tree, notes show in the booking detail view.
 Every booking gets a fingerprint (date, amount, IBAN/name, purpose), so re-importing the file or overlapping days
 fetched later via FinTS **never create duplicates** – existing bookings are only enriched with category and note.
@@ -145,6 +153,10 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 | Loan with repayment bar | Inspector with merchant logo |
 |---|---|
 | <img src="docs/screenshots/loan-progress.png" alt="Immobilien-Darlehen, 27% repaid"> | <img src="docs/screenshots/analytics-or-inspector.png" alt="Inspector showing an EnBW booking"> |
+
+| SEPA transfer with IBAN check | MoneyMoney import with preview |
+|---|---|
+| <img src="docs/screenshots/sepa-transfer.png" alt="New transfer to Stadtwerke München, IBAN validated"> | <img src="docs/screenshots/moneymoney-import.png" alt="MoneyMoney import: 4,820 bookings, 2012 – 2026"> |
 
 ### Architecture
 

@@ -12,6 +12,9 @@ import Foundation
 ///  --try-add-bank <name>  (developer, with --fresh-vault) add a bank on start,
 ///                         e.g. 1822direkt, to see the setup form
 ///  --select <text>        (demo) preselect the account whose name contains <text>
+///  --demo-sheet transfer|moneymoney
+///                         (demo) open that sheet pre-filled with fictional data,
+///                         for README screenshots
 ///  --screenshot <file>    (macOS) render the main window, save a PNG, quit.
 ///                         Implies --demo-seed so the picture is reproducible.
 public struct LaunchOptions: Sendable {
@@ -26,6 +29,8 @@ public struct LaunchOptions: Sendable {
     public var selectAccount: String?
     /// (demo) preselect the booking whose merchant/counterparty contains this text
     public var pickBooking: String?
+    /// (demo) "transfer" or "moneymoney": open that sheet with fictional data
+    public var demoSheet: String?
 
     public init(arguments: [String] = CommandLine.arguments, environment: [String: String] = ProcessInfo.processInfo.environment) {
         var demo = arguments.contains("--demo-seed")
@@ -46,6 +51,11 @@ public struct LaunchOptions: Sendable {
         } else {
             pickBooking = nil
         }
+        if let i = arguments.firstIndex(of: "--demo-sheet"), i + 1 < arguments.count {
+            demoSheet = arguments[i + 1].lowercased()
+        } else {
+            demoSheet = nil
+        }
         let sync = arguments.contains("--demo-sync")
         freshVault = arguments.contains("--fresh-vault")
         if let i = arguments.firstIndex(of: "--try-add-bank"), i + 1 < arguments.count {
@@ -53,7 +63,7 @@ public struct LaunchOptions: Sendable {
         } else {
             tryAddBank = nil
         }
-        if (shot != nil || sync) && !freshVault { demo = true }
+        if (shot != nil || sync || demoSheet != nil) && !freshVault { demo = true }
         self.demoSync = sync
         if let i = arguments.firstIndex(of: "--view"), i + 1 < arguments.count {
             initialView = arguments[i + 1].lowercased()

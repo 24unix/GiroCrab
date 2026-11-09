@@ -166,7 +166,7 @@ struct TransferSheetView: View {
 
     private func field<C: View>(_ label: String, @ViewBuilder content: () -> C) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(label).foregroundStyle(Theme.secondary).frame(width: 120, alignment: .trailing)
+            Text(label).foregroundStyle(Theme.secondary).frame(width: 140, alignment: .trailing)
             content().frame(maxWidth: .infinity, alignment: .leading)
         }
     }

@@ -145,6 +145,8 @@ public final class AppModel {
     var showCommandPalette = false
     var showCategorizer = false
     var showMoneyMoneyImport = false
+    /// (demo, `--demo-sheet moneymoney`) canned preview so the sheet can be shown without a file.
+    var demoImportPreview: MoneyMoneyImportPreview?
     var pendingLogin: PendingLogin?
     var setupRequest: SetupRequest?
     /// Trade Republic in-app browser login (WKWebView).
@@ -189,12 +191,39 @@ public final class AppModel {
             if let q = options.pickBooking, let b = bookings.first(where: { $0.merchantName.lowercased().contains(q) || $0.counterparty.lowercased().contains(q) }) {
                 selectedBookingID = b.id
             }
+            if let sheet = options.demoSheet {
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 600_000_000)
+                    self?.presentDemoSheet(sheet)
+                }
+            }
             if options.demoSync {
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: 400_000_000)
                     self?.requestSyncAll()
                 }
             }
+        }
+    }
+
+    /// Screenshot helper: open a sheet pre-filled with fictional data.
+    private func presentDemoSheet(_ name: String) {
+        switch name {
+        case "transfer":
+            if let a = transferAccounts.first { sidebarSelection = .account(a.id) }
+            openTransfer()
+            transferDraft.name = "Stadtwerke München"
+            transferDraft.iban = TransferSheetView.groupedIBAN("DE89370400440532013000")
+            transferDraft.amountText = "85,00"
+            transferDraft.purpose = "Abschlag Strom Kd-Nr 482910"
+        case "moneymoney":
+            demoImportPreview = MoneyMoneyImportPreview(
+                totalRows: 4820, newBookings: 4820, duplicatesSkippedOrEnriched: 0, notesCount: 312,
+                dateRangeStart: "2012-01-03", dateRangeEnd: "2026-10-30",
+                detectedCategories: ["Haushalt > Lebensmittel", "Gehalt", "Steuern", "Wohnen > Miete", "Mobilität > Tanken", "Freizeit > Restaurants", "Versicherungen", "Reisen"],
+                sampleBookings: [], suggestedAccountName: "MoneyMoney-Archiv")
+            showMoneyMoneyImport = true
+        default: break
         }
     }
 
