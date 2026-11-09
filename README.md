@@ -179,3 +179,13 @@ SQLCipher (AES-256) vault, key in the Keychain (`ThisDeviceOnly`), PINs/TANs onl
 ## License / Lizenz
 
 GPL-3.0-or-later – see [LICENSE](LICENSE).
+
+---
+
+## ☕ Projekt unterstützen (Freiwillige Zuwendung)
+
+**GiroCrab** ist ein freies Open-Source-Projekt. Wenn dir die App im Alltag hilft und du die Weiterentwicklung mit einer kleinen **freiwilligen Zuwendung** (ohne Gegenleistung) für die Kaffeekasse unterstützen möchtest:
+
+[![PayPal](https://img.shields.io/badge/PayPal-Freiwillige%20Zuwendung-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/aprinz)
+
+*English:* If you enjoy using GiroCrab and would like to support its development with a **voluntary contribution / tip** (no consideration expected): **[paypal.me/aprinz](https://paypal.me/aprinz)**
