@@ -585,6 +585,34 @@ pub(crate) fn store_fetch(
             accounts_updated += 1;
             account_ids.insert(acc.external_ref.clone(), id);
         }
+        // Credit cards without a connector balance: derive the open amount.
+        if !data.adjust_balances {
+            for acc in data.accounts.iter().filter(|a| a.balance_cents == 0) {
+                let Some(&id) = account_ids.get(&acc.external_ref) else {
+                    continue;
+                };
+                let is_card = acc.kind == AccountKind::CreditCard
+                    || is_amex_name(&acc.name)
+                    || is_amex_name(bank_name.as_str());
+                if !is_card {
+                    continue;
+                }
+                let mut st = tx.prepare(
+                    "SELECT booking_date, amount_cents, counterparty || ' ' || purpose || ' ' || booking_text
+                     FROM transactions WHERE account_id = ?1 ORDER BY booking_date, id",
+                )?;
+                let rows: Vec<(String, i64, String)> = st
+                    .query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                    .collect::<Result<_, _>>()?;
+                drop(st);
+                if let Some(open) = open_card_balance(&rows) {
+                    tx.execute(
+                        "UPDATE accounts SET balance_cents = ?1 WHERE id = ?2",
+                        params![open, id],
+                    )?;
+                }
+            }
+        }
         for (ref_, acc_id) in &account_ids {
             if data.holdings.iter().any(|h| &h.account_ref == ref_) {
                 tx.execute("DELETE FROM holdings WHERE account_id = ?1", [acc_id])?;
@@ -1339,8 +1367,66 @@ pub fn validate_iban(iban: String) -> bool {
     crate::connectors::fints::sepa::validate_iban(&iban)
 }
 
+fn is_amex_name(s: &str) -> bool {
+    let l = s.to_lowercase();
+    l.contains("amex") || l.contains("american express")
+}
+
+/// Open card balance (negative = owed) from `(date, amount_cents, text)` rows
+/// sorted ascending: sum of everything after the latest settlement booking
+/// (a positive KARTENABRECHNUNG / LASTSCHRIFT / AUSGLEICH / ZAHLUNG ERHALTEN
+/// entry). Without a settlement, the sum of the current month's bookings.
+pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
+    if rows.is_empty() {
+        return None;
+    }
+    let is_settlement = |(_, amt, text): &(String, i64, String)| {
+        let t = text.to_uppercase();
+        *amt > 0
+            && [
+                "KARTENABRECHNUNG",
+                "LASTSCHRIFT",
+                "AUSGLEICH",
+                "ZAHLUNG ERHALTEN",
+            ]
+            .iter()
+            .any(|k| t.contains(k))
+    };
+    let start = match rows.iter().rposition(is_settlement) {
+        Some(i) => i + 1,
+        None => {
+            let month = rows
+                .last()
+                .map(|r| r.0.chars().take(7).collect::<String>())?;
+            rows.iter()
+                .position(|r| r.0.starts_with(&month))
+                .unwrap_or(0)
+        }
+    };
+    Some(rows[start..].iter().map(|r| r.1).sum())
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn card_open_balance_since_settlement() {
+        let r = |d: &str, a: i64, t: &str| (d.to_string(), a, t.to_string());
+        let rows = vec![
+            r("2026-09-20", -5000, "Shop"),
+            r("2026-10-05", 5000, "LASTSCHRIFT Kartenabrechnung"),
+            r("2026-10-10", -1200, "Cafe"),
+            r("2026-11-02", -3400, "Hotel"),
+        ];
+        assert_eq!(open_card_balance(&rows), Some(-4600));
+        let no_settle = vec![
+            r("2026-10-30", -100, "x"),
+            r("2026-11-01", -200, "y"),
+            r("2026-11-03", -300, "z"),
+        ];
+        assert_eq!(open_card_balance(&no_settle), Some(-500));
+        assert_eq!(open_card_balance(&[]), None);
+    }
+
     use super::*;
     use crate::models::{BookingFilter, BookingScope};
     use crate::vault::Vault;

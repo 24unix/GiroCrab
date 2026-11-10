@@ -390,16 +390,7 @@ impl BankConnector for EnableBankingConnector {
                 )
                 .await?;
             let balances = bal["balances"].as_array().cloned().unwrap_or_default();
-            let pick = ["CLBD", "ITBD", "XPCD", "ITAV"]
-                .iter()
-                .find_map(|t| {
-                    balances
-                        .iter()
-                        .find(|b| b["balance_type"].as_str() == Some(t))
-                })
-                .or(balances.first())
-                .cloned()
-                .unwrap_or(Value::Null);
+            let (balance_cents, ref_date) = pick_balance(&balances);
             out.accounts.push(RemoteAccount {
                 external_ref: uid.clone(),
                 name: name.clone(),
@@ -408,11 +399,8 @@ impl BankConnector for EnableBankingConnector {
                 account_number: String::new(),
                 currency: currency.clone(),
                 kind: AccountKind::CreditCard,
-                balance_cents: json_number_to_cents(&pick["balance_amount"]["amount"]).unwrap_or(0),
-                balance_date: pick["reference_date"]
-                    .as_str()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(super::today),
+                balance_cents,
+                balance_date: ref_date.unwrap_or_else(super::today),
             });
             let mut continuation: Option<String> = None;
             let mut n = 0u32;
@@ -511,6 +499,33 @@ impl BankConnector for EnableBankingConnector {
     }
 }
 
+/// Picks the best balance from an Enable Banking `/balances` array and returns
+/// it signed (`DBIT` => negative, i.e. open card debt) plus its reference date.
+/// Returns `(0, None)` when nothing usable is present.
+fn pick_balance(balances: &[Value]) -> (i64, Option<String>) {
+    const ORDER: [&str; 7] = ["ITBD", "CLBD", "XPCD", "ITAV", "OPBD", "FWAV", "OTHR"];
+    let pick = ORDER
+        .iter()
+        .find_map(|t| {
+            balances
+                .iter()
+                .find(|b| b["balance_type"].as_str() == Some(t))
+        })
+        .or(balances.first());
+    let Some(pick) = pick else {
+        return (0, None);
+    };
+    let mut cents = json_number_to_cents(&pick["balance_amount"]["amount"]).unwrap_or(0);
+    let ind = pick["credit_debit_indicator"]
+        .as_str()
+        .unwrap_or("")
+        .to_ascii_uppercase();
+    if (ind == "DBIT" || ind == "DEBIT") && cents > 0 {
+        cents = -cents;
+    }
+    (cents, pick["reference_date"].as_str().map(str::to_string))
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -576,5 +591,20 @@ mod tests {
         );
         assert!(super::extract_code("https://localhost/cb?code=abc&state=bad", "s1").is_err());
         assert_eq!(super::extract_code(" xyz ", "s1").unwrap(), "xyz");
+    }
+
+    #[test]
+    fn amex_dbit_balance_is_negative() {
+        use serde_json::json;
+        let b = vec![
+            json!({"balance_type":"ITAV","balance_amount":{"amount":"5000.00"},"credit_debit_indicator":"CRDT"}),
+            json!({"balance_type":"ITBD","balance_amount":{"amount":"123.45"},"credit_debit_indicator":"DBIT","reference_date":"2026-11-01"}),
+        ];
+        assert_eq!(super::pick_balance(&b), (-12345, Some("2026-11-01".into())));
+        let single = vec![
+            json!({"balance_type":"XYZ","balance_amount":{"amount":"10.00"},"credit_debit_indicator":"DBIT"}),
+        ];
+        assert_eq!(super::pick_balance(&single).0, -1000);
+        assert_eq!(super::pick_balance(&[]), (0, None));
     }
 }
