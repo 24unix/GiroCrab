@@ -165,7 +165,8 @@ pub fn display_path_in(lang: Lang, path: &str) -> String {
     }
 }
 
-/// English names of the built-in account groups (`connectors::group_for`) and
+/// English names of the built-in account groups (kind groups from before v7,
+/// "Importierte Konten", "Geschlossen") and
 /// the starter categories (`demo.rs`). Keys are the German names stored in
 /// the vault.
 fn default_name_en(de: &str) -> Option<&'static str> {
@@ -176,6 +177,7 @@ fn default_name_en(de: &str) -> Option<&'static str> {
         "Depots & ETFs" => "Portfolios & ETFs",
         "Darlehen & Kredite" => "Loans",
         "Importierte Konten" => "Imported accounts",
+        "Geschlossen" => "Closed",
         // Starter categories.
         "Einnahmen" => "Income",
         "Gehalt" => "Salary",
@@ -247,6 +249,20 @@ fn english(de: &str) -> Option<&'static str> {
         "Protokollfehler: {0}" => "Protocol error: {0}",
         "Browser-Anmeldung nötig: {0}" => "Browser sign-in required: {0}",
         "Dieser Abruf ist nicht mehr aktiv" => "This sync is no longer active",
+        // ------------------------------------------------------------ vault.rs / account_groups.rs
+        "Kontogruppen konnten nicht aktualisiert werden (Fremdschlüssel verletzt)." => {
+            "Account groups could not be updated (foreign key violated)."
+        }
+        "Kontogruppe {0}" => "account group {0}",
+        "Der Gruppenname darf nicht leer sein." => "The group name must not be empty.",
+        "Eine Gruppe „{0}“ gibt es hier schon." => "A group “{0}” already exists here.",
+        "Eine Gruppe kann nicht in sich selbst verschoben werden." => "A group can't be moved into itself.",
+        "Die Gruppe „Geschlossen“ kann nicht gelöscht oder verschoben werden." => {
+            "The “Closed” group can't be deleted or moved."
+        }
+        "Im Ordner „Geschlossen“ können keine Gruppen angelegt werden." => {
+            "Groups can't be created inside “Closed”."
+        }
         // ------------------------------------------------------------ connectors/mod.rs
         "VR-NetKey oder Alias" => "VR-NetKey or alias",
         "Online-Banking-PIN" => "Online banking PIN",

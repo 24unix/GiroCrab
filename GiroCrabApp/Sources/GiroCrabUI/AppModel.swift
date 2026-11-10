@@ -134,7 +134,7 @@ public final class AppModel {
     var vaultState: VaultState = .locked
 
     // Data
-    var groups: [AccountGroup] = []
+    var sidebar: [SidebarNode] = []
     var categories: [GiroCrabCore.Category] = []
     var categoryTree: [CategoryNode] = []
     var bookings: [Booking] = []
@@ -155,7 +155,13 @@ public final class AppModel {
     var statusFilter: StatusFilter = .all
     var searchText: String = "" { didSet { scheduleSearch() } }
     var selectedBookingID: Booking.ID? { didSet { reloadMerchantStats() } }
-    var collapsedGroups: Set<Int64> = []
+    var collapsedGroups: Set<Int64> = Set((UserDefaults.standard.array(forKey: "collapsedAccountGroups") as? [Int64]) ?? []) {
+        didSet { UserDefaults.standard.set(Array(collapsedGroups), forKey: "collapsedAccountGroups") }
+    }
+    /// The Closed group starts collapsed, so it is tracked the other way round.
+    var expandedClosedGroup: Bool = UserDefaults.standard.bool(forKey: "expandedClosedGroup") {
+        didSet { UserDefaults.standard.set(expandedClosedGroup, forKey: "expandedClosedGroup") }
+    }
     var expandedCategories: Set<Int64> = []
     var showRuleEditor = false
     var ruleDraft: Rule?
@@ -376,7 +382,7 @@ public final class AppModel {
         ownVault = nil
         demoActive = false
         vault = nil
-        groups = []; bookings = []; categories = []; categoryTree = []; rules = []; connections = []; settings = []
+        sidebar = []; bookings = []; categories = []; categoryTree = []; rules = []; connections = []; settings = []
         page = nil; dashboard = nil; merchantStats = nil; logoCache = [:]
         vaultState = .locked
     }
@@ -396,7 +402,7 @@ public final class AppModel {
     func reloadAccounts() {
         guard let vault else { return }
         run {
-            groups = try vault.listAccountGroups()
+            sidebar = try vault.listSidebar()
             connections = try vault.listBankConnections()
         }
     }
@@ -437,7 +443,7 @@ public final class AppModel {
         var uncategorized = false
         switch sidebarSelection {
         case .account(let id): accountIDs = [id]
-        case .group(let gid): accountIDs = groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
+        case .group(let gid): accountIDs = accountGroups.first(where: { $0.id == gid })?.accountIds ?? []
         case .category(let id): category = id
         case .uncategorized: uncategorized = true
         case .allAccounts, .documents, .none: break
@@ -474,7 +480,7 @@ public final class AppModel {
         var ids: [Int64]
         switch sidebarSelection {
         case .account(let id): ids = [id]
-        case .group(let gid): ids = groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
+        case .group(let gid): ids = accountGroups.first(where: { $0.id == gid })?.accountIds ?? []
         default: ids = liquidAccounts.map(\.id)
         }
         if ids.isEmpty { ids = [-1] }
@@ -631,11 +637,19 @@ public final class AppModel {
         return bookings.first { $0.id == id }
     }
 
-    var allAccounts: [Account] { groups.flatMap(\.accounts) }
-    var liquidAccounts: [Account] { allAccounts.filter { [.checking, .savings, .paymentService, .creditCard, .cash].contains($0.kind) } }
+    var accountGroups: [AccountGroup] {
+        sidebar.compactMap { if case .group(let g) = $0 { g } else { nil } }
+    }
+    var allAccounts: [Account] {
+        sidebar.compactMap { if case .account(let a, _) = $0 { a } else { nil } }
+    }
+    /// Accounts outside the Closed group: the headline balance, badges and
+    /// pickers use these; history and category totals keep closed ones.
+    var openAccounts: [Account] { allAccounts.filter { !$0.closed } }
+    var liquidAccounts: [Account] { openAccounts.filter { [.checking, .savings, .paymentService, .creditCard, .cash].contains($0.kind) } }
     var liquidBalance: Int64 { liquidAccounts.reduce(0) { $0 + $1.balanceCents } }
-    var newCount: Int { allAccounts.reduce(0) { $0 + Int($1.newCount) } }
-    var uncategorizedCount: Int { allAccounts.filter { $0.kind != .loan }.reduce(0) { $0 + Int($1.uncategorizedCount) } }
+    var newCount: Int { openAccounts.reduce(0) { $0 + Int($1.newCount) } }
+    var uncategorizedCount: Int { openAccounts.filter { $0.kind != .loan }.reduce(0) { $0 + Int($1.uncategorizedCount) } }
 
     /// Everyday spending this month (never includes ETF plans / perks).
     var consumptionThisMonth: Int64 { dashboard?.monthly.last?.consumptionCents ?? 0 }
@@ -645,7 +659,7 @@ public final class AppModel {
     var title: String {
         switch sidebarSelection {
         case .allAccounts, .none: return String(localized: "Übersicht")
-        case .group(let id): return groups.first { $0.id == id }?.name ?? String(localized: "Gruppe")
+        case .group(let id): return accountGroups.first { $0.id == id }?.name ?? String(localized: "Gruppe")
         case .account(let id): return allAccounts.first { $0.id == id }?.name ?? String(localized: "Konto")
         case .category(let id): return categories.first { $0.id == id }?.path ?? String(localized: "Kategorie")
         case .uncategorized: return String(localized: "Ohne Kategorie")
@@ -656,7 +670,7 @@ public final class AppModel {
     var headerBalance: (label: String, cents: Int64)? {
         switch sidebarSelection {
         case .account(let id): return allAccounts.first { $0.id == id }.map { (String(localized: "Kontostand"), $0.balanceCents) }
-        case .group(let id): return groups.first { $0.id == id }.map { (String(localized: "Summe"), $0.balanceCents) }
+        case .group(let id): return accountGroups.first { $0.id == id }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .allAccounts, .none: return (String(localized: "Verfügbar (Giro, Tagesgeld, Karten)"), liquidBalance)
         case .category(let id): return categories.first { $0.id == id }.map { (String(localized: "Summe im Zeitraum"), $0.totalCents) }
         case .uncategorized, .documents: return nil
@@ -721,6 +735,69 @@ public final class AppModel {
         guard let vault else { return }
         run { try vault.deleteCategory(id: id) }
         if sidebarSelection == .category(id) { sidebarSelection = .allAccounts }
+        reloadAll()
+    }
+
+    // MARK: - Account groups
+
+    func isCollapsed(_ group: AccountGroup) -> Bool {
+        group.isClosedGroup ? !expandedClosedGroup : collapsedGroups.contains(group.id)
+    }
+
+    func toggleCollapsed(_ group: AccountGroup) {
+        if group.isClosedGroup {
+            expandedClosedGroup.toggle()
+        } else if collapsedGroups.contains(group.id) {
+            collapsedGroups.remove(group.id)
+        } else {
+            collapsedGroups.insert(group.id)
+        }
+    }
+
+    func createAccountGroup(name: String, parent: Int64?) {
+        guard let vault else { return }
+        run { _ = try vault.createAccountGroup(name: name, parentId: parent) }
+        reloadAll()
+    }
+
+    func renameAccountGroup(_ id: Int64, name: String) {
+        guard let vault else { return }
+        run { try vault.renameAccountGroup(id: id, name: name) }
+        reloadAll()
+    }
+
+    func deleteAccountGroup(_ id: Int64) {
+        guard let vault else { return }
+        run { try vault.deleteAccountGroup(id: id) }
+        if sidebarSelection == .group(id) { sidebarSelection = .allAccounts }
+        collapsedGroups.remove(id)
+        reloadAll()
+    }
+
+    func moveAccount(_ id: Int64, to parent: Int64?, index: UInt32 = .max) {
+        guard let vault else { return }
+        run { try vault.moveAccount(accountId: id, parentId: parent, index: index) }
+        reloadAll()
+    }
+
+    func moveAccountGroup(_ id: Int64, to parent: Int64?, index: UInt32 = .max) {
+        guard let vault else { return }
+        run { try vault.moveAccountGroup(groupId: id, parentId: parent, index: index) }
+        reloadAll()
+    }
+
+    func closeAccount(_ id: Int64) {
+        guard let vault else { return }
+        // Keep a closed selected account visible instead of hiding it in the
+        // collapsed Closed group.
+        if sidebarSelection == .account(id) { expandedClosedGroup = true }
+        run { try vault.closeAccount(accountId: id) }
+        reloadAll()
+    }
+
+    func reopenAccount(_ id: Int64) {
+        guard let vault else { return }
+        run { try vault.reopenAccount(accountId: id) }
         reloadAll()
     }
 

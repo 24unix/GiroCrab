@@ -45,32 +45,30 @@ pub(crate) fn enrich(t: &mut Booking) {
     t.clean_purpose = clean_purpose(&t.purpose);
 }
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
-const SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS bank_connections (
-    id              INTEGER PRIMARY KEY,
-    connector       TEXT    NOT NULL,              -- ConnectorKind::as_str()
-    display_name    TEXT    NOT NULL,
-    login_name      TEXT    NOT NULL DEFAULT '',
-    bank_code       TEXT    NOT NULL DEFAULT '',
-    sf_symbol       TEXT    NOT NULL DEFAULT 'building.columns',
-    state_json      TEXT    NOT NULL DEFAULT '{}',  -- connector state (FinTS system id, BPD, PSD2 session ...)
-    last_sync_unix  INTEGER,
-    created_unix    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-);
-
+const ACCOUNT_GROUPS_DDL: &str = "
 CREATE TABLE IF NOT EXISTS account_groups (
-    id          INTEGER PRIMARY KEY,
-    name        TEXT    NOT NULL UNIQUE,
-    sf_symbol   TEXT    NOT NULL DEFAULT 'folder',
-    sort_order  INTEGER NOT NULL DEFAULT 0
+    id            INTEGER PRIMARY KEY,
+    parent_id     INTEGER REFERENCES account_groups(id),   -- NULL = top level
+    name          TEXT    NOT NULL,
+    sf_symbol     TEXT    NOT NULL DEFAULT 'folder',
+    sort_order    INTEGER NOT NULL DEFAULT 0,             -- shared with sibling accounts
+    role          TEXT    NOT NULL DEFAULT '',          -- '' | 'closed'
+    connection_id INTEGER REFERENCES bank_connections(id) ON DELETE SET NULL  -- bank login whose new accounts land here
 );
+";
 
+const ACCOUNT_GROUPS_INDEXES: &str = "
+CREATE UNIQUE INDEX IF NOT EXISTS account_groups_sibling_name ON account_groups(IFNULL(parent_id, 0), name);
+CREATE UNIQUE INDEX IF NOT EXISTS account_groups_role ON account_groups(role) WHERE role != '';
+";
+
+const ACCOUNTS_DDL: &str = "
 CREATE TABLE IF NOT EXISTS accounts (
     id              INTEGER PRIMARY KEY,
     connection_id   INTEGER REFERENCES bank_connections(id) ON DELETE SET NULL,
-    group_id        INTEGER NOT NULL REFERENCES account_groups(id),
+    group_id        INTEGER REFERENCES account_groups(id),   -- NULL = top level
     external_ref    TEXT    NOT NULL DEFAULT '',   -- IBAN / bank account id / PSD2 uid
     name            TEXT    NOT NULL,
     bank_name       TEXT    NOT NULL DEFAULT '',
@@ -85,6 +83,20 @@ CREATE TABLE IF NOT EXISTS accounts (
     sort_order      INTEGER NOT NULL DEFAULT 0,
     initial_balance_cents INTEGER,                 -- original amount of a Darlehen (i64 cents)
     UNIQUE (connection_id, external_ref)
+);
+";
+
+const SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS bank_connections (
+    id              INTEGER PRIMARY KEY,
+    connector       TEXT    NOT NULL,              -- ConnectorKind::as_str()
+    display_name    TEXT    NOT NULL,
+    login_name      TEXT    NOT NULL DEFAULT '',
+    bank_code       TEXT    NOT NULL DEFAULT '',
+    sf_symbol       TEXT    NOT NULL DEFAULT 'building.columns',
+    state_json      TEXT    NOT NULL DEFAULT '{}',  -- connector state (FinTS system id, BPD, PSD2 session ...)
+    last_sync_unix  INTEGER,
+    created_unix    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 
 CREATE TABLE IF NOT EXISTS categories (
@@ -202,6 +214,58 @@ impl Vault {
         Ok(())
     }
 
+    /// v7: rebuilds `account_groups` (parent, role, bank-login link, names unique
+    /// per parent) and `accounts` (nullable `group_id`). SQLite can't drop a
+    /// NOT NULL in place, so both tables are copied with foreign keys off.
+    fn migrate_account_groups(conn: &Connection) -> CoreResult<()> {
+        let groups = ACCOUNT_GROUPS_DDL.replacen(
+            "IF NOT EXISTS account_groups (",
+            "account_groups_new (",
+            1,
+        );
+        let accounts = ACCOUNTS_DDL.replacen("IF NOT EXISTS accounts (", "accounts_new (", 1);
+        conn.execute_batch("PRAGMA foreign_keys = OFF; BEGIN;")?;
+        let copied = conn
+            .execute_batch(&format!(
+                "{groups}
+                 INSERT INTO account_groups_new(id, name, sf_symbol, sort_order)
+                     SELECT id, name, sf_symbol, sort_order FROM account_groups;
+                 DROP TABLE account_groups;
+                 ALTER TABLE account_groups_new RENAME TO account_groups;
+                 {accounts}
+                 INSERT INTO accounts_new(id, connection_id, group_id, external_ref, name, bank_name, owner, iban,
+                                          account_number, currency, kind, balance_cents, balance_date, sf_symbol,
+                                          sort_order, initial_balance_cents)
+                     SELECT id, connection_id, group_id, external_ref, name, bank_name, owner, iban,
+                            account_number, currency, kind, balance_cents, balance_date, sf_symbol,
+                            sort_order, initial_balance_cents FROM accounts;
+                 DROP TABLE accounts;
+                 ALTER TABLE accounts_new RENAME TO accounts;
+                 -- repair references that were already dangling, so they can't lock the vault
+                 UPDATE accounts SET connection_id = NULL
+                     WHERE connection_id IS NOT NULL AND connection_id NOT IN (SELECT id FROM bank_connections);
+                 UPDATE accounts SET group_id = NULL
+                     WHERE group_id IS NOT NULL AND group_id NOT IN (SELECT id FROM account_groups);"
+            ))
+            .and_then(|_| {
+                conn.query_row("SELECT (SELECT count(*) FROM pragma_foreign_key_check('accounts')) + (SELECT count(*) FROM pragma_foreign_key_check('account_groups'))", [], |r| r.get::<_, i64>(0))
+            });
+        match copied {
+            Ok(0) => conn.execute_batch("COMMIT; PRAGMA foreign_keys = ON;")?,
+            other => {
+                conn.execute_batch("ROLLBACK; PRAGMA foreign_keys = ON;")?;
+                other?;
+                return Err(CoreError::Database {
+                    message: tr(
+                        "Kontogruppen konnten nicht aktualisiert werden (Fremdschlüssel verletzt).",
+                    )
+                    .into(),
+                });
+            }
+        }
+        Ok(())
+    }
+
     fn migrate(conn: &Connection) -> CoreResult<()> {
         // Fails with NotADatabase if the key is wrong.
         conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
@@ -211,6 +275,8 @@ impl Vault {
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if version == 0 {
             conn.execute_batch(SCHEMA)?;
+            conn.execute_batch(ACCOUNT_GROUPS_DDL)?;
+            conn.execute_batch(ACCOUNTS_DDL)?;
         } else {
             if version == 1 {
                 conn.execute_batch(
@@ -244,6 +310,12 @@ impl Vault {
                 )?;
             }
         }
+        // v7: nestable account groups, top-level accounts
+        if version > 0 && version < 7 {
+            Self::migrate_account_groups(conn)?;
+        }
+        conn.execute_batch(ACCOUNT_GROUPS_INDEXES)?;
+        crate::account_groups::closed_group_id(conn)?;
         // v4: encrypted documents (Beleg-Abruf & PostBox) – idempotent
         conn.execute_batch(crate::documents::DOC_SCHEMA)?;
         conn.execute_batch(crate::insights::OVERRIDE_SCHEMA)?;
@@ -470,7 +542,7 @@ impl Vault {
     ) -> CoreResult<i64> {
         if let Some(id) = conn
             .query_row(
-                "SELECT id FROM account_groups WHERE name = ?1",
+                "SELECT id FROM account_groups WHERE parent_id IS NULL AND name = ?1",
                 [name],
                 |r| r.get(0),
             )
@@ -647,12 +719,15 @@ impl Vault {
     pub fn list_accounts(&self) -> Result<Vec<Account>, CoreError> {
         let db = self.db()?;
         let mut stmt = db.prepare(
-            "SELECT a.id, a.connection_id, c.connector, a.group_id, a.name, a.bank_name, a.owner, a.iban, a.account_number,
+            "WITH RECURSIVE closed_groups(id) AS (
+                 SELECT id FROM account_groups WHERE role = 'closed'
+                 UNION SELECT g.id FROM account_groups g JOIN closed_groups c ON g.parent_id = c.id)
+             SELECT a.id, a.connection_id, c.connector, a.group_id, a.name, a.bank_name, a.owner, a.iban, a.account_number,
                     a.currency, a.kind, a.balance_cents, a.balance_date, a.sf_symbol, a.sort_order,
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id),
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.category_id IS NULL),
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0),
-                    a.initial_balance_cents
+                    a.initial_balance_cents, a.group_id IN closed_groups
              FROM accounts a LEFT JOIN bank_connections c ON c.id = a.connection_id
              ORDER BY a.sort_order, a.id",
         )?;
@@ -682,56 +757,14 @@ impl Vault {
                     .get::<_, Option<i64>>(18)?
                     .map(i64::abs)
                     .filter(|c| *c > 0),
+                closed: r.get::<_, Option<bool>>(19)?.unwrap_or(false),
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Sidebar data: groups with their accounts and summed balances.
-    pub fn list_account_groups(&self) -> Result<Vec<AccountGroup>, CoreError> {
-        let accounts = self.list_accounts()?;
-        let db = self.db()?;
-        let mut stmt = db.prepare(
-            "SELECT id, name, sf_symbol, sort_order FROM account_groups ORDER BY sort_order, id",
-        )?;
-        let groups = stmt
-            .query_map([], |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, i32>(3)?,
-                ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(groups
-            .into_iter()
-            .map(|(id, name, sym, order)| {
-                let accs: Vec<Account> = accounts
-                    .iter()
-                    .filter(|a| a.group_id == id)
-                    .cloned()
-                    .collect();
-                let balance = accs
-                    .iter()
-                    .filter(|a| a.currency == "EUR")
-                    .map(|a| a.balance_cents)
-                    .sum();
-                AccountGroup {
-                    id,
-                    name: display_name(&name),
-                    sf_symbol: sym,
-                    sort_order: order,
-                    balance_cents: balance,
-                    accounts: accs,
-                }
-            })
-            .filter(|g| !g.accounts.is_empty())
-            .collect())
-    }
-
     /// End-of-day balances for the last `days` days (oldest first), for the
-    /// header chart. Empty `account_ids` = all EUR accounts. Computed backwards
+    /// header chart. Empty `account_ids` = all open EUR accounts. Computed backwards
     /// from the current balance, so it is exact in cents.
     pub fn balance_history(
         &self,
@@ -742,7 +775,12 @@ impl Vault {
         let chosen: Vec<&Account> = accounts
             .iter()
             .filter(|a| {
-                a.currency == "EUR" && (account_ids.is_empty() || account_ids.contains(&a.id))
+                a.currency == "EUR"
+                    && if account_ids.is_empty() {
+                        !a.closed
+                    } else {
+                        account_ids.contains(&a.id)
+                    }
             })
             .collect();
         let mut balance: i64 = chosen.iter().map(|a| a.balance_cents).sum();

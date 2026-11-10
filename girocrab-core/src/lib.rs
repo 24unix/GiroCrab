@@ -23,6 +23,7 @@
 
 uniffi::setup_scaffolding!();
 
+pub mod account_groups;
 pub mod connections;
 pub mod connectors;
 pub mod demo;

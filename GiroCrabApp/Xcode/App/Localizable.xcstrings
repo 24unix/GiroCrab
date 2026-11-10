@@ -2458,6 +2458,28 @@
         }
       }
     },
+    "Gruppe löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Group"
+          }
+        }
+      }
+    },
+    "Gruppe umbenennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename Group"
+          }
+        }
+      }
+    },
     "Gruppe „%@“" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3140,6 +3162,28 @@
         }
       }
     },
+    "Konto schließen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close Account"
+          }
+        }
+      }
+    },
+    "Konto wieder öffnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reopen Account"
+          }
+        }
+      }
+    },
     "Konto wählen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3653,6 +3697,28 @@
         }
       }
     },
+    "Neue Kontogruppe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Account Group"
+          }
+        }
+      }
+    },
+    "Neue Kontogruppe …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Account Group…"
+          }
+        }
+      }
+    },
     "Neue Regel" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3935,6 +4001,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "OK"
+          }
+        }
+      }
+    },
+    "Oberste Ebene" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top Level"
           }
         }
       }
@@ -4920,6 +4997,28 @@
         }
       }
     },
+    "Umbenennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename"
+          }
+        }
+      }
+    },
+    "Umbenennen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename…"
+          }
+        }
+      }
+    },
     "Umbuchung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5059,6 +5158,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unlink"
+          }
+        }
+      }
+    },
+    "Verschieben nach" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move To"
           }
         }
       }

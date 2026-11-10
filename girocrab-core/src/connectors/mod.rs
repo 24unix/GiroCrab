@@ -498,14 +498,14 @@ pub(crate) fn store_fetch(
                     id
                 }
                 None => {
-                    let (group, sym, order) = group_for(acc.kind);
-                    let gid = Vault::ensure_group(&tx, group, sym, order)?;
+                    let gid = crate::account_groups::bank_group_for(&tx, connection_id)?;
+                    let sort = crate::account_groups::next_sort(&tx, Some(gid))?;
                     tx.execute(
                         "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban, account_number, currency, kind,
                                               balance_cents, balance_date, sf_symbol, sort_order)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts))",
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                         params![connection_id, gid, acc.external_ref, acc.name, bank_name, acc.owner, acc.iban, acc.account_number,
-                                acc.currency, acc.kind.as_str(), acc.balance_cents, acc.balance_date, acc.kind.sf_symbol()],
+                                acc.currency, acc.kind.as_str(), acc.balance_cents, acc.balance_date, acc.kind.sf_symbol(), sort],
                     )?;
                     tx.last_insert_rowid()
                 }
@@ -652,18 +652,6 @@ pub(crate) fn store_fetch(
 }
 
 /// Sidebar sections (fixed order).
-pub(crate) fn group_for(kind: AccountKind) -> (&'static str, &'static str, i32) {
-    match kind {
-        AccountKind::Checking
-        | AccountKind::Savings
-        | AccountKind::Cash
-        | AccountKind::PaymentService => ("Giro & Tagesgeld", "building.columns", 1),
-        AccountKind::CreditCard => ("Kreditkarten", "creditcard", 2),
-        AccountKind::Brokerage => ("Depots & ETFs", "chart.pie", 3),
-        AccountKind::Loan => ("Darlehen & Kredite", "house", 4),
-    }
-}
-
 #[uniffi::export(async_runtime = "tokio")]
 impl SyncSession {
     /// Phase 1: log in. Returns a challenge or finishes the sync.

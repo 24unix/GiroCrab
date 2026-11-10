@@ -143,7 +143,8 @@ struct RuleForm: View {
                     .pickerStyle(.segmented)
                     Picker("Konto", selection: $rule.accountId) {
                         Text("Alle Konten").tag(Int64?.none)
-                        ForEach(model.allAccounts) { a in
+                        // Closed accounts only when the rule already uses one.
+                        ForEach(model.allAccounts.filter { !$0.closed || $0.id == rule.accountId }) { a in
                             Text("\(a.bankName) – \(a.name)").tag(Int64?.some(a.id))
                         }
                     }
