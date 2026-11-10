@@ -432,6 +432,7 @@ impl BankConnector for EnableBankingConnector {
                 ctx.since.clone()
             };
             let mut raw_items = 0usize;
+            let mut skipped_non_book = 0u32;
             for _ in 0..100 {
                 pages += 1;
                 let mut path = format!("/accounts/{uid}/transactions?date_from={since}");
@@ -441,10 +442,31 @@ impl BankConnector for EnableBankingConnector {
                         url::form_urlencoded::byte_serialize(c.as_bytes()).collect::<String>()
                     ));
                 }
-                let page = self.call(reqwest::Method::GET, &path, None).await?;
-                raw_items += page["transactions"].as_array().map_or(0, Vec::len);
+                let page = match self.call(reqwest::Method::GET, &path, None).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        crate::depot_debug::log(&format!(
+                            "amex tx page {pages}: ERROR {e} (date_from={since}, had_continuation={}); keeping {n} already parsed",
+                            continuation.is_some()
+                        ));
+                        // Page 1 failing is fatal; a later page failing must not hide
+                        // the earlier ones silently (it is logged above).
+                        if pages == 1 {
+                            return Err(e);
+                        }
+                        break;
+                    }
+                };
+                let page_items = page["transactions"].as_array().map_or(0, Vec::len);
+                raw_items += page_items;
+                crate::depot_debug::log(&format!(
+                    "amex tx page {pages}: GET /accounts/<uid>/transactions?date_from={since}{} -> status=200 items={page_items} continuation_key_present={}",
+                    if continuation.is_some() { "&continuation_key=<set>" } else { "" },
+                    page["continuation_key"].as_str().is_some_and(|s| !s.is_empty())
+                ));
                 for t in page["transactions"].as_array().cloned().unwrap_or_default() {
                     if t["status"].as_str().map(|s| s != "BOOK").unwrap_or(false) {
+                        skipped_non_book += 1;
                         continue;
                     }
                     let mut amount = json_number_to_cents(&t["transaction_amount"]["amount"])
@@ -591,7 +613,7 @@ impl BankConnector for EnableBankingConnector {
             }
             out.accounts[acct_idx].balance_cents = balance_cents;
             crate::depot_debug::log(&format!(
-                "amex transactions: since={since} pages={pages} raw={raw_items} booked_kept={n} pending={pending_n} pending_sign={} final_balance_sign={}",
+                "amex transactions: since={since} pages={pages} raw={raw_items} skipped_non_book={skipped_non_book} booked_kept={n} pending={pending_n} pending_sign={} final_balance_sign={}",
                 pending_sum.signum(),
                 balance_cents.signum()
             ));

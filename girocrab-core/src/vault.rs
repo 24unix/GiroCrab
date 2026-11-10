@@ -987,18 +987,51 @@ impl Vault {
     #[uniffi::constructor]
     pub fn open(path: String, key: Vec<u8>) -> Result<Arc<Self>, CoreError> {
         let key = Zeroizing::new(key);
-        let conn = Connection::open(&path)?;
-        Self::apply_key(&conn, &key)?;
-        if let Err(e) = Self::migrate(&conn) {
-            // HMAC/codec failure on page 1: distinguish an unencrypted SQLite file
-            // (opened with a key) from a plain wrong key / corrupt file.
-            if matches!(e, CoreError::WrongKey) && Self::is_plaintext_sqlite(&path) {
+        // Default (SQLCipher 4 settings) first; if the key check fails, retry with
+        // explicit compatibility modes for vaults written by older SQLCipher builds.
+        // The cipher_compatibility pragma must be issued before the key.
+        let mut tried: Vec<&str> = Vec::new();
+        let mut opened: Option<Connection> = None;
+        let mut first_err: Option<CoreError> = None;
+        for compat in [None, Some(4u8), Some(3u8)] {
+            let conn = Connection::open(&path)?;
+            if let Some(c) = compat {
+                conn.execute_batch(&format!("PRAGMA cipher_compatibility = {c};"))?;
+            }
+            Self::apply_key(&conn, &key)?;
+            match Self::migrate(&conn) {
+                Ok(()) => {
+                    if compat.is_some() {
+                        tried.push("ok");
+                        eprintln!("vault: opened with cipher_compatibility={compat:?}");
+                    }
+                    opened = Some(conn);
+                    break;
+                }
+                Err(e) if matches!(e, CoreError::WrongKey) => {
+                    tried.push(match compat {
+                        None => "default",
+                        Some(4) => "compat4",
+                        _ => "compat3",
+                    });
+                    first_err.get_or_insert(e);
+                }
+                // Any other error is real (not a key/format mismatch): report as is.
+                Err(e) => return Err(e),
+            }
+        }
+        let Some(conn) = opened else {
+            if Self::is_plaintext_sqlite(&path) {
                 return Err(CoreError::InvalidInput {
                     message: "Die Tresordatei ist unverschlüsselt (Klartext-SQLite) und passt nicht zum Schlüssel. Sie wurde nicht verändert.".into(),
                 });
             }
-            return Err(e);
-        }
+            crate::depot_debug::log(&format!(
+                "vault open failed: HMAC check on page 1 failed for all modes tried: {}",
+                tried.join(", ")
+            ));
+            return Err(first_err.unwrap_or(CoreError::WrongKey));
+        };
         // merge duplicate bank logins left by older versions (keeps bookings)
         let _ = crate::connections::deduplicate(&conn);
         // repair "MÃ¼ller" -> "Müller" stored by older versions
