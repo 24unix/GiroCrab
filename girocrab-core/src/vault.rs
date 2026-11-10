@@ -494,6 +494,26 @@ impl Vault {
         display_name: String,
         login_name: String,
     ) -> CoreResult<(i64, bool)> {
+        Self::add_bank_connection_keyed(
+            conn,
+            connector,
+            connector.as_str(),
+            None,
+            display_name,
+            login_name,
+        )
+    }
+
+    /// Like `add_bank_connection_inner`, with an explicit connector key
+    /// (`fints:<blz>` for generic FinTS banks) and bank code.
+    pub(crate) fn add_bank_connection_keyed(
+        conn: &Connection,
+        connector: ConnectorKind,
+        key: &str,
+        bank_code: Option<&str>,
+        display_name: String,
+        login_name: String,
+    ) -> CoreResult<(i64, bool)> {
         let info = crate::connectors::descriptor(connector);
         let login_name = crate::connections::normalize_login(connector, &login_name);
         // Same provider + same login: update instead of creating a duplicate.
@@ -501,7 +521,7 @@ impl Vault {
             let mut st =
                 conn.prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1")?;
             let r = st
-                .query_map([connector.as_str()], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .query_map([key], |r| Ok((r.get(0)?, r.get(1)?)))?
                 .collect::<Result<Vec<_>, _>>()?;
             r
         };
@@ -521,10 +541,10 @@ impl Vault {
         conn.execute(
             "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![
-                connector.as_str(),
+                key,
                 if display_name.trim().is_empty() { info.name.clone() } else { display_name },
                 login_name,
-                info.bank_code,
+                bank_code.map(str::to_string).unwrap_or(info.bank_code),
                 info.sf_symbol
             ],
         )?;
@@ -1067,6 +1087,45 @@ impl Vault {
     ) -> Result<i64, CoreError> {
         let db = self.db()?;
         Ok(Self::add_bank_connection_inner(&db, connector, display_name, login_name)?.0)
+    }
+
+    /// Adds a login at any FinTS 3.0 PIN/TAN bank and stores the bank's URL
+    /// (`fints.url.<blz>`). `blz` must be 8 digits, `url` an https URL.
+    pub fn add_fints_connection(
+        &self,
+        blz: String,
+        url: String,
+        display_name: String,
+        login_name: String,
+    ) -> Result<i64, CoreError> {
+        let blz = blz.trim().to_string();
+        let url = url.trim().to_string();
+        if ConnectorKind::fints_blz(&ConnectorKind::fints_key(&blz)).is_none() {
+            return Err(CoreError::InvalidInput {
+                message: tr("Die BLZ muss aus genau 8 Ziffern bestehen.").into(),
+            });
+        }
+        if !crate::connectors::fints_presets::is_valid_fints_url(&url) {
+            return Err(CoreError::InvalidInput {
+                message: tr("Die FinTS-URL muss mit https:// beginnen.").into(),
+            });
+        }
+        let db = self.db()?;
+        let key = ConnectorKind::fints_key(&blz);
+        let (id, _) = Self::add_bank_connection_keyed(
+            &db,
+            ConnectorKind::FinTsGeneric,
+            &key,
+            Some(&blz),
+            display_name,
+            login_name,
+        )?;
+        db.execute(
+            "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, 0)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![format!("fints.url.{blz}"), url],
+        )?;
+        Ok(id)
     }
 
     pub fn delete_bank_connection(&self, connection_id: i64) -> Result<(), CoreError> {

@@ -1,12 +1,15 @@
 //! Records and enums shared with Swift. Dates are ISO `YYYY-MM-DD` strings,
 //! money is always `i64` cents.
 
-/// The seven supported institutions. The connector implementation is picked
+/// The supported institutions. The connector implementation is picked
 /// from this value; endpoints/BLZ are listed in `bank_catalog()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum ConnectorKind {
     /// Volksbank Kassel Göttingen, FinTS 3.0, BLZ 52090000
     VolksbankKasselGoettingen,
+    /// Any other FinTS 3.0 PIN/TAN bank. The BLZ lives in the connection's
+    /// connector key `fints:<blz>`, its URL in the setting `fints.url.<blz>`.
+    FinTsGeneric,
     /// 1822direkt, FinTS 3.0, BLZ 50050201
     Direkt1822,
     /// comdirect official REST API
@@ -28,6 +31,7 @@ impl ConnectorKind {
         match self {
             ConnectorKind::VolksbankKasselGoettingen => "fints:52090000",
             ConnectorKind::Direkt1822 => "fints:50050201",
+            ConnectorKind::FinTsGeneric => "fints",
             ConnectorKind::Comdirect => "comdirect",
             ConnectorKind::PayPal => "paypal",
             ConnectorKind::TradeRepublic => "traderepublic",
@@ -37,12 +41,25 @@ impl ConnectorKind {
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
-        Self::all().into_iter().find(|k| k.as_str() == s)
+        if let Some(k) = Self::all().into_iter().find(|k| k.as_str() == s) {
+            return Some(k);
+        }
+        Self::fints_blz(s).map(|_| ConnectorKind::FinTsGeneric)
+    }
+    /// BLZ of a `fints:<8 digits>` connector key (any FinTS bank).
+    pub fn fints_blz(key: &str) -> Option<&str> {
+        let blz = key.strip_prefix("fints:")?;
+        (blz.len() == 8 && blz.bytes().all(|b| b.is_ascii_digit())).then_some(blz)
+    }
+    /// Connector key stored in the DB for a generic FinTS bank.
+    pub fn fints_key(blz: &str) -> String {
+        format!("fints:{blz}")
     }
     pub fn all() -> Vec<Self> {
         vec![
             ConnectorKind::VolksbankKasselGoettingen,
             ConnectorKind::Direkt1822,
+            ConnectorKind::FinTsGeneric,
             ConnectorKind::Comdirect,
             ConnectorKind::PayPal,
             ConnectorKind::TradeRepublic,

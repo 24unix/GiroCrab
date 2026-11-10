@@ -16,7 +16,8 @@ public final class CloudSyncManager {
         static let stats = "girocrab.sync.stats"
     }
     private let fileName = "tresor.girocrab"
-    private let keyFileName = "tresor.key"
+    /// Legacy plaintext key file of v0.4.0. Never written anymore; removed on sync.
+    private let legacyKeyFileName = "tresor.key"
     private let defaults = UserDefaults.standard
 
     public var isEnabled: Bool {
@@ -44,7 +45,8 @@ public final class CloudSyncManager {
         lastStats = defaults.string(forKey: K.stats)
         if let url = try? resolveBookmark() {
             folderName = url.lastPathComponent
-        } else {
+        } else if isEnabled {
+            // Only touch iCloud Drive when the user has actually enabled sync.
             #if os(macOS)
             ensureDefaultMacICloudFolder()
             #endif
@@ -61,6 +63,7 @@ public final class CloudSyncManager {
         let mm = cloudDocs.appendingPathComponent("moneymoney", isDirectory: true)
         if FileManager.default.fileExists(atPath: mm.appendingPathComponent("tresor.girocrab").path) { return mm }
         let dir = cloudDocs.appendingPathComponent("GiroCrab", isDirectory: true)
+        // Only reached once sync is enabled (init / isEnabled / sync call it gated).
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -84,7 +87,12 @@ public final class CloudSyncManager {
         lastError = nil
     }
 
-    public func sync(vault: Vault, localPath: String, key: Data) async {
+    /// - Parameters:
+    ///   - remoteKey: key of the iCloud snapshot if it differs from `key`
+    ///     (pasted by the user from the other device).
+    ///   - mergeOnly: merge the snapshot into the local vault but don't write
+    ///     it back (used while adopting a pasted key).
+    public func sync(vault: Vault, localPath: String, key: Data, remoteKey: Data? = nil, mergeOnly: Bool = false) async {
         guard !isSyncing else { return }
         isSyncing = true; lastError = nil; keyMismatch = false
         defer { isSyncing = false }
@@ -93,9 +101,11 @@ public final class CloudSyncManager {
             defer { release() }
             let local = URL(fileURLWithPath: localPath)
             let remote = dir.appendingPathComponent(fileName)
-            let keyFile = dir.appendingPathComponent(keyFileName)
+            let legacyKeyFile = dir.appendingPathComponent(legacyKeyFileName)
             let stats = try await Task.detached { [fileName] () throws -> MergeStats? in
-                let res = try Self.merge(vault: vault, local: local, remote: remote, key: key, keyFile: keyFile, tmpName: fileName)
+                // Security: never leave the raw vault key next to the vault in iCloud Drive.
+                Self.removeLegacyKeyFile(legacyKeyFile)
+                let res = try Self.merge(vault: vault, local: local, remote: remote, key: key, remoteKey: remoteKey, mergeOnly: mergeOnly, tmpName: fileName)
                 return res
             }.value
             lastSync = Date()
@@ -110,7 +120,17 @@ public final class CloudSyncManager {
         }
     }
 
-    nonisolated private static func merge(vault: Vault, local: URL, remote: URL, key: Data, keyFile: URL, tmpName: String) throws -> MergeStats? {
+    /// Deletes `tresor.key` (and its iCloud placeholder) from the sync folder.
+    nonisolated private static func removeLegacyKeyFile(_ keyFile: URL) {
+        let fm = FileManager.default
+        let placeholder = keyFile.deletingLastPathComponent()
+            .appendingPathComponent("." + keyFile.lastPathComponent + ".icloud")
+        for url in [keyFile, placeholder] where fm.fileExists(atPath: url.path) {
+            try? fm.removeItem(at: url)
+        }
+    }
+
+    nonisolated private static func merge(vault: Vault, local: URL, remote: URL, key: Data, remoteKey: Data?, mergeOnly: Bool, tmpName: String) throws -> MergeStats? {
         let fm = FileManager.default
         var stats: MergeStats?
 
@@ -121,19 +141,21 @@ public final class CloudSyncManager {
             do {
                 stats = try vault.mergeOtherVault(otherPath: tmp.path, key: key)
             } catch {
-                // Lokaler Schlüssel passt nicht -> versuche Schlüssel aus tresor.key im selben Ordner!
-                if ensureDownloaded(keyFile),
-                   let kData = try? Data(contentsOf: keyFile),
-                   let kStr = String(data: kData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   let remoteKey = Data(base64Encoded: kStr), remoteKey.count == 32 {
-                    stats = try vault.mergeOtherVault(otherPath: tmp.path, key: remoteKey)
+                // Local key doesn't open the snapshot: only a key the user pasted can.
+                if let remoteKey, remoteKey != key {
+                    do {
+                        stats = try vault.mergeOtherVault(otherPath: tmp.path, key: remoteKey)
+                    } catch {
+                        throw Self.keyMismatchError
+                    }
                 } else {
-                    throw NSError(domain: "CloudSync", code: 3, userInfo: [NSLocalizedDescriptionKey: String(localized: "Bitte zuerst auf dem Mac einmal „Jetzt synchronisieren“ klicken, damit der Schlüssel im iCloud-Ordner abgelegt wird.")])
+                    throw Self.keyMismatchError
                 }
             }
         }
 
         try vault.checkpoint()
+        if mergeOnly { return stats }
 
         // Nie einen leeren (frischen) Tresor über den befüllten in iCloud Drive schreiben.
         guard ((try? vault.accountCount()) ?? 0) > 0 else { return stats }
@@ -144,8 +166,11 @@ public final class CloudSyncManager {
             try fm.copyItem(at: tmpOut, to: remote)
             try? fm.removeItem(at: tmpOut)
         }
-        try key.base64EncodedString().data(using: .utf8)?.write(to: keyFile, options: .atomic)
         return stats
+    }
+
+    nonisolated private static var keyMismatchError: NSError {
+        NSError(domain: "CloudSync", code: 3, userInfo: [NSLocalizedDescriptionKey: String(localized: "Der Tresor in iCloud nutzt einen anderen Schlüssel. Aktivieren Sie den iCloud-Schlüsselbund oder fügen Sie den Tresor-Schlüssel von Ihrem anderen Gerät ein (Einstellungen › iCloud Sync).")])
     }
 
     nonisolated private static func ensureDownloaded(_ remote: URL) -> Bool {

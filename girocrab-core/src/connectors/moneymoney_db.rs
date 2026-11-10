@@ -355,11 +355,31 @@ fn suggest_kind(a: &SrcAccount, bank_name: &str) -> AccountKind {
 /// GiroCrab connector for a MoneyMoney bank login: bank code first, name for
 /// institutions without a German bank code.
 fn connector_for(bankcode: &str, name: &str) -> Option<ConnectorKind> {
+    connector_key_for(bankcode, name).map(|(k, _)| k)
+}
+
+/// Like `connector_for`, plus the stored connector key (`fints:<blz>` for
+/// FinTS banks that have a preset, e.g. Postbank or Sparda).
+fn connector_key_for(bankcode: &str, name: &str) -> Option<(ConnectorKind, String)> {
+    let kind = connector_for_inner(bankcode, name)?;
+    let code: String = bankcode.chars().filter(|c| c.is_ascii_digit()).collect();
+    let key = if kind == ConnectorKind::FinTsGeneric {
+        ConnectorKind::fints_key(&code)
+    } else {
+        kind.as_str().to_string()
+    };
+    Some((kind, key))
+}
+
+fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
     let code: String = bankcode.chars().filter(|c| c.is_ascii_digit()).collect();
     match code.as_str() {
         "52090000" => return Some(ConnectorKind::VolksbankKasselGoettingen),
         "50050201" => return Some(ConnectorKind::Direkt1822),
         "20041111" | "20041133" | "20041144" | "20041155" => return Some(ConnectorKind::Comdirect),
+        c if c.len() == 8 && super::fints_presets::known_fints_blz(c) => {
+            return Some(ConnectorKind::FinTsGeneric)
+        }
         _ => {}
     }
     if code.len() == 8 {
@@ -387,6 +407,7 @@ fn pin_usable(kind: ConnectorKind) -> bool {
         kind,
         ConnectorKind::VolksbankKasselGoettingen
             | ConnectorKind::Direkt1822
+            | ConnectorKind::FinTsGeneric
             | ConnectorKind::Comdirect
             | ConnectorKind::TradeRepublic
     )
@@ -908,12 +929,17 @@ fn find_existing_account(
         .optional()?)
 }
 
-fn find_connection(conn: &Connection, kind: ConnectorKind, login: &str) -> CoreResult<Option<i64>> {
+fn find_connection(
+    conn: &Connection,
+    kind: ConnectorKind,
+    key: &str,
+    login: &str,
+) -> CoreResult<Option<i64>> {
     let login = crate::connections::normalize_login(kind, login);
     let mut st = conn
         .prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1 ORDER BY id")?;
     let rows: Vec<(i64, String)> = st
-        .query_map([kind.as_str()], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .query_map([key], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<Result<_, _>>()?;
     Ok(rows
         .into_iter()
@@ -1040,7 +1066,12 @@ fn preview(conn: &Connection, src: &Source) -> CoreResult<MoneyMoneyDbPreview> {
             connector,
             has_saved_pin: src.pin_banks.contains(&b.id),
             existing_connection_id: match connector {
-                Some(k) => find_connection(conn, k, &b.username)?,
+                Some(k) => {
+                    let key = connector_key_for(&b.bankcode, &b.name)
+                        .map(|(_, key)| key)
+                        .unwrap_or_else(|| k.as_str().to_string());
+                    find_connection(conn, k, &key, &b.username)?
+                }
                 None => None,
             },
             account_count: src
@@ -1191,22 +1222,24 @@ fn import(
 
     let mut bank_connection: HashMap<i64, i64> = HashMap::new();
     for b in &src.banks {
-        let Some(kind) = connector_for(&b.bankcode, &b.name) else {
+        let Some((kind, key)) = connector_key_for(&b.bankcode, &b.name) else {
             res.banks_skipped_unsupported += 1;
             continue;
         };
         if !options.create_connections {
             continue;
         }
-        let id = match find_connection(conn, kind, &b.username)? {
+        let id = match find_connection(conn, kind, &key, &b.username)? {
             Some(id) => {
                 res.connections_existing += 1;
                 id
             }
             None => {
-                let (id, created) = Vault::add_bank_connection_inner(
+                let (id, created) = Vault::add_bank_connection_keyed(
                     conn,
                     kind,
+                    &key,
+                    ConnectorKind::fints_blz(&key),
                     b.name.clone(),
                     b.username.clone(),
                 )?;

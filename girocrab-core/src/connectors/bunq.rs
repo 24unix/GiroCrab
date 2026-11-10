@@ -20,7 +20,9 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use base64::Engine as _;
 use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
-use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey, LineEnding};
+use rsa::pkcs8::{
+    DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey, LineEnding,
+};
 use rsa::signature::{SignatureEncoding, Signer, Verifier};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use serde::{Deserialize, Serialize};
@@ -222,7 +224,9 @@ impl BunqConnector {
                         base64::engine::general_purpose::STANDARD.encode(sig.to_bytes()),
                     );
                 }
-                req = req.header("Content-Type", *content_type).body(bytes.clone());
+                req = req
+                    .header("Content-Type", *content_type)
+                    .body(bytes.clone());
             }
             let resp = req.send().await.map_err(CoreError::from)?;
             let status = resp.status().as_u16();
@@ -280,7 +284,8 @@ impl BunqConnector {
     /// Raw GET with the session token (attachments, statement files).
     async fn get_raw(&mut self, path: &str) -> ApiResult<(Vec<u8>, String)> {
         let token = self.state.session_token.clone();
-        self.send(reqwest::Method::GET, path, None, &[], Some(&token)).await
+        self.send(reqwest::Method::GET, path, None, &[], Some(&token))
+            .await
     }
 
     /// Checks `X-Bunq-Server-Signature` (body only) once the server key is known.
@@ -305,21 +310,21 @@ impl BunqConnector {
 
     async fn get(&mut self, path: &str) -> ApiResult<Value> {
         let token = self.state.session_token.clone();
-        self.call(reqwest::Method::GET, path, None, Some(&token)).await
+        self.call(reqwest::Method::GET, path, None, Some(&token))
+            .await
     }
 
     /// POST /installation with a fresh 2048-bit key.
     async fn install(&mut self) -> CoreResult<()> {
-        let key = tokio::task::spawn_blocking(|| {
-            RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048)
-        })
-        .await
-        .map_err(|e| CoreError::Protocol {
-            message: e.to_string(),
-        })?
-        .map_err(|e| CoreError::Protocol {
-            message: format!("bunq key: {e}"),
-        })?;
+        let key =
+            tokio::task::spawn_blocking(|| RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048))
+                .await
+                .map_err(|e| CoreError::Protocol {
+                    message: e.to_string(),
+                })?
+                .map_err(|e| CoreError::Protocol {
+                    message: format!("bunq key: {e}"),
+                })?;
         let pem_err = |e: String| CoreError::Protocol { message: e };
         let public_pem = key
             .to_public_key()
@@ -369,16 +374,26 @@ impl BunqConnector {
             "permitted_ips": ["*"],
         });
         let first = self
-            .call(reqwest::Method::POST, "/v1/device-server", Some(&body), Some(&token))
+            .call(
+                reqwest::Method::POST,
+                "/v1/device-server",
+                Some(&body),
+                Some(&token),
+            )
             .await;
         if let Err(e) = first {
             if e.status != 400 {
                 return Err(e.into_core());
             }
             body.as_object_mut().unwrap().remove("permitted_ips");
-            self.call(reqwest::Method::POST, "/v1/device-server", Some(&body), Some(&token))
-                .await
-                .map_err(ApiError::into_core)?;
+            self.call(
+                reqwest::Method::POST,
+                "/v1/device-server",
+                Some(&body),
+                Some(&token),
+            )
+            .await
+            .map_err(ApiError::into_core)?;
         }
         self.state.device_registered = true;
         Ok(())
@@ -396,10 +411,15 @@ impl BunqConnector {
             )
             .await?;
         let session = find(&v, "Token")["token"].as_str().unwrap_or_default();
-        let user_id = ["UserPerson", "UserCompany", "UserPaymentServiceProvider", "UserApiKey"]
-            .iter()
-            .find_map(|k| find(&v, k)["id"].as_i64())
-            .unwrap_or(0);
+        let user_id = [
+            "UserPerson",
+            "UserCompany",
+            "UserPaymentServiceProvider",
+            "UserApiKey",
+        ]
+        .iter()
+        .find_map(|k| find(&v, k)["id"].as_i64())
+        .unwrap_or(0);
         if session.is_empty() || user_id == 0 {
             return Err(CoreError::Protocol {
                 message: "bunq session: missing token or user".into(),
@@ -443,7 +463,12 @@ impl BunqConnector {
 
     /// Pages through a bunq list (newest first) and returns the objects under
     /// `key` created on/after `since` (local date).
-    async fn list_since(&mut self, first: String, key: &str, since: &str) -> CoreResult<Vec<Value>> {
+    async fn list_since(
+        &mut self,
+        first: String,
+        key: &str,
+        since: &str,
+    ) -> CoreResult<Vec<Value>> {
         let mut out = Vec::new();
         let mut path = Some(first);
         let mut pages = 0;
@@ -578,7 +603,10 @@ impl BunqConnector {
             let Some(pid) = p["id"].as_i64() else {
                 continue;
             };
-            let date = p["created"].as_str().and_then(local_date).unwrap_or_default();
+            let date = p["created"]
+                .as_str()
+                .and_then(local_date)
+                .unwrap_or_default();
             let ext = format!("bunq-{pid}");
             let label = receipt_label(p);
             // 1) attachments sent along with the payment (no extra listing call)
@@ -590,13 +618,16 @@ impl BunqConnector {
             let updated = p["updated"].as_str().unwrap_or_default().to_string();
             if lookup.contains(&pid) {
                 let object = if is_request_payment(p) {
-                    match_request_response(p, &responses).map(|rid| format!("request-response/{rid}"))
+                    match_request_response(p, &responses)
+                        .map(|rid| format!("request-response/{rid}"))
                 } else {
                     Some(format!("payment/{pid}"))
                 };
                 let user_id = self.state.user_id;
                 let notes_of = |object: &str| {
-                    format!("/v1/user/{user_id}/monetary-account/{account_id}/{object}/note-attachment")
+                    format!(
+                        "/v1/user/{user_id}/monetary-account/{account_id}/{object}/note-attachment"
+                    )
                 };
                 let mut result = match object {
                     Some(object) => self.get(&notes_of(&object)).await,
@@ -673,7 +704,15 @@ impl BunqConnector {
                 }
                 self.state.attachments_done.insert(aid);
                 docs.push(receipt_document(
-                    account_ref, &ext, &date, &label, &desc, aid, bytes, &content_type, source_url,
+                    account_ref,
+                    &ext,
+                    &date,
+                    &label,
+                    &desc,
+                    aid,
+                    bytes,
+                    &content_type,
+                    source_url,
                 ));
             }
         }
@@ -701,7 +740,11 @@ impl BunqConnector {
                 break;
             }
             // No statements for months before the account was opened.
-            let opened = self.account_created.get(&account_id).cloned().unwrap_or_default();
+            let opened = self
+                .account_created
+                .get(&account_id)
+                .cloned()
+                .unwrap_or_default();
             if last.format("%Y-%m-%d").to_string() < opened {
                 break; // older months are earlier still
             }
@@ -773,7 +816,12 @@ impl BunqConnector {
         }
         // The export itself is no longer needed at bunq.
         let _ = self
-            .call(reqwest::Method::DELETE, &format!("{base}/{id}"), None, Some(&token))
+            .call(
+                reqwest::Method::DELETE,
+                &format!("{base}/{id}"),
+                None,
+                Some(&token),
+            )
             .await;
         result
     }
@@ -788,7 +836,11 @@ impl BunqConnector {
     }
 
     /// Payment ids booked for a card action (`…/mastercard-action/{id}/payment`).
-    async fn payments_of_action(&mut self, account_id: i64, action_id: i64) -> CoreResult<Vec<i64>> {
+    async fn payments_of_action(
+        &mut self,
+        account_id: i64,
+        action_id: i64,
+    ) -> CoreResult<Vec<i64>> {
         let path = format!(
             "/v1/user/{}/monetary-account/{account_id}/mastercard-action/{action_id}/payment",
             self.state.user_id
@@ -836,7 +888,11 @@ impl BunqConnector {
             let Some(action_id) = a["id"].as_i64() else {
                 continue;
             };
-            for pid in self.payments_of_action(account_id, action_id).await.unwrap_or_default() {
+            for pid in self
+                .payments_of_action(account_id, action_id)
+                .await
+                .unwrap_or_default()
+            {
                 let ext = format!("bunq-{pid}");
                 if let Some(t) = payments.iter_mut().find(|t| t.external_id == ext) {
                     if !t.purpose.contains(&note) {
@@ -935,8 +991,13 @@ fn parse_account(item: &Value, today: &str) -> Option<(i64, RemoteAccount)> {
 /// Signed amount in the account currency: card purchases are debits.
 fn card_amount_cents(a: &Value) -> Option<i64> {
     let cents = json_number_to_cents(&a["amount_billing"]["value"]).ok()?;
-    let kind = a["authorisation_type"].as_str().unwrap_or_default().to_uppercase();
-    let credit = ["REFUND", "CREDIT", "RETURN"].iter().any(|k| kind.contains(k));
+    let kind = a["authorisation_type"]
+        .as_str()
+        .unwrap_or_default()
+        .to_uppercase();
+    let credit = ["REFUND", "CREDIT", "RETURN"]
+        .iter()
+        .any(|k| kind.contains(k));
     Some(if credit { cents.abs() } else { -cents.abs() })
 }
 
@@ -948,7 +1009,10 @@ fn is_open_hold(a: &Value, now: chrono::NaiveDateTime) -> bool {
     if !matches!(a["clearing_status"].as_str(), Some("PENDING") | None) {
         return false;
     }
-    if a["payment_status"].as_str().is_some_and(|s| s.contains("FAIL")) {
+    if a["payment_status"]
+        .as_str()
+        .is_some_and(|s| s.contains("FAIL"))
+    {
         return false;
     }
     let expired = |k: &str| {
@@ -973,9 +1037,19 @@ fn parse_hold(a: &Value, account_ref: &str) -> Option<RemoteTransaction> {
         .unwrap_or_default()
         .trim()
         .to_string();
-    let mut purpose = a["description"].as_str().unwrap_or_default().trim().to_string();
-    if let Some(note) = foreign_amount_note(a, a["amount_billing"]["currency"].as_str().unwrap_or("EUR")) {
-        purpose = if purpose.is_empty() { note } else { format!("{purpose} · {note}") };
+    let mut purpose = a["description"]
+        .as_str()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if let Some(note) =
+        foreign_amount_note(a, a["amount_billing"]["currency"].as_str().unwrap_or("EUR"))
+    {
+        purpose = if purpose.is_empty() {
+            note
+        } else {
+            format!("{purpose} · {note}")
+        };
     }
     Some(RemoteTransaction {
         account_ref: account_ref.to_string(),
@@ -983,7 +1057,10 @@ fn parse_hold(a: &Value, account_ref: &str) -> Option<RemoteTransaction> {
         booking_date: date.clone(),
         value_date: date,
         amount_cents: amount,
-        currency: a["amount_billing"]["currency"].as_str().unwrap_or("EUR").to_string(),
+        currency: a["amount_billing"]["currency"]
+            .as_str()
+            .unwrap_or("EUR")
+            .to_string(),
         counterparty,
         counterparty_iban: String::new(),
         purpose,
@@ -1036,9 +1113,8 @@ fn is_request_payment(p: &Value) -> bool {
 /// reference, so match the amount and the answer time (the payment is
 /// created in the same instant; observed: 0.1 s apart).
 fn match_request_response(p: &Value, responses: &[Value]) -> Option<i64> {
-    let ts = |v: &Value| {
-        chrono::NaiveDateTime::parse_from_str(v.as_str()?, "%Y-%m-%d %H:%M:%S%.f").ok()
-    };
+    let ts =
+        |v: &Value| chrono::NaiveDateTime::parse_from_str(v.as_str()?, "%Y-%m-%d %H:%M:%S%.f").ok();
     let paid = ts(&p["created"])?;
     let cents = json_number_to_cents(&p["amount"]["value"]).ok()?.abs();
     responses
@@ -1074,7 +1150,10 @@ fn draft_of_payment(pid: i64, drafts: &[Value]) -> Option<i64> {
     drafts
         .iter()
         .filter(|d| d["id"].as_i64() != Some(pid))
-        .find(|d| d.as_object().is_some_and(|o| o.iter().any(|(k, c)| k != "id" && has_id(c, pid))))
+        .find(|d| {
+            d.as_object()
+                .is_some_and(|o| o.iter().any(|(k, c)| k != "id" && has_id(c, pid)))
+        })
         .and_then(|d| d["id"].as_i64())
 }
 
@@ -1131,7 +1210,13 @@ fn extension_for(mime: &str) -> &'static str {
 fn slug(s: &str) -> String {
     let out: String = s
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     out.trim_matches('_').chars().take(40).collect()
 }
@@ -1148,7 +1233,12 @@ fn receipt_document(
     content_type: &str,
     source_url: String,
 ) -> crate::documents::RemoteDocument {
-    let ct = content_type.split(';').next().unwrap_or_default().trim().to_lowercase();
+    let ct = content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
     let mime = if ct.is_empty() || ct == "application/octet-stream" || ct == "application/json" {
         crate::documents::sniff_mime(&bytes, "")
     } else {
@@ -1164,7 +1254,11 @@ fn receipt_document(
         booking_external_id: Some(booking_ext.to_string()),
         title,
         doc_type: "beleg".into(),
-        file_name: format!("{date}_{}_{attachment_id}.{}", slug(label), extension_for(&mime)),
+        file_name: format!(
+            "{date}_{}_{attachment_id}.{}",
+            slug(label),
+            extension_for(&mime)
+        ),
         mime_type: mime,
         bytes,
         source_url,
@@ -1194,7 +1288,10 @@ fn statement_document(
 }
 
 /// The `n` most recent completed calendar months as (first day, last day), newest first.
-fn completed_months(today: chrono::NaiveDate, n: u32) -> Vec<(chrono::NaiveDate, chrono::NaiveDate)> {
+fn completed_months(
+    today: chrono::NaiveDate,
+    n: u32,
+) -> Vec<(chrono::NaiveDate, chrono::NaiveDate)> {
     use chrono::Datelike;
     let mut out = Vec::new();
     let mut first_of_this = today.with_day(1).unwrap_or(today);
@@ -1247,10 +1344,17 @@ fn parse_payment(p: &Value, account_ref: &str) -> Option<RemoteTransaction> {
         booking_date: date.clone(),
         value_date: date,
         amount_cents: json_number_to_cents(&p["amount"]["value"]).ok()?,
-        currency: p["amount"]["currency"].as_str().unwrap_or("EUR").to_string(),
+        currency: p["amount"]["currency"]
+            .as_str()
+            .unwrap_or("EUR")
+            .to_string(),
         counterparty: counterparty.trim().to_string(),
         counterparty_iban: cp["iban"].as_str().unwrap_or_default().to_string(),
-        purpose: p["description"].as_str().unwrap_or_default().trim().to_string(),
+        purpose: p["description"]
+            .as_str()
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
         booking_text: booking_text(
             p["type"].as_str().unwrap_or_default(),
             p["sub_type"].as_str().unwrap_or_default(),
@@ -1272,7 +1376,12 @@ impl BankConnector for BunqConnector {
         } else {
             "production"
         };
-        self.base = if env == "sandbox" { SANDBOX } else { PRODUCTION }.into();
+        self.base = if env == "sandbox" {
+            SANDBOX
+        } else {
+            PRODUCTION
+        }
+        .into();
         self.client = Some(http_client()?);
 
         let fp = key_fingerprint(&api_key);
@@ -1291,10 +1400,11 @@ impl BankConnector for BunqConnector {
             return Ok(Phase::Ready);
         }
         self.state.session_token.clear();
-        if !self.state.installation_token.is_empty() && self.state.device_registered {
-            if self.open_session(&api_key).await.is_ok() {
-                return Ok(Phase::Ready);
-            }
+        if !self.state.installation_token.is_empty()
+            && self.state.device_registered
+            && self.open_session(&api_key).await.is_ok()
+        {
+            return Ok(Phase::Ready);
         }
         // Start over: new key pair, installation, device and session.
         self.install().await?;
@@ -1333,7 +1443,11 @@ impl BankConnector for BunqConnector {
 
     /// Creates a draft payment; the user approves it in the bunq app, so
     /// GiroCrab can never move money without a tap on the phone.
-    async fn send_transfer(&mut self, _ctx: &ConnectContext, job: &TransferJob) -> CoreResult<Phase> {
+    async fn send_transfer(
+        &mut self,
+        _ctx: &ConnectContext,
+        job: &TransferJob,
+    ) -> CoreResult<Phase> {
         let source = job.source_iban.replace(' ', "").to_uppercase();
         let account_id = self
             .accounts()
@@ -1362,9 +1476,11 @@ impl BankConnector for BunqConnector {
             .call(reqwest::Method::POST, &path, Some(&body), Some(&token))
             .await
             .map_err(ApiError::into_core)?;
-        let draft_id = find(&v, "Id")["id"].as_i64().ok_or_else(|| CoreError::Protocol {
-            message: "bunq draft-payment: missing id".into(),
-        })?;
+        let draft_id = find(&v, "Id")["id"]
+            .as_i64()
+            .ok_or_else(|| CoreError::Protocol {
+                message: "bunq draft-payment: missing id".into(),
+            })?;
         let challenge = Challenge {
             kind: ChallengeKind::DecoupledPush,
             title: tr("Überweisung in der bunq-App freigeben").into(),
@@ -1511,7 +1627,9 @@ mod tests {
 
     #[test]
     fn card_holds_and_foreign_amounts() {
-        let now = chrono::NaiveDateTime::parse_from_str("2026-11-10 12:00:00.0", "%Y-%m-%d %H:%M:%S%.f").unwrap();
+        let now =
+            chrono::NaiveDateTime::parse_from_str("2026-11-10 12:00:00.0", "%Y-%m-%d %H:%M:%S%.f")
+                .unwrap();
         let mut a = json!({
             "id": 99, "created": "2026-11-08 10:00:00.000000",
             "amount_local": {"value": "20.00", "currency": "USD"},
@@ -1527,7 +1645,13 @@ mod tests {
         assert_eq!(t.amount_cents, -1_870);
         assert!(t.purpose.contains("USD"), "{}", t.purpose);
         assert!(t.booking_text.contains(tr("vorgemerkt")));
-        assert_eq!(foreign_amount_note(&a, "EUR"), Some(trf("Originalbetrag {0}", &[&crate::money::format_cents(2_000, "USD".into())])));
+        assert_eq!(
+            foreign_amount_note(&a, "EUR"),
+            Some(trf(
+                "Originalbetrag {0}",
+                &[&crate::money::format_cents(2_000, "USD".into())]
+            ))
+        );
         assert_eq!(foreign_amount_note(&a, "USD"), None);
 
         a["amount_billing"]["value"] = json!("-18.70");
@@ -1549,11 +1673,17 @@ mod tests {
     fn request_payments_match_their_response() {
         let pay = json!({"id": 1, "sub_type": "REQUEST", "created": "2026-11-02 14:01:03.477301",
             "amount": {"value": "-19.57", "currency": "EUR"}});
-        let resp = |id: i64, status: &str, value: &str, t: &str| json!({"id": id, "status": status,
-            "amount_responded": {"value": value, "currency": "EUR"}, "time_responded": t});
+        let resp = |id: i64, status: &str, value: &str, t: &str| {
+            json!({"id": id, "status": status,
+            "amount_responded": {"value": value, "currency": "EUR"}, "time_responded": t})
+        };
         assert!(is_request_payment(&pay));
-        assert!(!is_request_payment(&json!({"sub_type": "PAYMENT", "amount": {"value": "-1.00"}})));
-        assert!(!is_request_payment(&json!({"sub_type": "REQUEST", "amount": {"value": "5.00"}})));
+        assert!(!is_request_payment(
+            &json!({"sub_type": "PAYMENT", "amount": {"value": "-1.00"}})
+        ));
+        assert!(!is_request_payment(
+            &json!({"sub_type": "REQUEST", "amount": {"value": "5.00"}})
+        ));
         let responses = vec![
             resp(10, "ACCEPTED", "19.57", "2026-10-02 14:01:03.500000"), // last month
             resp(11, "REJECTED", "19.57", "2026-11-02 14:01:03.500000"),
@@ -1608,8 +1738,14 @@ mod tests {
         // first round starts with the newest
         assert_eq!(rotate_older(ids.clone(), None, 2), (vec![50, 40], Some(40)));
         // continues below the cursor and wraps around
-        assert_eq!(rotate_older(ids.clone(), Some(40), 2), (vec![30, 20], Some(20)));
-        assert_eq!(rotate_older(ids.clone(), Some(20), 2), (vec![10, 50], Some(50)));
+        assert_eq!(
+            rotate_older(ids.clone(), Some(40), 2),
+            (vec![30, 20], Some(20))
+        );
+        assert_eq!(
+            rotate_older(ids.clone(), Some(20), 2),
+            (vec![10, 50], Some(50))
+        );
         // everything fits; no budget keeps the cursor; nothing older clears it
         assert_eq!(rotate_older(vec![3, 1, 2], Some(2), 9).0, vec![1, 3, 2]);
         assert_eq!(rotate_older(ids, Some(30), 0), (vec![], Some(30)));
@@ -1629,28 +1765,57 @@ mod tests {
             ]
         );
         let doc = receipt_document(
-            "bunq:1", "bunq-7", "2026-11-09", "Café Ü/1", "", 55,
-            b"%PDF-1.4 x".to_vec(), "application/octet-stream", "bunq:attachment:55".into(),
+            "bunq:1",
+            "bunq-7",
+            "2026-11-09",
+            "Café Ü/1",
+            "",
+            55,
+            b"%PDF-1.4 x".to_vec(),
+            "application/octet-stream",
+            "bunq:attachment:55".into(),
         );
         assert_eq!(doc.mime_type, "application/pdf");
         assert_eq!(doc.file_name, "2026-11-09_Café_Ü_1_55.pdf");
         assert_eq!(doc.booking_external_id.as_deref(), Some("bunq-7"));
         assert_eq!(doc.doc_type, "beleg");
-        let png = receipt_document("bunq:1", "bunq-7", "2026-11-09", "x", "Kassenbon", 56,
-            vec![1, 2], "image/png; charset=binary", "bunq:attachment:56".into());
-        assert_eq!((png.mime_type.as_str(), png.title.as_str()), ("image/png", "Kassenbon"));
+        let png = receipt_document(
+            "bunq:1",
+            "bunq-7",
+            "2026-11-09",
+            "x",
+            "Kassenbon",
+            56,
+            vec![1, 2],
+            "image/png; charset=binary",
+            "bunq:attachment:56".into(),
+        );
+        assert_eq!(
+            (png.mime_type.as_str(), png.title.as_str()),
+            ("image/png", "Kassenbon")
+        );
 
         let acc = RemoteAccount {
-            external_ref: "bunq:1".into(), name: "Main account".into(), owner: String::new(),
-            iban: String::new(), account_number: String::new(), currency: "EUR".into(),
-            kind: AccountKind::Checking, balance_cents: 0, balance_date: String::new(),
+            external_ref: "bunq:1".into(),
+            name: "Main account".into(),
+            owner: String::new(),
+            iban: String::new(),
+            account_number: String::new(),
+            currency: "EUR".into(),
+            kind: AccountKind::Checking,
+            balance_cents: 0,
+            balance_date: String::new(),
         };
         let st = statement_document(&acc, 1, d("2026-10-01"), d("2026-10-31"), b"%PDF".to_vec());
         assert_eq!(st.source_url, "bunq:statement:1:2026-10");
         assert_eq!(st.file_name, "2026-10_bunq_Main_account.pdf");
-        assert_eq!((st.doc_type.as_str(), st.date.as_str()), ("kontoauszug", "2026-10-31"));
+        assert_eq!(
+            (st.doc_type.as_str(), st.date.as_str()),
+            ("kontoauszug", "2026-10-31")
+        );
         // Old stored state without the new fields still loads.
-        let old: BunqState = serde_json::from_value(json!({"env": "sandbox", "user_id": 5})).unwrap();
+        let old: BunqState =
+            serde_json::from_value(json!({"env": "sandbox", "user_id": 5})).unwrap();
         assert_eq!(old.user_id, 5);
         assert!(old.statements_done.is_empty());
     }
@@ -1669,7 +1834,11 @@ mod tests {
             for &b in data {
                 c ^= b as u32;
                 for _ in 0..8 {
-                    c = if c & 1 != 0 { 0xedb8_8320 ^ (c >> 1) } else { c >> 1 };
+                    c = if c & 1 != 0 {
+                        0xedb8_8320 ^ (c >> 1)
+                    } else {
+                        c >> 1
+                    };
                 }
             }
             !c
@@ -1694,7 +1863,11 @@ mod tests {
         ihdr.extend([8, 2, 0, 0, 0]);
         let mut out = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
         chunk(&mut out, b"IHDR", &ihdr);
-        chunk(&mut out, b"IDAT", &miniz_oxide::deflate::compress_to_vec_zlib(&raw, 6));
+        chunk(
+            &mut out,
+            b"IDAT",
+            &miniz_oxide::deflate::compress_to_vec_zlib(&raw, 6),
+        );
         chunk(&mut out, b"IEND", &[]);
         out
     }
@@ -1707,7 +1880,10 @@ mod tests {
         use crate::secret::SecretString;
         let key = std::env::var("BUNQ_SANDBOX_KEY").expect("BUNQ_SANDBOX_KEY");
         let mut settings = std::collections::HashMap::new();
-        settings.insert("bunq.environment".to_string(), SecretString::new("sandbox".into()));
+        settings.insert(
+            "bunq.environment".to_string(),
+            SecretString::new("sandbox".into()),
+        );
         let mut ctx = ConnectContext {
             connection_id: 1,
             login_name: String::new(),
@@ -1723,14 +1899,19 @@ mod tests {
         let (acc_id, _) = c.accounts().await.unwrap()[0].clone();
         // Ask the sandbox "Sugar Daddy" for money so there is a payment to read.
         let token = c.state.session_token.clone();
-        let path = format!("/v1/user/{}/monetary-account/{acc_id}/request-inquiry", c.state.user_id);
+        let path = format!(
+            "/v1/user/{}/monetary-account/{acc_id}/request-inquiry",
+            c.state.user_id
+        );
         let body = json!({
             "amount_inquired": {"value": "12.34", "currency": "EUR"},
             "counterparty_alias": {"type": "EMAIL", "value": "sugardaddy@bunq.com", "name": "Sugar Daddy"},
             "description": "GiroCrab test",
             "allow_bunqme": false
         });
-        c.call(reqwest::Method::POST, &path, Some(&body), Some(&token)).await.unwrap();
+        c.call(reqwest::Method::POST, &path, Some(&body), Some(&token))
+            .await
+            .unwrap();
         tokio::time::sleep(Duration::from_secs(3)).await;
         let r = c.fetch(&ctx).await.unwrap();
         println!("transactions: {:#?}", r.transactions);
@@ -1740,7 +1921,10 @@ mod tests {
         let png = test_png(100, 100);
         let png_ref: &[u8] = &png;
         // Notes can't be added to the incoming request payment: pay 0.10 out first.
-        let pay_path = format!("/v1/user/{}/monetary-account/{acc_id}/payment", c.state.user_id);
+        let pay_path = format!(
+            "/v1/user/{}/monetary-account/{acc_id}/payment",
+            c.state.user_id
+        );
         let v = c
             .call(
                 reqwest::Method::POST,
@@ -1756,7 +1940,10 @@ mod tests {
             .unwrap();
         let pid = find(&v, "Id")["id"].as_i64().unwrap();
         let pay_ext = format!("bunq-{pid}");
-        let up_path = format!("/v1/user/{}/monetary-account/{acc_id}/attachment", c.state.user_id);
+        let up_path = format!(
+            "/v1/user/{}/monetary-account/{acc_id}/attachment",
+            c.state.user_id
+        );
         let (up, _) = c
             .send(
                 reqwest::Method::POST,
@@ -1783,10 +1970,23 @@ mod tests {
         .unwrap();
         let r = c.fetch(&ctx).await.unwrap();
         for d in &r.documents {
-            println!("document: {} {} {} {} bytes", d.doc_type, d.title, d.file_name, d.bytes.len());
+            println!(
+                "document: {} {} {} {} bytes",
+                d.doc_type,
+                d.title,
+                d.file_name,
+                d.bytes.len()
+            );
         }
-        let receipt = r.documents.iter().find(|d| d.doc_type == "beleg").expect("receipt");
-        assert_eq!(receipt.booking_external_id.as_deref(), Some(pay_ext.as_str()));
+        let receipt = r
+            .documents
+            .iter()
+            .find(|d| d.doc_type == "beleg")
+            .expect("receipt");
+        assert_eq!(
+            receipt.booking_external_id.as_deref(),
+            Some(pay_ext.as_str())
+        );
         assert!(receipt.bytes.starts_with(&png_ref[..8]), "PNG expected");
         assert_eq!(receipt.mime_type, "image/png");
         // Statement for the current month (the account is too new for a completed one).
@@ -1819,7 +2019,9 @@ mod tests {
             purpose: "GiroCrab draft test".into(),
         };
         let phase = c2.send_transfer(&ctx, &job).await.unwrap();
-        assert!(matches!(phase, Phase::Challenge(ref ch) if ch.kind == ChallengeKind::DecoupledPush));
+        assert!(
+            matches!(phase, Phase::Challenge(ref ch) if ch.kind == ChallengeKind::DecoupledPush)
+        );
         let d = c2.draft.clone().unwrap();
         let polled = c2.respond(&ctx, ChallengeResponse::Poll).await.unwrap();
         assert!(matches!(polled, Phase::Pending(_)));
@@ -1857,7 +2059,10 @@ mod tests {
             let actions = match c.card_actions(id, &window).await {
                 Ok(a) => a,
                 Err(e) => {
-                    println!("account {}: card actions unavailable ({e})", acc.kind.as_str());
+                    println!(
+                        "account {}: card actions unavailable ({e})",
+                        acc.kind.as_str()
+                    );
                     continue;
                 }
             };
@@ -1872,13 +2077,19 @@ mod tests {
                 // Days relative to now (negative = past), rounded; "-" if absent.
                 let rel = |k: &str| match a[k].as_str() {
                     None => "none".to_string(),
-                    Some(t) => match chrono::NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S%.f") {
-                        Ok(t) => format!("{:+}d", (t - now).num_days()),
-                        Err(_) => format!("unparsed({})", t.len()),
-                    },
+                    Some(t) => {
+                        match chrono::NaiveDateTime::parse_from_str(t, "%Y-%m-%d %H:%M:%S%.f") {
+                            Ok(t) => format!("{:+}d", (t - now).num_days()),
+                            Err(_) => format!("unparsed({})", t.len()),
+                        }
+                    }
                 };
                 let linked = match a["id"].as_i64() {
-                    Some(aid) => c.payments_of_action(id, aid).await.map(|p| p.len().to_string()).unwrap_or_else(|_| "err".into()),
+                    Some(aid) => c
+                        .payments_of_action(id, aid)
+                        .await
+                        .map(|p| p.len().to_string())
+                        .unwrap_or_else(|_| "err".into()),
                     None => "?".into(),
                 };
                 let row = format!(
@@ -1904,7 +2115,9 @@ mod tests {
         use crate::secret::SecretString;
         let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
         let amount = std::env::var("BUNQ_AMOUNT").unwrap_or_else(|_| "19.57".into());
-        let want = json_number_to_cents(&Value::String(amount.clone())).unwrap().abs();
+        let want = json_number_to_cents(&Value::String(amount.clone()))
+            .unwrap()
+            .abs();
         let ctx = ConnectContext {
             connection_id: 1,
             login_name: String::new(),
@@ -1922,14 +2135,22 @@ mod tests {
         let shape = |v: &Value| match v {
             Value::Null => "null".to_string(),
             Value::Array(a) => format!("array[{}]", a.len()),
-            Value::Object(o) => format!("object{{{}}}", o.keys().cloned().collect::<Vec<_>>().join(",")),
+            Value::Object(o) => format!(
+                "object{{{}}}",
+                o.keys().cloned().collect::<Vec<_>>().join(",")
+            ),
             other => format!("{other}").chars().take(20).collect(),
         };
         let mut hits = 0;
         for (id, acc) in c.accounts().await.unwrap() {
             let uid = c.state.user_id;
             let payments = c.raw_payments(id, &since).await.unwrap();
-            println!("account {} ({}): {} payments in 180 days", acc.kind.as_str(), id, payments.len());
+            println!(
+                "account {} ({}): {} payments in 180 days",
+                acc.kind.as_str(),
+                id,
+                payments.len()
+            );
             for p in &payments {
                 let cents = json_number_to_cents(&p["amount"]["value"]).unwrap_or(0);
                 if cents.abs() != want {
@@ -1937,7 +2158,10 @@ mod tests {
                 }
                 hits += 1;
                 let pid = p["id"].as_i64().unwrap_or_default();
-                let date = p["created"].as_str().and_then(local_date).unwrap_or_default();
+                let date = p["created"]
+                    .as_str()
+                    .and_then(local_date)
+                    .unwrap_or_default();
                 let age = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d")
                     .map(|d| (today - d).num_days())
                     .unwrap_or(-1);
@@ -1958,7 +2182,8 @@ mod tests {
                 println!("  request_reference_split_the_bill: {refs:?}");
                 // Payments of a request: the notes live on the RequestResponse.
                 let mut objects = vec![format!("payment/{pid}")];
-                let path = format!("/v1/user/{uid}/monetary-account/{id}/request-response?count=200");
+                let path =
+                    format!("/v1/user/{uid}/monetary-account/{id}/request-response?count=200");
                 match c.get(&path).await {
                     Err(e) => println!("  request-response list: ERROR {e:?}"),
                     Ok(v) => {
@@ -2034,12 +2259,17 @@ mod tests {
                         }
                     }
                 }
-                let docs = c.receipts(id, &acc.external_ref, std::slice::from_ref(p)).await;
+                let docs = c
+                    .receipts(id, &acc.external_ref, std::slice::from_ref(p))
+                    .await;
                 println!("  GiroCrab receipts(): {} document(s)", docs.len());
                 for d in &docs {
                     println!(
                         "    {} | {} | booking={:?} | {} bytes",
-                        d.mime_type, d.file_name, d.booking_external_id, d.bytes.len()
+                        d.mime_type,
+                        d.file_name,
+                        d.booking_external_id,
+                        d.bytes.len()
                     );
                 }
             }
@@ -2098,12 +2328,24 @@ mod tests {
             if payments.is_empty() {
                 continue;
             }
-            println!("account {} ({id}): {} payments in {RECEIPT_WINDOW_DAYS} days", acc.kind.as_str(), payments.len());
+            println!(
+                "account {} ({id}): {} payments in {RECEIPT_WINDOW_DAYS} days",
+                acc.kind.as_str(),
+                payments.len()
+            );
             let mut lists: BTreeMap<&str, Vec<Value>> = BTreeMap::new();
-            for (obj, wrapper) in [("request-response", "RequestResponse"), ("request-inquiry", "RequestInquiry")] {
+            for (obj, wrapper) in [
+                ("request-response", "RequestResponse"),
+                ("request-inquiry", "RequestInquiry"),
+            ] {
                 let path = format!("/v1/user/{uid}/monetary-account/{id}/{obj}?count=200");
                 let items = match c.get(&path).await {
-                    Ok(v) => v["Response"].as_array().into_iter().flatten().map(|i| i[wrapper].clone()).collect(),
+                    Ok(v) => v["Response"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|i| i[wrapper].clone())
+                        .collect(),
                     Err(e) => {
                         println!("  {obj} list: {}", e.status);
                         Vec::new()
@@ -2124,10 +2366,14 @@ mod tests {
                 );
                 let mut outcome = Vec::new();
                 let mut files = 0;
-                let (st, n) = probe(&mut c, format!("/v1/user/{uid}/monetary-account/{id}/payment/{pid}/note-attachment")).await;
+                let (st, n) = probe(
+                    &mut c,
+                    format!("/v1/user/{uid}/monetary-account/{id}/payment/{pid}/note-attachment"),
+                )
+                .await;
                 outcome.push(format!("payment={st}"));
                 files += n;
-                if !p["attachment"].as_array().map_or(true, Vec::is_empty) {
+                if !p["attachment"].as_array().is_none_or(Vec::is_empty) {
                     outcome.push("payment.attachment=yes".into());
                     files += 1;
                 }
@@ -2135,7 +2381,11 @@ mod tests {
                 // related objects that may hold the app's notes
                 let mut related: Vec<(String, i64)> = Vec::new();
                 if p["sub_type"].as_str() == Some("REQUEST") {
-                    let obj = if cents < 0 { "request-response" } else { "request-inquiry" };
+                    let obj = if cents < 0 {
+                        "request-response"
+                    } else {
+                        "request-inquiry"
+                    };
                     let best = lists[obj]
                         .iter()
                         .filter(|r| {
@@ -2172,7 +2422,12 @@ mod tests {
                     if cands.len() > 1 {
                         outcome.push(format!("mastercard-action=ambiguous({})", cands.len()));
                     }
-                    related.extend(cands.into_iter().take(2).map(|a| ("mastercard-action".to_string(), a)));
+                    related.extend(
+                        cands
+                            .into_iter()
+                            .take(2)
+                            .map(|a| ("mastercard-action".to_string(), a)),
+                    );
                 }
                 if p["scheduled_id"].as_i64().is_some() {
                     outcome.push("scheduled_id=yes".into());
@@ -2181,7 +2436,11 @@ mod tests {
                     outcome.push("batch_id=yes".into());
                 }
                 for (obj, rid) in related {
-                    let (st, n) = probe(&mut c, format!("/v1/user/{uid}/monetary-account/{id}/{obj}/{rid}/note-attachment")).await;
+                    let (st, n) = probe(
+                        &mut c,
+                        format!("/v1/user/{uid}/monetary-account/{id}/{obj}/{rid}/note-attachment"),
+                    )
+                    .await;
                     outcome.push(format!("{obj}={st}"));
                     files += n;
                 }
@@ -2190,8 +2449,14 @@ mod tests {
                 e.0 += 1;
                 *e.1.entry(line.clone()).or_default() += 1;
                 if files > 0 {
-                    let date = p["created"].as_str().and_then(local_date).unwrap_or_default();
-                    println!("  FILES {kind} {date} {:.2} id={pid}: {line}", cents as f64 / 100.0);
+                    let date = p["created"]
+                        .as_str()
+                        .and_then(local_date)
+                        .unwrap_or_default();
+                    println!(
+                        "  FILES {kind} {date} {:.2} id={pid}: {line}",
+                        cents as f64 / 100.0
+                    );
                     with_files.push((id, acc.external_ref.clone(), p.clone()));
                 }
             }
@@ -2203,7 +2468,10 @@ mod tests {
                 println!("   {k:>3}x {o}");
             }
         }
-        println!("\n== GiroCrab receipts() on the {} payment(s) with files ==", with_files.len());
+        println!(
+            "\n== GiroCrab receipts() on the {} payment(s) with files ==",
+            with_files.len()
+        );
         for (id, account_ref, p) in &with_files {
             let docs = c.receipts(*id, account_ref, std::slice::from_ref(p)).await;
             println!(
@@ -2212,7 +2480,9 @@ mod tests {
                 p["sub_type"].as_str().unwrap_or("-"),
                 p["id"],
                 docs.len(),
-                docs.iter().map(|d| (d.mime_type.clone(), d.bytes.len())).collect::<Vec<_>>()
+                docs.iter()
+                    .map(|d| (d.mime_type.clone(), d.bytes.len()))
+                    .collect::<Vec<_>>()
             );
         }
     }
@@ -2259,7 +2529,15 @@ mod tests {
         };
         let keys = |v: &Value| {
             v.as_object()
-                .map(|o| o.keys().filter(|k| k.contains("id") || k.contains("payment") || k.contains("status")).cloned().collect::<Vec<_>>().join(","))
+                .map(|o| {
+                    o.keys()
+                        .filter(|k| {
+                            k.contains("id") || k.contains("payment") || k.contains("status")
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(",")
+                })
                 .unwrap_or_default()
         };
         for (id, acc) in c.accounts().await.unwrap() {
@@ -2270,7 +2548,8 @@ mod tests {
                     continue;
                 }
                 let pid = p["id"].as_i64().unwrap_or_default();
-                let path = format!("/v1/user/{uid}/monetary-account/{id}/payment/{pid}/note-attachment");
+                let path =
+                    format!("/v1/user/{uid}/monetary-account/{id}/payment/{pid}/note-attachment");
                 if let Err(e) = c.get(&path).await {
                     refused.push((p.clone(), e.status));
                 }
@@ -2278,10 +2557,21 @@ mod tests {
             if refused.is_empty() {
                 continue;
             }
-            println!("\naccount {} ({id}): {} payment(s) refuse notes", acc.kind.as_str(), refused.len());
-            let path = format!("/v1/user/{uid}/event?monetary_account_id={id}&count=200&display_user_event=false");
+            println!(
+                "\naccount {} ({id}): {} payment(s) refuse notes",
+                acc.kind.as_str(),
+                refused.len()
+            );
+            let path = format!(
+                "/v1/user/{uid}/event?monetary_account_id={id}&count=200&display_user_event=false"
+            );
             let events: Vec<Value> = match c.get(&path).await {
-                Ok(v) => v["Response"].as_array().into_iter().flatten().map(|i| i["Event"].clone()).collect(),
+                Ok(v) => v["Response"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|i| i["Event"].clone())
+                    .collect(),
                 Err(e) => {
                     println!("  event list: {}", e.status);
                     Vec::new()
@@ -2301,7 +2591,8 @@ mod tests {
                     p["scheduled_id"], p["batch_id"],
                 );
                 for e in &events {
-                    let Some((t, obj)) = e["object"].as_object().and_then(|o| o.iter().next()) else {
+                    let Some((t, obj)) = e["object"].as_object().and_then(|o| o.iter().next())
+                    else {
                         continue;
                     };
                     let near = match (ts(&e["created"]), paid) {
@@ -2311,7 +2602,9 @@ mod tests {
                     let same_id = obj["id"].as_i64() == Some(pid);
                     let text = obj.to_string();
                     let amount = format!("{:.2}", (cents.abs()) as f64 / 100.0);
-                    let mentions = text.contains(&pid.to_string()) || text.contains(&format!("\"{amount}\"")) || text.contains(&format!("\"-{amount}\""));
+                    let mentions = text.contains(&pid.to_string())
+                        || text.contains(&format!("\"{amount}\""))
+                        || text.contains(&format!("\"-{amount}\""));
                     if !(same_id || (near && mentions)) {
                         continue;
                     }
@@ -2320,10 +2613,15 @@ mod tests {
                         e["id"], e["action"], obj["id"], text.contains(&pid.to_string()), keys(obj),
                     );
                     if let (Some(seg), Some(oid)) = (segment(t), obj["id"].as_i64()) {
-                        let path = format!("/v1/user/{uid}/monetary-account/{id}/{seg}/{oid}/note-attachment");
+                        let path = format!(
+                            "/v1/user/{uid}/monetary-account/{id}/{seg}/{oid}/note-attachment"
+                        );
                         match c.get(&path).await {
                             Ok(v) => {
-                                let n: usize = v["Response"].as_array().into_iter().flatten()
+                                let n: usize = v["Response"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
                                     .filter_map(|i| i.as_object().and_then(|o| o.values().next()))
                                     .map(|note| attachment_items(&note["attachment"]).len())
                                     .sum();
@@ -2345,7 +2643,9 @@ mod tests {
     async fn bunq_pending_drafts() {
         use crate::secret::SecretString;
         let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
-        let target: Option<i64> = std::env::var("BUNQ_DRAFT_ID").ok().and_then(|v| v.trim().parse().ok());
+        let target: Option<i64> = std::env::var("BUNQ_DRAFT_ID")
+            .ok()
+            .and_then(|v| v.trim().parse().ok());
         let ctx = ConnectContext {
             connection_id: 1,
             login_name: String::new(),
@@ -2360,12 +2660,23 @@ mod tests {
         for (id, acc) in c.accounts().await.unwrap() {
             let path = format!("{}?count=200", c.draft_path(id, None));
             let drafts: Vec<Value> = match c.get(&path).await {
-                Ok(v) => v["Response"].as_array().into_iter().flatten().map(|i| i["DraftPayment"].clone()).collect(),
+                Ok(v) => v["Response"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|i| i["DraftPayment"].clone())
+                    .collect(),
                 Err(e) => {
-                    println!("account {id}: draft list {} {} -> reading drafts from the event feed", e.status, e.message);
+                    println!(
+                        "account {id}: draft list {} {} -> reading drafts from the event feed",
+                        e.status, e.message
+                    );
                     let path = format!("/v1/user/{}/event?monetary_account_id={id}&count=100&display_user_event=false", c.state.user_id);
                     let ids: BTreeSet<i64> = match c.get(&path).await {
-                        Ok(v) => v["Response"].as_array().into_iter().flatten()
+                        Ok(v) => v["Response"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
                             .filter_map(|i| i["Event"]["object"]["DraftPayment"]["id"].as_i64())
                             .collect(),
                         Err(e) => {
@@ -2378,7 +2689,11 @@ mod tests {
                         match c.get(&c.draft_path(id, Some(*did))).await {
                             Ok(v) => {
                                 let d = find(&v, "DraftPayment").clone();
-                                println!("  draft id={did} created={} status={}", d["created"].as_str().unwrap_or("-"), d["status"]);
+                                println!(
+                                    "  draft id={did} created={} status={}",
+                                    d["created"].as_str().unwrap_or("-"),
+                                    d["status"]
+                                );
                                 out.push(d);
                             }
                             Err(e) => println!("  draft id={did}: {} {}", e.status, e.message),
@@ -2387,30 +2702,58 @@ mod tests {
                     out
                 }
             };
-            for d in drafts.iter().filter(|d| d["status"].as_str() == Some("PENDING")) {
+            for d in drafts
+                .iter()
+                .filter(|d| d["status"].as_str() == Some("PENDING"))
+            {
                 found += 1;
                 let did = d["id"].as_i64().unwrap_or_default();
-                let amount = d["entries"].as_array().and_then(|e| e.first())
+                let amount = d["entries"]
+                    .as_array()
+                    .and_then(|e| e.first())
                     .map(|e| e["amount"]["value"].as_str().unwrap_or("?").to_string())
                     .unwrap_or_else(|| "?".into());
                 println!(
                     "PENDING draft id={did} account={} ({id}) created={} amount={amount} keys=[{}]",
                     acc.kind.as_str(),
                     d["created"].as_str().unwrap_or("-"),
-                    d.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>().join(",")).unwrap_or_default(),
+                    d.as_object()
+                        .map(|o| o.keys().cloned().collect::<Vec<_>>().join(","))
+                        .unwrap_or_default(),
                 );
                 if target == Some(did) {
                     let token = c.state.session_token.clone();
                     let path = c.draft_path(id, Some(did));
-                    match c.call(reqwest::Method::PUT, &path, Some(&json!({"status": "REJECTED"})), Some(&token)).await {
-                        Ok(v) => println!("  PUT REJECTED -> ok: {}", v.to_string().chars().take(300).collect::<String>()),
+                    match c
+                        .call(
+                            reqwest::Method::PUT,
+                            &path,
+                            Some(&json!({"status": "REJECTED"})),
+                            Some(&token),
+                        )
+                        .await
+                    {
+                        Ok(v) => println!(
+                            "  PUT REJECTED -> ok: {}",
+                            v.to_string().chars().take(300).collect::<String>()
+                        ),
                         Err(e) => println!("  PUT REJECTED -> ERROR {} {}", e.status, e.message),
                     }
-                    let status = c.get(&path).await.map(|v| find(&v, "DraftPayment")["status"].to_string());
+                    let status = c
+                        .get(&path)
+                        .await
+                        .map(|v| find(&v, "DraftPayment")["status"].to_string());
                     println!("  status now: {:?}", status.map_err(|e| e.status));
                 }
             }
         }
-        println!("\n{found} pending draft(s){}", if target.is_some() { "" } else { " (set BUNQ_DRAFT_ID=<id> to withdraw one)" });
+        println!(
+            "\n{found} pending draft(s){}",
+            if target.is_some() {
+                ""
+            } else {
+                " (set BUNQ_DRAFT_ID=<id> to withdraw one)"
+            }
+        );
     }
 }

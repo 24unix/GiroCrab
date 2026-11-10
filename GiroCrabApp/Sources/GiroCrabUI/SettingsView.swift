@@ -89,7 +89,9 @@ struct BankConnectionsSettings: View {
                         Text(d.name).tag(d.kind)
                     }
                 }
-                if let d = bankCatalog().first(where: { $0.kind == addKind }) {
+                if addKind == .finTsGeneric {
+                    FinTsAddForm()
+                } else if let d = bankCatalog().first(where: { $0.kind == addKind }) {
                     TextField(d.loginLabel, text: $login)
                         .autocorrectionDisabled()
                     LabeledContent("Verfahren", value: d.protocol)
@@ -101,9 +103,11 @@ struct BankConnectionsSettings: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Button("Bank hinzufügen") {
-                    model.addConnection(addKind, login: addKind == .tradeRepublic ? normalizePhoneNumber(input: login) : login)
-                    login = ""
+                if addKind != .finTsGeneric {
+                    Button("Bank hinzufügen") {
+                        model.addConnection(addKind, login: addKind == .tradeRepublic ? normalizePhoneNumber(input: login) : login)
+                        login = ""
+                    }
                 }
                 Text("Gibt es den Zugang schon (gleiche Bank, gleiche Kennung), wird er aktualisiert statt doppelt angelegt.")
                     .font(.caption2).foregroundStyle(.secondary)
@@ -245,12 +249,22 @@ struct ICloudSyncSection: View {
     @Environment(AppModel.self) private var model
     @State private var sync = CloudSyncManager.shared
     @State private var picking = false
+    @State private var keychainSync = VaultKeyManager.shared.syncViaICloudKeychain
+    @State private var showKeySheet = false
+    @State private var keyCopied = false
 
     var body: some View {
         Section("iCloud Sync") {
             Toggle("Tresor über iCloud synchronisieren", isOn: Bindable(sync).isEnabled)
                 .onChange(of: sync.isEnabled) { _, on in
-                    if on { model.syncNow() }
+                    guard on else { return }
+                    Task {
+                        // Share the vault key via iCloud Keychain (not as a file in iCloud Drive).
+                        if !keychainSync {
+                            if (try? await VaultKeyManager.shared.setICloudKeychainSync(true)) != nil { keychainSync = true }
+                        }
+                        model.syncNow()
+                    }
                 }
             if sync.isEnabled {
                 LabeledContent("Ordner", value: sync.folderName ?? "iCloud Drive / GiroCrab")
@@ -269,9 +283,36 @@ struct ICloudSyncSection: View {
                 }
                 if let s = sync.lastStats { Text(s).font(.caption).foregroundStyle(.secondary) }
                 if let e = sync.lastError { Text(e).font(.caption).foregroundStyle(.red) }
+                Toggle("Tresor-Schlüssel über iCloud-Schlüsselbund teilen", isOn: $keychainSync)
+                    .onChange(of: keychainSync) { _, on in
+                        guard on != VaultKeyManager.shared.syncViaICloudKeychain else { return }
+                        Task {
+                            do { try await VaultKeyManager.shared.setICloudKeychainSync(on) }
+                            catch { keychainSync = VaultKeyManager.shared.syncViaICloudKeychain; model.toast = error.localizedDescription }
+                        }
+                    }
+                HStack {
+                    Button(keyCopied ? "Schlüssel kopiert (60 s)" : "Tresor-Schlüssel kopieren", systemImage: "key") {
+                        Task {
+                            if let k = try? await VaultKeyManager.shared.exportKeyBase64() {
+                                VaultKeyManager.copyToPasteboard(k)
+                                keyCopied = true
+                            }
+                        }
+                    }
+                    Button("Schlüssel einfügen …", systemImage: "square.and.pencil") { showKeySheet = true }
+                }
+                if sync.keyMismatch {
+                    Label("Der iCloud-Tresor nutzt einen anderen Schlüssel. Fügen Sie den Schlüssel von Ihrem anderen Gerät ein.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(.orange)
+                }
             }
-            Text("Synchronisiert Ihren verschlüsselten Tresor automatisch über iCloud Drive (Ordner „GiroCrab“).")
+            Text("Synchronisiert Ihren verschlüsselten Tresor über iCloud Drive (Ordner „GiroCrab“). Der Schlüssel liegt nie im Ordner: Er wird über den iCloud-Schlüsselbund geteilt oder einmalig auf dem zweiten Gerät eingefügt.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+        .onChange(of: sync.keyMismatch) { _, bad in if bad { showKeySheet = true } }
+        .sheet(isPresented: $showKeySheet) {
+            KeyPasteSheet().environment(model)
         }
         #if os(iOS)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { r in
@@ -296,4 +337,40 @@ struct ICloudSyncSection: View {
         }
     }
     #endif
+}
+
+/// Fallback when the iCloud snapshot uses another key: paste the vault key
+/// copied from the first device ("Tresor-Schlüssel kopieren").
+struct KeyPasteSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+
+    private var valid: Bool { (try? VaultKeyManager.parseKey(text)) != nil }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Tresor-Schlüssel einfügen").font(.headline)
+            Text("Kopieren Sie den Schlüssel auf Ihrem anderen Gerät (Einstellungen › iCloud Sync › „Tresor-Schlüssel kopieren“) und fügen Sie ihn hier ein. Er wird im Schlüsselbund gespeichert, nie in iCloud Drive.")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            SecureField("Schlüssel (Base64 oder Hex)", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+            HStack {
+                Button("Abbrechen", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("Übernehmen") {
+                    model.adoptSyncKey(text)
+                    text = ""
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(!valid)
+            }
+        }
+        .padding(24)
+        .macFrame(minWidth: 420)
+    }
 }

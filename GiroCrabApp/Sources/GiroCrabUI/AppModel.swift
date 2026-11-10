@@ -360,6 +360,36 @@ public final class AppModel {
         }
     }
 
+    /// Secondary device: the user pasted the vault key of the iCloud snapshot.
+    /// Merges the snapshot with it, then switches this device's vault and
+    /// keychain to that key so both devices share one key from now on.
+    func adoptSyncKey(_ text: String) {
+        guard let v = ownVault else { return }
+        Task {
+            do {
+                let pasted = try VaultKeyManager.parseKey(text)
+                let current = try await VaultKeyManager.shared.unlock()
+                let cloud = CloudSyncManager.shared
+                await cloud.sync(vault: v, localPath: Self.vaultURL.path, key: current, remoteKey: pasted, mergeOnly: true)
+                guard cloud.lastError == nil else { self.toast = cloud.lastError; return }
+                if pasted != current {
+                    try v.rekey(newKey: pasted)
+                    do {
+                        try VaultKeyManager.shared.importKey(pasted)
+                    } catch {
+                        try? v.rekey(newKey: current)   // keep vault and keychain consistent
+                        throw error
+                    }
+                }
+                await cloud.sync(vault: v, localPath: Self.vaultURL.path, key: pasted)
+                self.reloadAll()
+                self.toast = String(localized: "Tresor-Schlüssel übernommen – iCloud Sync aktiv")
+            } catch {
+                self.toast = describe(error)
+            }
+        }
+    }
+
     private func performSyncOrAutoAdopt(vault v: Vault, key: Data) async {
         await CloudSyncManager.shared.sync(vault: v, localPath: Self.vaultURL.path, key: key)
         if ((try? v.accountCount()) ?? 0) > 0 || self.connectionsExist(v) {
@@ -836,6 +866,22 @@ public final class AppModel {
         }
     }
 
+    /// Adds a login at any FinTS 3.0 bank (BLZ + https URL), then starts setup / PIN entry.
+    func addFinTsConnection(name: String, blz: String, url: String, login: String) {
+        if demoActive, let ov = ownVault {
+            useVault(ov, demo: false)
+        }
+        guard let vault else { return }
+        var newID: Int64?
+        run { newID = try vault.addFintsConnection(blz: blz, url: url, displayName: name, loginName: login) }
+        reloadSettings()
+        reloadAccounts()
+        if let id = newID, let conn = connections.first(where: { $0.id == id }) {
+            toast = String(localized: "\(conn.displayName) hinzugefügt")
+            requestSync(conn)
+        }
+    }
+
     /// Setting keys a bank still needs (FinTS product ID, API keys …).
     func missingSettings(for connection: BankConnection) -> [String] {
         guard let d = bankCatalog().first(where: { $0.kind == connection.connector }) else { return [] }
@@ -1191,7 +1237,7 @@ extension AppModel {
     var transferAccounts: [Account] {
         allAccounts.filter {
             $0.kind == .checking && !$0.iban.isEmpty
-                && [.volksbankKasselGoettingen, .direkt1822, .bunq].contains($0.connector)
+                && [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .bunq].contains($0.connector)
         }
     }
 

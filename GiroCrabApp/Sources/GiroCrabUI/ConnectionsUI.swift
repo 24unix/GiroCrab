@@ -132,6 +132,7 @@ struct ConnectionEditSheet: View {
         switch connection.connector {
         case .volksbankKasselGoettingen: return ["fints.url.52090000", "fints.product_id", "fints.product_version"]
         case .direkt1822: return ["fints.url.50050201", "fints.product_id", "fints.product_version"]
+        case .finTsGeneric: return ["fints.url.\(connection.bankCode)", "fints.product_id", "fints.product_version"]
         case .comdirect: return ["comdirect.client_id", "comdirect.client_secret"]
         case .payPal: return ["paypal.client_id", "paypal.client_secret", "paypal.environment"]
         case .tradeRepublic: return []
@@ -152,7 +153,7 @@ struct ConnectionEditSheet: View {
     @State private var importingStatement = false
     @State private var showAdvanced = false
 
-    private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .comdirect, .tradeRepublic, .bunq].contains(connection.connector) }
+    private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq].contains(connection.connector) }
     private var isTR: Bool { connection.connector == .tradeRepublic }
 
     var body: some View {
@@ -175,7 +176,8 @@ struct ConnectionEditSheet: View {
                     if isTR && !login.isEmpty {
                         LabeledContent("Gespeichert als", value: normalizePhoneNumber(input: login))
                     }
-                    if let blz = descriptor?.bankCode, !blz.isEmpty {
+                    let blz = connection.bankCode.isEmpty ? (descriptor?.bankCode ?? "") : connection.bankCode
+                    if !blz.isEmpty {
                         LabeledContent("BLZ", value: blz)
                     }
                     if usesPin {
@@ -272,7 +274,7 @@ struct ConnectionEditSheet: View {
 
     private var sectionTitle: String {
         switch connection.connector {
-        case .volksbankKasselGoettingen, .direkt1822: return "FinTS 3.0"
+        case .volksbankKasselGoettingen, .direkt1822, .finTsGeneric: return "FinTS 3.0"
         case .comdirect: return "comdirect REST-API"
         case .payPal: return "PayPal REST-App"
         case .bunq: return "bunq API"
@@ -291,7 +293,7 @@ struct ConnectionEditSheet: View {
     @ViewBuilder
     private func field(_ key: String) -> some View {
         let entry = model.settingEntry(key)
-        let label = entry?.label ?? settingLabels[key] ?? key
+        let label = entry?.label ?? settingLabels[key] ?? (key.hasPrefix("fints.url.") ? String(localized: "FinTS-URL") : key)
         let secret = entry?.isSecret ?? false
         VStack(alignment: .leading, spacing: 4) {
             if key.contains("private_key") {
@@ -376,7 +378,7 @@ struct ConnectionEditSheet: View {
             if e?.isSecret == true {
                 values[key] = model.revealSetting(key)
             } else {
-                values[key] = e?.value ?? ""
+                values[key] = e?.value ?? model.revealSetting(key)
             }
         }
     }

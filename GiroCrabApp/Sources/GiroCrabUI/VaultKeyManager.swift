@@ -1,6 +1,11 @@
 import Foundation
 import LocalAuthentication
 import Security
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 import GiroCrabCore
 
 /// Keeps the 32-byte SQLCipher master key in the Apple Keychain, protected by
@@ -48,9 +53,17 @@ public final class VaultKeyManager: @unchecked Sendable {
     /// Re-stores the existing key with the chosen synchronizable setting.
     public func setICloudKeychainSync(_ enabled: Bool) async throws {
         let key = try await unlock()
+        let previous = syncViaICloudKeychain
         destroyKey()
         syncViaICloudKeychain = enabled
-        try store(key)
+        do {
+            try store(key)
+        } catch {
+            // Never lose the vault key: restore the previous storage mode.
+            syncViaICloudKeychain = previous
+            try store(key)
+            throw error
+        }
     }
 
     public init() {}
@@ -127,6 +140,21 @@ public final class VaultKeyManager: @unchecked Sendable {
     public func importKey(_ key: Data) throws {
         destroyKey()
         try store(key)
+    }
+
+    /// Clipboard helper for manual key transfer; cleared after 60 s.
+    @MainActor public static func copyToPasteboard(_ text: String) {
+        #if os(macOS)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        let count = pb.changeCount
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
+            if NSPasteboard.general.changeCount == count { NSPasteboard.general.clearContents() }
+        }
+        #else
+        UIPasteboard.general.setItems([[UIPasteboard.typeAutomatic: text]], options: [.expirationDate: Date().addingTimeInterval(60), .localOnly: true])
+        #endif
     }
 
     /// Removes the key. The encrypted vault becomes unreadable!

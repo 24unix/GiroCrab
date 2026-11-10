@@ -29,6 +29,7 @@ pub mod comdirect;
 pub mod demo;
 pub mod enable_banking;
 pub mod fints;
+pub mod fints_presets;
 pub mod moneymoney_db;
 pub mod moneymoney_import;
 pub mod paypal;
@@ -146,6 +147,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             secret_label: tr("Online-Banking-PIN").into(),
             required_settings: s(&["fints.product_id", "fints.url.50050201"]),
             note: tr("pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs5.s-fints-pt-hs.de").into(),
+        },
+        ConnectorKind::FinTsGeneric => BankDescriptor {
+            kind,
+            name: tr("FinTS-Bank").into(),
+            protocol: "FinTS 3.0 PIN/TAN".into(),
+            bank_code: String::new(),
+            sf_symbol: "building.columns".into(),
+            login_label: tr("Anmeldename / VR-NetKey / Kontonummer").into(),
+            secret_label: tr("Online-Banking-PIN").into(),
+            required_settings: s(&["fints.product_id"]),
+            note: tr("Beliebige FinTS-3.0-Bank (PIN/TAN). BLZ und FinTS-URL stehen im Bankzugang.").into(),
         },
         ConnectorKind::Comdirect => BankDescriptor {
             kind,
@@ -370,10 +382,19 @@ pub struct TransferJob {
 }
 
 pub fn make_connector(kind: ConnectorKind, demo: bool) -> Box<dyn BankConnector> {
+    make_connector_for(kind, kind.as_str(), demo)
+}
+
+/// Like `make_connector`, but with the stored connector key so generic FinTS
+/// connections get their BLZ (`fints:<blz>`).
+pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn BankConnector> {
     if demo {
         return Box::new(demo::DemoConnector::new(kind));
     }
     match kind {
+        ConnectorKind::FinTsGeneric => Box::new(fints::FinTsConnector::new(
+            ConnectorKind::fints_blz(key).unwrap_or(""),
+        )),
         ConnectorKind::VolksbankKasselGoettingen => {
             Box::new(fints::FinTsConnector::new("52090000"))
         }
@@ -626,7 +647,8 @@ pub(crate) fn store_fetch(
                         "SELECT id, external_id FROM transactions
                          WHERE account_id = ?1 AND external_id LIKE ?2 ESCAPE '\\'",
                     )?;
-                    let rows = q.query_map(params![acc_id, like], |r| Ok((r.get(0)?, r.get(1)?)))?;
+                    let rows =
+                        q.query_map(params![acc_id, like], |r| Ok((r.get(0)?, r.get(1)?)))?;
                     rows.collect::<Result<_, _>>()?
                 };
                 for (row_id, ext) in stale {
@@ -777,7 +799,7 @@ impl Vault {
             secret
         };
         let secret = SecretString::new(secret);
-        let (kind, login, state_json, ctx_settings, since) = {
+        let (kind, key_str, login, state_json, ctx_settings, since) = {
             let db = self.db()?;
             let (kind, login, state): (String, String, String) = db
                 .query_row(
@@ -789,6 +811,7 @@ impl Vault {
                 .ok_or_else(|| CoreError::NotFound {
                     what: trf("Bankverbindung {0}", &[&connection_id]),
                 })?;
+            let key_str = kind.clone();
             let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::InvalidInput {
                 message: format!("unknown connector {kind}"),
             })?;
@@ -796,6 +819,12 @@ impl Vault {
             for (key, ..) in crate::vault::KNOWN_SETTINGS {
                 if let Some(v) = Vault::setting_inner(&db, key)? {
                     settings.insert(key.to_string(), SecretString::new(v));
+                }
+            }
+            if let Some(blz) = ConnectorKind::fints_blz(&key_str) {
+                let k = format!("fints.url.{blz}");
+                if let Some(v) = Vault::setting_inner(&db, &k)? {
+                    settings.insert(k, SecretString::new(v));
                 }
             }
             if !demo {
@@ -826,7 +855,7 @@ impl Vault {
                         .format("%Y-%m-%d")
                         .to_string(),
                 };
-            (kind, login, state, settings, since)
+            (kind, key_str, login, state, settings, since)
         };
         let ctx = ConnectContext {
             connection_id,
@@ -840,7 +869,7 @@ impl Vault {
             vault: self.clone(),
             kind,
             state: AsyncMutex::new(SessionState {
-                connector: make_connector(kind, demo),
+                connector: make_connector_for(kind, &key_str, demo),
                 ctx,
                 done: false,
             }),
@@ -1004,7 +1033,7 @@ impl Vault {
             })?;
             (cid, row.1, row.2)
         };
-        let kind: String = {
+        let key_str: String = {
             let db = self.db()?;
             db.query_row(
                 "SELECT connector FROM bank_connections WHERE id = ?1",
@@ -1012,12 +1041,15 @@ impl Vault {
                 |r| r.get(0),
             )?
         };
-        let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::InvalidInput {
-            message: format!("unknown connector {kind}"),
+        let kind = ConnectorKind::from_str(&key_str).ok_or_else(|| CoreError::InvalidInput {
+            message: format!("unknown connector {key_str}"),
         })?;
         if !matches!(
             kind,
-            ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822 | ConnectorKind::Bunq
+            ConnectorKind::VolksbankKasselGoettingen
+                | ConnectorKind::Direkt1822
+                | ConnectorKind::FinTsGeneric
+                | ConnectorKind::Bunq
         ) {
             return Err(CoreError::InvalidInput {
                 message: tr("Überweisungen sind nur für FinTS- und bunq-Konten möglich.").into(),
@@ -1059,7 +1091,7 @@ impl Vault {
         Ok(Arc::new(TransferSession {
             vault: self.clone(),
             state: AsyncMutex::new(TransferState {
-                connector: make_connector(kind, demo),
+                connector: make_connector_for(kind, &key_str, demo),
                 ctx,
                 job,
                 account_id: request.account_id,
@@ -1192,9 +1224,18 @@ mod tests {
             let mut q = db
                 .prepare("SELECT external_id FROM transactions WHERE external_id LIKE 'pending-hold-%' ORDER BY 1")
                 .unwrap();
-            q.query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect()
+            q.query_map([], |r| r.get(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
         };
-        store_fetch(&v, ConnectorKind::Bunq, conn, fetch(vec![hold("1", -50_00), hold("2", -7_10)])).unwrap();
+        store_fetch(
+            &v,
+            ConnectorKind::Bunq,
+            conn,
+            fetch(vec![hold("1", -50_00), hold("2", -7_10)]),
+        )
+        .unwrap();
         assert_eq!(holds(), vec!["pending-hold-bunq-1", "pending-hold-bunq-2"]);
         // Hold 1 cleared (booked elsewhere), hold 2 still open.
         store_fetch(&v, ConnectorKind::Bunq, conn, fetch(vec![hold("2", -7_10)])).unwrap();

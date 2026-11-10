@@ -5877,6 +5877,193 @@
           }
         }
       }
+    },
+    "FinTS-URL" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FinTS URL"
+          }
+        }
+      }
+    },
+    "BLZ (8 Ziffern)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank code (8 digits)"
+          }
+        }
+      }
+    },
+    "FinTS-URL (https://…)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FinTS URL (https://…)"
+          }
+        }
+      }
+    },
+    "Anmeldename / VR-NetKey / Kontonummer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Login name / VR-NetKey / account number"
+          }
+        }
+      }
+    },
+    "BLZ: genau 8 Ziffern · URL: muss mit https:// beginnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank code: exactly 8 digits · URL: must start with https://"
+          }
+        }
+      }
+    },
+    "Tresor-Schlüssel über iCloud-Schlüsselbund teilen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share vault key via iCloud Keychain"
+          }
+        }
+      }
+    },
+    "Schlüssel kopiert (60 s)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Key copied (60 s)"
+          }
+        }
+      }
+    },
+    "Tresor-Schlüssel kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy vault key"
+          }
+        }
+      }
+    },
+    "Schlüssel einfügen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste key …"
+          }
+        }
+      }
+    },
+    "Der iCloud-Tresor nutzt einen anderen Schlüssel. Fügen Sie den Schlüssel von Ihrem anderen Gerät ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The iCloud vault uses a different key. Paste the key from your other device."
+          }
+        }
+      }
+    },
+    "Synchronisiert Ihren verschlüsselten Tresor über iCloud Drive (Ordner „GiroCrab“). Der Schlüssel liegt nie im Ordner: Er wird über den iCloud-Schlüsselbund geteilt oder einmalig auf dem zweiten Gerät eingefügt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Syncs your encrypted vault via iCloud Drive (folder “GiroCrab”). The key is never stored in the folder: it is shared via iCloud Keychain or pasted once on the second device."
+          }
+        }
+      }
+    },
+    "Tresor-Schlüssel einfügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste vault key"
+          }
+        }
+      }
+    },
+    "Kopieren Sie den Schlüssel auf Ihrem anderen Gerät (Einstellungen › iCloud Sync › „Tresor-Schlüssel kopieren“) und fügen Sie ihn hier ein. Er wird im Schlüsselbund gespeichert, nie in iCloud Drive." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy the key on your other device (Settings › iCloud Sync › “Copy vault key”) and paste it here. It is stored in the Keychain, never in iCloud Drive."
+          }
+        }
+      }
+    },
+    "Schlüssel (Base64 oder Hex)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Key (Base64 or hex)"
+          }
+        }
+      }
+    },
+    "Übernehmen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply"
+          }
+        }
+      }
+    },
+    "Tresor-Schlüssel übernommen – iCloud Sync aktiv" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vault key applied – iCloud sync active"
+          }
+        }
+      }
+    },
+    "Der Tresor in iCloud nutzt einen anderen Schlüssel. Aktivieren Sie den iCloud-Schlüsselbund oder fügen Sie den Tresor-Schlüssel von Ihrem anderen Gerät ein (Einstellungen › iCloud Sync)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The iCloud vault uses a different key. Enable iCloud Keychain or paste the vault key from your other device (Settings › iCloud Sync)."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

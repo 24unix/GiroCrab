@@ -250,6 +250,11 @@ fn english(de: &str) -> Option<&'static str> {
         // ------------------------------------------------------------ connectors/mod.rs
         "VR-NetKey oder Alias" => "VR-NetKey or alias",
         "Online-Banking-PIN" => "Online banking PIN",
+        "Die BLZ muss aus genau 8 Ziffern bestehen." => "The bank code (BLZ) must be exactly 8 digits.",
+        "Die FinTS-URL muss mit https:// beginnen." => "The FinTS URL must start with https://.",
+        "FinTS-Bank" => "FinTS bank",
+        "Anmeldename / VR-NetKey / Kontonummer" => "Login name / VR-NetKey / account number",
+        "Beliebige FinTS-3.0-Bank (PIN/TAN). BLZ und FinTS-URL stehen im Bankzugang." => "Any FinTS 3.0 (PIN/TAN) bank. Bank code and FinTS URL are stored with the login.",
         "Freigabe in der SecureGo-plus-App (Decoupled, TAN-Prozess 4, HKTAN v7). Server: fints1.atruvia.de" => "Approve in the SecureGo plus app (decoupled, TAN process 4, HKTAN v7). Server: fints1.atruvia.de",
         "Anmeldename / Kontonummer" => "Login name / account number",
         "pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs5.s-fints-pt-hs.de" => "pushTAN app (decoupled) or chipTAN. Server: banking-hs5.s-fints-pt-hs.de",

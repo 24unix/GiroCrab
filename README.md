@@ -72,7 +72,7 @@ nur um Kategorie und Notiz ergänzt.
 
 - 🔒 **Local-First:** Alle Bankdaten bleiben auf Ihrem Gerät – in einem verschlüsselten Tresor (XChaCha20-Poly1305), geschützt durch Schlüsselbund / Touch ID bzw. Face ID. Es gibt keinen Entwickler-Server.
 - 📱 **macOS + iOS (iPhone / iPad):** eine SwiftUI-Codebasis auf dem gemeinsamen Rust-Kern. Voraussetzungen: **macOS 14+ (Apple Silicon, `arm64`)** bzw. **iOS 17+**. Die iOS-App wird derzeit direkt aus dem Quellcode mit Xcode gebaut und installiert (`GiroCrabApp/Xcode/GiroCrab.xcodeproj`, Signierung mit persönlicher Apple-ID) – siehe [Schnellstart](#schnellstart).
-- ☁️ **Optionale iCloud-Drive-Synchronisation:** Wer möchte, gleicht Tresor-Daten zwischen Macs und iOS-Geräten über den eigenen iCloud-Drive-Ordner (`iCloud Drive/GiroCrab/`) ab. In die Cloud wandert der Tresor nur als **verschlüsselter SQLCipher-Snapshot** (`wal_checkpoint(TRUNCATE)`); der Abgleich erfolgt deterministisch per `ATTACH DATABASE`-Merge. Eine **laufende SQLite-Datenbank mit WAL-Dateien wird nie direkt im Cloud-Speicher geöffnet.** Die Synchronisation ist **standardmäßig ausgeschaltet** und wird erst in den Einstellungen aktiviert; danach läuft der Abgleich beim Entsperren des Tresors. Unter macOS legt die App den (leeren) Ordner `iCloud Drive/GiroCrab/` ggf. schon beim Start an – Daten werden aber erst nach dem Aktivieren hineingeschrieben. ⚠️ **Wichtig:** Damit weitere Geräte den Snapshot öffnen können, legt GiroCrab den Tresor-Schlüssel (Base64) als Datei `tresor.key` **im selben iCloud-Ordner** ab. Wer iCloud-Zugriff hat, kann den Tresor damit entschlüsseln – aktivieren Sie die Synchronisation nur, wenn Sie Ihrem iCloud-Konto vertrauen (Zwei-Faktor-Authentifizierung, ggf. „Erweiterter Datenschutz“).
+- ☁️ **Optionale iCloud-Drive-Synchronisation:** Wer möchte, gleicht Tresor-Daten zwischen Macs und iOS-Geräten über den eigenen iCloud-Drive-Ordner (`iCloud Drive/GiroCrab/`) ab. In die Cloud wandert der Tresor nur als **verschlüsselter SQLCipher-Snapshot** (`wal_checkpoint(TRUNCATE)`); der Abgleich erfolgt deterministisch per `ATTACH DATABASE`-Merge. Eine **laufende SQLite-Datenbank mit WAL-Dateien wird nie direkt im Cloud-Speicher geöffnet.** Die Synchronisation ist **standardmäßig ausgeschaltet** und wird erst in den Einstellungen aktiviert; danach läuft der Abgleich beim Entsperren des Tresors. Der Ordner `iCloud Drive/GiroCrab/` wird erst angelegt, wenn Sie die Synchronisation aktivieren. 🔑 **Schlüssel:** Der Tresor-Schlüssel liegt **nicht** im iCloud-Ordner (die frühere Datei `tresor.key` aus v0.4.0 wird beim nächsten Abgleich automatisch gelöscht). Stattdessen teilt GiroCrab ihn standardmäßig über den **iCloud-Schlüsselbund** (`kSecAttrSynchronizable`, abschaltbar in den Einstellungen). Alternativ kopieren Sie den Schlüssel auf dem ersten Gerät („Tresor-Schlüssel kopieren“, Zwischenablage wird nach 60 s geleert) und fügen ihn einmalig auf dem zweiten Gerät ein („Schlüssel einfügen …“). ⚠️ Wer bereits v0.4.0 mit aktivem Sync genutzt hat: Die alte `tresor.key` kann noch in iCloud-Versionen/Papierkorb liegen; eine Schlüsselrotation ist für ein späteres Update geplant.
 - 🗄️ **MoneyMoney-Datenbank-Import:** lesender Import der verschlüsselten `.sqlite`-Datei inkl. Konten, Kategorien, Hierarchie und Buchungshistorie (siehe oben).
 - 🏦 **Native deutsche Bank-Protokolle:** FinTS 3.0 / HBCI (CAMT.052 & MT940 mit intelligenter Latin-1/UTF-8-Erkennung), **bunq** (persönlicher API-Schlüssel), PayPal, Trade-Republic-WebSocket, comdirect-REST sowie eingebettete Web-Session-/CSV-Importe für Amex & Amazon Visa.
 - 💸 **SEPA-Überweisungen via FinTS 3.0 / HKCCS** inkl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN-Prüfung (Mod-97), SEPA-konformer Zeichensatz, Empfängervorschläge aus bisherigen Buchungen und sofort vorgemerkte Buchung.
@@ -112,7 +112,7 @@ nur um Kategorie und Notiz ergänzt.
 
 | Institut | Verfahren | Status |
 |---|---|---|
-| Volksbanken (Atruvia) / 1822direkt | FinTS 3.0 PIN/TAN (HKCAZ/camt, HKKAZ/MT940, Darlehen) | ✅ Unterstützt |
+| Volksbanken & Sparda-Banken (Atruvia) / Postbank / DKB / 1822direkt – oder jede FinTS-3.0-Bank per BLZ + URL | FinTS 3.0 PIN/TAN (HKCAZ/camt, HKKAZ/MT940, Darlehen) | ✅ Unterstützt |
 | comdirect | Offizielle REST-API | ✅ Unterstützt |
 | bunq | Offizielle API, persönlicher API-Schlüssel | ✅ Unterstützt |
 | PayPal | Transaction-Search-API | ✅ Unterstützt |
@@ -154,7 +154,7 @@ und wird auch nicht als solcher angeboten.
 - **Rein lokal:** Alle Verbindungen laufen ausschließlich direkt zwischen **Ihrem Gerät** und **Ihrer Bank** – mit **Ihren** Zugangsdaten,
   **Ihrer** FinTS-Produktregistrierung und **Ihren** API-Schlüsseln. Die Entwickler betreiben **keinen** Server; Konto-, Buchungs- oder
   Zugangsdaten gelangen **zu keinem Zeitpunkt** an die Entwickler. Die optionale iCloud-Synchronisation nutzt ausschließlich Ihren
-  eigenen iCloud-Drive-Speicher (verschlüsselter Snapshot plus Schlüsseldatei, siehe oben).
+  eigenen iCloud-Drive-Speicher (verschlüsselter Snapshot; der Schlüssel läuft über den iCloud-Schlüsselbund, siehe oben).
 - **Nutzung auf eigenes Risiko, ohne Gewährleistung** (siehe GPLv3). Das gilt insbesondere für **SEPA-Überweisungen** – prüfen Sie
   Empfänger, IBAN und Betrag vor jeder Freigabe selbst – sowie für **inoffizielle Schnittstellen** (z. B. Trade Republic), die
   jederzeit ausfallen können und gegen Nutzungsbedingungen des Anbieters verstoßen können.
@@ -214,7 +214,7 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 
 - 🔒 **Local-first:** all banking data lives on your device in an encrypted vault (XChaCha20-Poly1305) protected by the Keychain / Touch ID or Face ID. There is no developer server.
 - 📱 **macOS + iOS (iPhone / iPad):** one SwiftUI codebase on the shared Rust core. Requires **macOS 14+ (Apple Silicon, `arm64`)** or **iOS 17+**. The iOS app is currently built and installed straight from source with Xcode (`GiroCrabApp/Xcode/GiroCrab.xcodeproj`, personal Apple ID signing) – see [Quickstart](#quickstart).
-- ☁️ **Optional iCloud Drive sync:** if you want, sync vault data between Macs and iOS devices through your own iCloud Drive folder (`iCloud Drive/GiroCrab/`). The vault goes to the cloud only as an **encrypted SQLCipher snapshot** (`wal_checkpoint(TRUNCATE)`), and devices are reconciled with a deterministic `ATTACH DATABASE` merge. **A live SQLite database with WAL files is never opened directly in cloud storage.** Sync is **off by default** and has to be enabled in Settings; once on, it runs when the vault is unlocked. On macOS the app may create the (empty) `iCloud Drive/GiroCrab/` folder at launch, but no data is written there until you enable sync. ⚠️ **Important:** so that other devices can open the snapshot, GiroCrab stores the vault key (Base64) as `tresor.key` **in the same iCloud folder**. Anyone with access to that iCloud account can decrypt the vault – enable sync only if you trust your iCloud account (two-factor authentication, optionally Advanced Data Protection).
+- ☁️ **Optional iCloud Drive sync:** if you want, sync vault data between Macs and iOS devices through your own iCloud Drive folder (`iCloud Drive/GiroCrab/`). The vault goes to the cloud only as an **encrypted SQLCipher snapshot** (`wal_checkpoint(TRUNCATE)`), and devices are reconciled with a deterministic `ATTACH DATABASE` merge. **A live SQLite database with WAL files is never opened directly in cloud storage.** Sync is **off by default** and has to be enabled in Settings; once on, it runs when the vault is unlocked. The folder `iCloud Drive/GiroCrab/` is only created once you enable sync. 🔑 **Key handling:** the vault key is **not** stored in the iCloud folder (the `tresor.key` file from v0.4.0 is deleted automatically on the next sync). By default GiroCrab shares it through **iCloud Keychain** (`kSecAttrSynchronizable`, can be turned off in Settings). Alternatively, copy the key on the first device (“Copy vault key”, clipboard is cleared after 60 s) and paste it once on the second device (“Paste key …”). ⚠️ If you used v0.4.0 with sync enabled, the old `tresor.key` may still exist in iCloud versions/trash; key rotation is planned for a later release.
 - 🗄️ **MoneyMoney database import:** read-only import of the encrypted `.sqlite` file incl. accounts, categories, hierarchy and booking history (see above).
 - 🏦 **Native German banking protocols:** FinTS 3.0 / HBCI (CAMT.052 & MT940 with smart Latin-1/UTF-8 decoding), **bunq** (personal API key), PayPal, Trade Republic WebSocket, comdirect REST, and embedded web-session/CSV import for Amex & Amazon Visa.
 - 💸 **Native SEPA credit transfers via FinTS 3.0 / HKCCS** incl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN checksum validation (Mod-97), SEPA-compliant character set, recipient suggestions from past bookings and an instant pending booking.
@@ -245,7 +245,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 
 | Bank | Protocol | Status |
 |---|---|---|
-| Volksbanken (Atruvia) / 1822direkt | FinTS 3.0 PIN/TAN (camt, MT940, loans) | ✅ Supported |
+| Volksbanken & Sparda-Banken (Atruvia) / Postbank / DKB / 1822direkt – or any FinTS 3.0 bank via bank code + URL | FinTS 3.0 PIN/TAN (camt, MT940, loans) | ✅ Supported |
 | comdirect | Official REST API | ✅ Supported |
 | bunq | Official API, personal API key | ✅ Supported |
 | PayPal | Transaction Search API | ✅ Supported |
@@ -288,7 +288,7 @@ It is **not a payment initiation service and not an account information service 
 
 - **Strictly local:** all connections run directly between **your device** and **your bank**, using **your** credentials,
   **your** FinTS product registration and **your** API keys. The authors operate **no** server, and no account, booking or
-  credential data **ever** reaches the authors. Optional iCloud sync uses only your own iCloud Drive storage (encrypted snapshot plus key file, see above).
+  credential data **ever** reaches the authors. Optional iCloud sync uses only your own iCloud Drive storage (encrypted snapshot; the key goes through iCloud Keychain, see above).
 - **Use at your own risk, without warranty** (see GPLv3). This applies in particular to **SEPA transfers** – always verify
   recipient, IBAN and amount yourself before authorising – and to **unofficial interfaces** (e.g. Trade Republic), which can
   break at any time and may violate the provider's terms of service.

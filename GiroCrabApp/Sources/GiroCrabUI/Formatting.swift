@@ -210,6 +210,7 @@ extension ConnectorKind {
         switch self {
         case .volksbankKasselGoettingen: return "Volksbank Kassel Göttingen"
         case .direkt1822: return "1822direkt"
+        case .finTsGeneric: return "FinTS-Bank"
         case .comdirect: return "comdirect"
         case .payPal: return "PayPal"
         case .tradeRepublic: return "Trade Republic"
@@ -224,6 +225,7 @@ extension ConnectorKind {
         switch self {
         case .volksbankKasselGoettingen: return "#1D5FBF"
         case .direkt1822: return "#D63A2F"
+        case .finTsGeneric: return "#4A6FA5"
         case .comdirect: return "#3C3C3C"
         case .payPal: return "#003087"
         case .tradeRepublic: return "#111111"
@@ -239,6 +241,7 @@ extension ConnectorKind {
         switch self {
         case .volksbankKasselGoettingen: return "VB"
         case .direkt1822: return "18"
+        case .finTsGeneric: return "FT"
         case .comdirect: return "cd"
         case .payPal: return "P"
         case .tradeRepublic: return "TR"

@@ -27,7 +27,7 @@ public struct GiroCrabScenes: Scene {
                     .keyboardShortcut("k", modifiers: .command)
                     .disabled(model.vault == nil)
                 Button("Alle Konten abrufen") { model.requestSyncAll() }
-                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .keyboardShortcut("r", modifiers: .command)
                     .disabled(model.vault == nil)
                 Button("Regeln …") { model.openRuleEditor() }
                     .keyboardShortcut("k", modifiers: [.command, .option])

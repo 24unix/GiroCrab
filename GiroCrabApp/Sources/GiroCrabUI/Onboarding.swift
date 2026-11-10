@@ -49,13 +49,18 @@ struct EmptyVaultCard: View {
                 }
                 .labelsHidden()
                 .frame(width: 230)
-                TextField(bankCatalog().first { $0.kind == addKind }?.loginLabel ?? String(localized: "Anmeldename"), text: $login)
-                    .textFieldStyle(.roundedBorder)
-                Button("Hinzufügen") {
-                    model.addConnection(addKind, login: login)
-                    login = ""
+                if addKind != .finTsGeneric {
+                    TextField(bankCatalog().first { $0.kind == addKind }?.loginLabel ?? String(localized: "Anmeldename"), text: $login)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Hinzufügen") {
+                        model.addConnection(addKind, login: login)
+                        login = ""
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
+            }
+            if addKind == .finTsGeneric {
+                Form { FinTsAddForm() }.formStyle(.grouped).scrollDisabled(true).frame(minHeight: 260)
             }
             Button { model.openMoneyMoneyImport() } label: {
                 Label("Von MoneyMoney wechseln", systemImage: "square.and.arrow.down.on.square")
