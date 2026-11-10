@@ -20,6 +20,7 @@ use super::{
     FetchResult, Phase, RemoteAccount, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
 use crate::models::AccountKind;
 use crate::money::json_number_to_cents;
 use crate::secret::SecretString;
@@ -323,8 +324,9 @@ impl BankConnector for ComdirectConnector {
         let c = match typ {
             "P_TAN_PUSH" => Challenge {
                 kind: ChallengeKind::DecoupledPush,
-                title: "In der comdirect photoTAN-App freigeben".into(),
-                message: "Öffnen Sie die photoTAN-App und geben Sie die Session-TAN frei.".into(),
+                title: tr("In der comdirect photoTAN-App freigeben").into(),
+                message: tr("Öffnen Sie die photoTAN-App und geben Sie die Session-TAN frei.")
+                    .into(),
                 method_name: "photoTAN push".into(),
                 redirect_url: None,
                 image: None,
@@ -333,9 +335,11 @@ impl BankConnector for ComdirectConnector {
             },
             "P_TAN" => Challenge {
                 kind: ChallengeKind::ImageCode,
-                title: "photoTAN-Grafik scannen".into(),
-                message: "Scannen Sie die Grafik mit der photoTAN-App und geben Sie die TAN ein."
-                    .into(),
+                title: tr("photoTAN-Grafik scannen").into(),
+                message: tr(
+                    "Scannen Sie die Grafik mit der photoTAN-App und geben Sie die TAN ein.",
+                )
+                .into(),
                 method_name: "photoTAN".into(),
                 redirect_url: None,
                 image: info["challenge"]
@@ -346,10 +350,10 @@ impl BankConnector for ComdirectConnector {
             },
             "M_TAN" => Challenge {
                 kind: ChallengeKind::Code,
-                title: "mobileTAN eingeben".into(),
-                message: format!(
-                    "Eine TAN wurde an {} gesendet.",
-                    info["challenge"].as_str().unwrap_or("Ihr Telefon")
+                title: tr("mobileTAN eingeben").into(),
+                message: trf(
+                    "Eine TAN wurde an {0} gesendet.",
+                    &[&info["challenge"].as_str().unwrap_or(tr("Ihr Telefon"))],
                 ),
                 method_name: "mobileTAN".into(),
                 redirect_url: None,

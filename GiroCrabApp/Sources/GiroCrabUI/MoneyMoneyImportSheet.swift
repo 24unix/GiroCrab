@@ -77,7 +77,7 @@ struct MoneyMoneyImportSheet: View {
 
     private var guide: some View {
         HStack(alignment: .top, spacing: 10) {
-            ForEach(Array(["Konto wählen", "⌘A (alle Umsätze markieren)", "Umsätze exportieren … → XML oder CSV"].enumerated()), id: \.offset) { i, text in
+            ForEach(Array([String(localized: "Konto wählen"), String(localized: "⌘A (alle Umsätze markieren)"), String(localized: "Umsätze exportieren … → XML oder CSV")].enumerated()), id: \.offset) { i, text in
                 HStack(alignment: .top, spacing: 8) {
                     Text("\(i + 1)").font(.caption.weight(.bold)).foregroundStyle(Theme.accent)
                         .frame(width: 20, height: 20).background(Circle().fill(Theme.selection))
@@ -94,7 +94,7 @@ struct MoneyMoneyImportSheet: View {
         VStack(spacing: 6) {
             Image(systemName: fileData == nil ? "tray.and.arrow.down" : "doc.text").font(.title)
                 .foregroundStyle(targeted ? Theme.accent : Theme.secondary)
-            Text(fileData == nil ? ".xml- oder .csv-Datei hierher ziehen" : fileName).font(.callout.weight(.medium))
+            Text(fileData == nil ? String(localized: ".xml- oder .csv-Datei hierher ziehen") : fileName).font(.callout.weight(.medium))
             Button(fileData == nil ? "Datei auswählen …" : "Andere Datei …") { picking = true }
                 .controlSize(.small)
         }
@@ -115,12 +115,13 @@ struct MoneyMoneyImportSheet: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 18) {
                 stat(years, "Zeitraum")
-                stat(p.newBookings.formatted(.number.locale(Locale(identifier: "de_DE"))), "neue Buchungen")
+                stat(p.newBookings.formatted(.number.locale(.autoupdatingCurrent)), "neue Buchungen")
                 stat("\(p.notesCount)", "Notizen")
                 stat("\(p.duplicatesSkippedOrEnriched)", "bereits vorhanden")
             }
             if !p.detectedCategories.isEmpty {
-                Text("\(p.detectedCategories.count) Kategorien: " + p.detectedCategories.prefix(6).joined(separator: ", ") + (p.detectedCategories.count > 6 ? " …" : ""))
+                let list = p.detectedCategories.prefix(6).joined(separator: ", ") + (p.detectedCategories.count > 6 ? " …" : "")
+                Text("\(p.detectedCategories.count) Kategorien: \(list)")
                     .font(.caption).foregroundStyle(Theme.secondary).lineLimit(2)
             }
             if target == nil { Text("Neues Archivkonto: „\(p.suggestedAccountName)“ – Saldo = Summe der Umsätze.").font(.caption).foregroundStyle(Theme.secondary) }
@@ -132,7 +133,7 @@ struct MoneyMoneyImportSheet: View {
         .card()
     }
 
-    private func stat(_ value: String, _ label: String) -> some View {
+    private func stat(_ value: String, _ label: LocalizedStringKey) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value).font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(Theme.text)
             Text(label).font(.caption2).foregroundStyle(Theme.secondary)
@@ -167,7 +168,7 @@ struct MoneyMoneyImportSheet: View {
             case .failure(let e):
                 preview = nil
                 if case CoreError.InvalidInput = e {
-                    error = "In dieser Datei wurden keine MoneyMoney-Umsätze erkannt (erwartet: CSV mit Datum/Betrag oder XML <transactions>)."
+                    error = String(localized: "In dieser Datei wurden keine MoneyMoney-Umsätze erkannt (erwartet: CSV mit Datum/Betrag oder XML <transactions>).")
                 } else { error = describe(e) }
             }
         }
@@ -196,8 +197,8 @@ extension AppModel {
     func finishMoneyMoneyImport(_ r: MoneyMoneyImportResult) {
         reloadAll()
         if r.accountCreated { sidebarSelection = .account(r.accountId) }
-        toast = "MoneyMoney: \(r.imported) Buchungen importiert"
-            + (r.enriched > 0 ? ", \(r.enriched) ergänzt" : "")
-            + (r.duplicates > 0 ? ", \(r.duplicates) bereits vorhanden" : "")
+        toast = String(localized: "MoneyMoney: \(r.imported) Buchungen importiert")
+            + (r.enriched > 0 ? String(localized: ", \(r.enriched) ergänzt") : "")
+            + (r.duplicates > 0 ? String(localized: ", \(r.duplicates) bereits vorhanden") : "")
     }
 }

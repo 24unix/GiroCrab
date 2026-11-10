@@ -22,7 +22,7 @@ extension AppModel {
         guard let vault else { return false }
         do {
             let s = try vault.importPortalCapture(connectionId: c.id, jsonBodies: bodies, domRowsJson: domRowsJSON)
-            toast = "\(c.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert"
+            toast = String(localized: "\(c.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert")
             reloadAll()
             return true
         } catch {
@@ -45,11 +45,11 @@ extension AppModel {
             var hint = ""
             if data.starts(with: Array("%PDF".utf8)) { hint = PDFDocument(data: data)?.string ?? "" }
             let s = try vault.importStatement(connectionId: c.id, fileName: url.lastPathComponent, bytes: data, pdfTextHint: hint)
-            toast = "\(c.displayName): \(s.transactionsImported) neue Buchungen aus \(url.lastPathComponent)"
+            toast = String(localized: "\(c.displayName): \(s.transactionsImported) neue Buchungen aus \(url.lastPathComponent)")
             reloadAll()
         } catch let e as CoreError {
             if case .InvalidInput = e {
-                errorMessage = "In \(url.lastPathComponent) wurden keine Umsätze erkannt. Erwartet: CSV mit Datum, Beschreibung, Betrag oder ein Kontoauszug als PDF mit Textebene."
+                errorMessage = String(localized: "In \(url.lastPathComponent) wurden keine Umsätze erkannt. Erwartet: CSV mit Datum, Beschreibung, Betrag oder ein Kontoauszug als PDF mit Textebene.")
             } else {
                 errorMessage = describe(e)
             }
@@ -217,9 +217,9 @@ struct PortalWebSheet: View {
     }
 
     private var info: String {
-        if browser.onLoginPage { return "Melden Sie sich wie gewohnt an (Benutzername, Passwort, 2FA) und öffnen Sie die Umsatzübersicht." }
-        if recognized == 0 { return "Angemeldet – öffnen Sie die Umsatzübersicht, damit das Portal die Buchungen lädt." }
-        return "\(recognized) Umsätze erkannt – Übernahme startet automatisch, sobald die Seite fertig geladen ist."
+        if browser.onLoginPage { return String(localized: "Melden Sie sich wie gewohnt an (Benutzername, Passwort, 2FA) und öffnen Sie die Umsatzübersicht.") }
+        if recognized == 0 { return String(localized: "Angemeldet – öffnen Sie die Umsatzübersicht, damit das Portal die Buchungen lädt.") }
+        return String(localized: "\(recognized) Umsätze erkannt – Übernahme startet automatisch, sobald die Seite fertig geladen ist.")
     }
 
     var body: some View {
@@ -296,7 +296,7 @@ struct PortalWebSheet: View {
         let dump = portalSchemaDump(jsonBodies: browser.bodies, domRowsJson: rows)
         do {
             try dump.write(toFile: "/tmp/girocrab-portal-schema.json", atomically: true, encoding: .utf8)
-            model.toast = "Struktur gespeichert: /tmp/girocrab-portal-schema.json (\(browser.bodies.count) Antworten, ohne Werte)"
+            model.toast = String(localized: "Struktur gespeichert: /tmp/girocrab-portal-schema.json (\(browser.bodies.count) Antworten, ohne Werte)")
         } catch {
             model.errorMessage = describe(error)
         }

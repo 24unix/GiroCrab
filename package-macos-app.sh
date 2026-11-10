@@ -54,15 +54,24 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleExecutable</key><string>GiroCrabMac</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+    <key>CFBundleDevelopmentRegion</key><string>de</string>
+    <key>CFBundleLocalizations</key><array><string>de</string><string>en</string></array>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>${VERSION}</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSFaceIDUsageDescription</key><string>GiroCrab nutzt Face ID / Touch ID, um Ihren verschlüsselten Tresor zu entsperren.</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
 ${ICON_KEY}
 </dict>
 </plist>
 PLIST
+
+# UI translations: the SwiftUI code looks strings up in Bundle.main (this bundle).
+echo "==> Compiling localisations"
+xcrun xcstringstool compile GiroCrabApp/Xcode/App/Localizable.xcstrings --output-directory "$APP/Contents/Resources"
+# InfoPlist: only English; German stays the Info.plist value above.
+xcrun xcstringstool compile GiroCrabApp/Xcode/App/InfoPlist.xcstrings --language en --output-directory "$APP/Contents/Resources"
 
 echo "==> Ad-hoc signing"
 codesign --force --deep --sign - "$APP"

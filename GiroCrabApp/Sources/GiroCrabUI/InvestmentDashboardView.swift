@@ -66,7 +66,7 @@ struct PlanGrid: View {
                                 }
                             }
                             .frame(width: 40)
-                            .help(e.amountCents > 0 ? "\(DateText.monthLabel(e.month)): \(Money.format(e.amountCents))" : "nicht ausgeführt")
+                            .help(e.amountCents > 0 ? "\(DateText.monthLabel(e.month)): \(Money.format(e.amountCents))" : String(localized: "nicht ausgeführt"))
                         }
                         Text(Money.format(plan.monthlyCents))
                             .font(.callout.monospacedDigit())
@@ -90,8 +90,8 @@ struct PlanGrid: View {
         var parts: [String] = []
         if !p.merchant.isin.isEmpty { parts.append(p.merchant.isin) }
         if !p.merchant.wkn.isEmpty { parts.append("WKN \(p.merchant.wkn)") }
-        if parts.isEmpty { parts.append(p.merchant.assetClass.isEmpty ? "Sparplan" : p.merchant.assetClass) }
-        parts.append("am \(p.dayOfMonth).")
+        if parts.isEmpty { parts.append(p.merchant.assetClass.isEmpty ? String(localized: "Sparplan") : p.merchant.assetClass) }
+        parts.append(String(localized: "am \(p.dayOfMonth).", comment: "Savings plan execution day of month"))
         return parts.joined(separator: " · ")
     }
 }
@@ -116,7 +116,7 @@ struct PerksCard: View {
         .card()
     }
 
-    private func perk(title: String, value: Int64, count: UInt32, text: String) -> some View {
+    private func perk(title: LocalizedStringKey, value: Int64, count: UInt32, text: LocalizedStringKey) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.caption.weight(.medium)).foregroundStyle(Theme.secondary)
             Text(Money.format(value)).font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(Theme.invest)
@@ -140,9 +140,11 @@ struct FlowChartCard: View {
     }
 
     var body: some View {
+        let consumption = String(localized: "Konsum")
+        let invested = String(localized: "Investiert")
         let bars = dashboard.monthly.flatMap { m in
-            [Bar(month: DateText.monthLabel(m.month), kind: "Konsum", euros: Double(m.consumptionCents) / 100),
-             Bar(month: DateText.monthLabel(m.month), kind: "Investiert", euros: Double(m.investmentCents) / 100)]
+            [Bar(month: DateText.monthLabel(m.month), kind: consumption, euros: Double(m.consumptionCents) / 100),
+             Bar(month: DateText.monthLabel(m.month), kind: invested, euros: Double(m.investmentCents) / 100)]
         }
         VStack(alignment: .leading, spacing: 8) {
             Text("Konsum vs. Investition").font(.subheadline.weight(.semibold))
@@ -151,7 +153,7 @@ struct FlowChartCard: View {
                     .foregroundStyle(by: .value("Art", b.kind))
                     .position(by: .value("Art", b.kind))
             }
-            .chartForegroundStyleScale(["Konsum": Theme.tertiary, "Investiert": Theme.invest])
+            .chartForegroundStyleScale([consumption: Theme.tertiary, invested: Theme.invest])
             .chartYAxis { AxisMarks(position: .leading) { AxisGridLine().foregroundStyle(Theme.border) ; AxisValueLabel() } }
             .frame(height: 140)
         }

@@ -93,7 +93,7 @@ struct BankConnectionsSettings: View {
                     Text(d.note).font(.caption).foregroundStyle(.secondary)
                     let missing = d.requiredSettings.filter { key in !(model.settings.first { $0.key == key }?.hasValue ?? false) }
                     if !missing.isEmpty {
-                        Label("Wird nach dem Hinzufügen abgefragt: " + missing.map { settingLabels[$0] ?? $0 }.joined(separator: ", "), systemImage: "info.circle")
+                        Label("Wird nach dem Hinzufügen abgefragt: \(missing.map { settingLabels[$0] ?? $0 }.joined(separator: ", "))", systemImage: "info.circle")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -121,8 +121,11 @@ struct CredentialsSettings: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let grouped = Dictionary(grouping: model.settings.filter { $0.group != "Händler-Logos" }, by: \.group)
-        let order = ["FinTS 3.0", "comdirect REST-API", "PayPal", "Enable Banking (PSD2)", "Allgemein"]
+        // Group by the core's stable group id, show its translated title, match
+        // on keys (logo settings have their own tab) and keep the core's order.
+        let entries = model.settings.filter { !$0.key.hasPrefix("merchants.") }
+        let grouped = Dictionary(grouping: entries, by: \.group)
+        let order = entries.map(\.group).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
         Form {
             Section {
                 Label("Nichts davon wird mit der App ausgeliefert. Registrieren Sie Ihr eigenes FinTS-Produkt und Ihre eigenen API-Anwendungen; die Werte liegen nur in Ihrem verschlüsselten Tresor.", systemImage: "info.circle")
@@ -130,7 +133,7 @@ struct CredentialsSettings: View {
                     .foregroundStyle(.secondary)
             }
             ForEach(order.filter { grouped[$0] != nil }, id: \.self) { g in
-                Section(g) {
+                Section(grouped[g]?.first?.groupTitle ?? g) {
                     ForEach(grouped[g] ?? []) { entry in
                         SettingField(entry: entry)
                     }
@@ -190,15 +193,15 @@ struct LogoSettings: View {
     var body: some View {
         Form {
             Section("Händler-Logos") {
-                LabeledContent("Stufe 1 – offline", value: "Mitgelieferte Händlertabelle (Monogramm + Markenfarbe)")
-                LabeledContent("Stufe 1b – simple-icons", value: "Vektor-Markenzeichen (CC0-Datensatz) für bekannte Marken")
+                LabeledContent("Stufe 1 – offline", value: String(localized: "Mitgelieferte Händlertabelle (Monogramm + Markenfarbe)"))
+                LabeledContent("Stufe 1b – simple-icons", value: String(localized: "Vektor-Markenzeichen (CC0-Datensatz) für bekannte Marken"))
                 Toggle("Stufe 2 – Logos online laden (Google-Favicon, Ersatz DuckDuckGo; Standard: an)", isOn: Binding(
                     get: { model.onlineLogos },
                     set: { model.saveSetting("merchants.online_logos", $0 ? "1" : "0") }
                 ))
                 Text("Lädt Favicons über google.com/s2/favicons bzw. icons.duckduckgo.com und speichert sie verschlüsselt in der Tabelle merchant_logo_cache. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten.")
                     .font(.caption).foregroundStyle(.secondary)
-                LabeledContent("Stufe 3 – Rückfall", value: "SF Symbol der Kategorie")
+                LabeledContent("Stufe 3 – Rückfall", value: String(localized: "SF Symbol der Kategorie"))
                 Button("Logo-Cache leeren", role: .destructive) { model.clearLogoCache() }
             }
         }
@@ -213,7 +216,7 @@ struct SecuritySettings: View {
         Form {
             Section("Tresor") {
                 LabeledContent("Verschlüsselung", value: "SQLCipher 4 (AES-256)")
-                LabeledContent("Hauptschlüssel", value: model.isDemo ? "Demo-Schlüssel (Wegwerf)" : "Schlüsselbund, geschützt durch \(VaultKeyManager.shared.biometryName)")
+                LabeledContent("Hauptschlüssel", value: model.isDemo ? String(localized: "Demo-Schlüssel (Wegwerf)") : String(localized: "Schlüsselbund, geschützt durch \(VaultKeyManager.shared.biometryName)"))
                 LabeledContent("Datei", value: model.vault?.filePath() ?? "–")
                     .textSelection(.enabled)
                 LabeledContent("Core-Version", value: coreVersion())

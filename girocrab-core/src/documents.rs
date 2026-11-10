@@ -12,6 +12,7 @@ use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
 use crate::models::{Booking, BookingFilter};
 use crate::money::format_cents;
 use crate::vault::Vault;
@@ -118,7 +119,7 @@ pub(crate) fn insert_doc(
 ) -> CoreResult<Option<i64>> {
     if bytes.is_empty() {
         return Err(CoreError::InvalidInput {
-            message: "Leere Datei".into(),
+            message: tr("Leere Datei").into(),
         });
     }
     let n = conn.execute(
@@ -438,7 +439,7 @@ impl Vault {
         )
         .optional()?
         .ok_or_else(|| CoreError::NotFound {
-            what: format!("Beleg {doc_id}"),
+            what: trf("Beleg {0}", &[&doc_id]),
         })
     }
 
@@ -458,7 +459,7 @@ impl Vault {
             )
             .optional()?
             .ok_or_else(|| CoreError::NotFound {
-                what: format!("Buchung {booking_id}"),
+                what: trf("Buchung {0}", &[&booking_id]),
             })?;
         let mime = sniff_mime(&bytes, &file_name);
         insert_doc(
@@ -474,7 +475,7 @@ impl Vault {
             &date,
         )?
         .ok_or_else(|| CoreError::InvalidInput {
-            message: "Beleg bereits vorhanden".into(),
+            message: tr("Beleg bereits vorhanden").into(),
         })
     }
 
@@ -503,7 +504,7 @@ impl Vault {
             &today,
         )?
         .ok_or_else(|| CoreError::InvalidInput {
-            message: "Dokument bereits vorhanden".into(),
+            message: tr("Dokument bereits vorhanden").into(),
         })
     }
 
@@ -604,7 +605,7 @@ impl Vault {
             )
             .optional()?
             .ok_or_else(|| CoreError::NotFound {
-                what: format!("Beleg {doc_id}"),
+                what: trf("Beleg {0}", &[&doc_id]),
             })?;
         let p = std::path::Path::new(&dest_path);
         let target = if p.is_dir() {
@@ -617,7 +618,7 @@ impl Vault {
             p.to_path_buf()
         };
         std::fs::write(&target, bytes).map_err(|e| CoreError::InvalidInput {
-            message: format!("Export fehlgeschlagen: {e}"),
+            message: trf("Export fehlgeschlagen: {0}", &[&e]),
         })?;
         Ok(target.to_string_lossy().to_string())
     }
@@ -626,11 +627,11 @@ impl Vault {
     /// (für die Steuererklärung). Returns the number of files written.
     pub fn export_all_documents(&self, dest_dir: String) -> Result<u32, CoreError> {
         let docs = self.list_all_documents(DocumentFilter::default())?;
-        let base = std::path::Path::new(&dest_dir).join("GiroCrab-Belege");
+        let base = std::path::Path::new(&dest_dir).join(tr("GiroCrab-Belege"));
         let mut used = HashSet::new();
         let mut n = 0u32;
         for d in docs {
-            let year = d.doc_date.get(..4).unwrap_or("ohne-Datum").to_string();
+            let year = d.doc_date.get(..4).unwrap_or(tr("ohne-Datum")).to_string();
             let dir = base.join(&year);
             std::fs::create_dir_all(&dir).map_err(|e| CoreError::InvalidInput {
                 message: format!("{e}"),

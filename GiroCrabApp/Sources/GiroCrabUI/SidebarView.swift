@@ -197,11 +197,16 @@ struct SectionHeader: View {
             Spacer()
             Text(Money.format(group.balanceCents))
                 .monospacedDigit()
-                .foregroundStyle(group.balanceCents < 0 && group.name.contains("Darlehen") ? Theme.loan : (group.balanceCents < 0 ? Theme.negative : Theme.secondary))
+                .foregroundStyle(group.balanceCents < 0 && isLoanGroup ? Theme.loan : (group.balanceCents < 0 ? Theme.negative : Theme.secondary))
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(Theme.secondary)
     }
+}
+
+extension SectionHeader {
+    /// Loan groups are recognised by their accounts, not by the (translated) group name.
+    var isLoanGroup: Bool { !group.accounts.isEmpty && group.accounts.allSatisfy { $0.kind == .loan } }
 }
 
 struct AccountRow: View {
@@ -229,7 +234,7 @@ struct AccountRow: View {
                         .tint(Theme.loan.opacity(0.7))
                         .controlSize(.mini)
                         .frame(maxWidth: 110)
-                        .help(String(format: "%.0f %% getilgt", repaid * 100))
+                        .help("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
                 } else {
                     Text(account.bankName).font(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
                 }
@@ -243,7 +248,7 @@ struct AccountRow: View {
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(account.kind == .loan ? Theme.loan : (account.balanceCents < 0 ? Theme.negative : Theme.text))
                 if let repaid {
-                    Text(String(format: "%.0f %% getilgt", repaid * 100)).font(.caption2).foregroundStyle(Theme.tertiary)
+                    Text("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt").font(.caption2).foregroundStyle(Theme.tertiary)
                 }
             }
         }

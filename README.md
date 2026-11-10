@@ -53,6 +53,7 @@ nur um Kategorie und Notiz ergänzt.
 - 🏠 **Intelligente Darlehens-Verfolgung:** Tilgungsfortschritt in Prozent und automatische Verknüpfung der monatlichen „Zins & Tilgung“-Raten vom Girokonto.
 - 🏷️ **Markenlogos vs. private Monogramme:** Händler und ETFs (REWE, EnBW, DB, iShares) werden sofort erkannt; Privatpersonen (z. B. „Max Mustermann“) erhalten bewusst nur neutrale Initialen.
 - 🌙 **macOS Dark Mode:** folgt automatisch dem System-Erscheinungsbild (Hell/Dunkel).
+- 🌐 **Lokalisierung DE/EN:** Die App ist auf Deutsch und Englisch verfügbar und folgt der Systemsprache.
 
 | Darlehen mit Tilgungsbalken | Inspektor mit Händler-Logo |
 |---|---|
@@ -155,6 +156,7 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 - 🏠 **Smart loan tracking:** automatic repayment progress (%) and cross-account linking of the monthly "Zins & Tilgung" instalments from your checking account.
 - 🏷️ **Brand signets vs. private monograms:** instant recognition for German merchants & ETFs (REWE, EnBW, DB, iShares), while private individuals (e.g. "Max Mustermann") get plain monogram initials by design.
 - 🌙 **macOS Dark Mode:** automatically follows the system appearance (light/dark).
+- 🌐 **German & English localization:** the app ships in German and English and follows the system language.
 
 | Loan with repayment bar | Inspector with merchant logo |
 |---|---|
