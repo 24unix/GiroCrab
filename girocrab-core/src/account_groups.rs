@@ -491,9 +491,111 @@ impl Vault {
     }
 }
 
+// ---------------------------------------------------------------- bank groups
+
+/// Groups the v6 → v7 migration carried over from the kind-based sidebar. They
+/// mix banks, so sync never links them to a single bank login.
+const KIND_GROUPS: &[&str] = &[
+    "Giro & Tagesgeld",
+    "Kreditkarten",
+    "Depots & ETFs",
+    "Darlehen & Kredite",
+    "Importierte Konten",
+];
+
+/// Sort position after the last child of `parent`.
+pub(crate) fn next_sort(conn: &Connection, parent: Option<i64>) -> CoreResult<i64> {
+    Ok(conn.query_row(
+        "SELECT IFNULL(MAX(s), -1) + 1 FROM (
+             SELECT sort_order AS s FROM account_groups WHERE parent_id IS ?1 AND role != 'closed'
+             UNION ALL SELECT sort_order FROM accounts WHERE group_id IS ?1)",
+        [parent],
+        |r| r.get(0),
+    )?)
+}
+
+/// The group new accounts of a bank login go into, linked to the login. In
+/// this order: the group already linked; the one group all of the login's
+/// accounts sit in (unless linked elsewhere, inside Closed, or a migrated kind
+/// group); an unlinked top-level group named like the login; a new top-level
+/// group named like the login (" 2", " 3", … on a clash).
+pub(crate) fn bank_group_for(conn: &Connection, connection_id: i64) -> CoreResult<i64> {
+    if let Some(id) = conn
+        .query_row(
+            "SELECT id FROM account_groups WHERE connection_id = ?1 ORDER BY id LIMIT 1",
+            [connection_id],
+            |r| r.get(0),
+        )
+        .optional()?
+    {
+        return Ok(id);
+    }
+    let link = |id: i64| -> CoreResult<i64> {
+        conn.execute(
+            "UPDATE account_groups SET connection_id = ?1 WHERE id = ?2",
+            [connection_id, id],
+        )?;
+        Ok(id)
+    };
+
+    let holding: Vec<Option<i64>> = {
+        let mut st =
+            conn.prepare("SELECT DISTINCT group_id FROM accounts WHERE connection_id = ?1")?;
+        let rows = st.query_map([connection_id], |r| r.get(0))?;
+        rows.collect::<Result<_, _>>()?
+    };
+    if let [Some(g)] = holding.as_slice() {
+        let (linked, name): (Option<i64>, String) = conn.query_row(
+            "SELECT connection_id, name FROM account_groups WHERE id = ?1",
+            [g],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        if linked.is_none() && !KIND_GROUPS.contains(&name.as_str()) && !in_closed(conn, *g)? {
+            return link(*g);
+        }
+    }
+
+    let (display, connector): (String, String) = conn.query_row(
+        "SELECT display_name, connector FROM bank_connections WHERE id = ?1",
+        [connection_id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    let name = match display.trim() {
+        "" => crate::models::ConnectorKind::from_str(&connector)
+            .map(|k| crate::connectors::descriptor(k).name)
+            .unwrap_or_else(|| connector.clone()),
+        d => d.to_string(),
+    };
+    if let Some(id) = conn
+        .query_row(
+            "SELECT id FROM account_groups
+             WHERE parent_id IS NULL AND name = ?1 AND connection_id IS NULL AND role != 'closed'",
+            [&name],
+            |r| r.get(0),
+        )
+        .optional()?
+    {
+        return link(id);
+    }
+
+    let mut candidate = name.clone();
+    let mut n = 2;
+    while check_free(conn, None, &candidate, None).is_err() {
+        candidate = format!("{name} {n}");
+        n += 1;
+    }
+    conn.execute(
+        "INSERT INTO account_groups(name, sf_symbol, sort_order, connection_id) VALUES (?1, 'building.columns', ?2, ?3)",
+        rusqlite::params![candidate, next_sort(conn, None)?, connection_id],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::connectors::{store_fetch, FetchResult, RemoteAccount};
+    use crate::models::{AccountKind, ConnectorKind};
     use crate::vault::Vault;
     use std::sync::Arc;
 
@@ -901,6 +1003,173 @@ mod tests {
         assert_eq!(
             labels(&v),
             vec!["G:comdirect", "Giro", "Bar", "G:Geschlossen"]
+        );
+    }
+
+    fn login(v: &Vault) -> i64 {
+        v.add_bank_connection(ConnectorKind::Comdirect, "comdirect".into(), "4711".into())
+            .unwrap()
+    }
+
+    fn sync(v: &Vault, connection: i64, refs: &[&str]) {
+        let accounts = refs
+            .iter()
+            .map(|r| RemoteAccount {
+                external_ref: r.to_string(),
+                name: r.to_string(),
+                owner: String::new(),
+                iban: String::new(),
+                account_number: String::new(),
+                currency: "EUR".into(),
+                kind: AccountKind::Checking,
+                balance_cents: 0,
+                balance_date: "2026-11-10".into(),
+            })
+            .collect();
+        store_fetch(
+            v,
+            ConnectorKind::Comdirect,
+            connection,
+            FetchResult {
+                accounts,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn first_sync_creates_and_links_bank_group() {
+        let (v, _) = temp_vault();
+        let c = login(&v);
+        sync(&v, c, &["Giro"]);
+        assert_eq!(labels(&v), vec!["G:comdirect", "Giro", "G:Geschlossen"]);
+        assert_eq!(
+            count(&v, &format!("SELECT count(*) FROM account_groups WHERE name = 'comdirect' AND connection_id = {c}")),
+            1
+        );
+    }
+
+    #[test]
+    fn second_sync_uses_renamed_bank_group() {
+        let (v, _) = temp_vault();
+        let c = login(&v);
+        sync(&v, c, &["Giro"]);
+        let g: i64 = count(&v, "SELECT id FROM account_groups WHERE name = 'comdirect'");
+        v.rename_account_group(g, "Meine Bank".into()).unwrap();
+        let banks = v.create_account_group("Banken".into(), None).unwrap();
+        v.move_account_group(g, Some(banks), 0).unwrap();
+        sync(&v, c, &["Giro", "Visa"]);
+        assert_eq!(
+            labels(&v),
+            vec!["G:Banken", "G:Meine Bank", "Giro", "Visa", "G:Geschlossen"]
+        );
+        assert_eq!(
+            count(
+                &v,
+                &format!("SELECT count(*) FROM account_groups WHERE connection_id = {c}")
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn sync_adopts_group_holding_existing_accounts() {
+        let (v, _) = temp_vault();
+        let c = login(&v);
+        let privat = add_group(&v, "Privat", None, 0);
+        v.db()
+            .unwrap()
+            .execute(
+                "INSERT INTO accounts(connection_id, group_id, external_ref, name) VALUES (?1, ?2, 'Giro', 'Giro')",
+                [c, privat],
+            )
+            .unwrap();
+        sync(&v, c, &["Giro", "Visa"]);
+        assert_eq!(
+            labels(&v),
+            vec!["G:Privat", "Giro", "Visa", "G:Geschlossen"]
+        );
+        assert_eq!(
+            count(
+                &v,
+                &format!("SELECT connection_id FROM account_groups WHERE id = {privat}")
+            ),
+            c
+        );
+    }
+
+    #[test]
+    fn sync_ignores_migrated_kind_group() {
+        let (v, _) = temp_vault();
+        let c = login(&v);
+        let kind = add_group(&v, "Giro & Tagesgeld", None, 0);
+        v.db()
+            .unwrap()
+            .execute(
+                "INSERT INTO accounts(connection_id, group_id, external_ref, name) VALUES (?1, ?2, 'Giro', 'Giro')",
+                [c, kind],
+            )
+            .unwrap();
+        sync(&v, c, &["Giro", "Visa"]);
+        assert_eq!(
+            labels(&v),
+            vec![
+                "G:Giro & Tagesgeld",
+                "Giro",
+                "G:comdirect",
+                "Visa",
+                "G:Geschlossen"
+            ]
+        );
+    }
+
+    #[test]
+    fn deleting_login_unlinks_but_keeps_group() {
+        let (v, _) = temp_vault();
+        let c = login(&v);
+        sync(&v, c, &["Giro"]);
+        v.delete_bank_connection(c).unwrap();
+        assert_eq!(labels(&v), vec!["G:comdirect", "G:Geschlossen"]);
+        assert_eq!(
+            count(&v, "SELECT count(*) FROM account_groups WHERE name = 'comdirect' AND connection_id IS NULL"),
+            1
+        );
+    }
+
+    #[test]
+    fn merged_login_hands_bank_group_to_keeper() {
+        let (v, _) = temp_vault();
+        let (keep, dup) = {
+            let db = v.db().unwrap();
+            db.execute_batch(
+                "INSERT INTO bank_connections(id, connector, display_name, login_name) VALUES
+                     (1, 'comdirect', 'comdirect', '4711'), (2, 'comdirect', 'comdirect', '4711');
+                 INSERT INTO account_groups(name, connection_id) VALUES ('comdirect', 2);",
+            )
+            .unwrap();
+            (1i64, 2i64)
+        };
+        v.deduplicate_bank_connections().unwrap();
+        assert_eq!(
+            count(&v, &format!("SELECT count(*) FROM account_groups WHERE name = 'comdirect' AND connection_id = {keep}")),
+            1,
+            "group of login {dup} moves to {keep}"
+        );
+    }
+
+    #[test]
+    fn demo_accounts_sit_in_their_bank_groups() {
+        let (v, _) = temp_vault();
+        v.seed_demo_data().unwrap();
+        assert!(count(&v, "SELECT count(*) FROM accounts") > 0);
+        assert_eq!(
+            count(
+                &v,
+                "SELECT count(*) FROM accounts a LEFT JOIN account_groups g ON g.id = a.group_id
+                 WHERE g.connection_id IS NOT a.connection_id"
+            ),
+            0
         );
     }
 }

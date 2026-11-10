@@ -5,7 +5,7 @@
 use chrono::{Duration, Local, NaiveDate};
 use rusqlite::{params, Connection};
 
-use crate::connectors::{descriptor, group_for};
+use crate::connectors::descriptor;
 use crate::error::CoreResult;
 use crate::models::{AccountKind, ConnectorKind};
 use crate::vault::Vault;
@@ -1035,28 +1035,9 @@ impl Vault {
         }
         let today = Local::now().date_naive();
         let txs = generate(today);
-        for g in [
-            "Giro & Tagesgeld",
-            "Kreditkarten",
-            "Depots & ETFs",
-            "Darlehen & Kredite",
-        ] {
-            let (_, sym, order) = [
-                AccountKind::Checking,
-                AccountKind::CreditCard,
-                AccountKind::Brokerage,
-                AccountKind::Loan,
-            ]
-            .into_iter()
-            .map(group_for)
-            .find(|x| x.0 == g)
-            .unwrap();
-            Vault::ensure_group(&tx, g, sym, order)?;
-        }
         let mut acc_ids = std::collections::HashMap::new();
         for (i, spec) in DEMO_ACCOUNTS.iter().enumerate() {
-            let (group, sym, order) = group_for(spec.kind);
-            let gid = Vault::ensure_group(&tx, group, sym, order)?;
+            let gid = crate::account_groups::bank_group_for(&tx, conn_ids[&spec.connector])?;
             let balance = spec.opening_cents;
             let bank = if spec.bank_name.is_empty() {
                 descriptor(spec.connector).name
@@ -1200,8 +1181,6 @@ mod tests {
                 crate::models::SidebarNode::Account { .. } => None,
             })
             .collect();
-        assert!(groups_en.iter().any(|g| g == "Checking & savings"));
-        assert!(groups_en.iter().any(|g| g == "Loans"));
         assert!(groups_en.iter().any(|g| g == "Closed"));
         let de = v.list_categories(None, None).unwrap();
         let en = with_language(Lang::En, || v.list_categories(None, None).unwrap());

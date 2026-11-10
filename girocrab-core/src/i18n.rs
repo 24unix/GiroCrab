@@ -165,7 +165,8 @@ pub fn display_path_in(lang: Lang, path: &str) -> String {
     }
 }
 
-/// English names of the built-in account groups (`connectors::group_for`) and
+/// English names of the built-in account groups (kind groups from before v7,
+/// "Importierte Konten", "Geschlossen") and
 /// the starter categories (`demo.rs`). Keys are the German names stored in
 /// the vault.
 fn default_name_en(de: &str) -> Option<&'static str> {

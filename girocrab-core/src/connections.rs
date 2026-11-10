@@ -93,6 +93,12 @@ pub(crate) fn deduplicate(conn: &Connection) -> CoreResult<u32> {
                     }
                 }
             }
+            // hand the bank group over if the keeper has none
+            conn.execute(
+                "UPDATE account_groups SET connection_id = ?1
+                 WHERE connection_id = ?2 AND NOT EXISTS (SELECT 1 FROM account_groups WHERE connection_id = ?1)",
+                params![keep, id],
+            )?;
             // keep a stored PIN if the keeper has none
             conn.execute(
                 "UPDATE settings SET key = ?1 WHERE key = ?2 AND NOT EXISTS (SELECT 1 FROM settings WHERE key = ?1)",
