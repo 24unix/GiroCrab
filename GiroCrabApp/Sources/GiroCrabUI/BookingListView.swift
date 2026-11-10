@@ -226,6 +226,7 @@ struct DayCard: View {
 
 /// Exactly three elements: signet · name + subtitle · amount.
 struct BookingRow: View {
+    @Environment(AppModel.self) private var model
     let booking: Booking
     var selected = false
 
@@ -245,10 +246,19 @@ struct BookingRow: View {
                             .help("\(booking.documentCount) Beleg(e) – Leertaste für QuickLook")
                     }
                 }
-                Text(booking.subtitle)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    if model.showsAccountMarkers {
+                        AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId))
+                    }
+                    // category with the sidebar's icon and colour, then the payment method
+                    BookingCategoryLabel(booking: booking)
+                    if !booking.paymentMethod.isEmpty {
+                        Text("· \(booking.paymentMethod)")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.secondary)
+                            .lineLimit(1)
+                    }
+                }
             }
             Spacer(minLength: 8)
             if booking.checked {
@@ -263,6 +273,46 @@ struct BookingRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 5)
         .background(selected ? Theme.selection : Color.clear)
+    }
+}
+
+/// Category of a booking as in the sidebar: its icon and colour
+/// ("Ohne Kategorie" like the sidebar entry, in the warning colour).
+struct BookingCategoryLabel: View {
+    let booking: Booking
+
+    var body: some View {
+        let none = booking.categoryName.isEmpty
+        let color = none ? Theme.warning : Color.readable(hex: booking.categoryColorHex)
+        HStack(spacing: 3) {
+            Image(systemName: none ? "questionmark.folder" : (booking.categorySymbol.isEmpty ? "tag.fill" : booking.categorySymbol))
+                .font(.system(size: 10))
+            Text(none ? String(localized: "Ohne Kategorie") : booking.categoryName)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+        }
+        .foregroundStyle(color)
+    }
+}
+
+/// Account of a booking in mixed lists: coloured dot + short name.
+struct AccountChip: View {
+    let label: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(color)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 1.5)
+        .background(Capsule().fill(color.opacity(0.12)))
+        .fixedSize()
+        .help(label)
     }
 }
 

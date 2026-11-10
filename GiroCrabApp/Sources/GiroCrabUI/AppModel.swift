@@ -882,6 +882,36 @@ public final class AppModel {
 
     func account(for id: Int64) -> Account? { allAccounts.first { $0.id == id } }
 
+    // MARK: - Account markers (which account a booking belongs to)
+
+    /// Distinct, readable colours; assigned by account id so they stay put
+    /// when accounts move between sidebar sections.
+    private static let accountMarkerPalette = [
+        "#2563EB", "#D97706", "#059669", "#DB2777", "#7C3AED", "#0891B2",
+        "#DC2626", "#65A30D", "#C026D3", "#EA580C", "#4F46E5", "#0D9488",
+    ]
+
+    func accountColor(_ accountId: Int64) -> Color {
+        let ids = allAccounts.map(\.id).sorted()
+        let i = ids.firstIndex(of: accountId) ?? Int(accountId)
+        return Color.readable(hex: Self.accountMarkerPalette[abs(i) % Self.accountMarkerPalette.count])
+    }
+
+    /// Short account label for the booking list, e.g. "Girokonto ··3000".
+    func accountShortLabel(_ accountId: Int64) -> String {
+        guard let a = account(for: accountId) else { return "" }
+        var name = a.name.replacingOccurrences(of: " (MoneyMoney)", with: "")
+        let digits = String((a.iban.isEmpty ? a.accountNumber : a.iban).filter(\.isNumber).suffix(4))
+        if !digits.isEmpty && !name.contains(digits) { name += " ··\(digits)" }
+        return name
+    }
+
+    /// Markers only where bookings of several accounts are mixed.
+    var showsAccountMarkers: Bool {
+        if case .account = sidebarSelection { return false }
+        return allAccounts.count > 1
+    }
+
     // MARK: - Keyboard navigation
 
     func moveSelection(_ delta: Int) {
