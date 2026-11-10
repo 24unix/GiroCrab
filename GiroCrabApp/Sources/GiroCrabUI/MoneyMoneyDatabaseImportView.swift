@@ -1,8 +1,7 @@
-import SwiftUI
-import GiroCrabCore
 #if os(macOS)
 import AppKit
-#endif
+import SwiftUI
+import GiroCrabCore
 
 /// MoneyMoney database import: pick `MoneyMoney.sqlite`, enter the MoneyMoney
 /// password, preview, then import all accounts in one go. The database is only
@@ -464,3 +463,5 @@ extension AppModel {
                                    dateRangeStart: "2009-04-01", dateRangeEnd: "2026-11-09", replacesStarterCategories: true)
     }
 }
+
+#endif

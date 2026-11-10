@@ -247,7 +247,9 @@ public final class AppModel {
                 sampleBookings: [], suggestedAccountName: "MoneyMoney-Archiv")
             showMoneyMoneyImport = true
         case "moneymoney-db":
+            #if os(macOS)
             demoDbPreview = Self.demoMoneyMoneyDbPreview(existingGiro: allAccounts.first { $0.kind == .checking })
+            #endif
             showMoneyMoneyImport = true
         default: break
         }
