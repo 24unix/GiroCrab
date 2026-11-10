@@ -114,7 +114,8 @@ pub struct Account {
     pub id: i64,
     pub connection_id: Option<i64>,
     pub connector: Option<ConnectorKind>,
-    pub group_id: i64,
+    /// None = top level of the sidebar.
+    pub group_id: Option<i64>,
     pub name: String,
     pub bank_name: String,
     pub owner: String,
@@ -133,17 +134,33 @@ pub struct Account {
     /// Original loan amount ("Ursprünglicher Kreditbetrag", positive cents).
     /// Auto-derived from statement history, editable by the user.
     pub initial_balance_cents: Option<i64>,
+    /// In the Closed group or below it: left out of the headline balance,
+    /// badges and pickers, but kept in history and category totals.
+    pub closed: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct AccountGroup {
     pub id: i64,
+    pub parent_id: Option<i64>,
     pub name: String,
     pub sf_symbol: String,
     pub sort_order: i32,
-    /// Sum of all EUR account balances in this group.
+    pub depth: u32,
+    pub is_closed_group: bool,
+    /// Bank login whose new accounts land in this group.
+    pub connection_id: Option<i64>,
+    /// Recursive sum of EUR balances below this group.
     pub balance_cents: i64,
-    pub accounts: Vec<Account>,
+    /// All account ids below this group, recursively (for the booking filter).
+    pub account_ids: Vec<i64>,
+}
+
+/// One sidebar row, in display order (pre-order: a group before its children).
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum SidebarNode {
+    Group { group: AccountGroup },
+    Account { account: Account, depth: u32 },
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

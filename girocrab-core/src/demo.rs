@@ -1193,9 +1193,16 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("girocrab-i18n-{}.db", uuid::Uuid::new_v4()));
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
         v.seed_demo_data().unwrap();
-        let groups_en = with_language(Lang::En, || v.list_account_groups().unwrap());
-        assert!(groups_en.iter().any(|g| g.name == "Checking & savings"));
-        assert!(groups_en.iter().any(|g| g.name == "Loans"));
+        let groups_en: Vec<String> = with_language(Lang::En, || v.list_sidebar().unwrap())
+            .into_iter()
+            .filter_map(|n| match n {
+                crate::models::SidebarNode::Group { group } => Some(group.name),
+                crate::models::SidebarNode::Account { .. } => None,
+            })
+            .collect();
+        assert!(groups_en.iter().any(|g| g == "Checking & savings"));
+        assert!(groups_en.iter().any(|g| g == "Loans"));
+        assert!(groups_en.iter().any(|g| g == "Closed"));
         let de = v.list_categories(None, None).unwrap();
         let en = with_language(Lang::En, || v.list_categories(None, None).unwrap());
         // Every starter category has an English name.

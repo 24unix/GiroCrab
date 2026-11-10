@@ -703,12 +703,15 @@ impl Vault {
     pub fn list_accounts(&self) -> Result<Vec<Account>, CoreError> {
         let db = self.db()?;
         let mut stmt = db.prepare(
-            "SELECT a.id, a.connection_id, c.connector, a.group_id, a.name, a.bank_name, a.owner, a.iban, a.account_number,
+            "WITH RECURSIVE closed_groups(id) AS (
+                 SELECT id FROM account_groups WHERE role = 'closed'
+                 UNION SELECT g.id FROM account_groups g JOIN closed_groups c ON g.parent_id = c.id)
+             SELECT a.id, a.connection_id, c.connector, a.group_id, a.name, a.bank_name, a.owner, a.iban, a.account_number,
                     a.currency, a.kind, a.balance_cents, a.balance_date, a.sf_symbol, a.sort_order,
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id),
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.category_id IS NULL),
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0),
-                    a.initial_balance_cents
+                    a.initial_balance_cents, a.group_id IN closed_groups
              FROM accounts a LEFT JOIN bank_connections c ON c.id = a.connection_id
              ORDER BY a.sort_order, a.id",
         )?;
@@ -738,56 +741,14 @@ impl Vault {
                     .get::<_, Option<i64>>(18)?
                     .map(i64::abs)
                     .filter(|c| *c > 0),
+                closed: r.get::<_, Option<bool>>(19)?.unwrap_or(false),
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Sidebar data: groups with their accounts and summed balances.
-    pub fn list_account_groups(&self) -> Result<Vec<AccountGroup>, CoreError> {
-        let accounts = self.list_accounts()?;
-        let db = self.db()?;
-        let mut stmt = db.prepare(
-            "SELECT id, name, sf_symbol, sort_order FROM account_groups ORDER BY sort_order, id",
-        )?;
-        let groups = stmt
-            .query_map([], |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, i32>(3)?,
-                ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(groups
-            .into_iter()
-            .map(|(id, name, sym, order)| {
-                let accs: Vec<Account> = accounts
-                    .iter()
-                    .filter(|a| a.group_id == id)
-                    .cloned()
-                    .collect();
-                let balance = accs
-                    .iter()
-                    .filter(|a| a.currency == "EUR")
-                    .map(|a| a.balance_cents)
-                    .sum();
-                AccountGroup {
-                    id,
-                    name: display_name(&name),
-                    sf_symbol: sym,
-                    sort_order: order,
-                    balance_cents: balance,
-                    accounts: accs,
-                }
-            })
-            .filter(|g| !g.accounts.is_empty())
-            .collect())
-    }
-
     /// End-of-day balances for the last `days` days (oldest first), for the
-    /// header chart. Empty `account_ids` = all EUR accounts. Computed backwards
+    /// header chart. Empty `account_ids` = all open EUR accounts. Computed backwards
     /// from the current balance, so it is exact in cents.
     pub fn balance_history(
         &self,
@@ -798,7 +759,12 @@ impl Vault {
         let chosen: Vec<&Account> = accounts
             .iter()
             .filter(|a| {
-                a.currency == "EUR" && (account_ids.is_empty() || account_ids.contains(&a.id))
+                a.currency == "EUR"
+                    && if account_ids.is_empty() {
+                        !a.closed
+                    } else {
+                        account_ids.contains(&a.id)
+                    }
             })
             .collect();
         let mut balance: i64 = chosen.iter().map(|a| a.balance_cents).sum();

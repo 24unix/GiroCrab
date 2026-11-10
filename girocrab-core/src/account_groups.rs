@@ -1,9 +1,14 @@
 //! User-defined account groups: a tree of groups and accounts in the sidebar,
 //! plus one built-in "Closed" group for accounts no longer in use.
 
+use std::collections::HashMap;
+
 use rusqlite::{Connection, OptionalExtension};
 
-use crate::error::CoreResult;
+use crate::error::{CoreError, CoreResult};
+use crate::i18n::display_name;
+use crate::models::{Account, AccountGroup, SidebarNode};
+use crate::vault::Vault;
 
 /// Stored (German) name of the built-in Closed group; shown via `display_name`.
 pub(crate) const CLOSED_GROUP: &str = "Geschlossen";
@@ -39,6 +44,135 @@ pub(crate) fn closed_group_id(conn: &Connection) -> CoreResult<i64> {
     .map_err(Into::into)
 }
 
+/// Deeper nesting is cut off; guards against a parent cycle in a damaged file.
+const MAX_DEPTH: u32 = 32;
+
+struct GroupRow {
+    id: i64,
+    parent_id: Option<i64>,
+    name: String,
+    sf_symbol: String,
+    sort_order: i32,
+    closed: bool,
+    connection_id: Option<i64>,
+}
+
+enum Child {
+    Group(usize),
+    Account(usize),
+}
+
+#[uniffi::export]
+impl Vault {
+    /// The sidebar in display order: each group before its children, siblings
+    /// by `sort_order` (groups before accounts on a tie), the Closed group last.
+    pub fn list_sidebar(&self) -> Result<Vec<SidebarNode>, CoreError> {
+        let accounts = self.list_accounts()?;
+        let groups: Vec<GroupRow> = {
+            let db = self.db()?;
+            let mut st = db.prepare(
+                "SELECT id, parent_id, name, sf_symbol, sort_order, role = 'closed', connection_id FROM account_groups",
+            )?;
+            let rows = st.query_map([], |r| {
+                Ok(GroupRow {
+                    id: r.get(0)?,
+                    parent_id: r.get(1)?,
+                    name: r.get(2)?,
+                    sf_symbol: r.get(3)?,
+                    sort_order: r.get(4)?,
+                    closed: r.get(5)?,
+                    connection_id: r.get(6)?,
+                })
+            })?;
+            rows.collect::<Result<_, _>>()?
+        };
+        let index: HashMap<i64, usize> =
+            groups.iter().enumerate().map(|(i, g)| (g.id, i)).collect();
+        // A missing parent (damaged file) puts the child at the top level.
+        let parent = |p: Option<i64>| p.filter(|id| index.contains_key(id));
+        let mut children: HashMap<Option<i64>, Vec<Child>> = HashMap::new();
+        for (i, g) in groups.iter().enumerate() {
+            children
+                .entry(parent(g.parent_id))
+                .or_default()
+                .push(Child::Group(i));
+        }
+        for (i, a) in accounts.iter().enumerate() {
+            children
+                .entry(parent(a.group_id))
+                .or_default()
+                .push(Child::Account(i));
+        }
+        let key = |c: &Child| match c {
+            Child::Group(i) => (groups[*i].closed, groups[*i].sort_order, 0, groups[*i].id),
+            Child::Account(i) => (false, accounts[*i].sort_order, 1, accounts[*i].id),
+        };
+        for list in children.values_mut() {
+            list.sort_by_key(key);
+        }
+
+        let mut out = Vec::new();
+        walk(&groups, &accounts, &children, None, 0, &mut out);
+        Ok(out)
+    }
+}
+
+/// Appends the children of `parent` in pre-order and returns the EUR total
+/// and the ids of all accounts below it.
+fn walk(
+    groups: &[GroupRow],
+    accounts: &[Account],
+    children: &HashMap<Option<i64>, Vec<Child>>,
+    parent: Option<i64>,
+    depth: u32,
+    out: &mut Vec<SidebarNode>,
+) -> (i64, Vec<i64>) {
+    let (mut total, mut ids) = (0, Vec::new());
+    if depth > MAX_DEPTH {
+        return (total, ids);
+    }
+    for child in children.get(&parent).map(Vec::as_slice).unwrap_or_default() {
+        match child {
+            Child::Account(i) => {
+                let a = &accounts[*i];
+                if a.currency == "EUR" {
+                    total += a.balance_cents;
+                }
+                ids.push(a.id);
+                out.push(SidebarNode::Account {
+                    account: a.clone(),
+                    depth,
+                });
+            }
+            Child::Group(i) => {
+                let g = &groups[*i];
+                let at = out.len();
+                out.push(SidebarNode::Group {
+                    group: AccountGroup {
+                        id: g.id,
+                        parent_id: g.parent_id,
+                        name: display_name(&g.name),
+                        sf_symbol: g.sf_symbol.clone(),
+                        sort_order: g.sort_order,
+                        depth,
+                        is_closed_group: g.closed,
+                        connection_id: g.connection_id,
+                        balance_cents: 0,
+                        account_ids: vec![],
+                    },
+                });
+                let (sum, below) = walk(groups, accounts, children, Some(g.id), depth + 1, out);
+                if let SidebarNode::Group { group } = &mut out[at] {
+                    group.balance_cents = sum;
+                    group.account_ids = below.clone();
+                }
+                total += sum;
+                ids.extend(below);
+            }
+        }
+    }
+    (total, ids)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,5 +332,107 @@ mod tests {
                 []
             )
             .is_err());
+    }
+
+    /// Inserts an EUR account; `group` None = top level.
+    pub(crate) fn add_account(
+        v: &Vault,
+        name: &str,
+        group: Option<i64>,
+        sort: i32,
+        cents: i64,
+        currency: &str,
+    ) -> i64 {
+        let db = v.db().unwrap();
+        db.execute(
+            "INSERT INTO accounts(group_id, external_ref, name, currency, balance_cents, sort_order) VALUES (?1, ?2, ?2, ?3, ?4, ?5)",
+            rusqlite::params![group, name, currency, cents, sort],
+        )
+        .unwrap();
+        db.last_insert_rowid()
+    }
+
+    pub(crate) fn add_group(v: &Vault, name: &str, parent: Option<i64>, sort: i32) -> i64 {
+        let db = v.db().unwrap();
+        db.execute(
+            "INSERT INTO account_groups(parent_id, name, sort_order) VALUES (?1, ?2, ?3)",
+            rusqlite::params![parent, name, sort],
+        )
+        .unwrap();
+        db.last_insert_rowid()
+    }
+
+    /// Sidebar as (label, depth): groups as "G:<name>", accounts by name.
+    pub(crate) fn outline(v: &Vault) -> Vec<(String, u32)> {
+        v.list_sidebar()
+            .unwrap()
+            .into_iter()
+            .map(|n| match n {
+                SidebarNode::Group { group } => (format!("G:{}", group.name), group.depth),
+                SidebarNode::Account { account, depth } => (account.name, depth),
+            })
+            .collect()
+    }
+
+    fn group<'a>(nodes: &'a [SidebarNode], name: &str) -> &'a AccountGroup {
+        nodes
+            .iter()
+            .find_map(|n| match n {
+                SidebarNode::Group { group } if group.name == name => Some(group),
+                _ => None,
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn list_sidebar_is_preorder_with_depths() {
+        let (v, _) = temp_vault();
+        let a = add_group(&v, "A", None, 1);
+        add_account(&v, "x", None, 2, 0, "EUR");
+        add_account(&v, "a1", Some(a), 0, 0, "EUR");
+        let b = add_group(&v, "B", Some(a), 1);
+        add_account(&v, "b1", Some(b), 0, 0, "EUR");
+        let s = |l: &str, d: u32| (l.to_string(), d);
+        assert_eq!(
+            outline(&v),
+            vec![
+                s("G:A", 0),
+                s("a1", 1),
+                s("G:B", 1),
+                s("b1", 2),
+                s("x", 0),
+                s("G:Geschlossen", 0)
+            ]
+        );
+    }
+
+    #[test]
+    fn group_totals_are_recursive_and_eur_only() {
+        let (v, _) = temp_vault();
+        let a = add_group(&v, "A", None, 0);
+        let a1 = add_account(&v, "a1", Some(a), 0, 10_000, "EUR");
+        let b = add_group(&v, "B", Some(a), 1);
+        let b1 = add_account(&v, "b1", Some(b), 0, 5_000, "EUR");
+        let u1 = add_account(&v, "u1", Some(b), 1, 99_900, "USD");
+        let nodes = v.list_sidebar().unwrap();
+        assert_eq!(group(&nodes, "A").balance_cents, 15_000);
+        assert_eq!(group(&nodes, "B").balance_cents, 5_000);
+        let mut ids = group(&nodes, "A").account_ids.clone();
+        ids.sort();
+        assert_eq!(ids, vec![a1, b1, u1]);
+    }
+
+    #[test]
+    fn closed_accounts_are_flagged_and_excluded_from_default_history() {
+        let (v, _) = temp_vault();
+        let closed = closed_group_id(&v.db().unwrap()).unwrap();
+        let sub = add_group(&v, "Alt", Some(closed), 0);
+        add_account(&v, "open", None, 0, 10_000, "EUR");
+        let gone = add_account(&v, "gone", Some(sub), 0, 70_000, "EUR");
+        let accounts = v.list_accounts().unwrap();
+        assert!(accounts.iter().find(|a| a.id == gone).unwrap().closed);
+        assert!(!accounts.iter().find(|a| a.name == "open").unwrap().closed);
+        let history = v.balance_history(vec![], 3).unwrap();
+        assert_eq!(history.last().unwrap().balance_cents, 10_000);
     }
 }
