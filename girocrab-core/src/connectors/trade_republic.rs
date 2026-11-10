@@ -695,15 +695,20 @@ impl BankConnector for TradeRepublicConnector {
                         .as_str()
                         .unwrap_or_default()
                         .to_string();
-                    if !url.starts_with("https://") {
+                    let Ok(parsed) = reqwest::Url::parse(&url) else {
+                        continue;
+                    };
+                    if parsed.scheme() != "https" {
                         continue;
                     }
-                    let Ok(resp) = client
-                        .get(&url)
-                        .header("Cookie", self.cookies.clone())
-                        .send()
-                        .await
-                    else {
+                    // Only send the session cookie to Trade Republic hosts; presigned
+                    // CDN/S3 URLs get a cookie-free request. (reqwest also strips the
+                    // Cookie header on cross-host redirects.)
+                    let mut req = client.get(parsed.clone());
+                    if is_trade_republic_host(&parsed) {
+                        req = req.header("Cookie", self.cookies.clone());
+                    }
+                    let Ok(resp) = req.send().await else {
                         continue;
                     };
                     if !resp.status().is_success() {
@@ -751,9 +756,30 @@ impl BankConnector for TradeRepublicConnector {
     }
 }
 
+/// True if the URL's host is `traderepublic.com` or a subdomain of it.
+fn is_trade_republic_host(url: &reqwest::Url) -> bool {
+    url.host_str()
+        .map(|h| {
+            let h = h.to_ascii_lowercase();
+            h == "traderepublic.com" || h.ends_with(".traderepublic.com")
+        })
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cookie_host_check() {
+        let p = |s: &str| reqwest::Url::parse(s).unwrap();
+        assert!(is_trade_republic_host(&p("https://api.traderepublic.com/x")));
+        assert!(is_trade_republic_host(&p("https://a.b.traderepublic.com/x")));
+        assert!(!is_trade_republic_host(&p("https://evil.com/x")));
+        assert!(!is_trade_republic_host(&p("https://traderepublic.com.evil.com/x")));
+        assert!(!is_trade_republic_host(&p("https://eviltraderepublic.com/x")));
+        assert!(!is_trade_republic_host(&p("https://bucket.s3.amazonaws.com/x?traderepublic.com")));
+    }
 
     #[test]
     fn normalises_phone_numbers() {
