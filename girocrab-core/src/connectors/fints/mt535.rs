@@ -111,7 +111,10 @@ pub fn parse(text: &str) -> Statement {
             "16R" if body == "FIN" => current = Some(Holding::default()),
             "16S" if body == "FIN" => {
                 if let Some(h) = current.take() {
-                    st.holdings.push(h);
+                    let named = !(h.isin.is_empty() && h.wkn.is_empty() && h.name.is_empty());
+                    if named || h.quantity != 0.0 || h.value_cents.is_some() {
+                        st.holdings.push(h);
+                    }
                 }
             }
             "35B" => {
@@ -124,7 +127,7 @@ pub fn parse(text: &str) -> Statement {
                     h.quantity = q;
                 }
             }
-            "90B" => {
+            "90B" | "90A" => {
                 // :MRKT//ACTU/EUR44,11 (amount per unit)
                 if let (Some(h), Some((cur, cents))) = (
                     current.as_mut(),
@@ -153,8 +156,10 @@ pub fn parse(text: &str) -> Statement {
                 let q = qualifier(body);
                 let amount = after_qualifier(body).and_then(signed_amount);
                 match (q, current.as_mut(), amount) {
-                    ("HOLD", Some(h), Some((cur, cents))) => {
-                        h.value_cents = Some(cents);
+                    ("HOLD" | "MKTV" | "BOOK", Some(h), Some((cur, cents))) => {
+                        if q == "HOLD" || h.value_cents.is_none() {
+                            h.value_cents = Some(cents);
+                        }
                         h.currency = cur;
                     }
                     ("HOLS", None, Some((_, cents))) => statement_total = Some(cents),
@@ -212,28 +217,38 @@ fn after_qualifier(body: &str) -> Option<&str> {
 }
 
 fn identification(h: &mut Holding, body: &str) {
-    let mut lines = body.lines();
-    if let Some(first) = lines.next() {
-        if let Some(isin) = first.trim().strip_prefix("ISIN ") {
-            h.isin = isin.trim().to_string();
-        }
-    }
     let mut name = Vec::new();
-    for l in lines {
+    for (i, l) in body.lines().enumerate() {
         let l = l.trim();
-        if let Some(rest) = l.strip_prefix("/DE/") {
-            h.wkn = rest.trim().to_string();
-        } else if !l.starts_with('/') && !l.is_empty() {
+        if l.is_empty() {
+            continue;
+        }
+        if let Some(isin) = l.strip_prefix("ISIN ") {
+            h.isin = isin.split_whitespace().next().unwrap_or("").to_string();
+        } else if let Some(rest) = l.strip_prefix('/') {
+            // "/DE/123456", "/XX/US0378331005", "/TS/..." – country or scheme prefix
+            if let Some((scheme, id)) = rest.split_once('/') {
+                let id = id.trim();
+                if scheme.len() == 2 && id.len() == 12 && h.isin.is_empty() {
+                    h.isin = id.to_string();
+                } else if h.wkn.is_empty() && !id.is_empty() {
+                    h.wkn = id.to_string();
+                }
+            }
+        } else if i == 0 && l.len() == 6 && l.chars().all(|c| c.is_ascii_alphanumeric()) {
+            h.wkn = l.to_string();
+        } else {
             name.push(l);
         }
     }
     h.name = name.join(" ");
 }
 
-/// ":AGGR//UNIT/243," or ":AGGR//FAMT/1000,"
+/// ":AGGR//UNIT/243," or ":AGGR//FAMT/1000," (dot decimals tolerated)
 fn quantity(body: &str) -> Option<f64> {
     let rest = after_qualifier(body)?;
     let (_, num) = rest.split_once('/')?;
+    let num = num.trim();
     let neg = num.starts_with('N');
     let v: f64 = num.trim_start_matches('N').replace(',', ".").parse().ok()?;
     if !v.is_finite() {
@@ -344,6 +359,20 @@ mod tests {
         assert_eq!(st.holdings[0].price_cents, None);
         assert_eq!(st.holdings[0].quantity, 1000.0);
         assert_eq!(st.value_cents(), None);
+    }
+
+    #[test]
+    fn comdirect_style_blocks_are_kept() {
+        // no ISIN prefix, bare WKN, dot decimals, MKTV value, no price
+        let text = ":16R:FIN\n:35B:/DE/865985\nAPPLE INC.\n:93B::AGGR//UNIT/12.5\n:19A::MKTV//EUR2100,5\n:16S:FIN\n:16R:FIN\n:35B:ISIN US0378331005 /DE/865985\n:93B::AGGR//UNIT/3,\n:16S:FIN\n:16R:FIN\n:35B:/XX/DE0001234567\nBUND\n:93B::AGGR//FAMT/1000,\n:90A::MRKT//PRCT/99,\n:16S:FIN\n-";
+        let st = parse(text);
+        assert_eq!(st.holdings.len(), 3);
+        assert_eq!(st.holdings[0].wkn, "865985");
+        assert_eq!(st.holdings[0].name, "APPLE INC.");
+        assert_eq!(st.holdings[0].quantity, 12.5);
+        assert_eq!(st.holdings[0].value_cents, Some(2100_50));
+        assert_eq!(st.holdings[1].isin, "US0378331005");
+        assert_eq!(st.holdings[2].isin, "DE0001234567");
     }
 
     #[test]

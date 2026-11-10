@@ -75,7 +75,7 @@ struct StreamHeaderCard: View {
                 LoanProgressCard(account: a, compact: true)
             }
 
-            if let a = account, a.kind == .brokerage {
+            if let a = account, a.kind == .brokerage || a.name.localizedCaseInsensitiveContains("depot") {
                 HoldingsCard(account: a)
             }
 

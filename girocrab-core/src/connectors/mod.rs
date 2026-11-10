@@ -567,6 +567,14 @@ pub(crate) fn store_fetch(
                             params![acc.balance_cents, acc.balance_date, acc.currency, id],
                         )?;
                     }
+                    if acc.kind == AccountKind::Brokerage {
+                        let (group, sym, order) = group_for(acc.kind);
+                        let gid = Vault::ensure_group(&tx, group, sym, order)?;
+                        tx.execute(
+                            "UPDATE accounts SET kind = ?1, sf_symbol = ?2, group_id = ?3 WHERE id = ?4 AND kind <> ?1",
+                            params![acc.kind.as_str(), acc.kind.sf_symbol(), gid, id],
+                        )?;
+                    }
                     id
                 }
                 None => {
@@ -613,17 +621,55 @@ pub(crate) fn store_fetch(
                 }
             }
         }
-        for (ref_, acc_id) in &account_ids {
-            if data.holdings.iter().any(|h| &h.account_ref == ref_) {
-                tx.execute("DELETE FROM holdings WHERE account_id = ?1", [acc_id])?;
-                for h in data.holdings.iter().filter(|h| &h.account_ref == ref_) {
-                    let h = &h.holding;
-                    tx.execute(
-                        "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                        params![acc_id, h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents],
-                    )?;
+        // Resolve each position to a stored account: external ref, else IBAN /
+        // account number (depots often have no IBAN, numbers differ in leading
+        // zeros), else the only depot of this fetch.
+        let norm = |x: &str| {
+            x.chars()
+                .filter(|c| !c.is_whitespace())
+                .collect::<String>()
+                .trim_start_matches('0')
+                .to_uppercase()
+        };
+        let depots: Vec<&RemoteAccount> = data
+            .accounts
+            .iter()
+            .filter(|a| a.kind == AccountKind::Brokerage || a.name.to_lowercase().contains("depot"))
+            .collect();
+        let resolve = |r: &str| -> Option<i64> {
+            if let Some(id) = account_ids.get(r) {
+                return Some(*id);
+            }
+            let n = norm(r);
+            if !n.is_empty() {
+                for a in &data.accounts {
+                    if [&a.external_ref, &a.iban, &a.account_number]
+                        .iter()
+                        .any(|f| !f.is_empty() && norm(f) == n)
+                    {
+                        return account_ids.get(&a.external_ref).copied();
+                    }
                 }
+            }
+            match depots.as_slice() {
+                [only] => account_ids.get(&only.external_ref).copied(),
+                _ => None,
+            }
+        };
+        let mut by_account: HashMap<i64, Vec<&crate::models::Holding>> = HashMap::new();
+        for h in &data.holdings {
+            if let Some(id) = resolve(&h.account_ref) {
+                by_account.entry(id).or_default().push(&h.holding);
+            }
+        }
+        for (acc_id, list) in &by_account {
+            tx.execute("DELETE FROM holdings WHERE account_id = ?1", [acc_id])?;
+            for h in list {
+                tx.execute(
+                    "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    params![acc_id, h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents],
+                )?;
             }
         }
         let mut imported = 0u32;
@@ -1408,6 +1454,46 @@ pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn store_fetch_matches_depot_holdings_without_iban() {
+        let p = std::env::temp_dir().join(format!("girocrab-depot-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
+        let conn = v
+            .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+            .unwrap();
+        let mk = |r: &str| RemoteHolding {
+            account_ref: r.into(),
+            holding: crate::models::Holding {
+                isin: "DE0001234567".into(),
+                name: "X".into(),
+                quantity: 2.0,
+                value_cents: 100,
+                ..Default::default()
+            },
+        };
+        let fetch = |hold_ref: &str| FetchResult {
+            accounts: vec![RemoteAccount {
+                external_ref: "0012345678".into(),
+                name: "Depot".into(),
+                owner: String::new(),
+                iban: String::new(),
+                account_number: "0012345678".into(),
+                currency: "EUR".into(),
+                kind: AccountKind::Brokerage,
+                balance_cents: 5000,
+                balance_date: "2026-11-10".into(),
+            }],
+            holdings: vec![mk(hold_ref)],
+            ..Default::default()
+        };
+        // differently formatted ref (no leading zeros) and an unknown ref (single-depot fallback)
+        for r in ["12345678", "unknown"] {
+            store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(r)).unwrap();
+            let acc = v.list_accounts().unwrap().pop().unwrap();
+            assert_eq!(v.list_holdings(acc.id).unwrap().len(), 1, "ref {r}");
+        }
+    }
+
     #[test]
     fn card_open_balance_since_settlement() {
         let r = |d: &str, a: i64, t: &str| (d.to_string(), a, t.to_string());

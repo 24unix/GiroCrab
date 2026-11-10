@@ -151,7 +151,7 @@ pub struct BankConnection {
 }
 
 /// One securities position of a depot account.
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Default, uniffi::Record)]
 pub struct Holding {
     pub isin: String,
     pub wkn: String,

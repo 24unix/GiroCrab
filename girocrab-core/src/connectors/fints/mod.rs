@@ -1503,10 +1503,18 @@ impl BankConnector for FinTsConnector {
                     .map(|u| u.allowed.is_empty() || u.allowed.contains(tx))
                     .unwrap_or(true)
             };
-            let kind = upd
+            let mut kind = upd
                 .as_ref()
                 .map(|u| kind_from_code(u.kind_code))
                 .unwrap_or(AccountKind::Checking);
+            // Some banks report depots with a generic Kontoart; trust the product name.
+            if kind == AccountKind::Checking
+                && upd
+                    .as_ref()
+                    .is_some_and(|u| u.product.to_lowercase().contains("depot"))
+            {
+                kind = AccountKind::Brokerage;
+            }
             let label = account_label(acc);
             let mut currency = upd
                 .as_ref()
@@ -1533,33 +1541,41 @@ impl BankConnector for FinTsConnector {
             // --- Depot value (HKWPD / MT535), only for depots that allow it
             if kind == AccountKind::Brokerage && self.bank_supports("HKWPD") && allowed("HKWPD") {
                 match self.holdings(ctx, acc).await {
-                    Ok(st) => match st.value_cents() {
-                        Some(v) => {
-                            balance = Some(v);
-                            if let Some(d) = st.latest_date() {
-                                balance_date = d;
-                            }
-                            if let Some(c) = st
-                                .holdings
-                                .iter()
-                                .map(|h| h.currency.clone())
-                                .find(|c| !c.is_empty())
-                            {
-                                currency = c;
-                            }
-                            for h in &st.holdings {
-                                result.holdings.push(super::RemoteHolding {
-                                    account_ref: label.clone(),
-                                    holding: h.to_model(),
-                                });
-                            }
-                            ok_any = true;
+                    Ok(st) => {
+                        // Positions are always kept, even when the total can't be derived.
+                        if let Some(c) = st
+                            .holdings
+                            .iter()
+                            .map(|h| h.currency.clone())
+                            .find(|c| !c.is_empty())
+                        {
+                            currency = c;
                         }
-                        None => errors.push(trf(
-                            "{0}: Depotbestand (HKWPD) – Wert einzelner Positionen fehlt",
-                            &[&label],
-                        )),
-                    },
+                        for h in &st.holdings {
+                            result.holdings.push(super::RemoteHolding {
+                                account_ref: label.clone(),
+                                holding: h.to_model(),
+                            });
+                        }
+                        match st.value_cents() {
+                            Some(v) => {
+                                balance = Some(v);
+                                if let Some(d) = st.latest_date() {
+                                    balance_date = d;
+                                }
+                                ok_any = true;
+                            }
+                            None => {
+                                if !st.holdings.is_empty() {
+                                    ok_any = true;
+                                }
+                                errors.push(trf(
+                                    "{0}: Depotbestand (HKWPD) – Wert einzelner Positionen fehlt",
+                                    &[&label],
+                                ))
+                            }
+                        }
+                    }
                     Err(e) => errors.push(trf("{0}: Depotbestand (HKWPD) – {1}", &[&label, &e])),
                 }
             }
