@@ -6,6 +6,10 @@ struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @State private var newCategoryParent: Int64?? = nil
     @State private var newCategoryName = ""
+    /// Parent of a group being created: `.some(nil)` = top level.
+    @State private var newGroupParent: Int64?? = nil
+    @State private var renamingGroup: AccountGroup?
+    @State private var groupName = ""
 
     var body: some View {
         @Bindable var model = model
@@ -23,6 +27,10 @@ struct SidebarView: View {
                 }
             }
             .tag(SidebarItem.allAccounts)
+            .contextMenu {
+                Button("Neue Kontogruppe …", systemImage: "folder.badge.plus") { newGroupParent = .some(nil) }
+            }
+            .dropDestination(for: String.self) { items, _ in drop(items, into: nil, before: nil) }
             HStack(spacing: 8) {
                 Image(systemName: "doc.on.doc").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Belege & PostBox").fontWeight(.medium)
@@ -38,21 +46,27 @@ struct SidebarView: View {
             }
             .buttonStyle(.plain)
 
-            ForEach(model.groups) { group in
-                let open = !model.collapsedGroups.contains(group.id)
-                // Plain rows instead of List sections: macOS would otherwise
-                // restore its own saved collapse state for sidebar sections.
-                SectionHeader(group: group, open: open) {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        if open { model.collapsedGroups.insert(group.id) } else { model.collapsedGroups.remove(group.id) }
+            // Plain rows instead of List sections or OutlineGroup: macOS would
+            // otherwise restore its own saved collapse state for sidebar sections.
+            ForEach(visibleNodes) { node in
+                switch node {
+                case .group(let group):
+                    SectionHeader(group: group, open: !model.isCollapsed(group), isLoanGroup: isLoanGroup(group)) {
+                        withAnimation(.easeInOut(duration: 0.15)) { model.toggleCollapsed(group) }
                     }
-                }
-                .padding(.top, 10)
-                .tag(SidebarItem.group(group.id))
-                ForEach(open ? group.accounts : []) { account in
+                    .padding(.leading, indent(group.depth))
+                    .padding(.top, group.depth == 0 ? 10 : 2)
+                    .tag(SidebarItem.group(group.id))
+                    .contextMenu { groupMenu(group) }
+                    .draggable("group:\(group.id)")
+                    .dropDestination(for: String.self) { items, _ in drop(items, into: group.id, before: nil) }
+                case .account(let account, let depth):
                     AccountRow(account: account, syncing: model.syncingConnectionID != nil && model.syncingConnectionID == account.connectionId)
+                        .padding(.leading, indent(depth))
                         .tag(SidebarItem.account(account.id))
                         .contextMenu { accountMenu(account) }
+                        .draggable("account:\(account.id)")
+                        .dropDestination(for: String.self) { items, _ in drop(items, into: account.groupId, before: node) }
                 }
             }
 
@@ -140,6 +154,24 @@ struct SidebarView: View {
             .padding(8)
             .background(.bar)
         }
+        .alert("Neue Kontogruppe", isPresented: Binding(get: { newGroupParent != nil }, set: { if !$0 { newGroupParent = nil } })) {
+            TextField("Name", text: $groupName)
+            Button("Anlegen") {
+                model.createAccountGroup(name: groupName, parent: newGroupParent ?? nil)
+                groupName = ""
+                newGroupParent = nil
+            }
+            Button("Abbrechen", role: .cancel) { groupName = ""; newGroupParent = nil }
+        }
+        .alert("Gruppe umbenennen", isPresented: Binding(get: { renamingGroup != nil }, set: { if !$0 { renamingGroup = nil } })) {
+            TextField("Name", text: $groupName)
+            Button("Umbenennen") {
+                if let g = renamingGroup { model.renameAccountGroup(g.id, name: groupName) }
+                groupName = ""
+                renamingGroup = nil
+            }
+            Button("Abbrechen", role: .cancel) { groupName = ""; renamingGroup = nil }
+        }
         .alert("Neue Kategorie", isPresented: Binding(get: { newCategoryParent != nil }, set: { if !$0 { newCategoryParent = nil } })) {
             TextField("Name", text: $newCategoryName)
             Button("Anlegen") {
@@ -150,6 +182,113 @@ struct SidebarView: View {
                 newCategoryParent = nil
             }
             Button("Abbrechen", role: .cancel) { newCategoryParent = nil }
+        }
+    }
+
+    // MARK: - Account tree
+
+    /// Sidebar nodes without the contents of collapsed groups.
+    private var visibleNodes: [SidebarNode] {
+        var out: [SidebarNode] = []
+        var hiddenBelow: UInt32?
+        for node in model.sidebar {
+            let depth: UInt32
+            switch node {
+            case .group(let g): depth = g.depth
+            case .account(_, let d): depth = d
+            }
+            if let h = hiddenBelow, depth > h { continue }
+            hiddenBelow = nil
+            out.append(node)
+            if case .group(let g) = node, model.isCollapsed(g) { hiddenBelow = depth }
+        }
+        return out
+    }
+
+    private func indent(_ depth: UInt32) -> CGFloat { CGFloat(depth) * 14 }
+
+    /// Loan groups are recognised by their accounts, not by the (translated) group name.
+    private func isLoanGroup(_ group: AccountGroup) -> Bool {
+        let accounts = model.allAccounts.filter { group.accountIds.contains($0.id) }
+        return !accounts.isEmpty && accounts.allSatisfy { $0.kind == .loan }
+    }
+
+    /// "A › B" for the move menu.
+    private func path(_ group: AccountGroup) -> String {
+        var names = [group.name]
+        var parent = group.parentId
+        while let p = parent, let g = model.accountGroups.first(where: { $0.id == p }), names.count < 32 {
+            names.insert(g.name, at: 0)
+            parent = g.parentId
+        }
+        return names.joined(separator: " › ")
+    }
+
+    /// `group` and every group below it.
+    private func subtree(_ group: AccountGroup) -> Set<Int64> {
+        var ids: Set<Int64> = [group.id]
+        var inside = false
+        for node in model.sidebar {
+            guard case .group(let g) = node else { continue }
+            if g.id == group.id { inside = true; continue }
+            if inside {
+                if g.depth <= group.depth { break }
+                ids.insert(g.id)
+            }
+        }
+        return ids
+    }
+
+    private func parentOf(_ node: SidebarNode) -> Int64? {
+        switch node {
+        case .group(let g): g.parentId
+        case .account(let a, _): a.groupId
+        }
+    }
+
+    /// Handles a dropped "account:<id>" / "group:<id>": into `parent`, before
+    /// `before` (a sibling) or at the end.
+    private func drop(_ items: [String], into parent: Int64?, before: SidebarNode?) -> Bool {
+        guard let item = items.first else { return false }
+        let parts = item.split(separator: ":")
+        guard parts.count == 2, let id = Int64(parts[1]) else { return false }
+        let dragged = parts[0] == "group" ? "g\(id)" : "a\(id)"
+        var index = UInt32.max
+        if let before {
+            // Position among the siblings, without the dragged item and the Closed group.
+            let siblings = model.sidebar.filter { n in
+                if case .group(let g) = n, g.isClosedGroup { return false }
+                return parentOf(n) == parent && n.id != dragged
+            }
+            if let i = siblings.firstIndex(where: { $0.id == before.id }) { index = UInt32(i) }
+        }
+        switch parts[0] {
+        case "account": model.moveAccount(id, to: parent, index: index)
+        case "group" where id != parent: model.moveAccountGroup(id, to: parent, index: index)
+        default: return false
+        }
+        return true
+    }
+
+    @ViewBuilder
+    private func groupMenu(_ group: AccountGroup) -> some View {
+        if !group.isClosedGroup {
+            Button("Neue Kontogruppe …", systemImage: "folder.badge.plus") { newGroupParent = .some(group.id) }
+        }
+        Button("Umbenennen …", systemImage: "pencil") {
+            groupName = group.name
+            renamingGroup = group
+        }
+        if !group.isClosedGroup {
+            let excluded = subtree(group)
+            Menu("Verschieben nach") {
+                Button("Oberste Ebene") { model.moveAccountGroup(group.id, to: nil) }
+                ForEach(model.accountGroups.filter { !excluded.contains($0.id) }) { target in
+                    Button(path(target)) { model.moveAccountGroup(group.id, to: target.id) }
+                }
+            }
+            Divider()
+            Button("Gruppe löschen", systemImage: "trash", role: .destructive) { model.deleteAccountGroup(group.id) }
         }
     }
 
@@ -168,6 +307,17 @@ struct SidebarView: View {
                 #endif
             }
         }
+        Menu("Verschieben nach") {
+            Button("Oberste Ebene") { model.moveAccount(account.id, to: nil) }
+            ForEach(model.accountGroups) { target in
+                Button(path(target)) { model.moveAccount(account.id, to: target.id) }
+            }
+        }
+        if account.closed {
+            Button("Konto wieder öffnen", systemImage: "tray.and.arrow.up") { model.reopenAccount(account.id) }
+        } else {
+            Button("Konto schließen", systemImage: "archivebox") { model.closeAccount(account.id) }
+        }
     }
 
     @ViewBuilder
@@ -180,6 +330,7 @@ struct SidebarView: View {
 struct SectionHeader: View {
     let group: AccountGroup
     var open: Bool = true
+    var isLoanGroup = false
     var toggle: () -> Void = {}
 
     var body: some View {
@@ -193,7 +344,10 @@ struct SectionHeader: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Theme.tertiary)
-            Text(group.name)
+            Image(systemName: group.sfSymbol)
+                .font(.system(size: 10))
+                .frame(width: 14)
+            Text(group.name).lineLimit(1)
             Spacer()
             Text(Money.format(group.balanceCents))
                 .monospacedDigit()
@@ -202,11 +356,6 @@ struct SectionHeader: View {
         .font(.caption.weight(.semibold))
         .foregroundStyle(Theme.secondary)
     }
-}
-
-extension SectionHeader {
-    /// Loan groups are recognised by their accounts, not by the (translated) group name.
-    var isLoanGroup: Bool { !group.accounts.isEmpty && group.accounts.allSatisfy { $0.kind == .loan } }
 }
 
 struct AccountRow: View {

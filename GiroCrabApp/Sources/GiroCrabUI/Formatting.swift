@@ -10,6 +10,14 @@ extension BankConnection: Identifiable {}
 extension SettingEntry: Identifiable { public var id: String { key } }
 extension BankDescriptor: Identifiable { public var id: ConnectorKind { kind } }
 extension SavingsPlan: Identifiable { public var id: String { merchant.key } }
+extension SidebarNode: Identifiable {
+    public var id: String {
+        switch self {
+        case .group(let g): "g\(g.id)"
+        case .account(let a, _): "a\(a.id)"
+        }
+    }
+}
 
 /// "Daylight" / "Nightfall" design tokens: calm, high-contrast UI that follows
 /// the system appearance (light: slate on white, dark: slate on deep navy).

@@ -38,7 +38,7 @@ struct MoneyMoneyImportSheet: View {
             if fileData != nil {
                 Picker("Zielkonto", selection: $target) {
                     Text("Neues Konto aus Datei anlegen").tag(Int64?.none)
-                    ForEach(model.allAccounts) { a in Text("\(a.name) · \(a.bankName)").tag(Int64?.some(a.id)) }
+                    ForEach(model.openAccounts) { a in Text("\(a.name) · \(a.bankName)").tag(Int64?.some(a.id)) }
                 }
                 Toggle("Kategorien übernehmen", isOn: $keepCategories).toggleStyle(.switch).controlSize(.small)
                 Toggle("Notizen übernehmen", isOn: $keepNotes).toggleStyle(.switch).controlSize(.small)
