@@ -45,32 +45,30 @@ pub(crate) fn enrich(t: &mut Booking) {
     t.clean_purpose = clean_purpose(&t.purpose);
 }
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
-const SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS bank_connections (
-    id              INTEGER PRIMARY KEY,
-    connector       TEXT    NOT NULL,              -- ConnectorKind::as_str()
-    display_name    TEXT    NOT NULL,
-    login_name      TEXT    NOT NULL DEFAULT '',
-    bank_code       TEXT    NOT NULL DEFAULT '',
-    sf_symbol       TEXT    NOT NULL DEFAULT 'building.columns',
-    state_json      TEXT    NOT NULL DEFAULT '{}',  -- connector state (FinTS system id, BPD, PSD2 session ...)
-    last_sync_unix  INTEGER,
-    created_unix    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
-);
-
+const ACCOUNT_GROUPS_DDL: &str = "
 CREATE TABLE IF NOT EXISTS account_groups (
-    id          INTEGER PRIMARY KEY,
-    name        TEXT    NOT NULL UNIQUE,
-    sf_symbol   TEXT    NOT NULL DEFAULT 'folder',
-    sort_order  INTEGER NOT NULL DEFAULT 0
+    id            INTEGER PRIMARY KEY,
+    parent_id     INTEGER REFERENCES account_groups(id),   -- NULL = top level
+    name          TEXT    NOT NULL,
+    sf_symbol     TEXT    NOT NULL DEFAULT 'folder',
+    sort_order    INTEGER NOT NULL DEFAULT 0,             -- shared with sibling accounts
+    role          TEXT    NOT NULL DEFAULT '',          -- '' | 'closed'
+    connection_id INTEGER REFERENCES bank_connections(id) ON DELETE SET NULL  -- bank login whose new accounts land here
 );
+";
 
+const ACCOUNT_GROUPS_INDEXES: &str = "
+CREATE UNIQUE INDEX IF NOT EXISTS account_groups_sibling_name ON account_groups(IFNULL(parent_id, 0), name);
+CREATE UNIQUE INDEX IF NOT EXISTS account_groups_role ON account_groups(role) WHERE role != '';
+";
+
+const ACCOUNTS_DDL: &str = "
 CREATE TABLE IF NOT EXISTS accounts (
     id              INTEGER PRIMARY KEY,
     connection_id   INTEGER REFERENCES bank_connections(id) ON DELETE SET NULL,
-    group_id        INTEGER NOT NULL REFERENCES account_groups(id),
+    group_id        INTEGER REFERENCES account_groups(id),   -- NULL = top level
     external_ref    TEXT    NOT NULL DEFAULT '',   -- IBAN / bank account id / PSD2 uid
     name            TEXT    NOT NULL,
     bank_name       TEXT    NOT NULL DEFAULT '',
@@ -85,6 +83,20 @@ CREATE TABLE IF NOT EXISTS accounts (
     sort_order      INTEGER NOT NULL DEFAULT 0,
     initial_balance_cents INTEGER,                 -- original amount of a Darlehen (i64 cents)
     UNIQUE (connection_id, external_ref)
+);
+";
+
+const SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS bank_connections (
+    id              INTEGER PRIMARY KEY,
+    connector       TEXT    NOT NULL,              -- ConnectorKind::as_str()
+    display_name    TEXT    NOT NULL,
+    login_name      TEXT    NOT NULL DEFAULT '',
+    bank_code       TEXT    NOT NULL DEFAULT '',
+    sf_symbol       TEXT    NOT NULL DEFAULT 'building.columns',
+    state_json      TEXT    NOT NULL DEFAULT '{}',  -- connector state (FinTS system id, BPD, PSD2 session ...)
+    last_sync_unix  INTEGER,
+    created_unix    INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 
 CREATE TABLE IF NOT EXISTS categories (
@@ -202,6 +214,53 @@ impl Vault {
         Ok(())
     }
 
+    /// v7: rebuilds `account_groups` (parent, role, bank-login link, names unique
+    /// per parent) and `accounts` (nullable `group_id`). SQLite can't drop a
+    /// NOT NULL in place, so both tables are copied with foreign keys off.
+    fn migrate_account_groups(conn: &Connection) -> CoreResult<()> {
+        let groups = ACCOUNT_GROUPS_DDL.replacen(
+            "IF NOT EXISTS account_groups (",
+            "account_groups_new (",
+            1,
+        );
+        let accounts = ACCOUNTS_DDL.replacen("IF NOT EXISTS accounts (", "accounts_new (", 1);
+        conn.execute_batch("PRAGMA foreign_keys = OFF; BEGIN;")?;
+        let copied = conn
+            .execute_batch(&format!(
+                "{groups}
+                 INSERT INTO account_groups_new(id, name, sf_symbol, sort_order)
+                     SELECT id, name, sf_symbol, sort_order FROM account_groups;
+                 DROP TABLE account_groups;
+                 ALTER TABLE account_groups_new RENAME TO account_groups;
+                 {accounts}
+                 INSERT INTO accounts_new(id, connection_id, group_id, external_ref, name, bank_name, owner, iban,
+                                          account_number, currency, kind, balance_cents, balance_date, sf_symbol,
+                                          sort_order, initial_balance_cents)
+                     SELECT id, connection_id, group_id, external_ref, name, bank_name, owner, iban,
+                            account_number, currency, kind, balance_cents, balance_date, sf_symbol,
+                            sort_order, initial_balance_cents FROM accounts;
+                 DROP TABLE accounts;
+                 ALTER TABLE accounts_new RENAME TO accounts;"
+            ))
+            .and_then(|_| {
+                conn.query_row("SELECT (SELECT count(*) FROM pragma_foreign_key_check('accounts')) + (SELECT count(*) FROM pragma_foreign_key_check('account_groups'))", [], |r| r.get::<_, i64>(0))
+            });
+        match copied {
+            Ok(0) => conn.execute_batch("COMMIT; PRAGMA foreign_keys = ON;")?,
+            other => {
+                conn.execute_batch("ROLLBACK; PRAGMA foreign_keys = ON;")?;
+                other?;
+                return Err(CoreError::Database {
+                    message: tr(
+                        "Kontogruppen konnten nicht aktualisiert werden (Fremdschlüssel verletzt).",
+                    )
+                    .into(),
+                });
+            }
+        }
+        Ok(())
+    }
+
     fn migrate(conn: &Connection) -> CoreResult<()> {
         // Fails with NotADatabase if the key is wrong.
         conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
@@ -211,6 +270,8 @@ impl Vault {
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if version == 0 {
             conn.execute_batch(SCHEMA)?;
+            conn.execute_batch(ACCOUNT_GROUPS_DDL)?;
+            conn.execute_batch(ACCOUNTS_DDL)?;
         } else {
             if version == 1 {
                 conn.execute_batch(
@@ -244,6 +305,12 @@ impl Vault {
                 )?;
             }
         }
+        // v7: nestable account groups, top-level accounts
+        if version > 0 && version < 7 {
+            Self::migrate_account_groups(conn)?;
+        }
+        conn.execute_batch(ACCOUNT_GROUPS_INDEXES)?;
+        crate::account_groups::closed_group_id(conn)?;
         // v4: encrypted documents (Beleg-Abruf & PostBox) – idempotent
         conn.execute_batch(crate::documents::DOC_SCHEMA)?;
         conn.execute_batch(crate::insights::OVERRIDE_SCHEMA)?;
@@ -470,7 +537,7 @@ impl Vault {
     ) -> CoreResult<i64> {
         if let Some(id) = conn
             .query_row(
-                "SELECT id FROM account_groups WHERE name = ?1",
+                "SELECT id FROM account_groups WHERE parent_id IS NULL AND name = ?1",
                 [name],
                 |r| r.get(0),
             )

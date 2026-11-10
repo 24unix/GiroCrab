@@ -176,6 +176,7 @@ fn default_name_en(de: &str) -> Option<&'static str> {
         "Depots & ETFs" => "Portfolios & ETFs",
         "Darlehen & Kredite" => "Loans",
         "Importierte Konten" => "Imported accounts",
+        "Geschlossen" => "Closed",
         // Starter categories.
         "Einnahmen" => "Income",
         "Gehalt" => "Salary",
@@ -247,6 +248,10 @@ fn english(de: &str) -> Option<&'static str> {
         "Protokollfehler: {0}" => "Protocol error: {0}",
         "Browser-Anmeldung nötig: {0}" => "Browser sign-in required: {0}",
         "Dieser Abruf ist nicht mehr aktiv" => "This sync is no longer active",
+        // ------------------------------------------------------------ vault.rs / account_groups.rs
+        "Kontogruppen konnten nicht aktualisiert werden (Fremdschlüssel verletzt)." => {
+            "Account groups could not be updated (foreign key violated)."
+        }
         // ------------------------------------------------------------ connectors/mod.rs
         "VR-NetKey oder Alias" => "VR-NetKey or alias",
         "Online-Banking-PIN" => "Online banking PIN",
