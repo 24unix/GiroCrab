@@ -10,6 +10,9 @@ import GiroCrabUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        if LaunchOptions.current.dark {
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
         if let icon = Self.appIcon() {
             NSApp.applicationIconImage = icon
         }

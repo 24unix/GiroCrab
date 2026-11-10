@@ -15,11 +15,13 @@ import Foundation
 ///  --demo-sheet transfer|moneymoney
 ///                         (demo) open that sheet pre-filled with fictional data,
 ///                         for README screenshots
+///  --dark                 (macOS) force the Dark Aqua appearance (README screenshots)
 ///  --screenshot <file>    (macOS) render the main window, save a PNG, quit.
 ///                         Implies --demo-seed so the picture is reproducible.
 public struct LaunchOptions: Sendable {
     public var demoSeed: Bool
     public var screenshotPath: String?
+    public var dark: Bool
     public var demoSync: Bool
     /// "alle" (default), "alltag" or "sparplaene"
     public var initialView: String
@@ -72,6 +74,7 @@ public struct LaunchOptions: Sendable {
         }
         self.demoSeed = demo
         self.screenshotPath = shot
+        self.dark = arguments.contains("--dark")
     }
 
     public static let current = LaunchOptions()

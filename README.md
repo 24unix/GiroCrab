@@ -43,6 +43,8 @@ nur um Kategorie und Notiz ergänzt.
 
 <p align="center"><img src="docs/screenshots/overview.png" alt="GiroCrab – Übersicht mit fiktiven Demo-Konten" width="900"></p>
 
+<p align="center"><img src="docs/screenshots/overview-dark.png" alt="GiroCrab – Übersicht im Dark Mode" width="900"></p>
+
 *Alle Screenshots zeigen ausschließlich erfundene Demo-Daten (`GIROCRAB_DEMO_SEED=1`).*
 
 - 🔒 **Local-First & Zero-Cloud:** Alle Bankdaten bleiben auf Ihrem Gerät – in einem verschlüsselten SQLCipher-Tresor, geschützt durch macOS-Schlüsselbund / Touch ID.
@@ -50,6 +52,7 @@ nur um Kategorie und Notiz ergänzt.
 - 💸 **SEPA-Überweisungen via FinTS 3.0 / HKCCS** inkl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN-Prüfung (Mod-97), SEPA-konformer Zeichensatz, Empfängervorschläge aus bisherigen Buchungen und sofort vorgemerkte Buchung.
 - 🏠 **Intelligente Darlehens-Verfolgung:** Tilgungsfortschritt in Prozent und automatische Verknüpfung der monatlichen „Zins & Tilgung“-Raten vom Girokonto.
 - 🏷️ **Markenlogos vs. private Monogramme:** Händler und ETFs (REWE, EnBW, DB, iShares) werden sofort erkannt; Privatpersonen (z. B. „Max Mustermann“) erhalten bewusst nur neutrale Initialen.
+- 🌙 **macOS Dark Mode:** folgt automatisch dem System-Erscheinungsbild (Hell/Dunkel).
 
 | Darlehen mit Tilgungsbalken | Inspektor mit Händler-Logo |
 |---|---|
@@ -142,6 +145,8 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 
 <p align="center"><img src="docs/screenshots/overview.png" alt="GiroCrab – overview with fictional demo accounts" width="900"></p>
 
+<p align="center"><img src="docs/screenshots/overview-dark.png" alt="GiroCrab – overview in Dark Mode" width="900"></p>
+
 *All screenshots show purely fictional demo data (`GIROCRAB_DEMO_SEED=1`).*
 
 - 🔒 **Local-first & zero-cloud privacy:** all banking data lives on your device in an encrypted SQLCipher vault protected by the macOS Keychain / Touch ID.
@@ -149,6 +154,7 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 - 💸 **Native SEPA credit transfers via FinTS 3.0 / HKCCS** incl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN checksum validation (Mod-97), SEPA-compliant character set, recipient suggestions from past bookings and an instant pending booking.
 - 🏠 **Smart loan tracking:** automatic repayment progress (%) and cross-account linking of the monthly "Zins & Tilgung" instalments from your checking account.
 - 🏷️ **Brand signets vs. private monograms:** instant recognition for German merchants & ETFs (REWE, EnBW, DB, iShares), while private individuals (e.g. "Max Mustermann") get plain monogram initials by design.
+- 🌙 **macOS Dark Mode:** automatically follows the system appearance (light/dark).
 
 | Loan with repayment bar | Inspector with merchant logo |
 |---|---|
