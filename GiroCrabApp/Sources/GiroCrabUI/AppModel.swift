@@ -18,6 +18,7 @@ enum Period: String, CaseIterable, Identifiable {
     case thisMonth = "Dieser Monat"
     case lastMonth = "Letzter Monat"
     case last3Months = "Letzte 3 Monate"
+    case thisQuarter = "Dieses Quartal"
     case thisYear = "Dieses Jahr"
     var id: String { rawValue }
 
@@ -27,6 +28,7 @@ enum Period: String, CaseIterable, Identifiable {
         case .thisMonth: return String(localized: "Dieser Monat")
         case .lastMonth: return String(localized: "Letzter Monat")
         case .last3Months: return String(localized: "Letzte 3 Monate")
+        case .thisQuarter: return String(localized: "Dieses Quartal")
         case .thisYear: return String(localized: "Dieses Jahr")
         }
     }
@@ -43,6 +45,10 @@ enum Period: String, CaseIterable, Identifiable {
             let end = cal.date(byAdding: .day, value: -1, to: startOfMonth)!
             return (DateText.iso(start), DateText.iso(end))
         case .last3Months: return (DateText.iso(cal.date(byAdding: .month, value: -2, to: startOfMonth)!), nil)
+        case .thisQuarter:
+            let c = cal.dateComponents([.year, .month], from: now)
+            let qStart = cal.date(from: DateComponents(year: c.year, month: ((c.month ?? 1) - 1) / 3 * 3 + 1, day: 1))!
+            return (DateText.iso(qStart), nil)
         case .thisYear: return (DateText.iso(cal.date(from: cal.dateComponents([.year], from: now))!), nil)
         }
     }
@@ -185,6 +191,7 @@ public final class AppModel {
     var showTransferSheet = false
     var transferDraft = TransferDraft()
     var transferError: String?
+    var splitBooking: Booking?
     var transferBusy = false
     private var syncQueue: [BankConnection] = []
     private var pollTask: Task<Void, Never>?

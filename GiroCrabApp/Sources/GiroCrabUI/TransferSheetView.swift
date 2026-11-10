@@ -103,6 +103,7 @@ struct TransferSheetView: View {
                     .font(.caption).foregroundStyle(Theme.tertiary).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
+            HStack { Spacer(); TransferTemplatesMenu() }
             field("Von Konto") {
                 Picker("", selection: draft.accountID) {
                     ForEach(model.transferAccounts) { a in

@@ -5,6 +5,7 @@ import GiroCrabCore
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @State private var newCategoryParent: Int64?? = nil
+    @State private var budgetCategory: IDBox?
     @State private var newCategoryName = ""
     @State private var accountToDelete: Account?
 
@@ -147,6 +148,7 @@ struct SidebarView: View {
         } message: { account in
             Text("„\(account.name)“ wird samt allen Buchungen und Belegen unwiderruflich gelöscht.")
         }
+        .sheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
         .alert("Neue Kategorie", isPresented: Binding(get: { newCategoryParent != nil }, set: { if !$0 { newCategoryParent = nil } })) {
             TextField("Name", text: $newCategoryName)
             Button("Anlegen") {
@@ -181,6 +183,7 @@ struct SidebarView: View {
     @ViewBuilder
     private func categoryMenu(_ category: GiroCrabCore.Category) -> some View {
         Button("Neue Unterkategorie …", systemImage: "plus") { newCategoryParent = .some(category.id) }
+        Button("Monatsbudget festlegen …", systemImage: "gauge.with.dots.needle.67percent") { budgetCategory = IDBox(id: category.id) }
         Button("„\(category.name)“ löschen", systemImage: "trash", role: .destructive) { model.deleteCategory(category.id) }
     }
 }

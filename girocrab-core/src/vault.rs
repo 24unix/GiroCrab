@@ -265,6 +265,7 @@ impl Vault {
         conn.execute_batch(crate::documents::DOC_SCHEMA)?;
         conn.execute_batch(crate::insights::OVERRIDE_SCHEMA)?;
         conn.execute_batch(HOLDINGS_SCHEMA)?;
+        conn.execute_batch(crate::planning::PLANNING_SCHEMA)?;
         if version < SCHEMA_VERSION {
             conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
         }
@@ -1440,11 +1441,12 @@ impl Vault {
         let rows = Self::category_rows(&db)?;
         let mut totals: HashMap<Option<i64>, (i64, u32)> = HashMap::new();
         {
-            let mut stmt = db.prepare(
-                "SELECT category_id, SUM(amount_cents), COUNT(*) FROM transactions
+            let mut stmt = db.prepare(&format!(
+                "SELECT category_id, SUM(amount_cents), COUNT(*) FROM {}
                  WHERE (?1 IS NULL OR booking_date >= ?1) AND (?2 IS NULL OR booking_date <= ?2)
                  GROUP BY category_id",
-            )?;
+                crate::planning::EFFECTIVE_SQL
+            ))?;
             let it = stmt.query_map(params![date_from, date_to], |r| {
                 Ok((
                     r.get::<_, Option<i64>>(0)?,

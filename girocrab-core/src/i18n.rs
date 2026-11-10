@@ -401,6 +401,22 @@ fn english(de: &str) -> Option<&'static str> {
         "Zu viele Nachkommastellen in „{0}“" => "Too many decimal places in “{0}”",
         "Betrag zu groß: „{0}“" => "Amount too large: “{0}”",
         // ------------------------------------------------------------ vault.rs
+        "Ungültiger Monat." => "Invalid month.",
+        "Das Budget muss größer als 0 sein." => "The budget must be greater than 0.",
+        "Kategorie {0}" => "Category {0}",
+        "Eine Splitbuchung braucht mindestens zwei Teilbeträge ungleich 0." => {
+            "A split booking needs at least two non-zero parts."
+        }
+        "Die Teilbeträge ({0} ¢) ergeben nicht den Buchungsbetrag ({1} ¢)." => {
+            "The parts ({0} ¢) do not add up to the booking amount ({1} ¢)."
+        }
+        "Vorlage {0}" => "Template {0}",
+        "Name, Empfänger und IBAN der Vorlage dürfen nicht leer sein." => {
+            "Template name, recipient and IBAN must not be empty."
+        }
+        "Der Vorlagenbetrag muss größer als 0 sein." => {
+            "The template amount must be greater than 0."
+        }
         "Der Kategoriename ist leer." => "The category name is empty.",
         "Eine Kategorie kann nicht in sich selbst verschoben werden." => "A category can’t be moved into itself.",
         "Das Suchmuster ist leer." => "The pattern is empty.",

@@ -501,3 +501,64 @@ pub struct KnownRecipient {
     pub iban: String,
     pub times_used: u32,
 }
+
+/// Budget progress of one category for one month.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct CategoryBudgetStatus {
+    pub category_id: i64,
+    pub name: String,
+    pub path: String,
+    pub sf_symbol: String,
+    pub color_hex: String,
+    pub budget_cents: i64,
+    pub spent_cents: i64,
+    /// Negative when over budget.
+    pub remaining_cents: i64,
+    /// spent / budget * 100 (can exceed 100).
+    pub percent: f64,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TransactionSplit {
+    pub id: i64,
+    pub transaction_id: i64,
+    pub category_id: Option<i64>,
+    pub amount_cents: i64,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TransactionSplitInput {
+    pub category_id: Option<i64>,
+    /// Same sign as the parent booking; all parts must add up to it.
+    pub amount_cents: i64,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PeriodGranularity {
+    Month,
+    Quarter,
+    Year,
+}
+
+/// Income vs. expenses of one period ("2025-03", "2025-Q1", "2025").
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PeriodCashflow {
+    pub key: String,
+    pub income_cents: i64,
+    /// Positive cents.
+    pub expense_cents: i64,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TransferTemplate {
+    /// 0 = not saved yet.
+    pub id: i64,
+    pub name: String,
+    pub recipient_name: String,
+    pub recipient_iban: String,
+    pub recipient_bic: String,
+    pub default_amount_cents: Option<i64>,
+    pub default_purpose: String,
+}

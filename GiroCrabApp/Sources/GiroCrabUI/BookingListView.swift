@@ -22,6 +22,9 @@ struct BookingStreamView: View {
                     }
                     if model.scope == .investments {
                         InvestmentDashboardView()
+                    } else if !model.allAccounts.isEmpty {
+                        CashflowCard()
+                        BudgetProgressCard()
                     }
                     if model.dayGroups.isEmpty && !(model.allAccounts.isEmpty && !model.demoActive) {
                         ContentUnavailableView(
@@ -146,6 +149,7 @@ struct DayCard: View {
     private func rowMenu(_ b: Booking) -> some View {
         Button("Kategorisieren …", systemImage: "tag") { model.selectedBookingID = b.id; model.showCategorizer = true }
         Button("Regel für diesen Händler erstellen …", systemImage: "wand.and.stars") { model.openRuleEditor(from: b) }
+        Button("Umsatz aufteilen (Splitbuchung) …", systemImage: "arrow.triangle.branch") { model.splitBooking = b }
         Divider()
         Button("Nach „\(b.counterparty.isEmpty ? b.merchantName : b.counterparty)“ suchen", systemImage: "magnifyingglass") {
             model.searchText = b.counterparty.isEmpty ? b.merchantName : b.counterparty

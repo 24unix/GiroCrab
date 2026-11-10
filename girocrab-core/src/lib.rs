@@ -33,6 +33,7 @@ pub mod insights;
 pub mod merchants;
 pub mod models;
 pub mod money;
+pub mod planning;
 pub mod rules;
 pub mod secret;
 pub mod text;

@@ -91,6 +91,7 @@ struct StreamHeaderCard: View {
             }
 
             HStack(spacing: 12) {
+                PeriodQuickPicker()
                 Menu {
                     Picker("Zeitraum", selection: $model.period) {
                         ForEach(Period.allCases) { Text($0.title).tag($0) }
