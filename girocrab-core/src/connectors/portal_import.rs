@@ -839,10 +839,19 @@ impl Vault {
     ) -> Result<SyncSummary, CoreError> {
         let (kind, _) = self.portal_connection(connection_id)?;
         let (mut parsed, balance) = parse_json_bodies(&json_bodies, kind);
+        let from_json = parsed.len();
         if parsed.is_empty() {
             let rows: Vec<Vec<String>> = serde_json::from_str(&dom_rows_json).unwrap_or_default();
             parsed = parse_dom_rows(&rows, kind);
         }
+        crate::depot_debug::log(&format!(
+            "portal import: {:?} bodies={} json_txs={} total_txs={} balance_found={}",
+            kind,
+            json_bodies.len(),
+            from_json,
+            parsed.len(),
+            balance.is_some()
+        ));
         self.import_parsed(connection_id, parsed, balance)
     }
 

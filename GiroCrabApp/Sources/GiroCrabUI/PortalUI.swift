@@ -26,6 +26,7 @@ extension AppModel {
             reloadAll()
             return true
         } catch {
+            AppModel.debugLog("portal import failed: \(describe(error))")
             return false
         }
     }
