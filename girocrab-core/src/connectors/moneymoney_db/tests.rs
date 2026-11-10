@@ -351,13 +351,23 @@ fn import_categories_splits_pending_notes_and_balance() {
     let vb = bookings(&v, visa.id);
     assert_eq!(vb[0].category_path, "Steuern / Büro");
     assert_eq!(vb[0].note, "Abo kündigen");
-    let groups = v.list_account_groups().unwrap();
-    assert!(groups
-        .iter()
-        .any(|g| g.name == "Kreditkarten" && g.accounts.iter().any(|a| a.id == visa.id)));
-    assert!(groups
-        .iter()
-        .any(|g| g.name == "Depots & ETFs" && g.accounts.iter().any(|a| a.name == "Depot")));
+    // new accounts land in a group per MoneyMoney bank
+    let group_name = |id: Option<i64>| -> String {
+        v.db()
+            .unwrap()
+            .query_row("SELECT name FROM account_groups WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .unwrap()
+    };
+    let giro = account_by_name(&v, "Girokonto");
+    assert_eq!(visa.group_id, giro.group_id);
+    assert_eq!(account_by_name(&v, "Depot").group_id, giro.group_id);
+    assert_eq!(group_name(giro.group_id), "comdirect");
+    assert_eq!(
+        group_name(account_by_name(&v, "Dollar-Konto").group_id),
+        "Sparkasse Musterstadt"
+    );
     let usd = account_by_name(&v, "Dollar-Konto");
     assert_eq!(usd.currency, "USD");
     assert_eq!(bookings(&v, usd.id)[0].amount_cents, 2526);
@@ -382,6 +392,7 @@ fn reimport_is_idempotent() {
             q("SELECT count(*) FROM categories"),
             q("SELECT count(*) FROM bank_connections"),
             q("SELECT count(*) FROM settings WHERE key LIKE 'pin.conn.%'"),
+            q("SELECT count(*) FROM account_groups"),
         )
     };
     let after_first = count(&v);
@@ -806,4 +817,23 @@ fn starter_categories_stay_when_the_vault_has_bookings() {
     o.import_categories = false;
     v.import_moneymoney_database(path, PW.into(), o).unwrap();
     assert_eq!(v.list_categories(None, None).unwrap().len(), starter);
+}
+
+#[test]
+fn reimport_keeps_user_arrangement() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true, true))
+        .unwrap();
+    let giro = account_by_name(&v, "Girokonto");
+    v.move_account(giro.id, None, 0).unwrap();
+    let p2 = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p2, true, true))
+        .unwrap();
+    assert_eq!(account_by_name(&v, "Girokonto").group_id, None);
 }

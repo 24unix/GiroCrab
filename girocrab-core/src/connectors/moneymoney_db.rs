@@ -25,7 +25,6 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
 use zeroize::Zeroizing;
 
 use crate::connectors::fints::sepa;
-use crate::connectors::group_for;
 use crate::connectors::moneymoney_import::{find_or_create_category, merge_rows, MmRow, Stats};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -1082,6 +1081,8 @@ fn import(
         }
     }
     let mut to_link: Vec<(i64, i64)> = Vec::new();
+    // Accounts created by this run, with their MoneyMoney bank.
+    let mut created: Vec<(i64, Option<i64>)> = Vec::new();
     for choice in options.accounts.iter().filter(|c| c.import) {
         let a = src
             .accounts
@@ -1117,8 +1118,6 @@ fn import(
                 (id, cur)
             }
             None => {
-                let (group, sym, order) = group_for(kind);
-                let gid = Vault::ensure_group(conn, group, sym, order)?;
                 let bank_name = src
                     .bank(a.bank_key)
                     .map(|b| b.name.clone())
@@ -1127,10 +1126,8 @@ fn import(
                 conn.execute(
                     "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban, account_number,
                                           currency, kind, balance_cents, balance_date, sf_symbol, sort_order)
-                     VALUES (NULL, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, '', ?10,
-                             (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts))",
+                     VALUES (NULL, NULL, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, '', ?9, 0)",
                     params![
-                        gid,
                         ext,
                         src.account_name(a),
                         bank_name,
@@ -1143,6 +1140,7 @@ fn import(
                     ],
                 )?;
                 res.accounts_created += 1;
+                created.push((conn.last_insert_rowid(), a.bank_key));
                 (conn.last_insert_rowid(), a.currency.clone())
             }
         };
@@ -1168,11 +1166,10 @@ fn import(
             &mut st,
         )?;
         if owned {
-            let (group, sym, order) = group_for(kind);
-            let gid = Vault::ensure_group(conn, group, sym, order)?;
+            // The group is left alone: the user may have rearranged it.
             conn.execute(
-                "UPDATE accounts SET kind = ?1, sf_symbol = ?2, group_id = ?3, balance_cents = ?4, balance_date = ?5 WHERE id = ?6",
-                params![kind.as_str(), kind.sf_symbol(), gid, r.balance_cents, r.balance_date, account_id],
+                "UPDATE accounts SET kind = ?1, sf_symbol = ?2, balance_cents = ?3, balance_date = ?4 WHERE id = ?5",
+                params![kind.as_str(), kind.sf_symbol(), r.balance_cents, r.balance_date, account_id],
             )?;
             if kind == AccountKind::Loan {
                 Vault::derive_initial_balance(conn, account_id)?;
@@ -1246,6 +1243,29 @@ fn import(
                 params![cid, account_id],
             )?;
         }
+    }
+    // New accounts go into their bank login's group, or a group named after
+    // their MoneyMoney bank when GiroCrab has no login for it.
+    for (account_id, bank) in created {
+        let group = match bank.and_then(|b| bank_connection.get(&b)) {
+            Some(cid) => Some(crate::account_groups::bank_group_for(conn, *cid)?),
+            None => match src
+                .bank(bank)
+                .map(|b| b.name.trim())
+                .filter(|n| !n.is_empty())
+            {
+                Some(name) => Some(crate::account_groups::named_group(conn, name)?),
+                None => None,
+            },
+        };
+        conn.execute(
+            "UPDATE accounts SET group_id = ?1, sort_order = ?2 WHERE id = ?3",
+            params![
+                group,
+                crate::account_groups::next_sort(conn, group)?,
+                account_id
+            ],
+        )?;
     }
     Vault::apply_rules_inner(conn, true)?;
     Ok(res)

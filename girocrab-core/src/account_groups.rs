@@ -503,6 +503,25 @@ const KIND_GROUPS: &[&str] = &[
     "Importierte Konten",
 ];
 
+/// Unlinked top-level group called `name`, created at the end if missing.
+pub(crate) fn named_group(conn: &Connection, name: &str) -> CoreResult<i64> {
+    if let Some(id) = conn
+        .query_row(
+            "SELECT id FROM account_groups WHERE parent_id IS NULL AND name = ?1 AND role != 'closed'",
+            [name],
+            |r| r.get(0),
+        )
+        .optional()?
+    {
+        return Ok(id);
+    }
+    conn.execute(
+        "INSERT INTO account_groups(name, sf_symbol, sort_order) VALUES (?1, 'building.columns', ?2)",
+        rusqlite::params![name, next_sort(conn, None)?],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
 /// Sort position after the last child of `parent`.
 pub(crate) fn next_sort(conn: &Connection, parent: Option<i64>) -> CoreResult<i64> {
     Ok(conn.query_row(
