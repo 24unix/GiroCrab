@@ -252,6 +252,16 @@ fn english(de: &str) -> Option<&'static str> {
         "Kontogruppen konnten nicht aktualisiert werden (Fremdschlüssel verletzt)." => {
             "Account groups could not be updated (foreign key violated)."
         }
+        "Kontogruppe {0}" => "account group {0}",
+        "Der Gruppenname darf nicht leer sein." => "The group name must not be empty.",
+        "Eine Gruppe „{0}“ gibt es hier schon." => "A group “{0}” already exists here.",
+        "Eine Gruppe kann nicht in sich selbst verschoben werden." => "A group can't be moved into itself.",
+        "Die Gruppe „Geschlossen“ kann nicht gelöscht oder verschoben werden." => {
+            "The “Closed” group can't be deleted or moved."
+        }
+        "Im Ordner „Geschlossen“ können keine Gruppen angelegt werden." => {
+            "Groups can't be created inside “Closed”."
+        }
         // ------------------------------------------------------------ connectors/mod.rs
         "VR-NetKey oder Alias" => "VR-NetKey or alias",
         "Online-Banking-PIN" => "Online banking PIN",
