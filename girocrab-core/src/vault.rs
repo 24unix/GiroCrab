@@ -219,6 +219,16 @@ impl Vault {
         Ok(())
     }
 
+    /// True if the file starts with the plaintext SQLite header.
+    fn is_plaintext_sqlite(path: &str) -> bool {
+        use std::io::Read;
+        let mut buf = [0u8; 16];
+        std::fs::File::open(path)
+            .and_then(|mut f| f.read_exact(&mut buf))
+            .map(|_| &buf == b"SQLite format 3\0")
+            .unwrap_or(false)
+    }
+
     fn migrate(conn: &Connection) -> CoreResult<()> {
         // Fails with NotADatabase if the key is wrong.
         conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
@@ -979,7 +989,16 @@ impl Vault {
         let key = Zeroizing::new(key);
         let conn = Connection::open(&path)?;
         Self::apply_key(&conn, &key)?;
-        Self::migrate(&conn)?;
+        if let Err(e) = Self::migrate(&conn) {
+            // HMAC/codec failure on page 1: distinguish an unencrypted SQLite file
+            // (opened with a key) from a plain wrong key / corrupt file.
+            if matches!(e, CoreError::WrongKey) && Self::is_plaintext_sqlite(&path) {
+                return Err(CoreError::InvalidInput {
+                    message: "Die Tresordatei ist unverschlüsselt (Klartext-SQLite) und passt nicht zum Schlüssel. Sie wurde nicht verändert.".into(),
+                });
+            }
+            return Err(e);
+        }
         // merge duplicate bank logins left by older versions (keeps bookings)
         let _ = crate::connections::deduplicate(&conn);
         // repair "MÃ¼ller" -> "Müller" stored by older versions

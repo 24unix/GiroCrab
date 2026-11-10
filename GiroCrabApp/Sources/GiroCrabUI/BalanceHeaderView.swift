@@ -214,19 +214,19 @@ struct BalanceChart: View {
             if let first = pts.first?.date, let last = pts.last?.date,
                last.timeIntervalSince(first) > 400 * 86_400 {
                 AxisMarks(values: .stride(by: .year)) { _ in
-                    AxisValueLabel(format: .dateTime.year(), anchor: .top)
+                    AxisValueLabel(format: .dateTime.year())
                         .foregroundStyle(Theme.tertiary)
                 }
             } else if let first = pts.first?.date, let last = pts.last?.date,
                       last.timeIntervalSince(first) < 62 * 86_400 {
                 // short periods (this/last month): weekly day labels
                 AxisMarks(values: .stride(by: .day, count: 7)) { _ in
-                    AxisValueLabel(format: .dateTime.day().month(.abbreviated), anchor: .top)
+                    AxisValueLabel(format: .dateTime.day().month(.abbreviated))
                         .foregroundStyle(Theme.tertiary)
                 }
             } else {
                 AxisMarks(values: .stride(by: .month)) { _ in
-                    AxisValueLabel(format: .dateTime.month(.abbreviated), anchor: .top)
+                    AxisValueLabel(format: .dateTime.month(.abbreviated))
                         .foregroundStyle(Theme.tertiary)
                 }
             }
