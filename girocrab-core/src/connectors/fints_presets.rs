@@ -99,6 +99,11 @@ mod tests {
             }
         }
         assert!(fints_presets().iter().any(|p| p.blz == "12096597"));
+        assert!(known_fints_blz("76030080"));
+        assert_eq!(
+            ConnectorKind::from_str("fints:76030080"),
+            Some(ConnectorKind::FinTsGeneric)
+        );
         assert!(!is_valid_fints_url("http://bank.de/fints"));
         assert!(known_fints_blz("37010050") && known_fints_blz("70010080"));
         for b in POSTBANK_BLZ {
