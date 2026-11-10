@@ -2051,6 +2051,17 @@
         }
       }
     },
+    "Ersetzt die GiroCrab-Startkategorien und ihre Regeln – Ihr Tresor enthält noch keine Buchungen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Replaces GiroCrab’s starter categories and their rules – your vault has no transactions yet."
+          }
+        }
+      }
+    },
     "Erst einmal ansehen?" : {
       "extractionState" : "manual",
       "localizations" : {

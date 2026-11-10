@@ -490,8 +490,18 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
     let giro = account_by_name(&v, "Girokonto");
     let conn_id = v.list_bank_connections().unwrap()[0].id;
     let db = v.db().unwrap();
-    assert_eq!(adopt_account(&db, conn_id, "remote-1", "").unwrap(), None);
-    let adopted = adopt_account(&db, conn_id, "remote-1", "DE89 3704 0044 0532 0130 00").unwrap();
+    assert_eq!(
+        adopt_account(&db, conn_id, "remote-1", "", AccountKind::Checking).unwrap(),
+        None
+    );
+    let adopted = adopt_account(
+        &db,
+        conn_id,
+        "remote-1",
+        "DE89 3704 0044 0532 0130 00",
+        AccountKind::Checking,
+    )
+    .unwrap();
     assert_eq!(adopted, Some(giro.id));
     let (c, e): (Option<i64>, String) = db
         .query_row(
@@ -503,7 +513,14 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
     assert_eq!((c, e.as_str()), (Some(conn_id), "remote-1"));
     // only once
     assert_eq!(
-        adopt_account(&db, conn_id, "remote-2", "DE89370400440532013000").unwrap(),
+        adopt_account(
+            &db,
+            conn_id,
+            "remote-2",
+            "DE89370400440532013000",
+            AccountKind::Checking
+        )
+        .unwrap(),
         None
     );
 }
@@ -646,4 +663,147 @@ fn kind_override_on_reimport() {
         AccountKind::CreditCard
     );
     assert_eq!(v.list_accounts().unwrap().len(), 1);
+}
+
+#[test]
+fn imported_accounts_are_linked_to_their_bank_login() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+        .unwrap();
+    let comdirect = v.list_bank_connections().unwrap()[0].id;
+    for name in ["Girokonto", "Visa-Karte", "Depot"] {
+        assert_eq!(
+            account_by_name(&v, name).connection_id,
+            Some(comdirect),
+            "{name}"
+        );
+    }
+    // unsupported bank: no login, account stays on its own
+    assert_eq!(account_by_name(&v, "Dollar-Konto").connection_id, None);
+}
+
+#[test]
+fn accounts_stay_unlinked_without_bank_logins() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert!(v
+        .list_accounts()
+        .unwrap()
+        .iter()
+        .all(|a| a.connection_id.is_none()));
+}
+
+#[test]
+fn first_bank_sync_adopts_imported_card_without_iban_by_kind() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+        .unwrap();
+    let visa = account_by_name(&v, "Visa-Karte");
+    let conn_id = v.list_bank_connections().unwrap()[0].id;
+    let db = v.db().unwrap();
+    // a fetched account with an IBAN never takes over an account by kind
+    assert_eq!(
+        adopt_account(
+            &db,
+            conn_id,
+            "card-x",
+            "DE02120300000000202051",
+            AccountKind::CreditCard
+        )
+        .unwrap(),
+        None
+    );
+    assert_eq!(
+        adopt_account(&db, conn_id, "card-1", "", AccountKind::CreditCard).unwrap(),
+        Some(visa.id)
+    );
+    // only once, and never for another login
+    assert_eq!(
+        adopt_account(&db, conn_id, "card-2", "", AccountKind::CreditCard).unwrap(),
+        None
+    );
+    assert_eq!(
+        adopt_account(&db, conn_id + 1, "dep-1", "", AccountKind::Brokerage).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn starter_categories_are_replaced_in_an_empty_vault() {
+    let v = vault();
+    assert!(v.seed_starter_categories().unwrap() > 0);
+    assert!(!v.list_rules().unwrap().is_empty());
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    assert!(p.replaces_starter_categories);
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    let mut names: Vec<String> = v
+        .list_categories(None, None)
+        .unwrap()
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            "Gehalt",
+            "Haushalt",
+            "Nebenkosten",
+            "Steuern / Büro",
+            "Strom",
+            "Supermarkt",
+            "Wohnen"
+        ]
+    );
+    assert!(v.list_rules().unwrap().is_empty());
+}
+
+#[test]
+fn starter_categories_stay_when_the_vault_has_bookings() {
+    let v = vault();
+    let starter = v.seed_starter_categories().unwrap() as usize;
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    // second run: the vault now has bookings, nothing is replaced
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    assert!(!p.replaces_starter_categories);
+    let before = v.list_categories(None, None).unwrap().len();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!(v.list_categories(None, None).unwrap().len(), before);
+
+    let v = vault();
+    v.seed_starter_categories().unwrap();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    // categories not wanted: the starter set stays
+    let mut o = options_from(&p, false, false);
+    o.import_categories = false;
+    v.import_moneymoney_database(path, PW.into(), o).unwrap();
+    assert_eq!(v.list_categories(None, None).unwrap().len(), starter);
 }

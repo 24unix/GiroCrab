@@ -57,7 +57,7 @@ struct EmptyVaultCard: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
-            Button { model.showMoneyMoneyImport = true } label: {
+            Button { model.openMoneyMoneyImport() } label: {
                 Label("Von MoneyMoney wechseln", systemImage: "square.and.arrow.down.on.square")
             }
             Divider()

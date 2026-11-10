@@ -100,6 +100,9 @@ pub struct MoneyMoneyDbPreview {
     pub split_parts: u32,
     pub date_range_start: Option<String>,
     pub date_range_end: Option<String>,
+    /// The vault has no bookings yet, so MoneyMoney's categories replace
+    /// GiroCrab's starter categories (and their rules) instead of being added.
+    pub replaces_starter_categories: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -919,25 +922,40 @@ fn find_connection(conn: &Connection, kind: ConnectorKind, login: &str) -> CoreR
 }
 
 /// Called by `store_fetch` when a synced account is not known yet: takes over
-/// an unconnected account created by this importer with the same IBAN.
+/// an account created by this importer instead of adding a second one. Matched
+/// by IBAN; without one (credit cards, PayPal) only when exactly one imported
+/// account of that kind is linked to this bank login.
 pub(crate) fn adopt_account(
     conn: &Connection,
     connection_id: i64,
     external_ref: &str,
     iban: &str,
+    kind: AccountKind,
 ) -> CoreResult<Option<i64>> {
     let iban = sepa::normalize_iban(iban);
-    if iban.is_empty() {
-        return Ok(None);
-    }
-    let id: Option<i64> = conn
-        .query_row(
-            "SELECT id FROM accounts WHERE connection_id IS NULL AND external_ref LIKE 'moneymoney-db:%'
-               AND upper(replace(iban, ' ', '')) = ?1 ORDER BY id LIMIT 1",
-            [&iban],
+    let id: Option<i64> = if iban.is_empty() {
+        let mut st = conn.prepare(
+            "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref LIKE 'moneymoney-db:%'
+               AND kind = ?2 AND replace(IFNULL(iban, ''), ' ', '') = '' LIMIT 2",
+        )?;
+        let ids: Vec<i64> = st
+            .query_map(params![connection_id, kind.as_str()], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        if ids.len() == 1 {
+            Some(ids[0])
+        } else {
+            None
+        }
+    } else {
+        conn.query_row(
+            "SELECT id FROM accounts WHERE (connection_id IS NULL OR connection_id = ?1)
+               AND external_ref LIKE 'moneymoney-db:%' AND upper(replace(iban, ' ', '')) = ?2
+             ORDER BY (connection_id IS NULL), id LIMIT 1",
+            params![connection_id, iban],
             |r| r.get(0),
         )
-        .optional()?;
+        .optional()?
+    };
     if let Some(id) = id {
         conn.execute(
             "UPDATE accounts SET connection_id = ?1, external_ref = ?2 WHERE id = ?3",
@@ -945,6 +963,16 @@ pub(crate) fn adopt_account(
         )?;
     }
     Ok(id)
+}
+
+/// MoneyMoney's tree replaces the starter categories only in a vault without
+/// bookings: nothing can be assigned to them yet, so nothing is lost.
+fn replaces_starter_categories(conn: &Connection, src: &Source) -> CoreResult<bool> {
+    if src.category_order.is_empty() {
+        return Ok(false);
+    }
+    let bookings: i64 = conn.query_row("SELECT count(*) FROM transactions", [], |r| r.get(0))?;
+    Ok(bookings == 0)
 }
 
 fn preview(conn: &Connection, src: &Source) -> CoreResult<MoneyMoneyDbPreview> {
@@ -1032,6 +1060,7 @@ fn preview(conn: &Connection, src: &Source) -> CoreResult<MoneyMoneyDbPreview> {
         split_parts: parts,
         date_range_start: first,
         date_range_end: last,
+        replaces_starter_categories: replaces_starter_categories(conn, src)?,
     })
 }
 
@@ -1042,12 +1071,17 @@ fn import(
 ) -> CoreResult<MoneyMoneyDbImportResult> {
     let mut res = MoneyMoneyDbImportResult::default();
     let mut cat_cache = HashMap::new();
+    if options.import_categories && replaces_starter_categories(conn, src)? {
+        // rules and assignments go with them (ON DELETE CASCADE / SET NULL)
+        conn.execute("DELETE FROM categories", [])?;
+    }
     if options.import_categories {
         // the whole tree, also categories without bookings
         for path in &src.category_order {
             find_or_create_category(conn, path, &mut cat_cache, &mut res.categories_created)?;
         }
     }
+    let mut to_link: Vec<(i64, i64)> = Vec::new();
     for choice in options.accounts.iter().filter(|c| c.import) {
         let a = src
             .accounts
@@ -1115,7 +1149,7 @@ fn import(
         // Accounts owned by the importer (not synced with a bank) follow MoneyMoney:
         // chosen kind and MoneyMoney's balance. Bank-synced accounts keep theirs.
         let owned: bool = conn.query_row(
-            "SELECT connection_id IS NULL AND external_ref LIKE 'moneymoney-db:%' FROM accounts WHERE id = ?1",
+            "SELECT external_ref LIKE 'moneymoney-db:%' FROM accounts WHERE id = ?1",
             [account_id],
             |r| r.get(0),
         )?;
@@ -1150,8 +1184,12 @@ fn import(
         res.notes_imported += st.notes;
         res.categories_created += st.categories_created;
         res.pending_skipped += r.pending;
+        if let (true, Some(bank)) = (owned, a.bank_key) {
+            to_link.push((account_id, bank));
+        }
     }
 
+    let mut bank_connection: HashMap<i64, i64> = HashMap::new();
     for b in &src.banks {
         let Some(kind) = connector_for(&b.bankcode, &b.name) else {
             res.banks_skipped_unsupported += 1;
@@ -1180,6 +1218,7 @@ fn import(
                 id
             }
         };
+        bank_connection.insert(b.id, id);
         if options.import_pins {
             if let Some(pin) = src.pins.get(&b.id) {
                 let stored: bool = conn
@@ -1196,6 +1235,16 @@ fn import(
                     res.pins_stored += 1;
                 }
             }
+        }
+    }
+    // Show imported accounts under their bank login right away; the first
+    // sync then takes them over (adopt_account) instead of adding new ones.
+    for (account_id, bank) in to_link {
+        if let Some(cid) = bank_connection.get(&bank) {
+            conn.execute(
+                "UPDATE accounts SET connection_id = ?1 WHERE id = ?2 AND connection_id IS NULL",
+                params![cid, account_id],
+            )?;
         }
     }
     Vault::apply_rules_inner(conn, true)?;
