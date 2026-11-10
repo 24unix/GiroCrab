@@ -114,6 +114,31 @@ pub(crate) fn deduplicate(conn: &Connection) -> CoreResult<u32> {
     Ok(removed)
 }
 
+/// Stores (Some) or removes (None / empty) the PIN of a login (encrypted
+/// vault `settings`, flagged secret). Never logged.
+pub(crate) fn set_pin_inner(
+    conn: &Connection,
+    connection_id: i64,
+    pin: Option<&str>,
+) -> CoreResult<()> {
+    match pin.filter(|p| !p.trim().is_empty()) {
+        Some(p) => {
+            conn.execute(
+                "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, 1)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, is_secret = 1",
+                params![pin_key(connection_id), p.trim()],
+            )?;
+        }
+        None => {
+            conn.execute(
+                "DELETE FROM settings WHERE key = ?1",
+                [pin_key(connection_id)],
+            )?;
+        }
+    }
+    Ok(())
+}
+
 #[uniffi::export]
 impl Vault {
     /// Edits a bank login (display name, Benutzerkennung / phone number).
@@ -160,22 +185,7 @@ impl Vault {
         pin: Option<String>,
     ) -> Result<(), CoreError> {
         let db = self.db()?;
-        match pin.filter(|p| !p.trim().is_empty()) {
-            Some(p) => {
-                db.execute(
-                    "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, 1)
-                     ON CONFLICT(key) DO UPDATE SET value = excluded.value, is_secret = 1",
-                    params![pin_key(connection_id), p.trim()],
-                )?;
-            }
-            None => {
-                db.execute(
-                    "DELETE FROM settings WHERE key = ?1",
-                    [pin_key(connection_id)],
-                )?;
-            }
-        }
-        Ok(())
+        set_pin_inner(&db, connection_id, pin.as_deref())
     }
 
     /// Hands over session cookies, e.g. from the in-app browser login

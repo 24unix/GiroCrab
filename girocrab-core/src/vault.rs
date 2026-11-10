@@ -485,6 +485,51 @@ impl Vault {
         Ok(conn.last_insert_rowid())
     }
 
+    /// Adds a bank login or returns the existing one with the same provider and
+    /// login (`(id, created)`).
+    pub(crate) fn add_bank_connection_inner(
+        conn: &Connection,
+        connector: ConnectorKind,
+        display_name: String,
+        login_name: String,
+    ) -> CoreResult<(i64, bool)> {
+        let info = crate::connectors::descriptor(connector);
+        let login_name = crate::connections::normalize_login(connector, &login_name);
+        // Same provider + same login: update instead of creating a duplicate.
+        let existing: Vec<(i64, String)> = {
+            let mut st =
+                conn.prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1")?;
+            let r = st
+                .query_map([connector.as_str()], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            r
+        };
+        if let Some((id, _)) = existing.iter().find(|(_, l)| {
+            !login_name.is_empty()
+                && crate::connections::normalize_login(connector, l)
+                    .eq_ignore_ascii_case(&login_name)
+        }) {
+            if !display_name.trim().is_empty() {
+                conn.execute(
+                    "UPDATE bank_connections SET display_name = ?1 WHERE id = ?2",
+                    params![display_name.trim(), id],
+                )?;
+            }
+            return Ok((*id, false));
+        }
+        conn.execute(
+            "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                connector.as_str(),
+                if display_name.trim().is_empty() { info.name.clone() } else { display_name },
+                login_name,
+                info.bank_code,
+                info.sf_symbol
+            ],
+        )?;
+        Ok((conn.last_insert_rowid(), true))
+    }
+
     pub fn path(&self) -> &str {
         &self.path
     }
@@ -1019,42 +1064,8 @@ impl Vault {
         display_name: String,
         login_name: String,
     ) -> Result<i64, CoreError> {
-        let info = crate::connectors::descriptor(connector);
-        let login_name = crate::connections::normalize_login(connector, &login_name);
         let db = self.db()?;
-        // Same provider + same login: update instead of creating a duplicate.
-        let existing: Vec<(i64, String)> = {
-            let mut st =
-                db.prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1")?;
-            let r = st
-                .query_map([connector.as_str()], |r| Ok((r.get(0)?, r.get(1)?)))?
-                .collect::<Result<Vec<_>, _>>()?;
-            r
-        };
-        if let Some((id, _)) = existing.iter().find(|(_, l)| {
-            !login_name.is_empty()
-                && crate::connections::normalize_login(connector, l)
-                    .eq_ignore_ascii_case(&login_name)
-        }) {
-            if !display_name.trim().is_empty() {
-                db.execute(
-                    "UPDATE bank_connections SET display_name = ?1 WHERE id = ?2",
-                    params![display_name.trim(), id],
-                )?;
-            }
-            return Ok(*id);
-        }
-        db.execute(
-            "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                connector.as_str(),
-                if display_name.trim().is_empty() { info.name.clone() } else { display_name },
-                login_name,
-                info.bank_code,
-                info.sf_symbol
-            ],
-        )?;
-        Ok(db.last_insert_rowid())
+        Ok(Self::add_bank_connection_inner(&db, connector, display_name, login_name)?.0)
     }
 
     pub fn delete_bank_connection(&self, connection_id: i64) -> Result<(), CoreError> {

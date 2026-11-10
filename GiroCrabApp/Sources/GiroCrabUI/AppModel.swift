@@ -165,6 +165,8 @@ public final class AppModel {
     var showMoneyMoneyImport = false
     /// (demo, `--demo-sheet moneymoney`) canned preview so the sheet can be shown without a file.
     var demoImportPreview: MoneyMoneyImportPreview?
+    /// (demo, `--demo-sheet moneymoney-db`) canned database preview with invented data.
+    var demoDbPreview: MoneyMoneyDbPreview?
     var pendingLogin: PendingLogin?
     var setupRequest: SetupRequest?
     /// Trade Republic in-app browser login (WKWebView).
@@ -244,8 +246,18 @@ public final class AppModel {
                 detectedCategories: ["Haushalt > Lebensmittel", "Gehalt", "Steuern", "Wohnen > Miete", "Mobilität > Tanken", "Freizeit > Restaurants", "Versicherungen", "Reisen"],
                 sampleBookings: [], suggestedAccountName: "MoneyMoney-Archiv")
             showMoneyMoneyImport = true
+        case "moneymoney-db":
+            demoDbPreview = Self.demoMoneyMoneyDbPreview(existingGiro: allAccounts.first { $0.kind == .checking })
+            showMoneyMoneyImport = true
         default: break
         }
+    }
+
+    /// Opens the MoneyMoney import. An import belongs in the own vault, so the
+    /// demo data an empty vault starts with is left first.
+    func openMoneyMoneyImport() {
+        if isDemo && !options.demoSeed { showOwnVault() }
+        showMoneyMoneyImport = true
     }
 
     var isDemo: Bool { demoActive }

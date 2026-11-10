@@ -2,9 +2,58 @@ import SwiftUI
 import UniformTypeIdentifiers
 import GiroCrabCore
 
-/// "Aus MoneyMoney importieren…": migrates a multi-year MoneyMoney export
-/// (CSV or XML) incl. categories and notes. Re-importing never duplicates.
+/// "Aus MoneyMoney importieren…": either reads MoneyMoney's own database
+/// (recommended, everything in one go) or a per-account CSV/XML export.
 struct MoneyMoneyImportSheet: View {
+    @Environment(AppModel.self) private var model
+
+    enum Source: Hashable { case database, export }
+    #if os(macOS)
+    @State private var source: Source = .database
+    #else
+    // MoneyMoney's database only exists on macOS; iOS offers the file export only.
+    @State private var source: Source = .export
+    #endif
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: "square.and.arrow.down.on.square").font(.title2).foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Aus MoneyMoney importieren").font(.headline)
+                    Text("Komplette Historie, Kategorien und Notizen – ohne Duplikate bei späteren Abrufen.")
+                        .font(.caption).foregroundStyle(Theme.secondary)
+                }
+            }
+            #if os(macOS)
+            Picker("Quelle", selection: $source) {
+                Text("MoneyMoney-Datenbank (empfohlen)").tag(Source.database)
+                Text("Export-Datei (CSV/XML)").tag(Source.export)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            switch source {
+            case .database: MoneyMoneyDatabaseImportView()
+            case .export: MoneyMoneyExportImportView()
+            }
+            #else
+            MoneyMoneyExportImportView()
+            #endif
+        }
+        .padding(20)
+        .macFrame(width: source == .database ? 900 : 560)
+        .background(Theme.card)
+        .onAppear {
+            if model.demoImportPreview != nil { source = .export }
+            #if os(macOS)
+            if model.demoDbPreview != nil { source = .database }
+            #endif
+        }
+    }
+}
+
+/// Per-account CSV/XML export (one account at a time).
+struct MoneyMoneyExportImportView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
@@ -25,14 +74,6 @@ struct MoneyMoneyImportSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
-                Image(systemName: "square.and.arrow.down.on.square").font(.title2).foregroundStyle(Theme.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Aus MoneyMoney importieren").font(.headline)
-                    Text("Komplette Historie, Kategorien und Notizen – ohne Duplikate bei späteren Abrufen.")
-                        .font(.caption).foregroundStyle(Theme.secondary)
-                }
-            }
             guide
             dropZone
             if fileData != nil {
@@ -55,9 +96,6 @@ struct MoneyMoneyImportSheet: View {
                     .disabled(preview == nil || importing || (preview?.totalRows ?? 0) == 0)
             }
         }
-        .padding(20)
-        .macFrame(width: 560)
-        .background(Theme.card)
         .interactiveDismissDisabled(importing)
         .onAppear {
             if let demo = model.demoImportPreview {
