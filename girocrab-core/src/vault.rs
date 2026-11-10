@@ -240,7 +240,12 @@ impl Vault {
                             account_number, currency, kind, balance_cents, balance_date, sf_symbol,
                             sort_order, initial_balance_cents FROM accounts;
                  DROP TABLE accounts;
-                 ALTER TABLE accounts_new RENAME TO accounts;"
+                 ALTER TABLE accounts_new RENAME TO accounts;
+                 -- repair references that were already dangling, so they can't lock the vault
+                 UPDATE accounts SET connection_id = NULL
+                     WHERE connection_id IS NOT NULL AND connection_id NOT IN (SELECT id FROM bank_connections);
+                 UPDATE accounts SET group_id = NULL
+                     WHERE group_id IS NOT NULL AND group_id NOT IN (SELECT id FROM account_groups);"
             ))
             .and_then(|_| {
                 conn.query_row("SELECT (SELECT count(*) FROM pragma_foreign_key_check('accounts')) + (SELECT count(*) FROM pragma_foreign_key_check('account_groups'))", [], |r| r.get::<_, i64>(0))

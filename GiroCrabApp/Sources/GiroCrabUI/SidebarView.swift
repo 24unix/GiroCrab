@@ -59,7 +59,7 @@ struct SidebarView: View {
                     .tag(SidebarItem.group(group.id))
                     .contextMenu { groupMenu(group) }
                     .draggable("group:\(group.id)")
-                    .dropDestination(for: String.self) { items, _ in drop(items, into: group.id, before: nil) }
+                    .dropDestination(for: String.self) { items, _ in dropOnGroup(items, group, node: node) }
                 case .account(let account, let depth):
                     AccountRow(account: account, syncing: model.syncingConnectionID != nil && model.syncingConnectionID == account.connectionId)
                         .padding(.leading, indent(depth))
@@ -256,6 +256,8 @@ struct SidebarView: View {
         let parts = item.split(separator: ":")
         guard parts.count == 2, let id = Int64(parts[1]) else { return false }
         let dragged = parts[0] == "group" ? "g\(id)" : "a\(id)"
+        // Released over its own row: a cancelled drag, not a move to the end.
+        if let before, before.id == dragged { return false }
         var index = UInt32.max
         if let before {
             // Position among the siblings, without the dragged item and the Closed group.
@@ -271,6 +273,17 @@ struct SidebarView: View {
         default: return false
         }
         return true
+    }
+
+    /// A group dropped on a sibling group header goes before it (reordering);
+    /// anything else goes into the group, at the end.
+    private func dropOnGroup(_ items: [String], _ group: AccountGroup, node: SidebarNode) -> Bool {
+        if let item = items.first, item.hasPrefix("group:"), let id = Int64(item.dropFirst(6)),
+           let dragged = model.accountGroups.first(where: { $0.id == id }),
+           dragged.parentId == group.parentId, !group.isClosedGroup {
+            return drop(items, into: group.parentId, before: node)
+        }
+        return drop(items, into: group.id, before: nil)
     }
 
     @ViewBuilder

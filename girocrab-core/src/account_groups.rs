@@ -515,20 +515,23 @@ pub(crate) fn next_sort(conn: &Connection, parent: Option<i64>) -> CoreResult<i6
 }
 
 /// The group new accounts of a bank login go into, linked to the login. In
-/// this order: the group already linked; the one group all of the login's
-/// accounts sit in (unless linked elsewhere, inside Closed, or a migrated kind
-/// group); an unlinked top-level group named like the login; a new top-level
-/// group named like the login (" 2", " 3", … on a clash).
+/// this order: the linked group (unless it was moved into Closed); the one
+/// group all of the login's accounts sit in (unless linked elsewhere, inside
+/// Closed, or a migrated kind group); an unlinked top-level group named like
+/// the login; a new top-level group named like the login (" 2", " 3", … on a clash).
 pub(crate) fn bank_group_for(conn: &Connection, connection_id: i64) -> CoreResult<i64> {
-    if let Some(id) = conn
-        .query_row(
-            "SELECT id FROM account_groups WHERE connection_id = ?1 ORDER BY id LIMIT 1",
-            [connection_id],
-            |r| r.get(0),
-        )
-        .optional()?
-    {
-        return Ok(id);
+    let linked: Vec<i64> = {
+        let mut st =
+            conn.prepare("SELECT id FROM account_groups WHERE connection_id = ?1 ORDER BY id")?;
+        let rows = st.query_map([connection_id], |r| r.get(0))?;
+        rows.collect::<Result<_, _>>()?
+    };
+    // A linked group moved into Closed doesn't count: new accounts must not
+    // arrive closed.
+    for id in linked {
+        if !in_closed(conn, id)? {
+            return Ok(id);
+        }
     }
     let link = |id: i64| -> CoreResult<i64> {
         conn.execute(
@@ -1171,5 +1174,50 @@ mod tests {
             ),
             0
         );
+    }
+
+    #[test]
+    fn migration_repairs_dangling_account_references() {
+        let (v, path) = temp_vault();
+        downgrade_to_v6(&v);
+        v.db()
+            .unwrap()
+            .execute_batch(
+                "PRAGMA foreign_keys = OFF;
+                 INSERT INTO account_groups(id, name) VALUES (1, 'Giro & Tagesgeld');
+                 INSERT INTO accounts(id, connection_id, group_id, external_ref, name) VALUES
+                     (1, 99, 1, 'DE1', 'Lost login'), (2, NULL, 42, 'x', 'Lost group');
+                 PRAGMA foreign_keys = ON;",
+            )
+            .unwrap();
+        drop(v);
+        let v =
+            Vault::open(path, vec![7u8; 32]).expect("a dangling reference must not lock the vault");
+        assert_eq!(count(&v, "SELECT count(*) FROM accounts WHERE id = 1 AND connection_id IS NULL AND group_id = 1"), 1);
+        assert_eq!(
+            count(
+                &v,
+                "SELECT count(*) FROM accounts WHERE id = 2 AND group_id IS NULL"
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn bank_group_inside_closed_does_not_swallow_new_accounts() {
+        let (v, _) = temp_vault();
+        let c = login(&v);
+        sync(&v, c, &["Giro"]);
+        let g: i64 = count(&v, "SELECT id FROM account_groups WHERE name = 'comdirect'");
+        let closed = closed_group_id(&v.db().unwrap()).unwrap();
+        v.move_account_group(g, Some(closed), 0).unwrap();
+        sync(&v, c, &["Giro", "Visa"]);
+        let visa = v
+            .list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.name == "Visa")
+            .unwrap();
+        assert!(!visa.closed, "a new account must not land in Closed");
     }
 }

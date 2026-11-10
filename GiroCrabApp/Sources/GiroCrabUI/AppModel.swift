@@ -776,6 +776,9 @@ public final class AppModel {
 
     func closeAccount(_ id: Int64) {
         guard let vault else { return }
+        // Keep a closed selected account visible instead of hiding it in the
+        // collapsed Closed group.
+        if sidebarSelection == .account(id) { expandedClosedGroup = true }
         run { try vault.closeAccount(accountId: id) }
         reloadAll()
     }
