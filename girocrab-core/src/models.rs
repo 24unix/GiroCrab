@@ -150,6 +150,18 @@ pub struct BankConnection {
     pub last_sync_unix: Option<i64>,
 }
 
+/// One securities position of a depot account.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Holding {
+    pub isin: String,
+    pub wkn: String,
+    pub name: String,
+    pub quantity: f64,
+    pub current_price_cents: i64,
+    pub purchase_price_cents: i64,
+    pub value_cents: i64,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Account {
     pub id: i64,

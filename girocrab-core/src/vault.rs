@@ -45,6 +45,22 @@ pub(crate) fn enrich(t: &mut Booking) {
     t.clean_purpose = clean_purpose(&t.purpose);
 }
 
+/// Securities positions of depot accounts (replaced on every sync).
+const HOLDINGS_SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS holdings (
+    id                   INTEGER PRIMARY KEY,
+    account_id           INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    isin                 TEXT    NOT NULL DEFAULT '',
+    wkn                  TEXT    NOT NULL DEFAULT '',
+    name                 TEXT    NOT NULL DEFAULT '',
+    quantity             REAL    NOT NULL DEFAULT 0,
+    current_price_cents  INTEGER NOT NULL DEFAULT 0,
+    purchase_price_cents INTEGER NOT NULL DEFAULT 0,
+    value_cents          INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS holdings_account ON holdings(account_id);
+";
+
 const SCHEMA_VERSION: i64 = 6;
 
 const SCHEMA: &str = r#"
@@ -248,6 +264,7 @@ impl Vault {
         // v4: encrypted documents (Beleg-Abruf & PostBox) – idempotent
         conn.execute_batch(crate::documents::DOC_SCHEMA)?;
         conn.execute_batch(crate::insights::OVERRIDE_SCHEMA)?;
+        conn.execute_batch(HOLDINGS_SCHEMA)?;
         if version < SCHEMA_VERSION {
             conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
         }
@@ -1181,15 +1198,60 @@ impl Vault {
 
     pub fn delete_bank_connection(&self, connection_id: i64) -> Result<(), CoreError> {
         let db = self.db()?;
-        db.execute(
-            "DELETE FROM accounts WHERE connection_id = ?1",
-            [connection_id],
-        )?;
-        db.execute(
-            "DELETE FROM bank_connections WHERE id = ?1",
-            [connection_id],
-        )?;
+        let tx = db.unchecked_transaction()?;
+        Self::purge_connection(&tx, connection_id)?;
+        tx.commit()?;
         Ok(())
+    }
+
+    /// Deletes one account with its bookings, documents and holdings. When it was the last
+    /// account of its connection, the connection and its stored secrets (PIN, session) go too.
+    pub fn delete_account(&self, account_id: i64) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let tx = db.unchecked_transaction()?;
+        let conn: Option<i64> = tx
+            .query_row(
+                "SELECT connection_id FROM accounts WHERE id = ?1",
+                [account_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        Self::delete_account_rows(&tx, account_id)?;
+        if let Some(c) = conn {
+            let left: i64 = tx.query_row(
+                "SELECT count(*) FROM accounts WHERE connection_id = ?1",
+                [c],
+                |r| r.get(0),
+            )?;
+            if left == 0 {
+                Self::purge_connection(&tx, c)?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------- holdings
+
+    pub fn list_holdings(&self, account_id: i64) -> Result<Vec<Holding>, CoreError> {
+        let db = self.db()?;
+        let mut q = db.prepare(
+            "SELECT isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents
+             FROM holdings WHERE account_id = ?1 ORDER BY value_cents DESC, name",
+        )?;
+        let rows = q.query_map([account_id], |r| {
+            Ok(Holding {
+                isin: r.get(0)?,
+                wkn: r.get(1)?,
+                name: r.get(2)?,
+                quantity: r.get(3)?,
+                current_price_cents: r.get(4)?,
+                purchase_price_cents: r.get(5)?,
+                value_cents: r.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     // ---------------------------------------------------------------- accounts
@@ -1603,33 +1665,8 @@ impl Vault {
                         "t.counterparty_iban LIKE '%' || ?{n} OR t.purpose LIKE '%' || ?{n} || '%'"
                     ));
                 }
-                // Relaxed: last 4+ significant digits of the loan number in purpose/counterparty.
-                if trimmed.len() >= 4 {
-                    args.push(Box::new(
-                        trimmed[trimmed.len() - trimmed.len().clamp(4, 6)..].to_string(),
-                    ));
-                    let n = args.len();
-                    ors.push(format!("t.purpose LIKE '%' || ?{n} || '%' OR t.counterparty LIKE '%' || ?{n} || '%'"));
-                }
-                // German loan-instalment keywords (user has a loan account).
-                ors.push(
-                    [
-                        "DARLEHEN",
-                        "ZINS",
-                        "TILGUNG",
-                        "ANNUITAET",
-                        "ANNUITÄT",
-                        "KREDITRATE",
-                    ]
-                    .iter()
-                    .map(|k| {
-                        format!(
-                            "UPPER(t.purpose) LIKE '%{k}%' OR UPPER(t.counterparty) LIKE '%{k}%'"
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join(" OR "),
-                );
+                // Only exact references (IBAN / full loan number) – no keyword or short-suffix
+                // heuristics: those pulled unrelated bookings of every account into a loan.
                 if !ors.is_empty() {
                     let own: Vec<String> = loan_ids.iter().map(|i| i.to_string()).collect();
                     clause.push_str(&format!(
@@ -2020,6 +2057,38 @@ impl Vault {
                 params![key, value.trim(), secret as i64],
             )?;
         }
+        Ok(())
+    }
+}
+
+impl Vault {
+    fn delete_account_rows(db: &Connection, account_id: i64) -> Result<(), CoreError> {
+        for sql in [
+            "DELETE FROM holdings WHERE account_id = ?1",
+            "DELETE FROM booking_documents WHERE account_id = ?1",
+            "DELETE FROM transactions WHERE account_id = ?1",
+            "DELETE FROM accounts WHERE id = ?1",
+        ] {
+            db.execute(sql, [account_id])?;
+        }
+        Ok(())
+    }
+
+    fn purge_connection(db: &Connection, connection_id: i64) -> Result<(), CoreError> {
+        let ids: Vec<i64> = {
+            let mut q = db.prepare("SELECT id FROM accounts WHERE connection_id = ?1")?;
+            let rows = q.query_map([connection_id], |r| r.get(0))?;
+            rows.collect::<Result<_, _>>()?
+        };
+        for id in ids {
+            Self::delete_account_rows(db, id)?;
+        }
+        db.execute("DELETE FROM bank_connections WHERE id = ?1", [connection_id])?;
+        // stored secrets of this connection (PIN); the session lives in state_json
+        db.execute(
+            "DELETE FROM settings WHERE key = ?1",
+            [crate::connections::pin_key(connection_id)],
+        )?;
         Ok(())
     }
 }

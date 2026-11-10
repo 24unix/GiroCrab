@@ -6,6 +6,7 @@ struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @State private var newCategoryParent: Int64?? = nil
     @State private var newCategoryName = ""
+    @State private var accountToDelete: Account?
 
     var body: some View {
         @Bindable var model = model
@@ -140,6 +141,12 @@ struct SidebarView: View {
             .padding(8)
             .background(.bar)
         }
+        .alert("Konto löschen?", isPresented: Binding(get: { accountToDelete != nil }, set: { if !$0 { accountToDelete = nil } }), presenting: accountToDelete) { account in
+            Button("Löschen", role: .destructive) { model.deleteAccount(account.id) }
+            Button("Abbrechen", role: .cancel) {}
+        } message: { account in
+            Text("„\(account.name)“ wird samt allen Buchungen und Belegen unwiderruflich gelöscht.")
+        }
         .alert("Neue Kategorie", isPresented: Binding(get: { newCategoryParent != nil }, set: { if !$0 { newCategoryParent = nil } })) {
             TextField("Name", text: $newCategoryName)
             Button("Anlegen") {
@@ -155,6 +162,7 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func accountMenu(_ account: Account) -> some View {
+        Button("Konto löschen…", systemImage: "trash", role: .destructive) { accountToDelete = account }
         if let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
             Button("\(conn.displayName) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
         }

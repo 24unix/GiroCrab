@@ -407,6 +407,7 @@ mod tests {
             }
             db.execute("INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, purpose) VALUES (?1, 'g1', '2026-10-02', -5000, 'Zins/Tilgung Darlehen 98765400')", [giro]).unwrap();
             db.execute("INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, purpose) VALUES (?1, 'g2', '2026-10-03', -1000, 'Rewe')", [giro]).unwrap();
+            db.execute("INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, purpose) VALUES (?1, 'g3', '2026-10-04', -300, 'Zinsen Tagesgeld Darlehen')", [giro]).unwrap();
             Vault::derive_initial_balance(&db, loan).unwrap();
         }
         let acc = v
@@ -436,6 +437,39 @@ mod tests {
             3,
             "2 own + 1 matching giro booking"
         );
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn delete_account_cascades_and_cleans_connection() {
+        let p = std::env::temp_dir().join(format!("girocrab-del-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
+        let (mut a1, mut a2, mut conn) = (0i64, 0i64, 0i64);
+        {
+            let db = v.db().unwrap();
+            db.execute("INSERT INTO account_groups(name) VALUES ('G')", []).unwrap();
+            let g = db.last_insert_rowid();
+            db.execute("INSERT INTO bank_connections(connector, display_name, login_name) VALUES ('fints:52090000', 'VB', '1')", []).unwrap();
+            conn = db.last_insert_rowid();
+            db.execute("INSERT INTO settings(key, value, is_secret) VALUES (?1, 'pin', 1)", [pin_key(conn)]).unwrap();
+            for (n, sub) in [("l1", 1), ("l2", 2)] {
+                db.execute("INSERT INTO accounts(connection_id, group_id, external_ref, name, kind) VALUES (?1, ?2, ?3, 'Darlehen', 'loan')", params![conn, g, n]).unwrap();
+                let id = db.last_insert_rowid();
+                db.execute("INSERT INTO transactions(account_id, external_id, booking_date, amount_cents) VALUES (?1, 'x', '2026-11-01', ?2)", params![id, sub]).unwrap();
+                if sub == 1 { a1 = id } else { a2 = id }
+            }
+        }
+        // same external_id in two accounts must not collide
+        let n = |id: i64| v.list_transactions(BookingFilter { account_ids: vec![id], limit: 10, ..Default::default() }).unwrap().transactions.len();
+        assert_eq!((n(a1), n(a2)), (1, 1));
+        v.delete_account(a1).unwrap();
+        assert_eq!(v.list_accounts().unwrap().len(), 1);
+        assert_eq!(v.list_bank_connections().unwrap().len(), 1, "connection kept while accounts remain");
+        v.delete_account(a2).unwrap();
+        assert!(v.list_bank_connections().unwrap().is_empty(), "empty connection removed");
+        assert!(v.get_setting(pin_key(conn)).unwrap().is_none(), "secret removed");
+        let left: i64 = v.db().unwrap().query_row("SELECT count(*) FROM transactions", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
         let _ = std::fs::remove_file(p);
     }
 }

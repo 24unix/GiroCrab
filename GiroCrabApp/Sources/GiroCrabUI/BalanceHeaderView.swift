@@ -2,6 +2,37 @@ import SwiftUI
 import Charts
 import GiroCrabCore
 
+/// Securities positions of a depot account (from the last sync).
+struct HoldingsCard: View {
+    @Environment(AppModel.self) private var model
+    let account: Account
+    @State private var holdings: [Holding] = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !holdings.isEmpty {
+                Text("Positionen").font(.caption.weight(.semibold)).foregroundStyle(Theme.secondary)
+            }
+            ForEach(holdings.indices, id: \.self) { i in
+                let h = holdings[i]
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(h.name.isEmpty ? (h.isin.isEmpty ? h.wkn : h.isin) : h.name).lineLimit(1)
+                        Text("\(h.quantity.formatted(.number.precision(.fractionLength(0...4)))) × \(Money.format(h.currentPriceCents)) · \(h.isin.isEmpty ? h.wkn : h.isin)")
+                            .font(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
+                    }
+                    Spacer()
+                    Text(Money.format(h.valueCents)).monospacedDigit()
+                }
+                .font(.callout)
+            }
+        }
+        .task(id: "\(account.id)-\(account.balanceCents)-\(account.balanceDate)") {
+            holdings = model.holdings(for: account.id)
+        }
+    }
+}
+
 /// Header card of the stream: title, balance, calm balance chart and the
 /// monthly KPIs (consumption is always shown without ETF plans / perks).
 struct StreamHeaderCard: View {
@@ -41,6 +72,10 @@ struct StreamHeaderCard: View {
 
             if let a = account, a.kind == .loan {
                 LoanProgressCard(account: a, compact: true)
+            }
+
+            if let a = account, a.kind == .brokerage {
+                HoldingsCard(account: a)
             }
 
             if model.scope != .investments {

@@ -494,8 +494,15 @@ impl BankConnector for ComdirectConnector {
                     .get(&format!("/api/brokerage/v3/depots/{depot_id}/positions"))
                     .await
                     .unwrap_or(Value::Null);
+                let external_ref = format!("depot:{depot_id}");
+                for h in parse_positions(&pos) {
+                    out.holdings.push(super::RemoteHolding {
+                        account_ref: external_ref.clone(),
+                        holding: h,
+                    });
+                }
                 out.accounts.push(RemoteAccount {
-                    external_ref: format!("depot:{depot_id}"),
+                    external_ref,
                     name: "Depot".into(),
                     owner: String::new(),
                     iban: String::new(),
@@ -527,8 +534,58 @@ impl BankConnector for ComdirectConnector {
     }
 }
 
+/// Parses `/brokerage/v3/depots/{id}/positions` into holdings (amounts in cents).
+pub(crate) fn parse_positions(pos: &Value) -> Vec<crate::models::Holding> {
+    let cents = |v: &Value| json_number_to_cents(&v["value"]).unwrap_or(0);
+    pos["values"]
+        .as_array()
+        .map(|a| a.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .map(|p| {
+            let ins = &p["instrument"];
+            let s = |v: &Value| v.as_str().unwrap_or_default().to_string();
+            let first = |a: String, b: String| if a.is_empty() { b } else { a };
+            let qty = &p["quantity"]["value"];
+            let quantity = qty
+                .as_f64()
+                .or_else(|| qty.as_str().and_then(|x| x.parse().ok()))
+                .unwrap_or(0.0);
+            crate::models::Holding {
+                isin: first(s(&ins["isin"]), s(&p["isin"])),
+                wkn: first(s(&p["wkn"]), s(&ins["wkn"])),
+                name: first(s(&ins["name"]), s(&ins["shortName"])),
+                quantity,
+                current_price_cents: cents(&p["currentPrice"]["price"]),
+                purchase_price_cents: cents(&p["purchasePrice"]),
+                value_cents: cents(&p["currentValue"]),
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn parses_depot_positions() {
+        let j: serde_json::Value = serde_json::from_str(r#"{"values":[
+          {"positionId":"1","wkn":"A0RPWH","quantity":{"value":"12.5","unit":"XXX"},
+           "currentPrice":{"price":{"value":"61.34","unit":"EUR"}},
+           "purchasePrice":{"value":"55.10","unit":"EUR"},
+           "currentValue":{"value":"766.75","unit":"EUR"},
+           "instrument":{"name":"iShares Physical Gold","isin":"IE00B4ND3602"}}],
+          "aggregated":{"currentValue":{"value":"766.75"}}}"#).unwrap();
+        let h = super::parse_positions(&j);
+        assert_eq!(h.len(), 1);
+        assert_eq!(h[0].wkn, "A0RPWH");
+        assert_eq!(h[0].isin, "IE00B4ND3602");
+        assert_eq!(h[0].name, "iShares Physical Gold");
+        assert_eq!(h[0].quantity, 12.5);
+        assert_eq!(h[0].current_price_cents, 6134);
+        assert_eq!(h[0].purchase_price_cents, 5510);
+        assert_eq!(h[0].value_cents, 76675);
+    }
+
     #[test]
     fn strips_remittance_line_numbers() {
         assert_eq!(

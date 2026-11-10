@@ -934,6 +934,18 @@ public final class AppModel {
         }
     }
 
+    func holdings(for accountID: Int64) -> [Holding] {
+        (try? vault?.listHoldings(accountId: accountID)) ?? []
+    }
+
+    /// Deletes one account incl. bookings/documents/holdings (and its connection if it was the last account).
+    func deleteAccount(_ id: Int64) {
+        guard let vault else { return }
+        run { try vault.deleteAccount(accountId: id) }
+        if sidebarSelection == .account(id) { sidebarSelection = .allAccounts }
+        reloadAll()
+    }
+
     func removeConnection(_ id: Int64) {
         guard let vault else { return }
         run { try vault.deleteBankConnection(connectionId: id) }

@@ -1167,6 +1167,19 @@ impl FinTsConnector {
     }
 }
 
+/// Stable per-account key (`external_ref`). Loans (Darlehen) have no IBAN and often share
+/// one account number, distinguished only by the Unterkontomerkmal – it must be part of
+/// the key, otherwise every sub-account collapses into one account with all bookings.
+fn account_label(acc: &SepaAccount) -> String {
+    if !acc.iban.is_empty() {
+        acc.iban.clone()
+    } else if acc.sub_account.is_empty() {
+        acc.account_number.clone()
+    } else {
+        format!("{}-{}", acc.account_number, acc.sub_account)
+    }
+}
+
 /// Localised text for a bank return code (HIRMG/HIRMS) during a transfer.
 fn explain_transfer_code(c: &(String, Option<u32>, String, Vec<String>)) -> String {
     let hint = match c.0.as_str() {
@@ -1362,11 +1375,7 @@ impl BankConnector for FinTsConnector {
                 .as_ref()
                 .map(|u| kind_from_code(u.kind_code))
                 .unwrap_or(AccountKind::Checking);
-            let label = if acc.iban.is_empty() {
-                acc.account_number.clone()
-            } else {
-                acc.iban.clone()
-            };
+            let label = account_label(acc);
             let mut currency = upd
                 .as_ref()
                 .map(|u| u.currency.clone())
@@ -1639,5 +1648,18 @@ mod tests {
         c.st.versions.insert("HKTAN".into(), vec![6]);
         let seg = String::from_utf8(c.hktan_process4(5, "HKIDN")).unwrap();
         assert!(seg.starts_with("HKTAN:5:6+4+HKIDN"), "{seg}");
+    }
+
+    #[test]
+    fn loan_sub_accounts_get_distinct_labels() {
+        let mk = |sub: &str| SepaAccount {
+            iban: String::new(),
+            bic: String::new(),
+            account_number: "0098765400".into(),
+            sub_account: sub.into(),
+            blz: "52090000".into(),
+        };
+        assert_ne!(account_label(&mk("01")), account_label(&mk("02")));
+        assert_eq!(account_label(&mk("")), "0098765400");
     }
 }

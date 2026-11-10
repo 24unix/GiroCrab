@@ -311,6 +311,13 @@ pub struct RemoteAccount {
     pub balance_date: String,
 }
 
+/// Securities position delivered by a connector for a depot account.
+#[derive(Debug, Clone)]
+pub struct RemoteHolding {
+    pub account_ref: String,
+    pub holding: crate::models::Holding,
+}
+
 #[derive(Debug, Clone)]
 pub struct RemoteTransaction {
     pub account_ref: String,
@@ -348,6 +355,8 @@ impl RemoteTransaction {
 pub struct FetchResult {
     pub accounts: Vec<RemoteAccount>,
     pub transactions: Vec<RemoteTransaction>,
+    /// Depot positions; replace the stored holdings of each listed account.
+    pub holdings: Vec<RemoteHolding>,
     /// Updated connector state to persist.
     pub state: Option<serde_json::Value>,
     /// Keep stored balances and add newly imported bookings to them
@@ -573,6 +582,19 @@ pub(crate) fn store_fetch(
             };
             accounts_updated += 1;
             account_ids.insert(acc.external_ref.clone(), id);
+        }
+        for (ref_, acc_id) in &account_ids {
+            if data.holdings.iter().any(|h| &h.account_ref == ref_) {
+                tx.execute("DELETE FROM holdings WHERE account_id = ?1", [acc_id])?;
+                for h in data.holdings.iter().filter(|h| &h.account_ref == ref_) {
+                    let h = &h.holding;
+                    tx.execute(
+                        "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                        params![acc_id, h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents],
+                    )?;
+                }
+            }
         }
         let mut imported = 0u32;
         {
