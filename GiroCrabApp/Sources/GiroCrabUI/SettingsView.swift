@@ -30,8 +30,7 @@ struct SettingsView: View {
 
 struct BankConnectionsSettings: View {
     @Environment(AppModel.self) private var model
-    @State private var addKind: ConnectorKind = .volksbankKasselGoettingen
-    @State private var login = ""
+    @State private var showAddBank = false
     @State private var editing: BankConnection?
 
     var body: some View {
@@ -84,36 +83,18 @@ struct BankConnectionsSettings: View {
                 }
             }
             Section("Bank hinzufügen") {
-                Picker("Institut", selection: $addKind) {
-                    ForEach(bankCatalog()) { d in
-                        Text(d.name).tag(d.kind)
-                    }
+                Button { showAddBank = true } label: {
+                    Label("Bank suchen und hinzufügen …", systemImage: "magnifyingglass")
                 }
-                if addKind == .finTsGeneric {
-                    FinTsAddForm()
-                } else if let d = bankCatalog().first(where: { $0.kind == addKind }) {
-                    TextField(d.loginLabel, text: $login)
-                        .autocorrectionDisabled()
-                    LabeledContent("Verfahren", value: d.protocol)
-                    if !d.bankCode.isEmpty { LabeledContent("BLZ", value: d.bankCode) }
-                    Text(d.note).font(.caption).foregroundStyle(.secondary)
-                    let missing = d.requiredSettings.filter { key in !(model.settings.first { $0.key == key }?.hasValue ?? false) }
-                    if !missing.isEmpty {
-                        Label("Wird nach dem Hinzufügen abgefragt: \(missing.map { settingLabels[$0] ?? $0 }.joined(separator: ", "))", systemImage: "info.circle")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if addKind != .finTsGeneric {
-                    Button("Bank hinzufügen") {
-                        model.addConnection(addKind, login: addKind == .tradeRepublic ? normalizePhoneNumber(input: login) : login)
-                        login = ""
-                    }
-                }
-                Text("Gibt es den Zugang schon (gleiche Bank, gleiche Kennung), wird er aktualisiert statt doppelt angelegt.")
-                    .font(.caption2).foregroundStyle(.secondary)
+                Text("Suche nach Bankname, BLZ oder IBAN: FinTS-Banken, Banken mit eigener API (bunq, comdirect, Trade Republic, PayPal) und PSD2-Banken (N26, Revolut, C24 …).")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showAddBank) {
+            AddBankSheet()
+                .environment(model)
+        }
         .sheet(item: $editing) { c in
             ConnectionEditSheet(connection: c)
                 .environment(model)

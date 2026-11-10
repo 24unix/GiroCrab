@@ -882,6 +882,36 @@ public final class AppModel {
         }
     }
 
+    /// Adds a login at a bank reached via Enable Banking (PSD2), then starts the
+    /// setup (Enable Banking credentials, if missing) and the consent redirect.
+    func addEnableBankingConnection(aspsp: String, country: String, name: String, label: String) {
+        if demoActive, let ov = ownVault {
+            useVault(ov, demo: false)
+        }
+        guard let vault else { return }
+        var newID: Int64?
+        run { newID = try vault.addEnableBankingConnection(aspsp: aspsp, country: country, displayName: name, loginName: label) }
+        reloadAccounts()
+        if let id = newID, let conn = connections.first(where: { $0.id == id }) {
+            toast = String(localized: "\(conn.displayName) hinzugefügt")
+            requestSync(conn)
+        }
+    }
+
+    /// All banks Enable Banking offers (`GET /aspsps`); empty until loaded or without credentials.
+    var livePsd2Banks: [Psd2Bank] = []
+
+    /// Loads the live ASPSP list when the user's Enable Banking credentials are set.
+    func loadLivePsd2Banks() {
+        guard let vault, livePsd2Banks.isEmpty, !isDemo,
+              settingEntry("enablebanking.application_id")?.hasValue == true,
+              settingEntry("enablebanking.private_key_pem")?.hasValue == true else { return }
+        Task { [weak self] in
+            let list = (try? await vault.listEnableBankingAspsps(country: "")) ?? []
+            await MainActor.run { self?.livePsd2Banks = list }
+        }
+    }
+
     /// Setting keys a bank still needs (FinTS product ID, API keys …).
     func missingSettings(for connection: BankConnection) -> [String] {
         guard let d = bankCatalog().first(where: { $0.kind == connection.connector }) else { return [] }

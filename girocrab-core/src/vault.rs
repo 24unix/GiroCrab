@@ -1128,6 +1128,46 @@ impl Vault {
         Ok(id)
     }
 
+    /// Adds a login at a bank reached through Enable Banking (PSD2). `aspsp`
+    /// is the Enable Banking bank name, `country` its ISO alpha-2 code.
+    /// `login_name` is only a label (defaults to the bank name).
+    pub fn add_enable_banking_connection(
+        &self,
+        aspsp: String,
+        country: String,
+        display_name: String,
+        login_name: String,
+    ) -> Result<i64, CoreError> {
+        let aspsp = aspsp.trim().to_string();
+        let country = country.trim().to_uppercase();
+        let key = ConnectorKind::enable_banking_key(&country, &aspsp);
+        if aspsp.is_empty() || ConnectorKind::enable_banking_target(&key).is_none() {
+            return Err(CoreError::InvalidInput {
+                message: tr("Bank oder Ländercode ungültig.").into(),
+            });
+        }
+        let login = if login_name.trim().is_empty() {
+            aspsp.clone()
+        } else {
+            login_name
+        };
+        let display = if display_name.trim().is_empty() {
+            aspsp.clone()
+        } else {
+            display_name
+        };
+        let db = self.db()?;
+        let (id, _) = Self::add_bank_connection_keyed(
+            &db,
+            ConnectorKind::EnableBanking,
+            &key,
+            None,
+            display,
+            login,
+        )?;
+        Ok(id)
+    }
+
     pub fn delete_bank_connection(&self, connection_id: i64) -> Result<(), CoreError> {
         let db = self.db()?;
         db.execute(

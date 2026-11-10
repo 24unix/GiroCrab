@@ -57,7 +57,7 @@ impl BankConnector for DemoConnector {
                 expires_in_seconds: Some(120),
                 poll_interval_seconds: 0,
             },
-            ConnectorKind::AmericanExpress | ConnectorKind::AmazonVisa => Challenge {
+            ConnectorKind::AmericanExpress | ConnectorKind::AmazonVisa | ConnectorKind::EnableBanking => Challenge {
                 kind: ChallengeKind::Redirect,
                 title: tr("Zustimmung beim Kartenherausgeber erteilen").into(),
                 message: tr("Demo: Es wird keine echte Seite geöffnet. Beliebigen Text einfügen (z. B. https://localhost/cb?code=demo).").into(),
@@ -154,9 +154,9 @@ impl BankConnector for DemoConnector {
             let (cp, purpose, cents) = match self.kind {
                 ConnectorKind::PayPal => ("Lieferando.de", "Bestellung Lieferando", -23_40),
                 ConnectorKind::TradeRepublic => ("Trade Republic", "Zinsen", 3_87),
-                ConnectorKind::AmericanExpress | ConnectorKind::AmazonVisa => {
-                    ("AMZN Mktp DE", "Amazon.de Bestellung", -34_99)
-                }
+                ConnectorKind::AmericanExpress
+                | ConnectorKind::AmazonVisa
+                | ConnectorKind::EnableBanking => ("AMZN Mktp DE", "Amazon.de Bestellung", -34_99),
                 _ => (
                     "REWE Markt GmbH",
                     "Kartenzahlung girocard (Demo-Sync)",

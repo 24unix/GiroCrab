@@ -2,14 +2,26 @@ import SwiftUI
 import GiroCrabCore
 
 /// Preset picker + manual BLZ / FinTS URL for "Andere FinTS-Bank".
-/// Any FinTS 3.0 PIN/TAN bank works: pick a preset or type 8-digit BLZ and https URL.
+/// Any FinTS 3.0 PIN/TAN bank works: pick a preset, search for it, or type an
+/// 8-digit BLZ (or paste a German IBAN) – name and FinTS URL are then filled in
+/// from the built-in bank directory. The URL stays editable for custom banks.
 struct FinTsAddForm: View {
     @Environment(AppModel.self) private var model
+    /// Bank chosen in the search picker (pre-fills BLZ, name and URL).
+    var prefill: BankSearchResult? = nil
+    var onAdded: () -> Void = {}
+
     @State private var presets = fintsPresets()
     @State private var presetID = "custom"
     @State private var blz = ""
     @State private var url = ""
+    @State private var bankName = ""
     @State private var login = ""
+    /// Bank found in the directory for the current BLZ.
+    @State private var found: FinTsBankInfo?
+    /// The URL we filled in ourselves; typing anything else marks it as user-edited.
+    @State private var autoURL = ""
+    @State private var urlEdited = false
 
     private var preset: FinTsPreset? { presets.first { $0.id == presetID } }
     private var blzValid: Bool { blz.count == 8 && blz.allSatisfy(\.isASCII) && blz.allSatisfy(\.isNumber) }
@@ -21,10 +33,31 @@ struct FinTsAddForm: View {
             ForEach(presets, id: \.id) { Text($0.name).tag($0.id) }
         }
         .onChange(of: presetID) { _, _ in
-            if let p = preset { blz = p.blz; url = p.url }
+            guard let p = preset else { return }
+            bankName = p.id == "custom" ? "" : p.name
+            urlEdited = false
+            autoURL = p.url
+            url = p.url
+            blz = p.blz
+            lookup()
         }
-        TextField("BLZ (8 Ziffern)", text: $blz).autocorrectionDisabled()
-        TextField("FinTS-URL (https://…)", text: $url).autocorrectionDisabled()
+        TextField("BLZ (8 Ziffern) oder IBAN", text: $blz)
+            .autocorrectionDisabled()
+            .onChange(of: blz) { _, _ in
+                // a pasted German IBAN becomes its BLZ (characters 5–12)
+                if let b = blzFromBankInput(input: blz), b != blz { blz = b; return }
+                lookup()
+            }
+        if let f = found {
+            Label(f.name, systemImage: "checkmark.seal")
+                .font(.caption).foregroundStyle(.secondary)
+        } else if blzValid {
+            Label("BLZ nicht im Verzeichnis – bitte FinTS-URL selbst eintragen.", systemImage: "questionmark.circle")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        TextField("FinTS-URL (https://…)", text: $url)
+            .autocorrectionDisabled()
+            .onChange(of: url) { _, new in if new != autoURL { urlEdited = true } }
         TextField("Anmeldename / VR-NetKey / Kontonummer", text: $login).autocorrectionDisabled()
         if let n = preset?.note, !n.isEmpty {
             Text(n).font(.caption).foregroundStyle(.secondary)
@@ -34,9 +67,43 @@ struct FinTsAddForm: View {
                 .font(.caption).foregroundStyle(.orange)
         }
         Button("Bank hinzufügen") {
-            model.addFinTsConnection(name: (preset?.id ?? "custom") == "custom" ? "FinTS-Bank \(blz)" : (preset?.name ?? ""), blz: blz, url: url, login: login)
+            let name = bankName.trimmingCharacters(in: .whitespaces)
+            model.addFinTsConnection(name: name.isEmpty ? "FinTS-Bank \(blz)" : name, blz: blz, url: url, login: login)
             login = ""
+            onAdded()
         }
         .disabled(!canAdd)
+        .onAppear { apply(prefill) }
+        .onChange(of: prefill?.id) { _, _ in apply(prefill) }
+    }
+
+    private func apply(_ r: BankSearchResult?) {
+        guard let r, r.mode == .finTs else { return }
+        presetID = "custom"
+        bankName = r.name
+        autoURL = r.url
+        urlEdited = false
+        url = r.url
+        blz = r.blz
+        lookup()
+    }
+
+    /// Fills in name and URL from the directory once a full BLZ is typed.
+    private func lookup() {
+        guard blzValid, let info = lookupFintsBankByBlz(blz: blz) else {
+            // BLZ no longer matches: drop what we filled in ourselves
+            if found != nil {
+                found = nil
+                if !urlEdited, url == autoURL { url = ""; autoURL = "" }
+            }
+            return
+        }
+        found = info
+        if bankName.isEmpty || preset?.name == bankName || presetID == "custom" { bankName = info.name }
+        if !urlEdited || url.isEmpty {
+            autoURL = info.url
+            url = info.url
+            urlEdited = false
+        }
     }
 }

@@ -138,6 +138,7 @@ struct ConnectionEditSheet: View {
         case .tradeRepublic: return []
         case .americanExpress, .amazonVisa: return []
         case .bunq: return ["bunq.environment"]
+        case .enableBanking: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
         }
     }
 

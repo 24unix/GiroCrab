@@ -24,6 +24,10 @@ pub enum ConnectorKind {
     AmazonVisa,
     /// bunq public API with the user's own API key
     Bunq,
+    /// Any other bank via Enable Banking PSD2 aggregation (N26, Revolut, …).
+    /// The bank lives in the connection's connector key
+    /// `enablebanking:<country>:<ASPSP name>`.
+    EnableBanking,
 }
 
 impl ConnectorKind {
@@ -38,13 +42,28 @@ impl ConnectorKind {
             ConnectorKind::AmericanExpress => "enablebanking:amex",
             ConnectorKind::AmazonVisa => "enablebanking:amazonvisa",
             ConnectorKind::Bunq => "bunq",
+            ConnectorKind::EnableBanking => "enablebanking",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
         if let Some(k) = Self::all().into_iter().find(|k| k.as_str() == s) {
             return Some(k);
         }
-        Self::fints_blz(s).map(|_| ConnectorKind::FinTsGeneric)
+        if Self::fints_blz(s).is_some() {
+            return Some(ConnectorKind::FinTsGeneric);
+        }
+        Self::enable_banking_target(s).map(|_| ConnectorKind::EnableBanking)
+    }
+    /// `(country, ASPSP name)` of an `enablebanking:<CC>:<name>` connector key.
+    pub fn enable_banking_target(key: &str) -> Option<(&str, &str)> {
+        let rest = key.strip_prefix("enablebanking:")?;
+        let (cc, name) = rest.split_once(':')?;
+        (cc.len() == 2 && cc.bytes().all(|b| b.is_ascii_uppercase()) && !name.trim().is_empty())
+            .then_some((cc, name))
+    }
+    /// Connector key stored in the DB for a generic Enable Banking bank.
+    pub fn enable_banking_key(country: &str, aspsp: &str) -> String {
+        format!("enablebanking:{}:{}", country.to_uppercase(), aspsp.trim())
     }
     /// BLZ of a `fints:<8 digits>` connector key (any FinTS bank).
     pub fn fints_blz(key: &str) -> Option<&str> {
@@ -66,6 +85,7 @@ impl ConnectorKind {
             ConnectorKind::AmericanExpress,
             ConnectorKind::AmazonVisa,
             ConnectorKind::Bunq,
+            ConnectorKind::EnableBanking,
         ]
     }
 }

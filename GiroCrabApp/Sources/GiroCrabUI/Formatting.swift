@@ -217,6 +217,7 @@ extension ConnectorKind {
         case .americanExpress: return "American Express"
         case .amazonVisa: return "Amazon Visa"
         case .bunq: return "bunq"
+        case .enableBanking: return "Enable Banking (PSD2)"
         }
     }
 
@@ -232,6 +233,7 @@ extension ConnectorKind {
         case .americanExpress: return "#2E77BC"
         case .amazonVisa: return "#3C2A7A"
         case .bunq: return "#1F8F5F"
+        case .enableBanking: return "#5B5BD6"
         }
     }
 
@@ -248,6 +250,7 @@ extension ConnectorKind {
         case .americanExpress: return "AX"
         case .amazonVisa: return "AV"
         case .bunq: return "bq"
+        case .enableBanking: return "PS"
         }
     }
 }

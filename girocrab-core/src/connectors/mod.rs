@@ -24,11 +24,14 @@ use crate::models::{AccountKind, ConnectorKind, KnownRecipient, SepaTransferRequ
 use crate::secret::SecretString;
 use crate::vault::Vault;
 
+pub mod bank_directory;
 pub mod bunq;
 pub mod comdirect;
 pub mod demo;
 pub mod enable_banking;
 pub mod fints;
+pub mod fints_directory;
+mod fints_directory_data;
 pub mod fints_presets;
 pub mod moneymoney_db;
 pub mod moneymoney_import;
@@ -213,6 +216,21 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             secret_label: tr("(Anmeldung im Browser-Fenster)").into(),
             required_settings: vec![],
             note: tr("Herausgeber: Open Bank S.A. (Zinia). Anmeldung im eingebetteten Browser – keine API-Schlüssel nötig. Optional: eigene PSD2-/Enable-Banking-API unter „Erweitert“.").into(),
+        },
+        ConnectorKind::EnableBanking => BankDescriptor {
+            kind,
+            name: tr("Bank per PSD2 (Enable Banking)").into(),
+            protocol: tr("PSD2 über Enable Banking (eigene Anwendung)").into(),
+            bank_code: String::new(),
+            sf_symbol: "building.columns.circle.fill".into(),
+            login_label: tr("Bezeichnung (z. B. Kontoname)").into(),
+            secret_label: tr("(Zustimmung im Browser)").into(),
+            required_settings: s(&[
+                "enablebanking.application_id",
+                "enablebanking.private_key_pem",
+                "enablebanking.redirect_url",
+            ]),
+            note: tr("Banken wie N26, Revolut oder C24 per PSD2. Benötigt eine kostenlose eigene Anwendung auf enablebanking.com (Application-ID, privater Schlüssel, Redirect-URL). Die Zustimmung erteilen Sie im Browser Ihrer Bank.").into(),
         },
         ConnectorKind::Bunq => BankDescriptor {
             kind,
@@ -413,6 +431,12 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
             "enablebanking.country.amazonvisa",
         )),
         ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),
+        ConnectorKind::EnableBanking => {
+            let (country, aspsp) = ConnectorKind::enable_banking_target(key).unwrap_or(("DE", ""));
+            Box::new(enable_banking::EnableBankingConnector::for_aspsp(
+                aspsp, country,
+            ))
+        }
     }
 }
 
@@ -823,8 +847,16 @@ impl Vault {
             }
             if let Some(blz) = ConnectorKind::fints_blz(&key_str) {
                 let k = format!("fints.url.{blz}");
-                if let Some(v) = Vault::setting_inner(&db, &k)? {
-                    settings.insert(k, SecretString::new(v));
+                match Vault::setting_inner(&db, &k)? {
+                    Some(v) if !v.is_empty() => {
+                        settings.insert(k, SecretString::new(v));
+                    }
+                    // e.g. a MoneyMoney import created the login without a URL
+                    _ => {
+                        if let Some(url) = fints_directory::url_for_blz(blz) {
+                            settings.insert(k, SecretString::new(url.to_string()));
+                        }
+                    }
                 }
             }
             if !demo {

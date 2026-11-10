@@ -46,9 +46,11 @@ struct PsdState {
 }
 
 pub struct EnableBankingConnector {
+    /// Setting that may override the ASPSP name; empty = fixed bank (generic kind).
     aspsp_setting: &'static str,
-    aspsp_default: &'static str,
+    aspsp_default: String,
     country_setting: &'static str,
+    country_default: String,
     client: Option<reqwest::Client>,
     jwt: String,
     expected_state: String,
@@ -63,8 +65,23 @@ impl EnableBankingConnector {
     ) -> Self {
         EnableBankingConnector {
             aspsp_setting,
-            aspsp_default,
+            aspsp_default: aspsp_default.to_string(),
             country_setting,
+            country_default: "DE".to_string(),
+            client: None,
+            jwt: String::new(),
+            expected_state: String::new(),
+            st: PsdState::default(),
+        }
+    }
+
+    /// Connector for one fixed bank (generic `ConnectorKind::EnableBanking`).
+    pub fn for_aspsp(aspsp: &str, country: &str) -> Self {
+        EnableBankingConnector {
+            aspsp_setting: "",
+            aspsp_default: aspsp.to_string(),
+            country_setting: "",
+            country_default: country.to_uppercase(),
             client: None,
             jwt: String::new(),
             expected_state: String::new(),
@@ -73,12 +90,19 @@ impl EnableBankingConnector {
     }
 
     fn make_jwt(ctx: &ConnectContext) -> CoreResult<String> {
-        let app_id = ctx.setting("enablebanking.application_id")?;
-        let key =
-            EncodingKey::from_rsa_pem(ctx.setting("enablebanking.private_key_pem")?.as_bytes())
-                .map_err(|e| CoreError::InvalidInput {
-                    message: format!("Enable Banking private key: {e}"),
-                })?;
+        Self::make_jwt_for(
+            ctx.setting("enablebanking.application_id")?,
+            ctx.setting("enablebanking.private_key_pem")?,
+        )
+    }
+
+    /// RS256 JWT for the Enable Banking API from the user's own application.
+    pub(crate) fn make_jwt_for(app_id: &str, private_key_pem: &str) -> CoreResult<String> {
+        let key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes()).map_err(|e| {
+            CoreError::InvalidInput {
+                message: format!("Enable Banking private key: {e}"),
+            }
+        })?;
         let mut header = Header::new(Algorithm::RS256);
         header.kid = Some(app_id.to_string());
         let now = chrono::Utc::now().timestamp();
@@ -130,6 +154,52 @@ impl EnableBankingConnector {
             });
         }
         Ok(v)
+    }
+}
+
+/// A bank as listed by `GET /aspsps` (only what the picker needs).
+pub(crate) fn parse_aspsps(v: &Value) -> Vec<(String, String)> {
+    v["aspsps"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter(|b| {
+                    // keep banks that offer personal accounts (field absent = keep)
+                    b["psu_types"]
+                        .as_array()
+                        .map(|t| t.iter().any(|x| x.as_str() == Some("personal")))
+                        .unwrap_or(true)
+                })
+                .filter_map(|b| {
+                    Some((
+                        b["name"].as_str()?.to_string(),
+                        b["country"].as_str().unwrap_or_default().to_uppercase(),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Exact ASPSP spelling for `wanted` from a `GET /aspsps` answer: a
+/// case-insensitive match, else the single bank whose name contains / is
+/// contained in `wanted`. `None` when nothing (or more than one) fits.
+pub(crate) fn pick_aspsp_name(list: &Value, wanted: &str) -> Option<String> {
+    let w = wanted.trim().to_lowercase();
+    if w.is_empty() {
+        return None;
+    }
+    let names: Vec<String> = parse_aspsps(list).into_iter().map(|(n, _)| n).collect();
+    if let Some(n) = names.iter().find(|n| n.to_lowercase() == w) {
+        return Some(n.clone());
+    }
+    let mut fuzzy = names.iter().filter(|n| {
+        let l = n.to_lowercase();
+        l.contains(&w) || w.contains(&l)
+    });
+    match (fuzzy.next(), fuzzy.next()) {
+        (Some(n), None) => Some(n.clone()),
+        _ => None,
     }
 }
 
@@ -186,10 +256,31 @@ impl BankConnector for EnableBankingConnector {
         self.expected_state = uuid::Uuid::new_v4().to_string();
         let valid_until = (chrono::Utc::now() + chrono::Duration::days(90)).to_rfc3339();
         let configured = ctx
-            .setting_or(self.aspsp_setting, self.aspsp_default)
+            .setting_or(self.aspsp_setting, &self.aspsp_default)
+            .to_string();
+        let country = ctx
+            .setting_or(self.country_setting, &self.country_default)
             .to_string();
         // Amazon Visa is issued by Open Bank S.A. under the brand "Zinia": try both names.
         let mut names = vec![configured.clone()];
+        // Generic banks come from our built-in catalog, whose names are
+        // best-effort: ask the live ASPSP list for the exact spelling first.
+        if self.aspsp_setting.is_empty() {
+            if let Ok(list) = self
+                .call(
+                    reqwest::Method::GET,
+                    &format!("/aspsps?country={country}"),
+                    None,
+                )
+                .await
+            {
+                if let Some(exact) = pick_aspsp_name(&list, &configured) {
+                    if exact != configured {
+                        names.insert(0, exact);
+                    }
+                }
+            }
+        }
         for alt in ["Open Bank", "Zinia"] {
             if self.aspsp_setting.ends_with("amazonvisa")
                 && !names.iter().any(|n| n.eq_ignore_ascii_case(alt))
@@ -202,7 +293,7 @@ impl BankConnector for EnableBankingConnector {
         for name in &names {
             let body = json!({
                 "access": {"valid_until": valid_until},
-                "aspsp": {"name": name, "country": ctx.setting_or(self.country_setting, "DE")},
+                "aspsp": {"name": name, "country": country},
                 "state": self.expected_state,
                 "redirect_url": ctx.setting("enablebanking.redirect_url")?,
                 "psu_type": "personal",
@@ -275,7 +366,7 @@ impl BankConnector for EnableBankingConnector {
                     a["name"]
                         .as_str()
                         .or(a["product"].as_str())
-                        .unwrap_or(self.aspsp_default)
+                        .unwrap_or(&self.aspsp_default)
                         .to_string(),
                     a["account_id"]["iban"]
                         .as_str()
@@ -422,6 +513,61 @@ impl BankConnector for EnableBankingConnector {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn aspsp_name_resolution() {
+        use serde_json::json;
+        let list = json!({"aspsps": [
+            {"name": "N26 Bank", "country": "DE"},
+            {"name": "Revolut", "country": "DE"},
+            {"name": "Santander Consumer Bank", "country": "DE"},
+            {"name": "Santander Bank Polska", "country": "DE"}
+        ]});
+        // exact, case-insensitive
+        assert_eq!(
+            super::pick_aspsp_name(&list, "revolut").as_deref(),
+            Some("Revolut")
+        );
+        // unique partial match
+        assert_eq!(
+            super::pick_aspsp_name(&list, "N26").as_deref(),
+            Some("N26 Bank")
+        );
+        // ambiguous / unknown / empty
+        assert_eq!(super::pick_aspsp_name(&list, "Santander"), None);
+        assert_eq!(super::pick_aspsp_name(&list, "Nope"), None);
+        assert_eq!(super::pick_aspsp_name(&list, " "), None);
+        assert_eq!(super::pick_aspsp_name(&json!({}), "N26"), None);
+    }
+
+    #[test]
+    fn generic_connector_key() {
+        use crate::models::ConnectorKind;
+        let k = ConnectorKind::enable_banking_key("de", "N26");
+        assert_eq!(k, "enablebanking:DE:N26");
+        assert_eq!(
+            ConnectorKind::from_str(&k),
+            Some(ConnectorKind::EnableBanking)
+        );
+        assert_eq!(
+            ConnectorKind::enable_banking_target(&k),
+            Some(("DE", "N26"))
+        );
+        assert_eq!(
+            ConnectorKind::enable_banking_target("enablebanking:AT:Erste Bank"),
+            Some(("AT", "Erste Bank"))
+        );
+        // legacy keys keep their dedicated kinds
+        assert_eq!(
+            ConnectorKind::from_str("enablebanking:amex"),
+            Some(ConnectorKind::AmericanExpress)
+        );
+        assert_eq!(
+            ConnectorKind::enable_banking_target("enablebanking:amex"),
+            None
+        );
+        assert_eq!(ConnectorKind::from_str("enablebanking:DEU:N26"), None);
+        assert_eq!(ConnectorKind::from_str("enablebanking:DE:"), None);
+    }
     #[test]
     fn extracts_code_from_redirect() {
         assert_eq!(

@@ -828,3 +828,61 @@ fn starter_categories_stay_when_the_vault_has_bookings() {
     v.import_moneymoney_database(path, PW.into(), o).unwrap();
     assert_eq!(v.list_categories(None, None).unwrap().len(), starter);
 }
+
+#[test]
+fn directory_banks_map_to_fints_keys() {
+    // (bank code, name) -> stored connector key
+    for (code, name, key) in [
+        ("50010517", "ING", "fints:50010517"),
+        ("43060967", "GLS Gemeinschaftsbank", "fints:43060967"),
+        ("12030000", "DKB", "fints:12030000"),
+        ("76030080", "Consorsbank", "fints:76030080"),
+        ("10077777", "Norisbank", "fints:10077777"),
+        ("66090800", "BBBank", "fints:66090800"),
+        ("30060601", "apoBank", "fints:30060601"),
+        ("83094495", "EthikBank", "fints:83094495"),
+        ("10050000", "Berliner Sparkasse", "fints:10050000"),
+        ("10070000", "Deutsche Bank", "fints:10070000"),
+        ("70020270", "HypoVereinsbank", "fints:70020270"),
+        ("1005 0000", "Berliner Sparkasse", "fints:10050000"),
+    ] {
+        let (kind, k) = connector_key_for(code, name).unwrap_or_else(|| panic!("{code}"));
+        assert_eq!(kind, ConnectorKind::FinTsGeneric, "{code}");
+        assert_eq!(k, key);
+    }
+    // dedicated connectors keep precedence over the directory
+    assert_eq!(
+        connector_key_for("20041111", "comdirect").unwrap().0,
+        ConnectorKind::Comdirect
+    );
+    assert_eq!(
+        connector_key_for("52090000", "Volksbank Kassel Göttingen")
+            .unwrap()
+            .1,
+        "fints:52090000"
+    );
+    // unknown German bank code stays unsupported
+    assert!(connector_key_for("12345678", "Sparkasse Musterstadt").is_none());
+}
+
+#[test]
+fn generic_enable_banking_connection_is_stored_once() {
+    let v = vault();
+    let a = v
+        .add_enable_banking_connection("N26".into(), "de".into(), "".into(), "".into())
+        .unwrap();
+    let b = v
+        .add_enable_banking_connection("N26".into(), "DE".into(), "N26".into(), "".into())
+        .unwrap();
+    assert_eq!(a, b);
+    assert!(v
+        .add_enable_banking_connection("".into(), "DE".into(), "".into(), "".into())
+        .is_err());
+    assert!(v
+        .add_enable_banking_connection("N26".into(), "DEU".into(), "".into(), "".into())
+        .is_err());
+    let c = v.list_bank_connections().unwrap();
+    assert_eq!(c.len(), 1);
+    assert_eq!(c[0].connector, ConnectorKind::EnableBanking);
+    assert_eq!(c[0].display_name, "N26");
+}

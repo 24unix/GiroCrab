@@ -32,8 +32,7 @@ struct DemoBanner: View {
 /// Own vault without accounts: three steps + way back to the demo.
 struct EmptyVaultCard: View {
     @Environment(AppModel.self) private var model
-    @State private var addKind: ConnectorKind = .volksbankKasselGoettingen
-    @State private var login = ""
+    @State private var showAddBank = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -43,25 +42,12 @@ struct EmptyVaultCard: View {
             step(1, "Bank wählen und Anmeldenamen eingeben")
             step(2, "Fehlende Angaben ergänzen (z. B. FinTS-Produkt-ID, API-Schlüssel) – das Formular öffnet sich automatisch")
             step(3, "PIN eingeben und in der Banking-App freigeben")
-            HStack(spacing: 8) {
-                Picker("Bank", selection: $addKind) {
-                    ForEach(bankCatalog()) { d in Text(d.name).tag(d.kind) }
-                }
-                .labelsHidden()
-                .frame(width: 230)
-                if addKind != .finTsGeneric {
-                    TextField(bankCatalog().first { $0.kind == addKind }?.loginLabel ?? String(localized: "Anmeldename"), text: $login)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Hinzufügen") {
-                        model.addConnection(addKind, login: login)
-                        login = ""
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
+            Button { showAddBank = true } label: {
+                Label("Bank suchen und hinzufügen …", systemImage: "magnifyingglass")
+                    .frame(maxWidth: .infinity)
             }
-            if addKind == .finTsGeneric {
-                Form { FinTsAddForm() }.formStyle(.grouped).scrollDisabled(true).frame(minHeight: 260)
-            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             #if os(macOS)
             Button { model.openMoneyMoneyImport() } label: {
                 Label("Aus MoneyMoney importieren…", systemImage: "square.and.arrow.down.on.square")
@@ -82,6 +68,10 @@ struct EmptyVaultCard: View {
             }
         }
         .card()
+        .sheet(isPresented: $showAddBank) {
+            AddBankSheet()
+                .environment(model)
+        }
     }
 
     private func step(_ n: Int, _ text: LocalizedStringKey) -> some View {

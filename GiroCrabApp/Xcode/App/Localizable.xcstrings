@@ -597,6 +597,17 @@
         }
       }
     },
+    "Andere FinTS-Bank (BLZ + URL manuell)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other FinTS bank (enter bank code + URL manually)"
+          }
+        }
+      }
+    },
     "API-Schlüssel (wird nicht gespeichert)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1093,6 +1104,50 @@
         }
       }
     },
+    "Bank suchen und hinzufügen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search and add a bank …"
+          }
+        }
+      }
+    },
+    "Bank, BLZ oder IBAN suchen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search bank, bank code or IBAN …"
+          }
+        }
+      }
+    },
+    "Benötigt eine kostenlose eigene Enable-Banking-Anwendung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Needs a free Enable Banking application of your own"
+          }
+        }
+      }
+    },
+    "Bezeichnung (optional)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Label (optional)"
+          }
+        }
+      }
+    },
     "BIC" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1456,6 +1511,28 @@
         }
       }
     },
+    "BLZ (8 Ziffern) oder IBAN" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank code (8 digits) or IBAN"
+          }
+        }
+      }
+    },
+    "BLZ nicht im Verzeichnis – bitte FinTS-URL selbst eintragen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank code not in the directory – please enter the FinTS URL yourself."
+          }
+        }
+      }
+    },
     "Bonus auf Kartenzahlungen, automatisch in den Sparplan investiert." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1781,6 +1858,17 @@
         }
       }
     },
+    "Die Zustimmung geben Sie im Browser Ihrer Bank. Dafür brauchen Sie eine kostenlose eigene Anwendung auf enablebanking.com (Application-ID, privater Schlüssel, Redirect-URL)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You give consent in your bank's browser page. This needs a free application of your own on enablebanking.com (application ID, private key, redirect URL)."
+          }
+        }
+      }
+    },
     "Diese Angaben fehlen noch, bevor Buchungen abgerufen werden können." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1825,6 +1913,28 @@
         }
       }
     },
+    "Direkt (Eigene API)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Direct (own API)"
+          }
+        }
+      }
+    },
+    "Direkt (FinTS 3.0 / HBCI)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Direct (FinTS 3.0 / HBCI)"
+          }
+        }
+      }
+    },
     "Direkt-Login (Web-Session)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1832,6 +1942,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Direct Login (Web Session)"
+          }
+        }
+      }
+    },
+    "Direkter Zugang über die API der Bank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Direct access through the bank's own API"
           }
         }
       }
@@ -1871,6 +1992,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Domain assignment removed"
+          }
+        }
+      }
+    },
+    "Eigene API" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Own API"
           }
         }
       }
@@ -2179,6 +2311,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Set"
+          }
+        }
+      }
+    },
+    "FinTS" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FinTS"
           }
         }
       }
@@ -2997,6 +3140,17 @@
         }
       }
     },
+    "Keine Bank gefunden. Prüfen Sie die Schreibweise oder geben Sie die BLZ ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No bank found. Check the spelling or enter the bank code."
+          }
+        }
+      }
+    },
     "Keine Belege" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3037,6 +3191,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No Rule Selected"
+          }
+        }
+      }
+    },
+    "Keine Registrierung bei Dritten nötig" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No third-party registration needed"
           }
         }
       }
@@ -3224,6 +3389,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Credit card"
+          }
+        }
+      }
+    },
+    "Land" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Country"
           }
         }
       }
@@ -4192,6 +4368,39 @@
         }
       }
     },
+    "PSD2" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PSD2"
+          }
+        }
+      }
+    },
+    "PSD2 (via Enable Banking)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PSD2 (via Enable Banking)"
+          }
+        }
+      }
+    },
+    "PSD2 über Enable Banking" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PSD2 via Enable Banking"
+          }
+        }
+      }
+    },
     "Push-Nachricht gesendet" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4740,6 +4949,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tier 3 – fallback"
+          }
+        }
+      }
+    },
+    "Suche nach Bankname, BLZ oder IBAN: FinTS-Banken, Banken mit eigener API (bunq, comdirect, Trade Republic, PayPal) und PSD2-Banken (N26, Revolut, C24 …)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search by bank name, bank code or IBAN: FinTS banks, banks with their own API (bunq, comdirect, Trade Republic, PayPal) and PSD2 banks (N26, Revolut, C24 …)."
           }
         }
       }
@@ -5367,6 +5587,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "dictionary"
+          }
+        }
+      }
+    },
+    "z. B. Sparkasse, ING, N26, Revolut, bunq – oder die 8-stellige BLZ / Ihre IBAN" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "e.g. Sparkasse, ING, N26, Revolut, bunq – or the 8-digit bank code / your IBAN"
           }
         }
       }
