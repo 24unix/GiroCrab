@@ -6317,6 +6317,39 @@
           }
         }
       }
+    },
+    "TAN-Medium / Gerätename (optional, z. B. bei Postbank BestSign)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAN medium / device name (optional, e.g. for Postbank BestSign)"
+          }
+        }
+      }
+    },
+    "Postbank: Als Anmeldename die Postbank ID verwenden (nicht die Kontonummer)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Postbank: use your Postbank ID as the login name (not the account number)."
+          }
+        }
+      }
+    },
+    "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie hier den Gerätenamen aus der BestSign-/App-Verwaltung ein, z. B. SO:Gerätename." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If the bank asks for a TAN medium (error 9210), enter the device name from your BestSign/app settings here, e.g. SO:DeviceName."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -1091,12 +1091,14 @@ impl Vault {
 
     /// Adds a login at any FinTS 3.0 PIN/TAN bank and stores the bank's URL
     /// (`fints.url.<blz>`). `blz` must be 8 digits, `url` an https URL.
+    /// `tan_medium` is optional (stored as `fints.tan_medium.<connection id>`).
     pub fn add_fints_connection(
         &self,
         blz: String,
         url: String,
         display_name: String,
         login_name: String,
+        tan_medium: String,
     ) -> Result<i64, CoreError> {
         let blz = blz.trim().to_string();
         let url = url.trim().to_string();
@@ -1125,6 +1127,15 @@ impl Vault {
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![format!("fints.url.{blz}"), url],
         )?;
+        // Optional TAN medium name (HKTAN), e.g. Postbank BestSign "SO:Gerät".
+        let tan_medium = tan_medium.trim();
+        if !tan_medium.is_empty() {
+            db.execute(
+                "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, 0)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![format!("fints.tan_medium.{id}"), tan_medium],
+            )?;
+        }
         Ok(id)
     }
 

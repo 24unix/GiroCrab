@@ -17,6 +17,7 @@ struct FinTsAddForm: View {
     @State private var url = ""
     @State private var bankName = ""
     @State private var login = ""
+    @State private var tanMedium = ""
     /// Bank found in the directory for the current BLZ.
     @State private var found: FinTsBankInfo?
     /// The URL we filled in ourselves; typing anything else marks it as user-edited.
@@ -26,6 +27,12 @@ struct FinTsAddForm: View {
     private var preset: FinTsPreset? { presets.first { $0.id == presetID } }
     private var blzValid: Bool { blz.count == 8 && blz.allSatisfy(\.isASCII) && blz.allSatisfy(\.isNumber) }
     private var urlValid: Bool { url.hasPrefix("https://") && url.count > 9 && !url.contains(where: \.isWhitespace) }
+    /// Banks that use BestSign / need a TAN medium name and (Postbank) the Postbank ID.
+    private var bankName_lc: String { (found?.name ?? bankName).lowercased() }
+    private var isPostbank: Bool { bankName_lc.contains("postbank") }
+    private var needsMediumHint: Bool {
+        isPostbank || bankName_lc.contains("deutsche bank") || bankName_lc.contains("norisbank")
+    }
     private var canAdd: Bool { blzValid && urlValid && !login.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
@@ -59,6 +66,16 @@ struct FinTsAddForm: View {
             .autocorrectionDisabled()
             .onChange(of: url) { _, new in if new != autoURL { urlEdited = true } }
         TextField("Anmeldename / VR-NetKey / Kontonummer", text: $login).autocorrectionDisabled()
+        TextField("TAN-Medium / Gerätename (optional, z. B. bei Postbank BestSign)", text: $tanMedium)
+            .autocorrectionDisabled()
+        if isPostbank {
+            Label("Postbank: Als Anmeldename die Postbank ID verwenden (nicht die Kontonummer).", systemImage: "info.circle")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        if needsMediumHint {
+            Text("Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie hier den Gerätenamen aus der BestSign-/App-Verwaltung ein, z. B. SO:Gerätename.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
         if let n = preset?.note, !n.isEmpty {
             Text(n).font(.caption).foregroundStyle(.secondary)
         }
@@ -68,8 +85,9 @@ struct FinTsAddForm: View {
         }
         Button("Bank hinzufügen") {
             let name = bankName.trimmingCharacters(in: .whitespaces)
-            model.addFinTsConnection(name: name.isEmpty ? "FinTS-Bank \(blz)" : name, blz: blz, url: url, login: login)
+            model.addFinTsConnection(name: name.isEmpty ? "FinTS-Bank \(blz)" : name, blz: blz, url: url, login: login, tanMedium: tanMedium)
             login = ""
+            tanMedium = ""
             onAdded()
         }
         .disabled(!canAdd)

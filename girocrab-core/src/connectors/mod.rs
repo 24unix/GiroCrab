@@ -859,6 +859,12 @@ impl Vault {
                     }
                 }
             }
+            let tm_key = format!("fints.tan_medium.{connection_id}");
+            if let Some(v) = Vault::setting_inner(&db, &tm_key)? {
+                if !v.trim().is_empty() {
+                    settings.insert(tm_key, SecretString::new(v));
+                }
+            }
             if !demo {
                 for key in descriptor(kind).required_settings {
                     if !settings.contains_key(&key) {

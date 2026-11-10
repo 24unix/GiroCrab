@@ -867,13 +867,13 @@ public final class AppModel {
     }
 
     /// Adds a login at any FinTS 3.0 bank (BLZ + https URL), then starts setup / PIN entry.
-    func addFinTsConnection(name: String, blz: String, url: String, login: String) {
+    func addFinTsConnection(name: String, blz: String, url: String, login: String, tanMedium: String = "") {
         if demoActive, let ov = ownVault {
             useVault(ov, demo: false)
         }
         guard let vault else { return }
         var newID: Int64?
-        run { newID = try vault.addFintsConnection(blz: blz, url: url, displayName: name, loginName: login) }
+        run { newID = try vault.addFintsConnection(blz: blz, url: url, displayName: name, loginName: login, tanMedium: tanMedium) }
         reloadSettings()
         reloadAccounts()
         if let id = newID, let conn = connections.first(where: { $0.id == id }) {

@@ -243,6 +243,9 @@ pub struct FinTsConnector {
     upd: Vec<UpdAccount>,
     /// A SEPA transfer (HKCCS) is awaiting its TAN.
     transferring: bool,
+    /// TAN medium name entered by the user (e.g. Postbank BestSign `SO:Gerät`);
+    /// wins over the HKTAB lookup.
+    tan_medium_override: String,
 }
 
 impl FinTsConnector {
@@ -261,6 +264,7 @@ impl FinTsConnector {
             product_version: String::new(),
             upd: Vec::new(),
             transferring: false,
+            tan_medium_override: String::new(),
         }
     }
 
@@ -535,7 +539,7 @@ impl FinTsConnector {
                 self.st.sec_func = pick;
             }
         }
-        if let Some(hitab) = reply.first("HITAB") {
+        if let (Some(hitab), true) = (reply.first("HITAB"), self.tan_medium_override.is_empty()) {
             for el in hitab.elements.iter().skip(2) {
                 let texts: Vec<&str> = el.iter().map(|v| v.text()).collect();
                 if texts.get(1) == Some(&"1") {
@@ -1263,6 +1267,13 @@ impl BankConnector for FinTsConnector {
         }
         if let Ok(st) = serde_json::from_value::<FinTsState>(ctx.state.clone()) {
             self.st = st;
+        }
+        self.tan_medium_override = ctx
+            .setting_or(&format!("fints.tan_medium.{}", ctx.connection_id), "")
+            .trim()
+            .to_string();
+        if !self.tan_medium_override.is_empty() {
+            self.st.tan_medium = self.tan_medium_override.clone();
         }
         if self.st.system_id.is_empty() || self.st.sec_func.is_empty() {
             self.sync_dialog(ctx).await?;
