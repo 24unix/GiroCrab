@@ -77,6 +77,11 @@ struct BunqState {
     user_id: i64,
     /// Payment id -> `updated` timestamp when its receipts were last checked.
     receipts_checked: BTreeMap<i64, String>,
+    /// Account id -> payment id where the rotating re-check of older
+    /// payments stopped (continues with older ids on the next sync).
+    receipt_cursor: BTreeMap<i64, i64>,
+    /// Attachment ids already imported (skip the download next time).
+    attachments_done: BTreeSet<i64>,
     /// Monthly statements already imported ("{account id}:{YYYY-MM}").
     statements_done: BTreeSet<String>,
 }
@@ -494,9 +499,11 @@ impl BunqConnector {
         };
         // Receipt lookups cost one call each: never-checked payments first,
         // then recent ones again (receipts are usually added within days;
-        // adding one does not change the payment's `updated`).
+        // adding one does not change the payment's `updated`), then the
+        // older ones in rotation so a late receipt is still found.
         let mut fresh = Vec::new();
         let mut recheck = Vec::new();
+        let mut older = Vec::new();
         for p in payments {
             let (Some(pid), age) = (p["id"].as_i64(), days_ago(p)) else {
                 continue;
@@ -509,13 +516,51 @@ impl BunqConnector {
                 fresh.push(pid);
             } else if age <= RECEIPT_RECHECK_DAYS {
                 recheck.push(pid);
+            } else {
+                older.push(pid);
             }
         }
+        let cursor = self.state.receipt_cursor.get(&account_id).copied();
+        let (rotated, next_cursor) = rotate_older(
+            older,
+            cursor,
+            MAX_RECEIPT_LOOKUPS.saturating_sub(fresh.len() + recheck.len()),
+        );
+        match next_cursor {
+            Some(c) => self.state.receipt_cursor.insert(account_id, c),
+            None => self.state.receipt_cursor.remove(&account_id),
+        };
         let lookup: BTreeSet<i64> = fresh
             .into_iter()
             .chain(recheck)
+            .chain(rotated)
             .take(MAX_RECEIPT_LOOKUPS)
             .collect();
+        // Payments of a request (direct debits, paid bunq requests) do not
+        // take notes: the app stores them on the accepted RequestResponse,
+        // which the payment does not reference. One listing per account,
+        // only when needed.
+        let needs_requests = payments.iter().any(|p| {
+            p["id"].as_i64().is_some_and(|id| lookup.contains(&id)) && is_request_payment(p)
+        });
+        let responses: Vec<Value> = if needs_requests {
+            let path = format!(
+                "/v1/user/{}/monetary-account/{account_id}/request-response?count=200",
+                self.state.user_id
+            );
+            match self.get(&path).await {
+                Ok(v) => v["Response"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|i| i["RequestResponse"].clone())
+                    .collect(),
+                Err(_) => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
+        let mut drafts: Option<Vec<Value>> = None; // listed on first need
         let mut docs = Vec::new();
         for p in payments {
             let Some(pid) = p["id"].as_i64() else {
@@ -532,11 +577,46 @@ impl BunqConnector {
             // 2) receipts added in the app (one call per payment, so limited)
             let updated = p["updated"].as_str().unwrap_or_default().to_string();
             if lookup.contains(&pid) {
-                let path = format!(
-                    "/v1/user/{}/monetary-account/{account_id}/payment/{pid}/note-attachment",
-                    self.state.user_id
-                );
-                if let Ok(v) = self.get(&path).await {
+                let object = if is_request_payment(p) {
+                    match_request_response(p, &responses).map(|rid| format!("request-response/{rid}"))
+                } else {
+                    Some(format!("payment/{pid}"))
+                };
+                let user_id = self.state.user_id;
+                let notes_of = |object: &str| {
+                    format!("/v1/user/{user_id}/monetary-account/{account_id}/{object}/note-attachment")
+                };
+                let mut result = match object {
+                    Some(object) => self.get(&notes_of(&object)).await,
+                    // No matching request: nothing to look up (counts as checked).
+                    None => Ok(Value::Null),
+                };
+                // Payments made from an accepted draft (transfers sent via
+                // the API, e.g. by GiroCrab) refuse notes: the app stores
+                // them on the DraftPayment, which names the payment's id.
+                if matches!(&result, Err(e) if e.status == 404) && !is_request_payment(p) {
+                    if drafts.is_none() {
+                        let path = format!(
+                            "/v1/user/{}/monetary-account/{account_id}/draft-payment?count=200",
+                            self.state.user_id
+                        );
+                        drafts = Some(match self.get(&path).await {
+                            Ok(v) => v["Response"]
+                                .as_array()
+                                .into_iter()
+                                .flatten()
+                                .map(|i| i["DraftPayment"].clone())
+                                .collect(),
+                            Err(_) => Vec::new(),
+                        });
+                    }
+                    let draft = drafts.as_deref().and_then(|d| draft_of_payment(pid, d));
+                    result = match draft {
+                        Some(did) => self.get(&notes_of(&format!("draft-payment/{did}"))).await,
+                        None => Ok(Value::Null),
+                    };
+                }
+                if let Ok(v) = result {
                     for item in v["Response"].as_array().into_iter().flatten() {
                         let note = item
                             .as_object()
@@ -555,6 +635,9 @@ impl BunqConnector {
             }
             found.dedup_by_key(|(aid, _)| *aid);
             for (aid, desc) in found {
+                if self.state.attachments_done.contains(&aid) {
+                    continue;
+                }
                 let source_url = format!("bunq:attachment:{aid}");
                 let Ok((bytes, content_type)) = self.attachment(aid).await else {
                     continue;
@@ -562,6 +645,7 @@ impl BunqConnector {
                 if bytes.is_empty() {
                     continue;
                 }
+                self.state.attachments_done.insert(aid);
                 docs.push(receipt_document(
                     account_ref, &ext, &date, &label, &desc, aid, bytes, &content_type, source_url,
                 ));
@@ -570,6 +654,9 @@ impl BunqConnector {
         // Keep the state small: bunq ids grow over time, so drop the oldest.
         while self.state.receipts_checked.len() > MAX_RECEIPT_STATE {
             self.state.receipts_checked.pop_first();
+        }
+        while self.state.attachments_done.len() > MAX_RECEIPT_STATE {
+            self.state.attachments_done.pop_first();
         }
         docs
     }
@@ -901,6 +988,85 @@ fn attachment_items(v: &Value) -> Vec<&Value> {
     }
 }
 
+/// Outgoing payment created by accepting a request (direct debit, bunq
+/// request): its notes live on the RequestResponse, not on the payment.
+fn is_request_payment(p: &Value) -> bool {
+    p["sub_type"].as_str() == Some("REQUEST")
+        && json_number_to_cents(&p["amount"]["value"]).is_ok_and(|c| c < 0)
+}
+
+/// The accepted RequestResponse a request payment belongs to. bunq gives no
+/// reference, so match the amount and the answer time (the payment is
+/// created in the same instant; observed: 0.1 s apart).
+fn match_request_response(p: &Value, responses: &[Value]) -> Option<i64> {
+    let ts = |v: &Value| {
+        chrono::NaiveDateTime::parse_from_str(v.as_str()?, "%Y-%m-%d %H:%M:%S%.f").ok()
+    };
+    let paid = ts(&p["created"])?;
+    let cents = json_number_to_cents(&p["amount"]["value"]).ok()?.abs();
+    responses
+        .iter()
+        .filter(|r| r["status"].as_str() == Some("ACCEPTED"))
+        .filter(|r| {
+            json_number_to_cents(&r["amount_responded"]["value"])
+                .or_else(|_| json_number_to_cents(&r["amount_inquired"]["value"]))
+                .is_ok_and(|c| c.abs() == cents)
+        })
+        .filter_map(|r| {
+            let gap = (ts(&r["time_responded"])? - paid).num_milliseconds().abs();
+            (gap <= 120_000).then_some((gap, r["id"].as_i64()?))
+        })
+        .min()
+        .map(|(_, id)| id)
+}
+
+/// The DraftPayment whose accepted result is payment `pid`. Observed: the
+/// draft contains its payment's id (exact field undocumented), so look for
+/// that value anywhere inside it. Payment ids are long and unique, so a
+/// whole-value match does not collide with other ids.
+fn draft_of_payment(pid: i64, drafts: &[Value]) -> Option<i64> {
+    fn has_id(v: &Value, pid: i64) -> bool {
+        match v {
+            Value::Object(o) => o.values().any(|c| has_id(c, pid)),
+            Value::Array(a) => a.iter().any(|c| has_id(c, pid)),
+            Value::Number(n) => n.as_i64() == Some(pid),
+            Value::String(s) => s.parse::<i64>().ok() == Some(pid),
+            _ => false,
+        }
+    }
+    drafts
+        .iter()
+        .filter(|d| d["id"].as_i64() != Some(pid))
+        .find(|d| d.as_object().is_some_and(|o| o.iter().any(|(k, c)| k != "id" && has_id(c, pid))))
+        .and_then(|d| d["id"].as_i64())
+}
+
+/// Picks up to `budget` already-checked older payment ids, newest first,
+/// continuing below `cursor` and wrapping around. Returns the picked ids and
+/// the cursor for the next sync.
+fn rotate_older(mut ids: Vec<i64>, cursor: Option<i64>, budget: usize) -> (Vec<i64>, Option<i64>) {
+    if ids.is_empty() {
+        return (Vec::new(), None);
+    }
+    if budget == 0 {
+        return (Vec::new(), cursor);
+    }
+    ids.sort_unstable_by(|a, b| b.cmp(a));
+    ids.dedup();
+    let start = cursor
+        .and_then(|c| ids.iter().position(|&id| id < c))
+        .unwrap_or(0);
+    let picked: Vec<i64> = ids
+        .iter()
+        .cycle()
+        .skip(start)
+        .take(budget.min(ids.len()))
+        .copied()
+        .collect();
+    let next = picked.last().copied();
+    (picked, next)
+}
+
 /// Short label for a payment's receipt: counterparty or description.
 fn receipt_label(p: &Value) -> String {
     let cp = &p["counterparty_alias"];
@@ -1208,10 +1374,25 @@ impl BankConnector for BunqConnector {
             hold_prefix: Some(HOLD_PREFIX.into()),
             ..Default::default()
         };
+        // Incremental syncs only ask for the last days, but receipts can be
+        // added to older payments: list the whole receipt window.
+        let receipt_since = (chrono::Local::now().date_naive()
+            - chrono::Duration::days(RECEIPT_WINDOW_DAYS))
+        .format("%Y-%m-%d")
+        .to_string();
+        let list_since = receipt_since.as_str().min(ctx.since.as_str()).to_string();
         for (id, account) in self.accounts().await? {
-            let raw = self.raw_payments(id, &ctx.since).await?;
+            let raw = self.raw_payments(id, &list_since).await?;
+            // Bookings keep the sync's own range (pending-transfer matching
+            // in `store_fetch` must not see older look-alike payments).
             let mut txs: Vec<RemoteTransaction> = raw
                 .iter()
+                .filter(|p| {
+                    p["created"]
+                        .as_str()
+                        .and_then(local_date)
+                        .is_some_and(|d| d.as_str() >= ctx.since.as_str())
+                })
                 .filter_map(|p| parse_payment(p, &account.external_ref))
                 .collect();
             // Receipts and statements are extras: a failure must not break the sync.
@@ -1325,6 +1506,54 @@ mod tests {
         a["decision"] = json!("ALLOWED");
         a["reservation_expiry_time"] = json!("2026-11-01 00:00:00.000000");
         assert!(!is_open_hold(&a, now), "expired");
+    }
+
+    #[test]
+    fn request_payments_match_their_response() {
+        let pay = json!({"id": 1, "sub_type": "REQUEST", "created": "2026-11-02 14:01:03.477301",
+            "amount": {"value": "-19.57", "currency": "EUR"}});
+        let resp = |id: i64, status: &str, value: &str, t: &str| json!({"id": id, "status": status,
+            "amount_responded": {"value": value, "currency": "EUR"}, "time_responded": t});
+        assert!(is_request_payment(&pay));
+        assert!(!is_request_payment(&json!({"sub_type": "PAYMENT", "amount": {"value": "-1.00"}})));
+        assert!(!is_request_payment(&json!({"sub_type": "REQUEST", "amount": {"value": "5.00"}})));
+        let responses = vec![
+            resp(10, "ACCEPTED", "19.57", "2026-10-02 14:01:03.500000"), // last month
+            resp(11, "REJECTED", "19.57", "2026-11-02 14:01:03.500000"),
+            resp(12, "ACCEPTED", "19.58", "2026-11-02 14:01:03.500000"),
+            resp(13, "ACCEPTED", "19.57", "2026-11-02 14:01:03.584702"),
+        ];
+        assert_eq!(match_request_response(&pay, &responses), Some(13));
+        assert_eq!(match_request_response(&pay, &responses[..3]), None);
+    }
+
+    #[test]
+    fn draft_payments_are_found_by_their_payment() {
+        let drafts = vec![
+            json!({"id": 7, "status": "PENDING", "entries": [{"amount": {"value": "1.00"}}]}),
+            json!({"id": 8, "status": "ACCEPTED",
+                "object": {"Payment": {"id": 2996727905_i64, "monetary_account_id": 13340587}}}),
+        ];
+        assert_eq!(draft_of_payment(2996727905, &drafts), Some(8));
+        // other field names / string form
+        let other = vec![json!({"id": 9, "result": [{"payment_id": "2996727906"}]})];
+        assert_eq!(draft_of_payment(2996727906, &other), Some(9));
+        assert_eq!(draft_of_payment(7, &drafts), None); // the draft's own id is no link
+        assert_eq!(draft_of_payment(1, &drafts), None);
+    }
+
+    #[test]
+    fn older_receipt_checks_rotate() {
+        let ids = vec![10, 50, 30, 20, 40];
+        // first round starts with the newest
+        assert_eq!(rotate_older(ids.clone(), None, 2), (vec![50, 40], Some(40)));
+        // continues below the cursor and wraps around
+        assert_eq!(rotate_older(ids.clone(), Some(40), 2), (vec![30, 20], Some(20)));
+        assert_eq!(rotate_older(ids.clone(), Some(20), 2), (vec![10, 50], Some(50)));
+        // everything fits; no budget keeps the cursor; nothing older clears it
+        assert_eq!(rotate_older(vec![3, 1, 2], Some(2), 9).0, vec![1, 3, 2]);
+        assert_eq!(rotate_older(ids, Some(30), 0), (vec![], Some(30)));
+        assert_eq!(rotate_older(vec![], Some(30), 5), (vec![], None));
     }
 
     #[test]
@@ -1604,6 +1833,447 @@ mod tests {
         }
         for (row, n) in seen {
             println!("{n:>4}x {row}");
+        }
+    }
+
+    /// Read-only check of one payment's receipts on the real account:
+    /// `BUNQ_API_KEY=… BUNQ_AMOUNT=19.57 cargo test -q -p girocrab-core bunq_receipt_survey -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn bunq_receipt_survey() {
+        use crate::secret::SecretString;
+        let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
+        let amount = std::env::var("BUNQ_AMOUNT").unwrap_or_else(|_| "19.57".into());
+        let want = json_number_to_cents(&Value::String(amount.clone())).unwrap().abs();
+        let ctx = ConnectContext {
+            connection_id: 1,
+            login_name: String::new(),
+            secret: SecretString::new(key),
+            settings: Default::default(),
+            state: Value::Null,
+            since: "2020-01-01".into(),
+        };
+        let mut c = BunqConnector::new();
+        c.begin(&ctx).await.unwrap();
+        let since = (chrono::Local::now().date_naive() - chrono::Duration::days(180))
+            .format("%Y-%m-%d")
+            .to_string();
+        let today = chrono::Local::now().date_naive();
+        let shape = |v: &Value| match v {
+            Value::Null => "null".to_string(),
+            Value::Array(a) => format!("array[{}]", a.len()),
+            Value::Object(o) => format!("object{{{}}}", o.keys().cloned().collect::<Vec<_>>().join(",")),
+            other => format!("{other}").chars().take(20).collect(),
+        };
+        let mut hits = 0;
+        for (id, acc) in c.accounts().await.unwrap() {
+            let uid = c.state.user_id;
+            let payments = c.raw_payments(id, &since).await.unwrap();
+            println!("account {} ({}): {} payments in 180 days", acc.kind.as_str(), id, payments.len());
+            for p in &payments {
+                let cents = json_number_to_cents(&p["amount"]["value"]).unwrap_or(0);
+                if cents.abs() != want {
+                    continue;
+                }
+                hits += 1;
+                let pid = p["id"].as_i64().unwrap_or_default();
+                let date = p["created"].as_str().and_then(local_date).unwrap_or_default();
+                let age = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+                    .map(|d| (today - d).num_days())
+                    .unwrap_or(-1);
+                println!(
+                    "\nPAYMENT id={pid} date={date} age={age}d amount={cents} type={} sub_type={} updated={} payment.attachment={}",
+                    p["type"].as_str().unwrap_or("-"),
+                    p["sub_type"].as_str().unwrap_or("-"),
+                    p["updated"].as_str().unwrap_or("-"),
+                    shape(&p["attachment"]),
+                );
+                let refs: Vec<String> = p["request_reference_split_the_bill"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|r| shape(r) + &format!(" {}", r))
+                    .map(|t| t.chars().take(160).collect())
+                    .collect();
+                println!("  request_reference_split_the_bill: {refs:?}");
+                // Payments of a request: the notes live on the RequestResponse.
+                let mut objects = vec![format!("payment/{pid}")];
+                let path = format!("/v1/user/{uid}/monetary-account/{id}/request-response?count=200");
+                match c.get(&path).await {
+                    Err(e) => println!("  request-response list: ERROR {e:?}"),
+                    Ok(v) => {
+                        for item in v["Response"].as_array().into_iter().flatten() {
+                            let r = &item["RequestResponse"];
+                            let rc = json_number_to_cents(&r["amount_responded"]["value"])
+                                .or_else(|_| json_number_to_cents(&r["amount_inquired"]["value"]))
+                                .unwrap_or(0);
+                            if rc.abs() != want {
+                                continue;
+                            }
+                            println!(
+                                "  REQUEST-RESPONSE id={} status={} type={} sub_type={} event_id={} time_responded={} created={} attachment={}",
+                                r["id"], r["status"], r["type"], r["sub_type"], r["event_id"],
+                                r["time_responded"], r["created"], shape(&r["attachment"]),
+                            );
+                            for a in attachment_items(&r["attachment"]) {
+                                println!("    own attachment: {}", shape(a));
+                                if let Some(aid) = a["id"].as_i64() {
+                                    match c.attachment(aid).await {
+                                        Ok((b, ct)) => println!(
+                                            "      download id={aid}: {} bytes, content-type={ct}, starts={:?}",
+                                            b.len(),
+                                            String::from_utf8_lossy(&b[..b.len().min(5)])
+                                        ),
+                                        Err(e) => println!("      download id={aid}: ERROR {e:?}"),
+                                    }
+                                }
+                            }
+                            if let Some(rid) = r["id"].as_i64() {
+                                objects.push(format!("request-response/{rid}"));
+                            }
+                        }
+                    }
+                }
+                for (obj, kind) in objects
+                    .iter()
+                    .flat_map(|o| ["note-attachment", "note-text"].map(|k| (o.clone(), k)))
+                {
+                    let kind = format!("{obj} {kind}");
+                    let path = format!(
+                        "/v1/user/{uid}/monetary-account/{id}/{}",
+                        kind.replace(' ', "/")
+                    );
+                    match c.get(&path).await {
+                        Err(e) => println!("  {kind}: ERROR {e:?}"),
+                        Ok(v) => {
+                            let items = v["Response"].as_array().cloned().unwrap_or_default();
+                            println!("  {kind}: {} item(s)", items.len());
+                            for item in &items {
+                                for (wrapper, note) in item.as_object().into_iter().flatten() {
+                                    println!(
+                                        "    {wrapper}: id={} desc_len={} attachment={}",
+                                        note["id"],
+                                        note["description"].as_str().map_or(0, str::len),
+                                        shape(&note["attachment"]),
+                                    );
+                                    for a in attachment_items(&note["attachment"]) {
+                                        println!("      item: {}", shape(a));
+                                        if let Some(aid) = a["id"].as_i64() {
+                                            match c.attachment(aid).await {
+                                                Ok((b, ct)) => println!(
+                                                    "      download id={aid}: {} bytes, content-type={ct}, starts={:?}",
+                                                    b.len(),
+                                                    String::from_utf8_lossy(&b[..b.len().min(5)])
+                                                ),
+                                                Err(e) => println!("      download id={aid}: ERROR {e:?}"),
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                let docs = c.receipts(id, &acc.external_ref, std::slice::from_ref(p)).await;
+                println!("  GiroCrab receipts(): {} document(s)", docs.len());
+                for d in &docs {
+                    println!(
+                        "    {} | {} | booking={:?} | {} bytes",
+                        d.mime_type, d.file_name, d.booking_external_id, d.bytes.len()
+                    );
+                }
+            }
+        }
+        println!("\n{hits} payment(s) with amount {amount}");
+    }
+
+    /// Read-only: where do note files live for each kind of payment?
+    /// `BUNQ_API_KEY=… cargo test -q -p girocrab-core bunq_notes_survey -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn bunq_notes_survey() {
+        use crate::secret::SecretString;
+        use std::collections::BTreeMap;
+        let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
+        let ctx = ConnectContext {
+            connection_id: 1,
+            login_name: String::new(),
+            secret: SecretString::new(key),
+            settings: Default::default(),
+            state: Value::Null,
+            since: "2020-01-01".into(),
+        };
+        let mut c = BunqConnector::new();
+        c.begin(&ctx).await.unwrap();
+        let since = (chrono::Local::now().date_naive()
+            - chrono::Duration::days(RECEIPT_WINDOW_DAYS))
+        .format("%Y-%m-%d")
+        .to_string();
+        let uid = c.state.user_id;
+        let ts = |v: &Value| {
+            chrono::NaiveDateTime::parse_from_str(v.as_str()?, "%Y-%m-%d %H:%M:%S%.f").ok()
+        };
+        let cents_of = |v: &Value| json_number_to_cents(v).map(i64::abs).unwrap_or(-1);
+        // "ok:N" (N files) or "404" etc. per probed object
+        async fn probe(c: &mut BunqConnector, path: String) -> (String, usize) {
+            match c.get(&path).await {
+                Ok(v) => {
+                    let n = v["Response"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|i| i.as_object().and_then(|o| o.values().next()))
+                        .map(|note| attachment_items(&note["attachment"]).len())
+                        .sum();
+                    (format!("ok:{n}"), n)
+                }
+                Err(e) => (format!("{}", e.status), 0),
+            }
+        }
+        // kind -> (payments, outcome counts)
+        let mut summary: BTreeMap<String, (usize, BTreeMap<String, usize>)> = BTreeMap::new();
+        let mut with_files: Vec<(i64, String, Value)> = Vec::new();
+        for (id, acc) in c.accounts().await.unwrap() {
+            let payments = c.raw_payments(id, &since).await.unwrap();
+            if payments.is_empty() {
+                continue;
+            }
+            println!("account {} ({id}): {} payments in {RECEIPT_WINDOW_DAYS} days", acc.kind.as_str(), payments.len());
+            let mut lists: BTreeMap<&str, Vec<Value>> = BTreeMap::new();
+            for (obj, wrapper) in [("request-response", "RequestResponse"), ("request-inquiry", "RequestInquiry")] {
+                let path = format!("/v1/user/{uid}/monetary-account/{id}/{obj}?count=200");
+                let items = match c.get(&path).await {
+                    Ok(v) => v["Response"].as_array().into_iter().flatten().map(|i| i[wrapper].clone()).collect(),
+                    Err(e) => {
+                        println!("  {obj} list: {}", e.status);
+                        Vec::new()
+                    }
+                };
+                lists.insert(obj, items);
+            }
+            let actions = c.card_actions(id, &since).await.unwrap_or_default();
+            lists.insert("mastercard-action", actions);
+            for p in &payments {
+                let pid = p["id"].as_i64().unwrap_or_default();
+                let cents = json_number_to_cents(&p["amount"]["value"]).unwrap_or(0);
+                let kind = format!(
+                    "{}/{}/{}",
+                    p["type"].as_str().unwrap_or("-"),
+                    p["sub_type"].as_str().unwrap_or("-"),
+                    if cents < 0 { "out" } else { "in" }
+                );
+                let mut outcome = Vec::new();
+                let mut files = 0;
+                let (st, n) = probe(&mut c, format!("/v1/user/{uid}/monetary-account/{id}/payment/{pid}/note-attachment")).await;
+                outcome.push(format!("payment={st}"));
+                files += n;
+                if !p["attachment"].as_array().map_or(true, Vec::is_empty) {
+                    outcome.push("payment.attachment=yes".into());
+                    files += 1;
+                }
+                let paid = ts(&p["created"]);
+                // related objects that may hold the app's notes
+                let mut related: Vec<(String, i64)> = Vec::new();
+                if p["sub_type"].as_str() == Some("REQUEST") {
+                    let obj = if cents < 0 { "request-response" } else { "request-inquiry" };
+                    let best = lists[obj]
+                        .iter()
+                        .filter(|r| {
+                            cents_of(&r["amount_responded"]["value"]) == cents.abs()
+                                || cents_of(&r["amount_inquired"]["value"]) == cents.abs()
+                        })
+                        .filter_map(|r| {
+                            let gap = (ts(&r["time_responded"])? - paid?).num_seconds().abs();
+                            (gap <= 120).then_some((gap, r["id"].as_i64()?))
+                        })
+                        .min();
+                    match best {
+                        Some((_, rid)) => related.push((obj.into(), rid)),
+                        None => outcome.push(format!("{obj}=nomatch")),
+                    }
+                }
+                if matches!(p["type"].as_str(), Some("MASTERCARD" | "MAESTRO" | "FIS")) {
+                    // same amount, action up to 10 days before the booking
+                    let cands: Vec<i64> = lists["mastercard-action"]
+                        .iter()
+                        .filter(|a| {
+                            cents_of(&a["amount_billing"]["value"]) == cents.abs()
+                                || cents_of(&a["amount_local"]["value"]) == cents.abs()
+                        })
+                        .filter(|a| match (ts(&a["created"]), paid) {
+                            (Some(a), Some(p)) => (p - a).num_days().abs() <= 10,
+                            _ => false,
+                        })
+                        .filter_map(|a| a["id"].as_i64())
+                        .collect();
+                    if cands.is_empty() {
+                        outcome.push("mastercard-action=nomatch".into());
+                    }
+                    if cands.len() > 1 {
+                        outcome.push(format!("mastercard-action=ambiguous({})", cands.len()));
+                    }
+                    related.extend(cands.into_iter().take(2).map(|a| ("mastercard-action".to_string(), a)));
+                }
+                if p["scheduled_id"].as_i64().is_some() {
+                    outcome.push("scheduled_id=yes".into());
+                }
+                if p["batch_id"].as_i64().is_some() {
+                    outcome.push("batch_id=yes".into());
+                }
+                for (obj, rid) in related {
+                    let (st, n) = probe(&mut c, format!("/v1/user/{uid}/monetary-account/{id}/{obj}/{rid}/note-attachment")).await;
+                    outcome.push(format!("{obj}={st}"));
+                    files += n;
+                }
+                let line = outcome.join(" ");
+                let e = summary.entry(kind.clone()).or_default();
+                e.0 += 1;
+                *e.1.entry(line.clone()).or_default() += 1;
+                if files > 0 {
+                    let date = p["created"].as_str().and_then(local_date).unwrap_or_default();
+                    println!("  FILES {kind} {date} {:.2} id={pid}: {line}", cents as f64 / 100.0);
+                    with_files.push((id, acc.external_ref.clone(), p.clone()));
+                }
+            }
+        }
+        println!("\n== by payment kind (type/sub_type/direction) ==");
+        for (kind, (n, outcomes)) in &summary {
+            println!("{kind}: {n} payment(s)");
+            for (o, k) in outcomes {
+                println!("   {k:>3}x {o}");
+            }
+        }
+        println!("\n== GiroCrab receipts() on the {} payment(s) with files ==", with_files.len());
+        for (id, account_ref, p) in &with_files {
+            let docs = c.receipts(*id, account_ref, std::slice::from_ref(p)).await;
+            println!(
+                "  {}/{} id={}: {} document(s) {:?}",
+                p["type"].as_str().unwrap_or("-"),
+                p["sub_type"].as_str().unwrap_or("-"),
+                p["id"],
+                docs.len(),
+                docs.iter().map(|d| (d.mime_type.clone(), d.bytes.len())).collect::<Vec<_>>()
+            );
+        }
+    }
+
+    /// Read-only: for payments that refuse notes, which app event (object)
+    /// do they belong to, and does that object hold the notes?
+    /// `BUNQ_API_KEY=… cargo test -q -p girocrab-core bunq_refused_notes_survey -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn bunq_refused_notes_survey() {
+        use crate::secret::SecretString;
+        let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
+        let ctx = ConnectContext {
+            connection_id: 1,
+            login_name: String::new(),
+            secret: SecretString::new(key),
+            settings: Default::default(),
+            state: Value::Null,
+            since: "2020-01-01".into(),
+        };
+        let mut c = BunqConnector::new();
+        c.begin(&ctx).await.unwrap();
+        let since = (chrono::Local::now().date_naive()
+            - chrono::Duration::days(RECEIPT_WINDOW_DAYS))
+        .format("%Y-%m-%d")
+        .to_string();
+        let uid = c.state.user_id;
+        let ts = |v: &Value| {
+            chrono::NaiveDateTime::parse_from_str(v.as_str()?, "%Y-%m-%d %H:%M:%S%.f").ok()
+        };
+        // object type -> endpoint segment that takes notes
+        let segment = |t: &str| match t {
+            "Payment" => Some("payment"),
+            "DraftPayment" => Some("draft-payment"),
+            "PaymentBatch" => Some("payment-batch"),
+            "RequestResponse" => Some("request-response"),
+            "RequestInquiry" => Some("request-inquiry"),
+            "MasterCardAction" => Some("mastercard-action"),
+            "ScheduledPayment" => Some("schedule-payment"),
+            "ScheduledPaymentBatch" => Some("schedule-payment-batch"),
+            "IdealMerchantTransaction" => Some("ideal-merchant-transaction"),
+            "SofortMerchantTransaction" => Some("sofort-merchant-transaction"),
+            _ => None,
+        };
+        let keys = |v: &Value| {
+            v.as_object()
+                .map(|o| o.keys().filter(|k| k.contains("id") || k.contains("payment") || k.contains("status")).cloned().collect::<Vec<_>>().join(","))
+                .unwrap_or_default()
+        };
+        for (id, acc) in c.accounts().await.unwrap() {
+            let payments = c.raw_payments(id, &since).await.unwrap();
+            let mut refused = Vec::new();
+            for p in &payments {
+                if is_request_payment(p) {
+                    continue;
+                }
+                let pid = p["id"].as_i64().unwrap_or_default();
+                let path = format!("/v1/user/{uid}/monetary-account/{id}/payment/{pid}/note-attachment");
+                if let Err(e) = c.get(&path).await {
+                    refused.push((p.clone(), e.status));
+                }
+            }
+            if refused.is_empty() {
+                continue;
+            }
+            println!("\naccount {} ({id}): {} payment(s) refuse notes", acc.kind.as_str(), refused.len());
+            let path = format!("/v1/user/{uid}/event?monetary_account_id={id}&count=200&display_user_event=false");
+            let events: Vec<Value> = match c.get(&path).await {
+                Ok(v) => v["Response"].as_array().into_iter().flatten().map(|i| i["Event"].clone()).collect(),
+                Err(e) => {
+                    println!("  event list: {}", e.status);
+                    Vec::new()
+                }
+            };
+            for (p, status) in refused {
+                let pid = p["id"].as_i64().unwrap_or_default();
+                let cents = json_number_to_cents(&p["amount"]["value"]).unwrap_or(0);
+                let paid = ts(&p["created"]);
+                println!(
+                    "PAYMENT id={pid} {} {:.2} type={} sub_type={} status={status} payment_keys=[{}] scheduled_id={} batch_id={}",
+                    p["created"].as_str().and_then(local_date).unwrap_or_default(),
+                    cents as f64 / 100.0,
+                    p["type"].as_str().unwrap_or("-"),
+                    p["sub_type"].as_str().unwrap_or("-"),
+                    keys(&p),
+                    p["scheduled_id"], p["batch_id"],
+                );
+                for e in &events {
+                    let Some((t, obj)) = e["object"].as_object().and_then(|o| o.iter().next()) else {
+                        continue;
+                    };
+                    let near = match (ts(&e["created"]), paid) {
+                        (Some(a), Some(b)) => (a - b).num_minutes().abs() <= 3 * 24 * 60,
+                        _ => false,
+                    };
+                    let same_id = obj["id"].as_i64() == Some(pid);
+                    let text = obj.to_string();
+                    let amount = format!("{:.2}", (cents.abs()) as f64 / 100.0);
+                    let mentions = text.contains(&pid.to_string()) || text.contains(&format!("\"{amount}\"")) || text.contains(&format!("\"-{amount}\""));
+                    if !(same_id || (near && mentions)) {
+                        continue;
+                    }
+                    println!(
+                        "  EVENT {} action={} type={t} obj_id={} same_id={same_id} mentions_pid={} keys=[{}]",
+                        e["id"], e["action"], obj["id"], text.contains(&pid.to_string()), keys(obj),
+                    );
+                    if let (Some(seg), Some(oid)) = (segment(t), obj["id"].as_i64()) {
+                        let path = format!("/v1/user/{uid}/monetary-account/{id}/{seg}/{oid}/note-attachment");
+                        match c.get(&path).await {
+                            Ok(v) => {
+                                let n: usize = v["Response"].as_array().into_iter().flatten()
+                                    .filter_map(|i| i.as_object().and_then(|o| o.values().next()))
+                                    .map(|note| attachment_items(&note["attachment"]).len())
+                                    .sum();
+                                println!("    {seg}/{oid} note-attachment: ok, {n} file(s)");
+                            }
+                            Err(e) => println!("    {seg}/{oid} note-attachment: {}", e.status),
+                        }
+                    }
+                }
+            }
         }
     }
 }
