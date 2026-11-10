@@ -36,7 +36,7 @@ pub fn fints_presets() -> Vec<FinTsPreset> {
           "BLZ Ihrer Volksbank/Raiffeisenbank eintragen."),
         p("vb-kassel", "Volksbank Kassel Göttingen", "52090000", ATRUVIA, ""),
         p("1822direkt", "1822direkt", "50050201", "https://banking-hs5.s-fints-pt-hs.de/fints30", ""),
-        p("dkb", "DKB", "12030000", "https://banking-dkb.s-fints-pt-dkb.de/fints30",
+        p("dkb", "DKB", "12030000", "https://fints.dkb.de/fints",
           "URL ggf. laut DK-Institutsliste prüfen."),
         p("ing", "ING", "50010517", "https://fints.ing.de/fints/", ""),
         p("gls", "GLS Gemeinschaftsbank", "43060967", ATRUVIA, ""),
