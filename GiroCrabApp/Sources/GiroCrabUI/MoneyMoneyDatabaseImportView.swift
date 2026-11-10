@@ -204,6 +204,10 @@ struct MoneyMoneyDatabaseImportView: View {
     private func optionsCard(_ p: MoneyMoneyDbPreview) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Kategorien übernehmen (\(p.categoryPaths.count))", isOn: $importCategories)
+            if p.replacesStarterCategories && importCategories {
+                Text("Ersetzt die GiroCrab-Startkategorien und ihre Regeln – Ihr Tresor enthält noch keine Buchungen.")
+                    .font(.caption).foregroundStyle(Theme.secondary).padding(.leading, 2)
+            }
             Toggle("Notizen übernehmen (\(p.notesCount))", isOn: $importNotes)
             Toggle("Bankzugänge anlegen", isOn: $createConnections)
             Toggle("Gespeicherte PINs übernehmen", isOn: $importPins)
@@ -457,6 +461,6 @@ extension AppModel {
                           "Steuern", "Reisen", "Abos", "Gesundheit", "Geschenke", "Sparen"]
         return MoneyMoneyDbPreview(accounts: accounts, banks: banks, categoryPaths: categories, totalBookings: 6790,
                                    pendingBookings: 5, notesCount: 312, splitParts: 14,
-                                   dateRangeStart: "2009-04-01", dateRangeEnd: "2026-11-09")
+                                   dateRangeStart: "2009-04-01", dateRangeEnd: "2026-11-09", replacesStarterCategories: true)
     }
 }

@@ -35,7 +35,7 @@ struct CommandPaletteView: View {
             out.append(Item(title: String(localized: "„\(b.merchant.name)“ kategorisieren"), subtitle: "\(action) · C", symbol: "tag") { model.showCategorizer = true })
             out.append(Item(title: String(localized: "Regel für „\(b.merchant.name)“ erstellen"), subtitle: "\(action) · R", symbol: "wand.and.stars") { model.openRuleEditor(from: b) })
         }
-        out.append(Item(title: String(localized: "MoneyMoney Historie & Kategorien importieren"), subtitle: action, symbol: "square.and.arrow.down.on.square") { model.showMoneyMoneyImport = true })
+        out.append(Item(title: String(localized: "MoneyMoney Historie & Kategorien importieren"), subtitle: action, symbol: "square.and.arrow.down.on.square") { model.openMoneyMoneyImport() })
         out.append(Item(title: String(localized: "Regeln jetzt anwenden"), subtitle: action, symbol: "play") { model.applyAllRules() })
         #if os(macOS)
         out.append(Item(title: String(localized: "Einstellungen"), subtitle: "\(action) · ⌘,", symbol: "gearshape") { openSettings() })

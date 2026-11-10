@@ -29,7 +29,7 @@ struct SidebarView: View {
                 Spacer()
             }
             .tag(SidebarItem.documents)
-            Button { model.showMoneyMoneyImport = true } label: {
+            Button { model.openMoneyMoneyImport() } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "square.and.arrow.down.on.square").foregroundStyle(Theme.secondary).frame(width: 20)
                     Text("MoneyMoney-Import").fontWeight(.medium)

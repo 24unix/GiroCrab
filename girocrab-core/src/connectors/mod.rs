@@ -479,9 +479,13 @@ pub(crate) fn store_fetch(
             // then adopted via the import fingerprint) instead of a second account.
             let existing = match existing {
                 Some(id) => Some(id),
-                None => {
-                    moneymoney_db::adopt_account(&tx, connection_id, &acc.external_ref, &acc.iban)?
-                }
+                None => moneymoney_db::adopt_account(
+                    &tx,
+                    connection_id,
+                    &acc.external_ref,
+                    &acc.iban,
+                    acc.kind,
+                )?,
             };
             let id = match existing {
                 Some(id) => {

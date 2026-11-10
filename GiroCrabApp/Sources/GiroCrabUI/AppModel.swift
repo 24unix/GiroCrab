@@ -253,6 +253,13 @@ public final class AppModel {
         }
     }
 
+    /// Opens the MoneyMoney import. An import belongs in the own vault, so the
+    /// demo data an empty vault starts with is left first.
+    func openMoneyMoneyImport() {
+        if isDemo && !options.demoSeed { showOwnVault() }
+        showMoneyMoneyImport = true
+    }
+
     var isDemo: Bool { demoActive }
     var hasOwnVault: Bool { ownVault != nil }
 
