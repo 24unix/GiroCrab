@@ -373,10 +373,8 @@ const BALANCE_KEYS: &[&str] = &[
     "currentbalance",
     "totalbalance",
     "outstandingbalance",
-    "totalamountdue",
-    "totalamount",
     "balanceamount",
-    "remainingstatementbalance",
+    "accountbalance",
 ];
 
 fn norm_key(k: &str) -> String {
@@ -391,7 +389,7 @@ fn find_key<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
         Value::Object(o) => {
             if let Some((_, x)) = o
                 .iter()
-                .find(|(k, x)| norm_key(k) == key && value_cents(x).is_some())
+                .find(|(k, x)| norm_key(k) == key && value_cents(x).is_some_and(|c| c != 0))
             {
                 return Some(x);
             }
@@ -423,11 +421,11 @@ fn find_balance(v: &Value, kind: ConnectorKind) -> Option<(String, i64)> {
                 for (k, val) in o {
                     let kl = norm_key(k);
                     if kl.contains("balance")
-                        && !["available", "minimum", "statement", "previous", "last", "payment"]
+                        && !["available", "minimum", "statement", "previous", "last", "payment", "due"]
                             .iter()
                             .any(|x| kl.contains(x))
                     {
-                        if let Some(c) = value_cents(val) {
+                        if let Some(c) = value_cents(val).filter(|c| *c != 0) {
                             return Some((k.clone(), c));
                         }
                     }
@@ -439,6 +437,25 @@ fn find_balance(v: &Value, kind: ConnectorKind) -> Option<(String, i64)> {
         }
     }
     generic(v).map(|(k, c)| (k, owed(c)))
+}
+
+/// Diagnostic: logs every non-zero numeric value whose key mentions balance/amount.
+fn log_candidates(v: &Value) {
+    match v {
+        Value::Object(o) => {
+            for (k, val) in o {
+                let kl = k.to_lowercase();
+                if (kl.contains("balance") || kl.contains("amount"))
+                    && val.as_f64().is_some_and(|f| f != 0.0)
+                {
+                    crate::depot_debug::log(&format!("portal candidate: key={k} raw_val={val}"));
+                }
+                log_candidates(val);
+            }
+        }
+        Value::Array(a) => a.iter().for_each(log_candidates),
+        _ => {}
+    }
 }
 
 pub fn parse_json_bodies(bodies: &[String], kind: ConnectorKind) -> (Vec<Parsed>, Option<i64>) {
@@ -864,6 +881,11 @@ impl Vault {
                 "portal matched balance: key={k} amount_cents={c}"
             )),
             None => crate::depot_debug::log("portal matched balance: none"),
+        }
+        for b in &json_bodies {
+            if let Ok(v) = serde_json::from_str::<Value>(b) {
+                log_candidates(&v);
+            }
         }
         let from_json = parsed.len();
         if parsed.is_empty() {
