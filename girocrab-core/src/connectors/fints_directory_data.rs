@@ -24,7 +24,7 @@ pub(super) const HOSTS: &[&str] = &[
     "https://banking-by5.s-fints-pt-by.de/fints30",
     "https://banking-by6.s-fints-pt-by.de/fints30",
     "https://banking-by7.s-fints-pt-by.de/fints30",
-    "https://banking-dkb.s-fints-pt-dkb.de/fints30",
+    "https://fints.dkb.de/fints",
     "https://banking-hb6.s-fints-pt-hb.de/fints30",
     "https://banking-hh7.s-fints-pt-hh.de/fints30",
     "https://banking-hs1.s-fints-pt-hs.de/fints30",

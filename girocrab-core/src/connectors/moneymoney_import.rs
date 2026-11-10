@@ -427,8 +427,16 @@ pub fn parse_mt940_statement(text: &str) -> Vec<MmRow> {
     txs.into_iter().map(remote_to_row).collect()
 }
 
+/// Largest accepted export file (CAMT/MT940/CSV/XML).
+const MAX_EXPORT_BYTES: usize = 50 * 1024 * 1024;
+
 /// Detects CAMT.053 / MT940 / MoneyMoney XML / CSV by content and parses. Errors when nothing was found.
 pub fn parse_export(data: &[u8]) -> CoreResult<Vec<MmRow>> {
+    if data.len() > MAX_EXPORT_BYTES {
+        return Err(CoreError::InvalidInput {
+            message: tr("Die Datei ist zu groß (maximal 50 MB).").into(),
+        });
+    }
     let text = decode(data);
     let rows = if text.trim_start().starts_with('<') {
         if text.contains("<BkToCstmr") || text.contains(":BkToCstmr") {

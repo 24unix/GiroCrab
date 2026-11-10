@@ -188,6 +188,8 @@ pub struct Pain001<'a> {
     pub purpose: &'a str,
     /// SEPA Instant Payment (`pain.001.001.09` with `LclInstrm` INST).
     pub instant: bool,
+    /// Use the `pain.001.001.09` schema even for a non-instant transfer (BPD says so).
+    pub pain09: bool,
 }
 
 /// Builds a single-transfer `pain.001.001.03` document (UTF-8).
@@ -214,12 +216,20 @@ pub fn build_pain001(p: &Pain001) -> CoreResult<String> {
     let purpose = xml_escape(&clip(p.purpose, 140));
     let d_iban = normalize_iban(p.debtor_iban);
     let c_iban = normalize_iban(p.creditor_iban);
-    let bic_tag = if p.instant { "BICFI" } else { "BIC" };
-    let (descriptor, pmt_tp, exec_xml) = if p.instant {
+    let v09 = p.instant || p.pain09;
+    let bic_tag = if v09 { "BICFI" } else { "BIC" };
+    let (descriptor, pmt_tp, exec_xml) = if v09 {
         (
             PAIN_DESCRIPTOR_INSTANT,
-            "<PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl><LclInstrm><Cd>INST</Cd></LclInstrm></PmtTpInf>",
-            format!("<ReqdExctnDt><Dt>{}</Dt></ReqdExctnDt>", xml_escape(p.execution_date)),
+            if p.instant {
+                "<PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl><LclInstrm><Cd>INST</Cd></LclInstrm></PmtTpInf>"
+            } else {
+                "<PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>"
+            },
+            format!(
+                "<ReqdExctnDt><Dt>{}</Dt></ReqdExctnDt>",
+                xml_escape(p.execution_date)
+            ),
         )
     } else {
         (
@@ -312,6 +322,7 @@ mod tests {
             amount_cents: 12_345,
             purpose,
             instant: false,
+            pain09: false,
         }
     }
 

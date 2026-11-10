@@ -787,6 +787,11 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
     Ok(src)
 }
 
+/// Single PDF blobs above this size are skipped (never loaded into memory).
+const MAX_PDF_BYTES: usize = 25 * 1024 * 1024;
+/// Upper bound for all PDFs held in memory during one import.
+const MAX_TOTAL_PDF_BYTES: usize = 512 * 1024 * 1024;
+
 /// Optional: PDF statements. MoneyMoney versions differ, so this looks for the usual
 /// table names and column spellings and keeps only blobs that really are PDFs.
 fn read_documents(conn: &Connection, have: &HashSet<String>) -> CoreResult<Vec<SrcDoc>> {
@@ -796,6 +801,7 @@ fn read_documents(conn: &Connection, have: &HashSet<String>) -> CoreResult<Vec<S
     static NAME: [&str; 4] = ["name", "title", "filename", "file_name"];
     static TS: [&str; 3] = ["timestamp", "date", "created"];
     let mut out = Vec::new();
+    let mut total = 0usize;
     for table in TABLES.iter().filter(|t| have.contains(**t)) {
         let cols: Vec<String> = {
             let mut st = conn.prepare("SELECT lower(name) FROM pragma_table_info(?1)")?;
@@ -818,7 +824,7 @@ fn read_documents(conn: &Connection, have: &HashSet<String>) -> CoreResult<Vec<S
             .map(|n| format!("\"{n}\""))
             .unwrap_or("NULL".into());
         let sql = format!(
-            "SELECT rowid, \"{acc}\", {name}, {ts}, \"{blob}\" FROM \"{table}\" WHERE substr(\"{blob}\", 1, 4) = X'25504446' ORDER BY rowid"
+            "SELECT rowid, \"{acc}\", {name}, {ts}, \"{blob}\" FROM \"{table}\" WHERE substr(\"{blob}\", 1, 4) = X'25504446' AND length(\"{blob}\") <= {MAX_PDF_BYTES} ORDER BY rowid"
         );
         let mut st = conn.prepare(&sql)?;
         let rows = st.query_map([], |r| {
@@ -835,7 +841,11 @@ fn read_documents(conn: &Connection, have: &HashSet<String>) -> CoreResult<Vec<S
         })?;
         for d in rows {
             let d = d?;
-            if d.bytes.starts_with(b"%PDF") {
+            if d.bytes.starts_with(b"%PDF")
+                && d.bytes.len() <= MAX_PDF_BYTES
+                && total.saturating_add(d.bytes.len()) <= MAX_TOTAL_PDF_BYTES
+            {
+                total += d.bytes.len();
                 out.push(d);
             }
         }

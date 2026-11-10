@@ -63,6 +63,10 @@ struct FinTsState {
     /// camt descriptors from HICAZS, best first.
     #[serde(default)]
     camt_formats: Vec<String>,
+    /// pain.001 descriptors per transfer transaction (HKCCS/HKIPZ/HKCSE) from the BPD
+    /// parameter segments HICCSS / HIIPZS / HICSES.
+    #[serde(default)]
+    pain_formats: HashMap<String, Vec<String>>,
 }
 
 /// Versions of each business transaction this client implements.
@@ -508,6 +512,25 @@ impl FinTsConnector {
             }
             // best (newest) format first: …camt.052.001.08 > …001.02
             self.st.camt_formats.sort_by(|a, b| b.cmp(a));
+        }
+        for (seg, tx) in [
+            ("HICCSS", "HKCCS"),
+            ("HIIPZS", "HKIPZ"),
+            ("HICSES", "HKCSE"),
+        ] {
+            for s in reply.all(seg) {
+                for el in &s.elements {
+                    for v in el {
+                        let t = v.text();
+                        if t.contains("pain.001") {
+                            let list = self.st.pain_formats.entry(tx.to_string()).or_default();
+                            if !list.iter().any(|f| f == t) {
+                                list.push(t.to_string());
+                            }
+                        }
+                    }
+                }
+            }
         }
         let upds: Vec<UpdAccount> = reply.all("HIUPD").map(parse_upd).collect();
         for a in upds {
@@ -1163,12 +1186,13 @@ impl FinTsConnector {
             .execution_date
             .clone()
             .unwrap_or_else(|| format!("{}-{}-{}", &date[..4], &date[4..6], &date[6..]));
-        let msg_id = format!("GC{date}{time}{}", rand::random::<u16>());
+        let msg_id = format!("GC{date}{time}{:08X}", rand::random::<u32>());
         let owner = if job.source_owner.trim().is_empty() {
             "Kontoinhaber"
         } else {
             job.source_owner.trim()
         };
+        let pain09 = self.use_pain09(code, job.instant);
         let xml = sepa::build_pain001(&sepa::Pain001 {
             message_id: &msg_id,
             created: &created,
@@ -1182,8 +1206,9 @@ impl FinTsConnector {
             amount_cents: job.amount_cents,
             purpose: &job.purpose,
             instant: job.instant,
+            pain09,
         })?;
-        let descriptor = if job.instant {
+        let descriptor = if pain09 {
             sepa::PAIN_DESCRIPTOR_INSTANT
         } else {
             sepa::PAIN_DESCRIPTOR
@@ -1197,6 +1222,23 @@ impl FinTsConnector {
         let reply = self.send(ctx, payload, &sec, None).await?;
         reply.check_transfer()?;
         Ok(reply)
+    }
+
+    /// Whether the transfer document should be `pain.001.001.09` (true) or `.03` (false).
+    /// Instant payments (HKIPZ) are always `.09`. Otherwise the BPD descriptors decide:
+    /// `.03` if advertised, else `.09` if only that is advertised; nothing advertised
+    /// (or only formats we cannot produce) falls back to `.03`.
+    fn use_pain09(&self, code: &str, instant: bool) -> bool {
+        if instant {
+            return true;
+        }
+        let has = |suffix: &str| {
+            self.st
+                .pain_formats
+                .get(code)
+                .is_some_and(|l| l.iter().any(|f| f.ends_with(suffix)))
+        };
+        !has(".001.03") && has(".001.09")
     }
 
     fn sec(&self) -> String {
@@ -1504,6 +1546,12 @@ impl BankConnector for FinTsConnector {
                                 .find(|c| !c.is_empty())
                             {
                                 currency = c;
+                            }
+                            for h in &st.holdings {
+                                result.holdings.push(super::RemoteHolding {
+                                    account_ref: label.clone(),
+                                    holding: h.to_model(),
+                                });
                             }
                             ok_any = true;
                         }

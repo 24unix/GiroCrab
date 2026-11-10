@@ -291,6 +291,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Dieses Konto oder diese Bank erlaubt keine Echtzeitüberweisungen per FinTS (HKIPZ). Bitte in der Banking-App überweisen." => "This account or bank doesn’t allow instant transfers via FinTS (HKIPZ). Please make the transfer in your banking app.",
         "Dieses Konto oder diese Bank erlaubt keine Terminüberweisungen per FinTS (HKCSE). Bitte in der Banking-App überweisen." => "This account or bank doesn’t allow scheduled transfers via FinTS (HKCSE). Please make the transfer in your banking app.",
         "Echtzeitüberweisungen können nicht terminiert werden." => "Instant transfers cannot be scheduled.",
+        "Die Datei ist zu groß (maximal 50 MB)." => "The file is too large (50 MB maximum).",
         "Das Ausführungsdatum ist ungültig (JJJJ-MM-TT)." => "The execution date is invalid (YYYY-MM-DD).",
         "Das Ausführungsdatum muss in der Zukunft liegen." => "The execution date must be in the future.",
         "Echtzeit- und Terminüberweisungen sind nur für FinTS-Konten möglich." => "Instant and scheduled transfers are only possible for FinTS accounts.",

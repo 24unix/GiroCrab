@@ -188,7 +188,7 @@ mod tests {
         let cases = [
             ("50010517", "https://fints.ing.de/fints/"),
             ("43060967", ATRUVIA),
-            ("12030000", "https://banking-dkb.s-fints-pt-dkb.de/fints30"),
+            ("12030000", "https://fints.dkb.de/fints"),
             ("76030080", "https://brokerage-hbci.consorsbank.de/hbci"),
             ("10077777", "https://fints.norisbank.de/"),
             ("66090800", ATRUVIA),

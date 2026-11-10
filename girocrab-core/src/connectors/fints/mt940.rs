@@ -13,12 +13,13 @@ pub struct Mt940Statement {
 }
 
 fn yymmdd(s: &str) -> Option<String> {
-    if s.len() < 6 || !s[..6].chars().all(|c| c.is_ascii_digit()) {
+    let d = s.get(..6)?;
+    if !d.chars().all(|c| c.is_ascii_digit()) {
         return None;
     }
-    let yy: u32 = s[0..2].parse().ok()?;
+    let yy: u32 = d.get(0..2)?.parse().ok()?;
     let year = if yy > 80 { 1900 + yy } else { 2000 + yy };
-    Some(format!("{year}-{}-{}", &s[2..4], &s[4..6]))
+    Some(format!("{year}-{}-{}", d.get(2..4)?, d.get(4..6)?))
 }
 
 /// Splits the statement into (tag, value) fields; continuation lines are
@@ -133,11 +134,12 @@ pub fn parse(
             "62F" | "62M" => {
                 // C250131EUR1234,56
                 let v = value.trim();
-                if v.len() > 10 {
+                if let (Some(date), Some(cur), Some(amt)) = (v.get(1..7), v.get(7..10), v.get(10..))
+                {
                     let sign = if v.starts_with('D') { -1 } else { 1 };
-                    stmt.closing_date = yymmdd(&v[1..7]);
-                    stmt.currency = v[7..10].to_string();
-                    if let Ok(c) = parse_cents(&v[10..]) {
+                    stmt.closing_date = yymmdd(date);
+                    stmt.currency = cur.to_string();
+                    if let Ok(c) = parse_cents(amt) {
                         stmt.closing_balance_cents = Some(sign * c);
                     }
                 }
@@ -147,13 +149,24 @@ pub fn parse(
                 let Some(value_date) = yymmdd(v) else {
                     continue;
                 };
-                let mut rest = &v[6..];
+                let Some(mut rest) = v.get(6..) else {
+                    continue;
+                };
                 let mut booking_date = value_date.clone();
-                if rest.len() >= 4 && rest[..4].chars().all(|c| c.is_ascii_digit()) {
+                if rest
+                    .get(..4)
+                    .is_some_and(|d| d.chars().all(|c| c.is_ascii_digit()))
+                {
                     // entry date MMDD (year from value date, adjusted around new year)
-                    let year: i32 = value_date[..4].parse().unwrap_or(2000);
-                    let vm: u32 = value_date[5..7].parse().unwrap_or(1);
-                    let bm: u32 = rest[..2].parse().unwrap_or(vm);
+                    let year: i32 = value_date
+                        .get(..4)
+                        .and_then(|x| x.parse().ok())
+                        .unwrap_or(2000);
+                    let vm: u32 = value_date
+                        .get(5..7)
+                        .and_then(|x| x.parse().ok())
+                        .unwrap_or(1);
+                    let bm: u32 = rest.get(..2).and_then(|x| x.parse().ok()).unwrap_or(vm);
                     let y = if vm == 12 && bm == 1 {
                         year + 1
                     } else if vm == 1 && bm == 12 {
@@ -258,5 +271,17 @@ mod tests {
         assert_eq!(txs[1].amount_cents, 250000);
         assert_eq!(st.closing_balance_cents, Some(347655));
         assert_ne!(txs[0].external_id, txs[1].external_id);
+    }
+
+    #[test]
+    fn non_ascii_fields_do_not_panic() {
+        for t in [
+            ":25:1\n:61:12345é\n:62F:C25013€EURabc",
+            ":61:250131ééC1,\n:86:x",
+            ":62F:Cäää0131EUR1,5",
+            ":61:2501310131Cé1,",
+        ] {
+            let _ = parse(t, "", "EUR");
+        }
     }
 }

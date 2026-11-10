@@ -355,10 +355,10 @@ pub(crate) fn cashflow_for(
     month: u32,
 ) -> Result<Vec<PeriodCashflow>, CoreError> {
     let count = count.clamp(1, 60) as i32;
-    let (len, per_year) = match granularity {
-        PeriodGranularity::Month => (7usize, 12i32),
-        PeriodGranularity::Quarter => (6, 4),
-        PeriodGranularity::Year => (4, 1),
+    let per_year = match granularity {
+        PeriodGranularity::Month => 12i32,
+        PeriodGranularity::Quarter => 4,
+        PeriodGranularity::Year => 1,
     };
     let cur = match granularity {
         PeriodGranularity::Month => month as i32 - 1,
@@ -393,8 +393,16 @@ pub(crate) fn cashflow_for(
     let from = match granularity {
         PeriodGranularity::Month => format!("{first}-01"),
         PeriodGranularity::Quarter => {
-            let q: u32 = first[6..].parse().unwrap_or(1);
-            format!("{}-{:02}-01", &first[..4], (q - 1) * 3 + 1)
+            let q: u32 = first
+                .get(6..)
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(1)
+                .clamp(1, 4);
+            format!(
+                "{}-{:02}-01",
+                first.get(..4).unwrap_or("1970"),
+                (q - 1) * 3 + 1
+            )
         }
         PeriodGranularity::Year => format!("{first}-01-01"),
     };
@@ -403,17 +411,20 @@ pub(crate) fn cashflow_for(
         Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
     })? {
         let (date, amt) = row?;
-        if date.len() < len.min(10) {
-            continue;
-        }
+        // Non-ASCII / malformed dates are skipped instead of panicking on a slice.
         let key = match granularity {
-            PeriodGranularity::Month => date[..7].to_string(),
+            PeriodGranularity::Month => date.get(..7).map(str::to_string),
             PeriodGranularity::Quarter => {
-                let m: u32 = date[5..7].parse().unwrap_or(1);
-                format!("{}-Q{}", &date[..4], (m - 1) / 3 + 1)
+                let m: u32 = date
+                    .get(5..7)
+                    .and_then(|x| x.parse().ok())
+                    .unwrap_or(1)
+                    .clamp(1, 12);
+                date.get(..4).map(|y| format!("{y}-Q{}", (m - 1) / 3 + 1))
             }
-            PeriodGranularity::Year => date[..4].to_string(),
+            PeriodGranularity::Year => date.get(..4).map(str::to_string),
         };
+        let Some(key) = key else { continue };
         let e = acc.entry(key).or_default();
         if amt >= 0 {
             e.0 += amt;

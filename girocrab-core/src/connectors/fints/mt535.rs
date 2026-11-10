@@ -50,6 +50,31 @@ pub struct Statement {
     pub date: Option<String>,
 }
 
+impl Holding {
+    /// Value from the bank, else quantity × price (None on overflow / non-finite).
+    fn position_value_cents(&self) -> Option<i64> {
+        let p = self.price_cents?;
+        let v = (p as f64 * self.quantity).round();
+        (v.is_finite() && v.abs() < 9.0e18).then_some(v as i64)
+    }
+
+    /// Conversion for the vault's `holdings` table.
+    pub fn to_model(&self) -> crate::models::Holding {
+        crate::models::Holding {
+            isin: self.isin.clone(),
+            wkn: self.wkn.clone(),
+            name: self.name.clone(),
+            quantity: self.quantity,
+            current_price_cents: self.price_cents.unwrap_or(0),
+            purchase_price_cents: 0,
+            value_cents: self
+                .value_cents
+                .or_else(|| self.position_value_cents())
+                .unwrap_or(0),
+        }
+    }
+}
+
 impl Statement {
     /// Depot value: the bank's total, otherwise the sum of the position values
     /// (quantity × price where the bank sent no value). None when any
@@ -58,15 +83,10 @@ impl Statement {
         if self.total_cents.is_some() {
             return self.total_cents;
         }
-        self.holdings
-            .iter()
-            .map(|h| {
-                h.value_cents.or_else(|| {
-                    h.price_cents
-                        .map(|p| (p as f64 * h.quantity).round() as i64)
-                })
-            })
-            .sum()
+        self.holdings.iter().try_fold(0i64, |acc, h| {
+            let v = h.value_cents.or_else(|| h.position_value_cents())?;
+            acc.checked_add(v)
+        })
     }
 
     /// Latest date in the statement (statement date or newest price date).
@@ -139,7 +159,7 @@ pub fn parse(text: &str) -> Statement {
                     }
                     ("HOLS", None, Some((_, cents))) => statement_total = Some(cents),
                     ("HOLP", None, Some((_, cents))) => {
-                        total = Some(total.unwrap_or(0) + cents);
+                        total = Some(total.unwrap_or(0i64).saturating_add(cents));
                     }
                     _ => {}
                 }
@@ -216,6 +236,9 @@ fn quantity(body: &str) -> Option<f64> {
     let (_, num) = rest.split_once('/')?;
     let neg = num.starts_with('N');
     let v: f64 = num.trim_start_matches('N').replace(',', ".").parse().ok()?;
+    if !v.is_finite() {
+        return None;
+    }
     Some(if neg { -v } else { v })
 }
 
@@ -232,14 +255,21 @@ fn price_amount(rest: &str) -> Option<(String, i64)> {
 fn signed_amount(s: &str) -> Option<(String, i64)> {
     let s = s.trim();
     let (neg, s) = match s.strip_prefix('N') {
-        Some(r) if r.len() > 3 && r[..3].chars().all(|c| c.is_ascii_uppercase()) => (true, r),
+        Some(r)
+            if r.len() > 3
+                && r.get(..3)
+                    .is_some_and(|c| c.chars().all(|c| c.is_ascii_uppercase())) =>
+        {
+            (true, r)
+        }
         _ => (false, s),
     };
-    if s.len() < 4 || !s[..3].chars().all(|c| c.is_ascii_uppercase()) {
+    let cur = s.get(..3)?;
+    if s.len() < 4 || !cur.chars().all(|c| c.is_ascii_uppercase()) {
         return None;
     }
-    let cents = decimal_cents(&s[3..])?;
-    Some((s[..3].to_string(), if neg { -cents } else { cents }))
+    let cents = decimal_cents(s.get(3..)?)?;
+    Some((cur.to_string(), if neg { -cents } else { cents }))
 }
 
 /// "10718,73" → 1071873, "243," → 24300, "11,672" → 1167 (rounded half up).
@@ -256,7 +286,9 @@ fn decimal_cents(s: &str) -> Option<i64> {
     digits.resize(digits.len().max(3), 0);
     let cents = (digits[0] as i64) * 10 + digits[1] as i64;
     let round_up = digits[2] >= 5;
-    Some(int * 100 + cents + i64::from(round_up))
+    int.checked_mul(100)?
+        .checked_add(cents)?
+        .checked_add(i64::from(round_up))
 }
 
 /// "20261107" or "20261107120000" → "2026-11-07"
@@ -323,6 +355,25 @@ mod tests {
         assert_eq!(
             parse(&format!("{page}{page}{last}")).total_cents,
             Some(250_00)
+        );
+    }
+
+    #[test]
+    fn hostile_input_never_panics() {
+        // multibyte char straddling the currency slice, overflow, inf quantity
+        for t in [
+            ":16R:FIN\n:19A::HOLD//ABÄ1,\n:16S:FIN",
+            ":19A::HOLS//NABÄ1,",
+            ":19A::HOLS//EUR99999999999999999999,",
+            ":19A::HOLS//EUR92233720368547758,99",
+            ":16R:FIN\n:93B::AGGR//UNIT/inf\n:90B::MRKT//ACTU/EUR1,\n:16S:FIN",
+        ] {
+            let st = parse(t);
+            let _ = st.value_cents();
+        }
+        assert_eq!(
+            parse(":19A::HOLS//EUR92233720368547758,99").total_cents,
+            None
         );
     }
 }
