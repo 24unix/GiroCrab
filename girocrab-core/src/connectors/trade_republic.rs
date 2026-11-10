@@ -570,7 +570,7 @@ impl BankConnector for TradeRepublicConnector {
             .unwrap_or_default();
         out.accounts.push(RemoteAccount {
             external_ref: "tr:cash".into(),
-            name: "Girokonto".into(),
+            name: "Verrechnungskonto".into(),
             owner: String::new(),
             iban,
             account_number: self.phone.clone(),

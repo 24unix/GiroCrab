@@ -573,6 +573,16 @@ pub(crate) fn store_fetch(
                             params![acc.balance_cents, acc.balance_date, acc.currency, id],
                         )?;
                     }
+                    // Trade Republic cash side is a clearing account, not a Girokonto.
+                    if kind == ConnectorKind::TradeRepublic
+                        && acc.kind != AccountKind::Brokerage
+                        && acc.name == "Verrechnungskonto"
+                    {
+                        tx.execute(
+                            "UPDATE accounts SET name = ?1 WHERE id = ?2 AND name = 'Girokonto'",
+                            params![acc.name, id],
+                        )?;
+                    }
                     if acc.kind == AccountKind::Brokerage {
                         let (group, sym, order) = group_for(acc.kind);
                         let gid = Vault::ensure_group(&tx, group, sym, order)?;
