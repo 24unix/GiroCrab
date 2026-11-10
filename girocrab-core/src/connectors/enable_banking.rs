@@ -244,6 +244,7 @@ fn extract_code(input: &str, expected_state: &str) -> CoreResult<String> {
 #[async_trait]
 impl BankConnector for EnableBankingConnector {
     async fn begin(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
+        crate::depot_debug::log("enable_banking begin: entered");
         self.jwt = Self::make_jwt(ctx)?;
         self.client = Some(http_client()?);
         if let Ok(st) = serde_json::from_value::<PsdState>(ctx.state.clone()) {
@@ -380,6 +381,11 @@ impl BankConnector for EnableBankingConnector {
     }
 
     async fn fetch(&mut self, ctx: &ConnectContext) -> CoreResult<FetchResult> {
+        crate::depot_debug::log(&format!(
+            "enable_banking fetch: entered session_present={} accounts_in_state={}",
+            !self.st.session_id.is_empty(),
+            self.st.accounts.len()
+        ));
         let mut out = FetchResult::default();
         for (uid, name, iban, currency) in self.st.accounts.clone() {
             let bal = self

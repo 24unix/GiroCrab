@@ -1026,9 +1026,16 @@ impl Vault {
                     message: "Die Tresordatei ist unverschlüsselt (Klartext-SQLite) und passt nicht zum Schlüssel. Sie wurde nicht verändert.".into(),
                 });
             }
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let wal = std::fs::metadata(format!("{path}-wal")).map(|m| m.len()).unwrap_or(0);
+            let name = std::path::Path::new(&path)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             crate::depot_debug::log(&format!(
-                "vault open failed: HMAC check on page 1 failed for all modes tried: {}",
-                tried.join(", ")
+                "vault open failed: HMAC check on page 1 failed for all modes tried: {} (file={name} size={size} wal_size={wal} key_len={})",
+                tried.join(", "),
+                key.len()
             ));
             return Err(first_err.unwrap_or(CoreError::WrongKey));
         };

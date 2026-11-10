@@ -353,6 +353,18 @@ public final class AppModel {
         }
     }
 
+    /// Structural trace (no secrets) shared with the core's depot debug log.
+    static func debugLog(_ msg: String) {
+        let line = "\(Date()) \(msg)\n"
+        guard let data = line.data(using: .utf8) else { return }
+        let path = "/tmp/girocrab-depot-debug.log"
+        if let h = FileHandle(forWritingAtPath: path) {
+            h.seekToEndOfFile(); h.write(data); try? h.close()
+        } else {
+            try? data.write(to: URL(fileURLWithPath: path))
+        }
+    }
+
     static var vaultURL: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("GiroCrab", isDirectory: true)
@@ -367,6 +379,8 @@ public final class AppModel {
             do {
                 var key = try await VaultKeyManager.shared.unlock()
                 defer { key.resetBytes(in: 0..<key.count) }
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: Self.vaultURL.path)[.size] as? Int) ?? -1
+                Self.debugLog("unlock: vault=\(Self.vaultURL.lastPathComponent) size=\(fileSize) key_created_new=\(VaultKeyManager.shared.lastUnlockCreatedKey)")
                 let v = try Vault.open(path: Self.vaultURL.path, key: key)
                 _ = try v.seedStarterCategories()
                 self.ownVault = v

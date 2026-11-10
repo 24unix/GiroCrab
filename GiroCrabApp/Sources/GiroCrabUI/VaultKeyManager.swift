@@ -66,6 +66,9 @@ public final class VaultKeyManager: @unchecked Sendable {
         }
     }
 
+    /// True if the last `unlock()` generated a brand-new key (none was in the keychain).
+    public private(set) var lastUnlockCreatedKey = false
+
     public init() {}
 
     /// Human name of the available biometry ("Touch ID", "Face ID", "Optic ID", "Passcode").
@@ -106,9 +109,11 @@ public final class VaultKeyManager: @unchecked Sendable {
             throw KeyError.cancelled
         }
         if let key = try read(context: context) {
+            lastUnlockCreatedKey = false
             return key
         }
         let key = GiroCrabCore.generateMasterKey()
+        lastUnlockCreatedKey = true
         try store(key)
         return key
     }
