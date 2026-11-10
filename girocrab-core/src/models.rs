@@ -19,6 +19,8 @@ pub enum ConnectorKind {
     AmericanExpress,
     /// Amazon Visa via Enable Banking PSD2 aggregation
     AmazonVisa,
+    /// bunq public API with the user's own API key
+    Bunq,
 }
 
 impl ConnectorKind {
@@ -31,6 +33,7 @@ impl ConnectorKind {
             ConnectorKind::TradeRepublic => "traderepublic",
             ConnectorKind::AmericanExpress => "enablebanking:amex",
             ConnectorKind::AmazonVisa => "enablebanking:amazonvisa",
+            ConnectorKind::Bunq => "bunq",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -45,6 +48,7 @@ impl ConnectorKind {
             ConnectorKind::TradeRepublic,
             ConnectorKind::AmericanExpress,
             ConnectorKind::AmazonVisa,
+            ConnectorKind::Bunq,
         ]
     }
 }

@@ -597,6 +597,28 @@
         }
       }
     },
+    "API-Schlüssel (wird nicht gespeichert)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "API key (not stored)"
+          }
+        }
+      }
+    },
+    "API-Schlüssel im Tresor speichern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Store API Key in Vault"
+          }
+        }
+      }
+    },
     "Abbrechen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2740,6 +2762,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Move to PostBox (Unlink)"
+          }
+        }
+      }
+    },
+    "In der bunq-App freigeben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approve in the bunq App"
           }
         }
       }
@@ -5445,6 +5478,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "already present"
+          }
+        }
+      }
+    },
+    "bunq-API-Schlüssel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "bunq API Key"
           }
         }
       }
