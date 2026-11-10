@@ -103,6 +103,7 @@ struct DocumentsCard: View {
     @State private var selected: Int64?
     @State private var targeted = false
     @State private var exporting = false
+    @State private var docToDelete: DocumentInfo?
 
     var body: some View {
         let docs = model.documents(for: booking)
@@ -127,7 +128,8 @@ struct DocumentsCard: View {
                         .buttonStyle(.borderless).help("QuickLook (Leertaste)")
                     Menu {
                         Button("In PostBox verschieben (Verknüpfung lösen)") { model.linkDocument(d, to: nil) }
-                        Button("Löschen", role: .destructive) { model.deleteDocument(d) }
+                        Divider()
+                        Button("Löschen …", role: .destructive) { docToDelete = d }
                     } label: { Image(systemName: "ellipsis.circle") }
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                 }
@@ -168,6 +170,12 @@ struct DocumentsCard: View {
         .fileImporter(isPresented: $exporting, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.exportAllDocuments(to: url) }
         }
+        .confirmationDialog("Beleg löschen?", isPresented: Binding(get: { docToDelete != nil }, set: { if !$0 { docToDelete = nil } }), presenting: docToDelete) { d in
+            Button("Löschen", role: .destructive) { model.deleteDocument(d) }
+            Button("Abbrechen", role: .cancel) {}
+        } message: { d in
+            Text("„\(d.title)“ wird unwiderruflich gelöscht.")
+        }
         .onChange(of: booking.id) { _, _ in selected = nil }
     }
 }
@@ -181,6 +189,7 @@ struct DocumentsView: View {
     @State private var selected: Int64?
     @State private var exporting = false
     @State private var targeted = false
+    @State private var docToDelete: DocumentInfo?
 
     var body: some View {
         let docs = model.allDocuments(search: search, unlinkedOnly: unlinkedOnly)
@@ -212,7 +221,8 @@ struct DocumentsView: View {
                         .contextMenu {
                             Button("QuickLook") { model.quickLook(d) }
                             Button("Verknüpfung lösen") { model.linkDocument(d, to: nil) }
-                            Button("Löschen", role: .destructive) { model.deleteDocument(d) }
+                            Divider()
+                            Button("Löschen …", role: .destructive) { docToDelete = d }
                         }
                     }
                 }
@@ -248,6 +258,12 @@ struct DocumentsView: View {
         } isTargeted: { targeted = $0 }
         .fileImporter(isPresented: $exporting, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.exportAllDocuments(to: url) }
+        }
+        .confirmationDialog("Beleg löschen?", isPresented: Binding(get: { docToDelete != nil }, set: { if !$0 { docToDelete = nil } }), presenting: docToDelete) { d in
+            Button("Löschen", role: .destructive) { model.deleteDocument(d) }
+            Button("Abbrechen", role: .cancel) {}
+        } message: { d in
+            Text("„\(d.title)“ wird unwiderruflich gelöscht.")
         }
         .navigationTitle("")
     }

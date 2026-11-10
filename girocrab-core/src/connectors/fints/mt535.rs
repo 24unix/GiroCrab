@@ -105,15 +105,35 @@ pub fn parse(text: &str) -> Statement {
     let mut total: Option<i64> = None;
     let mut statement_total: Option<i64> = None;
     let mut current: Option<Holding> = None;
-    for field in fields(text) {
+    let (mut fin_blocks, mut skipped) = (0usize, 0usize);
+    let mut tags: Vec<String> = Vec::new();
+    let all_fields = fields(text);
+    crate::depot_debug::log(&format!(
+        "mt535 parse: {} chars, {} fields",
+        text.len(),
+        all_fields.len()
+    ));
+    for field in all_fields {
         let (tag, body) = split_tag(&field);
+        if current.is_some() && !matches!(tag, "16R" | "16S") {
+            tags.push(tag.to_string());
+        }
         match tag {
-            "16R" if body == "FIN" => current = Some(Holding::default()),
+            "16R" if body == "FIN" => {
+                fin_blocks += 1;
+                tags.clear();
+                current = Some(Holding::default());
+            }
             "16S" if body == "FIN" => {
                 if let Some(h) = current.take() {
                     let named = !(h.isin.is_empty() && h.wkn.is_empty() && h.name.is_empty());
                     if named || h.quantity != 0.0 || h.value_cents.is_some() {
                         st.holdings.push(h);
+                    } else {
+                        skipped += 1;
+                        crate::depot_debug::log(&format!(
+                            "mt535 FIN block skipped (empty); tags inside={tags:?}"
+                        ));
                     }
                 }
             }
@@ -173,6 +193,11 @@ pub fn parse(text: &str) -> Statement {
         }
     }
     st.total_cents = statement_total.or(total);
+    crate::depot_debug::log(&format!(
+        "mt535 result: fin_blocks={fin_blocks} skipped={skipped} kept={} has_total={}",
+        st.holdings.len(),
+        st.total_cents.is_some()
+    ));
     st
 }
 

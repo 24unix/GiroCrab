@@ -26,6 +26,7 @@ uniffi::setup_scaffolding!();
 pub mod connections;
 pub mod connectors;
 pub mod demo;
+pub mod depot_debug;
 pub mod documents;
 pub mod error;
 pub mod i18n;

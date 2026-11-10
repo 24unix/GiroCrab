@@ -657,11 +657,20 @@ pub(crate) fn store_fetch(
             }
         };
         let mut by_account: HashMap<i64, Vec<&crate::models::Holding>> = HashMap::new();
+        let mut unresolved = 0usize;
         for h in &data.holdings {
             if let Some(id) = resolve(&h.account_ref) {
                 by_account.entry(id).or_default().push(&h.holding);
+            } else {
+                unresolved += 1;
             }
         }
+        crate::depot_debug::log(&format!(
+            "store_fetch {kind:?}: incoming_holdings={} depot_accounts={} resolved_accounts={} unresolved={unresolved}",
+            data.holdings.len(),
+            depots.len(),
+            by_account.len()
+        ));
         for (acc_id, list) in &by_account {
             tx.execute("DELETE FROM holdings WHERE account_id = ?1", [acc_id])?;
             for h in list {

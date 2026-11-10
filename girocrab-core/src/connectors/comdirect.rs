@@ -487,13 +487,36 @@ impl BankConnector for ComdirectConnector {
             out.documents.extend(docs);
         }
         // Securities accounts (value only)
-        if let Ok(depots) = self.get("/api/brokerage/clients/user/v3/depots").await {
+        crate::depot_debug::log("comdirect REST: fetching depots");
+        let depots_res = self.get("/api/brokerage/clients/user/v3/depots").await;
+        if let Err(e) = &depots_res {
+            crate::depot_debug::log(&format!(
+                "comdirect REST: depots request failed ({})",
+                e.to_string().chars().take(60).collect::<String>()
+            ));
+        }
+        if let Ok(depots) = depots_res {
+            crate::depot_debug::log(&format!(
+                "comdirect REST: {} depots",
+                depots["values"].as_array().map(|a| a.len()).unwrap_or(0)
+            ));
             for d in depots["values"].as_array().cloned().unwrap_or_default() {
                 let depot_id = d["depotId"].as_str().unwrap_or_default().to_string();
-                let pos = self
+                let pos_res = self
                     .get(&format!("/api/brokerage/v3/depots/{depot_id}/positions"))
-                    .await
-                    .unwrap_or(Value::Null);
+                    .await;
+                if let Err(e) = &pos_res {
+                    crate::depot_debug::log(&format!(
+                        "comdirect REST: positions request failed ({})",
+                        e.to_string().chars().take(60).collect::<String>()
+                    ));
+                }
+                let pos = pos_res.unwrap_or(Value::Null);
+                crate::depot_debug::log(&format!(
+                    "comdirect REST: positions values={} parsed={}",
+                    pos["values"].as_array().map(|a| a.len()).unwrap_or(0),
+                    parse_positions(&pos).len()
+                ));
                 let external_ref = format!("depot:{depot_id}");
                 for h in parse_positions(&pos) {
                     out.holdings.push(super::RemoteHolding {

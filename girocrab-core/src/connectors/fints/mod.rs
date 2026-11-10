@@ -915,10 +915,44 @@ impl FinTsConnector {
         let v = self.version("HKWPD");
         let mut data = Vec::<u8>::new();
         let mut touchdown: Option<String> = None;
-        for _page in 0..20 {
-            let r = self
+        crate::depot_debug::log(&format!(
+            "fints HKWPD: bpd HIWPDS versions={:?} (bank_supports={}), sending v{v} with KTV",
+            self.st.versions.get("HKWPD"),
+            self.bank_supports("HKWPD")
+        ));
+        for page in 0..20 {
+            let r = match self
                 .request(ctx, "HKWPD", Self::hkwpd(v, acc, touchdown.as_deref()))
-                .await?;
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    crate::depot_debug::log(&format!(
+                        "fints HKWPD page {page}: request error (kind of error only): {}",
+                        e.to_string().chars().take(4).collect::<String>()
+                    ));
+                    return Err(e);
+                }
+            };
+            let codes: Vec<String> = r
+                .codes
+                .iter()
+                .map(|c| format!("{}@{}", c.0, c.1.map(|n| n.to_string()).unwrap_or_default()))
+                .collect();
+            let hiwpd: Vec<String> = r
+                .all("HIWPD")
+                .map(|s| {
+                    format!(
+                        "v{} bin_len={:?} elems={}",
+                        s.version(),
+                        s.binary(1).map(|b| b.len()),
+                        s.elements.len()
+                    )
+                })
+                .collect();
+            crate::depot_debug::log(&format!(
+                "fints HKWPD page {page}: codes={codes:?} HIWPD segments={hiwpd:?}"
+            ));
             for s in r.all("HIWPD") {
                 if let Some(b) = s.binary(1) {
                     data.extend_from_slice(b);
@@ -1516,6 +1550,14 @@ impl BankConnector for FinTsConnector {
                 kind = AccountKind::Brokerage;
             }
             let label = account_label(acc);
+            crate::depot_debug::log(&format!(
+                "fints account: kind={kind:?} kind_code={:?} is_depot={} upd_found={} hkwpd_allowed={} bank_supports_hkwpd={}",
+                upd.as_ref().map(|u| u.kind_code),
+                kind == AccountKind::Brokerage,
+                upd.is_some(),
+                allowed("HKWPD"),
+                self.bank_supports("HKWPD")
+            ));
             let mut currency = upd
                 .as_ref()
                 .map(|u| u.currency.clone())
@@ -1542,6 +1584,11 @@ impl BankConnector for FinTsConnector {
             if kind == AccountKind::Brokerage && self.bank_supports("HKWPD") && allowed("HKWPD") {
                 match self.holdings(ctx, acc).await {
                     Ok(st) => {
+                        crate::depot_debug::log(&format!(
+                            "fints holdings parsed: {} positions, value_derivable={}",
+                            st.holdings.len(),
+                            st.value_cents().is_some()
+                        ));
                         // Positions are always kept, even when the total can't be derived.
                         if let Some(c) = st
                             .holdings

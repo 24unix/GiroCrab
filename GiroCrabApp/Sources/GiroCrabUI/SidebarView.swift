@@ -8,6 +8,8 @@ struct SidebarView: View {
     @State private var budgetCategory: IDBox?
     @State private var newCategoryName = ""
     @State private var accountToDelete: Account?
+    @State private var categoryToDelete: GiroCrabCore.Category?
+    @State private var connectionToRemove: Int64?
 
     var body: some View {
         @Bindable var model = model
@@ -78,7 +80,8 @@ struct SidebarView: View {
                             .controlSize(.small)
                     }
                     .contextMenu {
-                        Button("Bankzugang entfernen", systemImage: "trash", role: .destructive) { model.removeConnection(c.id) }
+                        Divider()
+                        Button("Bankzugang entfernen …", systemImage: "trash", role: .destructive) { connectionToRemove = c.id }
                     }
                 }
             }
@@ -148,6 +151,14 @@ struct SidebarView: View {
         } message: { account in
             Text("„\(account.name)“ wird samt allen Buchungen und Belegen unwiderruflich gelöscht.")
         }
+        .confirmationDialog("Bankzugang entfernen?", isPresented: Binding(get: { connectionToRemove != nil }, set: { if !$0 { connectionToRemove = nil } }), presenting: connectionToRemove) { id in
+            Button("Entfernen", role: .destructive) { model.removeConnection(id) }
+            Button("Abbrechen", role: .cancel) {}
+        }
+        .confirmationDialog("Kategorie löschen?", isPresented: Binding(get: { categoryToDelete != nil }, set: { if !$0 { categoryToDelete = nil } }), presenting: categoryToDelete) { cat in
+            Button("„\(cat.name)“ löschen", role: .destructive) { model.deleteCategory(cat.id) }
+            Button("Abbrechen", role: .cancel) {}
+        }
         .sheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
         .alert("Neue Kategorie", isPresented: Binding(get: { newCategoryParent != nil }, set: { if !$0 { newCategoryParent = nil } })) {
             TextField("Name", text: $newCategoryName)
@@ -164,7 +175,6 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func accountMenu(_ account: Account) -> some View {
-        Button("Konto löschen…", systemImage: "trash", role: .destructive) { accountToDelete = account }
         if let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
             Button("\(conn.displayName) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
         }
@@ -178,13 +188,16 @@ struct SidebarView: View {
                 #endif
             }
         }
+        Divider()
+        Button("Konto löschen …", systemImage: "trash", role: .destructive) { accountToDelete = account }
     }
 
     @ViewBuilder
     private func categoryMenu(_ category: GiroCrabCore.Category) -> some View {
         Button("Neue Unterkategorie …", systemImage: "plus") { newCategoryParent = .some(category.id) }
         Button("Monatsbudget festlegen …", systemImage: "gauge.with.dots.needle.67percent") { budgetCategory = IDBox(id: category.id) }
-        Button("„\(category.name)“ löschen", systemImage: "trash", role: .destructive) { model.deleteCategory(category.id) }
+        Divider()
+        Button("„\(category.name)“ löschen …", systemImage: "trash", role: .destructive) { categoryToDelete = category }
     }
 }
 
