@@ -94,6 +94,9 @@ public struct GiroCrabRootView: View {
 struct LockView: View {
     @Environment(AppModel.self) private var model
     var error: String?
+    /// The unlock has been waiting for a while: most likely a Touch ID or
+    /// Keychain prompt the user hasn't noticed (behind the window, other screen).
+    @State private var waitingLong = false
 
     var body: some View {
         VStack(spacing: 18) {
@@ -114,6 +117,19 @@ struct LockView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(model.vaultState == .unlocking)
+            if model.vaultState == .unlocking {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Warte auf macOS …").foregroundStyle(Theme.secondary)
+                }
+                if waitingLong {
+                    Label("Bitte bestätigen Sie die Abfrage von macOS (Touch ID oder Schlüsselbund). Sie kann hinter diesem Fenster oder auf einem anderen Bildschirm liegen.", systemImage: "exclamationmark.bubble")
+                        .font(.callout)
+                        .foregroundStyle(Theme.warning)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 460)
+                }
+            }
             if let error {
                 Text(error).font(.callout).foregroundStyle(.red).multilineTextAlignment(.center)
             }
@@ -125,6 +141,12 @@ struct LockView: View {
         .background(Theme.canvas)
         .task {
             if model.vaultState == .locked && error == nil { model.unlock() }
+        }
+        .task(id: model.vaultState == .unlocking) {
+            waitingLong = false
+            guard model.vaultState == .unlocking else { return }
+            try? await Task.sleep(for: .seconds(5))
+            if !Task.isCancelled && model.vaultState == .unlocking { waitingLong = true }
         }
     }
 }
