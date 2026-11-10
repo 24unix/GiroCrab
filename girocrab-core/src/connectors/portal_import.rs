@@ -370,11 +370,13 @@ fn walk(
 /// Preferred balance fields (normalised: lowercase, no `_`/`-`), strict priority order.
 /// Live total debt first; statement/billing-cycle amounts only as a last resort.
 const BALANCE_KEYS: &[&str] = &[
+    "statementbalanceamount",
     "currentbalance",
     "totalbalance",
     "outstandingbalance",
     "balanceamount",
     "accountbalance",
+    "laststatementbalanceamount",
 ];
 
 fn norm_key(k: &str) -> String {
@@ -421,7 +423,7 @@ fn find_balance(v: &Value, kind: ConnectorKind) -> Option<(String, i64)> {
                 for (k, val) in o {
                     let kl = norm_key(k);
                     if kl.contains("balance")
-                        && !["available", "minimum", "statement", "previous", "last", "payment", "due"]
+                        && !["available", "minimum", "statement", "previous", "last", "payment", "due", "debit", "charge"]
                             .iter()
                             .any(|x| kl.contains(x))
                     {
@@ -952,6 +954,12 @@ pub fn portal_schema_dump(json_bodies: Vec<String>, dom_rows_json: String) -> St
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn amex_statement_balance_wins() {
+        let b = r#"{"charges_amount":1702.24,"debits_balance_amount":1702.24,"total_debits_balance_amount":1702.24,"last_statement_balance_amount":5515.59,"statement_balance_amount":6879.3,"totalAmount":0}"#;
+        let (_, bal) = super::parse_json_bodies(&[b.to_string()], super::ConnectorKind::AmericanExpress);
+        assert_eq!(bal, Some(-687930));
+    }
     use super::*;
 
     #[test]
