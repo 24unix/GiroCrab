@@ -15,7 +15,7 @@
 //! :93B::AGGR//UNIT/243,           ← quantity (FAMT = nominal for bonds)
 //! :19A::HOLD//EUR10718,73         ← value of the position (N = negative)
 //! :16S:FIN
-//! :16R:ADDINFO :19A::HOLP//EUR... ← total value of the statement (optional)
+//! :16R:ADDINFO :19A::HOLP//EUR... ← value of this page; HOLS = whole statement
 //! -
 //! ```
 //!
@@ -43,7 +43,8 @@ pub struct Holding {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Statement {
     pub holdings: Vec<Holding>,
-    /// Total value reported by the bank (`:19A::HOLP`), if any.
+    /// Total value reported by the bank: `:19A::HOLS` (statement), else the
+    /// sum of `:19A::HOLP` (one per page), if any.
     pub total_cents: Option<i64>,
     /// Statement date (`:98A::STAT` / `:98C::STAT` / `PREP`), YYYY-MM-DD.
     pub date: Option<String>,
@@ -82,6 +83,7 @@ impl Statement {
 pub fn parse(text: &str) -> Statement {
     let mut st = Statement::default();
     let mut total: Option<i64> = None;
+    let mut statement_total: Option<i64> = None;
     let mut current: Option<Holding> = None;
     for field in fields(text) {
         let (tag, body) = split_tag(&field);
@@ -135,6 +137,7 @@ pub fn parse(text: &str) -> Statement {
                         h.value_cents = Some(cents);
                         h.currency = cur;
                     }
+                    ("HOLS", None, Some((_, cents))) => statement_total = Some(cents),
                     ("HOLP", None, Some((_, cents))) => {
                         total = Some(total.unwrap_or(0) + cents);
                     }
@@ -144,7 +147,7 @@ pub fn parse(text: &str) -> Statement {
             _ => {}
         }
     }
-    st.total_cents = total;
+    st.total_cents = statement_total.or(total);
     st
 }
 
@@ -315,5 +318,11 @@ mod tests {
     fn several_pages_add_up() {
         let page = ":16R:ADDINFO\n:19A::HOLP//EUR100,\n:16S:ADDINFO\n-\n";
         assert_eq!(parse(&format!("{page}{page}")).total_cents, Some(200_00));
+        // the statement total wins over the page totals (no double counting)
+        let last = ":16R:ADDINFO\n:19A::HOLP//EUR50,\n:19A::HOLS//EUR250,\n:16S:ADDINFO\n-\n";
+        assert_eq!(
+            parse(&format!("{page}{page}{last}")).total_cents,
+            Some(250_00)
+        );
     }
 }
