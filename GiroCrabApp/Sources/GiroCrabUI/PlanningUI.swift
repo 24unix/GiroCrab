@@ -172,10 +172,44 @@ struct BudgetEditorSheet: View {
     }
 }
 
+// MARK: - Chart color palette
+
+enum ChartColorPalette: String, CaseIterable, Identifiable {
+    case girocrab, profi, emerald
+    var id: String { rawValue }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .girocrab: "GiroCrab — Cyan & Orange"
+        case .profi: "Profi-Banking — Blau & Schiefer"
+        case .emerald: "Klassisch — Smaragd & Rose"
+        }
+    }
+
+    private var hexes: (income: (String, String), expense: (String, String)) {
+        switch self {
+        case .girocrab: (("#38BDF8", "#0284C7"), ("#F97316", "#EA580C"))
+        case .profi: (("#3B82F6", "#2563EB"), ("#64748B", "#475569"))
+        case .emerald: (("#10B981", "#059669"), ("#F43F5E", "#E11D48"))
+        }
+    }
+
+    private func gradient(_ h: (String, String)) -> LinearGradient {
+        LinearGradient(colors: [Color(hex: h.0).opacity(0.95), Color(hex: h.1).opacity(0.45)],
+                       startPoint: .top, endPoint: .bottom)
+    }
+
+    var incomeGradient: LinearGradient { gradient(hexes.income) }
+    var expenseGradient: LinearGradient { gradient(hexes.expense) }
+    var incomeDot: Color { Color(hex: hexes.income.0) }
+    var expenseDot: Color { Color(hex: hexes.expense.0) }
+}
+
 // MARK: - Cashflow comparison
 
 struct CashflowCard: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("chartColorPalette") private var paletteRaw = ChartColorPalette.girocrab.rawValue
     @State private var granularity: PeriodGranularity = .month
     @State private var rows: [PeriodCashflow] = []
 
@@ -190,7 +224,12 @@ struct CashflowCard: View {
         granularity == .month ? DateText.monthLabel(key) : key
     }
 
+    private func legendDot(_ color: Color, _ title: String) -> some View {
+        HStack(spacing: 5) { Circle().fill(color).frame(width: 8, height: 8); Text(title) }
+    }
+
     var body: some View {
+        let palette = ChartColorPalette(rawValue: paletteRaw) ?? .girocrab
         let income = String(localized: "Einnahmen")
         let expense = String(localized: "Ausgaben")
         let bars = rows.flatMap { r in
@@ -201,6 +240,16 @@ struct CashflowCard: View {
             HStack {
                 Text("Cashflow").font(.subheadline.weight(.semibold))
                 Spacer()
+                Menu {
+                    Picker("Farbschema", selection: $paletteRaw) {
+                        ForEach(ChartColorPalette.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Image(systemName: "paintpalette")
+                }
+                .menuStyle(.borderlessButton).fixedSize()
+                .help(Text("Farbschema"))
                 Picker("", selection: $granularity) {
                     Text("Monat").tag(PeriodGranularity.month)
                     Text("Quartal").tag(PeriodGranularity.quarter)
@@ -212,10 +261,23 @@ struct CashflowCard: View {
                 BarMark(x: .value("Zeitraum", b.period), y: .value("€", b.euros))
                     .foregroundStyle(by: .value("Art", b.kind))
                     .position(by: .value("Art", b.kind))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
             }
-            .chartForegroundStyleScale([income: Theme.inflow, expense: Theme.negative])
-            .chartYAxis { AxisMarks(position: .leading) { AxisGridLine().foregroundStyle(Theme.border); AxisValueLabel() } }
+            .chartForegroundStyleScale([income: palette.incomeGradient, expense: palette.expenseGradient])
+            .chartLegend(.hidden)
+            .chartYAxis {
+                AxisMarks(position: .leading) {
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                        .foregroundStyle(Color.white.opacity(0.07))
+                    AxisValueLabel()
+                }
+            }
             .frame(height: 160)
+            HStack(spacing: 14) {
+                legendDot(palette.incomeDot, income)
+                legendDot(palette.expenseDot, expense)
+            }
+            .font(.caption).foregroundStyle(Theme.secondary)
         }
         .card()
         .task(id: "\(granularity)#\(model.bookings.count)") {

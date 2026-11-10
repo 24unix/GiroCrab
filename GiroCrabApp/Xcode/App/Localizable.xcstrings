@@ -1,6 +1,50 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "GiroCrab — Cyan & Orange" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab — Cyan & Orange"
+          }
+        }
+      }
+    },
+    "Profi-Banking — Blau & Schiefer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro Banking — Blue & Slate"
+          }
+        }
+      }
+    },
+    "Klassisch — Smaragd & Rose" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Classic — Emerald & Rose"
+          }
+        }
+      }
+    },
+    "Farbschema" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Color scheme"
+          }
+        }
+      }
+    },
     "Echtzeitüberweisung (SEPA Instant)" : {
       "extractionState" : "manual",
       "localizations" : {
