@@ -390,7 +390,7 @@ impl BankConnector for EnableBankingConnector {
                 )
                 .await?;
             let balances = bal["balances"].as_array().cloned().unwrap_or_default();
-            let (balance_cents, ref_date) = pick_balance(&balances);
+            let (mut balance_cents, ref_date, picked_type) = pick_balance_typed(&balances);
             for b in &balances {
                 let cents = json_number_to_cents(&b["balance_amount"]["amount"]).unwrap_or(0);
                 crate::depot_debug::log(&format!(
@@ -406,6 +406,8 @@ impl BankConnector for EnableBankingConnector {
                 balances.len(),
                 balance_cents.signum()
             ));
+            let acct_idx = out.accounts.len();
+            let tx_start = out.transactions.len();
             out.accounts.push(RemoteAccount {
                 external_ref: uid.clone(),
                 name: name.clone(),
@@ -521,8 +523,77 @@ impl BankConnector for EnableBankingConnector {
                     break;
                 }
             }
+            // Pending authorizations (not yet booked) are part of what the card
+            // currently owes. Summed only (never stored as bookings), so nothing
+            // has to be reconciled when they get booked later.
+            let mut pending_sum = 0i64;
+            let mut pending_n = 0u32;
+            let mut pcont: Option<String> = None;
+            for _ in 0..20 {
+                let mut path = format!(
+                    "/accounts/{uid}/transactions?date_from={since}&transaction_status=PDNG"
+                );
+                if let Some(c) = &pcont {
+                    path.push_str(&format!(
+                        "&continuation_key={}",
+                        url::form_urlencoded::byte_serialize(c.as_bytes()).collect::<String>()
+                    ));
+                }
+                let Ok(page) = self.call(reqwest::Method::GET, &path, None).await else {
+                    break;
+                };
+                for t in page["transactions"].as_array().cloned().unwrap_or_default() {
+                    if t["status"].as_str().is_some_and(|s| s == "BOOK") {
+                        continue;
+                    }
+                    let a = json_number_to_cents(&t["transaction_amount"]["amount"])
+                        .unwrap_or(0)
+                        .abs();
+                    pending_sum += if t["credit_debit_indicator"].as_str() == Some("DBIT") {
+                        -a
+                    } else {
+                        a
+                    };
+                    pending_n += 1;
+                }
+                pcont = page["continuation_key"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
+                if pcont.is_none() {
+                    break;
+                }
+            }
+            // Booked-type balances exclude pending authorizations; XPCD/OTHR include them.
+            let excludes_pending = matches!(
+                picked_type.as_deref(),
+                Some("ITBD" | "CLBD" | "OPBD")
+            );
+            if balance_cents != 0 && excludes_pending {
+                balance_cents += pending_sum;
+            } else if balance_cents == 0 {
+                // No usable balance: derive from the fetched history plus pending.
+                let rows: Vec<(String, i64, String)> = out.transactions[tx_start..]
+                    .iter()
+                    .map(|t| {
+                        (
+                            t.booking_date.clone(),
+                            t.amount_cents,
+                            format!("{} {} {}", t.counterparty, t.purpose, t.booking_text),
+                        )
+                    })
+                    .collect();
+                if let Some(open) = super::open_card_balance(&rows) {
+                    balance_cents = open + pending_sum;
+                } else if pending_sum != 0 {
+                    balance_cents = pending_sum;
+                }
+            }
+            out.accounts[acct_idx].balance_cents = balance_cents;
             crate::depot_debug::log(&format!(
-                "amex transactions: since={since} pages={pages} raw={raw_items} booked_kept={n}"
+                "amex transactions: since={since} pages={pages} raw={raw_items} booked_kept={n} pending={pending_n} pending_sign={} final_balance_sign={}",
+                pending_sum.signum(),
+                balance_cents.signum()
             ));
         }
         out.state = Some(serde_json::to_value(&self.st)?);
@@ -534,6 +605,12 @@ impl BankConnector for EnableBankingConnector {
 /// it signed (`DBIT` => negative, i.e. open card debt) plus its reference date.
 /// Returns `(0, None)` when nothing usable is present.
 fn pick_balance(balances: &[Value]) -> (i64, Option<String>) {
+    let (c, d, _) = pick_balance_typed(balances);
+    (c, d)
+}
+
+/// Like `pick_balance`, additionally returning the chosen `balance_type`.
+fn pick_balance_typed(balances: &[Value]) -> (i64, Option<String>, Option<String>) {
     const ORDER: [&str; 7] = ["ITBD", "CLBD", "XPCD", "ITAV", "OPBD", "FWAV", "OTHR"];
     let signed = |b: &Value| {
         let mut cents = json_number_to_cents(&b["balance_amount"]["amount"]).unwrap_or(0);
@@ -568,7 +645,7 @@ fn pick_balance(balances: &[Value]) -> (i64, Option<String>) {
         })
         .or(balances.first());
     let Some(pick) = pick else {
-        return (0, None);
+        return (0, None, None);
     };
     let mut cents = signed(pick);
     // A credit card reports owed money as a positive number without CRDT: treat as debt.
@@ -576,7 +653,11 @@ fn pick_balance(balances: &[Value]) -> (i64, Option<String>) {
     if cents > 0 && !ind.eq_ignore_ascii_case("CRDT") && !ind.eq_ignore_ascii_case("CREDIT") {
         cents = -cents;
     }
-    (cents, pick["reference_date"].as_str().map(str::to_string))
+    (
+        cents,
+        pick["reference_date"].as_str().map(str::to_string),
+        pick["balance_type"].as_str().map(str::to_string),
+    )
 }
 
 #[cfg(test)]

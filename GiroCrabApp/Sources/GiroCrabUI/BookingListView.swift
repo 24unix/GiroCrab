@@ -6,9 +6,11 @@ import GiroCrabCore
 struct BookingStreamView: View {
     @Environment(AppModel.self) private var model
     @FocusState private var focused: Bool
+    @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
 
     var body: some View {
         @Bindable var model = model
+        let isOverview: Bool = { if case .allAccounts? = model.sidebarSelection { return true }; return false }()
         let emptyVault = !model.demoActive && model.allAccounts.isEmpty
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
@@ -19,6 +21,22 @@ struct BookingStreamView: View {
                     }
                     if !emptyVault {
                         StreamHeaderCard()
+                        if !isOverview && model.scope != .investments && !model.allAccounts.isEmpty {
+                            HStack {
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.25)) { showAnalytics.toggle() }
+                                } label: {
+                                    Label("Analysen", systemImage: "chart.bar.xaxis")
+                                        .font(.caption.weight(.medium))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(showAnalytics ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .help("Cashflow und Budgets für dieses Konto ein-/ausblenden")
+                                Spacer()
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -34,10 +52,10 @@ struct BookingStreamView: View {
                         }
                         if model.scope == .investments {
                             InvestmentDashboardView()
-                        } else if !model.allAccounts.isEmpty, case .allAccounts? = model.sidebarSelection {
-                            // Only on the overview: on a single account the bookings come first.
-                            CashflowCard()
-                            BudgetProgressCard()
+                        } else if !model.allAccounts.isEmpty, isOverview || showAnalytics {
+                            // Overview: always; single account: only when toggled on.
+                            CashflowCard().transition(.opacity.combined(with: .move(edge: .top)))
+                            BudgetProgressCard().transition(.opacity.combined(with: .move(edge: .top)))
                         }
                         if model.dayGroups.isEmpty && !(model.allAccounts.isEmpty && !model.demoActive) {
                             ContentUnavailableView(
