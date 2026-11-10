@@ -9,7 +9,7 @@
   <img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
   <img alt="Rust" src="https://img.shields.io/badge/core-Rust-orange">
   <img alt="Swift" src="https://img.shields.io/badge/app-SwiftUI-F05138">
-  <img alt="Platforms" src="https://img.shields.io/badge/macOS%2014%2B%20%7C%20iOS%2017%2B-lightgrey">
+  <img alt="Platforms" src="https://img.shields.io/badge/macOS%2014%2B-lightgrey">
   <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen">
 </p>
 
@@ -19,8 +19,8 @@
 
 ## 🇩🇪 Deutsch
 
-**Open-Source-Banking für macOS 14+ und iOS 17+ – selbst gehostet, verschlüsselt, ohne Cloud.**
-Native SwiftUI-App auf einem Rust-Kern: verschlüsseltes Kassenbuch (SQLCipher), Kategorienbaum,
+**Open-Source-Banking für macOS 14+ – lokal, verschlüsselt, ohne Cloud.**
+Native SwiftUI-App auf einem Rust-Kern: verschlüsselter Datentresor (XChaCha20-Poly1305 & Argon2id), Kategorienbaum,
 Regeln, Händler-Erkennung, Sparplan-Ansicht, Darlehens-Tilgungsbalken und direkte Verbindungen
 zu Ihren Banken – ohne Server, ohne Tracking.
 
@@ -52,7 +52,7 @@ nur um Kategorie und Notiz ergänzt.
 
 *Alle Screenshots zeigen ausschließlich erfundene Demo-Daten (`GIROCRAB_DEMO_SEED=1`).*
 
-- 🔒 **Local-First & Zero-Cloud:** Alle Bankdaten bleiben auf Ihrem Gerät – in einem verschlüsselten SQLCipher-Tresor, geschützt durch macOS-Schlüsselbund / Touch ID.
+- 🔒 **Local-First & Zero-Cloud:** Alle Bankdaten bleiben auf Ihrem Gerät – in einem verschlüsselten Tresor (XChaCha20-Poly1305), geschützt durch macOS-Schlüsselbund / Touch ID.
 - 🏦 **Native deutsche Bank-Protokolle:** FinTS 3.0 / HBCI (CAMT.052 & MT940 mit intelligenter Latin-1/UTF-8-Erkennung), Trade-Republic-WebSocket, comdirect-REST sowie eingebettete Web-Session-/CSV-Importe für Amex & Amazon Visa.
 - 💸 **SEPA-Überweisungen via FinTS 3.0 / HKCCS** inkl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN-Prüfung (Mod-97), SEPA-konformer Zeichensatz, Empfängervorschläge aus bisherigen Buchungen und sofort vorgemerkte Buchung.
 - 🏠 **Intelligente Darlehens-Verfolgung:** Tilgungsfortschritt in Prozent und automatische Verknüpfung der monatlichen „Zins & Tilgung“-Raten vom Girokonto.
@@ -73,7 +73,7 @@ nur um Kategorie und Notiz ergänzt.
 ```
 ┌──────────────────────────┐   UniFFI    ┌────────────────────────────────────┐
 │ GiroCrabApp (SwiftUI)    │ ◄─────────► │ girocrab-core (Rust)               │
-│ macOS / iOS              │  Swift-API  │  vault.rs      SQLCipher-Tresor    │
+│ macOS 14+ (AppKit)       │  Swift-API  │  vault.rs      XChaCha20-Tresor    │
 │ Keychain + Face/Touch ID │             │  rules.rs      Kategorien-Regeln   │
 └──────────────────────────┘             │  merchants.rs  Händler-Erkennung   │
                                          │  connectors/   FinTS · REST · PSD2 │
@@ -102,7 +102,7 @@ Eine neue Bank anzubinden dauert meist unter 100 Zeilen: siehe
 Voraussetzungen: macOS 14+, Xcode 15+, [rustup](https://rustup.rs).
 
 ```bash
-./build-xcframework.sh          # Rust-Kern + Swift-Bindings (macOS, iOS, Simulator)
+./build-xcframework.sh          # Rust-Kern + Swift-Bindings (macOS / XCFramework)
 cargo run -- --demo-seed        # App mit erfundenen Demo-Daten starten
 # oder: GIROCRAB_DEMO_SEED=1 cargo run
 
@@ -128,8 +128,8 @@ sind Referenzdaten ohne Gewähr. Marken gehören ihren Inhabern und dienen nur d
 
 ## 🇬🇧 English
 
-**Open-source banking for macOS 14+ and iOS 17+ – self-hosted, encrypted, no cloud.**
-A native SwiftUI app on a Rust core: encrypted ledger (SQLCipher), category tree, rules, merchant
+**Open-source banking for macOS 14+ – local-first, encrypted, no cloud.**
+A native SwiftUI app on a Rust core: encrypted vault (XChaCha20-Poly1305 & Argon2id), category tree, rules, merchant
 recognition, savings-plan view, loan repayment progress and direct connections to your banks –
 no server, no tracking. Money is always `i64` cents, never floats.
 
@@ -159,7 +159,7 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 
 *All screenshots show purely fictional demo data (`GIROCRAB_DEMO_SEED=1`).*
 
-- 🔒 **Local-first & zero-cloud privacy:** all banking data lives on your device in an encrypted SQLCipher vault protected by the macOS Keychain / Touch ID.
+- 🔒 **Local-first & zero-cloud privacy:** all banking data lives on your device in an encrypted vault (XChaCha20-Poly1305) protected by the macOS Keychain / Touch ID.
 - 🏦 **Native German banking protocols:** FinTS 3.0 / HBCI (CAMT.052 & MT940 with smart Latin-1/UTF-8 decoding), Trade Republic WebSocket, comdirect REST, and embedded web-session/CSV import for Amex & Amazon Visa.
 - 💸 **Native SEPA credit transfers via FinTS 3.0 / HKCCS** incl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN checksum validation (Mod-97), SEPA-compliant character set, recipient suggestions from past bookings and an instant pending booking.
 - 🏠 **Smart loan tracking:** automatic repayment progress (%) and cross-account linking of the monthly "Zins & Tilgung" instalments from your checking account.
@@ -208,7 +208,7 @@ The open-source builds are not notarized. If macOS refuses to open the app, run
 Requirements: macOS 14+, Xcode 15+, [rustup](https://rustup.rs).
 
 ```bash
-./build-xcframework.sh          # Rust core + Swift bindings (macOS, iOS, simulator)
+./build-xcframework.sh          # Rust core + Swift bindings (macOS / XCFramework)
 cargo run -- --demo-seed        # launch the app with fictional demo data
 # or: GIROCRAB_DEMO_SEED=1 cargo run
 cargo test -p girocrab-core     # run the tests
@@ -231,7 +231,7 @@ owners and are used for identification only.
 
 ## Security / Sicherheit
 
-SQLCipher (AES-256) vault, key in the Keychain (`ThisDeviceOnly`), PINs/TANs only in memory
+XChaCha20-Poly1305 + Argon2id encrypted vault, key in the Keychain (`ThisDeviceOnly`), PINs/TANs only in memory
 (`zeroize`), no telemetry. **Never attach real bank data or credentials to issues.**
 
 ## License / Lizenz
