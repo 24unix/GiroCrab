@@ -179,6 +179,14 @@ impl BunqConnector {
         extra_headers: &[(&str, &str)],
         auth: Option<&str>,
     ) -> ApiResult<(Vec<u8>, String)> {
+        // Paths can come from bunq (pagination); the session token must
+        // never leave the bunq host, so only plain API paths are sent.
+        if !is_api_path(path) {
+            return Err(ApiError {
+                status: 0,
+                message: format!("invalid bunq API path: {path}"),
+            });
+        }
         let mut attempt = 0;
         loop {
             // Throttle: bunq rate limits are per endpoint and very low for GET.
@@ -455,7 +463,11 @@ impl BunqConnector {
                 out.push(obj.clone());
             }
             if !reached_since && pages < MAX_PAGES_PER_ACCOUNT {
-                path = v["Pagination"]["older_url"].as_str().map(str::to_string);
+                // Anything but a plain API path ends paging instead of the sync.
+                path = v["Pagination"]["older_url"]
+                    .as_str()
+                    .filter(|u| is_api_path(u))
+                    .map(str::to_string);
             }
         }
         Ok(out)
@@ -600,6 +612,11 @@ impl BunqConnector {
                             "/v1/user/{}/monetary-account/{account_id}/draft-payment?count=200",
                             self.state.user_id
                         );
+                        // Some accounts refuse the draft list (404) although
+                        // they have drafts; the event feed carries them too.
+                        let events = format!(
+                            "/v1/user/{user_id}/event?monetary_account_id={account_id}&count=200&display_user_event=false"
+                        );
                         drafts = Some(match self.get(&path).await {
                             Ok(v) => v["Response"]
                                 .as_array()
@@ -607,7 +624,16 @@ impl BunqConnector {
                                 .flatten()
                                 .map(|i| i["DraftPayment"].clone())
                                 .collect(),
-                            Err(_) => Vec::new(),
+                            Err(_) => match self.get(&events).await {
+                                Ok(v) => v["Response"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .map(|i| i["Event"]["object"]["DraftPayment"].clone())
+                                    .filter(|d| !d.is_null())
+                                    .collect(),
+                                Err(_) => Vec::new(),
+                            },
                         });
                     }
                     let draft = drafts.as_deref().and_then(|d| draft_of_payment(pid, d));
@@ -986,6 +1012,17 @@ fn attachment_items(v: &Value) -> Vec<&Value> {
         Value::Object(_) => vec![v],
         _ => Vec::new(),
     }
+}
+
+/// A path that stays on the bunq host when appended to the base URL: starts
+/// with `/v1/`, no userinfo (`@`), no scheme or protocol-relative part, no
+/// backslashes, whitespace or control characters.
+fn is_api_path(path: &str) -> bool {
+    path.starts_with("/v1/")
+        && !path.contains('@')
+        && !path.contains("//")
+        && !path.contains('\\')
+        && !path.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
 /// Outgoing payment created by accepting a request (direct debit, bunq
@@ -1525,6 +1562,29 @@ mod tests {
         ];
         assert_eq!(match_request_response(&pay, &responses), Some(13));
         assert_eq!(match_request_response(&pay, &responses[..3]), None);
+    }
+
+    #[test]
+    fn only_plain_api_paths_are_sent() {
+        assert!(is_api_path("/v1/installation"));
+        assert!(is_api_path(
+            "/v1/user/1/monetary-account/2/payment?count=200&older_id=123"
+        ));
+        for bad in [
+            "@evil.com/v1/x",
+            "/v1/x@evil.com",
+            "//evil.com/v1/x",
+            "/v1//evil.com",
+            "https://evil.com/v1/x",
+            "/v2/x",
+            "v1/x",
+            "/v1/x\\evil",
+            "/v1/x y",
+            "/v1/x\n",
+            "",
+        ] {
+            assert!(!is_api_path(bad), "{bad:?}");
+        }
     }
 
     #[test]
@@ -2275,5 +2335,82 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Lists PENDING drafts; with `BUNQ_DRAFT_ID` set, withdraws exactly that
+    /// draft (PUT status=REJECTED) and prints bunq's raw answer.
+    /// `BUNQ_API_KEY=… [BUNQ_DRAFT_ID=…] cargo test -q -p girocrab-core bunq_pending_drafts -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn bunq_pending_drafts() {
+        use crate::secret::SecretString;
+        let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
+        let target: Option<i64> = std::env::var("BUNQ_DRAFT_ID").ok().and_then(|v| v.trim().parse().ok());
+        let ctx = ConnectContext {
+            connection_id: 1,
+            login_name: String::new(),
+            secret: SecretString::new(key),
+            settings: Default::default(),
+            state: Value::Null,
+            since: "2020-01-01".into(),
+        };
+        let mut c = BunqConnector::new();
+        c.begin(&ctx).await.unwrap();
+        let mut found = 0;
+        for (id, acc) in c.accounts().await.unwrap() {
+            let path = format!("{}?count=200", c.draft_path(id, None));
+            let drafts: Vec<Value> = match c.get(&path).await {
+                Ok(v) => v["Response"].as_array().into_iter().flatten().map(|i| i["DraftPayment"].clone()).collect(),
+                Err(e) => {
+                    println!("account {id}: draft list {} {} -> reading drafts from the event feed", e.status, e.message);
+                    let path = format!("/v1/user/{}/event?monetary_account_id={id}&count=100&display_user_event=false", c.state.user_id);
+                    let ids: BTreeSet<i64> = match c.get(&path).await {
+                        Ok(v) => v["Response"].as_array().into_iter().flatten()
+                            .filter_map(|i| i["Event"]["object"]["DraftPayment"]["id"].as_i64())
+                            .collect(),
+                        Err(e) => {
+                            println!("  event list: {} {}", e.status, e.message);
+                            BTreeSet::new()
+                        }
+                    };
+                    let mut out = Vec::new();
+                    for did in ids.iter().rev().take(10) {
+                        match c.get(&c.draft_path(id, Some(*did))).await {
+                            Ok(v) => {
+                                let d = find(&v, "DraftPayment").clone();
+                                println!("  draft id={did} created={} status={}", d["created"].as_str().unwrap_or("-"), d["status"]);
+                                out.push(d);
+                            }
+                            Err(e) => println!("  draft id={did}: {} {}", e.status, e.message),
+                        }
+                    }
+                    out
+                }
+            };
+            for d in drafts.iter().filter(|d| d["status"].as_str() == Some("PENDING")) {
+                found += 1;
+                let did = d["id"].as_i64().unwrap_or_default();
+                let amount = d["entries"].as_array().and_then(|e| e.first())
+                    .map(|e| e["amount"]["value"].as_str().unwrap_or("?").to_string())
+                    .unwrap_or_else(|| "?".into());
+                println!(
+                    "PENDING draft id={did} account={} ({id}) created={} amount={amount} keys=[{}]",
+                    acc.kind.as_str(),
+                    d["created"].as_str().unwrap_or("-"),
+                    d.as_object().map(|o| o.keys().cloned().collect::<Vec<_>>().join(",")).unwrap_or_default(),
+                );
+                if target == Some(did) {
+                    let token = c.state.session_token.clone();
+                    let path = c.draft_path(id, Some(did));
+                    match c.call(reqwest::Method::PUT, &path, Some(&json!({"status": "REJECTED"})), Some(&token)).await {
+                        Ok(v) => println!("  PUT REJECTED -> ok: {}", v.to_string().chars().take(300).collect::<String>()),
+                        Err(e) => println!("  PUT REJECTED -> ERROR {} {}", e.status, e.message),
+                    }
+                    let status = c.get(&path).await.map(|v| find(&v, "DraftPayment")["status"].to_string());
+                    println!("  status now: {:?}", status.map_err(|e| e.status));
+                }
+            }
+        }
+        println!("\n{found} pending draft(s){}", if target.is_some() { "" } else { " (set BUNQ_DRAFT_ID=<id> to withdraw one)" });
     }
 }
