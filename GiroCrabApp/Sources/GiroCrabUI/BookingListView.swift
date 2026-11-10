@@ -9,36 +9,51 @@ struct BookingStreamView: View {
 
     var body: some View {
         @Bindable var model = model
+        let emptyVault = !model.demoActive && model.allAccounts.isEmpty
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
+            VStack(spacing: 0) {
+                // Header (balance, chart, KPIs) stays put; only the bookings scroll.
+                VStack(alignment: .leading, spacing: 14) {
                     if model.demoActive {
                         DemoBanner()
                     }
-                    if !model.demoActive && model.allAccounts.isEmpty {
-                        EmptyVaultCard()
-                    } else {
+                    if !emptyVault {
                         StreamHeaderCard()
-                    }
-                    if model.scope == .investments {
-                        InvestmentDashboardView()
-                    }
-                    if model.dayGroups.isEmpty && !(model.allAccounts.isEmpty && !model.demoActive) {
-                        ContentUnavailableView(
-                            model.searchText.isEmpty ? "Keine Buchungen" : "Keine Treffer",
-                            systemImage: model.searchText.isEmpty ? "tray" : "magnifyingglass",
-                            description: Text(model.searchText.isEmpty ? "Konto abrufen oder anderen Zeitraum wählen." : "Nichts passt zu „\(model.searchText)“.")
-                        )
-                        .padding(.top, 40)
-                    }
-                    ForEach(model.dayGroups) { day in
-                        DayCard(day: day)
                     }
                 }
                 .padding(.horizontal, 20)
-                .padding(.vertical, 18)
+                .padding(.top, 18)
+                .padding(.bottom, 10)
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 14) {
+                        Color.clear.frame(height: 0).id(Self.topID)
+                        if emptyVault {
+                            EmptyVaultCard()
+                        }
+                        if model.scope == .investments {
+                            InvestmentDashboardView()
+                        }
+                        if model.dayGroups.isEmpty && !(model.allAccounts.isEmpty && !model.demoActive) {
+                            ContentUnavailableView(
+                                model.searchText.isEmpty ? "Keine Buchungen" : "Keine Treffer",
+                                systemImage: model.searchText.isEmpty ? "tray" : "magnifyingglass",
+                                description: Text(model.searchText.isEmpty ? "Konto abrufen oder anderen Zeitraum wählen." : "Nichts passt zu „\(model.searchText)“.")
+                            )
+                            .padding(.top, 40)
+                        }
+                        ForEach(model.dayGroups) { day in
+                            DayCard(day: day)
+                                .id(day.id)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 4)
+                    .padding(.bottom, 18)
+                    .frame(maxWidth: 720)
+                    .frame(maxWidth: .infinity)
+                }
             }
             .background(Theme.canvas)
             // Drop a receipt anywhere on the stream: matched by amount/date/merchant.
@@ -48,6 +63,18 @@ struct BookingStreamView: View {
             }
             .onChange(of: model.selectedBookingID) { _, id in
                 if let id { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } }
+            }
+            // another account, group, period or view: back to the newest day
+            .onChange(of: model.sidebarSelection) { _, _ in scrollToTop(proxy) }
+            .onChange(of: model.period) { _, _ in scrollToTop(proxy) }
+            .onChange(of: model.scope) { _, _ in scrollToTop(proxy) }
+            .onChange(of: model.scrollToDay) { _, jump in
+                guard let day = jump?.day else { return }
+                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(day, anchor: .top) }
+                // select the day's first booking so the detail pane follows
+                if let first = model.dayGroups.first(where: { $0.date == day })?.bookings.first {
+                    model.selectedBookingID = first.id
+                }
             }
         }
         .focusable()
@@ -100,6 +127,12 @@ struct BookingStreamView: View {
             }
         }
         .navigationTitle("")
+    }
+
+    private static let topID = "stream-top"
+
+    private func scrollToTop(_ proxy: ScrollViewProxy) {
+        proxy.scrollTo(Self.topID, anchor: .top)
     }
 }
 

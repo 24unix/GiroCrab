@@ -44,7 +44,7 @@ struct StreamHeaderCard: View {
             }
 
             if model.scope != .investments {
-                BalanceChart(points: model.history)
+                BalanceChart(points: model.history) { model.jumpToDay($0) }
                     .frame(height: 86)
             }
 
@@ -108,6 +108,8 @@ struct KPI: View {
 
 struct BalanceChart: View {
     let points: [DailyBalance]
+    /// Click on a day (jump to its bookings).
+    var onSelect: ((Date) -> Void)? = nil
     /// Day under the mouse pointer (hover readout: date + balance).
     @State private var hovered: Point?
 
@@ -196,6 +198,13 @@ struct BalanceChart: View {
                         case .ended:
                             hovered = nil
                         }
+                    }
+                    .onTapGesture { location in
+                        guard let onSelect, let plot = proxy.plotFrame,
+                              let date: Date = proxy.value(atX: location.x - geo[plot].origin.x),
+                              let nearest = pts.min(by: { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) })
+                        else { return }
+                        onSelect(nearest.date)
                     }
             }
         }

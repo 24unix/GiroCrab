@@ -74,6 +74,11 @@ extension BookingScope {
     static let ordered: [BookingScope] = [.all, .everyday, .investments]
 }
 
+struct DayJump: Equatable {
+    let day: String
+    let token = UUID()
+}
+
 struct DayGroup: Identifiable {
     let date: String
     let bookings: [Booking]
@@ -149,9 +154,9 @@ public final class AppModel {
     private var logoCache: [String: (image: Image, pixels: Int)] = [:]
 
     // UI state
-    var sidebarSelection: SidebarItem? = .allAccounts { didSet { reloadBookings(); reloadHistory() } }
-    var scope: BookingScope = .all { didSet { reloadBookings() } }
-    var period: Period = .all { didSet { reloadCategories(); reloadBookings(); reloadHistory() } }
+    var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; reloadBookings(); reloadHistory() } }
+    var scope: BookingScope = .all { didSet { listLimit = Self.defaultListLimit; reloadBookings() } }
+    var period: Period = .all { didSet { listLimit = Self.defaultListLimit; reloadCategories(); reloadBookings(); reloadHistory() } }
     var statusFilter: StatusFilter = .all
     var searchText: String = "" { didSet { scheduleSearch() } }
     var selectedBookingID: Booking.ID? { didSet { reloadMerchantStats() } }
@@ -493,6 +498,11 @@ public final class AppModel {
         return children(of: nil)
     }
 
+    /// The stream loads the newest bookings only; a click on an older day in
+    /// the balance chart raises the limit until that day is loaded.
+    static let defaultListLimit: UInt32 = 3000
+    var listLimit: UInt32 = AppModel.defaultListLimit
+
     var currentFilter: BookingFilter {
         let (from, to) = period.range
         var accountIDs: [Int64] = []
@@ -513,7 +523,7 @@ public final class AppModel {
             search: searchText.isEmpty ? nil : searchText,
             dateFrom: from,
             dateTo: to,
-            limit: 3000,
+            limit: listLimit,
             offset: 0,
             scope: scope,
             merchantKey: nil
@@ -686,6 +696,30 @@ public final class AppModel {
             case .checked: return b.checked
             }
         }
+    }
+
+    /// Day card the stream should scroll to (set by a click in the balance chart);
+    /// a fresh token per click, so clicking the same day again scrolls again.
+    var scrollToDay: DayJump?
+
+    /// Jump to `date` in the booking stream: that day, or the nearest earlier
+    /// day with bookings (the balance of a quiet day comes from there).
+    func jumpToDay(_ date: Date) {
+        let day = DateText.iso(date)
+        if let vault, let oldest = dayGroups.last?.date, day < oldest,
+           let total = page?.totalCount, UInt32(bookings.count) < total {
+            // count the bookings from that day on, then load them plus some older context
+            var f = currentFilter
+            if f.dateFrom.map({ $0 < day }) ?? true { f.dateFrom = day }
+            f.limit = 1
+            if let newer = try? vault.listTransactions(filter: f).totalCount {
+                listLimit = max(listLimit, newer + 200)
+                reloadBookings()
+            }
+        }
+        let groups = dayGroups // newest first
+        guard let target = groups.first(where: { $0.date <= day }) ?? groups.last else { return }
+        scrollToDay = DayJump(day: target.date)
     }
 
     var dayGroups: [DayGroup] {
