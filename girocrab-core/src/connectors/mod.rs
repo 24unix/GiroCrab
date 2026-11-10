@@ -559,6 +559,12 @@ pub(crate) fn store_fetch(
                     acc.kind,
                 )?,
             };
+            // Sub-accounts known from an earlier import/sync without a connection
+            // (e.g. comdirect Depot / Tagesgeld): link them to this connection.
+            let existing = match existing {
+                Some(id) => Some(id),
+                None => adopt_unlinked(&tx, connection_id, &bank_name, acc)?,
+            };
             let id = match existing {
                 Some(id) => {
                     if !data.adjust_balances {
@@ -1422,6 +1428,68 @@ pub fn validate_iban(iban: String) -> bool {
     crate::connectors::fints::sepa::validate_iban(&iban)
 }
 
+/// Links an unconnected stored account to `connection_id` when it matches the
+/// remote one by account number / IBAN (ignoring spaces and leading zeros) or is
+/// the single unlinked depot of the same bank. Sets `connection_id`, `external_ref`, `kind`.
+fn adopt_unlinked(
+    tx: &rusqlite::Connection,
+    connection_id: i64,
+    bank_name: &str,
+    acc: &RemoteAccount,
+) -> CoreResult<Option<i64>> {
+    let norm = |x: &str| {
+        x.chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .trim_start_matches('0')
+            .to_uppercase()
+    };
+    let mut st = tx.prepare(
+        "SELECT id, IFNULL(iban,''), IFNULL(account_number,''), name, IFNULL(bank_name,'') FROM accounts WHERE connection_id IS NULL",
+    )?;
+    let rows: Vec<(i64, String, String, String, String)> = st
+        .query_map([], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+        })?
+        .collect::<Result<_, _>>()?;
+    drop(st);
+    let ours = [
+        norm(&acc.iban),
+        norm(&acc.account_number),
+        norm(&acc.external_ref),
+    ];
+    let mut found = rows
+        .iter()
+        .find(|(_, iban, num, _, _)| {
+            [norm(iban), norm(num)]
+                .iter()
+                .any(|f| !f.is_empty() && ours.contains(f))
+        })
+        .map(|r| r.0);
+    if found.is_none()
+        && (acc.kind == AccountKind::Brokerage || acc.name.to_lowercase().contains("depot"))
+    {
+        let same_bank = |b: &str| b.eq_ignore_ascii_case(bank_name);
+        let depots: Vec<i64> = rows
+            .iter()
+            .filter(|(_, _, _, name, bank)| {
+                name.to_lowercase().contains("depot") && same_bank(bank)
+            })
+            .map(|r| r.0)
+            .collect();
+        if let [only] = depots.as_slice() {
+            found = Some(*only);
+        }
+    }
+    if let Some(id) = found {
+        tx.execute(
+            "UPDATE accounts SET connection_id = ?1, external_ref = ?2, kind = ?3 WHERE id = ?4",
+            params![connection_id, acc.external_ref, acc.kind.as_str(), id],
+        )?;
+    }
+    Ok(found)
+}
+
 fn is_amex_name(s: &str) -> bool {
     let l = s.to_lowercase();
     l.contains("amex") || l.contains("american express")
@@ -1430,7 +1498,7 @@ fn is_amex_name(s: &str) -> bool {
 /// Open card balance (negative = owed) from `(date, amount_cents, text)` rows
 /// sorted ascending: sum of everything after the latest settlement booking
 /// (a positive KARTENABRECHNUNG / LASTSCHRIFT / AUSGLEICH / ZAHLUNG ERHALTEN
-/// entry). Without a settlement, the sum of the current month's bookings.
+/// entry). Without a settlement, the sum of all bookings.
 pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
     if rows.is_empty() {
         return None;
@@ -1449,14 +1517,9 @@ pub(crate) fn open_card_balance(rows: &[(String, i64, String)]) -> Option<i64> {
     };
     let start = match rows.iter().rposition(is_settlement) {
         Some(i) => i + 1,
-        None => {
-            let month = rows
-                .last()
-                .map(|r| r.0.chars().take(7).collect::<String>())?;
-            rows.iter()
-                .position(|r| r.0.starts_with(&month))
-                .unwrap_or(0)
-        }
+        // Billing cycles cross month boundaries and a refund is no settlement:
+        // without one, everything fetched belongs to the open cycle.
+        None => 0,
     };
     Some(rows[start..].iter().map(|r| r.1).sum())
 }
@@ -1518,7 +1581,13 @@ mod tests {
             r("2026-11-01", -200, "y"),
             r("2026-11-03", -300, "z"),
         ];
-        assert_eq!(open_card_balance(&no_settle), Some(-500));
+        assert_eq!(open_card_balance(&no_settle), Some(-600));
+        let with_refund = vec![
+            r("2026-10-20", -170224, "Shops"),
+            r("2026-11-02", 33853, "Refund Merchant"),
+            r("2026-11-05", -1000, "Cafe"),
+        ];
+        assert_eq!(open_card_balance(&with_refund), Some(-137371));
         assert_eq!(open_card_balance(&[]), None);
     }
 

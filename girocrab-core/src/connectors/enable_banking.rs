@@ -391,6 +391,21 @@ impl BankConnector for EnableBankingConnector {
                 .await?;
             let balances = bal["balances"].as_array().cloned().unwrap_or_default();
             let (balance_cents, ref_date) = pick_balance(&balances);
+            for b in &balances {
+                let cents = json_number_to_cents(&b["balance_amount"]["amount"]).unwrap_or(0);
+                crate::depot_debug::log(&format!(
+                    "amex balance entry: type={} indicator={} sign={} magnitude~10^{}",
+                    b["balance_type"].as_str().unwrap_or("?"),
+                    b["credit_debit_indicator"].as_str().unwrap_or("none"),
+                    cents.signum(),
+                    cents.unsigned_abs().max(1).ilog10().saturating_sub(2)
+                ));
+            }
+            crate::depot_debug::log(&format!(
+                "amex balances: entries={} picked_sign={}",
+                balances.len(),
+                balance_cents.signum()
+            ));
             out.accounts.push(RemoteAccount {
                 external_ref: uid.clone(),
                 name: name.clone(),
@@ -404,8 +419,20 @@ impl BankConnector for EnableBankingConnector {
             });
             let mut continuation: Option<String> = None;
             let mut n = 0u32;
+            let mut pages = 0u32;
+            // Card cycles span months: look back at least 180 days.
+            let floor = (chrono::Local::now().date_naive() - chrono::Duration::days(180))
+                .format("%Y-%m-%d")
+                .to_string();
+            let since = if ctx.since > floor {
+                floor
+            } else {
+                ctx.since.clone()
+            };
+            let mut raw_items = 0usize;
             for _ in 0..100 {
-                let mut path = format!("/accounts/{uid}/transactions?date_from={}", ctx.since);
+                pages += 1;
+                let mut path = format!("/accounts/{uid}/transactions?date_from={since}");
                 if let Some(c) = &continuation {
                     path.push_str(&format!(
                         "&continuation_key={}",
@@ -413,6 +440,7 @@ impl BankConnector for EnableBankingConnector {
                     ));
                 }
                 let page = self.call(reqwest::Method::GET, &path, None).await?;
+                raw_items += page["transactions"].as_array().map_or(0, Vec::len);
                 for t in page["transactions"].as_array().cloned().unwrap_or_default() {
                     if t["status"].as_str().map(|s| s != "BOOK").unwrap_or(false) {
                         continue;
@@ -493,6 +521,9 @@ impl BankConnector for EnableBankingConnector {
                     break;
                 }
             }
+            crate::depot_debug::log(&format!(
+                "amex transactions: since={since} pages={pages} raw={raw_items} booked_kept={n}"
+            ));
         }
         out.state = Some(serde_json::to_value(&self.st)?);
         Ok(out)
@@ -504,23 +535,45 @@ impl BankConnector for EnableBankingConnector {
 /// Returns `(0, None)` when nothing usable is present.
 fn pick_balance(balances: &[Value]) -> (i64, Option<String>) {
     const ORDER: [&str; 7] = ["ITBD", "CLBD", "XPCD", "ITAV", "OPBD", "FWAV", "OTHR"];
-    let pick = ORDER
+    let signed = |b: &Value| {
+        let mut cents = json_number_to_cents(&b["balance_amount"]["amount"]).unwrap_or(0);
+        let ind = b["credit_debit_indicator"]
+            .as_str()
+            .unwrap_or("")
+            .to_ascii_uppercase();
+        if (ind == "DBIT" || ind == "DEBIT") && cents > 0 {
+            cents = -cents;
+        }
+        cents
+    };
+    // Booked-balance types first; of those prefer a non-zero one (a 0 sub-balance
+    // may sit next to the real total), the largest magnitude winning.
+    let owed = ["ITBD", "CLBD", "XPCD", "OTHR"];
+    let best = balances
         .iter()
-        .find_map(|t| {
-            balances
-                .iter()
-                .find(|b| b["balance_type"].as_str() == Some(t))
+        .filter(|b| {
+            b["balance_type"]
+                .as_str()
+                .is_some_and(|t| owed.contains(&t))
+        })
+        .filter(|b| signed(b) != 0)
+        .max_by_key(|b| signed(b).unsigned_abs());
+    let pick = best
+        .or_else(|| {
+            ORDER.iter().find_map(|t| {
+                balances
+                    .iter()
+                    .find(|b| b["balance_type"].as_str() == Some(t))
+            })
         })
         .or(balances.first());
     let Some(pick) = pick else {
         return (0, None);
     };
-    let mut cents = json_number_to_cents(&pick["balance_amount"]["amount"]).unwrap_or(0);
-    let ind = pick["credit_debit_indicator"]
-        .as_str()
-        .unwrap_or("")
-        .to_ascii_uppercase();
-    if (ind == "DBIT" || ind == "DEBIT") && cents > 0 {
+    let mut cents = signed(pick);
+    // A credit card reports owed money as a positive number without CRDT: treat as debt.
+    let ind = pick["credit_debit_indicator"].as_str().unwrap_or("");
+    if cents > 0 && !ind.eq_ignore_ascii_case("CRDT") && !ind.eq_ignore_ascii_case("CREDIT") {
         cents = -cents;
     }
     (cents, pick["reference_date"].as_str().map(str::to_string))

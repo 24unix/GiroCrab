@@ -1541,15 +1541,16 @@ impl BankConnector for FinTsConnector {
                 .as_ref()
                 .map(|u| kind_from_code(u.kind_code))
                 .unwrap_or(AccountKind::Checking);
+            let label = account_label(acc);
             // Some banks report depots with a generic Kontoart; trust the product name.
             if kind == AccountKind::Checking
-                && upd
+                && (upd
                     .as_ref()
                     .is_some_and(|u| u.product.to_lowercase().contains("depot"))
+                    || label.to_lowercase().contains("depot"))
             {
                 kind = AccountKind::Brokerage;
             }
-            let label = account_label(acc);
             crate::depot_debug::log(&format!(
                 "fints account: kind={kind:?} kind_code={:?} is_depot={} upd_found={} hkwpd_allowed={} bank_supports_hkwpd={}",
                 upd.as_ref().map(|u| u.kind_code),
@@ -1581,7 +1582,9 @@ impl BankConnector for FinTsConnector {
             }
 
             // --- Depot value (HKWPD / MT535), only for depots that allow it
-            if kind == AccountKind::Brokerage && self.bank_supports("HKWPD") && allowed("HKWPD") {
+            // Some banks omit HKWPD from HIUPD although HIWPDS is in the BPD: try it
+            // anyway for depots; a 9xxx rejection just lands in the error list.
+            if kind == AccountKind::Brokerage && self.bank_supports("HKWPD") {
                 match self.holdings(ctx, acc).await {
                     Ok(st) => {
                         crate::depot_debug::log(&format!(

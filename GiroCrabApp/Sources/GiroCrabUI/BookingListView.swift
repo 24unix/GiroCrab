@@ -34,7 +34,8 @@ struct BookingStreamView: View {
                         }
                         if model.scope == .investments {
                             InvestmentDashboardView()
-                        } else if !model.allAccounts.isEmpty {
+                        } else if !model.allAccounts.isEmpty, case .allAccounts? = model.sidebarSelection {
+                            // Only on the overview: on a single account the bookings come first.
                             CashflowCard()
                             BudgetProgressCard()
                         }

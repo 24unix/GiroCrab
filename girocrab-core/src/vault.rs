@@ -1297,7 +1297,23 @@ impl Vault {
                     .filter(|c| *c > 0),
             })
         })?;
-        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        let mut accounts = rows.collect::<Result<Vec<_>, _>>()?;
+        // Credit cards stored with balance 0: derive the open amount from bookings.
+        for a in accounts.iter_mut().filter(|a| {
+            a.kind == AccountKind::CreditCard && a.balance_cents == 0 && a.transaction_count > 0
+        }) {
+            let mut st = db.prepare(
+                "SELECT booking_date, amount_cents, counterparty || ' ' || purpose || ' ' || booking_text
+                 FROM transactions WHERE account_id = ?1 ORDER BY booking_date, id",
+            )?;
+            let tx_rows: Vec<(String, i64, String)> = st
+                .query_map([a.id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect::<Result<_, _>>()?;
+            if let Some(open) = crate::connectors::open_card_balance(&tx_rows) {
+                a.balance_cents = open;
+            }
+        }
+        Ok(accounts)
     }
 
     /// Sidebar data: groups with their accounts and summed balances.

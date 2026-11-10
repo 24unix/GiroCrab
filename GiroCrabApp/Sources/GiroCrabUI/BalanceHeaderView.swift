@@ -46,7 +46,7 @@ struct StreamHeaderCard: View {
 
     var body: some View {
         @Bindable var model = model
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(model.title).font(.title2.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
@@ -81,7 +81,7 @@ struct StreamHeaderCard: View {
 
             if model.scope != .investments {
                 BalanceChart(points: model.history) { model.jumpToDay($0) }
-                    .frame(height: 86)
+                    .frame(height: 56)
             }
 
             HStack(spacing: 10) {
@@ -123,6 +123,8 @@ struct StreamHeaderCard: View {
                 Text("\(model.bookingCountLabel) Buchungen")
                     .font(.caption)
                     .foregroundStyle(Theme.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .font(.caption)
             .foregroundStyle(Theme.secondary)
@@ -144,7 +146,8 @@ struct KPI: View {
             Text(subtitle).font(.caption2).foregroundStyle(Theme.tertiary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.canvas))
         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
     }
