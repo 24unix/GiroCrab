@@ -322,9 +322,40 @@ public final class AppModel {
                 } else {
                     self.useVault(v, demo: false)
                 }
+                // Auto-sync with the key already unlocked (no second biometric prompt).
+                if CloudSyncManager.shared.isEnabled {
+                        await self.performSyncOrAutoAdopt(vault: v, key: key)
+                    }
             } catch {
                 self.vaultState = .failed(describe(error))
             }
+        }
+    }
+
+    /// Merge with the iCloud copy and write the result back (asks for biometrics to get the key).
+    func syncNow() {
+        guard let v = ownVault else { return }
+        Task {
+            do {
+                var key = try await VaultKeyManager.shared.unlock()
+                defer { key.resetBytes(in: 0..<key.count) }
+                await self.performSyncOrAutoAdopt(vault: v, key: key)
+            } catch {
+                self.toast = describe(error)
+            }
+        }
+    }
+
+    private func performSyncOrAutoAdopt(vault v: Vault, key: Data) async {
+        await CloudSyncManager.shared.sync(vault: v, localPath: Self.vaultURL.path, key: key)
+        if ((try? v.accountCount()) ?? 0) > 0 || self.connectionsExist(v) {
+            if self.demoActive {
+                self.useVault(v, demo: false)
+            } else {
+                self.reloadAll()
+            }
+        } else {
+            self.reloadAll()
         }
     }
 

@@ -94,7 +94,7 @@ struct CommandPaletteView: View {
             }
             .frame(height: 380)
         }
-        .frame(width: 560)
+        .macFrame(width: 560)
         .background(Theme.card)
         .onAppear { focused = true }
         .onChange(of: query) { _, _ in index = 0 }
@@ -150,7 +150,7 @@ struct CategorizerSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 560)
+        .macFrame(width: 560)
         .onAppear { focused = true }
     }
 

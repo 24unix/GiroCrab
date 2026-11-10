@@ -1,5 +1,8 @@
 import SwiftUI
 import GiroCrabCore
+#if os(macOS)
+import AppKit
+#endif
 
 /// Einstellungen: Bankzugänge, eigene FinTS-Produkt-ID und API-Schlüssel
 /// (im verschlüsselten SQLCipher-Tresor), Händler-Logos, Sicherheit.
@@ -20,6 +23,7 @@ struct SettingsView: View {
         .disabled(model.vault == nil)
         #if os(iOS)
         .navigationTitle("Einstellungen")
+        .navigationBarTitleDisplayMode(.inline)
         #endif
     }
 }
@@ -221,6 +225,7 @@ struct SecuritySettings: View {
                     .textSelection(.enabled)
                 LabeledContent("Core-Version", value: coreVersion())
             }
+            ICloudSyncSection()
             Section("Datenschutz") {
                 Text("GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server, kein Tracking und keine Cloud-Synchronisation. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -233,4 +238,62 @@ struct SecuritySettings: View {
         }
         .formStyle(.grouped)
     }
+}
+
+/// Kompakter iCloud-Drive-Sync (nur die verschlüsselte Tresordatei).
+struct ICloudSyncSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var sync = CloudSyncManager.shared
+    @State private var picking = false
+
+    var body: some View {
+        Section("iCloud Sync") {
+            Toggle("Tresor über iCloud synchronisieren", isOn: Bindable(sync).isEnabled)
+                .onChange(of: sync.isEnabled) { _, on in
+                    if on { model.syncNow() }
+                }
+            if sync.isEnabled {
+                LabeledContent("Ordner", value: sync.folderName ?? "iCloud Drive / GiroCrab")
+                #if os(macOS)
+                Button("Im Finder zeigen", systemImage: "folder") { revealFolder() }
+                #else
+                Button("Ordner wählen …", systemImage: "folder") { picking = true }
+                #endif
+                Button(sync.isSyncing ? "Synchronisiere …" : "Jetzt synchronisieren", systemImage: "arrow.triangle.2.circlepath") {
+                    model.syncNow()
+                }
+                .disabled(sync.isSyncing)
+                if sync.isSyncing { ProgressView().controlSize(.small) }
+                if let d = sync.lastSync {
+                    LabeledContent("Letzter Sync", value: d.formatted(date: .abbreviated, time: .shortened))
+                }
+                if let s = sync.lastStats { Text(s).font(.caption).foregroundStyle(.secondary) }
+                if let e = sync.lastError { Text(e).font(.caption).foregroundStyle(.red) }
+            }
+            Text("Synchronisiert Ihren verschlüsselten Tresor automatisch über iCloud Drive (Ordner „GiroCrab“).")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        #if os(iOS)
+        .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { r in
+            if case .success(let url) = r {
+                do { try sync.setFolder(url); model.syncNow() } catch { }
+            }
+        }
+        #endif
+    }
+
+    #if os(macOS)
+    private func revealFolder() {
+        let cloudDocs = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+        let mm = cloudDocs.appendingPathComponent("moneymoney", isDirectory: true)
+        let gc = cloudDocs.appendingPathComponent("GiroCrab", isDirectory: true)
+        let url = FileManager.default.fileExists(atPath: mm.appendingPathComponent("tresor.girocrab").path) ? mm : gc
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            NSWorkspace.shared.open(cloudDocs)
+        }
+    }
+    #endif
 }

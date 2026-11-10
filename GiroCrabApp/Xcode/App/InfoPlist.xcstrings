@@ -1,6 +1,30 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "CFBundleDisplayName" : {
+      "comment" : "Bundle display name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "GiroCrab"
+          }
+        }
+      }
+    },
+    "CFBundleName" : {
+      "comment" : "Bundle name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "GiroCrab"
+          }
+        }
+      }
+    },
     "NSFaceIDUsageDescription" : {
       "comment" : "Privacy - Face ID Usage Description. The German value matches the Xcode target's INFOPLIST_KEY_NSFaceIDUsageDescription; build.rs and package-macos-app.sh compile only English and keep their own German Info.plist text.",
       "extractionState" : "manual",

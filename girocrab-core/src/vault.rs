@@ -490,6 +490,402 @@ impl Vault {
     }
 }
 
+impl Vault {
+    fn merge_attached(conn: &Connection) -> CoreResult<MergeStats> {
+        let mut st = MergeStats::default();
+        let tx = conn.unchecked_transaction()?;
+
+        // account groups (by name)
+        let mut group_map: HashMap<i64, i64> = HashMap::new();
+        {
+            let rows: Vec<(i64, String, String, i64)> = tx
+                .prepare("SELECT id, name, sf_symbol, sort_order FROM other.account_groups")?
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<Result<_, _>>()?;
+            for (oid, name, sym, ord) in rows {
+                tx.execute(
+                    "INSERT OR IGNORE INTO account_groups(name, sf_symbol, sort_order) VALUES (?1,?2,?3)",
+                    params![name, sym, ord],
+                )?;
+                let id: i64 = tx.query_row(
+                    "SELECT id FROM account_groups WHERE name = ?1",
+                    [&name],
+                    |r| r.get(0),
+                )?;
+                group_map.insert(oid, id);
+            }
+        }
+
+        // bank connections (by connector + login + bank code)
+        let mut conn_map: HashMap<i64, i64> = HashMap::new();
+        {
+            let rows: Vec<(i64, String, String, String, String, String, String, Option<i64>)> = tx
+                .prepare(
+                    "SELECT id, connector, display_name, login_name, bank_code, sf_symbol, state_json, last_sync_unix
+                     FROM other.bank_connections",
+                )?
+                .query_map([], |r| {
+                    Ok((
+                        r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?,
+                        r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?,
+                    ))
+                })?
+                .collect::<Result<_, _>>()?;
+            for (oid, connector, name, login, bank, sym, state, last) in rows {
+                let existing: Option<i64> = tx
+                    .query_row(
+                        "SELECT id FROM bank_connections WHERE connector=?1 AND login_name=?2 AND bank_code=?3",
+                        params![connector, login, bank],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let id = match existing {
+                    Some(id) => id,
+                    None => {
+                        tx.execute(
+                            "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol, state_json, last_sync_unix)
+                             VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                            params![connector, name, login, bank, sym, state, last],
+                        )?;
+                        tx.last_insert_rowid()
+                    }
+                };
+                conn_map.insert(oid, id);
+            }
+        }
+
+        // accounts (by connection + external_ref)
+        let mut acc_map: HashMap<i64, i64> = HashMap::new();
+        {
+            #[allow(clippy::type_complexity)]
+            let rows: Vec<(i64, Option<i64>, i64, String, String, String, String, String, String, String, String, i64, String, String, i64, Option<i64>)> = tx
+                .prepare(
+                    "SELECT id, connection_id, group_id, external_ref, name, bank_name, owner, iban,
+                            account_number, currency, kind, balance_cents, balance_date, sf_symbol,
+                            sort_order, initial_balance_cents FROM other.accounts",
+                )?
+                .query_map([], |r| {
+                    Ok((
+                        r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?,
+                        r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?,
+                        r.get(12)?, r.get(13)?, r.get(14)?, r.get(15)?,
+                    ))
+                })?
+                .collect::<Result<_, _>>()?;
+            for (
+                oid,
+                ocon,
+                ogrp,
+                ext,
+                name,
+                bank,
+                owner,
+                iban,
+                num,
+                cur,
+                kind,
+                bal,
+                bdate,
+                sym,
+                ord,
+                init,
+            ) in rows
+            {
+                let con = ocon.and_then(|c| conn_map.get(&c).copied());
+                let existing: Option<i64> = tx
+                    .query_row(
+                        "SELECT id FROM accounts WHERE connection_id IS ?1 AND external_ref = ?2",
+                        params![con, ext],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let id = match existing {
+                    Some(id) => id,
+                    None => {
+                        let grp =
+                            group_map
+                                .get(&ogrp)
+                                .copied()
+                                .ok_or_else(|| CoreError::Database {
+                                    message: "merge: unknown account group".into(),
+                                })?;
+                        tx.execute(
+                            "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban,
+                                account_number, currency, kind, balance_cents, balance_date, sf_symbol, sort_order,
+                                initial_balance_cents)
+                             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
+                            params![con, grp, ext, name, bank, owner, iban, num, cur, kind, bal, bdate, sym, ord, init],
+                        )?;
+                        st.accounts_added += 1;
+                        tx.last_insert_rowid()
+                    }
+                };
+                acc_map.insert(oid, id);
+            }
+        }
+
+        // categories (parents first, by parent + name)
+        let mut cat_map: HashMap<i64, i64> = HashMap::new();
+        {
+            let mut pending: Vec<(i64, Option<i64>, String, String, String, Option<i64>, i64)> = tx
+                .prepare(
+                    "SELECT id, parent_id, name, sf_symbol, color_hex, budget_cents, sort_order
+                     FROM other.categories ORDER BY id",
+                )?
+                .query_map([], |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                    ))
+                })?
+                .collect::<Result<_, _>>()?;
+            while !pending.is_empty() {
+                let before = pending.len();
+                let mut rest = Vec::new();
+                for row in pending {
+                    let (oid, opar, name, sym, color, budget, ord) = row.clone();
+                    let par = match opar {
+                        None => None,
+                        Some(p) => match cat_map.get(&p) {
+                            Some(&m) => Some(m),
+                            None => {
+                                rest.push(row);
+                                continue;
+                            }
+                        },
+                    };
+                    let existing: Option<i64> = tx
+                        .query_row(
+                            "SELECT id FROM categories WHERE IFNULL(parent_id,0) = IFNULL(?1,0) AND name = ?2",
+                            params![par, name],
+                            |r| r.get(0),
+                        )
+                        .optional()?;
+                    let id = match existing {
+                        Some(id) => id,
+                        None => {
+                            tx.execute(
+                                "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, budget_cents, sort_order)
+                                 VALUES (?1,?2,?3,?4,?5,?6)",
+                                params![par, name, sym, color, budget, ord],
+                            )?;
+                            st.categories_added += 1;
+                            tx.last_insert_rowid()
+                        }
+                    };
+                    cat_map.insert(oid, id);
+                }
+                if rest.len() == before {
+                    break; // orphaned categories (broken parent) – skip
+                }
+                pending = rest;
+            }
+        }
+
+        // rules (by name + field + kind + pattern + category)
+        let mut rule_map: HashMap<i64, i64> = HashMap::new();
+        {
+            #[allow(clippy::type_complexity)]
+            let rows: Vec<(
+                i64,
+                String,
+                i64,
+                String,
+                String,
+                String,
+                bool,
+                Option<i64>,
+                Option<i64>,
+                Option<i64>,
+                i64,
+                bool,
+            )> = tx
+                .prepare(
+                    "SELECT id, name, category_id, field, match_kind, pattern, case_sensitive,
+                            min_amount_cents, max_amount_cents, account_id, priority, enabled
+                     FROM other.rules ORDER BY id",
+                )?
+                .query_map([], |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                        r.get(8)?,
+                        r.get(9)?,
+                        r.get(10)?,
+                        r.get(11)?,
+                    ))
+                })?
+                .collect::<Result<_, _>>()?;
+            for (oid, name, ocat, field, kind, pat, cs, min, max, oacc, prio, en) in rows {
+                let Some(&cat) = cat_map.get(&ocat) else {
+                    continue;
+                };
+                let acc = oacc.and_then(|a| acc_map.get(&a).copied());
+                if oacc.is_some() && acc.is_none() {
+                    continue;
+                }
+                let existing: Option<i64> = tx
+                    .query_row(
+                        "SELECT id FROM rules WHERE name=?1 AND field=?2 AND match_kind=?3 AND pattern=?4
+                         AND category_id=?5 AND account_id IS ?6",
+                        params![name, field, kind, pat, cat, acc],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let id = match existing {
+                    Some(id) => id,
+                    None => {
+                        tx.execute(
+                            "INSERT INTO rules(name, category_id, field, match_kind, pattern, case_sensitive,
+                                min_amount_cents, max_amount_cents, account_id, priority, enabled)
+                             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+                            params![name, cat, field, kind, pat, cs, min, max, acc, prio, en],
+                        )?;
+                        st.rules_added += 1;
+                        tx.last_insert_rowid()
+                    }
+                };
+                rule_map.insert(oid, id);
+            }
+        }
+
+        // bookings
+        #[allow(clippy::type_complexity)]
+        let rows: Vec<(
+            i64,
+            String,
+            String,
+            String,
+            i64,
+            String,
+            String,
+            String,
+            String,
+            String,
+            Option<i64>,
+            String,
+            Option<i64>,
+            bool,
+            i64,
+            String,
+            String,
+        )> = tx
+            .prepare(
+                "SELECT account_id, external_id, booking_date, value_date, amount_cents, currency,
+                        counterparty, counterparty_iban, purpose, booking_text, category_id,
+                        category_source, rule_id, checked, imported_unix, note, import_fp
+                 FROM other.transactions",
+            )?
+            .query_map([], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                    r.get(7)?,
+                    r.get(8)?,
+                    r.get(9)?,
+                    r.get(10)?,
+                    r.get(11)?,
+                    r.get(12)?,
+                    r.get(13)?,
+                    r.get(14)?,
+                    r.get(15)?,
+                    r.get(16)?,
+                ))
+            })?
+            .collect::<Result<_, _>>()?;
+        for (
+            oacc,
+            ext,
+            bd,
+            vd,
+            amt,
+            cur,
+            cp,
+            cpi,
+            purpose,
+            text,
+            ocat,
+            csrc,
+            orule,
+            checked,
+            imp,
+            note,
+            fp,
+        ) in rows
+        {
+            let Some(&acc) = acc_map.get(&oacc) else {
+                continue;
+            };
+            let cat = ocat.and_then(|c| cat_map.get(&c).copied());
+            let rule = orule.and_then(|c| rule_map.get(&c).copied());
+            let existing: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM transactions WHERE account_id = ?1
+                       AND (external_id = ?2 OR (?3 != '' AND import_fp = ?3)) LIMIT 1",
+                    params![acc, ext, fp],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            match existing {
+                Some(id) => {
+                    let n = tx.execute(
+                        "UPDATE transactions SET
+                            checked = CASE WHEN ?2 THEN 1 ELSE checked END,
+                            category_id = CASE WHEN category_id IS NULL AND ?3 IS NOT NULL THEN ?3 ELSE category_id END,
+                            category_source = CASE WHEN category_id IS NULL AND ?3 IS NOT NULL THEN ?4 ELSE category_source END,
+                            rule_id = CASE WHEN category_id IS NULL AND ?3 IS NOT NULL THEN ?5 ELSE rule_id END,
+                            note = CASE WHEN note = '' AND ?6 != '' THEN ?6 ELSE note END
+                         WHERE id = ?1
+                           AND ((?2 AND checked = 0)
+                             OR (category_id IS NULL AND ?3 IS NOT NULL)
+                             OR (note = '' AND ?6 != ''))",
+                        params![id, checked, cat, csrc, rule, note],
+                    )?;
+                    st.bookings_updated += n as u32;
+                }
+                None => {
+                    tx.execute(
+                        "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents,
+                            currency, counterparty, counterparty_iban, purpose, booking_text, category_id,
+                            category_source, rule_id, checked, imported_unix, note, import_fp)
+                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
+                        params![acc, ext, bd, vd, amt, cur, cp, cpi, purpose, text, cat, csrc, rule, checked, imp, note, fp],
+                    )?;
+                    st.bookings_added += 1;
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(st)
+    }
+}
+
+/// Result of [`Vault::merge_other_vault`].
+#[derive(Debug, Clone, Default, uniffi::Record)]
+pub struct MergeStats {
+    pub accounts_added: u32,
+    pub categories_added: u32,
+    pub rules_added: u32,
+    pub bookings_added: u32,
+    pub bookings_updated: u32,
+}
+
 #[uniffi::export]
 impl Vault {
     /// Opens (or creates) the encrypted vault at `path` with the raw 32-byte
@@ -522,6 +918,49 @@ impl Vault {
         }
         let pragma = Zeroizing::new(format!("PRAGMA rekey = \"x'{}'\";", hex::encode(&*key)));
         self.db()?.execute_batch(&pragma)?;
+        Ok(())
+    }
+
+    /// Merges another vault file (e.g. a copy synced via iCloud) into this one.
+    /// Missing connections, accounts, categories, rules and bookings are added;
+    /// existing bookings are never duplicated (matched by account + external id
+    /// or import fingerprint) but gain `checked`, category and note if the
+    /// other side has them and this side does not.
+    pub fn merge_other_vault(
+        &self,
+        other_path: String,
+        key: Vec<u8>,
+    ) -> Result<MergeStats, CoreError> {
+        let key = Zeroizing::new(key);
+        if other_path == self.path {
+            return Err(CoreError::InvalidInput {
+                message: "cannot merge a vault into itself".into(),
+            });
+        }
+        // Validate key and bring the other file up to the current schema.
+        {
+            let o = Connection::open(&other_path)?;
+            Self::apply_key(&o, &key)?;
+            Self::migrate(&o)?;
+        }
+        let conn = self.db()?;
+        let raw_key = Zeroizing::new(format!("x'{}'", hex::encode(&*key)));
+        conn.execute(
+            "ATTACH DATABASE ?1 AS other KEY ?2",
+            params![other_path, &*raw_key],
+        )?;
+        let res = Self::merge_attached(&conn);
+        let _ = conn.execute_batch("DETACH DATABASE other");
+        // Fold WAL frames into the main file so a plain file copy is complete.
+        let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
+        res
+    }
+
+    /// Flushes the WAL into the main vault file (`wal_checkpoint(TRUNCATE)`),
+    /// so copying the file (e.g. to iCloud) never misses committed frames.
+    pub fn checkpoint(&self) -> Result<(), CoreError> {
+        let conn = self.db()?;
+        conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;
         Ok(())
     }
 
@@ -1460,5 +1899,71 @@ impl Vault {
             )?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+
+    fn seed(v: &Vault, checked: bool, note: &str, extra: bool) {
+        let c = v.db().unwrap();
+        c.execute(
+            "INSERT OR IGNORE INTO account_groups(name) VALUES ('G')",
+            [],
+        )
+        .unwrap();
+        c.execute(
+            "INSERT OR IGNORE INTO accounts(group_id, external_ref, name) \
+             VALUES ((SELECT id FROM account_groups WHERE name='G'), 'A1', 'Konto')",
+            [],
+        )
+        .unwrap();
+        c.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, checked, note) \
+             VALUES ((SELECT id FROM accounts LIMIT 1), 'T1', '2024-01-01', -100, ?1, ?2)",
+            params![checked, note],
+        )
+        .unwrap();
+        if extra {
+            c.execute("INSERT INTO categories(name) VALUES ('Food')", [])
+                .unwrap();
+            c.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents) \
+                 VALUES ((SELECT id FROM accounts LIMIT 1), 'T2', '2024-01-02', -5)",
+                [],
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn merges_without_duplicates() {
+        let dir = std::env::temp_dir().join(format!("gc-merge-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let key = vec![7u8; 32];
+        let a = Vault::open(dir.join("a.db").to_string_lossy().into(), key.clone()).unwrap();
+        let b = Vault::open(dir.join("b.db").to_string_lossy().into(), key.clone()).unwrap();
+        seed(&a, false, "", false);
+        seed(&b, true, "hello", true);
+        let st = a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+        assert_eq!(st.bookings_added, 1);
+        assert_eq!(st.bookings_updated, 1);
+        assert_eq!(st.categories_added, 1);
+        assert_eq!(st.accounts_added, 0);
+        let (n, checked, note): (i64, bool, String) = a
+            .db()
+            .unwrap()
+            .query_row(
+                "SELECT (SELECT count(*) FROM transactions), checked, note FROM transactions WHERE external_id='T1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!((n, checked, note.as_str()), (2, true, "hello"));
+        // idempotent
+        let st2 = a.merge_other_vault(b.file_path(), key).unwrap();
+        assert_eq!((st2.bookings_added, st2.bookings_updated), (0, 0));
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -4,7 +4,7 @@ import Vision
 import UniformTypeIdentifiers
 import GiroCrabCore
 
-extension DocumentInfo: Identifiable {}
+extension DocumentInfo: @retroactive Identifiable {}
 
 // MARK: - Text for receipt matching (PDF text layer / OCR for photos)
 

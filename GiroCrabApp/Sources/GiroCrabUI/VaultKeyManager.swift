@@ -36,6 +36,23 @@ public final class VaultKeyManager: @unchecked Sendable {
     private let service = "de.girocrab.vault"
     private let account = "sqlcipher-master-key"
 
+    /// Opt-in: store the key as `kSecAttrSynchronizable` so iCloud Keychain shares
+    /// it between Mac and iOS. Synchronizable items cannot carry a biometric
+    /// access-control flag, so the app enforces the LAContext check itself.
+    public static let syncDefaultsKey = "girocrab.keySyncICloudKeychain"
+    public var syncViaICloudKeychain: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.syncDefaultsKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.syncDefaultsKey) }
+    }
+
+    /// Re-stores the existing key with the chosen synchronizable setting.
+    public func setICloudKeychainSync(_ enabled: Bool) async throws {
+        let key = try await unlock()
+        destroyKey()
+        syncViaICloudKeychain = enabled
+        try store(key)
+    }
+
     public init() {}
 
     /// Human name of the available biometry ("Touch ID", "Face ID", "Optic ID", "Passcode").
@@ -83,11 +100,41 @@ public final class VaultKeyManager: @unchecked Sendable {
         return key
     }
 
+    /// Key as Base64 for manual transfer to another device (after authentication).
+    public func exportKeyBase64() async throws -> String {
+        try await unlock().base64EncodedString()
+    }
+
+    /// Replaces the stored key with one pasted from another device (Base64 or hex).
+    public static func parseKey(_ text: String) throws -> Data {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var data = Data(base64Encoded: t)
+        if data == nil || data!.count != 32, t.count == 64 {
+            var bytes = [UInt8](); var i = t.startIndex
+            while i < t.endIndex {
+                let n = t.index(i, offsetBy: 2)
+                guard let b = UInt8(t[i..<n], radix: 16) else { bytes = []; break }
+                bytes.append(b); i = n
+            }
+            if bytes.count == 32 { data = Data(bytes) }
+        }
+        guard let key = data, key.count == 32 else {
+            throw NSError(domain: "VaultKey", code: 1, userInfo: [NSLocalizedDescriptionKey: String(localized: "Ungültiger Schlüssel (erwartet 32 Byte, Base64 oder Hex).")])
+        }
+        return key
+    }
+
+    public func importKey(_ key: Data) throws {
+        destroyKey()
+        try store(key)
+    }
+
     /// Removes the key. The encrypted vault becomes unreadable!
     public func destroyKey() {
         for dp in [true, false] {
             var q = baseQuery()
             q[kSecUseDataProtectionKeychain as String] = dp
+            q[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
             SecItemDelete(q as CFDictionary)
         }
     }
@@ -109,6 +156,7 @@ public final class VaultKeyManager: @unchecked Sendable {
             q[kSecMatchLimit as String] = kSecMatchLimitOne
             q[kSecUseAuthenticationContext as String] = context
             q[kSecUseDataProtectionKeychain as String] = dataProtection
+            q[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
             var out: CFTypeRef?
             let status = SecItemCopyMatching(q as CFDictionary, &out)
             switch status {
@@ -126,6 +174,16 @@ public final class VaultKeyManager: @unchecked Sendable {
     }
 
     private func store(_ key: Data) throws {
+        if syncViaICloudKeychain {
+            var q = baseQuery()
+            q[kSecValueData as String] = key
+            q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
+            q[kSecUseDataProtectionKeychain as String] = true
+            q[kSecAttrSynchronizable as String] = true
+            let status = SecItemAdd(q as CFDictionary, nil)
+            if status == errSecSuccess { return }
+            if status != errSecMissingEntitlement { throw KeyError.keychain(status) }
+        }
         var acError: Unmanaged<CFError>?
         if let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, .userPresence, &acError) {
             var q = baseQuery()

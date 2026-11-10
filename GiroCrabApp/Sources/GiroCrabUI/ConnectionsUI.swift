@@ -80,7 +80,7 @@ struct PinSheet: View {
             }
         }
         .padding(24)
-        .frame(minWidth: 420)
+        .macFrame(minWidth: 420)
         .onAppear {
             login = connection.loginName
             savePin = model.connectionStatus(connection.id)?.hasPin ?? false
@@ -245,23 +245,17 @@ struct ConnectionEditSheet: View {
             }
             .formStyle(.grouped)
             Divider()
-            HStack {
-                Button("Bankzugang entfernen", role: .destructive) { model.removeConnection(connection.id); dismiss() }
-                Spacer()
-                Button("Abbrechen", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Speichern") { save(); dismiss() }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                Button("Speichern & abrufen") {
-                    save()
-                    dismiss()
-                    if let c = model.connections.first(where: { $0.id == connection.id }) { model.requestSync(c) }
+            ViewThatFits(in: .horizontal) {
+                HStack { removeBtn; Spacer(); cancelBtn; saveBtn; fetchBtn }
+                VStack(spacing: 8) {
+                    HStack { cancelBtn; Spacer(); saveBtn }
+                    fetchBtn
+                    removeBtn
                 }
             }
             .padding(14)
         }
-        .frame(minWidth: 560, minHeight: 560)
+        .macFrame(minWidth: 560, minHeight: 560)
         .onAppear(perform: load)
         .fileImporter(isPresented: $importingKey, allowedContentTypes: [.data, .text, .plainText]) { result in
             if case .success(let url) = result {
@@ -352,6 +346,24 @@ struct ConnectionEditSheet: View {
         Binding(get: { values[key] ?? "" }, set: { values[key] = $0 })
     }
 
+    private var removeBtn: some View {
+        Button("Bankzugang entfernen", role: .destructive) { model.removeConnection(connection.id); dismiss() }
+    }
+    private var cancelBtn: some View {
+        Button("Abbrechen", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+    }
+    private var saveBtn: some View {
+        Button("Speichern") { save(); dismiss() }
+            .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+    }
+    private var fetchBtn: some View {
+        Button("Speichern & abrufen") {
+            save()
+            dismiss()
+            if let c = model.connections.first(where: { $0.id == connection.id }) { model.requestSync(c) }
+        }
+    }
+
     private func load() {
         name = connection.displayName
         login = connection.loginName
@@ -419,7 +431,7 @@ struct WebLoginSheet: View {
             .padding(14)
             Divider()
             TRWebView(url: URL(string: "https://app.traderepublic.com/login")!, phone: connection.loginName)
-                .frame(minWidth: 720, minHeight: 620)
+                .macFrame(minWidth: 720, minHeight: 620)
             Divider()
             HStack {
                 Button("Abbrechen", role: .cancel) { model.webLoginConnection = nil; dismiss() }

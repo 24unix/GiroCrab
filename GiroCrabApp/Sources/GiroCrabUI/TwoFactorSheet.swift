@@ -97,7 +97,7 @@ struct TwoFactorSheet: View {
                 }
             }
             .padding(24)
-            .frame(minWidth: 400, idealWidth: 420)
+            .macFrame(minWidth: 400, idealWidth: 420)
         }
     }
 

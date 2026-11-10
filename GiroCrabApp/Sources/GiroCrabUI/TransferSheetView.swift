@@ -56,7 +56,7 @@ struct TransferSheetView: View {
             buttons
         }
         .padding(24)
-        .frame(width: 520)
+        .macFrame(width: 520)
         .overlay {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6]))
@@ -72,7 +72,9 @@ struct TransferSheetView: View {
             return true
         }
         // ⌘V outside a text field (inside one, normal paste keeps working).
+#if os(macOS)
         .onPasteCommand(of: [.plainText]) { _ in pasteFromClipboard() }
+#endif
         .onChange(of: model.transferDraft.iban) { _, new in
             let f = Self.groupedIBAN(new)
             if f != new { model.transferDraft.iban = f }

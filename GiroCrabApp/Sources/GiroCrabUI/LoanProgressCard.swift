@@ -45,7 +45,7 @@ struct LoanProgressCard: View {
                         text = initial.map { Money.plain($0) } ?? ""
                         editing = true
                     }
-                    .buttonStyle(.link).font(.caption)
+                    .buttonStyle(.borderless).font(.caption)
                     .help("Ursprünglicher Kreditbetrag bearbeiten")
                 }
             }

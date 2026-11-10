@@ -44,7 +44,7 @@ struct RuleEditorView: View {
                 ContentUnavailableView("Keine Regel ausgewählt", systemImage: "wand.and.stars", description: Text("Regeln ordnen neue Buchungen automatisch Kategorien zu. Die erste passende Regel (nach Priorität) gewinnt; manuelle Zuordnungen werden nie überschrieben."))
             }
         }
-        .frame(minWidth: 860, minHeight: 600)
+        .macFrame(minWidth: 860, minHeight: 600)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Fertig") { dismiss() }

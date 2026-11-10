@@ -140,7 +140,7 @@ struct BankSetupSheet: View {
             }
         }
         .padding(24)
-        .frame(width: 520)
+        .macFrame(width: 520)
     }
 
     private func binding(_ key: String) -> Binding<String> {

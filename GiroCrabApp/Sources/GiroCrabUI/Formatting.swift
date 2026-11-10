@@ -1,15 +1,15 @@
 import SwiftUI
 import GiroCrabCore
 
-extension Booking: Identifiable {}
-extension Account: Identifiable {}
-extension AccountGroup: Identifiable {}
-extension GiroCrabCore.Category: Identifiable {}
-extension Rule: Identifiable {}
-extension BankConnection: Identifiable {}
-extension SettingEntry: Identifiable { public var id: String { key } }
-extension BankDescriptor: Identifiable { public var id: ConnectorKind { kind } }
-extension SavingsPlan: Identifiable { public var id: String { merchant.key } }
+extension Booking: @retroactive Identifiable {}
+extension Account: @retroactive Identifiable {}
+extension AccountGroup: @retroactive Identifiable {}
+extension GiroCrabCore.Category: @retroactive Identifiable {}
+extension Rule: @retroactive Identifiable {}
+extension BankConnection: @retroactive Identifiable {}
+extension SettingEntry: @retroactive Identifiable { public var id: String { key } }
+extension BankDescriptor: @retroactive Identifiable { public var id: ConnectorKind { kind } }
+extension SavingsPlan: @retroactive Identifiable { public var id: String { merchant.key } }
 
 /// "Daylight" / "Nightfall" design tokens: calm, high-contrast UI that follows
 /// the system appearance (light: slate on white, dark: slate on deep navy).

@@ -10,6 +10,7 @@
 # Usage:
 #   ./build-xcframework.sh               # macOS (arm64) + iOS device + iOS simulator
 #   ./build-xcframework.sh --macos-only  # quick local build (used by `cargo build`)
+#   ./build-xcframework.sh --ios         # force iOS device + simulator slices (also with --macos-only)
 #   ./build-xcframework.sh --debug       # unoptimised libraries
 #
 # Requirements: Xcode 15+, rustup with the targets
@@ -22,12 +23,14 @@ export PATH="$HOME/.cargo/bin:$PATH"
 CARGO="${CARGO:-cargo}"
 
 MACOS_ONLY=0
+FORCE_IOS=0
 PROFILE=release
 for arg in "$@"; do
   case "$arg" in
     --macos-only) MACOS_ONLY=1 ;;
+    --ios) FORCE_IOS=1 ;;
     --debug) PROFILE=debug ;;
-    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -43,7 +46,7 @@ export MACOSX_DEPLOYMENT_TARGET=14.0
 export IPHONEOS_DEPLOYMENT_TARGET=17.0
 
 TARGETS=(aarch64-apple-darwin)
-if [[ $MACOS_ONLY -eq 0 ]]; then
+if [[ $MACOS_ONLY -eq 0 || $FORCE_IOS -eq 1 ]]; then
   TARGETS+=(aarch64-apple-ios aarch64-apple-ios-sim)
 fi
 
@@ -87,7 +90,7 @@ mkdir -p "$OUT/Sources/GiroCrabCore"
 XCF_ARGS=(-library "$MAC_LIB" -headers "$GEN/Headers")
 IOS_LIB="$TARGET_DIR/aarch64-apple-ios/$PROFILE/lib$CRATE.a"
 SIM_LIB="$TARGET_DIR/aarch64-apple-ios-sim/$PROFILE/lib$CRATE.a"
-INCLUDE_IOS=$(( MACOS_ONLY == 0 ))
+INCLUDE_IOS=$(( MACOS_ONLY == 0 || FORCE_IOS == 1 ))
 if [[ $MACOS_ONLY -eq 1 && -f "$IOS_LIB" && -f "$SIM_LIB" ]]; then
   # Keep iOS slices from an earlier full build, but only if they are newer
   # than every core source file (stale slices would fail UniFFI's checksums).

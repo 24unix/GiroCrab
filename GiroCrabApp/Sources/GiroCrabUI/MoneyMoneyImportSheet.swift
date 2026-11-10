@@ -56,7 +56,7 @@ struct MoneyMoneyImportSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 560)
+        .macFrame(width: 560)
         .background(Theme.card)
         .interactiveDismissDisabled(importing)
         .onAppear {

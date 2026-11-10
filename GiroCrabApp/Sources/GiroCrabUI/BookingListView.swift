@@ -79,7 +79,7 @@ struct BookingStreamView: View {
                     ForEach(BookingScope.ordered, id: \.self) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 430)
+                .macFrame(width: 430)
                 .help("⌘1 / ⌘2 / ⌘3")
             }
             ToolbarItemGroup(placement: .primaryAction) {
