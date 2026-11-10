@@ -9,7 +9,7 @@
   <img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
   <img alt="Rust" src="https://img.shields.io/badge/core-Rust-orange">
   <img alt="Swift" src="https://img.shields.io/badge/app-SwiftUI-F05138">
-  <img alt="Platforms" src="https://img.shields.io/badge/macOS%2014%2B-lightgrey">
+  <img alt="Platforms: macOS 14+, iOS 17+, Apple Silicon" src="https://img.shields.io/badge/macOS%2014%2B%20%C2%B7%20iOS%2017%2B%20%C2%B7%20Apple%20Silicon-lightgrey">
   <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen">
 </p>
 
@@ -19,17 +19,35 @@
 
 ## 🇩🇪 Deutsch
 
-**Open-Source-Banking für macOS 14+ – lokal, verschlüsselt, ohne Cloud.**
+**Open-Source-Banking für macOS 14+ (Apple Silicon) und iOS 17+ – lokal, verschlüsselt, ohne Cloud-Zwang.**
 Native SwiftUI-App auf einem Rust-Kern: verschlüsselter Datentresor (XChaCha20-Poly1305 & Argon2id), Kategorienbaum,
 Regeln, Händler-Erkennung, Sparplan-Ansicht, Darlehens-Tilgungsbalken und direkte Verbindungen
 zu Ihren Banken – ohne Server, ohne Tracking.
 
+### ✨ Neu in v0.4.0
+
+- 🗄️ **Direkter MoneyMoney-Datenbank-Import:** die verschlüsselte `MoneyMoney.sqlite` wird **nur lesend** geöffnet – Konten, Kategorien samt Hierarchie und die komplette Buchungshistorie kommen in einem Schritt (zusätzlich zu CSV/XML).
+- 📱 **iOS-App (iPhone & iPad)** neben der macOS-App.
+- ☁️ **Optionale iCloud-Drive-Synchronisation** zwischen Macs und iOS-Geräten per verschlüsseltem Snapshot-Merge.
+- 🏦 **bunq direkt** per persönlichem API-Schlüssel – neben FinTS 3.0/HBCI, PayPal und Trade Republic.
+- 🧬 **Apple Silicon (`arm64`)** auf macOS 14+ sowie iOS 17+.
+
 ### 🚚 Umzug von MoneyMoney in 60 Sekunden
 
-Mehrjährige Historien, Kategorien und Notizen lassen sich verlustfrei übernehmen – ohne Abo-Bindung:
+Mehrjährige Historien, Kategorien und Notizen lassen sich verlustfrei übernehmen – ohne Abo-Bindung.
+
+**Variante A – direkt aus der MoneyMoney-Datenbank (empfohlen, macOS):**
+
+1. In GiroCrab: *Von MoneyMoney wechseln* (Onboarding), *MoneyMoney-Import* (Seitenleiste) oder `⌘K` → „MoneyMoney Historie & Kategorien importieren“ → Tab **MoneyMoney-Datenbank**.
+2. `MoneyMoney.sqlite` auswählen und das MoneyMoney-Passwort eingeben. Die Datei wird ausschließlich **lesend** geöffnet; MoneyMoney und die Originaldatei bleiben unverändert.
+3. Vorschau prüfen (Konten, Kategorien, Buchungen, Notizen), Zielkonten zuordnen, **Importieren**.
+
+<p align="center"><img src="docs/screenshots/moneymoney-db-import.png" alt="MoneyMoney-Datenbank-Import: 6 Konten, 6.790 Buchungen, 16 Kategorien (Demo-Daten)" width="560"></p>
+
+**Variante B – Export-Datei (CSV / XML):**
 
 1. In MoneyMoney das Konto wählen, **⌘A**, **Umsätze exportieren …** → **XML** oder **CSV**.
-2. In GiroCrab: *Von MoneyMoney wechseln* (Onboarding), *MoneyMoney-Import* (Seitenleiste) oder `⌘K` → „MoneyMoney Historie & Kategorien importieren“. Datei hineinziehen.
+2. In GiroCrab denselben Import-Dialog öffnen, Tab **Export-Datei (CSV/XML)** wählen und die Datei hineinziehen.
 3. Zielkonto wählen (oder neues Archivkonto anlegen), Vorschau prüfen, **Importieren**.
 
 <p align="center"><img src="docs/screenshots/moneymoney-import.png" alt="MoneyMoney-Import mit Vorschau: 4.820 Buchungen, 2012 – 2026, erkannte Kategorien" width="480"></p>
@@ -52,8 +70,11 @@ nur um Kategorie und Notiz ergänzt.
 
 *Alle Screenshots zeigen ausschließlich erfundene Demo-Daten (`GIROCRAB_DEMO_SEED=1`).*
 
-- 🔒 **Local-First & Zero-Cloud:** Alle Bankdaten bleiben auf Ihrem Gerät – in einem verschlüsselten Tresor (XChaCha20-Poly1305), geschützt durch macOS-Schlüsselbund / Touch ID.
-- 🏦 **Native deutsche Bank-Protokolle:** FinTS 3.0 / HBCI (CAMT.052 & MT940 mit intelligenter Latin-1/UTF-8-Erkennung), Trade-Republic-WebSocket, comdirect-REST sowie eingebettete Web-Session-/CSV-Importe für Amex & Amazon Visa.
+- 🔒 **Local-First:** Alle Bankdaten bleiben auf Ihrem Gerät – in einem verschlüsselten Tresor (XChaCha20-Poly1305), geschützt durch Schlüsselbund / Touch ID bzw. Face ID. Es gibt keinen Entwickler-Server.
+- 📱 **macOS + iOS (iPhone / iPad):** eine SwiftUI-Codebasis auf dem gemeinsamen Rust-Kern. Voraussetzungen: **macOS 14+ (Apple Silicon, `arm64`)** bzw. **iOS 17+**. Die iOS-App wird derzeit direkt aus dem Quellcode mit Xcode gebaut und installiert (`GiroCrabApp/Xcode/GiroCrab.xcodeproj`, Signierung mit persönlicher Apple-ID) – siehe [Schnellstart](#schnellstart).
+- ☁️ **Optionale iCloud-Drive-Synchronisation:** Wer möchte, gleicht Tresor-Daten zwischen Macs und iOS-Geräten über den eigenen iCloud-Drive-Ordner (`iCloud Drive/GiroCrab/`) ab. In die Cloud wandert ausschließlich ein **verschlüsselter SQLCipher-Snapshot** (`wal_checkpoint(TRUNCATE)`); der Abgleich erfolgt deterministisch per `ATTACH DATABASE`-Merge. Eine **laufende SQLite-Datenbank mit WAL-Dateien wird nie direkt im Cloud-Speicher geöffnet.** Standardmäßig ist die Synchronisation aus.
+- 🗄️ **MoneyMoney-Datenbank-Import:** lesender Import der verschlüsselten `.sqlite`-Datei inkl. Konten, Kategorien, Hierarchie und Buchungshistorie (siehe oben).
+- 🏦 **Native deutsche Bank-Protokolle:** FinTS 3.0 / HBCI (CAMT.052 & MT940 mit intelligenter Latin-1/UTF-8-Erkennung), **bunq** (persönlicher API-Schlüssel), PayPal, Trade-Republic-WebSocket, comdirect-REST sowie eingebettete Web-Session-/CSV-Importe für Amex & Amazon Visa.
 - 💸 **SEPA-Überweisungen via FinTS 3.0 / HKCCS** inkl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN-Prüfung (Mod-97), SEPA-konformer Zeichensatz, Empfängervorschläge aus bisherigen Buchungen und sofort vorgemerkte Buchung.
 - 🏠 **Intelligente Darlehens-Verfolgung:** Tilgungsfortschritt in Prozent und automatische Verknüpfung der monatlichen „Zins & Tilgung“-Raten vom Girokonto.
 - 🏷️ **Markenlogos vs. private Monogramme:** Händler und ETFs (REWE, EnBW, DB, iShares) werden sofort erkannt; Privatpersonen (z. B. „Max Mustermann“) erhalten bewusst nur neutrale Initialen.
@@ -64,20 +85,26 @@ nur um Kategorie und Notiz ergänzt.
 |---|---|
 | <img src="docs/screenshots/loan-progress.png" alt="Immobilien-Darlehen, 27 % getilgt"> | <img src="docs/screenshots/analytics-or-inspector.png" alt="Inspektor mit EnBW-Buchung"> |
 
-| SEPA-Überweisung mit IBAN-Prüfung | MoneyMoney-Import mit Vorschau |
+| SEPA-Überweisung mit IBAN-Prüfung | MoneyMoney-Datenbank-Import |
 |---|---|
-| <img src="docs/screenshots/sepa-transfer.png" alt="Neue Überweisung an Stadtwerke München, IBAN geprüft"> | <img src="docs/screenshots/moneymoney-import.png" alt="MoneyMoney-Import: 4.820 Buchungen, 2012 – 2026"> |
+| <img src="docs/screenshots/sepa-transfer.png" alt="Neue Überweisung an Stadtwerke München, IBAN geprüft"> | <img src="docs/screenshots/moneymoney-db-import.png" alt="MoneyMoney-Datenbank-Import: 6 Konten, 6.790 Buchungen"> |
+
+<!-- TODO iOS-Screenshots: nach dem Ablegen von docs/screenshots/ios-overview.png und ios-transactions.png hier einbinden:
+| iOS – Übersicht | iOS – Buchungen |
+|---|---|
+| <img src="docs/screenshots/ios-overview.png" alt="GiroCrab auf dem iPhone – Übersicht" width="300"> | <img src="docs/screenshots/ios-transactions.png" alt="GiroCrab auf dem iPhone – Buchungen" width="300"> |
+-->
 
 ### Architektur
 
 ```
 ┌──────────────────────────┐   UniFFI    ┌────────────────────────────────────┐
 │ GiroCrabApp (SwiftUI)    │ ◄─────────► │ girocrab-core (Rust)               │
-│ macOS 14+ (AppKit)       │  Swift-API  │  vault.rs      XChaCha20-Tresor    │
-│ Keychain + Face/Touch ID │             │  rules.rs      Kategorien-Regeln   │
+│ macOS 14+ (arm64) · iOS  │  Swift-API  │  vault.rs      XChaCha20-Tresor    │
+│ 17+ · Face/Touch ID      │             │  rules.rs      Kategorien-Regeln   │
 └──────────────────────────┘             │  merchants.rs  Händler-Erkennung   │
-                                         │  connectors/   FinTS · REST · PSD2 │
-                                         └──────────────┬─────────────────────┘
+   ▲ optional: iCloud Drive              │  connectors/   FinTS · REST · PSD2 │
+   │ (verschlüsselter Snapshot)          └──────────────┬─────────────────────┘
                                                         │ direkt, mit Ihren Zugangsdaten
                                                         ▼
                                                   Ihre Bank(en)
@@ -89,6 +116,7 @@ nur um Kategorie und Notiz ergänzt.
 |---|---|---|
 | Volksbanken (Atruvia) / 1822direkt | FinTS 3.0 PIN/TAN (HKCAZ/camt, HKKAZ/MT940, Darlehen) | ✅ Unterstützt |
 | comdirect | Offizielle REST-API | ✅ Unterstützt |
+| bunq | Offizielle API, persönlicher API-Schlüssel | ✅ Unterstützt |
 | PayPal | Transaction-Search-API | ✅ Unterstützt |
 | Trade Republic | WebSocket (inoffiziell) | ⚠️ Unterstützt, kann brechen |
 | American Express / Amazon Visa | PSD2 via Enable Banking | ✅ Unterstützt |
@@ -99,7 +127,7 @@ Eine neue Bank anzubinden dauert meist unter 100 Zeilen: siehe
 
 ### Schnellstart
 
-Voraussetzungen: macOS 14+, Xcode 15+, [rustup](https://rustup.rs).
+Voraussetzungen: **macOS 14+ auf Apple Silicon (`arm64`)**, Xcode 15+, [rustup](https://rustup.rs). iOS-Geräte benötigen **iOS 17+**.
 
 ```bash
 ./build-xcframework.sh          # Rust-Kern + Swift-Bindings (macOS / XCFramework)
@@ -108,38 +136,67 @@ cargo run -- --demo-seed        # App mit erfundenen Demo-Daten starten
 cargo test -p girocrab-core     # Tests
 ```
 
-Die Demo enthält 5 fiktive Konten und 50 erfundene Buchungen – keine echten Daten.
+Die Demo enthält fiktive Konten und erfundene Buchungen – keine echten Daten.
 
-### ⚖️ Rechtlicher Hinweis (ZAG / PSD2)
+**iOS (iPhone / iPad):** Die App wird derzeit nicht über den App Store verteilt, sondern direkt aus dem Quellcode gebaut:
+`GiroCrabApp/Xcode/GiroCrab.xcodeproj` in Xcode öffnen, Team (persönliche Apple-ID) unter *Signing & Capabilities* wählen und auf das Gerät installieren. Mit einer persönlichen Apple-ID signierte Apps laufen nur eine begrenzte Zeit und müssen danach neu installiert werden.
 
-GiroCrab ist **selbst gehostete Software zur ausschließlich eigenen Nutzung**. Sie läuft auf Ihrem
-Gerät und verbindet sich direkt – mit **Ihren** Zugangsdaten, **Ihrer** FinTS-Produktregistrierung
-und **Ihren** API-Schlüsseln – mit Ihren Banken. Die Entwickler betreiben **keinen** Server, erhalten
-**keine** Kontodaten und erbringen **keinen** Kontoinformations- (AISP) oder Zahlungsauslösedienst
-(PISP) im Sinne des ZAG bzw. der Richtlinie (EU) 2015/2366 (PSD2). Wer GiroCrab für **Dritte**
-betreibt, braucht ggf. eine BaFin-Erlaubnis – das ist nicht der vorgesehene Einsatzzweck.
-Nutzung auf eigenes Risiko, keine Gewähr (siehe GPLv3). Inoffizielle Schnittstellen
-(Trade Republic) können gegen Nutzungsbedingungen verstoßen. Keine Anlageberatung; ISIN/WKN-Angaben
-sind Referenzdaten ohne Gewähr. Marken gehören ihren Inhabern und dienen nur der Wiedererkennung.
+### 📦 Download (macOS)
+
+Fertige `GiroCrab-macOS-arm64.zip`-Builds (Apple Silicon, macOS 14+) gibt es unter [GitHub Releases](../../releases) – ohne Rust oder Xcode.
+Entpacken und `GiroCrab.app` nach `/Programme` verschieben. Die Open-Source-Builds sind nicht notarisiert; bei einer Gatekeeper-Warnung
+`xattr -cr /Applications/GiroCrab.app` ausführen oder Rechtsklick → Öffnen.
+
+### ⚖️ Rechtlicher Hinweis / Haftungsausschluss (ZAG / PSD2)
+
+GiroCrab ist ein **kostenloses, nicht-kommerzielles Open-Source-Werkzeug zur ausschließlich eigenen Nutzung** (selbst gehostete Software).
+Es ist **kein Zahlungsauslösedienst und kein Kontoinformationsdienst im Sinne des ZAG bzw. der Richtlinie (EU) 2015/2366 (PSD2)**
+und wird auch nicht als solcher angeboten.
+
+- **Rein lokal:** Alle Verbindungen laufen ausschließlich direkt zwischen **Ihrem Gerät** und **Ihrer Bank** – mit **Ihren** Zugangsdaten,
+  **Ihrer** FinTS-Produktregistrierung und **Ihren** API-Schlüsseln. Die Entwickler betreiben **keinen** Server; Konto-, Buchungs- oder
+  Zugangsdaten gelangen **zu keinem Zeitpunkt** an die Entwickler. Die optionale iCloud-Synchronisation nutzt ausschließlich Ihren
+  eigenen iCloud-Drive-Speicher und überträgt nur verschlüsselte Snapshots.
+- **Nutzung auf eigenes Risiko, ohne Gewährleistung** (siehe GPLv3). Das gilt insbesondere für **SEPA-Überweisungen** – prüfen Sie
+  Empfänger, IBAN und Betrag vor jeder Freigabe selbst – sowie für **inoffizielle Schnittstellen** (z. B. Trade Republic), die
+  jederzeit ausfallen können und gegen Nutzungsbedingungen des Anbieters verstoßen können.
+- Wer GiroCrab **für Dritte** betreibt, braucht ggf. eine BaFin-Erlaubnis – das ist nicht der vorgesehene Einsatzzweck.
+- Keine Anlageberatung; ISIN/WKN-Angaben sind Referenzdaten ohne Gewähr. Marken gehören ihren Inhabern und dienen nur der Wiedererkennung.
 
 ---
 
 ## 🇬🇧 English
 
-**Open-source banking for macOS 14+ – local-first, encrypted, no cloud.**
+**Open-source banking for macOS 14+ (Apple Silicon) and iOS 17+ – local-first, encrypted, no cloud required.**
 A native SwiftUI app on a Rust core: encrypted vault (XChaCha20-Poly1305 & Argon2id), category tree, rules, merchant
 recognition, savings-plan view, loan repayment progress and direct connections to your banks –
 no server, no tracking. Money is always `i64` cents, never floats.
 
+### ✨ What's new in v0.4.0
+
+- 🗄️ **Direct MoneyMoney database import:** the encrypted `MoneyMoney.sqlite` is opened **read-only** – accounts, categories incl. hierarchy and the full booking history come over in one step (in addition to CSV/XML).
+- 📱 **iOS app (iPhone & iPad)** alongside the macOS app.
+- ☁️ **Optional iCloud Drive sync** between Macs and iOS devices via an encrypted snapshot merge.
+- 🏦 **bunq direct integration** via personal API key – alongside FinTS 3.0/HBCI, PayPal and Trade Republic.
+- 🧬 **Apple Silicon (`arm64`)** on macOS 14+ and iOS 17+.
+
 ### 🚚 Migrating from MoneyMoney
 
-Full multi-year histories, categories and notes import seamlessly – no subscription lock-in:
+Full multi-year histories, categories and notes import seamlessly – no subscription lock-in.
+
+**Option A – straight from the MoneyMoney database (recommended, macOS):**
+
+1. In GiroCrab: *Switch from MoneyMoney* (onboarding), *MoneyMoney-Import* (sidebar) or `⌘K` → "MoneyMoney Historie & Kategorien importieren" → tab **MoneyMoney database**.
+2. Choose `MoneyMoney.sqlite` and enter your MoneyMoney password. The file is opened strictly **read-only**; MoneyMoney and the original file stay untouched.
+3. Check the preview (accounts, categories, bookings, notes), map the target accounts, hit **Import**.
+
+<p align="center"><img src="docs/screenshots/moneymoney-db-import.png" alt="MoneyMoney database import: 6 accounts, 6,790 bookings, 16 categories (demo data)" width="560"></p>
+
+**Option B – export file (CSV / XML):**
 
 1. In MoneyMoney select the account, press **⌘A**, then **Export Transactions …** → **XML** or **CSV**.
-2. In GiroCrab: *Switch from MoneyMoney* (onboarding), *MoneyMoney-Import* (sidebar) or `⌘K` → "MoneyMoney Historie & Kategorien importieren". Drop the file in.
+2. In GiroCrab open the same import dialog, pick the **Export file (CSV/XML)** tab and drop the file in.
 3. Pick the target account (or create an archive account), check the preview, hit **Import**.
-
-<p align="center"><img src="docs/screenshots/moneymoney-import.png" alt="MoneyMoney import with preview: 4,820 bookings, 2012 – 2026, detected categories" width="480"></p>
 
 Hierarchical categories (`Household\Groceries`) are kept as a tree, notes show in the booking detail view.
 Every booking gets a fingerprint (date, amount, IBAN/name, purpose), so re-importing the file or overlapping days
@@ -157,8 +214,11 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 
 *All screenshots show purely fictional demo data (`GIROCRAB_DEMO_SEED=1`).*
 
-- 🔒 **Local-first & zero-cloud privacy:** all banking data lives on your device in an encrypted vault (XChaCha20-Poly1305) protected by the macOS Keychain / Touch ID.
-- 🏦 **Native German banking protocols:** FinTS 3.0 / HBCI (CAMT.052 & MT940 with smart Latin-1/UTF-8 decoding), Trade Republic WebSocket, comdirect REST, and embedded web-session/CSV import for Amex & Amazon Visa.
+- 🔒 **Local-first:** all banking data lives on your device in an encrypted vault (XChaCha20-Poly1305) protected by the Keychain / Touch ID or Face ID. There is no developer server.
+- 📱 **macOS + iOS (iPhone / iPad):** one SwiftUI codebase on the shared Rust core. Requires **macOS 14+ (Apple Silicon, `arm64`)** or **iOS 17+**. The iOS app is currently built and installed straight from source with Xcode (`GiroCrabApp/Xcode/GiroCrab.xcodeproj`, personal Apple ID signing) – see [Quickstart](#quickstart).
+- ☁️ **Optional iCloud Drive sync:** if you want, sync vault data between Macs and iOS devices through your own iCloud Drive folder (`iCloud Drive/GiroCrab/`). Only an **encrypted SQLCipher snapshot** (`wal_checkpoint(TRUNCATE)`) goes to the cloud, and devices are reconciled with a deterministic `ATTACH DATABASE` merge. **A live SQLite database with WAL files is never opened directly in cloud storage.** Sync is off by default.
+- 🗄️ **MoneyMoney database import:** read-only import of the encrypted `.sqlite` file incl. accounts, categories, hierarchy and booking history (see above).
+- 🏦 **Native German banking protocols:** FinTS 3.0 / HBCI (CAMT.052 & MT940 with smart Latin-1/UTF-8 decoding), **bunq** (personal API key), PayPal, Trade Republic WebSocket, comdirect REST, and embedded web-session/CSV import for Amex & Amazon Visa.
 - 💸 **Native SEPA credit transfers via FinTS 3.0 / HKCCS** incl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN checksum validation (Mod-97), SEPA-compliant character set, recipient suggestions from past bookings and an instant pending booking.
 - 🏠 **Smart loan tracking:** automatic repayment progress (%) and cross-account linking of the monthly "Zins & Tilgung" instalments from your checking account.
 - 🏷️ **Brand signets vs. private monograms:** instant recognition for German merchants & ETFs (REWE, EnBW, DB, iShares), while private individuals (e.g. "Max Mustermann") get plain monogram initials by design.
@@ -169,15 +229,21 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 |---|---|
 | <img src="docs/screenshots/loan-progress.png" alt="Immobilien-Darlehen, 27% repaid"> | <img src="docs/screenshots/analytics-or-inspector.png" alt="Inspector showing an EnBW booking"> |
 
-| SEPA transfer with IBAN check | MoneyMoney import with preview |
+| SEPA transfer with IBAN check | MoneyMoney database import |
 |---|---|
-| <img src="docs/screenshots/sepa-transfer.png" alt="New transfer to Stadtwerke München, IBAN validated"> | <img src="docs/screenshots/moneymoney-import.png" alt="MoneyMoney import: 4,820 bookings, 2012 – 2026"> |
+| <img src="docs/screenshots/sepa-transfer.png" alt="New transfer to Stadtwerke München, IBAN validated"> | <img src="docs/screenshots/moneymoney-db-import.png" alt="MoneyMoney database import: 6 accounts, 6,790 bookings"> |
+
+<!-- TODO iOS screenshots: once docs/screenshots/ios-overview.png and ios-transactions.png exist, embed here:
+| iOS – Overview | iOS – Transactions |
+|---|---|
+| <img src="docs/screenshots/ios-overview.png" alt="GiroCrab on iPhone – overview" width="300"> | <img src="docs/screenshots/ios-transactions.png" alt="GiroCrab on iPhone – transactions" width="300"> |
+-->
 
 ### Architecture
 
-See the diagram above: the SwiftUI app talks to `girocrab-core` through UniFFI; the core owns the
+See the diagram above: the SwiftUI app (macOS and iOS) talks to `girocrab-core` through UniFFI; the core owns the
 encrypted vault, categorisation rules, merchant resolver and the bank connectors, and talks to
-your bank directly.
+your bank directly. Optional iCloud sync only exchanges encrypted snapshots.
 
 ### Bank support matrix
 
@@ -185,6 +251,7 @@ your bank directly.
 |---|---|---|
 | Volksbanken (Atruvia) / 1822direkt | FinTS 3.0 PIN/TAN (camt, MT940, loans) | ✅ Supported |
 | comdirect | Official REST API | ✅ Supported |
+| bunq | Official API, personal API key | ✅ Supported |
 | PayPal | Transaction Search API | ✅ Supported |
 | Trade Republic | WebSocket (unofficial) | ⚠️ Supported, may break |
 | American Express / Amazon Visa | PSD2 via Enable Banking | ✅ Supported |
@@ -203,7 +270,7 @@ The open-source builds are not notarized. If macOS refuses to open the app, run
 
 ### Quickstart
 
-Requirements: macOS 14+, Xcode 15+, [rustup](https://rustup.rs).
+Requirements: **macOS 14+ on Apple Silicon (`arm64`)**, Xcode 15+, [rustup](https://rustup.rs). iOS devices need **iOS 17+**.
 
 ```bash
 ./build-xcframework.sh          # Rust core + Swift bindings (macOS / XCFramework)
@@ -212,18 +279,26 @@ cargo run -- --demo-seed        # launch the app with fictional demo data
 cargo test -p girocrab-core     # run the tests
 ```
 
-The demo ships 5 fictional accounts and 50 invented bookings – no real data.
+The demo ships fictional accounts and invented bookings – no real data.
 
-### ⚖️ Legal notice (PSD2 / ZAG)
+**iOS (iPhone / iPad):** the app is currently not distributed via the App Store but built from source:
+open `GiroCrabApp/Xcode/GiroCrab.xcodeproj` in Xcode, choose your team (personal Apple ID) under *Signing & Capabilities* and install on your device. Apps signed with a personal Apple ID expire after a limited time and have to be reinstalled.
 
-GiroCrab is **self-hosted software for your own personal use only**. It runs on your device and
-connects directly to your banks with **your** credentials, **your** FinTS product registration and
-**your** API keys. The authors operate **no** server, receive **no** account data and provide **no**
-account-information (AISP) or payment-initiation (PISP) service under the German ZAG / PSD2
-(Directive (EU) 2015/2366). Operating GiroCrab for **third parties** may require BaFin authorisation
-and is not the intended use. Use at your own risk, no warranty (see GPLv3). Unofficial interfaces
-(Trade Republic) may violate terms of service. Not investment advice. Trademarks belong to their
-owners and are used for identification only.
+### ⚖️ Legal notice / Disclaimer (PSD2 / ZAG)
+
+GiroCrab is a **free, non-commercial open-source tool for your own personal use only** (self-hosted software).
+It is **not a payment initiation service and not an account information service within the meaning of the German ZAG / PSD2
+(Directive (EU) 2015/2366)** and is not offered as one.
+
+- **Strictly local:** all connections run directly between **your device** and **your bank**, using **your** credentials,
+  **your** FinTS product registration and **your** API keys. The authors operate **no** server, and no account, booking or
+  credential data **ever** reaches the authors. Optional iCloud sync uses only your own iCloud Drive storage and transfers
+  encrypted snapshots only.
+- **Use at your own risk, without warranty** (see GPLv3). This applies in particular to **SEPA transfers** – always verify
+  recipient, IBAN and amount yourself before authorising – and to **unofficial interfaces** (e.g. Trade Republic), which can
+  break at any time and may violate the provider's terms of service.
+- Operating GiroCrab **for third parties** may require BaFin authorisation and is not the intended use.
+- Not investment advice; ISIN/WKN data is reference information without guarantee. Trademarks belong to their owners and are used for identification only.
 
 ---
 
