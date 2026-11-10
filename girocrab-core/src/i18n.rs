@@ -276,7 +276,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Der Empfängername fehlt." => "The recipient name is missing.",
         "Der Verwendungszweck darf höchstens 140 Zeichen lang sein." => "The payment reference can be at most 140 characters.",
         "Dieses Konto hat keine Bankverbindung." => "This account has no bank connection.",
-        "Überweisungen sind nur für FinTS-Konten möglich." => "Transfers are only possible for FinTS accounts.",
+        "Überweisungen sind nur für FinTS- und bunq-Konten möglich." => "Transfers are only possible for FinTS and bunq accounts.",
         "Das Konto hat keine IBAN." => "The account has no IBAN.",
         "Bankverbindung {0}" => "bank connection {0}",
         "Konto {0}" => "account {0}",
@@ -448,6 +448,31 @@ fn english(de: &str) -> Option<&'static str> {
         "Gehalt" => "Salary",
         "Bargeld" => "Cash",
         "Krypto" => "Crypto",
+        // ------------------------------------------------------------ bunq
+        "bunq Public API (eigener API-Schlüssel)" => "bunq public API (your own API key)",
+        "API-Schlüssel" => "API key",
+        "API-Schlüssel in der bunq-App unter Profil → Einstellungen → Entwickler → API-Schlüssel erstellen und „Alle IP-Adressen erlauben“ aktivieren. Keine PSD2-Registrierung nötig." => {
+            "Create an API key in the bunq app under Profile → Settings → Developers → API keys and enable “Allow all IP addresses”. No PSD2 registration needed."
+        }
+        "bunq hat den API-Schlüssel oder diese IP-Adresse abgelehnt. Erstellen Sie in der bunq-App einen API-Schlüssel mit „Alle IP-Adressen erlauben“ und tragen Sie ihn neu ein." => {
+            "bunq rejected the API key or this IP address. Create an API key with “Allow all IP addresses” in the bunq app and enter it again."
+        }
+        "Die Antwort von bunq ist nicht korrekt signiert." => "The response from bunq is not correctly signed.",
+        "Bitte den bunq-API-Schlüssel eingeben." => "Please enter your bunq API key.",
+        "Sparen" => "Savings",
+        "Rückbuchung" => "Reversal",
+        "Abhebung" => "Withdrawal",
+        "Kontoauszug {0} – {1}" => "Statement {0} – {1}",
+        "vorgemerkt" => "pending",
+        "Originalbetrag {0}" => "Original amount {0}",
+        "Überweisung in der bunq-App freigeben" => "Approve the transfer in the bunq app",
+        "Freigabe in der bunq-App" => "Approval in the bunq app",
+        "bunq hat die Überweisung abgelehnt oder sie wurde abgebrochen." => "bunq rejected the transfer or it was cancelled.",
+        "Das Quellkonto wurde bei bunq nicht gefunden." => "The source account was not found at bunq.",
+        "{0} an {1}: Bitte öffnen Sie die bunq-App und bestätigen Sie die Zahlung." => "{0} to {1}: please open the bunq app and confirm the payment.",
+        "bunq" => "bunq",
+        "bunq-Umgebung" => "bunq environment",
+        "production oder sandbox (Test-API von bunq)." => "production or sandbox (bunq's test API).",
         _ => return None,
     })
 }

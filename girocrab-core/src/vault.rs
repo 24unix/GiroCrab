@@ -166,6 +166,7 @@ pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
     ("paypal.client_id", "PayPal Client-ID", "REST-App auf developer.paypal.com mit aktivierter „Transaction Search“ anlegen.", "PayPal", false, ""),
     ("paypal.client_secret", "PayPal Secret", "Secret derselben REST-App.", "PayPal", true, ""),
     ("paypal.environment", "PayPal-Umgebung", "live oder sandbox", "PayPal", false, "live"),
+    ("bunq.environment", "bunq-Umgebung", "production oder sandbox (Test-API von bunq).", "bunq", false, "production"),
     ("enablebanking.application_id", "Enable Banking Application-ID", "Anwendung auf enablebanking.com registrieren (wird als JWT-„kid“ verwendet).", "Enable Banking (PSD2)", false, ""),
     ("enablebanking.private_key_pem", "Enable Banking Private Key (PEM)", "RSA-Schlüssel der Anwendung; signiert das RS256-JWT.", "Enable Banking (PSD2)", true, ""),
     ("enablebanking.redirect_url", "Redirect-URL", "Muss in Ihrer Enable-Banking-Anwendung freigegeben sein.", "Enable Banking (PSD2)", false, "https://localhost/girocrab/callback"),

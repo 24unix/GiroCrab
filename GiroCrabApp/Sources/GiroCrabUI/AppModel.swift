@@ -905,7 +905,7 @@ public final class AppModel {
     /// Writes the document to a temp file and shows it in QuickLook.
     func quickLook(_ doc: DocumentInfo) {
         guard let data = documentData(doc) else { return }
-        let ext = doc.mimeType == "image/png" ? "png" : doc.mimeType == "image/jpeg" ? "jpg" : "pdf"
+        let ext = ["image/png": "png", "image/jpeg": "jpg", "image/heic": "heic"][doc.mimeType] ?? "pdf"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Beleg-\(doc.id).\(ext)")
         try? data.write(to: url)
         quickLookURL = url
@@ -1146,7 +1146,7 @@ extension AppModel {
     var transferAccounts: [Account] {
         allAccounts.filter {
             $0.kind == .checking && !$0.iban.isEmpty
-                && ($0.connector == .volksbankKasselGoettingen || $0.connector == .direkt1822)
+                && [.volksbankKasselGoettingen, .direkt1822, .bunq].contains($0.connector)
         }
     }
 

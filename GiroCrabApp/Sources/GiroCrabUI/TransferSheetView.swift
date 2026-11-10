@@ -28,6 +28,7 @@ struct TransferSheetView: View {
         guard let c = try? parseAmountToCents(text: model.transferDraft.amountText), c > 0 else { return nil }
         return c
     }
+    private var isBunq: Bool { account?.connector == .bunq }
     private var pinStored: Bool {
         guard let id = account?.connectionId else { return false }
         return model.isDemo || (model.connectionStatus(id)?.hasPin ?? false)
@@ -185,8 +186,8 @@ struct TransferSheetView: View {
                 }
             }
             if !pinStored {
-                field("Banking-PIN") {
-                    SecureField("PIN (wird nicht gespeichert)", text: draft.pin)
+                field(isBunq ? "bunq-API-Schlüssel" : "Banking-PIN") {
+                    SecureField(isBunq ? "API-Schlüssel (wird nicht gespeichert)" : "PIN (wird nicht gespeichert)", text: draft.pin)
                         .textFieldStyle(.roundedBorder)
                 }
             }
@@ -241,7 +242,7 @@ struct TransferSheetView: View {
             if confirming {
                 Button("Zurück") { confirming = false }
                 Spacer()
-                Button("Jetzt mit TAN freigeben") { model.startTransfer() }
+                Button(isBunq ? "In der bunq-App freigeben" : "Jetzt mit TAN freigeben") { model.startTransfer() }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .disabled(model.transferBusy)

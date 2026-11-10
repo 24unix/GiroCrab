@@ -24,6 +24,7 @@ use crate::models::{AccountKind, ConnectorKind, KnownRecipient, SepaTransferRequ
 use crate::secret::SecretString;
 use crate::vault::Vault;
 
+pub mod bunq;
 pub mod comdirect;
 pub mod demo;
 pub mod enable_banking;
@@ -114,7 +115,7 @@ pub struct BankDescriptor {
     pub note: String,
 }
 
-/// The seven institutions with their public protocol facts.
+/// The supported institutions with their public protocol facts.
 #[uniffi::export]
 pub fn bank_catalog() -> Vec<BankDescriptor> {
     ConnectorKind::all().into_iter().map(descriptor).collect()
@@ -199,6 +200,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             secret_label: tr("(Anmeldung im Browser-Fenster)").into(),
             required_settings: vec![],
             note: tr("Herausgeber: Open Bank S.A. (Zinia). Anmeldung im eingebetteten Browser – keine API-Schlüssel nötig. Optional: eigene PSD2-/Enable-Banking-API unter „Erweitert“.").into(),
+        },
+        ConnectorKind::Bunq => BankDescriptor {
+            kind,
+            name: "bunq".into(),
+            protocol: tr("bunq Public API (eigener API-Schlüssel)").into(),
+            bank_code: String::new(),
+            sf_symbol: "building.columns.circle".into(),
+            login_label: tr("E-Mail (nur Anzeige)").into(),
+            secret_label: tr("API-Schlüssel").into(),
+            required_settings: vec![],
+            note: tr("API-Schlüssel in der bunq-App unter Profil → Einstellungen → Entwickler → API-Schlüssel erstellen und „Alle IP-Adressen erlauben“ aktivieren. Keine PSD2-Registrierung nötig.").into(),
         },
     }
 }
@@ -312,6 +324,9 @@ pub struct FetchResult {
     pub adjust_balances: bool,
     /// PDFs fetched from the bank (trade confirmations, PostBox, statements).
     pub documents: Vec<crate::documents::RemoteDocument>,
+    /// external_id prefix of provisional bookings (card holds) this fetch
+    /// lists completely: stored ones missing from it are removed.
+    pub hold_prefix: Option<String>,
 }
 
 #[async_trait]
@@ -375,6 +390,7 @@ pub fn make_connector(kind: ConnectorKind, demo: bool) -> Box<dyn BankConnector>
             "Open Bank",
             "enablebanking.country.amazonvisa",
         )),
+        ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),
     }
 }
 
@@ -581,6 +597,31 @@ pub(crate) fn store_fetch(
                       AND r.booking_date >= transactions.booking_date))",
             [],
         )?;
+        // Card holds: keep exactly the ones the bank still reports as open.
+        if let Some(prefix) = data.hold_prefix.as_deref().filter(|p| !p.is_empty()) {
+            let current: std::collections::HashSet<&str> = data
+                .transactions
+                .iter()
+                .filter(|t| t.external_id.starts_with(prefix))
+                .map(|t| t.external_id.as_str())
+                .collect();
+            let like = format!("{}%", prefix.replace('%', "").replace('_', "\\_"));
+            for acc_id in account_ids.values() {
+                let stale: Vec<(i64, String)> = {
+                    let mut q = tx.prepare(
+                        "SELECT id, external_id FROM transactions
+                         WHERE account_id = ?1 AND external_id LIKE ?2 ESCAPE '\\'",
+                    )?;
+                    let rows = q.query_map(params![acc_id, like], |r| Ok((r.get(0)?, r.get(1)?)))?;
+                    rows.collect::<Result<_, _>>()?
+                };
+                for (row_id, ext) in stale {
+                    if !current.contains(ext.as_str()) {
+                        tx.execute("DELETE FROM transactions WHERE id = ?1", [row_id])?;
+                    }
+                }
+            }
+        }
         for d in &data.documents {
             let Some(acc_id) = account_ids
                 .get(&d.account_ref)
@@ -962,10 +1003,10 @@ impl Vault {
         })?;
         if !matches!(
             kind,
-            ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822
+            ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822 | ConnectorKind::Bunq
         ) {
             return Err(CoreError::InvalidInput {
-                message: tr("Überweisungen sind nur für FinTS-Konten möglich.").into(),
+                message: tr("Überweisungen sind nur für FinTS- und bunq-Konten möglich.").into(),
             });
         }
         if iban.is_empty() {
@@ -1095,6 +1136,56 @@ mod tests {
         let v = Vault::open(path.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
         v.seed_demo_data().unwrap();
         (v, path)
+    }
+
+    #[test]
+    fn card_holds_are_replaced_on_each_sync() {
+        let (v, path) = demo_vault();
+        let conn = v
+            .add_bank_connection(ConnectorKind::Bunq, String::new(), "me@example.com".into())
+            .unwrap();
+        let acc = RemoteAccount {
+            external_ref: "bunq:1".into(),
+            name: "bunq".into(),
+            owner: String::new(),
+            iban: "NL00BUNQ0000000000".into(),
+            account_number: String::new(),
+            currency: "EUR".into(),
+            kind: AccountKind::Checking,
+            balance_cents: 0,
+            balance_date: "2026-11-10".into(),
+        };
+        let hold = |id: &str, cents: i64| RemoteTransaction {
+            account_ref: "bunq:1".into(),
+            external_id: format!("pending-hold-bunq-{id}"),
+            booking_date: "2026-11-09".into(),
+            value_date: "2026-11-09".into(),
+            amount_cents: cents,
+            currency: "EUR".into(),
+            counterparty: "Hotel".into(),
+            counterparty_iban: String::new(),
+            purpose: String::new(),
+            booking_text: "Kartenzahlung (vorgemerkt)".into(),
+        };
+        let fetch = |txs: Vec<RemoteTransaction>| FetchResult {
+            accounts: vec![acc.clone()],
+            transactions: txs,
+            hold_prefix: Some("pending-hold-bunq-".into()),
+            ..Default::default()
+        };
+        let holds = || -> Vec<String> {
+            let db = v.db().unwrap();
+            let mut q = db
+                .prepare("SELECT external_id FROM transactions WHERE external_id LIKE 'pending-hold-%' ORDER BY 1")
+                .unwrap();
+            q.query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect()
+        };
+        store_fetch(&v, ConnectorKind::Bunq, conn, fetch(vec![hold("1", -50_00), hold("2", -7_10)])).unwrap();
+        assert_eq!(holds(), vec!["pending-hold-bunq-1", "pending-hold-bunq-2"]);
+        // Hold 1 cleared (booked elsewhere), hold 2 still open.
+        store_fetch(&v, ConnectorKind::Bunq, conn, fetch(vec![hold("2", -7_10)])).unwrap();
+        assert_eq!(holds(), vec!["pending-hold-bunq-2"]);
+        std::fs::remove_file(path).ok();
     }
 
     #[tokio::test]

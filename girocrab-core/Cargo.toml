@@ -24,6 +24,8 @@ tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto", "use_pem"] }
 base64 = "0.22"
+rsa = { version = "0.9", features = ["sha2", "pem", "getrandom"] }
+sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rand = "0.9"
 hex = "0.4"

@@ -215,6 +215,7 @@ extension ConnectorKind {
         case .tradeRepublic: return "Trade Republic"
         case .americanExpress: return "American Express"
         case .amazonVisa: return "Amazon Visa"
+        case .bunq: return "bunq"
         }
     }
 
@@ -228,6 +229,7 @@ extension ConnectorKind {
         case .tradeRepublic: return "#111111"
         case .americanExpress: return "#2E77BC"
         case .amazonVisa: return "#3C2A7A"
+        case .bunq: return "#1F8F5F"
         }
     }
 
@@ -242,6 +244,7 @@ extension ConnectorKind {
         case .tradeRepublic: return "TR"
         case .americanExpress: return "AX"
         case .amazonVisa: return "AV"
+        case .bunq: return "bq"
         }
     }
 }
