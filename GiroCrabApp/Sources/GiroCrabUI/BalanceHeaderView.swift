@@ -85,9 +85,9 @@ struct StreamHeaderCard: View {
             }
 
             HStack(spacing: 10) {
-                KPI(title: "Konsumausgaben", subtitle: "diesen Monat", value: Money.format(-model.consumptionThisMonth), tint: Theme.outflow)
+                KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.period.title), value: Money.format(-model.consumptionThisMonth), tint: Theme.outflow)
                 KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: Money.format(model.investedThisMonth), tint: Theme.invest)
-                KPI(title: "Einnahmen", subtitle: "diesen Monat", value: Money.format(model.incomeThisMonth), tint: Theme.inflow)
+                KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.period.title), value: Money.format(model.incomeThisMonth), tint: Theme.inflow)
             }
 
             HStack(spacing: 12) {
@@ -120,7 +120,7 @@ struct StreamHeaderCard: View {
                     .sheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
                 }
                 Spacer()
-                Text("\(model.visibleBookings.count) Buchungen")
+                Text("\(model.bookingCountLabel) Buchungen")
                     .font(.caption)
                     .foregroundStyle(Theme.secondary)
             }

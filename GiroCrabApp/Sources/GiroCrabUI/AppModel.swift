@@ -175,6 +175,8 @@ public final class AppModel {
     var categoryTree: [CategoryNode] = []
     var bookings: [Booking] = []
     var page: BookingPage?
+    /// Flows of the selected account/group in the selected period; nil = not loaded yet.
+    var selectionFlow: (consumption: Int64, invested: Int64, income: Int64)?
     var dashboard: InvestmentDashboard?
     var merchantStats: MerchantStats?
     var rules: [Rule] = []
@@ -586,6 +588,33 @@ public final class AppModel {
         if let sel = selectedBookingID, !bookings.contains(where: { $0.id == sel }) {
             selectedBookingID = bookings.first?.id
         }
+        reloadSelectionKPIs()
+    }
+
+    /// KPI tiles: same flow rules as the dashboard, but for the selected
+    /// period and account/group (no account selected = all accounts).
+    func reloadSelectionKPIs() {
+        guard let vault else { selectionFlow = nil; return }
+        let (from, to) = period.range
+        let filter = BookingFilter(
+            accountIds: currentFilter.accountIds, categoryId: nil, includeSubcategories: true, uncategorizedOnly: false,
+            search: nil, dateFrom: from, dateTo: to, limit: 0, offset: 0,
+            scope: .all, merchantKey: nil
+        )
+        run {
+            let p = try vault.listTransactions(filter: filter)
+            var consumption: Int64 = 0, invested: Int64 = 0, income: Int64 = 0
+            for b in p.transactions {
+                switch b.flow {
+                case .consumption: consumption += -b.amountCents
+                case .investment: invested += -b.amountCents
+                case .perk where b.amountCents < 0: invested += -b.amountCents
+                case .income: income += b.amountCents
+                default: break
+                }
+            }
+            selectionFlow = (consumption, invested, income)
+        }
     }
 
     func reloadHistory() {
@@ -796,9 +825,15 @@ public final class AppModel {
     var uncategorizedCount: Int { allAccounts.filter { $0.kind != .loan }.reduce(0) { $0 + Int($1.uncategorizedCount) } }
 
     /// Everyday spending this month (never includes ETF plans / perks).
-    var consumptionThisMonth: Int64 { dashboard?.monthly.last?.consumptionCents ?? 0 }
-    var investedThisMonth: Int64 { dashboard?.monthly.last?.investmentCents ?? 0 }
-    var incomeThisMonth: Int64 { dashboard?.monthly.last?.incomeCents ?? 0 }
+    /// Selected account/group and period; falls back to the dashboard month.
+    var consumptionThisMonth: Int64 { selectionFlow?.consumption ?? dashboard?.monthly.last?.consumptionCents ?? 0 }
+    var investedThisMonth: Int64 { selectionFlow?.invested ?? dashboard?.monthly.last?.investmentCents ?? 0 }
+    var incomeThisMonth: Int64 { selectionFlow?.income ?? dashboard?.monthly.last?.incomeCents ?? 0 }
+
+    /// Number of bookings matching the list filter (the list itself loads at most 3000).
+    var bookingCountLabel: Int {
+        statusFilter == .all ? Int(page?.totalCount ?? UInt32(visibleBookings.count)) : visibleBookings.count
+    }
 
     var title: String {
         switch sidebarSelection {
