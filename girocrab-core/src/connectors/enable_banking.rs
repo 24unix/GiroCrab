@@ -121,6 +121,46 @@ impl EnableBankingConnector {
         })
     }
 
+    /// Extracts (uid, name, iban, currency) from a session/accounts response.
+    /// Accepts account objects in `accounts_data` / `accounts`; bare uid strings
+    /// in `accounts` are kept with default name/currency.
+    fn parse_accounts(&self, v: &Value) -> Vec<(String, String, String, String)> {
+        let mut list: Vec<Value> = Vec::new();
+        for key in ["accounts_data", "accounts"] {
+            if let Some(a) = v[key].as_array() {
+                list.extend(a.iter().cloned());
+            }
+        }
+        let mut out: Vec<(String, String, String, String)> = Vec::new();
+        for a in &list {
+            let (uid, name, iban, cur) = if let Some(u) = a.as_str() {
+                (u.to_string(), self.aspsp_default.clone(), String::new(), "EUR".to_string())
+            } else {
+                (
+                    a["uid"].as_str().unwrap_or_default().to_string(),
+                    a["name"]
+                        .as_str()
+                        .or(a["product"].as_str())
+                        .unwrap_or(&self.aspsp_default)
+                        .to_string(),
+                    a["account_id"]["iban"].as_str().unwrap_or_default().to_string(),
+                    a["currency"].as_str().unwrap_or("EUR").to_string(),
+                )
+            };
+            if uid.is_empty() {
+                continue;
+            }
+            if let Some(e) = out.iter_mut().find(|e| e.0 == uid) {
+                // merge: prefer richer object data over a bare uid
+                if e.2.is_empty() { e.2 = iban; }
+                if a.is_object() { e.1 = name; e.3 = cur; }
+            } else {
+                out.push((uid, name, iban, cur));
+            }
+        }
+        out
+    }
+
     async fn call(
         &self,
         method: reqwest::Method,
@@ -356,27 +396,7 @@ impl BankConnector for EnableBankingConnector {
             .as_str()
             .unwrap_or_default()
             .to_string();
-        self.st.accounts = v["accounts"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default()
-            .iter()
-            .map(|a| {
-                (
-                    a["uid"].as_str().unwrap_or_default().to_string(),
-                    a["name"]
-                        .as_str()
-                        .or(a["product"].as_str())
-                        .unwrap_or(&self.aspsp_default)
-                        .to_string(),
-                    a["account_id"]["iban"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_string(),
-                    a["currency"].as_str().unwrap_or("EUR").to_string(),
-                )
-            })
-            .collect();
+        self.st.accounts = self.parse_accounts(&v);
         Ok(Phase::Ready)
     }
 
@@ -386,8 +406,24 @@ impl BankConnector for EnableBankingConnector {
             !self.st.session_id.is_empty(),
             self.st.accounts.len()
         ));
+        if self.st.accounts.is_empty() && !self.st.session_id.is_empty() {
+            // State lost its accounts (e.g. saved by an older build): re-read them
+            // from the session instead of silently syncing nothing.
+            let path = format!("/sessions/{}", self.st.session_id);
+            let sess = self.call(reqwest::Method::GET, &path, None).await?;
+            self.st.accounts = self.parse_accounts(&sess);
+            crate::depot_debug::log(&format!(
+                "enable_banking fetch: refreshed accounts from session -> {}",
+                self.st.accounts.len()
+            ));
+        }
         let mut out = FetchResult::default();
+        out.state = Some(serde_json::to_value(&self.st)?);
         for (uid, name, iban, currency) in self.st.accounts.clone() {
+            crate::depot_debug::log(&format!(
+                "enable_banking fetch: processing account uid_len={} currency={currency}",
+                uid.len()
+            ));
             let bal = self
                 .call(
                     reqwest::Method::GET,
