@@ -57,7 +57,7 @@ struct MoneyMoneyImportSheet: View {
         }
         .padding(20)
         .frame(width: 560)
-        .background(Color.white)
+        .background(Theme.card)
         .interactiveDismissDisabled(importing)
         .onAppear {
             if let demo = model.demoImportPreview {

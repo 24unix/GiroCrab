@@ -197,7 +197,7 @@ struct SectionHeader: View {
             Spacer()
             Text(Money.format(group.balanceCents))
                 .monospacedDigit()
-                .foregroundStyle(group.balanceCents < 0 && group.name.contains("Darlehen") ? Theme.loan : (group.balanceCents < 0 ? Color(hex: "#B91C1C") : Theme.secondary))
+                .foregroundStyle(group.balanceCents < 0 && group.name.contains("Darlehen") ? Theme.loan : (group.balanceCents < 0 ? Theme.negative : Theme.secondary))
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(Theme.secondary)
@@ -241,7 +241,7 @@ struct AccountRow: View {
             VStack(alignment: .trailing, spacing: 1) {
                 Text(Money.format(account.balanceCents, currency: account.currency))
                     .font(.callout.monospacedDigit())
-                    .foregroundStyle(account.kind == .loan ? Theme.loan : (account.balanceCents < 0 ? Color(hex: "#B91C1C") : Theme.text))
+                    .foregroundStyle(account.kind == .loan ? Theme.loan : (account.balanceCents < 0 ? Theme.negative : Theme.text))
                 if let repaid {
                     Text(String(format: "%.0f %% getilgt", repaid * 100)).font(.caption2).foregroundStyle(Theme.tertiary)
                 }
@@ -257,7 +257,7 @@ struct CategoryRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: category.sfSymbol)
-                .foregroundStyle(Color(hex: category.colorHex).opacity(0.85))
+                .foregroundStyle(Color.readable(hex: category.colorHex).opacity(0.85))
                 .frame(width: 20)
             Text(category.name).lineLimit(1)
             Spacer(minLength: 4)
