@@ -76,6 +76,14 @@ fn fake_db_with(compat3: bool, extra: &str) -> String {
     path.to_string_lossy().to_string()
 }
 
+fn fake_db_unencrypted() -> String {
+    let path = temp("plain-src.sqlite");
+    let c = Connection::open(&path).unwrap();
+    c.execute_batch(SCHEMA).unwrap();
+    c.execute_batch(DATA).unwrap();
+    path.to_string_lossy().to_string()
+}
+
 fn fake_db() -> String {
     fake_db_with(false, "")
 }
@@ -184,6 +192,19 @@ fn wrong_password_and_missing_file() {
         .preview_moneymoney_database(plain.to_string_lossy().to_string(), PW.into())
         .unwrap_err();
     assert!(matches!(err, CoreError::Authentication { .. }));
+}
+
+#[test]
+fn unencrypted_database_opens_with_empty_password() {
+    let path = fake_db_unencrypted();
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), String::new())
+        .unwrap();
+    assert_eq!(p.accounts.len(), 4);
+    // an encrypted file must not open without a password
+    let enc = fake_db();
+    assert!(v.preview_moneymoney_database(enc, String::new()).is_err());
 }
 
 #[test]

@@ -62,9 +62,18 @@ struct EmptyVaultCard: View {
             if addKind == .finTsGeneric {
                 Form { FinTsAddForm() }.formStyle(.grouped).scrollDisabled(true).frame(minHeight: 260)
             }
+            #if os(macOS)
+            Button { model.openMoneyMoneyImport() } label: {
+                Label("Aus MoneyMoney importieren…", systemImage: "square.and.arrow.down.on.square")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            #else
             Button { model.openMoneyMoneyImport() } label: {
                 Label("Von MoneyMoney wechseln", systemImage: "square.and.arrow.down.on.square")
             }
+            #endif
             Divider()
             HStack {
                 Text("Erst einmal ansehen?").font(.caption).foregroundStyle(Theme.secondary)

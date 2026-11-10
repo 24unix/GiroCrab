@@ -96,11 +96,11 @@ struct MoneyMoneyDatabaseImportView: View {
             GridRow {
                 Text("Passwort").font(.callout).foregroundStyle(Theme.secondary)
                 HStack {
-                    SecureField("MoneyMoney-Passwort", text: $password)
+                    SecureField("MoneyMoney-Passwort (leer, wenn unverschlüsselt)", text: $password)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit { loadPreview() }
                     Button("Vorschau") { loadPreview() }
-                        .disabled(fileURL == nil || password.isEmpty || loading || importing)
+                        .disabled(fileURL == nil || loading || importing)
                 }
             }
         }
@@ -260,7 +260,7 @@ struct MoneyMoneyDatabaseImportView: View {
                 Button(importing ? "Importiere …" : "Importieren") { runImport() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(preview == nil || importing || password.isEmpty || !choices.values.contains(where: \.selected))
+                    .disabled(preview == nil || importing || !choices.values.contains(where: \.selected))
             }
         }
     }
@@ -337,7 +337,7 @@ struct MoneyMoneyDatabaseImportView: View {
     }
 
     private func loadPreview() {
-        guard let vault = model.vault, let url = fileURL, !password.isEmpty else { return }
+        guard let vault = model.vault, let url = fileURL else { return }
         let pw = password
         loading = true; error = nil
         Task {

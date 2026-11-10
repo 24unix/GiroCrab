@@ -26,6 +26,8 @@ public struct GiroCrabScenes: Scene {
                 Button("Befehlspalette …") { model.showCommandPalette = true }
                     .keyboardShortcut("k", modifiers: .command)
                     .disabled(model.vault == nil)
+                Button("Aus MoneyMoney importieren…") { model.openMoneyMoneyImport() }
+                    .disabled(model.vault == nil)
                 Button("Alle Konten abrufen") { model.requestSyncAll() }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(model.vault == nil)

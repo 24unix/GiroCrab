@@ -52,11 +52,19 @@ pub fn is_valid_fints_url(url: &str) -> bool {
 
 /// Preset BLZs MoneyMoney imports map onto the generic connector.
 pub fn known_fints_blz(blz: &str) -> bool {
-    POSTBANK_BLZ.contains(&blz) || fints_presets().iter().any(|p| p.blz == blz)
+    is_postbank_blz(blz) || fints_presets().iter().any(|p| p.blz == blz)
 }
 
 /// Postbank uses regional bank codes; all share the same FinTS server.
-const POSTBANK_BLZ: &[&str] = &["10010010", "20010020", "37010050", "50010060", "70010080"];
+/// Explicit list on purpose: never route a non-Postbank BLZ to Postbank.
+const POSTBANK_BLZ: &[&str] = &[
+    "10010010", "20010020", "25010030", "36010043", "37010050", "44010046", "50010060", "59010066",
+    "60010070", "66010075", "70010080", "76010085", "80010090", "86010090", "90010085",
+];
+
+pub fn is_postbank_blz(blz: &str) -> bool {
+    POSTBANK_BLZ.contains(&blz)
+}
 
 #[cfg(test)]
 mod tests {
@@ -80,6 +88,13 @@ mod tests {
         assert!(fints_presets().iter().any(|p| p.blz == "12096597"));
         assert!(!is_valid_fints_url("http://bank.de/fints"));
         assert!(known_fints_blz("37010050") && known_fints_blz("70010080"));
+        for b in POSTBANK_BLZ {
+            assert!(is_postbank_blz(b) && known_fints_blz(b), "{b}");
+            assert_eq!(b.len(), 8);
+        }
+        assert_eq!(POSTBANK_BLZ.len(), 15);
+        // looks like a Postbank code (..0100..) but is not on the list
+        assert!(!is_postbank_blz("12010099") && !is_postbank_blz("10070000"));
     }
 
     #[test]

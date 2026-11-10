@@ -6064,6 +6064,28 @@
           }
         }
       }
+    },
+    "Aus MoneyMoney importieren…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import from MoneyMoney…"
+          }
+        }
+      }
+    },
+    "MoneyMoney-Passwort (leer, wenn unverschlüsselt)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MoneyMoney password (empty if unencrypted)"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -429,8 +429,20 @@ fn open_source(path: &str, password: &SecretString) -> CoreResult<Connection> {
             what: tr("MoneyMoney-Datenbank").into(),
         });
     }
+    // MoneyMoney databases can be unencrypted: an empty password opens the
+    // file without a key (an encrypted file then fails the schema check below).
     if password.is_empty() {
-        return Err(wrong_password());
+        let conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(|_| wrong_password())?;
+        return conn
+            .query_row("SELECT count(*) FROM sqlite_master", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .map(|_| conn)
+            .map_err(|_| wrong_password());
     }
     let mut pragma = Zeroizing::new(String::from("PRAGMA key = '"));
     for c in password.expose().chars() {
