@@ -304,6 +304,8 @@ fn english(de: &str) -> Option<&'static str> {
         "Kontoauszug {0}" => "Statement {0}",
         "Konto {0} bei der Bank{1}" => "account {0} at the bank{1}",
         "{0}: Saldo – {1}" => "{0}: balance – {1}",
+        "{0}: Depotbestand (HKWPD) – {1}" => "{0}: holdings (HKWPD) – {1}",
+        "{0}: Depotbestand (HKWPD) – Wert einzelner Positionen fehlt" => "{0}: holdings (HKWPD) – value of some positions missing",
         "{0}: Umsätze (HKCAZ/camt.052) – {1}" => "{0}: transactions (HKCAZ/camt.052) – {1}",
         "{0}: Umsätze (HKKAZ/MT940) – {1}" => "{0}: transactions (HKKAZ/MT940) – {1}",
         // ------------------------------------------------------------ connectors/fints transfer codes

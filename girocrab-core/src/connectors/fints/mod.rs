@@ -15,6 +15,7 @@
 //!      account allows) merged with HKSPA; per account only what the bank
 //!      allows: HKSAL (balance) and statements via HKCAZ (camt.052, preferred)
 //!      or HKKAZ (MT940, fallback). Loan accounts get statements only if their HIUPD allows it.
+//!      Depots (Kontoart 30-39/60-69) get their value from HKWPD (MT535 holdings).
 //!      Segment versions are negotiated from the BPD ("HIxxxS" parameter
 //!      segments): always the highest version both sides support.
 //!   4. Any 9xxx return code is reported with the code and the offending
@@ -24,6 +25,7 @@
 //! Settings (`fints.product_id`).
 
 pub mod camt;
+pub mod mt535;
 pub mod mt940;
 pub mod sepa;
 pub mod syntax;
@@ -75,6 +77,7 @@ const IMPLEMENTED: &[(&str, &[u32])] = &[
     ("HKSPA", &[1, 2, 3]),
     ("HKTAB", &[4, 5]),
     ("HKEKA", &[3, 4, 5]),
+    ("HKWPD", &[5, 6]),
 ];
 
 /// Account from the user parameter data (HIUPD).
@@ -809,7 +812,7 @@ impl FinTsConnector {
         for u in self.upd.clone() {
             // Only accounts of this bank with at least one usable transaction
             let usable = u.allowed.is_empty()
-                || ["HKSAL", "HKCAZ", "HKKAZ"]
+                || ["HKSAL", "HKCAZ", "HKKAZ", "HKWPD"]
                     .iter()
                     .any(|t| u.allowed.contains(*t));
             if !usable {
@@ -878,6 +881,43 @@ impl FinTsConnector {
             };
             Some((sign * c, cur, date))
         }))
+    }
+
+    /// HKWPD: holdings statement of a depot (MT535), all pages.
+    async fn holdings(
+        &mut self,
+        ctx: &ConnectContext,
+        acc: &SepaAccount,
+    ) -> CoreResult<mt535::Statement> {
+        let v = self.version("HKWPD");
+        let mut data = Vec::<u8>::new();
+        let mut touchdown: Option<String> = None;
+        for _page in 0..20 {
+            let r = self
+                .request(ctx, "HKWPD", Self::hkwpd(v, acc, touchdown.as_deref()))
+                .await?;
+            for s in r.all("HIWPD") {
+                if let Some(b) = s.binary(1) {
+                    data.extend_from_slice(b);
+                    data.extend_from_slice(b"\r\n");
+                }
+            }
+            touchdown = r.code("3040").and_then(|c| c.3.first().cloned());
+            if touchdown.is_none() {
+                break;
+            }
+        }
+        Ok(mt535::parse(&crate::text::decode_bank_bytes(&data)))
+    }
+
+    /// Depot (KTV), then currency, price quality and max. entries (all
+    /// optional, left to the bank) and the touchdown point.
+    fn hkwpd(version: u32, acc: &SepaAccount, touchdown: Option<&str>) -> Vec<u8> {
+        let mut b = SegmentBuilder::new("HKWPD", 3, version).raw(&Self::ktv(acc));
+        if let Some(t) = touchdown {
+            b = b.raw("").raw("").raw("").de(&[t]);
+        }
+        b.build()
     }
 
     fn hkcaz(
@@ -1448,6 +1488,34 @@ impl BankConnector for FinTsConnector {
                 }
             }
 
+            // --- Depot value (HKWPD / MT535), only for depots that allow it
+            if kind == AccountKind::Brokerage && self.bank_supports("HKWPD") && allowed("HKWPD") {
+                match self.holdings(ctx, acc).await {
+                    Ok(st) => match st.value_cents() {
+                        Some(v) => {
+                            balance = Some(v);
+                            if let Some(d) = st.latest_date() {
+                                balance_date = d;
+                            }
+                            if let Some(c) = st
+                                .holdings
+                                .iter()
+                                .map(|h| h.currency.clone())
+                                .find(|c| !c.is_empty())
+                            {
+                                currency = c;
+                            }
+                            ok_any = true;
+                        }
+                        None => errors.push(trf(
+                            "{0}: Depotbestand (HKWPD) – Wert einzelner Positionen fehlt",
+                            &[&label],
+                        )),
+                    },
+                    Err(e) => errors.push(trf("{0}: Depotbestand (HKWPD) – {1}", &[&label, &e])),
+                }
+            }
+
             // --- Statements: camt (HKCAZ) first, MT940 (HKKAZ) as fallback. Loans are
             // included only when HIUPD permits it (or lists nothing); every request is
             // its own FinTS message, so a 9050 on one loan is just collected in `errors`.
@@ -1684,6 +1752,25 @@ mod tests {
         assert_eq!(
             parsed[0].get(2, 0),
             "urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"
+        );
+    }
+
+    #[test]
+    fn builds_hkwpd_for_depot_with_touchdown() {
+        let acc = SepaAccount {
+            iban: String::new(),
+            bic: String::new(),
+            account_number: "1234567".into(),
+            sub_account: String::new(),
+            blz: "12030000".into(),
+        };
+        assert_eq!(
+            FinTsConnector::hkwpd(6, &acc, None),
+            b"HKWPD:3:6+1234567::280:12030000'".to_vec()
+        );
+        assert_eq!(
+            FinTsConnector::hkwpd(5, &acc, Some("P:2")),
+            b"HKWPD:3:5+1234567::280:12030000++++P?:2'".to_vec()
         );
     }
 
