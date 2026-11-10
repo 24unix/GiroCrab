@@ -187,7 +187,8 @@ struct SidebarView: View {
 
     // MARK: - Account tree
 
-    /// Sidebar nodes without the contents of collapsed groups.
+    /// Sidebar nodes without the contents of collapsed groups (and without an
+    /// empty Closed group).
     private var visibleNodes: [SidebarNode] {
         var out: [SidebarNode] = []
         var hiddenBelow: UInt32?
@@ -199,6 +200,8 @@ struct SidebarView: View {
             }
             if let h = hiddenBelow, depth > h { continue }
             hiddenBelow = nil
+            // The Closed group only shows up once something is in it.
+            if case .group(let g) = node, g.isClosedGroup, g.accountIds.isEmpty { hiddenBelow = depth; continue }
             out.append(node)
             if case .group(let g) = node, model.isCollapsed(g) { hiddenBelow = depth }
         }
