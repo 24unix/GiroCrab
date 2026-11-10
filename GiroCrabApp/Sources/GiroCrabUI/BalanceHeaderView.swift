@@ -37,6 +37,7 @@ struct HoldingsCard: View {
 /// monthly KPIs (consumption is always shown without ETF plans / perks).
 struct StreamHeaderCard: View {
     @Environment(AppModel.self) private var model
+    @State private var showDocuments = false
 
     private var account: Account? {
         if case .account(let id) = model.sidebarSelection { return model.account(for: id) }
@@ -110,6 +111,13 @@ struct StreamHeaderCard: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                if let a = account {
+                    Button { showDocuments = true } label: {
+                        Label("Dokumente", systemImage: "doc.text")
+                    }
+                    .buttonStyle(.borderless)
+                    .sheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
+                }
                 Spacer()
                 Text("\(model.visibleBookings.count) Buchungen")
                     .font(.caption)

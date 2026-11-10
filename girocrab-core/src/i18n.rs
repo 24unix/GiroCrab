@@ -390,6 +390,8 @@ fn english(de: &str) -> Option<&'static str> {
         "Buchung {0}" => "transaction {0}",
         "Beleg bereits vorhanden" => "Receipt already exists",
         "Dokument bereits vorhanden" => "Document already exists",
+        "Kontoauszüge können nur per FinTS abgerufen werden." => "Statements can only be fetched via FinTS.",
+        "Diese Bank bietet keine elektronischen Kontoauszüge per FinTS an." => "This bank does not offer electronic statements via FinTS.",
         "Export fehlgeschlagen: {0}" => "Export failed: {0}",
         "GiroCrab-Belege" => "GiroCrab Receipts",
         "ohne-Datum" => "no-date",

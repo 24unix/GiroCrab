@@ -886,3 +886,41 @@ fn generic_enable_banking_connection_is_stored_once() {
     assert_eq!(c[0].connector, ConnectorKind::EnableBanking);
     assert_eq!(c[0].display_name, "N26");
 }
+
+#[test]
+fn pdf_statements_are_imported_once() {
+    // "%PDF-1.4\n%%EOF" and a non-PDF blob that must be ignored
+    let probe = fake_db();
+    let v = vault();
+    let first_id = v
+        .preview_moneymoney_database(probe, PW.into())
+        .unwrap()
+        .accounts[0]
+        .mm_id;
+    let extra = format!(
+        "CREATE TABLE statements (rowid INTEGER PRIMARY KEY, local_account_key INTEGER, name TEXT, timestamp INTEGER, data BLOB);
+         INSERT INTO statements VALUES (1, {first_id}, 'Kontoauszug 01/2026', 1767225600, X'255044462d312e340a2525454f46');
+         INSERT INTO statements VALUES (2, {first_id}, 'Kaputt', 1767225600, X'0102030405');"
+    );
+    let path = fake_db_with(false, &extra);
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    let r1 = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!(r1.documents_imported, 1);
+    let r2 = v
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!(r2.documents_imported, 0);
+    let docs = v
+        .list_all_documents(crate::documents::DocumentFilter::default())
+        .unwrap();
+    assert_eq!(docs.len(), 1);
+    assert_eq!(docs[0].doc_type, "kontoauszug");
+    assert!(v
+        .get_document_bytes(docs[0].id)
+        .unwrap()
+        .starts_with(b"%PDF-1.4"));
+}

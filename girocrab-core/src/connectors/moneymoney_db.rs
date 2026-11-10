@@ -140,6 +140,8 @@ pub struct MoneyMoneyDbImportResult {
     pub connections_existing: u32,
     pub pins_stored: u32,
     pub banks_skipped_unsupported: u32,
+    /// PDF statements / documents newly stored in the document archive.
+    pub documents_imported: u32,
 }
 
 // ------------------------------------------------------------------ source model
@@ -191,8 +193,19 @@ struct SrcTx {
     category_key: Option<i64>,
 }
 
+/// PDF statement / document found in the MoneyMoney database.
+#[derive(Debug, Clone, Default)]
+struct SrcDoc {
+    id: i64,
+    account_key: i64,
+    title: String,
+    ts: Option<i64>,
+    bytes: Vec<u8>,
+}
+
 #[derive(Default)]
 struct Source {
+    docs: Vec<SrcDoc>,
     accounts: Vec<SrcAccount>,
     banks: Vec<SrcBank>,
     account_groups: HashMap<i64, String>,
@@ -770,7 +783,67 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
             }
         }
     }
+    src.docs = read_documents(&conn, &have)?;
     Ok(src)
+}
+
+/// Optional: PDF statements. MoneyMoney versions differ, so this looks for the usual
+/// table names and column spellings and keeps only blobs that really are PDFs.
+fn read_documents(conn: &Connection, have: &HashSet<String>) -> CoreResult<Vec<SrcDoc>> {
+    const TABLES: [&str; 4] = ["statements", "documents", "statement_files", "attachments"];
+    static ACCOUNT: [&str; 3] = ["local_account_key", "account_key", "account_id"];
+    static BLOB: [&str; 6] = ["pdf", "data", "content", "document", "file", "blob"];
+    static NAME: [&str; 4] = ["name", "title", "filename", "file_name"];
+    static TS: [&str; 3] = ["timestamp", "date", "created"];
+    let mut out = Vec::new();
+    for table in TABLES.iter().filter(|t| have.contains(**t)) {
+        let cols: Vec<String> = {
+            let mut st = conn.prepare("SELECT lower(name) FROM pragma_table_info(?1)")?;
+            let r = st
+                .query_map([table], |r| r.get::<_, String>(0))?
+                .collect::<Result<_, _>>()?;
+            r
+        };
+        fn pick_col(cols: &[String], c: &'static [&'static str]) -> Option<&'static str> {
+            c.iter().find(|n| cols.iter().any(|x| x == **n)).copied()
+        }
+        let pick = |c: &'static [&'static str]| pick_col(&cols, c);
+        let (Some(acc), Some(blob)) = (pick(&ACCOUNT), pick(&BLOB)) else {
+            continue;
+        };
+        let name = pick(&NAME)
+            .map(|n| format!("\"{n}\""))
+            .unwrap_or("NULL".into());
+        let ts = pick(&TS)
+            .map(|n| format!("\"{n}\""))
+            .unwrap_or("NULL".into());
+        let sql = format!(
+            "SELECT rowid, \"{acc}\", {name}, {ts}, \"{blob}\" FROM \"{table}\" WHERE substr(\"{blob}\", 1, 4) = X'25504446' ORDER BY rowid"
+        );
+        let mut st = conn.prepare(&sql)?;
+        let rows = st.query_map([], |r| {
+            Ok(SrcDoc {
+                id: vint(get(r, 0)?).unwrap_or_default(),
+                account_key: vint(get(r, 1)?).unwrap_or_default(),
+                title: vtext(get(r, 2)?),
+                ts: vint(get(r, 3)?),
+                bytes: match get(r, 4)? {
+                    Value::Blob(b) => b,
+                    _ => Vec::new(),
+                },
+            })
+        })?;
+        for d in rows {
+            let d = d?;
+            if d.bytes.starts_with(b"%PDF") {
+                out.push(d);
+            }
+        }
+        if !out.is_empty() {
+            break;
+        }
+    }
+    Ok(out)
 }
 
 // ------------------------------------------------------------------ rows
@@ -1227,6 +1300,30 @@ fn import(
         res.notes_imported += st.notes;
         res.categories_created += st.categories_created;
         res.pending_skipped += r.pending;
+        for d in src.docs.iter().filter(|d| d.account_key == a.id) {
+            let date = d.ts.and_then(unix_to_date).unwrap_or_default();
+            let title = if d.title.trim().is_empty() {
+                crate::i18n::trf("Kontoauszug {0}", &[&date])
+            } else {
+                d.title.clone()
+            };
+            let file = format!("{}.pdf", title.trim_end_matches(".pdf").replace('/', "-"));
+            let added = crate::documents::insert_doc(
+                conn,
+                None,
+                Some(account_id),
+                &title,
+                "kontoauszug",
+                "application/pdf",
+                &file,
+                &d.bytes,
+                &format!("moneymoney:{}:{}", a.id, d.id),
+                &date,
+            )?;
+            if added.is_some() {
+                res.documents_imported += 1;
+            }
+        }
         if let (true, Some(bank)) = (owned, a.bank_key) {
             to_link.push((account_id, bank));
         }

@@ -2083,7 +2083,10 @@ impl Vault {
         for id in ids {
             Self::delete_account_rows(db, id)?;
         }
-        db.execute("DELETE FROM bank_connections WHERE id = ?1", [connection_id])?;
+        db.execute(
+            "DELETE FROM bank_connections WHERE id = ?1",
+            [connection_id],
+        )?;
         // stored secrets of this connection (PIN); the session lives in state_json
         db.execute(
             "DELETE FROM settings WHERE key = ?1",

@@ -957,6 +957,31 @@ public final class AppModel {
     // MARK: - Belege & PostBox
 
     var documentsVersion = 0
+    /// Account whose statements (HKEKA) are being fetched by the running session.
+    var statementsAccountID: Int64?
+    private var statementsCountBefore = 0
+
+    func accountDocuments(_ accountID: Int64) -> [DocumentInfo] {
+        _ = documentsVersion
+        let f = DocumentFilter(accountId: accountID, docType: nil, search: nil, unlinkedOnly: false)
+        return (try? vault?.listAllDocuments(filter: f)) ?? []
+    }
+
+    func canFetchStatements(_ account: Account) -> Bool {
+        guard let c = account.connector, account.kind != .loan else { return false }
+        return [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric].contains(c)
+    }
+
+    /// Explicit "Kontoauszüge abrufen": regular syncs never fetch statements (speed, no extra TAN).
+    func fetchStatements(for account: Account) {
+        guard syncingConnectionID == nil,
+              let cid = account.connectionId,
+              let connection = connections.first(where: { $0.id == cid }) else { return }
+        statementsAccountID = account.id
+        statementsCountBefore = accountDocuments(account.id).count
+        requestSync(connection)
+    }
+
     var quickLookURL: URL?
 
     func documents(for booking: Booking) -> [DocumentInfo] {
@@ -1145,7 +1170,12 @@ public final class AppModel {
         syncingConnectionID = connection.id
         Task {
             do {
-                let session = try vault.beginSync(connectionId: connection.id, secret: secret, demo: isDemo)
+                let session: SyncSession
+                if let accountID = self.statementsAccountID {
+                    session = try vault.fetchAccountStatements(accountId: accountID, secret: secret, demo: isDemo)
+                } else {
+                    session = try vault.beginSync(connectionId: connection.id, secret: secret, demo: isDemo)
+                }
                 self.activeSession = session
                 let step = try await session.start()
                 self.handle(step, connection: connection)
@@ -1172,7 +1202,14 @@ public final class AppModel {
             activeChallenge = nil
             syncingConnectionID = nil
             activeSession = nil
-            toast = String(localized: "\(connection.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert")
+            if let accountID = statementsAccountID {
+                statementsAccountID = nil
+                documentsVersion += 1
+                let n = max(0, accountDocuments(accountID).count - statementsCountBefore)
+                toast = String(localized: "\(connection.displayName): \(n) neue Kontoauszüge")
+            } else {
+                toast = String(localized: "\(connection.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert")
+            }
             reloadAll()
             syncNextInQueue()
         }
@@ -1242,6 +1279,7 @@ public final class AppModel {
         activeSession = nil
         activeChallenge = nil
         syncingConnectionID = nil
+        statementsAccountID = nil
         syncQueue = []
         Task { await s?.cancel() }
     }
@@ -1249,6 +1287,7 @@ public final class AppModel {
     private var syncingConnectionIDBeforeError: Int64?
 
     private func finishSync(error: Error) {
+        statementsAccountID = nil
         syncingConnectionIDBeforeError = syncingConnectionID
         pollTask?.cancel()
         activeSession = nil

@@ -1365,6 +1365,32 @@ impl BankConnector for FinTsConnector {
         let accounts = self.account_list(ctx, &mut errors).await;
         let mut result = FetchResult::default();
         let mut ok_any = false;
+        // Explicit statements fetch (Vault::fetch_account_statements): HKEKA of one account only.
+        if let Some(wanted) = ctx.settings.get(super::STATEMENTS_ONLY) {
+            let wanted = wanted.expose().to_string();
+            let Some((acc, upd)) = accounts.iter().find(|(a, _)| account_label(a) == wanted) else {
+                return Err(CoreError::NotFound {
+                    what: trf("Konto {0}", &[&wanted]),
+                });
+            };
+            let supported = self.bank_supports("HKEKA")
+                && upd
+                    .as_ref()
+                    .map(|u| u.allowed.is_empty() || u.allowed.contains("HKEKA"))
+                    .unwrap_or(true);
+            if !supported {
+                return Err(CoreError::Bank {
+                    code: "HKEKA".into(),
+                    message: tr(
+                        "Diese Bank bietet keine elektronischen Kontoauszüge per FinTS an.",
+                    )
+                    .into(),
+                });
+            }
+            result.documents = self.statements_pdf(ctx, acc, &wanted).await?;
+            result.state = Some(serde_json::to_value(&self.st)?);
+            return Ok(result);
+        }
         for (acc, upd) in &accounts {
             let allowed = |tx: &str| {
                 upd.as_ref()
@@ -1445,12 +1471,7 @@ impl BankConnector for FinTsConnector {
             }
             result.transactions.extend(txs);
 
-            // --- Elektronischer Kontoauszug (HKEKA, PDF) – optional
-            if kind != AccountKind::Loan && self.bank_supports("HKEKA") && allowed("HKEKA") {
-                if let Ok(docs) = self.statements_pdf(ctx, acc, &label).await {
-                    result.documents.extend(docs);
-                }
-            }
+            // Not part of regular syncs (fast, no extra TAN): see `Vault::fetch_account_statements`.
             let name = upd
                 .as_ref()
                 .map(|u| u.product.clone())

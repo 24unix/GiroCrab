@@ -568,13 +568,16 @@ pub(crate) fn parse_positions(pos: &Value) -> Vec<crate::models::Holding> {
 mod tests {
     #[test]
     fn parses_depot_positions() {
-        let j: serde_json::Value = serde_json::from_str(r#"{"values":[
+        let j: serde_json::Value = serde_json::from_str(
+            r#"{"values":[
           {"positionId":"1","wkn":"A0RPWH","quantity":{"value":"12.5","unit":"XXX"},
            "currentPrice":{"price":{"value":"61.34","unit":"EUR"}},
            "purchasePrice":{"value":"55.10","unit":"EUR"},
            "currentValue":{"value":"766.75","unit":"EUR"},
            "instrument":{"name":"iShares Physical Gold","isin":"IE00B4ND3602"}}],
-          "aggregated":{"currentValue":{"value":"766.75"}}}"#).unwrap();
+          "aggregated":{"currentValue":{"value":"766.75"}}}"#,
+        )
+        .unwrap();
         let h = super::parse_positions(&j);
         assert_eq!(h.len(), 1);
         assert_eq!(h[0].wkn, "A0RPWH");

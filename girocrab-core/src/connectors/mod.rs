@@ -705,9 +705,20 @@ pub(crate) fn store_fetch(
             }
         }
         for d in &data.documents {
+            let by_ref = |tx: &rusqlite::Transaction| -> Option<i64> {
+                tx.query_row(
+                    "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref = ?2",
+                    params![connection_id, d.account_ref],
+                    |r| r.get(0),
+                )
+                .optional()
+                .ok()
+                .flatten()
+            };
             let Some(acc_id) = account_ids
                 .get(&d.account_ref)
                 .copied()
+                .or_else(|| by_ref(&tx))
                 .or_else(|| account_ids.values().next().copied())
             else {
                 continue;
@@ -825,6 +836,9 @@ impl SyncSession {
     }
 }
 
+/// Setting key marking a statements-only session (value = external_ref of the account).
+pub(crate) const STATEMENTS_ONLY: &str = "__statements_only";
+
 #[uniffi::export]
 impl Vault {
     /// Prepares a sync for one bank connection. `secret` is the PIN/password
@@ -835,6 +849,63 @@ impl Vault {
         connection_id: i64,
         secret: String,
         demo: bool,
+    ) -> Result<Arc<SyncSession>, CoreError> {
+        self.begin_sync_inner(connection_id, secret, demo, None)
+    }
+
+    /// Explicitly fetches the electronic bank statements (FinTS HKEKA, PDF) of ONE account
+    /// into the document archive. Same session / TAN flow as `begin_sync`; bookings and
+    /// balances stay untouched. Regular syncs never fetch statements.
+    pub fn fetch_account_statements(
+        self: Arc<Self>,
+        account_id: i64,
+        secret: String,
+        demo: bool,
+    ) -> Result<Arc<SyncSession>, CoreError> {
+        let (conn_id, ext): (Option<i64>, String) = {
+            let db = self.db()?;
+            db.query_row(
+                "SELECT connection_id, external_ref FROM accounts WHERE id = ?1",
+                [account_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .ok_or_else(|| CoreError::NotFound {
+                what: trf("Konto {0}", &[&account_id]),
+            })?
+        };
+        let conn_id = conn_id.ok_or_else(|| CoreError::InvalidInput {
+            message: tr("Dieses Konto hat keine Bankverbindung.").into(),
+        })?;
+        let kind: String = self.db()?.query_row(
+            "SELECT connector FROM bank_connections WHERE id = ?1",
+            [conn_id],
+            |r| r.get(0),
+        )?;
+        let is_fints = ConnectorKind::from_str(&kind).is_some_and(|k| {
+            matches!(
+                k,
+                ConnectorKind::FinTsGeneric
+                    | ConnectorKind::VolksbankKasselGoettingen
+                    | ConnectorKind::Direkt1822
+            )
+        });
+        if !is_fints {
+            return Err(CoreError::InvalidInput {
+                message: tr("Kontoauszüge können nur per FinTS abgerufen werden.").into(),
+            });
+        }
+        self.begin_sync_inner(conn_id, secret, demo, Some(ext))
+    }
+}
+
+impl Vault {
+    fn begin_sync_inner(
+        self: Arc<Self>,
+        connection_id: i64,
+        secret: String,
+        demo: bool,
+        statements_only: Option<String>,
     ) -> Result<Arc<SyncSession>, CoreError> {
         // No PIN typed: use the one stored in the vault ("PIN im Tresor speichern").
         let secret = if secret.is_empty() {
@@ -917,6 +988,10 @@ impl Vault {
                 };
             (kind, key_str, login, state, settings, since)
         };
+        let mut ctx_settings = ctx_settings;
+        if let Some(ext) = statements_only {
+            ctx_settings.insert(STATEMENTS_ONLY.into(), SecretString::new(ext));
+        }
         let ctx = ConnectContext {
             connection_id,
             login_name: login,

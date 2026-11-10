@@ -6350,6 +6350,116 @@
           }
         }
       }
+    },
+    "Dokumente" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documents"
+          }
+        }
+      }
+    },
+    "Dokumente / Kontoauszüge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documents / Statements"
+          }
+        }
+      }
+    },
+    "Kontoauszüge abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch statements"
+          }
+        }
+      }
+    },
+    "Keine Dokumente" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No documents"
+          }
+        }
+      }
+    },
+    "Mit „Kontoauszüge abrufen“ lädt GiroCrab die PDF-Kontoauszüge per FinTS (ggf. mit TAN)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Fetch statements” downloads the PDF statements via FinTS (a TAN may be required)."
+          }
+        }
+      }
+    },
+    "Importierte oder abgelegte Dokumente dieses Kontos erscheinen hier." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imported or filed documents of this account appear here."
+          }
+        }
+      }
+    },
+    "Sichern …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save …"
+          }
+        }
+      }
+    },
+    "Schließen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
+          }
+        }
+      }
+    },
+    "%@: %lld neue Kontoauszüge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@: %lld new statements"
+          }
+        }
+      }
+    },
+    "%u Kontoauszüge (PDF) übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u statements (PDF) imported."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

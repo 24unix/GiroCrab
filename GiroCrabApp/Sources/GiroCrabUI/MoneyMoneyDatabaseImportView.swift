@@ -229,6 +229,9 @@ struct MoneyMoneyDatabaseImportView: View {
                 stat("\(r.bookingsDuplicates)", "bereits vorhanden")
             }
             Group {
+                if r.documentsImported > 0 {
+                    Text("\(r.documentsImported) Kontoauszüge (PDF) übernommen.")
+                }
                 if r.categoriesCreated > 0 || r.notesImported > 0 {
                     Text("\(r.categoriesCreated) Kategorien angelegt, \(r.notesImported) Notizen übernommen.")
                 }
@@ -360,7 +363,7 @@ struct MoneyMoneyDatabaseImportView: View {
         guard let vault = model.vault, let url = fileURL, let preview else { return }
         if model.demoDbPreview != nil {
             // demo: nothing to read – show what the summary looks like
-            result = MoneyMoneyDbImportResult(accountsCreated: 5, accountsMerged: 1, bookingsNew: preview.totalBookings, bookingsDuplicates: 0, bookingsEnriched: 0, pendingSkipped: preview.pendingBookings, notesImported: preview.notesCount, categoriesCreated: UInt32(preview.categoryPaths.count), connectionsCreated: 3, connectionsExisting: 0, pinsStored: 0, banksSkippedUnsupported: 1)
+            result = MoneyMoneyDbImportResult(accountsCreated: 5, accountsMerged: 1, bookingsNew: preview.totalBookings, bookingsDuplicates: 0, bookingsEnriched: 0, pendingSkipped: preview.pendingBookings, notesImported: preview.notesCount, categoriesCreated: UInt32(preview.categoryPaths.count), connectionsCreated: 3, connectionsExisting: 0, pinsStored: 0, banksSkippedUnsupported: 1, documentsImported: 0)
             password = ""
             return
         }
