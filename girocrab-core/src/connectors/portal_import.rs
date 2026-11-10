@@ -367,22 +367,31 @@ fn walk(
     }
 }
 
-/// Preferred balance fields, in priority order (Amex summary, generic).
+/// Preferred balance fields (normalised: lowercase, no `_`/`-`), strict priority order.
+/// Live total debt first; statement/billing-cycle amounts only as a last resort.
 const BALANCE_KEYS: &[&str] = &[
-    "total_balance",
-    "remaining_statement_balance",
-    "balance_amount",
-    "current_balance",
+    "currentbalance",
+    "totalbalance",
     "outstandingbalance",
-    "outstanding_balance",
+    "totalamountdue",
+    "totalamount",
+    "balanceamount",
+    "remainingstatementbalance",
 ];
+
+fn norm_key(k: &str) -> String {
+    k.chars()
+        .filter(|c| *c != '_' && *c != '-')
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
 
 fn find_key<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
     match v {
         Value::Object(o) => {
             if let Some((_, x)) = o
                 .iter()
-                .find(|(k, x)| k.to_lowercase() == key && value_cents(x).is_some())
+                .find(|(k, x)| norm_key(k) == key && value_cents(x).is_some())
             {
                 return Some(x);
             }
@@ -394,7 +403,8 @@ fn find_key<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
 }
 
 /// Finds a card balance (owed amount, stored negative) in a JSON document.
-fn find_balance(v: &Value, kind: ConnectorKind) -> Option<i64> {
+/// Returns the matched key and the balance in cents.
+fn find_balance(v: &Value, kind: ConnectorKind) -> Option<(String, i64)> {
     let owed = |c: i64| {
         if charges_positive(kind) || c > 0 {
             -c.abs()
@@ -404,20 +414,21 @@ fn find_balance(v: &Value, kind: ConnectorKind) -> Option<i64> {
     };
     for key in BALANCE_KEYS {
         if let Some(c) = find_key(v, key).and_then(value_cents) {
-            return Some(owed(c));
+            return Some((key.to_string(), owed(c)));
         }
     }
-    fn generic(v: &Value) -> Option<i64> {
+    fn generic(v: &Value) -> Option<(String, i64)> {
         match v {
             Value::Object(o) => {
                 for (k, val) in o {
-                    let kl = k.to_lowercase();
+                    let kl = norm_key(k);
                     if kl.contains("balance")
-                        && !kl.contains("available")
-                        && !kl.contains("minimum")
+                        && !["available", "minimum", "statement", "previous", "last", "payment"]
+                            .iter()
+                            .any(|x| kl.contains(x))
                     {
                         if let Some(c) = value_cents(val) {
-                            return Some(c);
+                            return Some((k.clone(), c));
                         }
                     }
                 }
@@ -427,10 +438,18 @@ fn find_balance(v: &Value, kind: ConnectorKind) -> Option<i64> {
             _ => None,
         }
     }
-    generic(v).map(owed)
+    generic(v).map(|(k, c)| (k, owed(c)))
 }
 
 pub fn parse_json_bodies(bodies: &[String], kind: ConnectorKind) -> (Vec<Parsed>, Option<i64>) {
+    let (txs, bal) = parse_json_bodies_keyed(bodies, kind);
+    (txs, bal.map(|(_, c)| c))
+}
+
+fn parse_json_bodies_keyed(
+    bodies: &[String],
+    kind: ConnectorKind,
+) -> (Vec<Parsed>, Option<(String, i64)>) {
     let mut txs = Vec::new();
     let mut pending = Vec::new();
     let mut balance = None;
@@ -838,7 +857,14 @@ impl Vault {
         dom_rows_json: String,
     ) -> Result<SyncSummary, CoreError> {
         let (kind, _) = self.portal_connection(connection_id)?;
-        let (mut parsed, balance) = parse_json_bodies(&json_bodies, kind);
+        let (mut parsed, keyed) = parse_json_bodies_keyed(&json_bodies, kind);
+        let balance = keyed.as_ref().map(|(_, c)| *c);
+        match &keyed {
+            Some((k, c)) => crate::depot_debug::log(&format!(
+                "portal matched balance: key={k} amount_cents={c}"
+            )),
+            None => crate::depot_debug::log("portal matched balance: none"),
+        }
         let from_json = parsed.len();
         if parsed.is_empty() {
             let rows: Vec<Vec<String>> = serde_json::from_str(&dom_rows_json).unwrap_or_default();
