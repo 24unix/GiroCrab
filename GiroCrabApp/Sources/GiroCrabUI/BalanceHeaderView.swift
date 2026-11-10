@@ -108,36 +108,98 @@ struct KPI: View {
 
 struct BalanceChart: View {
     let points: [DailyBalance]
+    /// Day under the mouse pointer (hover readout: date + balance).
+    @State private var hovered: Point?
 
-    private struct Point: Identifiable {
+    private struct Point: Identifiable, Equatable {
         let id: Int
         let date: Date
-        let euros: Double // display only; data stays in cents
+        let cents: Int64
+        var euros: Double { Double(cents) / 100 } // display only; data stays in cents
     }
 
     var body: some View {
         let pts: [Point] = points.enumerated().compactMap { i, p in
-            DateText.date(p.date).map { Point(id: i, date: $0, euros: Double(p.balanceCents) / 100) }
+            DateText.date(p.date).map { Point(id: i, date: $0, cents: p.balanceCents) }
         }
         let minV = pts.map(\.euros).min() ?? 0
         let maxV = pts.map(\.euros).max() ?? 1
         let pad = max((maxV - minV) * 0.15, 1)
-        Chart(pts) { p in
-            AreaMark(x: .value("Tag", p.date, unit: .day), yStart: .value("Min", minV - pad), yEnd: .value("Saldo", p.euros))
-                .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.14), Theme.accent.opacity(0.01)], startPoint: .top, endPoint: .bottom))
-                .interpolationMethod(.monotone)
-            LineMark(x: .value("Tag", p.date, unit: .day), y: .value("Saldo", p.euros))
-                .foregroundStyle(Theme.accent.opacity(0.8))
-                .lineStyle(StrokeStyle(lineWidth: 1.5))
-                .interpolationMethod(.monotone)
+        Chart {
+            ForEach(pts) { p in
+                AreaMark(x: .value("Tag", p.date, unit: .day), yStart: .value("Min", minV - pad), yEnd: .value("Saldo", p.euros))
+                    .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.14), Theme.accent.opacity(0.01)], startPoint: .top, endPoint: .bottom))
+                    .interpolationMethod(.monotone)
+                LineMark(x: .value("Tag", p.date, unit: .day), y: .value("Saldo", p.euros))
+                    .foregroundStyle(Theme.accent.opacity(0.8))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .interpolationMethod(.monotone)
+            }
+            if let h = hovered {
+                PointMark(x: .value("Tag", h.date, unit: .day), y: .value("Saldo", h.euros))
+                    .foregroundStyle(Theme.accent)
+                    .symbolSize(36)
+                RuleMark(x: .value("Tag", h.date, unit: .day))
+                    .foregroundStyle(Theme.secondary.opacity(0.45))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .annotation(position: h.id * 2 > pts.count ? .topLeading : .topTrailing, spacing: 4, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+                        VStack(spacing: 1) {
+                            Text(h.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated).year())
+                                .font(.caption2)
+                                .foregroundStyle(Theme.secondary)
+                            Text(Money.format(h.cents))
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(h.cents < 0 ? Theme.outflow : Theme.text)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+                    }
+            }
         }
         .chartYScale(domain: (minV - pad)...(maxV + pad))
         .chartYAxis(.hidden)
         .chartXAxis {
-            AxisMarks(values: .stride(by: .month)) { _ in
-                AxisValueLabel(format: .dateTime.month(.abbreviated), anchor: .top)
-                    .foregroundStyle(Theme.tertiary)
+            // long periods: one label per year, otherwise per month
+            if let first = pts.first?.date, let last = pts.last?.date,
+               last.timeIntervalSince(first) > 400 * 86_400 {
+                AxisMarks(values: .stride(by: .year)) { _ in
+                    AxisValueLabel(format: .dateTime.year(), anchor: .top)
+                        .foregroundStyle(Theme.tertiary)
+                }
+            } else if let first = pts.first?.date, let last = pts.last?.date,
+                      last.timeIntervalSince(first) < 62 * 86_400 {
+                // short periods (this/last month): weekly day labels
+                AxisMarks(values: .stride(by: .day, count: 7)) { _ in
+                    AxisValueLabel(format: .dateTime.day().month(.abbreviated), anchor: .top)
+                        .foregroundStyle(Theme.tertiary)
+                }
+            } else {
+                AxisMarks(values: .stride(by: .month)) { _ in
+                    AxisValueLabel(format: .dateTime.month(.abbreviated), anchor: .top)
+                        .foregroundStyle(Theme.tertiary)
+                }
             }
         }
+        .chartOverlay { proxy in
+            GeometryReader { geo in
+                Rectangle().fill(.clear).contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            guard let plot = proxy.plotFrame else { return }
+                            let x = location.x - geo[plot].origin.x
+                            guard let date: Date = proxy.value(atX: x) else { return }
+                            let nearest = pts.min { abs($0.date.timeIntervalSince(date)) < abs($1.date.timeIntervalSince(date)) }
+                            if nearest != hovered { hovered = nearest }
+                        case .ended:
+                            hovered = nil
+                        }
+                    }
+            }
+        }
+        .onChange(of: points.first?.date) { _, _ in hovered = nil }
+        .onChange(of: points.count) { _, _ in hovered = nil }
     }
 }

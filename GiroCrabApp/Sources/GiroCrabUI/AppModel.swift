@@ -151,7 +151,7 @@ public final class AppModel {
     // UI state
     var sidebarSelection: SidebarItem? = .allAccounts { didSet { reloadBookings(); reloadHistory() } }
     var scope: BookingScope = .all { didSet { reloadBookings() } }
-    var period: Period = .all { didSet { reloadCategories(); reloadBookings() } }
+    var period: Period = .all { didSet { reloadCategories(); reloadBookings(); reloadHistory() } }
     var statusFilter: StatusFilter = .all
     var searchText: String = "" { didSet { scheduleSearch() } }
     var selectedBookingID: Booking.ID? { didSet { reloadMerchantStats() } }
@@ -541,7 +541,22 @@ public final class AppModel {
         default: ids = liquidAccounts.map(\.id)
         }
         if ids.isEmpty { ids = [-1] }
-        run { history = try vault.balanceHistory(accountIds: ids, days: 120) }
+        // The chart follows the selected period. "Gesamter Zeitraum": up to ~15 years back,
+        // then the flat lead-in before the first booking is cut off.
+        let (from, to) = period.range
+        let today = Calendar.current.startOfDay(for: Date())
+        let start = from.flatMap(DateText.date) ?? Calendar.current.date(byAdding: .year, value: -15, to: today)!
+        let days = max(2, (Calendar.current.dateComponents([.day], from: start, to: today).day ?? 120) + 1)
+        run {
+            var points = try vault.balanceHistory(accountIds: ids, days: UInt32(days))
+            if let to { points = points.filter { $0.date <= to } }
+            if from == nil,
+               let firstChange = points.indices.dropFirst().first(where: { points[$0].balanceCents != points[$0 - 1].balanceCents }) {
+                // keep one point before the first change
+                points = Array(points[(firstChange - 1)...])
+            }
+            history = points
+        }
     }
 
     func reloadRules() {
