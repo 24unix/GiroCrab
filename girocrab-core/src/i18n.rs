@@ -368,6 +368,14 @@ fn english(de: &str) -> Option<&'static str> {
         "Keine Umsätze erkannt." => "No transactions found.",
         // ------------------------------------------------------------ connectors/moneymoney_import.rs
         "Keine MoneyMoney-Kopfzeile (Datum/Buchungstag und Betrag) gefunden." => "No MoneyMoney header row (date/booking date and amount) found.",
+        // ------------------------------------------------------------ connectors/moneymoney_db.rs
+        "Falsches Passwort oder keine MoneyMoney-Datenbank." => "Wrong password or not a MoneyMoney database.",
+        "MoneyMoney-Datenbank" => "MoneyMoney database",
+        "Anfangssaldo laut MoneyMoney-Saldenverlauf ({0}) + Umsätze" => {
+            "Opening balance from MoneyMoney balance history ({0}) + transactions"
+        }
+        "Anfangssaldo des Kontos + Umsätze" => "Account opening balance + transactions",
+        "Summe der Umsätze" => "Sum of transactions",
         // ------------------------------------------------------------ connections.rs
         "Bankzugang {0}" => "bank connection {0}",
         "Keine Sitzungs-Cookies übergeben" => "No session cookies were passed",

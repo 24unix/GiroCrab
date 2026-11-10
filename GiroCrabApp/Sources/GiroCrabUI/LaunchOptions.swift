@@ -12,7 +12,7 @@ import Foundation
 ///  --try-add-bank <name>  (developer, with --fresh-vault) add a bank on start,
 ///                         e.g. 1822direkt, to see the setup form
 ///  --select <text>        (demo) preselect the account whose name contains <text>
-///  --demo-sheet transfer|moneymoney
+///  --demo-sheet transfer|moneymoney|moneymoney-db
 ///                         (demo) open that sheet pre-filled with fictional data,
 ///                         for README screenshots
 ///  --dark                 (macOS) force the Dark Aqua appearance (README screenshots)
@@ -31,7 +31,7 @@ public struct LaunchOptions: Sendable {
     public var selectAccount: String?
     /// (demo) preselect the booking whose merchant/counterparty contains this text
     public var pickBooking: String?
-    /// (demo) "transfer" or "moneymoney": open that sheet with fictional data
+    /// (demo) "transfer", "moneymoney" or "moneymoney-db": open that sheet with fictional data
     public var demoSheet: String?
 
     public init(arguments: [String] = CommandLine.arguments, environment: [String: String] = ProcessInfo.processInfo.environment) {

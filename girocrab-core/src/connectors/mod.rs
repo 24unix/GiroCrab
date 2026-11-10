@@ -28,6 +28,7 @@ pub mod comdirect;
 pub mod demo;
 pub mod enable_banking;
 pub mod fints;
+pub mod moneymoney_db;
 pub mod moneymoney_import;
 pub mod paypal;
 pub mod portal_import;
@@ -473,6 +474,15 @@ pub(crate) fn store_fetch(
                     |r| r.get(0),
                 )
                 .optional()?;
+            // First sync after a MoneyMoney database import: take over the
+            // unconnected imported account with the same IBAN (its bookings are
+            // then adopted via the import fingerprint) instead of a second account.
+            let existing = match existing {
+                Some(id) => Some(id),
+                None => {
+                    moneymoney_db::adopt_account(&tx, connection_id, &acc.external_ref, &acc.iban)?
+                }
+            };
             let id = match existing {
                 Some(id) => {
                     if !data.adjust_balances {
