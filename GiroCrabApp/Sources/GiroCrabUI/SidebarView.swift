@@ -310,6 +310,11 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func accountMenu(_ account: Account) -> some View {
+        // As in MoneyMoney: a new group next to the account, in its group.
+        if !account.closed {
+            Button("Neue Kontogruppe …", systemImage: "folder.badge.plus") { newGroupParent = .some(account.groupId) }
+            Divider()
+        }
         if let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
             Button("\(conn.displayName) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
         }
