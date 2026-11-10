@@ -406,6 +406,8 @@ pub struct TransferJob {
     pub recipient_bic: Option<String>,
     pub amount_cents: i64,
     pub purpose: String,
+    pub instant: bool,
+    pub execution_date: Option<String>,
 }
 
 pub fn make_connector(kind: ConnectorKind, demo: bool) -> Box<dyn BankConnector> {
@@ -1190,6 +1192,35 @@ impl Vault {
                 message: tr("Überweisungen sind nur für FinTS- und bunq-Konten möglich.").into(),
             });
         }
+        let exec_date = request
+            .execution_date
+            .as_deref()
+            .map(str::trim)
+            .filter(|d| !d.is_empty())
+            .map(str::to_string);
+        if request.instant && exec_date.is_some() {
+            return Err(CoreError::InvalidInput {
+                message: tr("Echtzeitüberweisungen können nicht terminiert werden.").into(),
+            });
+        }
+        if let Some(d) = &exec_date {
+            let parsed = chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").map_err(|_| {
+                CoreError::InvalidInput {
+                    message: tr("Das Ausführungsdatum ist ungültig (JJJJ-MM-TT).").into(),
+                }
+            })?;
+            if parsed <= chrono::Local::now().date_naive() {
+                return Err(CoreError::InvalidInput {
+                    message: tr("Das Ausführungsdatum muss in der Zukunft liegen.").into(),
+                });
+            }
+        }
+        if (request.instant || exec_date.is_some()) && matches!(kind, ConnectorKind::Bunq) {
+            return Err(CoreError::InvalidInput {
+                message: tr("Echtzeit- und Terminüberweisungen sind nur für FinTS-Konten möglich.")
+                    .into(),
+            });
+        }
         if iban.is_empty() {
             return Err(CoreError::InvalidInput {
                 message: tr("Das Konto hat keine IBAN.").into(),
@@ -1222,6 +1253,8 @@ impl Vault {
                 .map(|b| sepa::normalize_iban(&b)),
             amount_cents: request.amount_cents,
             purpose: request.purpose.trim().to_string(),
+            instant: request.instant,
+            execution_date: exec_date,
         };
         Ok(Arc::new(TransferSession {
             vault: self.clone(),
@@ -1497,6 +1530,8 @@ mod tests {
             recipient_bic: None,
             amount_cents: amount,
             purpose: "Rechnung 42".into(),
+            instant: false,
+            execution_date: None,
         };
         assert!(v
             .clone()

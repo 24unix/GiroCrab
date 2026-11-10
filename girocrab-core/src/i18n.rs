@@ -288,6 +288,12 @@ fn english(de: &str) -> Option<&'static str> {
         // ------------------------------------------------------------ connectors/fints
         "Bitte in der Banking-App freigeben" => "Approve in your banking app",
         "TAN eingeben" => "Enter TAN",
+        "Dieses Konto oder diese Bank erlaubt keine Echtzeitüberweisungen per FinTS (HKIPZ). Bitte in der Banking-App überweisen." => "This account or bank doesn’t allow instant transfers via FinTS (HKIPZ). Please make the transfer in your banking app.",
+        "Dieses Konto oder diese Bank erlaubt keine Terminüberweisungen per FinTS (HKCSE). Bitte in der Banking-App überweisen." => "This account or bank doesn’t allow scheduled transfers via FinTS (HKCSE). Please make the transfer in your banking app.",
+        "Echtzeitüberweisungen können nicht terminiert werden." => "Instant transfers cannot be scheduled.",
+        "Das Ausführungsdatum ist ungültig (JJJJ-MM-TT)." => "The execution date is invalid (YYYY-MM-DD).",
+        "Das Ausführungsdatum muss in der Zukunft liegen." => "The execution date must be in the future.",
+        "Echtzeit- und Terminüberweisungen sind nur für FinTS-Konten möglich." => "Instant and scheduled transfers are only possible for FinTS accounts.",
         "Dieses Konto oder diese Bank erlaubt keine SEPA-Überweisungen per FinTS (HKCCS). Bitte in der Banking-App überweisen." => "This account or bank doesn’t allow SEPA transfers via FinTS (HKCCS). Please make the transfer in your banking app.",
         "Für Überweisungen ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen." => "Transfers need a TAN method, but none was found. Please sync with a TAN method first.",
         "PIN ist leer" => "PIN is empty",

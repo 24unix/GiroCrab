@@ -492,6 +492,10 @@ pub struct SepaTransferRequest {
     pub amount_cents: i64,
     /// Verwendungszweck, max. 140 characters.
     pub purpose: String,
+    /// SEPA Instant Payment ("Echtzeitüberweisung", HKIPZ). FinTS only.
+    pub instant: bool,
+    /// Optional future execution date `YYYY-MM-DD` (Terminüberweisung, HKCSE). FinTS only.
+    pub execution_date: Option<String>,
 }
 
 /// Recipient suggested from past bookings (auto-completion).

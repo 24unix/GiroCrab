@@ -392,11 +392,52 @@ pub fn parse_xml_export(text: &str) -> CoreResult<Vec<MmRow>> {
     Ok(out)
 }
 
-/// Detects XML vs. CSV by content and parses. Errors when nothing was found.
+fn remote_to_row(t: crate::connectors::RemoteTransaction) -> MmRow {
+    MmRow {
+        booking_date: t.booking_date,
+        value_date: t.value_date,
+        amount_cents: t.amount_cents,
+        currency: if t.currency.is_empty() {
+            "EUR".into()
+        } else {
+            t.currency
+        },
+        name: t.counterparty,
+        iban: t.counterparty_iban,
+        purpose: t.purpose,
+        booking_text: t.booking_text,
+        ..Default::default()
+    }
+}
+
+/// CAMT.053 (ISO 20022 account statement) file → rows.
+pub fn parse_camt_statement(xml: &str) -> Vec<MmRow> {
+    let (txs, _) = super::fints::camt::parse(xml, "");
+    txs.into_iter().map(remote_to_row).collect()
+}
+
+fn looks_like_mt940(text: &str) -> bool {
+    let t = text.replace("\r", "");
+    t.contains(":61:") && (t.contains(":20:") || t.contains(":25:") || t.contains(":60F:"))
+}
+
+/// MT940 (`.sta` / `.mt940`) file → rows.
+pub fn parse_mt940_statement(text: &str) -> Vec<MmRow> {
+    let (txs, _) = super::fints::mt940::parse(text, "", "EUR");
+    txs.into_iter().map(remote_to_row).collect()
+}
+
+/// Detects CAMT.053 / MT940 / MoneyMoney XML / CSV by content and parses. Errors when nothing was found.
 pub fn parse_export(data: &[u8]) -> CoreResult<Vec<MmRow>> {
     let text = decode(data);
     let rows = if text.trim_start().starts_with('<') {
-        parse_xml_export(&text)?
+        if text.contains("<BkToCstmr") || text.contains(":BkToCstmr") {
+            parse_camt_statement(&text)
+        } else {
+            parse_xml_export(&text)?
+        }
+    } else if looks_like_mt940(&text) {
+        parse_mt940_statement(&text)
     } else {
         parse_csv_export(&text)?
     };
@@ -1068,5 +1109,54 @@ mod tests {
             (1, 0, 2)
         );
         assert!(!r.account_created);
+    }
+
+    const CAMT053: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+ <BkToCstmrStmt><Stmt>
+  <Acct><Id><IBAN>DE44520900000012345601</IBAN></Id></Acct>
+  <Ntry>
+   <Amt Ccy="EUR">31.96</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>BOOK</Sts>
+   <BookgDt><Dt>2026-11-07</Dt></BookgDt><ValDt><Dt>2026-11-07</Dt></ValDt>
+   <NtryDtls><TxDtls>
+     <RltdPties><Cdtr><Nm>Beispiel Markt GmbH</Nm></Cdtr><CdtrAcct><Id><IBAN>DE12300700100123456700</IBAN></Id></CdtrAcct></RltdPties>
+     <RmtInf><Ustrd>Einkauf 42</Ustrd></RmtInf>
+   </TxDtls></NtryDtls>
+  </Ntry>
+  <Ntry>
+   <Amt Ccy="EUR">100.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts>BOOK</Sts>
+   <BookgDt><Dt>2026-11-08</Dt></BookgDt>
+   <NtryDtls><TxDtls>
+     <RltdPties><Dbtr><Nm>Erika Muster</Nm></Dbtr></RltdPties>
+     <RmtInf><Ustrd>Rueckzahlung</Ustrd></RmtInf>
+   </TxDtls></NtryDtls>
+  </Ntry>
+ </Stmt></BkToCstmrStmt>
+</Document>"#;
+
+    #[test]
+    fn export_detection_camt053() {
+        let rows = parse_export(CAMT053.as_bytes()).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].amount_cents, -3196);
+        assert_eq!(rows[0].booking_date, "2026-11-07");
+        assert_eq!(rows[0].name, "Beispiel Markt GmbH");
+        assert_eq!(rows[0].iban, "DE12300700100123456700");
+        assert_eq!(rows[0].purpose, "Einkauf 42");
+        assert_eq!(rows[1].amount_cents, 10000);
+        assert_eq!(rows[1].name, "Erika Muster");
+    }
+
+    #[test]
+    fn export_detection_mt940() {
+        let mt = ":20:STARTUMS\r\n:25:52090000/0012345678\r\n:28C:00000/001\r\n:60F:C250101EUR1000,00\r\n\
+:61:2501020102DR23,45NDDTNONREF\r\n:86:105?00FOLGELASTSCHRIFT?20SVWZ+Einkauf Markt?32Markt GmbH\r\n\
+:61:2501030103CR2500,00NTRFNONREF\r\n:86:166?00GUTSCHRIFT?20SVWZ+Gehalt?32Muster GmbH\r\n:62F:C250103EUR3476,55\r\n-\r\n";
+        let rows = parse_export(mt.as_bytes()).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].amount_cents, -2345);
+        assert_eq!(rows[0].booking_date, "2025-01-02");
+        assert_eq!(rows[0].name, "Markt GmbH");
+        assert_eq!(rows[1].amount_cents, 250000);
     }
 }

@@ -1,6 +1,94 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "Echtzeitüberweisung (SEPA Instant)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instant transfer (SEPA Instant)"
+          }
+        }
+      }
+    },
+    "Terminüberweisung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scheduled transfer"
+          }
+        }
+      }
+    },
+    "Ausführungsdatum" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Execution date"
+          }
+        }
+      }
+    },
+    "Sofort (Echtzeitüberweisung)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Immediately (instant transfer)"
+          }
+        }
+      }
+    },
+    "Am %@ (Terminüberweisung)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On %@ (scheduled transfer)"
+          }
+        }
+      }
+    },
+    "CSV exportieren…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export CSV…"
+          }
+        }
+      }
+    },
+    "Gefilterte Buchungen als CSV exportieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export the filtered bookings as CSV"
+          }
+        }
+      }
+    },
+    "Auch möglich: Kontoauszüge als CAMT.053 (XML) oder MT940 (.sta / .mt940)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Also supported: statements as CAMT.053 (XML) or MT940 (.sta / .mt940)."
+          }
+        }
+      }
+    },
     "%@ (gleiche IBAN)" : {
       "extractionState" : "manual",
       "localizations" : {

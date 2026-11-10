@@ -1690,9 +1690,14 @@ impl Vault {
                 cte = format!(
                     "WITH RECURSIVE sub(id) AS (SELECT ?{n} UNION ALL SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id) "
                 );
-                wh.push("t.category_id IN (SELECT id FROM sub)".into());
+                wh.push(
+                    "(t.category_id IN (SELECT id FROM sub) OR EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id AND sp.category_id IN (SELECT id FROM sub)))"
+                        .into(),
+                );
             } else {
-                wh.push(format!("t.category_id = ?{n}"));
+                wh.push(format!(
+                    "(t.category_id = ?{n} OR EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id AND sp.category_id = ?{n}))"
+                ));
             }
         }
         if let Some(from) = filter.date_from.as_ref().filter(|s| !s.is_empty()) {
@@ -2095,6 +2100,66 @@ impl Vault {
             [crate::connections::pin_key(connection_id)],
         )?;
         Ok(())
+    }
+}
+
+/// Quotes a CSV field (semicolon dialect); text fields are neutralised against
+/// spreadsheet formula injection.
+fn csv_field(v: &str, text: bool) -> String {
+    let mut s = v.replace(['\r', '\n'], " ");
+    if text && s.starts_with(['=', '+', '@', '\t']) {
+        s.insert(0, '\'');
+    }
+    if s.contains([';', '"']) {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s
+    }
+}
+
+/// Formats cents as `-1234,56` (German decimal comma, no grouping).
+fn csv_amount(cents: i64) -> String {
+    let sign = if cents < 0 { "-" } else { "" };
+    let a = cents.unsigned_abs();
+    format!("{sign}{},{:02}", a / 100, a % 100)
+}
+
+#[uniffi::export]
+impl Vault {
+    /// Exports all bookings matching `filter` (its paging is ignored) as UTF-8 CSV
+    /// with BOM, semicolon-separated, for Excel.
+    pub fn export_bookings_csv(&self, filter: BookingFilter) -> Result<String, CoreError> {
+        let mut out = String::from(
+            "\u{FEFF}Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Betrag;Währung\r\n",
+        );
+        let page_size = 1000u32;
+        let mut offset = 0u32;
+        loop {
+            let mut f = filter.clone();
+            f.limit = page_size;
+            f.offset = offset;
+            let page = self.list_transactions(f)?;
+            let n = page.transactions.len() as u32;
+            for b in &page.transactions {
+                let row = [
+                    csv_field(&b.booking_date, false),
+                    csv_field(&b.account_name, true),
+                    csv_field(&b.counterparty, true),
+                    csv_field(&b.counterparty_iban, false),
+                    csv_field(&b.purpose, true),
+                    csv_field(&b.category_path, true),
+                    csv_amount(b.amount_cents),
+                    csv_field(&b.currency, false),
+                ];
+                out.push_str(&row.join(";"));
+                out.push_str("\r\n");
+            }
+            if n < page_size {
+                break;
+            }
+            offset += n;
+        }
+        Ok(out)
     }
 }
 

@@ -382,7 +382,13 @@ pub(crate) fn cashflow_for(
     keys.reverse();
     let db = v.db()?;
     let mut stmt =
-        db.prepare("SELECT booking_date, amount_cents FROM transactions WHERE booking_date >= ?1")?;
+        db.prepare(
+            "SELECT booking_date, amount_cents FROM transactions
+             WHERE booking_date >= ?1
+               AND (counterparty_iban IS NULL OR counterparty_iban = ''
+                    OR REPLACE(UPPER(counterparty_iban), ' ', '') NOT IN
+                       (SELECT REPLACE(UPPER(iban), ' ', '') FROM accounts WHERE iban IS NOT NULL AND iban != ''))",
+        )?;
     let first = &keys[0];
     let from = match granularity {
         PeriodGranularity::Month => format!("{first}-01"),
@@ -582,5 +588,68 @@ mod tests {
             ("2024", 5_000, 40_000)
         );
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn category_filter_matches_split_parts_and_csv_export() {
+        let (v, dir) = vault();
+        let food = cat(&v, "Test-Essen2", None);
+        let fun = cat(&v, "Test-Spass2", None);
+        let id = tx(&v, "s1", "2025-03-05", -3_000, Some(food));
+        v.set_transaction_splits(
+            id,
+            vec![
+                TransactionSplitInput {
+                    category_id: Some(food),
+                    amount_cents: -1_000,
+                    note: String::new(),
+                },
+                TransactionSplitInput {
+                    category_id: Some(fun),
+                    amount_cents: -2_000,
+                    note: String::new(),
+                },
+            ],
+        )
+        .unwrap();
+        let f = BookingFilter {
+            category_id: Some(fun),
+            limit: 50,
+            ..Default::default()
+        };
+        assert_eq!(v.list_transactions(f.clone()).unwrap().total_count, 1);
+        let csv = v.export_bookings_csv(f).unwrap();
+        assert!(csv.starts_with(
+            "\u{FEFF}Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Betrag;Währung\r\n"
+        ));
+        assert!(csv.contains(";-30,00;"));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn cashflow_ignores_transfers_between_own_accounts() {
+        use chrono::{Datelike, Local};
+        let (v, dir) = vault();
+        let today = Local::now().date_naive();
+        let date = today.format("%Y-%m-%d").to_string();
+        {
+            let c = v.db().unwrap();
+            c.execute(
+                "UPDATE accounts SET iban = 'DE02 1203 0000 0000 2020 51'",
+                [],
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty_iban)
+                 VALUES ((SELECT id FROM accounts LIMIT 1), 'own', ?1, -50000, 'de02120300000000202051')",
+                [&date],
+            )
+            .unwrap();
+        }
+        tx(&v, "real", &date, -1_000, None);
+        let cf =
+            cashflow_for(&v, PeriodGranularity::Month, 1, today.year(), today.month()).unwrap();
+        assert_eq!(cf.last().unwrap().expense_cents, 1_000);
+        std::fs::remove_dir_all(dir).ok();
     }
 }

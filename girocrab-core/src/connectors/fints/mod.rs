@@ -68,6 +68,8 @@ const IMPLEMENTED: &[(&str, &[u32])] = &[
     ("HKSAL", &[5, 6, 7, 8]),
     ("HKCAZ", &[1]),
     ("HKCCS", &[1]),
+    ("HKIPZ", &[1]),
+    ("HKCSE", &[1]),
     ("HKKAZ", &[5, 6, 7]),
     ("HKTAN", &[6, 7]),
     ("HKSPA", &[1, 2, 3]),
@@ -1048,19 +1050,32 @@ impl FinTsConnector {
         }
     }
 
-    /// Sends HKCCS + HKTAN (process 4) and returns the bank's reply.
+    /// Sends HKCCS (or HKIPZ for instant / HKCSE for scheduled transfers) + HKTAN
+    /// (process 4) and returns the bank's reply.
     async fn submit_hkccs(
         &mut self,
         ctx: &ConnectContext,
         job: &TransferJob,
     ) -> CoreResult<BankReply> {
+        let code: &'static str = if job.instant {
+            "HKIPZ"
+        } else if job.execution_date.is_some() {
+            "HKCSE"
+        } else {
+            "HKCCS"
+        };
         let not_allowed = || {
             CoreError::Bank {
-            code: "HKCCS".into(),
-            message: tr("Dieses Konto oder diese Bank erlaubt keine SEPA-Überweisungen per FinTS (HKCCS). Bitte in der Banking-App überweisen.").into(),
+            code: code.into(),
+            message: match code {
+                "HKIPZ" => tr("Dieses Konto oder diese Bank erlaubt keine Echtzeitüberweisungen per FinTS (HKIPZ). Bitte in der Banking-App überweisen."),
+                "HKCSE" => tr("Dieses Konto oder diese Bank erlaubt keine Terminüberweisungen per FinTS (HKCSE). Bitte in der Banking-App überweisen."),
+                _ => tr("Dieses Konto oder diese Bank erlaubt keine SEPA-Überweisungen per FinTS (HKCCS). Bitte in der Banking-App überweisen."),
+            }
+            .into(),
         }
         };
-        if !self.bank_supports("HKCCS") {
+        if !self.bank_supports(code) {
             return Err(not_allowed());
         }
         let sec = self.sec();
@@ -1090,7 +1105,7 @@ impl FinTsConnector {
                 ),
             })?;
         if let Some(u) = &upd {
-            if !u.allowed.is_empty() && !u.allowed.contains("HKCCS") {
+            if !u.allowed.is_empty() && !u.allowed.contains(code) {
                 return Err(not_allowed());
             }
         }
@@ -1104,7 +1119,10 @@ impl FinTsConnector {
             &time[2..4],
             &time[4..]
         );
-        let exec = format!("{}-{}-{}", &date[..4], &date[4..6], &date[6..]);
+        let exec = job
+            .execution_date
+            .clone()
+            .unwrap_or_else(|| format!("{}-{}-{}", &date[..4], &date[4..6], &date[6..]));
         let msg_id = format!("GC{date}{time}{}", rand::random::<u16>());
         let owner = if job.source_owner.trim().is_empty() {
             "Kontoinhaber"
@@ -1123,13 +1141,19 @@ impl FinTsConnector {
             creditor_bic: job.recipient_bic.as_deref(),
             amount_cents: job.amount_cents,
             purpose: &job.purpose,
+            instant: job.instant,
         })?;
-        let hkccs = SegmentBuilder::new("HKCCS", 3, self.version("HKCCS"))
+        let descriptor = if job.instant {
+            sepa::PAIN_DESCRIPTOR_INSTANT
+        } else {
+            sepa::PAIN_DESCRIPTOR
+        };
+        let hkccs = SegmentBuilder::new(code, 3, self.version(code))
             .raw(&Self::kti(&acc))
-            .de(&[sepa::PAIN_DESCRIPTOR])
+            .de(&[descriptor])
             .binary(xml.as_bytes())
             .build();
-        let payload = vec![hkccs, self.hktan_process4(4, "HKCCS")];
+        let payload = vec![hkccs, self.hktan_process4(4, code)];
         let reply = self.send(ctx, payload, &sec, None).await?;
         reply.check_transfer()?;
         Ok(reply)

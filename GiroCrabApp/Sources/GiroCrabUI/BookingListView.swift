@@ -93,6 +93,8 @@ struct BookingStreamView: View {
                     .help("Alle Konten abrufen (⇧⌘R)")
                 Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }
                     .help("Befehlspalette (⌘K)")
+                Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren…", systemImage: "square.and.arrow.up") }
+                    .help("Gefilterte Buchungen als CSV exportieren")
                 Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
                     .help("Kategorisierungsregeln")
                 #if os(iOS)
@@ -103,6 +105,14 @@ struct BookingStreamView: View {
             }
         }
         .navigationTitle("")
+        .fileExporter(
+            isPresented: $model.showCSVExporter,
+            document: model.csvExport,
+            contentType: .commaSeparatedText,
+            defaultFilename: "GiroCrab-Buchungen"
+        ) { result in
+            if case .failure(let e) = result { model.errorMessage = e.localizedDescription }
+        }
     }
 }
 

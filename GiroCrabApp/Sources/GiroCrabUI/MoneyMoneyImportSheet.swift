@@ -70,11 +70,14 @@ struct MoneyMoneyExportImportView: View {
     @State private var keepCategories = true
     @State private var keepNotes = true
 
+    // MoneyMoney XML/CSV, CAMT.053 (.xml) and MT940 (.sta / .mt940).
     private let types: [UTType] = [.xml, .commaSeparatedText, .plainText, .data]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             guide
+            Text("Auch möglich: Kontoauszüge als CAMT.053 (XML) oder MT940 (.sta / .mt940).")
+                .font(.caption).foregroundStyle(Theme.secondary)
             dropZone
             if fileData != nil {
                 Picker("Zielkonto", selection: $target) {

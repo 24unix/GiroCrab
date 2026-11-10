@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Observation
+import UniformTypeIdentifiers
 import GiroCrabCore
 
 enum SidebarItem: Hashable {
@@ -104,6 +105,15 @@ struct SetupRequest: Identifiable {
 }
 
 /// Form state of "Neue Überweisung" (kept while the TAN sheet is shown).
+/// CSV handed to `.fileExporter`.
+struct CSVFileDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.commaSeparatedText] }
+    var data: Data
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws { data = configuration.file.regularFileContents ?? Data() }
+    func fileWrapper(configuration: WriteConfiguration) -> FileWrapper { FileWrapper(regularFileWithContents: data) }
+}
+
 struct TransferDraft {
     var accountID: Int64?
     var name = ""
@@ -112,6 +122,21 @@ struct TransferDraft {
     var amountText = ""
     var purpose = ""
     var pin = ""
+    /// SEPA Instant ("Echtzeitüberweisung", FinTS only).
+    var instant = false
+    /// Terminüberweisung: when on, `executionDate` is sent (FinTS only).
+    var scheduled = false
+    var executionDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+
+    /// `YYYY-MM-DD` for the core, or nil when not scheduled.
+    var executionDateISO: String? {
+        guard scheduled && !instant else { return nil }
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: executionDate)
+    }
 }
 
 struct PendingLogin: Identifiable {
@@ -189,6 +214,8 @@ public final class AppModel {
     private var activeSession: SyncSession?
     private var activeTransfer: TransferSession?
     var showTransferSheet = false
+    var csvExport = CSVFileDocument(data: Data())
+    var showCSVExporter = false
     var transferDraft = TransferDraft()
     var transferError: String?
     var splitBooking: Booking?
@@ -525,6 +552,18 @@ public final class AppModel {
             scope: scope,
             merchantKey: nil
         )
+    }
+
+    /// Exports every booking matching the current list filter as Excel-friendly CSV.
+    func exportFilteredBookingsCSV() {
+        guard let vault else { return }
+        do {
+            let csv = try vault.exportBookingsCsv(filter: currentFilter)
+            csvExport = CSVFileDocument(data: Data(csv.utf8))
+            showCSVExporter = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func reloadBookings() {
@@ -1373,7 +1412,9 @@ extension AppModel {
                 recipientIban: transferDraft.iban,
                 recipientBic: bic.isEmpty ? nil : bic,
                 amountCents: cents,
-                purpose: transferDraft.purpose)
+                purpose: transferDraft.purpose,
+                instant: transferDraft.instant,
+                executionDate: transferDraft.executionDateISO)
             let stored = connectionStatus(connection.id)?.hasPin ?? false
             if !isDemo && !stored && transferDraft.pin.isEmpty {
                 transferError = String(localized: "Bitte die Banking-PIN eingeben.")

@@ -2017,6 +2017,8 @@ mod tests {
             recipient_bic: None,
             amount_cents: 1_00,
             purpose: "GiroCrab draft test".into(),
+            instant: false,
+            execution_date: None,
         };
         let phase = c2.send_transfer(&ctx, &job).await.unwrap();
         assert!(

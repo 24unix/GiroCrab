@@ -5,6 +5,8 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
 
 pub const PAIN_DESCRIPTOR: &str = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03";
+/// SEPA Instant Payments (HKIPZ) use `pain.001.001.09`.
+pub const PAIN_DESCRIPTOR_INSTANT: &str = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09";
 
 /// IBAN length per country (SEPA area + common neighbours).
 const IBAN_LENGTHS: &[(&str, usize)] = &[
@@ -184,6 +186,8 @@ pub struct Pain001<'a> {
     pub creditor_bic: Option<&'a str>,
     pub amount_cents: i64,
     pub purpose: &'a str,
+    /// SEPA Instant Payment (`pain.001.001.09` with `LclInstrm` INST).
+    pub instant: bool,
 }
 
 /// Builds a single-transfer `pain.001.001.03` document (UTF-8).
@@ -210,14 +214,31 @@ pub fn build_pain001(p: &Pain001) -> CoreResult<String> {
     let purpose = xml_escape(&clip(p.purpose, 140));
     let d_iban = normalize_iban(p.debtor_iban);
     let c_iban = normalize_iban(p.creditor_iban);
+    let bic_tag = if p.instant { "BICFI" } else { "BIC" };
+    let (descriptor, pmt_tp, exec_xml) = if p.instant {
+        (
+            PAIN_DESCRIPTOR_INSTANT,
+            "<PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl><LclInstrm><Cd>INST</Cd></LclInstrm></PmtTpInf>",
+            format!("<ReqdExctnDt><Dt>{}</Dt></ReqdExctnDt>", xml_escape(p.execution_date)),
+        )
+    } else {
+        (
+            PAIN_DESCRIPTOR,
+            "<PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>",
+            format!(
+                "<ReqdExctnDt>{}</ReqdExctnDt>",
+                xml_escape(p.execution_date)
+            ),
+        )
+    };
     let d_agent = if validate_bic(p.debtor_bic) {
-        format!("<BIC>{}</BIC>", normalize_iban(p.debtor_bic))
+        format!("<{bic_tag}>{}</{bic_tag}>", normalize_iban(p.debtor_bic))
     } else {
         "<Othr><Id>NOTPROVIDED</Id></Othr>".to_string()
     };
     let c_agent = match p.creditor_bic.filter(|b| validate_bic(b)) {
         Some(b) => format!(
-            "<CdtrAgt><FinInstnId><BIC>{}</BIC></FinInstnId></CdtrAgt>",
+            "<CdtrAgt><FinInstnId><{bic_tag}>{}</{bic_tag}></FinInstnId></CdtrAgt>",
             normalize_iban(b)
         ),
         None => String::new(),
@@ -229,12 +250,12 @@ pub fn build_pain001(p: &Pain001) -> CoreResult<String> {
     };
     Ok(format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
-<Document xmlns=\"{PAIN_DESCRIPTOR}\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\
+<Document xmlns=\"{descriptor}\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\
 <CstmrCdtTrfInitn>\
 <GrpHdr><MsgId>{msg_id}</MsgId><CreDtTm>{created}</CreDtTm><NbOfTxs>1</NbOfTxs><CtrlSum>{amount}</CtrlSum>\
 <InitgPty><Nm>{debtor}</Nm></InitgPty></GrpHdr>\
 <PmtInf><PmtInfId>{msg_id}</PmtInfId><PmtMtd>TRF</PmtMtd><BtchBookg>false</BtchBookg><NbOfTxs>1</NbOfTxs><CtrlSum>{amount}</CtrlSum>\
-<PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf><ReqdExctnDt>{exec}</ReqdExctnDt>\
+{pmt_tp}{exec_xml}\
 <Dbtr><Nm>{debtor}</Nm></Dbtr><DbtrAcct><Id><IBAN>{d_iban}</IBAN></Id></DbtrAcct>\
 <DbtrAgt><FinInstnId>{d_agent}</FinInstnId></DbtrAgt><ChrgBr>SLEV</ChrgBr>\
 <CdtTrfTxInf><PmtId><EndToEndId>NOTPROVIDED</EndToEndId></PmtId>\
@@ -242,7 +263,6 @@ pub fn build_pain001(p: &Pain001) -> CoreResult<String> {
 <Cdtr><Nm>{creditor}</Nm></Cdtr><CdtrAcct><Id><IBAN>{c_iban}</IBAN></Id></CdtrAcct>{rmt}\
 </CdtTrfTxInf></PmtInf></CstmrCdtTrfInitn></Document>",
         created = xml_escape(p.created),
-        exec = xml_escape(p.execution_date),
     ))
 }
 
@@ -291,7 +311,25 @@ mod tests {
             creditor_bic: None,
             amount_cents: 12_345,
             purpose,
+            instant: false,
         }
+    }
+
+    #[test]
+    fn pain001_scheduled_date_and_instant_variant() {
+        let mut p = sample("A", "x");
+        p.execution_date = "2027-01-15";
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("<ReqdExctnDt>2027-01-15</ReqdExctnDt>"));
+        assert!(!xml.contains("INST"));
+        p.instant = true;
+        p.creditor_bic = Some("COBADEFFXXX");
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("pain.001.001.09"));
+        assert!(xml.contains("<LclInstrm><Cd>INST</Cd></LclInstrm>"));
+        assert!(xml.contains("<ReqdExctnDt><Dt>2027-01-15</Dt></ReqdExctnDt>"));
+        assert!(xml.contains("<BICFI>BYLADEM1001</BICFI>"));
+        assert!(xml.contains("<CdtrAgt><FinInstnId><BICFI>COBADEFFXXX</BICFI>"));
     }
 
     #[test]

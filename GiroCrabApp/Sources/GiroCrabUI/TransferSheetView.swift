@@ -188,6 +188,23 @@ struct TransferSheetView: View {
                         .foregroundStyle(draft.wrappedValue.purpose.count >= maxPurpose ? Color.red : Theme.tertiary)
                 }
             }
+            if !isBunq {
+                field("Ausführung") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle("Echtzeitüberweisung (SEPA Instant)", isOn: draft.instant)
+                            .onChange(of: draft.wrappedValue.instant) { _, on in
+                                if on { model.transferDraft.scheduled = false }
+                            }
+                        Toggle("Terminüberweisung", isOn: draft.scheduled)
+                            .disabled(draft.wrappedValue.instant)
+                        if draft.wrappedValue.scheduled && !draft.wrappedValue.instant {
+                            DatePicker("Ausführungsdatum", selection: draft.executionDate,
+                                       in: (Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date())...,
+                                       displayedComponents: .date)
+                        }
+                    }
+                }
+            }
             if !pinStored {
                 field(isBunq ? "bunq-API-Schlüssel" : "Banking-PIN") {
                     SecureField(isBunq ? "API-Schlüssel (wird nicht gespeichert)" : "PIN (wird nicht gespeichert)", text: draft.pin)
@@ -218,7 +235,10 @@ struct TransferSheetView: View {
                 summaryRow("Zweck", d.purpose.isEmpty ? "–" : d.purpose)
                 Divider()
                 summaryRow("Von", account.map { "\($0.name) · \(formatIBAN($0.iban))" } ?? "–")
-                summaryRow("Ausführung", String(localized: "Heute (SEPA-Überweisung)"))
+                summaryRow("Ausführung", d.instant
+                    ? String(localized: "Sofort (Echtzeitüberweisung)")
+                    : d.executionDateISO.map { String(format: String(localized: "Am %@ (Terminüberweisung)"), $0) }
+                        ?? String(localized: "Heute (SEPA-Überweisung)"))
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
