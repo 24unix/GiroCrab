@@ -104,3 +104,6 @@ Package.resolved
 *.jsonl
 .claude/settings.local.json
 dist/
+
+# Local build output (xcframework staging etc.)
+/build/
