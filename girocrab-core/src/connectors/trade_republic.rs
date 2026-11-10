@@ -773,12 +773,22 @@ mod tests {
     #[test]
     fn cookie_host_check() {
         let p = |s: &str| reqwest::Url::parse(s).unwrap();
-        assert!(is_trade_republic_host(&p("https://api.traderepublic.com/x")));
-        assert!(is_trade_republic_host(&p("https://a.b.traderepublic.com/x")));
+        assert!(is_trade_republic_host(&p(
+            "https://api.traderepublic.com/x"
+        )));
+        assert!(is_trade_republic_host(&p(
+            "https://a.b.traderepublic.com/x"
+        )));
         assert!(!is_trade_republic_host(&p("https://evil.com/x")));
-        assert!(!is_trade_republic_host(&p("https://traderepublic.com.evil.com/x")));
-        assert!(!is_trade_republic_host(&p("https://eviltraderepublic.com/x")));
-        assert!(!is_trade_republic_host(&p("https://bucket.s3.amazonaws.com/x?traderepublic.com")));
+        assert!(!is_trade_republic_host(&p(
+            "https://traderepublic.com.evil.com/x"
+        )));
+        assert!(!is_trade_republic_host(&p(
+            "https://eviltraderepublic.com/x"
+        )));
+        assert!(!is_trade_republic_host(&p(
+            "https://bucket.s3.amazonaws.com/x?traderepublic.com"
+        )));
     }
 
     #[test]
