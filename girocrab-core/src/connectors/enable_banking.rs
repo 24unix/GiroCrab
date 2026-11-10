@@ -434,13 +434,12 @@ impl BankConnector for EnableBankingConnector {
             let balances = bal["balances"].as_array().cloned().unwrap_or_default();
             let (mut balance_cents, ref_date, picked_type) = pick_balance_typed(&balances);
             for b in &balances {
-                let cents = json_number_to_cents(&b["balance_amount"]["amount"]).unwrap_or(0);
                 crate::depot_debug::log(&format!(
-                    "amex balance entry: type={} indicator={} sign={} magnitude~10^{}",
+                    "amex raw balance: type={} amount={} indicator={} currency={}",
                     b["balance_type"].as_str().unwrap_or("?"),
+                    b["balance_amount"]["amount"],
                     b["credit_debit_indicator"].as_str().unwrap_or("none"),
-                    cents.signum(),
-                    cents.unsigned_abs().max(1).ilog10().saturating_sub(2)
+                    b["balance_amount"]["currency"].as_str().unwrap_or("?"),
                 ));
             }
             crate::depot_debug::log(&format!(
@@ -636,22 +635,10 @@ impl BankConnector for EnableBankingConnector {
             if balance_cents != 0 && excludes_pending {
                 balance_cents += pending_sum;
             } else if balance_cents == 0 {
-                // No usable balance: derive from the fetched history plus pending.
-                let rows: Vec<(String, i64, String)> = out.transactions[tx_start..]
-                    .iter()
-                    .map(|t| {
-                        (
-                            t.booking_date.clone(),
-                            t.amount_cents,
-                            format!("{} {} {}", t.counterparty, t.purpose, t.booking_text),
-                        )
-                    })
-                    .collect();
-                if let Some(open) = super::open_card_balance(&rows) {
-                    balance_cents = open + pending_sum;
-                } else if pending_sum != 0 {
-                    balance_cents = pending_sum;
-                }
+                // No usable balance reported. Do NOT sum the (possibly truncated)
+                // booking history: the sync keeps the stored balance instead.
+                crate::depot_debug::log("amex balance: none reported, keeping stored balance");
+                balance_cents = 0;
             }
             out.accounts[acct_idx].balance_cents = balance_cents;
             crate::depot_debug::log(&format!(

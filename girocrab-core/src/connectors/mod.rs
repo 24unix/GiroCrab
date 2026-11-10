@@ -569,10 +569,25 @@ pub(crate) fn store_fetch(
             let id = match existing {
                 Some(id) => {
                     if !data.adjust_balances {
-                        tx.execute(
-                            "UPDATE accounts SET balance_cents = ?1, balance_date = ?2, currency = ?3 WHERE id = ?4",
-                            params![acc.balance_cents, acc.balance_date, acc.currency, id],
-                        )?;
+                        // A card reporting 0 (no /balances data) must not wipe a known balance.
+                        let keep = acc.balance_cents == 0
+                            && acc.kind == AccountKind::CreditCard
+                            && tx.query_row(
+                                "SELECT balance_cents FROM accounts WHERE id = ?1",
+                                [id],
+                                |r| r.get::<_, i64>(0),
+                            )? != 0;
+                        if keep {
+                            tx.execute(
+                                "UPDATE accounts SET currency = ?1 WHERE id = ?2",
+                                params![acc.currency, id],
+                            )?;
+                        } else {
+                            tx.execute(
+                                "UPDATE accounts SET balance_cents = ?1, balance_date = ?2, currency = ?3 WHERE id = ?4",
+                                params![acc.balance_cents, acc.balance_date, acc.currency, id],
+                            )?;
+                        }
                     }
                     // Trade Republic cash side is a clearing account, not a Girokonto.
                     if kind == ConnectorKind::TradeRepublic
@@ -616,6 +631,14 @@ pub(crate) fn store_fetch(
                 let Some(&id) = account_ids.get(&acc.external_ref) else {
                     continue;
                 };
+                let stored: i64 = tx.query_row(
+                    "SELECT balance_cents FROM accounts WHERE id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )?;
+                if stored != 0 {
+                    continue;
+                }
                 let is_card = acc.kind == AccountKind::CreditCard
                     || is_amex_name(&acc.name)
                     || is_amex_name(bank_name.as_str());
