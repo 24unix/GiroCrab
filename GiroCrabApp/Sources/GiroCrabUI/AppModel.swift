@@ -1166,6 +1166,17 @@ extension AppModel {
         showTransferSheet = true
     }
 
+    /// Context menu: new transfer pre-filled from a booking.
+    func openTransfer(from b: Booking) {
+        guard canTransfer else { return }
+        transferDraft.name = b.counterparty.isEmpty ? b.merchantName : b.counterparty
+        transferDraft.iban = TransferSheetView.groupedIBAN(b.counterpartyIban)
+        transferDraft.bic = ""
+        transferDraft.amountText = Money.plain(abs(b.amountCents))
+        transferDraft.purpose = String(b.purpose.prefix(140))
+        openTransfer()
+    }
+
     func suggestRecipients(_ query: String) -> [KnownRecipient] {
         (try? vault?.suggestRecipients(query: query, limit: 6)) ?? []
     }

@@ -877,6 +877,17 @@
         }
       }
     },
+    "Aus Zwischenablage einfügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste from Clipboard"
+          }
+        }
+      }
+    },
     "Ausführung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1814,6 +1825,17 @@
         }
       }
     },
+    "Erkennt IBAN, Betrag, Empfänger und Zweck (⇧⌘V; ⌘V außerhalb von Textfeldern). Rechnung (PDF, ZUGFeRD, GiroCode) hierher ziehen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detects IBAN, amount, recipient and purpose (⇧⌘V; ⌘V outside text fields). Drop an invoice (PDF, ZUGFeRD, GiroCode) here."
+          }
+        }
+      }
+    },
     "Erst einmal ansehen?" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1865,6 +1887,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fill in missing details (e.g. FinTS product ID, API keys) – the form opens automatically"
+          }
+        }
+      }
+    },
+    "Felder ausgefüllt – bitte prüfen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fields filled in – please review"
           }
         }
       }
@@ -2815,6 +2848,17 @@
         }
       }
     },
+    "Lese Rechnung …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reading invoice…"
+          }
+        }
+      }
+    },
     "Letzte 3 Monate" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3102,6 +3146,17 @@
         }
       }
     },
+    "Nach „%@“ suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search for “%@”"
+          }
+        }
+      }
+    },
     "Name" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3223,6 +3278,17 @@
         }
       }
     },
+    "Neue Überweisung aus Buchung …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Transfer from Booking…"
+          }
+        }
+      }
+    },
     "Neue Überweisung …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3263,6 +3329,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Not found: %@"
+          }
+        }
+      }
+    },
+    "Nichts Erkennbares gefunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing recognisable found"
           }
         }
       }
@@ -3417,6 +3494,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "OK"
+          }
+        }
+      }
+    },
+    "Oder Rechnung hierher ziehen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Or drop an invoice here"
           }
         }
       }

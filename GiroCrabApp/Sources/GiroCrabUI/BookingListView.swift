@@ -57,7 +57,9 @@ struct BookingStreamView: View {
         .onKeyPress(.downArrow) { model.moveSelection(1); return .handled }
         .onKeyPress(.upArrow) { model.moveSelection(-1); return .handled }
         .onKeyPress(.space) {
-            guard model.options.screenshotPath == nil, let b = model.selectedBooking, let d = model.documents(for: b).first else { return .ignored }
+            guard model.options.screenshotPath == nil, let b = model.selectedBooking else { return .ignored }
+            // No receipt attached: Space toggles "checked" instead of QuickLook.
+            guard let d = model.documents(for: b).first else { model.setChecked(!b.checked, for: b); return .handled }
             if model.quickLookURL != nil { model.quickLookURL = nil } else { model.quickLook(d) }
             return .handled
         }
@@ -144,6 +146,14 @@ struct DayCard: View {
     private func rowMenu(_ b: Booking) -> some View {
         Button("Kategorisieren …", systemImage: "tag") { model.selectedBookingID = b.id; model.showCategorizer = true }
         Button("Regel für diesen Händler erstellen …", systemImage: "wand.and.stars") { model.openRuleEditor(from: b) }
+        Divider()
+        Button("Nach „\(b.counterparty.isEmpty ? b.merchantName : b.counterparty)“ suchen", systemImage: "magnifyingglass") {
+            model.searchText = b.counterparty.isEmpty ? b.merchantName : b.counterparty
+        }
+        .disabled(b.counterparty.isEmpty && b.merchantName.isEmpty)
+        Button("Neue Überweisung aus Buchung …", systemImage: "paperplane") { model.openTransfer(from: b) }
+            .disabled(!model.canTransfer)
+        Divider()
         Button(b.checked ? "Als neu markieren" : "Als geprüft markieren", systemImage: "checkmark.circle") { model.setChecked(!b.checked, for: b) }
     }
 }
@@ -175,6 +185,12 @@ struct BookingRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
+            if booking.checked {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.tertiary)
+                    .help("Geprüft")
+            }
             AmountLabel(cents: booking.amountCents)
         }
         .frame(minHeight: 44)

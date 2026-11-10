@@ -1,5 +1,8 @@
 import SwiftUI
 import GiroCrabCore
+#if os(macOS)
+import AppKit
+#endif
 
 /// "Neue Überweisung": SEPA credit transfer via FinTS (HKCCS). After the
 /// confirmation card the model starts the session; the bank's TAN request is
@@ -10,6 +13,8 @@ struct TransferSheetView: View {
     @State private var confirming = false
     @State private var suggestions: [KnownRecipient] = []
     @FocusState private var nameFocused: Bool
+    @State private var dropTargeted = false
+    @State private var importNote: String?
 
     private let maxPurpose = 140
 
@@ -52,6 +57,22 @@ struct TransferSheetView: View {
         }
         .padding(24)
         .frame(width: 520)
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .background(Theme.accent.opacity(0.06)).allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+            guard !confirming, let p = providers.first else { return false }
+            _ = p.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                Task { @MainActor in await importInvoice(url) }
+            }
+            return true
+        }
+        // ⌘V outside a text field (inside one, normal paste keeps working).
+        .onPasteCommand(of: [.plainText]) { _ in pasteFromClipboard() }
         .onChange(of: model.transferDraft.iban) { _, new in
             let f = Self.groupedIBAN(new)
             if f != new { model.transferDraft.iban = f }
@@ -71,6 +92,14 @@ struct TransferSheetView: View {
 
     private func form(draft: Binding<TransferDraft>) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Button { pasteFromClipboard() } label: { Label("Aus Zwischenablage einfügen", systemImage: "doc.on.clipboard") }
+                    .keyboardShortcut("v", modifiers: [.command, .shift])
+                    .help("Erkennt IBAN, Betrag, Empfänger und Zweck (⇧⌘V; ⌘V außerhalb von Textfeldern). Rechnung (PDF, ZUGFeRD, GiroCode) hierher ziehen.")
+                Text(importNote ?? String(localized: "Oder Rechnung hierher ziehen"))
+                    .font(.caption).foregroundStyle(Theme.tertiary).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
             field("Von Konto") {
                 Picker("", selection: draft.accountID) {
                     ForEach(model.transferAccounts) { a in
@@ -226,6 +255,28 @@ struct TransferSheetView: View {
                     .disabled(!canReview || (!pinStored && model.transferDraft.pin.isEmpty))
             }
         }
+    }
+
+    // MARK: Sm@rtPaste / invoice drop
+
+    private func pasteFromClipboard() {
+        #if os(macOS)
+        let text = NSPasteboard.general.string(forType: .string) ?? ""
+        #else
+        let text = UIPasteboard.general.string ?? ""
+        #endif
+        report(PaymentParser.parseText(text))
+    }
+
+    private func importInvoice(_ url: URL) async {
+        importNote = String(localized: "Lese Rechnung …")
+        report(await PaymentParser.parseFile(url) ?? ParsedPayment())
+    }
+
+    private func report(_ p: ParsedPayment) {
+        guard !p.isEmpty else { importNote = String(localized: "Nichts Erkennbares gefunden"); return }
+        p.apply(to: &model.transferDraft)
+        importNote = String(localized: "Felder ausgefüllt – bitte prüfen")
     }
 
     // MARK: helpers
