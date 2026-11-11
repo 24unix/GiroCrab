@@ -36,6 +36,18 @@ struct SyncFolder: Sendable {
         return names.contains { isSnapshotName(placeholderTarget($0) ?? $0) }
     }
 
+    /// Why the folder can't be listed (e.g. macOS hasn't granted access to
+    /// iCloud Drive), or nil. Without this, an unreadable folder looks
+    /// exactly like an empty one.
+    func accessError() -> Error? {
+        do {
+            _ = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            return nil
+        } catch {
+            return error
+        }
+    }
+
     /// Snapshot files of the other devices that are on disk. Files iCloud
     /// hasn't downloaded yet are requested and left for the next round.
     func peers() -> [URL] {

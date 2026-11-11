@@ -119,6 +119,7 @@ public final class CloudSyncManager {
             let seen = self.seen
             let (result, written) = try await Task.detached { () throws -> (SyncMergeResult, SyncWrite) in
                 // Security: never leave the raw vault key next to the vault in iCloud Drive.
+                if let e = folder.accessError() { throw Self.folderAccessError(dir, e) }
                 Self.removeLegacyKeyFile(legacyKeyFile)
                 // Someone is waiting for this sync: give iCloud time to download.
                 folder.waitForDownloads(timeout: 30)
@@ -291,6 +292,10 @@ public final class CloudSyncManager {
         autoBusy = true
         defer { autoBusy = false; release() }
         let folder = SyncFolder(dir: dir, deviceID: deviceID)
+        if let e = await Task.detached(operation: { folder.accessError() }).value {
+            lastError = Self.folderAccessError(dir, e).localizedDescription
+            return
+        }
         let seen = self.seen
         let skip = seen.merging(failed) { $1 }
         let count = vault.changeCount()
@@ -336,6 +341,18 @@ public final class CloudSyncManager {
         for url in [keyFile, placeholder] where fm.fileExists(atPath: url.path) {
             try? fm.removeItem(at: url)
         }
+    }
+
+    /// The sync folder can't be read. On macOS that usually means access to
+    /// iCloud Drive hasn't been granted, which macOS doesn't always ask for.
+    nonisolated private static func folderAccessError(_ dir: URL, _ underlying: Error) -> NSError {
+        let name = dir.lastPathComponent
+        #if os(macOS)
+        let message = String(localized: "GiroCrab darf den Sync-Ordner „\(name)“ nicht lesen. Erlauben Sie den Zugriff in den Systemeinstellungen unter Datenschutz & Sicherheit › Dateien und Ordner (iCloud Drive).")
+        #else
+        let message = String(localized: "GiroCrab kann den Sync-Ordner „\(name)“ nicht lesen. Wählen Sie den Ordner in den Einstellungen unter iCloud Sync neu aus.")
+        #endif
+        return NSError(domain: "CloudSync", code: 4, userInfo: [NSLocalizedDescriptionKey: message, NSUnderlyingErrorKey: underlying])
     }
 
     nonisolated private static var keyMismatchError: NSError {

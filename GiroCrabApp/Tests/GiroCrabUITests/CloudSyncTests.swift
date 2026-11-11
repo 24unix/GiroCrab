@@ -350,6 +350,47 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertEqual(own.count, 1, "the pending change was written after the poll")
     }
 
+    // MARK: folder access
+
+    /// A folder the app may not read, like iCloud Drive before the user
+    /// allowed access in Privacy & Security.
+    private func lockedDir() throws -> URL {
+        let d = try tempDir()
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: d.path)
+        addTeardownBlock { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: d.path) }
+        return d
+    }
+
+    func test_unreadable_folder_is_detected() throws {
+        XCTAssertNotNil(SyncFolder(dir: try lockedDir(), deviceID: UUID().uuidString.lowercased()).accessError())
+        XCTAssertNil(SyncFolder(dir: try tempDir(), deviceID: UUID().uuidString.lowercased()).accessError())
+    }
+
+    @MainActor
+    func test_sync_reports_unreadable_folder() async throws {
+        let folder = try lockedDir()
+        let (v, _) = try device(folder) // empty: nothing to write, so no write error either
+        let sync = CloudSyncManager.shared
+        sync.setFolderForTesting(folder)
+        defer { sync.setFolderForTesting(nil) }
+        await sync.sync(vault: v)
+        let error = try XCTUnwrap(sync.lastError)
+        XCTAssertTrue(error.contains(folder.lastPathComponent), error)
+    }
+
+    @MainActor
+    func test_auto_sync_reports_unreadable_folder() async throws {
+        let folder = try lockedDir()
+        let (v, _) = try device(folder)
+        let sync = CloudSyncManager.shared
+        sync.setFolderForTesting(folder)
+        defer { sync.setFolderForTesting(nil); sync.stopAutoSync() }
+        sync.prepareAutoSyncForTesting(vault: v)
+        await sync.runForTesting(write: false, poll: true)
+        let error = try XCTUnwrap(sync.lastError)
+        XCTAssertTrue(error.contains(folder.lastPathComponent), error)
+    }
+
     func test_contains_vault_detects_new_names() throws {
         let folder = try tempDir()
         XCTAssertFalse(SyncFolder.containsVault(folder))
