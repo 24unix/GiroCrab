@@ -1,27 +1,29 @@
 name: Release
 
+# macOS release artifacts are NOT built or uploaded by CI.
+# Signing (Developer ID), notarization and stapling happen 100% locally on the
+# maintainer's Mac (keychain identity + `notary-profile`), deliberately without
+# Apple certificates in GitHub Secrets:
+#
+#   ./scripts/notarize.sh --upload vX.Y.Z   # build, sign, notarize, verify, gh release upload
+#
+# CI only creates a draft release (with generated notes, no binary) on tag push,
+# so a non-notarized binary can never end up attached to a GitHub release.
+
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
 
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
-  macos:
-    runs-on: macos-latest
+  draft-release:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Build GiroCrab.app
-        run: ./package-macos-app.sh
-      - name: Publish release
+      - name: Create draft release (no binary)
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/GiroCrab-macOS-arm64.zip
+          draft: true
           generate_release_notes: true
