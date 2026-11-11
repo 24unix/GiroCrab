@@ -9421,17 +9421,6 @@
         }
       }
     },
-    "Kein Gehalt erkannt – dieser Monat" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No salary detected – this month"
-          }
-        }
-      }
-    },
     "Seit Gehalt am %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10022,6 +10011,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Whether GiroCrab fetches the PDF statements of a FinTS account on every sync is set per account under “Documents / Statements”."
+          }
+        }
+      }
+    },
+    "Monat · kein Gehalt erkannt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Month · no salary found"
           }
         }
       }

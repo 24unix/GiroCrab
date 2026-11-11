@@ -2578,3 +2578,68 @@ mod expression_rule_tests {
         let _ = std::fs::remove_file(p);
     }
 }
+
+#[cfg(test)]
+mod upgrade_tests {
+    use super::*;
+
+    /// A vault written before #35/#37/#57 (no bank codes, salary flag,
+    /// recurring table or mirror column) opens, migrates and keeps its data.
+    #[test]
+    fn pre_feature_vault_is_migrated_in_place() {
+        let dir = std::env::temp_dir().join(format!("gc-upgrade-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("v.db").to_string_lossy().to_string();
+        {
+            let v = Vault::open(path.clone(), vec![2u8; 32]).unwrap();
+            let c = v.db().unwrap();
+            c.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+                .unwrap();
+            c.execute(
+                "INSERT INTO accounts(group_id, external_ref, name) VALUES ((SELECT id FROM account_groups), 'A', 'Giro')",
+                [],
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+                 VALUES ((SELECT id FROM accounts), 'x', date('now','-3 days'), 250000, 'ACME', 'Gehalt')",
+                [],
+            )
+            .unwrap();
+            c.execute_batch(
+                "ALTER TABLE transactions DROP COLUMN purpose_code;
+                 ALTER TABLE transactions DROP COLUMN gvc;
+                 ALTER TABLE transactions DROP COLUMN salary_flag;
+                 ALTER TABLE booking_documents DROP COLUMN exported_at;
+                 DROP TABLE recurring_series;",
+            )
+            .unwrap();
+        }
+        let v = Vault::open(path, vec![2u8; 32]).unwrap();
+        let cols: Vec<String> = {
+            let c = v.db().unwrap();
+            let mut st = c
+                .prepare("SELECT name FROM pragma_table_info('transactions')")
+                .unwrap();
+            let names = st
+                .query_map([], |r| r.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            names
+        };
+        for col in ["purpose_code", "gvc", "salary_flag"] {
+            assert!(cols.iter().any(|c| c == col), "{col} missing");
+        }
+        let page = v.list_transactions(BookingFilter::default()).unwrap();
+        assert_eq!(page.transactions.len(), 1);
+        assert!(page.transactions[0].is_salary);
+        assert!(v.salary_cycle(vec![]).unwrap().is_some());
+        assert!(v.list_recurring(vec![]).unwrap().is_empty());
+        v.set_booking_salary_flag(page.transactions[0].id, Some(false))
+            .unwrap();
+        v.reset_document_mirror().unwrap();
+        drop(v);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}

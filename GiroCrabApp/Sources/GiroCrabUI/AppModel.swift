@@ -858,7 +858,7 @@ public final class AppModel {
     /// Subtitle of the period-based KPI tiles.
     var periodSubtitle: String {
         guard period == .sinceSalary else { return period.title }
-        guard let c = salaryCycle else { return String(localized: "Kein Gehalt erkannt – dieser Monat") }
+        guard let c = salaryCycle else { return String(localized: "Monat · kein Gehalt erkannt") }
         return String(localized: "Seit Gehalt am \(DateText.medium(c.lastDate))")
     }
 
