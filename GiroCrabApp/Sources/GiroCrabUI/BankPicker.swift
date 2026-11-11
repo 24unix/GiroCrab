@@ -67,21 +67,23 @@ struct BankAddView: View {
     // MARK: Search
 
     private var searchField: some View {
+        #if os(macOS)
+        // The system search field (magnifier, clear button, Esc clears).
+        SystemSearchField(text: $query, prompt: String(localized: "Bank, BLZ oder IBAN suchen …"))
+        #else
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("Bank, BLZ oder IBAN suchen …", text: $query)
                 .autocorrectionDisabled()
-                #if os(iOS)
                 .textInputAutocapitalization(.never)
-                #endif
             if !query.isEmpty {
                 Button { query = "" } label: { Label("Suche löschen", systemImage: "xmark.circle.fill") }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.borderless)
-                    .help("Suche löschen")
                     .foregroundStyle(.secondary)
             }
         }
+        #endif
     }
 
     private var suggestionRow: some View {
@@ -312,3 +314,38 @@ struct Psd2AddForm: View {
         .keyboardShortcut(.defaultAction)
     }
 }
+
+#if os(macOS)
+import AppKit
+
+/// NSSearchField for inline searches inside forms (where `.searchable`, which
+/// lives in the toolbar, does not fit). Takes focus when it appears.
+struct SystemSearchField: NSViewRepresentable {
+    @Binding var text: String
+    let prompt: String
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
+        field.placeholderString = prompt
+        field.delegate = context.coordinator
+        field.sendsSearchStringImmediately = true
+        field.setAccessibilityLabel(prompt)
+        DispatchQueue.main.async { field.window?.makeFirstResponder(field) }
+        return field
+    }
+
+    func updateNSView(_ field: NSSearchField, context: Context) {
+        if field.stringValue != text { field.stringValue = text }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        var text: Binding<String>
+        init(text: Binding<String>) { self.text = text }
+        func controlTextDidChange(_ note: Notification) {
+            if let field = note.object as? NSSearchField { text.wrappedValue = field.stringValue }
+        }
+    }
+}
+#endif
