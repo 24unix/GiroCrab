@@ -348,6 +348,17 @@ DE: Händler-Logos sind **standardmäßig deaktiviert** (Opt-in in den Einstellu
 * **Zero-Knowledge Datenhaltung & iCloud-Sync (macOS & iOS):** Alle Zugangsdaten, Session-Tokens und Umsätze liegen ausschließlich lokal in deinem mit **XChaCha20-Poly1305 & Argon2id** verschlüsselten SQLCipher-Tresor (geschützt durch Touch ID / Face ID). Über den optionalen **Zero-Knowledge iCloud-Sync** lassen sich Tresore zwischen Mac und iPhone/iPad konfliktfrei auf Buchungs-Fingerprint-Ebene zusammenführen, ohne dass Klartextdaten jemals dein Gerät verlassen.
 
 
+## 🤝 Contributors / Mitwirkende
+
+Danke an alle, die GiroCrab voranbringen! / Thanks to everyone who helps move GiroCrab forward!
+
+- **[@24unix](https://github.com/24unix)** — Direct MoneyMoney database import (#11), MoneyMoney search-expression rules (#60), Dark Mode (#2), DE/EN localisation (#4), key-unlock UX hint (#6), privacy opt-in for online merchant logos (#38), and iCloud sync architecture (#10).
+- **[@jacboy](https://github.com/jacboy)** — User-defined account groups with conflict-free iCloud sync & UI (#39, #40), SEPA Instant transfers with explicit fallback & OutcomeUnknown safety (#29), Verification of Payee / VoP (#30), bunq personal API key connector (#12), Consorsbank FinTS preset & product ID masking (#28), and inline note editing (#41).
+- **[@nochsoeiner](https://github.com/nochsoeiner)** — FinTS securities holdings via HKWPD / MT535 (#23), interactive balance chart with hover readout & click-to-jump (#20), period-aware KPI tiles (#19), account & category markers in the booking stream (#26), and DKB FinTS URL preset fix (#25).
+- **[@sebastianmattar](https://github.com/sebastianmattar)** — MoneyMoney depot balances & securities positions import (#51) and Trade Republic 8-digit bank code recognition (#52).
+- **[@martinhering](https://github.com/martinhering)** — Scalable Capital connector supporting Baader Bank and Scalable broker GraphQL with 2FA (#54).
+- **[@HansWurst90](https://github.com/HansWurst90)** — Build script cleanup (#14) and testing & feedback on MoneyMoney and depot imports.
+
 ## License / Lizenz
 
 GPL-3.0-or-later – see [LICENSE](LICENSE).
