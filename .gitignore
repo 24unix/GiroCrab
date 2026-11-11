@@ -107,3 +107,7 @@ dist/
 
 # Local build output (xcframework staging etc.)
 /build/
+
+# Build artifacts / archives
+build/
+**/build/
