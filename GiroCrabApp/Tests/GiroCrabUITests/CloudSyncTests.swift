@@ -183,6 +183,52 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
     }
 
+    // MARK: automatic sync schedule
+
+    private let t0 = Date(timeIntervalSince1970: 1_000_000)
+
+    func test_write_after_change_settles() {
+        var s = AutoSyncState()
+        XCTAssertFalse(s.tick(changeCount: 10, now: t0).contains(.write))
+        XCTAssertFalse(s.tick(changeCount: 11, now: t0 + 5).contains(.write))
+        XCTAssertTrue(s.tick(changeCount: 11, now: t0 + 10).contains(.write))
+        s.wrote(changeCount: 11)
+        XCTAssertFalse(s.tick(changeCount: 11, now: t0 + 15).contains(.write))
+    }
+
+    func test_merge_does_not_schedule_a_write() {
+        var s = AutoSyncState()
+        _ = s.tick(changeCount: 10, now: t0)
+        s.merged(changeCount: 25)
+        XCTAssertFalse(s.tick(changeCount: 25, now: t0 + 5).contains(.write))
+        XCTAssertFalse(s.tick(changeCount: 25, now: t0 + 10).contains(.write))
+        XCTAssertFalse(s.hasPendingWrite)
+    }
+
+    func test_local_change_before_merge_is_still_written() {
+        var s = AutoSyncState()
+        _ = s.tick(changeCount: 10, now: t0)
+        _ = s.tick(changeCount: 12, now: t0 + 5) // local edit, not settled yet
+        s.merged(changeCount: 20)
+        XCTAssertTrue(s.tick(changeCount: 20, now: t0 + 10).contains(.write))
+    }
+
+    func test_poll_every_30_seconds() {
+        var s = AutoSyncState()
+        let polls = stride(from: 0, through: 35, by: 5).filter {
+            s.tick(changeCount: 10, now: t0 + TimeInterval($0)).contains(.poll)
+        }
+        XCTAssertEqual(polls, [0, 30])
+    }
+
+    func test_pending_write_reported() {
+        var s = AutoSyncState()
+        _ = s.tick(changeCount: 10, now: t0)
+        XCTAssertFalse(s.hasPendingWrite)
+        _ = s.tick(changeCount: 12, now: t0 + 5)
+        XCTAssertTrue(s.hasPendingWrite)
+    }
+
     // MARK: manager
 
     @MainActor

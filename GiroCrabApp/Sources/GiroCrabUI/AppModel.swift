@@ -871,6 +871,7 @@ public final class AppModel {
 
     private func performSyncOrAutoAdopt(vault v: Vault) async {
         await CloudSyncManager.shared.sync(vault: v)
+        CloudSyncManager.shared.startAutoSync(vault: v) { [weak self] in self?.reloadAll() }
         if ((try? v.accountCount()) ?? 0) > 0 || self.connectionsExist(v) {
             if self.demoActive {
                 self.useVault(v, demo: false)
@@ -961,6 +962,7 @@ public final class AppModel {
         endBankDialogsForLock()
         quickLookURL = nil
         Self.removeQuickLookFiles()
+        CloudSyncManager.shared.stopAutoSync(flushing: true)
         ownVault = nil
         demoActive = false
         vault = nil

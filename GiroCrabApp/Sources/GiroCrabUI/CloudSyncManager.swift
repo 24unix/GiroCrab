@@ -1,6 +1,10 @@
 import Foundation
 import Observation
+import SwiftUI
 import GiroCrabCore
+#if os(iOS)
+import UIKit
+#endif
 
 @Observable @MainActor
 public final class CloudSyncManager {
@@ -27,6 +31,7 @@ public final class CloudSyncManager {
     public var isEnabled: Bool {
         didSet {
             defaults.set(isEnabled, forKey: K.enabled)
+            if !isEnabled { stopAutoSync() }
             #if os(macOS)
             if isEnabled && folderName == nil {
                 ensureDefaultMacICloudFolder()
@@ -157,6 +162,122 @@ public final class CloudSyncManager {
     /// Tests point the manager at a temporary folder; nil restores the user's.
     func setFolderForTesting(_ url: URL?) {
         folderOverride = url
+    }
+
+    // MARK: automatic sync
+
+    @ObservationIgnored private var autoVault: Vault?
+    @ObservationIgnored private var onMerged: (@MainActor () -> Void)?
+    @ObservationIgnored private var autoState = AutoSyncState()
+    @ObservationIgnored private var autoTask: Task<Void, Never>?
+    @ObservationIgnored private var autoBusy = false
+
+    /// Keeps `vault` in sync while the app runs: writes this device's
+    /// snapshot after local changes and merges other devices' snapshots
+    /// when they change. `onMerged` runs after a merge that brought changes.
+    public func startAutoSync(vault: Vault, onMerged: @escaping @MainActor () -> Void) {
+        stopAutoSync()
+        guard isEnabled else { return }
+        autoVault = vault
+        self.onMerged = onMerged
+        autoState = AutoSyncState()
+        startLoop()
+    }
+
+    /// Ends automatic sync; with `flushing`, a pending local change is
+    /// written first (e.g. when the vault gets locked).
+    public func stopAutoSync(flushing: Bool = false) {
+        autoTask?.cancel()
+        autoTask = nil
+        if flushing, let vault = autoVault {
+            Task { await flush(vault) }
+        }
+        autoVault = nil
+        onMerged = nil
+    }
+
+    /// The app came to the front or went to the background.
+    public func sceneChanged(_ phase: ScenePhase) {
+        guard autoVault != nil else { return }
+        switch phase {
+        case .active:
+            autoState.pollSoon()
+            if autoTask == nil { startLoop() }
+            Task { await autoTick() }
+        #if os(iOS)
+        case .background:
+            // iOS suspends the app: write what's pending, then stop until it's back.
+            autoTask?.cancel()
+            autoTask = nil
+            guard let vault = autoVault else { return }
+            let id = UIApplication.shared.beginBackgroundTask(withName: "GiroCrab sync")
+            Task {
+                await flush(vault)
+                UIApplication.shared.endBackgroundTask(id)
+            }
+        #endif
+        default:
+            break
+        }
+    }
+
+    private func startLoop() {
+        autoTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.autoTick()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    private func flush(_ vault: Vault) async {
+        _ = autoState.tick(changeCount: vault.changeCount(), now: Date())
+        guard autoState.hasPendingWrite else { return }
+        await run(vault: vault, write: true, poll: false)
+    }
+
+    private func autoTick() async {
+        guard let vault = autoVault, !isSyncing, !autoBusy else { return }
+        let actions = autoState.tick(changeCount: vault.changeCount(), now: Date())
+        guard !actions.isEmpty else { return }
+        await run(vault: vault, write: actions.contains(.write), poll: actions.contains(.poll))
+    }
+
+    private func run(vault: Vault, write: Bool, poll: Bool) async {
+        guard !autoBusy, let (dir, release) = try? syncDirectory() as (URL, () -> Void) else { return }
+        autoBusy = true
+        defer { autoBusy = false; release() }
+        let folder = SyncFolder(dir: dir, deviceID: deviceID)
+        let seen = self.seen
+        let count = vault.changeCount()
+        let outcome = await Task.detached { () -> (wrote: Bool, merge: SyncMergeResult?, error: String?) in
+            var wrote = false
+            var error: String?
+            if write {
+                do { wrote = try folder.write(vault: vault) } catch let e { error = e.localizedDescription }
+            }
+            var merge: SyncMergeResult?
+            if poll {
+                let changed = folder.changedPeers(seen: seen)
+                if !changed.isEmpty { merge = folder.merge(vault: vault, peers: changed, remoteKey: nil) }
+            }
+            return (wrote, merge, error)
+        }.value
+        if outcome.wrote {
+            autoState.wrote(changeCount: count)
+            lastSync = Date()
+            defaults.set(lastSync, forKey: K.last)
+        }
+        if let error = outcome.error { lastError = error }
+        if let merge = outcome.merge {
+            autoState.merged(changeCount: vault.changeCount())
+            lastError = nil
+            record(merge)
+            let changed = merge.stats.contains {
+                $0.accountsAdded + $0.categoriesAdded + $0.rulesAdded + $0.bookingsAdded + $0.bookingsUpdated + $0.groupsUpdated > 0
+            }
+            if changed { onMerged?() }
+        }
     }
 
     /// Deletes `tresor.key` (and its iCloud placeholder) from the sync folder.
