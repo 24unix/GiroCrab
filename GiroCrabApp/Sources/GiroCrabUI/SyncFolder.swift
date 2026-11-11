@@ -12,6 +12,8 @@ struct SyncFolder: Sendable {
 
     let dir: URL
     let deviceID: String
+    /// Whether a file's data is on this device; replaceable in tests.
+    var isDownloaded: @Sendable (URL) -> Bool = SyncFolder.isLocal
 
     var ownURL: URL { dir.appendingPathComponent("tresor-\(deviceID).girocrab") }
     private var legacyURL: URL { dir.appendingPathComponent(Self.legacyName) }
@@ -37,37 +39,48 @@ struct SyncFolder: Sendable {
     /// Snapshot files of the other devices that are on disk. Files iCloud
     /// hasn't downloaded yet are requested and left for the next round.
     func peers() -> [URL] {
-        let fm = FileManager.default
-        let own = ownURL.lastPathComponent
-        var out: [URL] = []
-        for name in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] {
-            if let target = Self.placeholderTarget(name) {
-                if Self.isSnapshotName(target), target != own {
-                    try? fm.startDownloadingUbiquitousItem(at: dir.appendingPathComponent(target))
-                }
-            } else if Self.isSnapshotName(name), name != own {
-                out.append(dir.appendingPathComponent(name))
-            }
-        }
-        return out.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        scan().ready
     }
 
     /// Waits up to `timeout` for peer snapshots iCloud is still downloading,
     /// for a sync someone is waiting for (e.g. the first one on a new device).
     func waitForDownloads(timeout: TimeInterval) {
-        let fm = FileManager.default
-        let own = ownURL.lastPathComponent
         let deadline = Date().addingTimeInterval(timeout)
-        _ = peers() // starts the downloads
-        while Date() < deadline {
-            let names = (try? fm.contentsOfDirectory(atPath: dir.path)) ?? []
-            let pending = names.contains { name in
-                guard let target = Self.placeholderTarget(name), Self.isSnapshotName(target), target != own else { return false }
-                return !fm.fileExists(atPath: dir.appendingPathComponent(target).path)
-            }
-            if !pending { return }
+        while scan().pending, Date() < deadline {
             Thread.sleep(forTimeInterval: 0.25)
         }
+    }
+
+    /// Peers ready to read, and whether any is still being downloaded.
+    /// Not downloaded means an `.icloud` placeholder (older iCloud Drive) or
+    /// a file under its real name without its data (File Provider); reading
+    /// such a file would block until iCloud has fetched it.
+    private func scan() -> (ready: [URL], pending: Bool) {
+        let fm = FileManager.default
+        let own = ownURL.lastPathComponent
+        var ready: [URL] = []
+        var pending = false
+        for name in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] {
+            let target = Self.placeholderTarget(name) ?? name
+            guard Self.isSnapshotName(target), target != own else { continue }
+            let url = dir.appendingPathComponent(target)
+            if name == target, isDownloaded(url) {
+                ready.append(url)
+            } else if name != target, fm.fileExists(atPath: url.path) {
+                continue // placeholder left next to the downloaded file
+            } else {
+                try? fm.startDownloadingUbiquitousItem(at: url)
+                pending = true
+            }
+        }
+        return (ready.sorted { $0.lastPathComponent < $1.lastPathComponent }, pending)
+    }
+
+    /// Whether iCloud has the file's data on this device (true outside iCloud).
+    static func isLocal(_ url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+        guard let status = values?.ubiquitousItemDownloadingStatus else { return true }
+        return status != .notDownloaded
     }
 
     /// Peers whose modification date differs from the one last merged.
@@ -145,7 +158,7 @@ struct SyncFolder: Sendable {
         let fm = FileManager.default
         let placeholder = dir.appendingPathComponent(".\(Self.legacyName).icloud")
         if fm.fileExists(atPath: legacyURL.path) {
-            return Self.modified(legacyURL) == merged[Self.legacyName]
+            return isDownloaded(legacyURL) && Self.modified(legacyURL) == merged[Self.legacyName]
         }
         return !fm.fileExists(atPath: placeholder.path)
     }

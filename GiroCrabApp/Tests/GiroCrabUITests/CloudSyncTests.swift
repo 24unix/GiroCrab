@@ -218,6 +218,38 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), 1)
     }
 
+    /// Since File Provider, a file iCloud hasn't downloaded keeps its real
+    /// name (no `.icloud` placeholder); only its download status tells.
+    func test_not_downloaded_peer_is_skipped() throws {
+        let folder = try tempDir()
+        let name = "tresor-\(UUID().uuidString.lowercased()).girocrab"
+        FileManager.default.createFile(atPath: folder.appendingPathComponent(name).path, contents: Data())
+        let f = SyncFolder(dir: folder, deviceID: UUID().uuidString.lowercased(), isDownloaded: { _ in false })
+        XCTAssertEqual(f.peers(), [])
+        XCTAssertEqual(f.changedPeers(seen: [:]), [])
+    }
+
+    func test_wait_for_downloads_waits_for_not_downloaded_peer() throws {
+        let folder = try tempDir()
+        let name = "tresor-\(UUID().uuidString.lowercased()).girocrab"
+        FileManager.default.createFile(atPath: folder.appendingPathComponent(name).path, contents: Data())
+        let f = SyncFolder(dir: folder, deviceID: UUID().uuidString.lowercased(), isDownloaded: { _ in false })
+        let start = Date()
+        f.waitForDownloads(timeout: 0.6)
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(start), 0.5)
+    }
+
+    func test_not_downloaded_legacy_is_not_overwritten() throws {
+        let folder = try tempDir()
+        let legacy = folder.appendingPathComponent(SyncFolder.legacyName)
+        FileManager.default.createFile(atPath: legacy.path, contents: Data("old".utf8))
+        let (v, plain) = try device(folder, seeded: true)
+        let f = SyncFolder(dir: folder, deviceID: plain.deviceID, isDownloaded: { $0.lastPathComponent != SyncFolder.legacyName })
+        let modified = try XCTUnwrap(legacy.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+        XCTAssertTrue(try f.write(vault: v, merged: [SyncFolder.legacyName: modified.timeIntervalSince1970]).wrote)
+        XCTAssertEqual(legacyData(folder), Data("old".utf8))
+    }
+
     func test_empty_vault_writes_nothing() throws {
         let folder = try tempDir()
         let (v, f) = try device(folder)
