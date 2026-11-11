@@ -23,8 +23,18 @@
 //! Depots: the positions in `securities` (ISIN, quantity, price, cost basis,
 //! value) are copied into `holdings`, replacing earlier positions of the same
 //! account on every run.
+//!
+//! Statements and bank documents: the `statements` table only lists them
+//! (account, bank folder, file name, date, SHA-256); the PDFs are plain files
+//! in `Statements/<bank folder>/` next to the database. So the import takes
+//! either MoneyMoney's data folder (database and PDFs are found in it) or a
+//! single database file, e.g. a backup, plus optionally a folder with the
+//! PDFs. A file is looked up by its original path, then by its name, then by
+//! its SHA-256 anywhere in that folder – a renamed or re-sorted manual backup
+//! still matches, and a wrong file never does. Files are read one at a time.
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use rusqlite::types::Value;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
@@ -75,6 +85,8 @@ pub struct MoneyMoneyDbAccount {
     pub notes_count: u32,
     pub first_date: Option<String>,
     pub last_date: Option<String>,
+    /// Statements / bank documents MoneyMoney lists for this account.
+    pub statement_count: u32,
     /// Balance GiroCrab will show (see module docs for the assumption).
     pub computed_balance_cents: i64,
     /// Where the starting value of the balance came from (German, for the UI).
@@ -112,6 +124,17 @@ pub struct MoneyMoneyDbPreview {
     /// The vault has no bookings yet, so MoneyMoney's categories replace
     /// GiroCrab's starter categories (and their rules) instead of being added.
     pub replaces_starter_categories: bool,
+    /// The database file that was read (inside the folder, if one was given).
+    pub database_path: String,
+    /// Statements / bank documents (PDF) listed in the database.
+    pub statement_count: u32,
+    /// Folder the PDFs are taken from: the one passed in, else `Statements`
+    /// in the MoneyMoney folder. `None` = no folder, documents are left out.
+    pub statements_dir: Option<String>,
+    /// Of `statement_count`, files found in `statements_dir` …
+    pub statements_found: u32,
+    /// … and their total size in bytes.
+    pub statements_bytes: u64,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -137,6 +160,11 @@ pub struct MoneyMoneyDbImportOptions {
     /// Accounts the user already placed keep their group (or "Ohne
     /// Gruppe"); groups that already exist stay where the user put them.
     pub import_groups: bool,
+    /// Copy statements / bank documents (PDF) into the document archive.
+    pub import_statements: bool,
+    /// Folder with the PDFs, for a database without MoneyMoney's folder
+    /// around it (backup). `None` = `Statements` in the MoneyMoney folder.
+    pub statements_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, uniffi::Record)]
@@ -158,6 +186,18 @@ pub struct MoneyMoneyDbImportResult {
     pub banks_skipped_unsupported: u32,
     /// PDF statements / documents newly stored in the document archive.
     pub documents_imported: u32,
+    /// Already in the archive from an earlier run.
+    pub documents_existing: u32,
+    /// Listed in the database, but no file found (or no folder given).
+    pub documents_missing: u32,
+    /// File found, but its content differs from the database's checksum
+    /// or it is not a PDF: not imported.
+    pub documents_mismatched: u32,
+    /// Larger than the per-file limit: not imported.
+    pub documents_too_large: u32,
+    /// PDFs in the folder that the database doesn't list (not imported:
+    /// they belong to no account).
+    pub documents_unlisted: u32,
     /// Securities positions stored for depot accounts (replaced per account).
     pub holdings_imported: u32,
     /// Category rules taken over as search-expression rules.
@@ -219,14 +259,16 @@ struct SrcTx {
     category_key: Option<i64>,
 }
 
-/// PDF statement / document found in the MoneyMoney database.
+/// Statement / bank document listed in the MoneyMoney database (`statements`).
+/// The PDF itself is a file: `Statements/<directory>/<filename>`.
 #[derive(Debug, Clone, Default)]
 struct SrcDoc {
-    id: i64,
     account_key: i64,
-    title: String,
-    ts: Option<i64>,
-    bytes: Vec<u8>,
+    directory: String,
+    filename: String,
+    created_ts: Option<i64>,
+    /// SHA-256 of the file, lower-case hex ("" if MoneyMoney stored none).
+    digest: String,
 }
 
 #[derive(Default)]
@@ -919,73 +961,222 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
     Ok(src)
 }
 
-/// Single PDF blobs above this size are skipped (never loaded into memory).
-const MAX_PDF_BYTES: usize = 25 * 1024 * 1024;
-/// Upper bound for all PDFs held in memory during one import.
-const MAX_TOTAL_PDF_BYTES: usize = 512 * 1024 * 1024;
+/// PDFs above this size are skipped (never loaded into memory).
+const MAX_PDF_BYTES: u64 = 25 * 1024 * 1024;
+/// Files looked at when searching a folder by checksum.
+const MAX_FOLDER_FILES: usize = 50_000;
 
-/// Optional: PDF statements. MoneyMoney versions differ, so this looks for the usual
-/// table names and column spellings and keeps only blobs that really are PDFs.
+/// The statements / bank documents MoneyMoney lists (not the files).
 fn read_documents(conn: &Connection, have: &HashSet<String>) -> CoreResult<Vec<SrcDoc>> {
-    const TABLES: [&str; 4] = ["statements", "documents", "statement_files", "attachments"];
-    static ACCOUNT: [&str; 3] = ["local_account_key", "account_key", "account_id"];
-    static BLOB: [&str; 6] = ["pdf", "data", "content", "document", "file", "blob"];
-    static NAME: [&str; 4] = ["name", "title", "filename", "file_name"];
-    static TS: [&str; 3] = ["timestamp", "date", "created"];
+    if !have.contains("statements") {
+        return Ok(Vec::new());
+    }
+    let sql = select(
+        conn,
+        "statements",
+        &[
+            "account_key",
+            "directory",
+            "filename",
+            "created_tsp",
+            "digest",
+            "deleted",
+        ],
+        "ORDER BY rowid",
+    )?;
+    let mut st = conn.prepare(&sql)?;
+    let rows = st.query_map([], |r| {
+        Ok((
+            SrcDoc {
+                account_key: vint(get(r, 0)?).unwrap_or_default(),
+                directory: vtext(get(r, 1)?),
+                filename: vtext(get(r, 2)?),
+                created_ts: vint(get(r, 3)?).filter(|t| *t > 0),
+                digest: vtext(get(r, 4)?).trim().to_lowercase(),
+            },
+            vint(get(r, 5)?).unwrap_or(0) != 0,
+        ))
+    })?;
     let mut out = Vec::new();
-    let mut total = 0usize;
-    for table in TABLES.iter().filter(|t| have.contains(**t)) {
-        let cols: Vec<String> = {
-            let mut st = conn.prepare("SELECT lower(name) FROM pragma_table_info(?1)")?;
-            let r = st
-                .query_map([table], |r| r.get::<_, String>(0))?
-                .collect::<Result<_, _>>()?;
-            r
-        };
-        fn pick_col(cols: &[String], c: &'static [&'static str]) -> Option<&'static str> {
-            c.iter().find(|n| cols.iter().any(|x| x == **n)).copied()
-        }
-        let pick = |c: &'static [&'static str]| pick_col(&cols, c);
-        let (Some(acc), Some(blob)) = (pick(&ACCOUNT), pick(&BLOB)) else {
-            continue;
-        };
-        let name = pick(&NAME)
-            .map(|n| format!("\"{n}\""))
-            .unwrap_or("NULL".into());
-        let ts = pick(&TS)
-            .map(|n| format!("\"{n}\""))
-            .unwrap_or("NULL".into());
-        let sql = format!(
-            "SELECT rowid, \"{acc}\", {name}, {ts}, \"{blob}\" FROM \"{table}\" WHERE substr(\"{blob}\", 1, 4) = X'25504446' AND length(\"{blob}\") <= {MAX_PDF_BYTES} ORDER BY rowid"
-        );
-        let mut st = conn.prepare(&sql)?;
-        let rows = st.query_map([], |r| {
-            Ok(SrcDoc {
-                id: vint(get(r, 0)?).unwrap_or_default(),
-                account_key: vint(get(r, 1)?).unwrap_or_default(),
-                title: vtext(get(r, 2)?),
-                ts: vint(get(r, 3)?),
-                bytes: match get(r, 4)? {
-                    Value::Blob(b) => b,
-                    _ => Vec::new(),
-                },
-            })
-        })?;
-        for d in rows {
-            let d = d?;
-            if d.bytes.starts_with(b"%PDF")
-                && d.bytes.len() <= MAX_PDF_BYTES
-                && total.saturating_add(d.bytes.len()) <= MAX_TOTAL_PDF_BYTES
-            {
-                total += d.bytes.len();
-                out.push(d);
-            }
-        }
-        if !out.is_empty() {
-            break;
+    for row in rows {
+        let (d, deleted) = row?;
+        if !deleted && !d.filename.trim().is_empty() {
+            out.push(d);
         }
     }
     Ok(out)
+}
+
+/// What the user pointed the import at: MoneyMoney's data folder or a single
+/// database file. Returns the database file and, for a folder, its
+/// `Statements` folder (if there is one).
+fn locate(path: &str) -> CoreResult<(String, Option<PathBuf>)> {
+    let p = Path::new(path);
+    if !p.is_dir() {
+        return Ok((path.to_string(), None));
+    }
+    let mut found: Vec<PathBuf> = Vec::new();
+    for dir in [p.join("Database"), p.to_path_buf()] {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut files: Vec<PathBuf> = entries
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|f| {
+                f.is_file()
+                    && f.extension()
+                        .is_some_and(|x| x.eq_ignore_ascii_case("sqlite"))
+            })
+            .collect();
+        // "MoneyMoney.sqlite" first, then by name
+        files.sort_by_key(|f| {
+            let name = f
+                .file_name()
+                .map(|n| n.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            (name != "moneymoney.sqlite", name)
+        });
+        found.extend(files);
+    }
+    let db = found
+        .into_iter()
+        .next()
+        .ok_or_else(|| CoreError::NotFound {
+            what: tr("MoneyMoney-Datenbank").into(),
+        })?;
+    let statements = p.join("Statements");
+    Ok((
+        db.to_string_lossy().into_owned(),
+        statements.is_dir().then_some(statements),
+    ))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// A single, harmless path component (never "..", never a nested path).
+fn component(s: &str) -> Option<&str> {
+    let s = s.trim();
+    let ok = !s.is_empty() && s != "." && s != ".." && !s.contains(['/', '\\', '\0']);
+    ok.then_some(s)
+}
+
+/// The folder the PDFs are taken from, and how to find a listed file in it.
+struct StatementFiles {
+    root: PathBuf,
+    /// All PDFs below `root` (built on first use).
+    all: Option<Vec<PathBuf>>,
+    /// SHA-256 → file, for files not at their original place (built on first use).
+    by_digest: Option<HashMap<String, PathBuf>>,
+    /// Files handed out by `find`.
+    used: HashSet<PathBuf>,
+}
+
+impl StatementFiles {
+    fn new(root: PathBuf) -> Self {
+        Self {
+            root,
+            all: None,
+            by_digest: None,
+            used: HashSet::new(),
+        }
+    }
+
+    /// All PDFs below the folder (no symlinks, bounded depth and count).
+    fn all(&mut self) -> &[PathBuf] {
+        if self.all.is_none() {
+            let mut out = Vec::new();
+            let mut stack = vec![(self.root.clone(), 0u32)];
+            while let Some((dir, depth)) = stack.pop() {
+                let Ok(entries) = std::fs::read_dir(&dir) else {
+                    continue;
+                };
+                for e in entries.flatten() {
+                    let Ok(kind) = e.file_type() else { continue };
+                    let path = e.path();
+                    if kind.is_dir() && depth < 6 {
+                        stack.push((path, depth + 1));
+                    } else if kind.is_file()
+                        && path
+                            .extension()
+                            .is_some_and(|x| x.eq_ignore_ascii_case("pdf"))
+                        && out.len() < MAX_FOLDER_FILES
+                    {
+                        out.push(path);
+                    }
+                }
+            }
+            out.sort();
+            self.all = Some(out);
+        }
+        self.all.as_deref().unwrap_or_default()
+    }
+
+    /// The file of a listed document: at its original place, else by name
+    /// directly in the folder, else by checksum anywhere below it.
+    fn find(&mut self, d: &SrcDoc) -> Option<PathBuf> {
+        let name = component(&d.filename)?;
+        let mut candidates = vec![self.root.join(name)];
+        if let Some(dir) = component(&d.directory) {
+            candidates.insert(0, self.root.join(dir).join(name));
+        }
+        let mut hit = candidates.into_iter().find(|c| c.is_file());
+        if hit.is_none() && !d.digest.is_empty() {
+            if self.by_digest.is_none() {
+                let mut map = HashMap::new();
+                for f in self.all().to_vec() {
+                    let small = std::fs::metadata(&f).is_ok_and(|m| m.len() <= MAX_PDF_BYTES);
+                    if let (true, Ok(bytes)) = (small, std::fs::read(&f)) {
+                        map.entry(sha256_hex(&bytes)).or_insert(f);
+                    }
+                }
+                self.by_digest = Some(map);
+            }
+            hit = self
+                .by_digest
+                .as_ref()
+                .and_then(|m| m.get(&d.digest))
+                .cloned();
+        }
+        if let Some(h) = &hit {
+            self.used.insert(h.clone());
+        }
+        hit
+    }
+
+    /// PDFs in the folder that no listed document used.
+    fn unlisted(&mut self) -> u32 {
+        let all = self.all().to_vec();
+        all.iter().filter(|f| !self.used.contains(*f)).count() as u32
+    }
+}
+
+/// Archive section for a MoneyMoney document, from its file name (MoneyMoney
+/// stores no document type): kontoauszug | abrechnung | steuer | postbox.
+fn doc_type_for(file_name: &str) -> &'static str {
+    let n = file_name.to_lowercase();
+    if has_any(
+        &n,
+        &[
+            "steuer",
+            "jstb",
+            "erträgnisaufstellung",
+            "ertraegnisaufstellung",
+        ],
+    ) {
+        "steuer"
+    } else if has_any(&n, &["kontoauszug", "depotauszug"]) {
+        "kontoauszug"
+    } else if n.contains("abrechnung") {
+        "abrechnung"
+    } else {
+        "postbox"
+    }
 }
 
 // ------------------------------------------------------------------ rows
@@ -1289,7 +1480,12 @@ fn replaces_starter_categories(conn: &Connection, src: &Source) -> CoreResult<bo
     Ok(bookings == 0)
 }
 
-fn preview(conn: &Connection, src: &Source) -> CoreResult<MoneyMoneyDbPreview> {
+fn preview(
+    conn: &Connection,
+    src: &Source,
+    database_path: String,
+    mut files: Option<StatementFiles>,
+) -> CoreResult<MoneyMoneyDbPreview> {
     let mut accounts = Vec::new();
     let (mut total, mut pending, mut notes, mut parts) = (0u32, 0u32, 0u32, 0u32);
     let mut first: Option<String> = None;
@@ -1337,6 +1533,7 @@ fn preview(conn: &Connection, src: &Source) -> CoreResult<MoneyMoneyDbPreview> {
             booking_count: r.rows.len() as u32,
             pending_count: r.pending,
             holding_count: src.holdings.get(&a.id).map_or(0, |h| h.len() as u32),
+            statement_count: src.docs.iter().filter(|d| d.account_key == a.id).count() as u32,
             notes_count: n,
             first_date: f,
             last_date: l,
@@ -1371,7 +1568,27 @@ fn preview(conn: &Connection, src: &Source) -> CoreResult<MoneyMoneyDbPreview> {
                 .count() as u32,
         });
     }
+    let known: HashSet<i64> = src.accounts.iter().map(|a| a.id).collect();
+    let listed: Vec<&SrcDoc> = src
+        .docs
+        .iter()
+        .filter(|d| known.contains(&d.account_key))
+        .collect();
+    let (mut found, mut bytes) = (0u32, 0u64);
+    if let Some(files) = files.as_mut() {
+        for d in &listed {
+            if let Some(f) = files.find(d) {
+                found += 1;
+                bytes += std::fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
+            }
+        }
+    }
     Ok(MoneyMoneyDbPreview {
+        database_path,
+        statement_count: listed.len() as u32,
+        statements_dir: files.map(|f| f.root.to_string_lossy().into_owned()),
+        statements_found: found,
+        statements_bytes: bytes,
         accounts,
         banks,
         category_paths: src.category_order.iter().map(|p| p.join(" › ")).collect(),
@@ -1383,6 +1600,68 @@ fn preview(conn: &Connection, src: &Source) -> CoreResult<MoneyMoneyDbPreview> {
         date_range_end: last,
         replaces_starter_categories: replaces_starter_categories(conn, src)?,
     })
+}
+
+/// Copies one listed statement / bank document into the archive of
+/// `account_id`. Idempotent per MoneyMoney account and file content.
+fn import_document(
+    conn: &Connection,
+    mm_account: i64,
+    account_id: i64,
+    d: &SrcDoc,
+    files: Option<&mut StatementFiles>,
+    res: &mut MoneyMoneyDbImportResult,
+) -> CoreResult<()> {
+    let key = |digest: &str| format!("moneymoney:{mm_account}:{digest}");
+    let exists = |digest: &str| -> CoreResult<bool> {
+        Ok(conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM booking_documents WHERE source_url = ?1)",
+            [key(digest)],
+            |r| r.get(0),
+        )?)
+    };
+    // already there: don't read the file again
+    if !d.digest.is_empty() && exists(&d.digest)? {
+        res.documents_existing += 1;
+        return Ok(());
+    }
+    let Some(path) = files.and_then(|f| f.find(d)) else {
+        res.documents_missing += 1;
+        return Ok(());
+    };
+    if std::fs::metadata(&path).map_or(true, |m| m.len() > MAX_PDF_BYTES) {
+        res.documents_too_large += 1;
+        return Ok(());
+    }
+    let Ok(bytes) = std::fs::read(&path) else {
+        res.documents_missing += 1;
+        return Ok(());
+    };
+    let digest = sha256_hex(&bytes);
+    if !bytes.starts_with(b"%PDF") || (!d.digest.is_empty() && d.digest != digest) {
+        res.documents_mismatched += 1;
+        return Ok(());
+    }
+    let date = d.created_ts.and_then(unix_to_date).unwrap_or_default();
+    let file = d.filename.trim().replace(['/', '\\'], "-");
+    let added = crate::documents::insert_doc(
+        conn,
+        None,
+        Some(account_id),
+        &crate::documents::title_from_file(&file),
+        doc_type_for(&file),
+        "application/pdf",
+        &file,
+        &bytes,
+        &key(&digest),
+        &date,
+    )?;
+    if added.is_some() {
+        res.documents_imported += 1;
+    } else {
+        res.documents_existing += 1;
+    }
+    Ok(())
 }
 
 /// Priority of the first imported category rule: after GiroCrab's own rules
@@ -1444,6 +1723,7 @@ fn import(
     conn: &Connection,
     src: &Source,
     options: &MoneyMoneyDbImportOptions,
+    mut files: Option<StatementFiles>,
 ) -> CoreResult<MoneyMoneyDbImportResult> {
     let mut res = MoneyMoneyDbImportResult::default();
     let mut cat_cache = HashMap::new();
@@ -1603,28 +1883,9 @@ fn import(
         res.notes_imported += st.notes;
         res.categories_created += st.categories_created;
         res.pending_skipped += r.pending;
-        for d in src.docs.iter().filter(|d| d.account_key == a.id) {
-            let date = d.ts.and_then(unix_to_date).unwrap_or_default();
-            let title = if d.title.trim().is_empty() {
-                crate::i18n::trf("Kontoauszug {0}", &[&date])
-            } else {
-                d.title.clone()
-            };
-            let file = format!("{}.pdf", title.trim_end_matches(".pdf").replace('/', "-"));
-            let added = crate::documents::insert_doc(
-                conn,
-                None,
-                Some(account_id),
-                &title,
-                "kontoauszug",
-                "application/pdf",
-                &file,
-                &d.bytes,
-                &format!("moneymoney:{}:{}", a.id, d.id),
-                &date,
-            )?;
-            if added.is_some() {
-                res.documents_imported += 1;
+        if options.import_statements {
+            for d in src.docs.iter().filter(|d| d.account_key == a.id) {
+                import_document(conn, a.id, account_id, d, files.as_mut(), &mut res)?;
             }
         }
         if let (true, Some(bank)) = (owned, a.bank_key) {
@@ -1654,6 +1915,10 @@ fn import(
                 params![uuid, slot, now],
             )?;
         }
+    }
+
+    if let (true, Some(files)) = (options.import_statements, files.as_mut()) {
+        res.documents_unlisted = files.unlisted();
     }
 
     let mut bank_connection: HashMap<i64, i64> = HashMap::new();
@@ -1722,23 +1987,32 @@ fn import(
 
 #[uniffi::export]
 impl Vault {
-    /// Dry run of a MoneyMoney database import: reads the database read-only
-    /// and lists accounts, bank logins and categories. Nothing is stored and
-    /// no PIN is read.
+    /// Dry run of a MoneyMoney import: reads the database read-only and
+    /// lists accounts, bank logins, categories and documents. Nothing is
+    /// stored and no PIN is read.
+    ///
+    /// `path` is MoneyMoney's data folder (the database and its `Statements`
+    /// folder are found in it) or a single database file, e.g. a backup.
+    /// `statements_dir`: folder with the statement PDFs, if they are not in
+    /// the MoneyMoney folder.
     pub fn preview_moneymoney_database(
         &self,
         path: String,
         password: String,
+        statements_dir: Option<String>,
     ) -> Result<MoneyMoneyDbPreview, CoreError> {
         let password = SecretString::new(password);
-        let src = read_source(&path, &password, false)?;
+        let (db_path, found) = locate(&path)?;
+        let src = read_source(&db_path, &password, false)?;
         drop(password);
+        let files = statement_files(statements_dir, found);
         let db = self.db()?;
-        preview(&db, &src)
+        preview(&db, &src, db_path, files)
     }
 
-    /// Imports a MoneyMoney database in one go (accounts, bookings, categories,
-    /// notes, optionally bank logins and saved PINs). Idempotent.
+    /// Imports from MoneyMoney in one go (accounts, bookings, categories,
+    /// notes, optionally bank logins, saved PINs and statement PDFs).
+    /// Idempotent. `path` as for `preview_moneymoney_database`.
     pub fn import_moneymoney_database(
         &self,
         path: String,
@@ -1747,14 +2021,26 @@ impl Vault {
     ) -> Result<MoneyMoneyDbImportResult, CoreError> {
         let password = SecretString::new(password);
         let with_pins = options.import_pins && options.create_connections;
-        let src = read_source(&path, &password, with_pins)?;
+        let (db_path, found) = locate(&path)?;
+        let src = read_source(&db_path, &password, with_pins)?;
         drop(password);
+        let files = statement_files(options.statements_dir.clone(), found);
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
-        let res = import(&tx, &src, &options)?;
+        let res = import(&tx, &src, &options, files)?;
         tx.commit()?;
         Ok(res)
     }
+}
+
+/// The folder to take PDFs from: the explicit one, else the one found.
+fn statement_files(explicit: Option<String>, found: Option<PathBuf>) -> Option<StatementFiles> {
+    explicit
+        .filter(|d| !d.trim().is_empty())
+        .map(PathBuf::from)
+        .filter(|d| d.is_dir())
+        .or(found)
+        .map(StatementFiles::new)
 }
 
 #[cfg(test)]
