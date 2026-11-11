@@ -8479,6 +8479,61 @@
           }
         }
       }
+    },
+    "GiroCode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCode"
+          }
+        }
+      }
+    },
+    "GiroCode erstellen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create GiroCode"
+          }
+        }
+      }
+    },
+    "GiroCode scannen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan GiroCode"
+          }
+        }
+      }
+    },
+    "In der App Ihrer Bank „Fotoüberweisung“ bzw. „QR-Code scannen“ wählen, den Code scannen und dort mit TAN freigeben. GiroCrab sendet nichts." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In your bank’s app choose “photo transfer” or “scan QR code”, scan the code and approve it there with a TAN. GiroCrab sends nothing."
+          }
+        }
+      }
+    },
+    "Von diesem Konto kann GiroCrab nicht direkt überweisen. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab can’t send transfers from this account directly. You’ll get a GiroCode at the end to scan in your bank’s app."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

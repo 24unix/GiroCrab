@@ -233,7 +233,7 @@ enum PaymentParser {
         return CGImageSourceCreateImageAtIndex(src, 0, nil)
     }
 
-    private static func qrPayloads(_ cg: CGImage) async -> [String] {
+    static func qrPayloads(_ cg: CGImage) async -> [String] {
         await withCheckedContinuation { cont in
             let req = VNDetectBarcodesRequest()
             req.symbologies = [.qr]

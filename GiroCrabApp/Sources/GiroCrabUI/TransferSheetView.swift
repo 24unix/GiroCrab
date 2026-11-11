@@ -19,7 +19,15 @@ struct TransferSheetView: View {
     private let maxPurpose = 140
 
     private var account: Account? {
-        model.transferAccounts.first { $0.id == model.transferDraft.accountID }
+        model.transferFormAccounts.first { $0.id == model.transferDraft.accountID }
+    }
+    /// The account can send from GiroCrab (FinTS / bunq); otherwise the form
+    /// ends with a GiroCode for the bank's app.
+    private var canSend: Bool { model.canSendTransfer(from: account?.id) }
+    private var giroCodePayload: String? {
+        guard let cents else { return nil }
+        let d = model.transferDraft
+        return GiroCode.payload(name: d.name, iban: d.iban, bic: bicText, amountCents: cents, purpose: d.purpose)
     }
     private var ibanValid: Bool { validateIban(iban: model.transferDraft.iban) }
     private var bicText: String { model.transferDraft.bic.trimmingCharacters(in: .whitespaces) }
@@ -48,7 +56,7 @@ struct TransferSheetView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Image(systemName: "paperplane.circle.fill").font(.title).foregroundStyle(Theme.accent)
-                Text(confirming ? "Überweisung prüfen" : "Neue Überweisung").font(.title2.bold())
+                Text(confirming ? (canSend ? "Überweisung prüfen" : "GiroCode scannen") : "Neue Überweisung").font(.title2.bold())
                 Spacer()
             }
             if confirming { confirmation } else { form(draft: $model.transferDraft) }
@@ -112,11 +120,17 @@ struct TransferSheetView: View {
             HStack { Spacer(); TransferTemplatesMenu() }
             field("Von Konto") {
                 Picker("", selection: draft.accountID) {
-                    ForEach(model.transferAccounts) { a in
+                    ForEach(model.transferFormAccounts) { a in
                         Text("\(a.name) · \(formatIBAN(a.iban))").tag(Optional(a.id))
                     }
                 }
                 .labelsHidden()
+            }
+            if account != nil && !canSend {
+                Label("Von diesem Konto kann GiroCrab nicht direkt überweisen. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank.", systemImage: "qrcode")
+                    .font(.caption).foregroundStyle(Theme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 152)
             }
             field("Empfänger") {
                 VStack(alignment: .leading, spacing: 6) {
@@ -194,7 +208,7 @@ struct TransferSheetView: View {
                         .foregroundStyle(draft.wrappedValue.purpose.count >= maxPurpose ? Color.red : Theme.tertiary)
                 }
             }
-            if account?.connector?.offersInstantChoice == true {
+            if canSend && account?.connector?.offersInstantChoice == true {
                 field("Ausführung") {
                     VStack(alignment: .leading, spacing: 2) {
                         Toggle("Echtzeitüberweisung (SEPA Instant)", isOn: draft.instant)
@@ -225,7 +239,7 @@ struct TransferSheetView: View {
                     }
                 }
             }
-            if !pinStored {
+            if canSend && !pinStored {
                 field(isBunq ? "bunq-API-Schlüssel" : "Banking-PIN") {
                     SecureField(isBunq ? "API-Schlüssel (wird nicht gespeichert)" : "PIN (wird nicht gespeichert)", text: draft.pin)
                         .textFieldStyle(.roundedBorder)
@@ -243,7 +257,47 @@ struct TransferSheetView: View {
 
     // MARK: confirmation
 
-    private var confirmation: some View {
+    @ViewBuilder private var confirmation: some View {
+        if canSend { sendConfirmation } else { giroCodeView }
+    }
+
+    /// Read-only account (e.g. C24): the transfer as EPC QR code.
+    private var giroCodeView: some View {
+        let d = model.transferDraft
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 16) {
+                Group {
+                    if let payload = giroCodePayload, let cg = GiroCode.image(for: payload) {
+                        Image(decorative: cg, scale: 1)
+                            .interpolation(.none)
+                            .resizable()
+                            .accessibilityLabel(Text("GiroCode"))
+                    } else {
+                        Image(systemName: "qrcode").resizable().foregroundStyle(Theme.tertiary)
+                    }
+                }
+                .frame(width: 200, height: 200)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(Money.format(-(cents ?? 0)).replacingOccurrences(of: "-", with: ""))
+                        .font(.system(size: 26, weight: .semibold).monospacedDigit())
+                    summaryRow("An", d.name)
+                    summaryRow("IBAN", d.iban)
+                    if !bicText.isEmpty { summaryRow("BIC", bicText.uppercased()) }
+                    summaryRow("Zweck", d.purpose.isEmpty ? "–" : d.purpose)
+                    summaryRow("Von", account.map { "\($0.name) · \(formatIBAN($0.iban))" } ?? "–")
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border))
+            Label("In der App Ihrer Bank „Fotoüberweisung“ bzw. „QR-Code scannen“ wählen, den Code scannen und dort mit TAN freigeben. GiroCrab sendet nichts.", systemImage: "camera.viewfinder")
+                .font(.callout).foregroundStyle(Theme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var sendConfirmation: some View {
         let d = model.transferDraft
         return VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 10) {
@@ -301,7 +355,13 @@ struct TransferSheetView: View {
 
     private var buttons: some View {
         HStack {
-            if confirming {
+            if confirming && !canSend {
+                Button("Zurück") { confirming = false }
+                Spacer()
+                Button("Fertig") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            } else if confirming {
                 Button("Zurück") { confirming = false }
                 Spacer()
                 Button(isBunq ? "In der bunq-App freigeben" : "Jetzt mit TAN freigeben") { model.startTransfer() }
@@ -312,10 +372,11 @@ struct TransferSheetView: View {
                 Button("Abbrechen", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Weiter") { model.transferError = nil; confirming = true }
+                Button(canSend ? "Weiter" : "GiroCode erstellen") { model.transferError = nil; confirming = true }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
-                    .disabled(!canReview || (!pinStored && model.transferDraft.pin.isEmpty))
+                    .disabled(!canReview || (canSend && !pinStored && model.transferDraft.pin.isEmpty)
+                              || (!canSend && giroCodePayload == nil))
             }
         }
     }

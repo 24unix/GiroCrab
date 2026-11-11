@@ -1677,15 +1677,31 @@ extension AppModel {
         }
     }
 
-    var canTransfer: Bool { vault != nil && !transferAccounts.isEmpty && syncingConnectionID == nil && activeTransfer == nil }
+    /// Checking accounts GiroCrab cannot send from (e.g. C24 via Enable Banking,
+    /// which is read-only): the transfer form ends with a GiroCode to scan in
+    /// the bank's app instead of a TAN.
+    var giroCodeAccounts: [Account] {
+        let sending = Set(transferAccounts.map(\.id))
+        return allAccounts.filter { $0.kind == .checking && !$0.iban.isEmpty && !sending.contains($0.id) }
+    }
 
-    /// Pre-selects the sidebar account if it can send transfers, else the first one.
+    /// Accounts offered in the transfer form: sending ones first.
+    var transferFormAccounts: [Account] { transferAccounts + giroCodeAccounts }
+
+    func canSendTransfer(from accountID: Int64?) -> Bool {
+        transferAccounts.contains { $0.id == accountID }
+    }
+
+    var canTransfer: Bool { vault != nil && !transferFormAccounts.isEmpty && syncingConnectionID == nil && activeTransfer == nil }
+
+    /// Pre-selects the sidebar account if it is offered in the form, else the first one.
     func openTransfer() {
         guard canTransfer else { return }
+        let offered = transferFormAccounts
         var selected: Int64?
-        if case .account(let id) = sidebarSelection, transferAccounts.contains(where: { $0.id == id }) { selected = id }
-        if transferDraft.accountID == nil || !transferAccounts.contains(where: { $0.id == transferDraft.accountID }) {
-            transferDraft.accountID = selected ?? transferAccounts.first?.id
+        if case .account(let id) = sidebarSelection, offered.contains(where: { $0.id == id }) { selected = id }
+        if transferDraft.accountID == nil || !offered.contains(where: { $0.id == transferDraft.accountID }) {
+            transferDraft.accountID = selected ?? offered.first?.id
         } else if let selected {
             transferDraft.accountID = selected
         }
@@ -1719,7 +1735,7 @@ extension AppModel {
     }
 
     func startTransfer() {
-        guard let vault, let accID = transferDraft.accountID,
+        guard let vault, let accID = transferDraft.accountID, canSendTransfer(from: accID),
               let account = allAccounts.first(where: { $0.id == accID }),
               let connection = connections.first(where: { $0.id == account.connectionId }) else { return }
         do {
