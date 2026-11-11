@@ -12,6 +12,7 @@ extension AppModel {
     /// credentials. The credentials alone don't count: they are shared with
     /// PSD2 banks such as C24 and must not move the cards off the web login.
     func usesPortal(_ c: BankConnection) -> Bool {
+        if !isDemo, c.connector == .amazonOrders { return true }
         guard !isDemo, c.connector == .americanExpress || c.connector == .amazonVisa else { return false }
         return !Self.cardUsesEnableBanking(
             optIn: settingEntry(Self.enableBankingOptInKey(c.connector))?.value,
@@ -77,6 +78,7 @@ extension ConnectorKind {
         switch self {
         case .americanExpress: return URL(string: "https://global.americanexpress.com/activity/recent")
         case .amazonVisa: return URL(string: "https://www.openbank.de")
+        case .amazonOrders: return URL(string: "https://www.amazon.de/gp/css/order-history")
         default: return nil
         }
     }
@@ -84,6 +86,7 @@ extension ConnectorKind {
         switch self {
         case .americanExpress: return ["americanexpress.com", "aexp.com"]
         case .amazonVisa: return ["openbank.de", "openbank.com", "zinia.de", "zinia.com"]
+        case .amazonOrders: return ["amazon.de", "amazon.com"]
         default: return []
         }
     }
@@ -163,13 +166,20 @@ final class PortalBrowser {
       return JSON.stringify(rows); })()
     """
 
-    init(url: URL) {
+    /// `captureTraffic: false` leaves the page untouched (no injected fetch/XHR hook) and
+    /// identifies as desktop Safari – used for Amazon, whose sign-in is picky about both.
+    init(url: URL, captureTraffic: Bool = true) {
         let cfg = WKWebViewConfiguration()
         cfg.websiteDataStore = .default()
         let ucc = WKUserContentController()
-        ucc.addUserScript(WKUserScript(source: Self.hook, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        if captureTraffic {
+            ucc.addUserScript(WKUserScript(source: Self.hook, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        }
         cfg.userContentController = ucc
         webView = WKWebView(frame: .zero, configuration: cfg)
+        if !captureTraffic {
+            webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+        }
         ucc.add(WeakHandler(self), name: "girocrab")
         observation = webView.observe(\.isLoading) { [weak self] w, _ in
             Task { @MainActor in self?.loading = w.isLoading }

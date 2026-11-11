@@ -247,7 +247,9 @@ struct MainSplitView: View {
         }
         .sheet(item: $model.webLoginConnection) { c in
             Group {
-                if c.connector == .tradeRepublic { WebLoginSheet(connection: c) } else { PortalWebSheet(connection: c) }
+                if c.connector == .tradeRepublic { WebLoginSheet(connection: c) }
+                else if c.connector == .amazonOrders { AmazonWebSheet(connection: c) }
+                else { PortalWebSheet(connection: c) }
             }
             .environment(model)
         }

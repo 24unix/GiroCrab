@@ -31,6 +31,8 @@ pub enum ConnectorKind {
     /// Scalable Capital Broker / Overnight / Fixed-Term via the GraphQL API
     /// of the official CLI (OAuth device flow, DPoP-bound tokens).
     ScalableCapital,
+    /// Amazon customer account (order history) via embedded web login
+    AmazonOrders,
 }
 
 impl ConnectorKind {
@@ -47,6 +49,7 @@ impl ConnectorKind {
             ConnectorKind::Bunq => "bunq",
             ConnectorKind::EnableBanking => "enablebanking",
             ConnectorKind::ScalableCapital => "scalable",
+            ConnectorKind::AmazonOrders => "amazon-orders",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -91,6 +94,7 @@ impl ConnectorKind {
             ConnectorKind::Bunq,
             ConnectorKind::EnableBanking,
             ConnectorKind::ScalableCapital,
+            ConnectorKind::AmazonOrders,
         ]
     }
 }

@@ -98,7 +98,10 @@ impl BankConnector for DemoConnector {
                 expires_in_seconds: Some(120),
                 poll_interval_seconds: 0,
             },
-            ConnectorKind::AmericanExpress | ConnectorKind::AmazonVisa | ConnectorKind::EnableBanking => Challenge {
+            ConnectorKind::AmericanExpress
+            | ConnectorKind::AmazonVisa
+            | ConnectorKind::AmazonOrders
+            | ConnectorKind::EnableBanking => Challenge {
                 kind: ChallengeKind::Redirect,
                 title: tr("Zustimmung beim Kartenherausgeber erteilen").into(),
                 message: tr("Demo: Es wird keine echte Seite geöffnet. Beliebigen Text einfügen (z. B. https://localhost/cb?code=demo).").into(),
@@ -260,6 +263,7 @@ impl BankConnector for DemoConnector {
                 ConnectorKind::ScalableCapital => ("Scalable Capital", "Zinsen Overnight", 5_12),
                 ConnectorKind::AmericanExpress
                 | ConnectorKind::AmazonVisa
+                | ConnectorKind::AmazonOrders
                 | ConnectorKind::EnableBanking => ("AMZN Mktp DE", "Amazon.de Bestellung", -34_99),
                 _ => (
                     "REWE Markt GmbH",

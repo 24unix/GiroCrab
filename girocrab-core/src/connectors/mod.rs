@@ -24,6 +24,7 @@ use crate::models::{AccountKind, ConnectorKind, KnownRecipient, SepaTransferRequ
 use crate::secret::SecretString;
 use crate::vault::Vault;
 
+pub mod amazon_orders;
 pub mod bank_directory;
 pub mod bunq;
 pub mod comdirect;
@@ -306,6 +307,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("Herausgeber: Open Bank S.A. (Zinia). Anmeldung im eingebetteten Browser – keine API-Schlüssel nötig. Optional: eigene PSD2-/Enable-Banking-API unter „Erweitert“.").into(),
         },
+        ConnectorKind::AmazonOrders => BankDescriptor {
+            kind,
+            name: "Amazon Bestellungen".into(),
+            protocol: tr("Direkt-Login (Web-Session)").into(),
+            bank_code: String::new(),
+            sf_symbol: "shippingbox.fill".into(),
+            login_label: tr("Kontobezeichnung").into(),
+            secret_label: tr("(Anmeldung im Browser-Fenster)").into(),
+            required_settings: vec![],
+            note: tr("Liest Ihre Bestellungen aus dem Amazon-Kundenkonto (amazon.de). Anmeldung im eingebetteten Browser inkl. Captcha/2FA – keine Zugangsdaten werden gespeichert.").into(),
+        },
         ConnectorKind::EnableBanking => BankDescriptor {
             kind,
             name: tr("Bank per PSD2 (Enable Banking)").into(),
@@ -576,6 +588,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
             "Open Bank",
             "enablebanking.country.amazonvisa",
         )),
+        ConnectorKind::AmazonOrders => Box::new(amazon_orders::WebOnlyConnector),
         ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {

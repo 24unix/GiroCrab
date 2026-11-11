@@ -219,6 +219,7 @@ extension ConnectorKind {
         case .bunq: return "bunq"
         case .enableBanking: return "Enable Banking (PSD2)"
         case .scalableCapital: return "Scalable Capital"
+        case .amazonOrders: return "Amazon Bestellungen"
         }
     }
 
@@ -236,6 +237,7 @@ extension ConnectorKind {
         case .bunq: return "#1F8F5F"
         case .enableBanking: return "#5B5BD6"
         case .scalableCapital: return "#0E2A47"
+        case .amazonOrders: return "#B45F06"
         }
     }
 
@@ -260,6 +262,7 @@ extension ConnectorKind {
         case .bunq: return "bq"
         case .enableBanking: return "PS"
         case .scalableCapital: return "SC"
+        case .amazonOrders: return "AZ"
         }
     }
 }

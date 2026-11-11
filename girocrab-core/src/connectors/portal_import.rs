@@ -837,7 +837,10 @@ fn to_fetch(
 }
 
 impl Vault {
-    fn portal_connection(&self, connection_id: i64) -> Result<(ConnectorKind, String), CoreError> {
+    pub(super) fn portal_connection(
+        &self,
+        connection_id: i64,
+    ) -> Result<(ConnectorKind, String), CoreError> {
         let db = self.db()?;
         let (kind, name): (String, String) = db
             .query_row(

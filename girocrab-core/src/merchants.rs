@@ -1682,7 +1682,11 @@ pub fn payment_method(
     amount_cents: i64,
 ) -> String {
     let t = normalise(&format!("{booking_text} {purpose}"));
-    let m = if contains_any(&t, &["saveback"]) {
+    let m = if booking_text == "Amazon-Bestellung" {
+        "Bestellung"
+    } else if booking_text == "Amazon-Erstattung" {
+        "Erstattung"
+    } else if contains_any(&t, &["saveback"]) {
         "Saveback"
     } else if contains_any(&t, &["round up", "roundup"]) {
         "Round up"

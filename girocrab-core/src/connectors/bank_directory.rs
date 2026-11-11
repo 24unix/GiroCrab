@@ -123,6 +123,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
             "Scalable Capital",
             "scalable capital depot broker overnight festgeld",
         ),
+        (
+            ConnectorKind::AmazonOrders,
+            "Amazon Bestellungen",
+            "amazon kundenkonto bestellungen einkäufe shop",
+        ),
     ]
 }
 
