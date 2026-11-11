@@ -252,6 +252,7 @@ public final class AppModel {
             switch options.initialView {
             case "alltag": scope = .everyday
             case "sparplaene", "sparpläne", "investments": scope = .investments
+            case "belege", "documents": sidebarSelection = .documents
             default: break
             }
             if let q = options.selectAccount, let a = allAccounts.first(where: { $0.name.lowercased().contains(q) }) {
