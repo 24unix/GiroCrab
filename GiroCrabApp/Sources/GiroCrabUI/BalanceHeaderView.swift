@@ -255,14 +255,21 @@ struct StreamHeaderCard: View {
                 .fixedSize()
                 // One filter menu (status + income/expenses) keeps the row narrow.
                 Menu {
-                    Picker("Status", selection: $model.statusFilter) {
-                        ForEach(StatusFilter.allCases) { Text($0.title).tag($0) }
+                    // Inline pickers show no title in a menu: name each group with a section header.
+                    Section("Status") {
+                        Picker("Status", selection: $model.statusFilter) {
+                            ForEach(StatusFilter.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
                     }
-                    .pickerStyle(.inline)
-                    Picker("Art", selection: $model.directionFilter) {
-                        ForEach(BookingDirection.ordered) { Text($0.title).tag($0) }
+                    Section("Buchungsart") {
+                        Picker("Buchungsart", selection: $model.directionFilter) {
+                            ForEach(BookingDirection.ordered) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
                     }
-                    .pickerStyle(.inline)
                 } label: {
                     #if os(iOS)
                     if sizeClass == .compact {
