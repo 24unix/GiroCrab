@@ -451,8 +451,9 @@ fn find_balance(v: &Value, kind: ConnectorKind) -> Option<(String, i64)> {
     generic(v).map(|(k, c)| (k, owed(c)))
 }
 
-/// Diagnostic: logs every non-zero numeric value whose key mentions balance/amount.
-fn log_candidates(v: &Value) {
+/// Diagnostic: names of keys with a non-zero numeric value that mention
+/// balance/amount. Key names only – the debug log never carries amounts.
+fn candidate_keys(v: &Value, out: &mut std::collections::BTreeSet<String>) {
     match v {
         Value::Object(o) => {
             for (k, val) in o {
@@ -460,12 +461,12 @@ fn log_candidates(v: &Value) {
                 if (kl.contains("balance") || kl.contains("amount"))
                     && val.as_f64().is_some_and(|f| f != 0.0)
                 {
-                    crate::depot_debug::log(&format!("portal candidate: key={k} raw_val={val}"));
+                    out.insert(k.clone());
                 }
-                log_candidates(val);
+                candidate_keys(val, out);
             }
         }
-        Value::Array(a) => a.iter().for_each(log_candidates),
+        Value::Array(a) => a.iter().for_each(|x| candidate_keys(x, out)),
         _ => {}
     }
 }
@@ -892,15 +893,20 @@ impl Vault {
         let (mut parsed, keyed) = parse_json_bodies_keyed(&json_bodies, kind);
         let balance = keyed.as_ref().map(|(_, c)| *c);
         match &keyed {
-            Some((k, c)) => crate::depot_debug::log(&format!(
-                "portal matched balance: key={k} amount_cents={c}"
-            )),
+            Some((k, _)) => crate::depot_debug::log(&format!("portal matched balance: key={k}")),
             None => crate::depot_debug::log("portal matched balance: none"),
         }
+        let mut keys = std::collections::BTreeSet::new();
         for b in &json_bodies {
             if let Ok(v) = serde_json::from_str::<Value>(b) {
-                log_candidates(&v);
+                candidate_keys(&v, &mut keys);
             }
+        }
+        if !keys.is_empty() {
+            crate::depot_debug::log(&format!(
+                "portal candidate keys: {}",
+                keys.into_iter().collect::<Vec<_>>().join(", ")
+            ));
         }
         let from_json = parsed.len();
         if parsed.is_empty() {
@@ -967,6 +973,21 @@ pub fn portal_schema_dump(json_bodies: Vec<String>, dom_rows_json: String) -> St
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn candidate_keys_are_names_only() {
+        // the debug log may name fields, never their amounts
+        let v = serde_json::json!({
+            "statement_balance_amount": 6266.06,
+            "nested": [{"charges_amount": 36.88, "description": "x"}],
+            "payment_due_amount": 0,
+        });
+        let mut keys = std::collections::BTreeSet::new();
+        super::candidate_keys(&v, &mut keys);
+        let joined = keys.into_iter().collect::<Vec<_>>().join(", ");
+        assert_eq!(joined, "charges_amount, statement_balance_amount");
+        assert!(!joined.contains("6266") && !joined.contains("36.88"));
+    }
+
     #[test]
     fn amex_statement_balance_wins() {
         let b = r#"{"charges_amount":1702.24,"debits_balance_amount":1702.24,"total_debits_balance_amount":1702.24,"last_statement_balance_amount":5515.59,"statement_balance_amount":6879.3,"totalAmount":0}"#;

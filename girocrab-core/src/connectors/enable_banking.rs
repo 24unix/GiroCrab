@@ -1221,9 +1221,9 @@ impl EnableBankingConnector {
             let (mut balance_cents, ref_date, picked_type) = pick_balance_typed(&balances);
             for b in &balances {
                 crate::depot_debug::log(&format!(
-                    "amex raw balance: type={} amount={} indicator={} currency={}",
+                    "amex raw balance: type={} nonzero={} indicator={} currency={}",
                     b["balance_type"].as_str().unwrap_or("?"),
-                    b["balance_amount"]["amount"],
+                    json_number_to_cents(&b["balance_amount"]["amount"]).is_ok_and(|c| c != 0),
                     b["credit_debit_indicator"].as_str().unwrap_or("none"),
                     b["balance_amount"]["currency"].as_str().unwrap_or("?"),
                 ));

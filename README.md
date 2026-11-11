@@ -13,7 +13,24 @@
   <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen">
 </p>
 
-<p align="center"><b>🇩🇪 <a href="#-deutsch">Deutsch</a> · 🇬🇧 <a href="#-english">English</a></b></p>
+<p align="center">
+  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/GiroCrab/GiroCrab?label=release&color=2ea44f"></a>
+  <a href="https://github.com/GiroCrab/GiroCrab/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/GiroCrab/GiroCrab/total?color=007AFF"></a>
+  <img alt="Apple Notarized" src="https://img.shields.io/badge/Apple-Notarized-success?logo=apple">
+  <a href="https://github.com/GiroCrab/GiroCrab/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/GiroCrab/GiroCrab?style=flat"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.zip">
+    <img src="https://img.shields.io/badge/⬇_Download_für_macOS-Apple_Silicon_(M1–M4)-007AFF?style=for-the-badge&logo=apple&logoColor=white" alt="Download für macOS">
+  </a>
+</p>
+
+<p align="center">
+  <b>1. <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.zip">ZIP laden</a> · 2. Entpacken & in <code>Programme</code> ziehen · 3. Starten (Apple-signiert & notarisiert)</b>
+</p>
+
+<p align="center"><b>🇩🇪 <a href="#-deutsch">Deutsch</a> · 🇬🇧 <a href="#-english">English</a> · 📦 <a href="https://github.com/GiroCrab/GiroCrab/releases/latest">Alle Releases</a></b></p>
 
 ---
 

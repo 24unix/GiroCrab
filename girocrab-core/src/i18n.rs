@@ -386,6 +386,8 @@ fn english(de: &str) -> Option<&'static str> {
         "App-Code (oder SMS)" => "App code (or SMS)",
         "Trade Republic schützt die Anmeldung mit AWS WAF. Bitte im Browser-Fenster anmelden – die Sitzung wird danach gespeichert und wiederverwendet." => "Trade Republic protects its login with AWS WAF. Please sign in using the browser window – the session is then saved and reused.",
         "Bitte die 4-stellige Trade-Republic-PIN eingeben (oder „Im Browser-Fenster anmelden“)." => "Please enter your 4-digit Trade Republic PIN (or use “Sign in with browser”).",
+        "Die Trade-Republic-Sitzung ist abgelaufen. Bitte die 4-stellige PIN eingeben (oder „Im Browser-Fenster anmelden“)." => "Your Trade Republic session has expired. Please enter your 4-digit PIN (or use “Sign in with browser”).",
+        "Die Trade-Republic-Sitzung ist abgelaufen. Bitte im Browser-Fenster neu anmelden – die neue Sitzung wird danach gespeichert." => "Your Trade Republic session has expired. Please sign in again using the browser window – the new session is then saved.",
         "Login (keine processId)" => "login (no processId)",
         "Geben Sie den 4-stelligen Code ein, der in der Trade-Republic-App angezeigt wird. Keine Push-Nachricht erhalten? „Code per SMS“ wählen." => "Enter the 4-digit code shown in the Trade Republic app. No push notification? Choose “Code via SMS”.",
         "Trade Republic benötigt den 4-stelligen Code" => "Trade Republic needs the 4-digit code",

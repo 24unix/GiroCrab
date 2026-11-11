@@ -262,6 +262,25 @@ impl TradeRepublicConnector {
     }
 }
 
+/// Browser login needed (no WAF token). `expired`: a stored session was just
+/// refused by Trade Republic.
+fn browser_login_message(expired: bool) -> &'static str {
+    if expired {
+        tr("Die Trade-Republic-Sitzung ist abgelaufen. Bitte im Browser-Fenster neu anmelden – die neue Sitzung wird danach gespeichert.")
+    } else {
+        tr("Trade Republic schützt die Anmeldung mit AWS WAF. Bitte im Browser-Fenster anmelden – die Sitzung wird danach gespeichert und wiederverwendet.")
+    }
+}
+
+/// PIN needed for a direct login. `expired`: as above.
+fn pin_prompt_message(expired: bool) -> &'static str {
+    if expired {
+        tr("Die Trade-Republic-Sitzung ist abgelaufen. Bitte die 4-stellige PIN eingeben (oder „Im Browser-Fenster anmelden“).")
+    } else {
+        tr("Bitte die 4-stellige Trade-Republic-PIN eingeben (oder „Im Browser-Fenster anmelden“).")
+    }
+}
+
 impl Default for TradeRepublicConnector {
     fn default() -> Self {
         Self::new()
@@ -289,22 +308,28 @@ impl BankConnector for TradeRepublicConnector {
             })
             .unwrap_or_default();
         // 1) Stored browser/API session (tr_session) -> no PIN, no 2FA.
-        if self.cookies.contains("tr_session=") && self.refresh_session().await? {
+        let had_session = self.cookies.contains("tr_session=");
+        if had_session && self.refresh_session().await? {
             return Ok(Phase::Ready);
         }
+        // A stored session that Trade Republic no longer accepts: say so, so
+        // the PIN / browser prompt below doesn't look like a new problem.
+        let expired = had_session;
         // 2) Direct login only with a WAF token harvested by the browser
         //    (aws-waf-token cookie); a bare request gets HTTP 405 from AWS WAF.
         let waf = cookie_value(&self.cookies, "aws-waf-token");
         if waf.is_none() {
             return Err(CoreError::BrowserLoginRequired {
-                message: tr("Trade Republic schützt die Anmeldung mit AWS WAF. Bitte im Browser-Fenster anmelden – die Sitzung wird danach gespeichert und wiederverwendet.").into(),
+                message: browser_login_message(expired).into(),
             });
         }
         if self.phone.len() < 8 {
             return Err(CoreError::InvalidInput { message: trf("Telefonnummer fehlt oder ist ungültig („{0}“). Bitte z. B. +4915112345678 eintragen.", &[&ctx.login_name]) });
         }
         if ctx.secret.is_empty() {
-            return Err(CoreError::Authentication { message: tr("Bitte die 4-stellige Trade-Republic-PIN eingeben (oder „Im Browser-Fenster anmelden“).").into() });
+            return Err(CoreError::Authentication {
+                message: pin_prompt_message(expired).into(),
+            });
         }
         let client = self.client()?;
         let body = json!({"phoneNumber": self.phone, "pin": ctx.secret.expose()});
@@ -769,6 +794,15 @@ fn is_trade_republic_host(url: &reqwest::Url) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expired_session_is_named_in_the_login_prompts() {
+        assert!(pin_prompt_message(true).contains("abgelaufen"));
+        assert!(browser_login_message(true).contains("abgelaufen"));
+        // no stored session: the usual prompts, without "expired"
+        assert!(!pin_prompt_message(false).contains("abgelaufen"));
+        assert!(browser_login_message(false).contains("AWS WAF"));
+    }
 
     #[test]
     fn cookie_host_check() {
