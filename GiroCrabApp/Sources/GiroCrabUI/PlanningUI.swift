@@ -424,6 +424,7 @@ struct TransferTemplatesMenu: View {
     @Environment(AppModel.self) private var model
     @State private var templates: [TransferTemplate] = []
     @State private var naming = false
+    @State private var deleting: TransferTemplate?
     @State private var name = ""
 
     var body: some View {
@@ -435,7 +436,7 @@ struct TransferTemplatesMenu: View {
                 Divider()
                 Menu("Vorlage löschen") {
                     ForEach(templates, id: \.id) { t in
-                        Button(t.name, role: .destructive) { model.deleteTransferTemplate(t.id); templates = model.transferTemplates() }
+                        Button("\(t.name) …", role: .destructive) { deleting = t }
                     }
                 }
             }
@@ -447,6 +448,12 @@ struct TransferTemplatesMenu: View {
         } label: { Label("Vorlagen", systemImage: "doc.on.doc") }
         .menuStyle(.borderlessButton).fixedSize()
         .onAppear { templates = model.transferTemplates() }
+        .confirmationDialog(Text("Vorlage „\(deleting?.name ?? "")“ löschen?"),
+                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            titleVisibility: .visible, presenting: deleting) { t in
+            Button("Löschen", role: .destructive) { model.deleteTransferTemplate(t.id); templates = model.transferTemplates() }
+            Button("Abbrechen", role: .cancel) {}
+        }
         .alert("Vorlage speichern", isPresented: $naming) {
             TextField("Name der Vorlage", text: $name)
             Button("Speichern") { model.saveTransferTemplate(named: name); templates = model.transferTemplates() }

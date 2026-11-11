@@ -140,6 +140,8 @@ struct SidebarView: View {
                 Text("„\(a.name)“ wird nicht mehr abgerufen, von Regeln nicht mehr verändert und zählt nicht mehr zur Gesamtsumme. Buchungen, Kategorien, Belege und die Gruppe bleiben erhalten. Das Konto lässt sich jederzeit reaktivieren.")
             case .deleteAccount(let a):
                 Text("„\(a.name)“ wird samt \(a.transactionCount) Buchungen, Belegen und Depotpositionen unwiderruflich gelöscht – auch aus Auswertungen und Kategoriesummen. Ist es das letzte Konto seines Bankzugangs, wird auch der Bankzugang mit den gespeicherten Zugangsdaten entfernt.")
+            case .removeConnection:
+                Text("Alle Konten dieses Bankzugangs werden samt Buchungen, Belegen und gespeicherten Zugangsdaten aus dem Tresor gelöscht. Das lässt sich nicht widerrufen.")
             default: EmptyView()
             }
         }

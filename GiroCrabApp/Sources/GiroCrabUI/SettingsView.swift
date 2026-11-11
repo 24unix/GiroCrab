@@ -82,6 +82,7 @@ struct BankConnectionsSettings: View {
     @Environment(AppModel.self) private var model
     @State private var showAddBank = false
     @State private var editing: BankConnection?
+    @State private var confirmRemove: BankConnection?
 
     var body: some View {
         Form {
@@ -124,9 +125,10 @@ struct BankConnectionsSettings: View {
                         Button { model.requestSync(c) } label: { Image(systemName: "arrow.triangle.2.circlepath") }
                             .buttonStyle(.borderless)
                             .help("Jetzt abrufen")
-                        Button(role: .destructive) { model.removeConnection(c.id) } label: { Image(systemName: "trash") }
+                        Button(role: .destructive) { confirmRemove = c } label: { Label("Bankzugang entfernen …", systemImage: "trash") }
+                            .labelStyle(.iconOnly)
                             .buttonStyle(.borderless)
-                            .help("Bank und ihre Konten entfernen")
+                            .help("Bankzugang entfernen …")
                     }
                     .contentShape(Rectangle())
                     .onTapGesture { editing = c }
@@ -149,11 +151,13 @@ struct BankConnectionsSettings: View {
             ConnectionEditSheet(connection: c)
                 .environment(model)
         }
+        .confirmRemoveConnection($confirmRemove)
         .task {
             // --demo-settings banks:edit / banks:add (screenshots)
             switch model.demoSettingsSheet {
             case "edit": editing = model.connections.first
             case "add": showAddBank = true
+            case "remove": confirmRemove = model.connections.first
             default: break
             }
             model.demoSettingsSheet = nil

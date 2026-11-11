@@ -124,6 +124,14 @@ struct ConnectionEditSheet: View {
     @State private var revealed: Set<String> = []
     @State private var importingKey = false
     @State private var status: ConnectionStatus?
+    @State private var confirmRemove: BankConnection?
+    @State private var confirmClear: SessionClear?
+
+    /// Session data whose deletion is being confirmed.
+    private enum SessionClear: Identifiable {
+        case portal, tradeRepublic
+        var id: Self { self }
+    }
 
     private var descriptor: BankDescriptor? { bankCatalog().first { $0.kind == connection.connector } }
 
@@ -255,9 +263,7 @@ struct ConnectionEditSheet: View {
                                     dismiss()
                                 }
                             }
-                        Button("Web-Sitzung (Cookies) löschen", role: .destructive) {
-                            Task { await clearPortalSession(connection.connector) }
-                        }
+                        Button("Web-Sitzung (Cookies) löschen …", role: .destructive) { confirmClear = .portal }
                     }
                     Section {
                         DisclosureGroup("Erweitert: Eigene PSD2/Enable-Banking API (Optional)", isExpanded: $showAdvanced) {
@@ -277,7 +283,7 @@ struct ConnectionEditSheet: View {
                         if isTR {
                             LabeledContent("Sitzung", value: st.hasSession ? sessionText(st) : "keine gespeichert")
                             if st.hasSession {
-                                Button("Sitzung löschen", role: .destructive) { model.clearSession(connection.id); status = model.connectionStatus(connection.id) }
+                                Button("Sitzung löschen …", role: .destructive) { confirmClear = .tradeRepublic }
                             }
                         }
                     }
@@ -307,6 +313,21 @@ struct ConnectionEditSheet: View {
         }
         .macFrame(minWidth: 560, minHeight: 560)
         .onAppear(perform: load)
+        .confirmRemoveConnection($confirmRemove) { dismiss() }
+        .confirmationDialog("Sitzung löschen?", isPresented: Binding(get: { confirmClear != nil }, set: { if !$0 { confirmClear = nil } }),
+                            titleVisibility: .visible, presenting: confirmClear) { kind in
+            Button("Sitzung löschen", role: .destructive) {
+                switch kind {
+                case .portal: Task { await clearPortalSession(connection.connector) }
+                case .tradeRepublic:
+                    model.clearSession(connection.id)
+                    status = model.connectionStatus(connection.id)
+                }
+            }
+            Button("Abbrechen", role: .cancel) {}
+        } message: { _ in
+            Text("Beim nächsten Abruf müssen Sie sich erneut anmelden und die Anmeldung in der App Ihrer Bank bestätigen.")
+        }
         .fileImporter(isPresented: $importingKey, allowedContentTypes: [.data, .text, .plainText]) { result in
             if case .success(let url) = result {
                 // Key and application ID belong together: the downloaded
@@ -400,7 +421,7 @@ struct ConnectionEditSheet: View {
     }
 
     private var removeBtn: some View {
-        Button("Bankzugang entfernen", role: .destructive) { model.removeConnection(connection.id); dismiss() }
+        Button("Bankzugang entfernen …", role: .destructive) { confirmRemove = connection }
     }
     private var cancelBtn: some View {
         Button("Abbrechen", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
@@ -583,3 +604,31 @@ struct TRWebView: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
 #endif
+
+/// HIG: removing a bank login deletes data for good, so it is always confirmed
+/// (destructive button + Cancel + what gets lost).
+struct RemoveConnectionConfirmation: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Binding var connection: BankConnection?
+    var onRemoved: () -> Void = {}
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(
+            Text("„\(connection?.displayName ?? "")“ entfernen?"),
+            isPresented: Binding(get: { connection != nil }, set: { if !$0 { connection = nil } }),
+            titleVisibility: .visible,
+            presenting: connection
+        ) { c in
+            Button("Entfernen", role: .destructive) { model.removeConnection(c.id); onRemoved() }
+            Button("Abbrechen", role: .cancel) {}
+        } message: { _ in
+            Text("Alle Konten dieses Bankzugangs werden samt Buchungen, Belegen und gespeicherten Zugangsdaten aus dem Tresor gelöscht. Das lässt sich nicht widerrufen.")
+        }
+    }
+}
+
+extension View {
+    func confirmRemoveConnection(_ connection: Binding<BankConnection?>, onRemoved: @escaping () -> Void = {}) -> some View {
+        modifier(RemoveConnectionConfirmation(connection: connection, onRemoved: onRemoved))
+    }
+}

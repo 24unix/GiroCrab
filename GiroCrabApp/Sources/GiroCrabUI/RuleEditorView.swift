@@ -9,6 +9,10 @@ struct RuleEditorView: View {
 
     @State private var selection: Int64?
     @State private var draft: Rule?
+    /// Rule waiting for the delete confirmation. The dialog lives here, not in
+    /// RuleForm: RuleForm's binding is force-unwrapped from `draft`, so a dialog
+    /// attached to it would still update after `draft` became nil (crash).
+    @State private var ruleToDelete: Rule?
 
     var body: some View {
         NavigationSplitView {
@@ -38,8 +42,12 @@ struct RuleEditorView: View {
                 }
             }
         } detail: {
-            if let binding = Binding($draft) {
-                RuleForm(rule: binding, onSave: save, onDelete: delete)
+            if let current = draft {
+                // Not Binding($draft): its force-unwrap crashes when the form
+                // updates once more after `draft` became nil (e.g. while the
+                // delete confirmation closes). Fall back to the last value.
+                RuleForm(rule: Binding(get: { draft ?? current }, set: { draft = $0 }),
+                         onSave: save, onDelete: { ruleToDelete = $0 })
             } else {
                 ContentUnavailableView("Keine Regel ausgewählt", systemImage: "wand.and.stars", description: Text("Regeln ordnen neue Buchungen automatisch Kategorien zu. Die erste passende Regel (nach Priorität) gewinnt; manuelle Zuordnungen werden nie überschrieben."))
             }
@@ -52,6 +60,14 @@ struct RuleEditorView: View {
             ToolbarItem(placement: .automatic) {
                 Button { model.applyAllRules() } label: { Label("Alle Regeln anwenden", systemImage: "play.fill") }
             }
+        }
+        .confirmationDialog("Regel löschen?",
+                            isPresented: Binding(get: { ruleToDelete != nil }, set: { if !$0 { ruleToDelete = nil } }),
+                            titleVisibility: .visible, presenting: ruleToDelete) { rule in
+            Button("Löschen", role: .destructive) { delete(rule) }
+            Button("Abbrechen", role: .cancel) {}
+        } message: { _ in
+            Text("Buchungen, die diese Regel kategorisiert hat, sind danach wieder ohne Kategorie. Das lässt sich nicht widerrufen.")
         }
         .onAppear {
             if let d = initialDraft {
@@ -96,6 +112,7 @@ struct RuleForm: View {
     @Environment(AppModel.self) private var model
     @Binding var rule: Rule
     let onSave: (Rule) -> Void
+    /// Asks to delete (RuleEditorView confirms first).
     let onDelete: (Rule) -> Void
 
     @State private var minText = ""
@@ -184,7 +201,7 @@ struct RuleForm: View {
             Divider()
             HStack {
                 if rule.id != 0 {
-                    Button("Regel löschen", role: .destructive) { onDelete(rule) }
+                    Button("Regel löschen …", role: .destructive) { onDelete(rule) }
                 }
                 Spacer()
                 Button("Speichern & anwenden") { onSave(rule) }
