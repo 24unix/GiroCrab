@@ -357,6 +357,7 @@ Danke an alle, die GiroCrab voranbringen! / Thanks to everyone who helps move Gi
 - **[@nochsoeiner](https://github.com/nochsoeiner)** — FinTS securities holdings via HKWPD / MT535 (#23), interactive balance chart with hover readout & click-to-jump (#20), period-aware KPI tiles (#19), account & category markers in the booking stream (#26), and DKB FinTS URL preset fix (#25).
 - **[@sebastianmattar](https://github.com/sebastianmattar)** — MoneyMoney depot balances & securities positions import (#51) and Trade Republic 8-digit bank code recognition (#52).
 - **[@martinhering](https://github.com/martinhering)** — Scalable Capital connector supporting Baader Bank and Scalable broker GraphQL with 2FA (#54).
+- **[@andre68723](https://github.com/andre68723)** — Smooth booking scope selection (#63) and a reducible main window height on macOS (#62).
 - **[@HansWurst90](https://github.com/HansWurst90)** — Build script cleanup (#14) and testing & feedback on MoneyMoney and depot imports.
 
 ## License / Lizenz
