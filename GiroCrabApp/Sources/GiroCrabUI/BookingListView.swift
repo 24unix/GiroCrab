@@ -53,6 +53,7 @@ struct BookingStreamView: View {
                             }
                             .font(.subheadline.weight(.medium))
                             .padding(.horizontal, 14).padding(.vertical, 10)
+                            .frame(maxWidth: .infinity)
                             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
                             #else
                             CashflowCard().transition(.opacity.combined(with: .move(edge: .top)))
@@ -89,6 +90,7 @@ struct BookingStreamView: View {
                     .padding(.bottom, 18)
                     .frame(maxWidth: 720)
                     .frame(maxWidth: .infinity)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
                 }
                 .frame(minHeight: 0, maxHeight: .infinity)
                 #if os(iOS)
@@ -99,6 +101,7 @@ struct BookingStreamView: View {
                 #endif
             }
             .background(Theme.canvas)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { columnWidth = $0 }
             #if os(iOS)
             // iPhone: the detail column is not reachable by tapping, so show it as a sheet.
             .sheet(isPresented: Binding(
@@ -268,9 +271,23 @@ struct BookingStreamView: View {
                 #endif
                 .frame(maxWidth: 720)
                 .frame(maxWidth: .infinity)
+                .padding(.trailing, scrollerInset)
+    }
+
+    /// macOS: width a scroller takes from the scroll area; the pinned header
+    /// (outside the ScrollView) gets the same trailing inset to stay aligned.
+    @State private var columnWidth: CGFloat = 0
+    @State private var contentWidth: CGFloat = 0
+    private var scrollerInset: CGFloat {
+        #if os(macOS)
+        (columnWidth > 0 && contentWidth > 0) ? max(0, columnWidth - contentWidth) : 0
+        #else
+        0
+        #endif
     }
 
     private static let topID = "stream-top"
+
 
     private func scrollToTop(_ proxy: ScrollViewProxy) {
         proxy.scrollTo(Self.topID, anchor: .top)
@@ -359,6 +376,7 @@ struct DayCard: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))

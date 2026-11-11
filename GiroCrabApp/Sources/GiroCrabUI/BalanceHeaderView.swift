@@ -156,6 +156,8 @@ struct StreamHeaderCard: View {
                 .minimumScaleFactor(0.7)
                 #else
                 HStack(spacing: 10) { kpis }
+                    .frame(maxWidth: .infinity)
+                    .fixedSize(horizontal: false, vertical: true)
                 #endif
 
                 filterRow
@@ -201,6 +203,7 @@ struct StreamHeaderCard: View {
                 disclosure: true)
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .help("Wiederkehrende Buchungen anzeigen (⇧⌘F)")
         .accessibilityHint("Öffnet die Übersicht der wiederkehrenden Buchungen")
     }
@@ -208,11 +211,14 @@ struct StreamHeaderCard: View {
     @ViewBuilder
     private var filterRow: some View {
         @Bindable var model = model
-        #if os(iOS)
-        ScrollView(.horizontal, showsIndicators: false) { filterContent.fixedSize(horizontal: true, vertical: false) }
-        #else
-        filterContent
-        #endif
+        // Never let the fixed-size filter controls widen the header card:
+        // fits -> normal row (count right-aligned); too narrow -> scrolls.
+        ViewThatFits(in: .horizontal) {
+            filterContent
+            ScrollView(.horizontal, showsIndicators: false) {
+                filterContent.fixedSize(horizontal: true, vertical: false)
+            }
+        }
     }
 
     @ViewBuilder
