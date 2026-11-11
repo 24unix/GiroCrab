@@ -125,6 +125,10 @@ struct SidebarView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.sidebar)
         .navigationTitle("GiroCrab")
+        #if os(macOS)
+        // Keep traffic lights / sidebar toggle clear of the first row.
+        .safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: 28) }
+        #endif
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: 6) {
                 if model.isDemo {
