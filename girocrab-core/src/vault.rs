@@ -249,12 +249,21 @@ pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
 pub struct Vault {
     conn: Mutex<Connection>,
     path: String,
+    /// The master key, kept for sync snapshots and peer merges so the app
+    /// doesn't ask the keychain again. Wiped on drop.
+    key: Mutex<Zeroizing<Vec<u8>>>,
 }
 
 impl Vault {
     pub(crate) fn db(&self) -> CoreResult<MutexGuard<'_, Connection>> {
         self.conn.lock().map_err(|_| CoreError::Database {
             message: "vault lock poisoned".into(),
+        })
+    }
+
+    fn kept_key(&self) -> CoreResult<MutexGuard<'_, Zeroizing<Vec<u8>>>> {
+        self.key.lock().map_err(|_| CoreError::Database {
+            message: "vault key lock poisoned".into(),
         })
     }
 
@@ -1218,6 +1227,7 @@ impl Vault {
         Ok(Arc::new(Vault {
             conn: Mutex::new(conn),
             path,
+            key: Mutex::new(key),
         }))
     }
 
@@ -1231,7 +1241,49 @@ impl Vault {
         }
         let pragma = Zeroizing::new(format!("PRAGMA rekey = \"x'{}'\";", hex::encode(&*key)));
         self.db()?.execute_batch(&pragma)?;
+        *self.kept_key()? = key;
         Ok(())
+    }
+
+    /// Merges another device's sync snapshot using this vault's own key
+    /// (see [`merge_other_vault`](Self::merge_other_vault)).
+    pub fn merge_peer_snapshot(&self, other_path: String) -> Result<MergeStats, CoreError> {
+        let key = self.kept_key()?.to_vec();
+        self.merge_other_vault(other_path, key)
+    }
+
+    /// Writes a consistent, encrypted copy of this vault to `dest_path`
+    /// (replacing it), for the sync folder. Runs under the connection lock,
+    /// so concurrent writes never end up half in the copy.
+    pub fn write_snapshot(&self, dest_path: String) -> Result<(), CoreError> {
+        let raw_key = Zeroizing::new(format!("x'{}'", hex::encode(&**self.kept_key()?)));
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            let p = format!("{dest_path}{suffix}");
+            if std::path::Path::new(&p).exists() {
+                std::fs::remove_file(&p).map_err(|e| CoreError::Database {
+                    message: format!("{p}: {e}"),
+                })?;
+            }
+        }
+        let conn = self.db()?;
+        conn.execute(
+            "ATTACH DATABASE ?1 AS snap KEY ?2",
+            params![dest_path, &*raw_key],
+        )?;
+        let res = conn
+            .query_row("SELECT sqlcipher_export('snap')", [], |_| Ok(()))
+            .and_then(|_| {
+                conn.execute_batch(&format!("PRAGMA snap.user_version = {SCHEMA_VERSION}"))
+            });
+        let _ = conn.execute_batch("DETACH DATABASE snap");
+        res?;
+        Ok(())
+    }
+
+    /// Number of rows changed through this vault since it was opened; the
+    /// app compares it to notice local changes worth syncing.
+    pub fn change_count(&self) -> u64 {
+        self.db().map(|c| c.total_changes()).unwrap_or(0)
     }
 
     /// Merges another vault file (e.g. a copy synced via iCloud) into this one.
@@ -2622,6 +2674,121 @@ mod merge_tests {
         // idempotent
         let st2 = a.merge_other_vault(b.file_path(), key).unwrap();
         assert_eq!((st2.bookings_added, st2.bookings_updated), (0, 0));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn temp_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("gc-{tag}-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn path_in(dir: &std::path::Path, name: &str) -> String {
+        dir.join(name).to_string_lossy().into()
+    }
+
+    fn count(v: &Vault, sql: &str) -> i64 {
+        v.db().unwrap().query_row(sql, [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn merge_peer_snapshot_uses_own_key() {
+        let dir = temp_dir("peer");
+        let a = Vault::open(path_in(&dir, "a.db"), vec![7u8; 32]).unwrap();
+        let b = Vault::open(path_in(&dir, "b.db"), vec![7u8; 32]).unwrap();
+        seed(&b, false, "", true);
+        let st = a.merge_peer_snapshot(b.file_path()).unwrap();
+        assert!(st.bookings_added >= 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn merge_peer_snapshot_rejects_other_key() {
+        let dir = temp_dir("peer-key");
+        let a = Vault::open(path_in(&dir, "a.db"), vec![7u8; 32]).unwrap();
+        let b = Vault::open(path_in(&dir, "b.db"), vec![8u8; 32]).unwrap();
+        seed(&b, false, "", true);
+        b.checkpoint().unwrap();
+        assert!(matches!(
+            a.merge_peer_snapshot(b.file_path()),
+            Err(CoreError::WrongKey)
+        ));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn write_snapshot_round_trips() {
+        let dir = temp_dir("snap");
+        let a = Vault::open(path_in(&dir, "a.db"), vec![7u8; 32]).unwrap();
+        seed(&a, true, "note", true);
+        let snap = path_in(&dir, "snap.girocrab");
+        a.write_snapshot(snap.clone()).unwrap();
+        // a second write replaces the first
+        a.write_snapshot(snap.clone()).unwrap();
+        let s = Vault::open(snap, vec![7u8; 32]).unwrap();
+        let q = "SELECT count(*) FROM transactions";
+        assert_eq!(count(&s, q), count(&a, q));
+        assert_eq!(count(&s, "PRAGMA user_version"), SCHEMA_VERSION);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn write_snapshot_is_consistent_during_writes() {
+        let dir = temp_dir("snap-busy");
+        let a = Vault::open(path_in(&dir, "a.db"), vec![7u8; 32]).unwrap();
+        seed(&a, false, "", false);
+        let writer = {
+            let a = a.clone();
+            std::thread::spawn(move || {
+                for i in 0..500 {
+                    a.db()
+                        .unwrap()
+                        .execute(
+                            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents) \
+                             VALUES ((SELECT id FROM accounts LIMIT 1), ?1, '2024-02-01', -1)",
+                            params![format!("W{i}")],
+                        )
+                        .unwrap();
+                }
+            })
+        };
+        for i in 0..5 {
+            let snap = path_in(&dir, &format!("snap{i}.girocrab"));
+            a.write_snapshot(snap.clone()).unwrap();
+            let s = Vault::open(snap, vec![7u8; 32]).unwrap();
+            let ok: String = s
+                .db()
+                .unwrap()
+                .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(ok, "ok");
+        }
+        writer.join().unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn change_count_moves_on_writes_only() {
+        let dir = temp_dir("changes");
+        let a = Vault::open(path_in(&dir, "a.db"), vec![7u8; 32]).unwrap();
+        let before = a.change_count();
+        count(&a, "SELECT count(*) FROM transactions");
+        assert_eq!(a.change_count(), before);
+        seed(&a, false, "", false);
+        assert!(a.change_count() > before);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rekey_updates_kept_key() {
+        let dir = temp_dir("rekey");
+        let a = Vault::open(path_in(&dir, "a.db"), vec![7u8; 32]).unwrap();
+        seed(&a, false, "", false);
+        a.rekey(vec![9u8; 32]).unwrap();
+        let snap = path_in(&dir, "snap.girocrab");
+        a.write_snapshot(snap.clone()).unwrap();
+        assert!(Vault::open(snap.clone(), vec![7u8; 32]).is_err());
+        assert!(Vault::open(snap, vec![9u8; 32]).is_ok());
         let _ = std::fs::remove_dir_all(dir);
     }
 }
