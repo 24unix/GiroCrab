@@ -80,6 +80,9 @@ struct BookingStreamView: View {
                             DayCard(day: day)
                                 .id(day.id)
                         }
+                        if model.hasMoreBookings {
+                            LoadMoreBookingsFooter()
+                        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 4)
@@ -449,5 +452,25 @@ struct AmountLabel: View {
                 .font(.system(size: size, weight: .medium).monospacedDigit())
                 .foregroundStyle(Theme.outflow)
         }
+    }
+}
+
+/// End of the list: the default limit cut off older bookings – offer to load them.
+struct LoadMoreBookingsFooter: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("\(model.bookings.count) von \(model.bookings.count + model.remainingBookingCount) Buchungen geladen – ältere Buchungen sind noch nicht sichtbar.")
+                .font(.caption).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 10) {
+                Button("Weitere Buchungen laden (+3.000)") { model.loadMoreBookings() }
+                Button("Alle Buchungen laden") { model.loadAllBookings() }
+            }
+            .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
     }
 }

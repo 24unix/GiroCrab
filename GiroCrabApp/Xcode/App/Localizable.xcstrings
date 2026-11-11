@@ -8297,6 +8297,39 @@
           }
         }
       }
+    },
+    "Weitere Buchungen laden (+3.000)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load more bookings (+3,000)"
+          }
+        }
+      }
+    },
+    "Alle Buchungen laden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load all bookings"
+          }
+        }
+      }
+    },
+    "%lld von %lld Buchungen geladen – ältere Buchungen sind noch nicht sichtbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld of %2$lld bookings loaded – older bookings are not shown yet."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -615,6 +615,28 @@ public final class AppModel {
     static let defaultListLimit: UInt32 = 3000
     var listLimit: UInt32 = AppModel.defaultListLimit
 
+    /// More bookings match the current filter than are loaded (list limit reached).
+    var hasMoreBookings: Bool {
+        guard let total = page?.totalCount else { return false }
+        return UInt32(bookings.count) < total
+    }
+
+    var remainingBookingCount: Int {
+        max(0, Int(page?.totalCount ?? 0) - bookings.count)
+    }
+
+    /// Raises the list limit by one page (+3,000) and reloads.
+    func loadMoreBookings() {
+        listLimit += Self.defaultListLimit
+        reloadBookings()
+    }
+
+    /// Raises the list limit to everything matching the current filter.
+    func loadAllBookings() {
+        listLimit = max(listLimit, page?.totalCount ?? listLimit)
+        reloadBookings()
+    }
+
     var currentFilter: BookingFilter {
         let (from, to) = period.range
         var accountIDs: [Int64] = []
