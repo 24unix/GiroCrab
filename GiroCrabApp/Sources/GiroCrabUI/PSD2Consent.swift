@@ -1,7 +1,7 @@
 import Foundation
 import GiroCrabCore
 #if canImport(UserNotifications)
-import UserNotifications
+@preconcurrency import UserNotifications
 #endif
 
 /// PSD2 (Enable Banking) consents: expiry display, scheduled background
@@ -139,13 +139,12 @@ extension AppModel {
         #if canImport(UserNotifications)
         // Only inside a real app bundle (not `swift run` / unit tests).
         guard Bundle.main.bundleURL.pathExtension == "app" else { return }
-        let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
-            center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
         }
         #endif
     }
