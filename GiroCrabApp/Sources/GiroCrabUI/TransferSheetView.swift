@@ -363,8 +363,10 @@ struct TransferSheetView: View {
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
             } else if confirming {
-                Button("Zurück") { confirming = false }
+                Button("Abbrechen", role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                 Spacer()
+                Button("Zurück") { confirming = false }
                 Button(isBunq ? "In der bunq-App freigeben" : "Jetzt mit TAN freigeben") { model.startTransfer() }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)

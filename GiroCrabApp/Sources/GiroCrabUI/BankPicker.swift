@@ -241,6 +241,12 @@ struct KindAddForm: View {
     var onAdded: () -> Void = {}
     @State private var login = ""
 
+    /// Banks that need the login to sign in. For the others (Amazon, Amex,
+    /// PayPal, bunq …) the field is only an optional display name.
+    private var loginRequired: Bool {
+        [.comdirect, .tradeRepublic, .volksbankKasselGoettingen, .direkt1822, .finTsGeneric].contains(kind)
+    }
+
     var body: some View {
         if let d = bankCatalog().first(where: { $0.kind == kind }) {
             TextField(d.loginLabel, text: $login)
@@ -258,6 +264,8 @@ struct KindAddForm: View {
                 login = ""
                 onAdded()
             }
+            .keyboardShortcut(.defaultAction)
+            .disabled(loginRequired && login.trimmingCharacters(in: .whitespaces).isEmpty)
             Text("Gibt es den Zugang schon (gleiche Bank, gleiche Kennung), wird er aktualisiert statt doppelt angelegt.")
                 .font(.caption2).foregroundStyle(.secondary)
         }
@@ -299,5 +307,6 @@ struct Psd2AddForm: View {
             label = ""
             onAdded()
         }
+        .keyboardShortcut(.defaultAction)
     }
 }

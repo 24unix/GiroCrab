@@ -40,17 +40,27 @@ struct PayeeCheckSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                // HIG: Cancel on the left, the safe default (Return) on the far
+                // right; sending despite a mismatch is destructive and never
+                // the default.
                 HStack {
                     Button("Abbrechen", role: .cancel) { model.cancelPayee() }
                         .keyboardShortcut(.cancelAction)
-                    if c.result == .closeMatch, c.bankName != nil {
-                        Button("Namen übernehmen") { model.cancelPayee(useBankName: true) }
-                            .keyboardShortcut(.defaultAction)
-                    }
                     Spacer()
                     if pending.busy { ProgressView().controlSize(.small) }
-                    Button(c.result == .match ? "Weiter zur Freigabe" : "Trotzdem senden") { model.confirmPayee() }
-                        .disabled(pending.busy)
+                    if c.result == .match {
+                        Button("Weiter zur Freigabe") { model.confirmPayee() }
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(pending.busy)
+                    } else {
+                        Button("Trotzdem senden", role: .destructive) { model.confirmPayee() }
+                            .disabled(pending.busy)
+                        if c.result == .closeMatch, c.bankName != nil {
+                            Button("Namen übernehmen") { model.cancelPayee(useBankName: true) }
+                                .keyboardShortcut(.defaultAction)
+                                .disabled(pending.busy)
+                        }
+                    }
                 }
             }
             .padding(24)

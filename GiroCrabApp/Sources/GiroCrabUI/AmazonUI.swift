@@ -163,6 +163,7 @@ struct AmazonWebSheet: View {
                 .disabled(running)
                 Spacer()
                 Button("Bestellungen abrufen") { start() }
+                    .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .disabled(!ready || running)
             }

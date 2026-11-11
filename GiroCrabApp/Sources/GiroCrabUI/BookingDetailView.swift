@@ -68,6 +68,7 @@ struct ReceiptCard: View {
                     HStack {
                         Spacer()
                         Button("Abbrechen") { editing = false }
+                            .keyboardShortcut(.cancelAction)
                         Button("Speichern") {
                             model.updateText(counterparty: draftName, purpose: draftPurpose, for: booking)
                             editing = false

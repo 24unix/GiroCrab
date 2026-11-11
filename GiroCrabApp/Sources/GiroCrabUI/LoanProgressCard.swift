@@ -46,7 +46,10 @@ struct LoanProgressCard: View {
                 } else if editing {
                     TextField("z. B. \(Money.plain(28_000_000))", text: $text)
                         .textFieldStyle(.roundedBorder).frame(width: 130).onSubmit(commit)
-                    Button("OK", action: commit).controlSize(.small)
+                    Button("Abbrechen") { editing = false }
+                        .controlSize(.small).keyboardShortcut(.cancelAction)
+                    Button("Speichern", action: commit)
+                        .controlSize(.small).keyboardShortcut(.defaultAction)
                 } else {
                     Button(initial == nil ? "Betrag eingeben" : "Ursprünglich: \(Money.format(initial!))") {
                         text = initial.map { Money.plain($0) } ?? ""

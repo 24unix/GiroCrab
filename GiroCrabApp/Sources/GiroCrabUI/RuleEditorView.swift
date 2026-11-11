@@ -54,7 +54,7 @@ struct RuleEditorView: View {
         }
         .macFrame(minWidth: 860, minHeight: 600)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
+            ToolbarItem(placement: .confirmationAction) {
                 Button("Fertig") { dismiss() }
             }
             ToolbarItem(placement: .automatic) {

@@ -302,7 +302,8 @@ struct ConnectionEditSheet: View {
             .formStyle(.grouped)
             Divider()
             ViewThatFits(in: .horizontal) {
-                HStack { removeBtn; Spacer(); cancelBtn; saveBtn; fetchBtn }
+                // HIG: the default button (Return) is the rightmost one.
+                HStack { removeBtn; Spacer(); cancelBtn; fetchBtn; saveBtn }
                 VStack(spacing: 8) {
                     HStack { cancelBtn; Spacer(); saveBtn }
                     fetchBtn
@@ -515,6 +516,7 @@ struct WebLoginSheet: View {
                     if let c = found { model.applyBrowserSession(connection, cookies: c) }
                     dismiss()
                 }
+                .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .disabled(found == nil)
             }

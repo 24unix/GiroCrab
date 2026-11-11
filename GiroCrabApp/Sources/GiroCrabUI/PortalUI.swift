@@ -276,6 +276,7 @@ struct PortalWebSheet: View {
                 }
                 Spacer()
                 Button("Umsätze übernehmen (\(recognized) erkannt)") { Task { await attempt() } }
+                    .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .disabled(busy || recognized == 0)
             }

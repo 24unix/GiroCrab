@@ -90,6 +90,7 @@ struct FinTsAddForm: View {
             tanMedium = ""
             onAdded()
         }
+        .keyboardShortcut(.defaultAction)
         .disabled(!canAdd)
         .onAppear { apply(prefill) }
         .onChange(of: prefill?.id) { _, _ in apply(prefill) }

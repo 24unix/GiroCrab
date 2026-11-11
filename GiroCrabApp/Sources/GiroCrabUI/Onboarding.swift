@@ -158,7 +158,8 @@ struct BankSetupSheet: View {
                 Button("Speichern & abrufen") { model.completeSetup(request, values: values) }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
-                    .disabled(request.keys.allSatisfy { (values[$0] ?? "").trimmingCharacters(in: .whitespaces).isEmpty })
+                    // HIG: the default button stays off until every required field has a value.
+                    .disabled(request.keys.contains { (values[$0] ?? "").trimmingCharacters(in: .whitespaces).isEmpty })
             }
         }
         .padding(24)
