@@ -1,0 +1,43 @@
+name: Nightly
+
+# Development build of `main` (issue #50). Ad-hoc signed only: Developer ID
+# signing and notarization stay on the maintainer's Mac (scripts/notarize.sh
+# --nightly), deliberately without Apple certificates in GitHub Secrets.
+# The zip is kept as a workflow artifact, never attached to a release.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build app bundle (ad-hoc signed)
+        run: ./package-macos-app.sh
+      - name: Launch smoke test
+        run: |
+          dist/GiroCrab.app/Contents/MacOS/GiroCrabMac >/dev/null 2>&1 &
+          PID=$!
+          sleep 5
+          kill -0 "$PID" || { echo "app exited within 5s" >&2; exit 1; }
+          kill "$PID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GiroCrab-macOS-arm64-nightly
+          path: dist/GiroCrab-macOS-arm64.zip
+          retention-days: 14
