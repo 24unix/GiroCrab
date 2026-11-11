@@ -24,7 +24,14 @@ Native SwiftUI-App auf einem Rust-Kern: verschlüsselter Datentresor (XChaCha20-
 Regeln, Händler-Erkennung, Sparplan-Ansicht, Darlehens-Tilgungsbalken und direkte Verbindungen
 zu Ihren Banken – ohne Server, ohne Tracking.
 
-### ✨ Neu in v0.4.0
+### ✨ Neu in v0.5.1
+
+- ✅ **Apple-notarisiert:** Der macOS-Download ist jetzt offiziell von Apple notarisiert – kein Gatekeeper-Umweg mehr nötig.
+- 🔒 **Händler-Logos nur per Opt-in (#38):** Online-Logos sind standardmäßig **aus**; erst wenn Sie sie unter *Einstellungen → Händler-Logos* aktivieren, werden Logos geladen. Ohne Opt-in bleibt alles zu 100 % lokal.
+- ✏️ **Notiz per Doppelklick oder Return bearbeiten (#41).**
+- 🗄️ **MoneyMoney-Import** (Datenbank, CSV/XML) – siehe [Umzug von MoneyMoney](#-umzug-von-moneymoney-in-60-sekunden).
+
+**Seit v0.4.0:**
 
 - 🗄️ **Direkter MoneyMoney-Datenbank-Import:** die verschlüsselte `MoneyMoney.sqlite` wird **nur lesend** geöffnet – Konten, Kategorien samt Hierarchie und die komplette Buchungshistorie kommen in einem Schritt (zusätzlich zu CSV/XML).
 - 📱 **iOS-App (iPhone & iPad)** neben der macOS-App.
@@ -77,7 +84,8 @@ nur um Kategorie und Notiz ergänzt.
 - 🏦 **Native deutsche Bank-Protokolle:** FinTS 3.0 / HBCI (CAMT.052 & MT940 mit intelligenter Latin-1/UTF-8-Erkennung), **bunq** (persönlicher API-Schlüssel), PayPal, Trade-Republic-WebSocket, comdirect-REST sowie eingebettete Web-Session-/CSV-Importe für Amex & Amazon Visa.
 - 💸 **SEPA-Überweisungen via FinTS 3.0 / HKCCS** inkl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN-Prüfung (Mod-97), SEPA-konformer Zeichensatz, Empfängervorschläge aus bisherigen Buchungen und sofort vorgemerkte Buchung.
 - 🏠 **Intelligente Darlehens-Verfolgung:** Tilgungsfortschritt in Prozent und automatische Verknüpfung der monatlichen „Zins & Tilgung“-Raten vom Girokonto.
-- 🏷️ **Markenlogos vs. private Monogramme:** Händler und ETFs (REWE, EnBW, DB, iShares) werden sofort erkannt; Privatpersonen (z. B. „Max Mustermann“) erhalten bewusst nur neutrale Initialen.
+- 🏷️ **Händler-Erkennung & Logos (Opt-in):** Händler und ETFs (REWE, EnBW, DB, iShares) werden lokal erkannt; Privatpersonen (z. B. „Max Mustermann“) erhalten bewusst nur neutrale Initialen. Händler-Logos werden **standardmäßig nicht** aus dem Netz geladen – das passiert erst nach Ihrer Zustimmung in den Einstellungen.
+- ✏️ **Notizen schnell bearbeiten:** Doppelklick oder Return auf die Notiz in der Buchungsdetail-Ansicht.
 - 🌙 **macOS Dark Mode:** folgt automatisch dem System-Erscheinungsbild (Hell/Dunkel).
 - 🌐 **Lokalisierung DE/EN:** Die App ist auf Deutsch und Englisch verfügbar und folgt der Systemsprache.
 
@@ -108,6 +116,8 @@ nur um Kategorie und Notiz ergänzt.
                                                   Ihre Bank(en)
 ```
 
+Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erkennung und Bank-Konnektoren; `GiroCrabApp` (SwiftUI) ist die native Oberfläche für macOS und iOS. **Mitwirken:** siehe [CONTRIBUTING.md](CONTRIBUTING.md) – bitte lassen Sie sich ein Issue **vor Arbeitsbeginn zuweisen** (Ausnahme: Kleinstkorrekturen).
+
 ### Bank-Unterstützung
 
 | Institut | Verfahren | Status |
@@ -136,14 +146,17 @@ cargo test -p girocrab-core     # Tests
 
 Die Demo enthält fiktive Konten und erfundene Buchungen – keine echten Daten.
 
+*Intel-Mac?* Der Quellcode-Build funktioniert auch dort mit Swift/Xcode; nur die fertigen Release-Binaries gibt es ausschließlich für Apple Silicon.
+
 **iOS (iPhone / iPad):** Die App wird derzeit nicht über den App Store verteilt, sondern direkt aus dem Quellcode gebaut:
 `GiroCrabApp/Xcode/GiroCrab.xcodeproj` in Xcode öffnen, Team (persönliche Apple-ID) unter *Signing & Capabilities* wählen und auf das Gerät installieren. Mit einer persönlichen Apple-ID signierte Apps laufen nur eine begrenzte Zeit und müssen danach neu installiert werden.
 
 ### 📦 Download (macOS)
 
 Fertige `GiroCrab-macOS-arm64.zip`-Builds (Apple Silicon, macOS 14+) gibt es unter [GitHub Releases](../../releases) – ohne Rust oder Xcode.
-Entpacken und `GiroCrab.app` nach `/Programme` verschieben. Die Open-Source-Builds sind nicht notarisiert; bei einer Gatekeeper-Warnung
-`xattr -cr /Applications/GiroCrab.app` ausführen oder Rechtsklick → Öffnen.
+Aktuelle Version: **v0.5.1**. Entpacken und `GiroCrab.app` nach `/Programme` verschieben – die App ist **von Apple notarisiert** und lässt sich ohne Zusatzschritte öffnen.
+
+**Intel-Macs:** Die offiziellen Binaries sind nur für Apple Silicon (`arm64`). Auf Intel-Macs lässt sich GiroCrab mit Swift/Xcode selbst aus dem Quellcode bauen (siehe [Schnellstart](#schnellstart)).
 
 ### ⚖️ Rechtlicher Hinweis / Haftungsausschluss (ZAG / PSD2)
 
@@ -170,7 +183,14 @@ A native SwiftUI app on a Rust core: encrypted vault (XChaCha20-Poly1305 & Argon
 recognition, savings-plan view, loan repayment progress and direct connections to your banks –
 no server, no tracking. Money is always `i64` cents, never floats.
 
-### ✨ What's new in v0.4.0
+### ✨ What's new in v0.5.1
+
+- ✅ **Apple-notarized:** the macOS download is now officially notarized by Apple – no Gatekeeper workarounds needed.
+- 🔒 **Merchant logos are opt-in (#38):** online logos are **off** by default; nothing is fetched until you enable them under *Settings → Merchant logos*. Without the opt-in everything stays 100 % local.
+- ✏️ **Edit a note by double-click or Return (#41).**
+- 🗄️ **MoneyMoney import** (database, CSV/XML) – see [Migrating from MoneyMoney](#-migrating-from-moneymoney).
+
+**Since v0.4.0:**
 
 - 🗄️ **Direct MoneyMoney database import:** the encrypted `MoneyMoney.sqlite` is opened **read-only** – accounts, categories incl. hierarchy and the full booking history come over in one step (in addition to CSV/XML).
 - 📱 **iOS app (iPhone & iPad)** alongside the macOS app.
@@ -219,7 +239,8 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 - 🏦 **Native German banking protocols:** FinTS 3.0 / HBCI (CAMT.052 & MT940 with smart Latin-1/UTF-8 decoding), **bunq** (personal API key), PayPal, Trade Republic WebSocket, comdirect REST, and embedded web-session/CSV import for Amex & Amazon Visa.
 - 💸 **Native SEPA credit transfers via FinTS 3.0 / HKCCS** incl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN checksum validation (Mod-97), SEPA-compliant character set, recipient suggestions from past bookings and an instant pending booking.
 - 🏠 **Smart loan tracking:** automatic repayment progress (%) and cross-account linking of the monthly "Zins & Tilgung" instalments from your checking account.
-- 🏷️ **Brand signets vs. private monograms:** instant recognition for German merchants & ETFs (REWE, EnBW, DB, iShares), while private individuals (e.g. "Max Mustermann") get plain monogram initials by design.
+- 🏷️ **Merchant recognition & logos (opt-in):** German merchants & ETFs (REWE, EnBW, DB, iShares) are recognized locally, while private individuals (e.g. "Max Mustermann") get plain monogram initials by design. Merchant logos are **not** fetched online by default – only after you opt in under Settings.
+- ✏️ **Quick note editing:** double-click or press Return on the note in the booking detail view.
 - 🌙 **macOS Dark Mode:** automatically follows the system appearance (light/dark).
 - 🌐 **German & English localization:** the app ships in German and English and follows the system language.
 
@@ -237,9 +258,11 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 
 ### Architecture
 
-See the diagram above: the SwiftUI app (macOS and iOS) talks to `girocrab-core` through UniFFI; the core owns the
+See the diagram above: the SwiftUI app (`GiroCrabApp`, macOS and iOS) talks to `girocrab-core` (Rust) through UniFFI; the core owns the
 encrypted vault, categorisation rules, merchant resolver and the bank connectors, and talks to
 your bank directly. Optional iCloud sync exchanges an encrypted snapshot via your own iCloud Drive.
+
+**Contributing:** see [CONTRIBUTING.md](CONTRIBUTING.md) – please ask to be **assigned to an issue before you start** (tiny fixes excepted).
 
 ### Bank support matrix
 
@@ -259,10 +282,9 @@ Adding a bank usually takes under 100 lines – start from
 ### Download (macOS)
 
 Pre-built `GiroCrab-macOS-arm64.zip` binaries (Apple Silicon, macOS 14+) are available under
-[GitHub Releases](../../releases) – no Rust or Xcode required. Unzip and move `GiroCrab.app` to `/Applications`.
+[GitHub Releases](../../releases) – no Rust or Xcode required. Current version: **v0.5.1**. Unzip and move `GiroCrab.app` to `/Applications` – the app is **notarized by Apple** and opens without any extra steps.
 
-The open-source builds are not notarized. If macOS refuses to open the app, run
-`xattr -cr /Applications/GiroCrab.app` or Right-Click → Open.
+**Intel Macs:** the official binaries are Apple Silicon (`arm64`) only. On Intel Macs you can build GiroCrab yourself from source with Swift/Xcode (see [Quickstart](#quickstart)).
 
 ### Quickstart
 
@@ -276,6 +298,8 @@ cargo test -p girocrab-core     # run the tests
 ```
 
 The demo ships fictional accounts and invented bookings – no real data.
+
+*Intel Mac?* Building from source with Swift/Xcode works there too; only the pre-built release binaries are Apple Silicon-only.
 
 **iOS (iPhone / iPad):** the app is currently not distributed via the App Store but built from source:
 open `GiroCrabApp/Xcode/GiroCrab.xcodeproj` in Xcode, choose your team (personal Apple ID) under *Signing & Capabilities* and install on your device. Apps signed with a personal Apple ID expire after a limited time and have to be reinstalled.
@@ -300,7 +324,10 @@ It is **not a payment initiation service and not an account information service 
 ## Security / Sicherheit
 
 XChaCha20-Poly1305 + Argon2id encrypted vault, key in the Keychain (`ThisDeviceOnly`), PINs/TANs only in memory
-(`zeroize`), no telemetry. **Never attach real bank data or credentials to issues.**
+(`zeroize`), no telemetry. Merchant logos are **opt-in** (off by default, Settings → Merchant logos); without it, no network
+request is made for logos and everything stays 100 % local. **Never attach real bank data or credentials to issues.**
+
+DE: Händler-Logos sind **standardmäßig deaktiviert** (Opt-in in den Einstellungen) – ohne Zustimmung werden keine Logos aus dem Netz geladen, alles bleibt zu 100 % lokal.
 
 ---
 
