@@ -234,9 +234,22 @@ public final class AppModel {
     /// Recurring bookings of the current month: booked vs. still due.
     var recurringMonth: RecurringMonthOverview?
     var showRecurringSheet = false
+    /// Series hidden with "Nicht wiederkehrend" (can be shown again).
+    var recurringHidden: [IgnoredRecurring] = []
+    /// Booking whose custom recurrence dates are being edited.
+    var customRecurringBooking: Booking?
     var statusFilter: StatusFilter = .all
     var searchText: String = "" { didSet { scheduleSearch() } }
-    var selectedBookingID: Booking.ID? { didSet { reloadMerchantStats() } }
+    var selectedBookingID: Booking.ID? {
+        didSet {
+            if stickyBooking?.id != selectedBookingID { stickyBooking = nil }
+            reloadMerchantStats()
+        }
+    }
+    /// A booking that left the filtered list because the user just edited it
+    /// (e.g. "kein Gehalt" in the salary period). It stays selected and visible
+    /// in the inspector until the user selects something else, like in Mail.
+    private var stickyBooking: Booking?
     /// iPhone: set by a tap on a booking row, presents the detail sheet.
     var showBookingSheet = false
     var collapsedGroups: Set<Int64> = Set(UserDefaults.standard.array(forKey: "sidebar.collapsedKindGroups") as? [Int64] ?? []) {
@@ -721,7 +734,7 @@ public final class AppModel {
             page = p
             bookings = p.transactions
         }
-        if let sel = selectedBookingID, !bookings.contains(where: { $0.id == sel }) {
+        if let sel = selectedBookingID, !bookings.contains(where: { $0.id == sel }), stickyBooking?.id != sel {
             selectedBookingID = bookings.first?.id
         }
         reloadSelectionKPIs()
@@ -858,7 +871,7 @@ public final class AppModel {
     /// Subtitle of the period-based KPI tiles.
     var periodSubtitle: String {
         guard period == .sinceSalary else { return period.title }
-        guard let c = salaryCycle else { return String(localized: "Monat · kein Gehalt erkannt") }
+        guard let c = salaryCycle else { return String(localized: "Monat (kein Gehalt)") }
         return String(localized: "Seit Gehalt am \(DateText.medium(c.lastDate))")
     }
 
@@ -872,9 +885,20 @@ public final class AppModel {
     func setSalaryFlag(_ booking: Booking, _ flag: Bool?) {
         guard let vault else { return }
         run { try vault.setBookingSalaryFlag(bookingId: booking.id, flag: flag) }
+        // keep the edited booking selected even if it leaves the period
+        if selectedBookingID == booking.id { stickyBooking = freshBooking(booking) }
         refreshSalaryCycle()
         if period == .sinceSalary { reloadCategories(); reloadHistory() }
         reloadBookings()
+    }
+
+    /// Re-reads one booking from the vault (independent of the list filter).
+    private func freshBooking(_ b: Booking) -> Booking? {
+        guard let vault else { return nil }
+        let f = BookingFilter(accountIds: [b.accountId], categoryId: nil, includeSubcategories: true, uncategorizedOnly: false,
+                              search: nil, dateFrom: b.bookingDate, dateTo: b.bookingDate, limit: 0, offset: 0,
+                              scope: .all, merchantKey: nil)
+        return (try? vault.listTransactions(filter: f))?.transactions.first { $0.id == b.id }
     }
 
     // MARK: - PDF statements & document folder (GitHub #57)
@@ -953,6 +977,7 @@ public final class AppModel {
         let c = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: Date())
         run {
             recurring = try vault.listRecurring(accountIds: ids)
+            recurringHidden = try vault.listIgnoredRecurring(accountIds: ids)
             recurringMonth = try vault.recurringMonth(accountIds: ids, year: Int32(c.year ?? 2026), month: UInt32(c.month ?? 1))
         }
     }
@@ -979,11 +1004,29 @@ public final class AppModel {
         refreshRecurring()
     }
 
-    /// Back to automatic detection.
-    func resetRecurring(_ s: RecurringSeries) {
+    /// Back to automatic detection (also shows a hidden series again).
+    func resetRecurring(_ s: RecurringSeries) { resetRecurring(key: s.seriesKey) }
+
+    func resetRecurring(key: String) {
         guard let vault else { return }
-        run { try vault.resetRecurring(seriesKey: s.seriesKey) }
+        run { try vault.resetRecurring(seriesKey: key) }
         refreshRecurring()
+    }
+
+    /// Selects a booking in the list, widening the period if it is outside of it.
+    func revealBooking(_ id: Int64) {
+        if !bookings.contains(where: { $0.id == id }) {
+            sidebarSelection = .allAccounts
+            period = .all
+            searchText = ""
+        }
+        // After a closing sheet / list reload, so the list can scroll to the row.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard let self else { return }
+            if selectedBookingID == id { selectedBookingID = nil }
+            selectedBookingID = id
+        }
     }
 
     private func run(_ body: () throws -> Void) {
@@ -1135,7 +1178,7 @@ public final class AppModel {
 
     var selectedBooking: Booking? {
         guard let id = selectedBookingID else { return nil }
-        return bookings.first { $0.id == id }
+        return bookings.first { $0.id == id } ?? (stickyBooking?.id == id ? stickyBooking : nil)
     }
 
     var allAccounts: [Account] { groups.flatMap(\.accounts) }

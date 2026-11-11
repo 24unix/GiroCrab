@@ -49,6 +49,17 @@ public struct GiroCrabScenes: Scene {
                 Button("Regel für diesen Händler erstellen …") { model.openRuleEditor(from: model.selectedBooking) }
                     .disabled(model.selectedBooking == nil)
                 Divider()
+                RecurringMenu(model: model, booking: model.selectedBooking)
+                    .disabled(model.selectedBooking == nil)
+                Toggle("Als Gehalt / Rente zählen", isOn: Binding(
+                    get: { model.selectedBooking?.isSalary ?? false },
+                    set: { on in if let b = model.selectedBooking { model.setSalaryFlag(b, on) } }
+                ))
+                .disabled((model.selectedBooking?.amountCents ?? 0) <= 0)
+                Button("Wiederkehrende Buchungen …") { model.showRecurringSheet = true }
+                    .keyboardShortcut("f", modifiers: [.command, .shift])
+                    .disabled(model.vault == nil)
+                Divider()
                 Button("Nächste Buchung") { model.moveSelection(1) }
                     .keyboardShortcut(.downArrow, modifiers: .command)
                 Button("Vorherige Buchung") { model.moveSelection(-1) }
@@ -222,6 +233,16 @@ struct MainSplitView: View {
         .sheet(isPresented: $model.showMoneyMoneyImport) {
             MoneyMoneyImportSheet()
                 .environment(model)
+        }
+        .sheet(isPresented: $model.showRecurringSheet) {
+            RecurringSheet()
+                .environment(model)
+        }
+        .sheet(item: $model.customRecurringBooking) { b in
+            CustomDatesSheet(initialDates: model.recurringSeries(for: b).flatMap { $0.interval == .custom ? $0.customDates : nil } ?? []) { dates in
+                model.markRecurring(b, .custom, customDates: dates)
+            }
+            .environment(model)
         }
         .sheet(isPresented: $model.showCategorizer) {
             CategorizerSheet()

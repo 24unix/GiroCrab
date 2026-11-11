@@ -117,6 +117,16 @@ pub struct RecurringSeries {
     pub source: RecurringSource,
 }
 
+/// A series the user hid with "Nicht wiederkehrend" (can be shown again).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct IgnoredRecurring {
+    pub series_key: String,
+    pub name: String,
+    /// Latest amount (negative = expense).
+    pub amount_cents: i64,
+    pub last_date: String,
+}
+
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct RecurringMonthItem {
     pub series: RecurringSeries,
@@ -454,6 +464,37 @@ fn build_series(
     out
 }
 
+/// Ignored series that still have bookings in `bookings` (newest first).
+fn ignored_series(bookings: &[Booking], stored: &HashMap<String, Stored>) -> Vec<IgnoredRecurring> {
+    let mut out: Vec<IgnoredRecurring> = stored
+        .iter()
+        .filter(|(_, s)| s.ignored)
+        .filter_map(|(key, _)| {
+            let (base, amount) = match key.split_once('#') {
+                Some((b, a)) => (b, a.parse::<i64>().ok()),
+                None => (key.as_str(), None),
+            };
+            let last = bookings
+                .iter()
+                .filter(|b| series_key(b) == base)
+                .filter(|b| amount.is_none_or(|a| (b.amount_cents.abs() - a).abs() * 100 <= a * 15))
+                .max_by(|a, b| (&a.booking_date, a.id).cmp(&(&b.booking_date, b.id)))?;
+            Some(IgnoredRecurring {
+                series_key: key.clone(),
+                name: if last.merchant_name.is_empty() {
+                    last.counterparty.clone()
+                } else {
+                    last.merchant_name.clone()
+                },
+                amount_cents: last.amount_cents,
+                last_date: last.booking_date.clone(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| b.last_date.cmp(&a.last_date).then(a.name.cmp(&b.name)));
+    out
+}
+
 /// What of `series` falls into the given month: booked bookings or open due dates.
 fn month_items(
     series: &[RecurringSeries],
@@ -564,6 +605,17 @@ impl Vault {
         let stored = load_stored(&*self.db()?)?;
         let series = build_series(&bookings, &stored, today);
         Ok(month_items(&series, &bookings, year, month))
+    }
+
+    /// Series hidden with "Nicht wiederkehrend" that still have bookings in
+    /// the detection window, so the user can show them again.
+    pub fn list_ignored_recurring(
+        &self,
+        account_ids: Vec<i64>,
+    ) -> Result<Vec<IgnoredRecurring>, CoreError> {
+        let (bookings, _) = self.recurring_input(account_ids)?;
+        let stored = load_stored(&*self.db()?)?;
+        Ok(ignored_series(&bookings, &stored))
     }
 
     /// Marks the series of a booking as recurring with the given interval.
@@ -804,6 +856,10 @@ mod tests {
             },
         );
         assert_eq!(build_series(&v, &stored, today()).len(), 1);
+        let hidden = ignored_series(&v, &stored);
+        assert_eq!(hidden.len(), 1);
+        assert_eq!(hidden[0].series_key, s[0].series_key);
+        assert_eq!(hidden[0].amount_cents.abs(), s[0].amount_cents.abs());
     }
 
     #[test]
@@ -920,8 +976,12 @@ mod vault_tests {
         let key = s[0].series_key.clone();
         v.ignore_recurring(key.clone()).unwrap();
         assert!(v.list_recurring(vec![]).unwrap().is_empty());
+        let hidden = v.list_ignored_recurring(vec![]).unwrap();
+        assert_eq!(hidden.len(), 1);
+        assert_eq!(hidden[0].name, "Stadtkasse");
         v.reset_recurring(key).unwrap();
         assert!(v.list_recurring(vec![]).unwrap().is_empty());
+        assert!(v.list_ignored_recurring(vec![]).unwrap().is_empty());
         drop(v);
         let _ = std::fs::remove_dir_all(dir);
     }

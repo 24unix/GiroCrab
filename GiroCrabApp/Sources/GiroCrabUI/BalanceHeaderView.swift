@@ -191,15 +191,15 @@ struct StreamHeaderCard: View {
     /// Recurring expenses still due this month (GitHub #35); opens the overview.
     @ViewBuilder
     private var fixedCostsKPI: some View {
-        @Bindable var model = model
         let open = model.recurringMonth?.items.filter { !$0.booked && $0.amountCents < 0 }.count ?? 0
         Button { model.showRecurringSheet = true } label: {
             KPI(title: "Fixkosten offen", subtitle: "Diesen Monat · \(open) offen",
-                value: Money.format(-(model.recurringMonth?.openExpenseCents ?? 0)), tint: Theme.outflow)
+                value: Money.format(-(model.recurringMonth?.openExpenseCents ?? 0)), tint: Theme.outflow,
+                disclosure: true)
         }
         .buttonStyle(.plain)
-        .help("Wiederkehrende Buchungen anzeigen")
-        .sheet(isPresented: $model.showRecurringSheet) { RecurringSheet() }
+        .help("Wiederkehrende Buchungen anzeigen (⇧⌘F)")
+        .accessibilityHint("Öffnet die Übersicht der wiederkehrenden Buchungen")
     }
 
     @ViewBuilder
@@ -262,10 +262,20 @@ struct KPI: View {
     let subtitle: LocalizedStringKey
     let value: String
     let tint: Color
+    /// Tile opens a detail view: shows a chevron next to the title.
+    var disclosure = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.caption.weight(.medium)).foregroundStyle(Theme.secondary)
+            HStack(spacing: 3) {
+                Text(title).font(.caption.weight(.medium)).foregroundStyle(Theme.secondary)
+                if disclosure {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Theme.tertiary)
+                        .accessibilityHidden(true)
+                }
+            }
             Text(value).font(.system(size: 16, weight: .semibold).monospacedDigit()).foregroundStyle(tint)
             Text(subtitle).font(.caption2).foregroundStyle(Theme.tertiary)
         }
@@ -274,6 +284,8 @@ struct KPI: View {
         .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.canvas))
         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
