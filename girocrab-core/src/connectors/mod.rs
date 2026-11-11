@@ -853,25 +853,30 @@ pub(crate) fn store_fetch(
         }
         let mut revoked_accounts: Vec<String> = Vec::new();
         let mut revoked_refs = data.revoked_refs.clone();
+        // Archived accounts are the user's business: skipped above even when
+        // the bank still delivers them, so they must not count as "missing".
+        let delivered = |r: &str| account_ids.contains_key(r) || archived_ids.contains_key(r);
         if data.accounts_complete && !data.accounts.is_empty() {
             let mut q = tx.prepare(
-                "SELECT external_ref FROM accounts WHERE connection_id = ?1 AND access_revoked = 0",
+                "SELECT external_ref FROM accounts
+                 WHERE connection_id = ?1 AND access_revoked = 0 AND archived_unix IS NULL",
             )?;
             let stored: Vec<String> = q
                 .query_map([connection_id], |r| r.get(0))?
                 .collect::<Result<_, _>>()?;
             drop(q);
-            revoked_refs.extend(stored.into_iter().filter(|r| !account_ids.contains_key(r)));
+            revoked_refs.extend(stored.into_iter().filter(|r| !delivered(r)));
         }
         revoked_refs.sort();
         revoked_refs.dedup();
         for r in revoked_refs
             .iter()
-            .filter(|r| !r.is_empty() && !account_ids.contains_key(*r))
+            .filter(|r| !r.is_empty() && !delivered(r))
         {
             let name: Option<String> = tx
                 .query_row(
-                    "SELECT name FROM accounts WHERE connection_id = ?1 AND external_ref = ?2 AND access_revoked = 0",
+                    "SELECT name FROM accounts WHERE connection_id = ?1 AND external_ref = ?2
+                       AND access_revoked = 0 AND archived_unix IS NULL",
                     params![connection_id, r],
                     |row| row.get(0),
                 )
@@ -1976,6 +1981,78 @@ mod tests {
             let acc = v.list_accounts().unwrap().pop().unwrap();
             assert_eq!(v.list_holdings(acc.id).unwrap().len(), 1, "ref {r}");
         }
+    }
+
+    #[test]
+    fn archived_psd2_account_is_not_reported_as_revoked() {
+        // #65 (archive) + #66 (revoked marking): an account the user archived
+        // is skipped by store_fetch, so it must not look "missing" from a
+        // complete PSD2 sync.
+        let p = std::env::temp_dir().join(format!("girocrab-arch-eb-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
+        let conn = v
+            .add_bank_connection(ConnectorKind::EnableBanking, String::new(), "C24".into())
+            .unwrap();
+        let acc = |r: &str, name: &str| RemoteAccount {
+            external_ref: r.into(),
+            name: name.into(),
+            owner: String::new(),
+            iban: String::new(),
+            account_number: String::new(),
+            currency: "EUR".into(),
+            kind: AccountKind::Checking,
+            balance_cents: 100,
+            balance_date: "2026-11-11".into(),
+        };
+        let both = || vec![acc("G", "C24 Smartkonto"), acc("P", "C24 Pocket")];
+        store_fetch(
+            &v,
+            ConnectorKind::EnableBanking,
+            conn,
+            FetchResult {
+                accounts: both(),
+                accounts_complete: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let pocket = v
+            .list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.name == "C24 Pocket")
+            .unwrap();
+        v.set_account_archived(pocket.id, true).unwrap();
+        // the bank still delivers both
+        let s = store_fetch(
+            &v,
+            ConnectorKind::EnableBanking,
+            conn,
+            FetchResult {
+                accounts: both(),
+                accounts_complete: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(s.revoked_accounts.is_empty(), "{:?}", s.revoked_accounts);
+        // the bank no longer delivers the archived one: still no notice
+        let s = store_fetch(
+            &v,
+            ConnectorKind::EnableBanking,
+            conn,
+            FetchResult {
+                accounts: vec![acc("G", "C24 Smartkonto")],
+                accounts_complete: true,
+                revoked_refs: vec!["P".into()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(s.revoked_accounts.is_empty(), "{:?}", s.revoked_accounts);
+        let st = v.connection_status(conn).unwrap();
+        assert_eq!(st.revoked_account_count, 0);
+        std::fs::remove_file(p).ok();
     }
 
     #[test]

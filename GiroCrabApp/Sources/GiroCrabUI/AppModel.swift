@@ -1719,7 +1719,11 @@ extension AppModel {
     /// the bank's app instead of a TAN.
     var giroCodeAccounts: [Account] {
         let sending = Set(transferAccounts.map(\.id))
-        return allAccounts.filter { $0.kind == .checking && !$0.iban.isEmpty && !sending.contains($0.id) }
+        // Archived accounts are out of the form entirely (like transferAccounts);
+        // otherwise an archived FinTS account would fall through to here.
+        return allAccounts.filter {
+            $0.kind == .checking && !$0.iban.isEmpty && !$0.isArchived && !sending.contains($0.id)
+        }
     }
 
     /// Accounts offered in the transfer form: sending ones first.
