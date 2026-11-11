@@ -1493,3 +1493,21 @@ fn import_reports_progress_and_can_be_cancelled() {
     assert!(seen.iter().any(|s| s.account_name == "Girokonto"));
     let _ = std::fs::remove_dir_all(folder);
 }
+
+/// The "already imported?" lookup runs once per document: it must use the
+/// index on `source_url`, not scan the table (and with it every stored PDF).
+#[test]
+fn document_lookup_uses_the_source_index() {
+    let v = vault();
+    let db = v.db().unwrap();
+    let plan: Vec<String> = db
+        .prepare(&format!("EXPLAIN QUERY PLAN {DOCUMENT_EXISTS_SQL}"))
+        .unwrap()
+        .query_map(["moneymoney:1:abc"], |r| r.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    let plan = plan.join(" | ");
+    assert!(plan.contains("booking_documents_source"), "{plan}");
+    assert!(!plan.contains("SCAN booking_documents"), "{plan}");
+}

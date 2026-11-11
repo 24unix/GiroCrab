@@ -35,6 +35,12 @@ CREATE TABLE IF NOT EXISTS booking_documents (
 CREATE UNIQUE INDEX IF NOT EXISTS booking_documents_source ON booking_documents(source_url) WHERE source_url != '';
 CREATE INDEX IF NOT EXISTS booking_documents_booking ON booking_documents(booking_id);
 CREATE INDEX IF NOT EXISTS booking_documents_account ON booking_documents(account_id);
+-- Everything the document list shows, so that it is read from this index and
+-- never from the table: there the columns after pdf_bytes (source_url,
+-- doc_date, created_at) are only reached by reading through the whole PDF.
+CREATE INDEX IF NOT EXISTS booking_documents_info ON booking_documents(
+    doc_date DESC, id DESC, booking_id, account_id, title, doc_type, mime_type, file_name,
+    length(pdf_bytes), source_url, created_at);
 "#;
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -397,6 +403,24 @@ impl Vault {
     }
 }
 
+/// The document list. `INDEXED BY` makes SQLite answer it from
+/// `booking_documents_info` alone; on its own the planner scans the table and
+/// reads through every stored PDF (all columns used here must be in that
+/// index – a test checks the plan).
+fn list_all_documents_sql() -> String {
+    let select = SELECT_INFO.replace(
+        "FROM booking_documents d",
+        "FROM booking_documents d INDEXED BY booking_documents_info",
+    );
+    format!(
+        "{select} WHERE (?1 IS NULL OR COALESCE(d.account_id, t.account_id) = ?1)
+            AND (?2 IS NULL OR d.doc_type = ?2)
+            AND (?3 IS NULL OR d.title LIKE ?3 OR d.file_name LIKE ?3 OR t.counterparty LIKE ?3)
+            AND (?4 = 0 OR d.booking_id IS NULL)
+         ORDER BY COALESCE(NULLIF(d.doc_date,''), t.booking_date) DESC, d.id DESC"
+    )
+}
+
 #[uniffi::export]
 impl Vault {
     pub fn list_documents_for_booking(
@@ -418,13 +442,7 @@ impl Vault {
         filter: DocumentFilter,
     ) -> Result<Vec<DocumentInfo>, CoreError> {
         let db = self.db()?;
-        let mut st = db.prepare(&format!(
-            "{SELECT_INFO} WHERE (?1 IS NULL OR COALESCE(d.account_id, t.account_id) = ?1)
-                AND (?2 IS NULL OR d.doc_type = ?2)
-                AND (?3 IS NULL OR d.title LIKE ?3 OR d.file_name LIKE ?3 OR t.counterparty LIKE ?3)
-                AND (?4 = 0 OR d.booking_id IS NULL)
-             ORDER BY COALESCE(NULLIF(d.doc_date,''), t.booking_date) DESC, d.id DESC"
-        ))?;
+        let mut st = db.prepare(&list_all_documents_sql())?;
         let search = filter
             .search
             .filter(|s| !s.trim().is_empty())
@@ -839,6 +857,78 @@ pub fn simple_pdf(lines: &[String]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn plan(db: &Connection, sql: &str, args: impl rusqlite::Params) -> String {
+        db.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .unwrap()
+            .query_map(args, |r| r.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join(" | ")
+    }
+
+    /// The document list must come from the covering index: a table scan
+    /// reads through every stored PDF to reach the columns behind the blob.
+    #[test]
+    fn document_list_is_answered_from_the_index() {
+        let path = std::env::temp_dir().join(format!("gc-docs-plan-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(path.to_string_lossy().into(), vec![5u8; 32]).unwrap();
+        let acc = {
+            let db = v.db().unwrap();
+            db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+                .unwrap();
+            db.execute(
+                "INSERT INTO accounts(group_id, external_ref, name) VALUES ((SELECT id FROM account_groups), 'A', 'Giro')",
+                [],
+            )
+            .unwrap();
+            db.last_insert_rowid()
+        };
+        for (i, date) in ["2026-01-05", "2026-03-01", "2026-02-10"]
+            .iter()
+            .enumerate()
+        {
+            let id = v
+                .attach_document_to_account(
+                    acc,
+                    format!("Auszug {i}"),
+                    format!("auszug_{i}.pdf"),
+                    simple_pdf(&[format!("Kontoauszug {i}")]),
+                    "kontoauszug".into(),
+                )
+                .unwrap();
+            v.db()
+                .unwrap()
+                .execute(
+                    "UPDATE booking_documents SET doc_date = ?2 WHERE id = ?1",
+                    params![id, date],
+                )
+                .unwrap();
+        }
+        {
+            let db = v.db().unwrap();
+            let p = plan(
+                &db,
+                &list_all_documents_sql(),
+                params![None::<i64>, None::<String>, None::<String>, 0],
+            );
+            assert!(p.contains("COVERING INDEX booking_documents_info"), "{p}");
+        }
+        // same result as before: newest first, with size and account
+        let docs = v.list_all_documents(DocumentFilter::default()).unwrap();
+        let titles: Vec<&str> = docs.iter().map(|d| d.title.as_str()).collect();
+        assert_eq!(titles, ["Auszug 1", "Auszug 2", "Auszug 0"]);
+        assert!(docs.iter().all(|d| d.account_id == Some(acc)));
+        let one = v
+            .list_all_documents(DocumentFilter {
+                account_id: Some(acc + 1),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(one.is_empty());
+        let _ = std::fs::remove_file(path);
+    }
 
     #[test]
     fn reads_amounts_and_dates() {

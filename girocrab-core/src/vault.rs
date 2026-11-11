@@ -63,6 +63,23 @@ CREATE TABLE IF NOT EXISTS holdings (
 CREATE INDEX IF NOT EXISTS holdings_account ON holdings(account_id);
 ";
 
+/// Indexes for the queries every reload runs (idempotent, also for existing
+/// vaults; measured on a vault with ~19 000 bookings):
+/// - `tx_date_id`: the booking list is ordered by date, then id – with the
+///   old `tx_date` (date only) SQLite sorted every result again.
+/// - `tx_account_category` / `tx_account_checked`: the sidebar counters
+///   ("ohne Kategorie", "neu") per account are answered from the index
+///   instead of reading every booking of the account.
+/// - `tx_salary_marked`: the user-marked salary bookings, looked up on every
+///   booking list, without scanning all bookings.
+const PERF_INDEXES: &str = "
+DROP INDEX IF EXISTS tx_date;
+CREATE INDEX IF NOT EXISTS tx_date_id ON transactions(booking_date DESC, id DESC);
+CREATE INDEX IF NOT EXISTS tx_account_category ON transactions(account_id, category_id);
+CREATE INDEX IF NOT EXISTS tx_account_checked ON transactions(account_id, checked);
+CREATE INDEX IF NOT EXISTS tx_salary_marked ON transactions(counterparty_iban) WHERE salary_flag = 1;
+";
+
 const SCHEMA_VERSION: i64 = 7;
 
 const SCHEMA: &str = r#"
@@ -157,7 +174,6 @@ CREATE TABLE IF NOT EXISTS transactions (
     UNIQUE (account_id, external_id)
 );
 CREATE INDEX IF NOT EXISTS tx_account_date ON transactions(account_id, booking_date DESC);
-CREATE INDEX IF NOT EXISTS tx_date ON transactions(booking_date DESC);
 CREATE INDEX IF NOT EXISTS tx_category ON transactions(category_id);
 CREATE INDEX IF NOT EXISTS tx_import_fp ON transactions(account_id, import_fp) WHERE import_fp != '';
 
@@ -343,6 +359,8 @@ impl Vault {
         crate::user_groups::migrate(conn)?;
         // manual loans (#36) – idempotent
         conn.execute_batch(crate::loans::LOAN_SCHEMA)?;
+        // after all column migrations: the indexes need the newest columns
+        conn.execute_batch(PERF_INDEXES)?;
         if version < SCHEMA_VERSION {
             conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
         }
@@ -2623,7 +2641,8 @@ mod upgrade_tests {
             )
             .unwrap();
             c.execute_batch(
-                "ALTER TABLE transactions DROP COLUMN purpose_code;
+                "DROP INDEX tx_salary_marked; -- (an old vault has neither the index nor its column)
+                 ALTER TABLE transactions DROP COLUMN purpose_code;
                  ALTER TABLE transactions DROP COLUMN gvc;
                  ALTER TABLE transactions DROP COLUMN salary_flag;
                  ALTER TABLE booking_documents DROP COLUMN exported_at;
@@ -2657,5 +2676,71 @@ mod upgrade_tests {
         v.reset_document_mirror().unwrap();
         drop(v);
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod index_tests {
+    use super::*;
+
+    fn plan(db: &Connection, sql: &str) -> String {
+        db.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .join(" | ")
+    }
+
+    /// The queries every reload runs use their indexes (shapes as in
+    /// `list_transactions`, `list_accounts` and `marked_salary_ibans`).
+    #[test]
+    fn reload_queries_use_their_indexes() {
+        let path = std::env::temp_dir().join(format!("gc-index-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(path.to_string_lossy().into(), vec![4u8; 32]).unwrap();
+        let db = v.db().unwrap();
+        // booking list: in index order, no sorting afterwards
+        let p = plan(
+            &db,
+            "SELECT t.id FROM transactions t JOIN accounts a ON a.id = t.account_id
+             LEFT JOIN categories cat ON cat.id = t.category_id
+             WHERE 1=1 ORDER BY t.booking_date DESC, t.id DESC",
+        );
+        assert!(
+            p.contains("tx_date_id") && !p.contains("TEMP B-TREE"),
+            "{p}"
+        );
+        // sidebar counters: from the index, without reading the bookings
+        for (cond, index) in [
+            (
+                "t.category_id IS NULL",
+                "COVERING INDEX tx_account_category",
+            ),
+            ("t.checked = 0", "COVERING INDEX tx_account_checked"),
+        ] {
+            let p = plan(
+                &db,
+                &format!("SELECT count(*) FROM transactions t WHERE t.account_id = 1 AND {cond}"),
+            );
+            assert!(p.contains(index), "{p}");
+        }
+        let p = plan(
+            &db,
+            "SELECT DISTINCT counterparty_iban FROM transactions
+             WHERE salary_flag = 1 AND counterparty_iban != '' AND amount_cents > 0",
+        );
+        assert!(p.contains("tx_salary_marked"), "{p}");
+        // the superseded index is gone, also in vaults that had it
+        let old: i64 = db
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name = 'tx_date'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(old, 0);
+        drop(db);
+        let _ = std::fs::remove_file(path);
     }
 }

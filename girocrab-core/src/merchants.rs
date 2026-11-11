@@ -13,7 +13,13 @@
 //! The module also classifies every booking into a `FlowKind`, so ETF savings
 //! plans, Saveback and Round up never count as consumption ("Konsumausgaben").
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 use crate::models::AccountKind;
+
+/// Entries kept by the merchant cache of [`MerchantResolver::resolve`].
+const RESOLVE_CACHE_MAX: usize = 200_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum MerchantKind {
@@ -1519,7 +1525,30 @@ pub fn clean_name(s: &str) -> String {
 
 impl MerchantResolver {
     /// Resolves the merchant of a booking from counterparty and purpose.
+    ///
+    /// The result only depends on the two texts, and the booking list asks
+    /// for every booking again on each reload, so results are remembered
+    /// for the lifetime of the process (resolving ~19 000 bookings took
+    /// about 270 ms per reload; a remembered one is a hash lookup).
     pub fn resolve(counterparty: &str, purpose: &str) -> MerchantInfo {
+        static CACHE: OnceLock<Mutex<HashMap<(String, String), MerchantInfo>>> = OnceLock::new();
+        let cache = CACHE.get_or_init(Default::default);
+        let key = (counterparty.to_string(), purpose.to_string());
+        if let Some(hit) = cache.lock().ok().and_then(|c| c.get(&key).cloned()) {
+            return hit;
+        }
+        let info = Self::resolve_uncached(counterparty, purpose);
+        if let Ok(mut c) = cache.lock() {
+            // bounded: far above any real booking count, cleared rather than evicted
+            if c.len() >= RESOLVE_CACHE_MAX {
+                c.clear();
+            }
+            c.insert(key, info.clone());
+        }
+        info
+    }
+
+    fn resolve_uncached(counterparty: &str, purpose: &str) -> MerchantInfo {
         let cp = normalise(counterparty);
         let pu = normalise(purpose);
         // "PayPal *Spotify", "PayPal Europe ... Ihr Einkauf bei Spotify AB": look behind the processor.
@@ -1784,6 +1813,26 @@ pub fn resolve_merchant(counterparty: String, purpose: String) -> MerchantInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remembered_merchants_equal_fresh_ones() {
+        for (cp, pu) in [
+            ("REWE Markt GmbH", "Einkauf Filiale 12"),
+            ("PayPal Europe S.a.r.l.", "Ihr Einkauf bei Spotify AB"),
+            ("Max Mustermann", "Miete November"),
+            ("", ""),
+        ] {
+            let fresh = MerchantResolver::resolve_uncached(cp, pu);
+            // first call fills the cache, second one reads it
+            assert_eq!(MerchantResolver::resolve(cp, pu), fresh, "{cp}");
+            assert_eq!(MerchantResolver::resolve(cp, pu), fresh, "{cp}");
+        }
+        // the purpose is part of the key
+        assert_ne!(
+            MerchantResolver::resolve("PayPal Europe S.a.r.l.", "Ihr Einkauf bei Spotify AB").key,
+            MerchantResolver::resolve("PayPal Europe S.a.r.l.", "Ihr Einkauf bei Zalando SE").key
+        );
+    }
 
     #[test]
     fn resolves_noisy_strings() {

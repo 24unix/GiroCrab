@@ -1665,6 +1665,14 @@ fn preview(
     })
 }
 
+/// "Is this document already in the archive?" – `source_url != ''` repeats
+/// the condition of the partial index `booking_documents_source`; without
+/// it SQLite can't use that index for a bound value and scans the whole
+/// table, reading through every stored PDF (`source_url` comes after the
+/// blob), once per imported document.
+const DOCUMENT_EXISTS_SQL: &str =
+    "SELECT EXISTS (SELECT 1 FROM booking_documents WHERE source_url = ?1 AND source_url != '')";
+
 /// Copies one listed statement / bank document into the archive of
 /// `account_id`. Idempotent per MoneyMoney account and file content.
 fn import_document(
@@ -1677,11 +1685,7 @@ fn import_document(
 ) -> CoreResult<()> {
     let key = |digest: &str| format!("moneymoney:{mm_account}:{digest}");
     let exists = |digest: &str| -> CoreResult<bool> {
-        Ok(conn.query_row(
-            "SELECT EXISTS (SELECT 1 FROM booking_documents WHERE source_url = ?1)",
-            [key(digest)],
-            |r| r.get(0),
-        )?)
+        Ok(conn.query_row(DOCUMENT_EXISTS_SQL, [key(digest)], |r| r.get(0))?)
     };
     // already there: don't read the file again
     if !d.digest.is_empty() && exists(&d.digest)? {
