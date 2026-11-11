@@ -12471,6 +12471,171 @@
           }
         }
       }
+    },
+    "Drucken nicht möglich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can’t Print"
+          }
+        }
+      }
+    },
+    "Beleg konnte nicht zugeordnet werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Match Document"
+          }
+        }
+      }
+    },
+    "Anmeldung konnte nicht übernommen werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Use Sign-In"
+          }
+        }
+      }
+    },
+    "Abruf von „%@“ fehlgeschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Refresh “%@”"
+          }
+        }
+      }
+    },
+    "Abruf fehlgeschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh Failed"
+          }
+        }
+      }
+    },
+    "Export fehlgeschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export Failed"
+          }
+        }
+      }
+    },
+    "Regel konnte nicht gespeichert werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Save Rule"
+          }
+        }
+      }
+    },
+    "Erneut versuchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try Again"
+          }
+        }
+      }
+    },
+    "Amazon-Bestellungen konnten nicht übernommen werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Import Amazon Orders"
+          }
+        }
+      }
+    },
+    "Amazon-Abruf fehlgeschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amazon Refresh Failed"
+          }
+        }
+      }
+    },
+    "Keine Umsätze erkannt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Transactions Found"
+          }
+        }
+      }
+    },
+    "Kontoauszug-Import fehlgeschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statement Import Failed"
+          }
+        }
+      }
+    },
+    "Dokument konnte nicht gesichert werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Save Document"
+          }
+        }
+      }
+    },
+    "Belege durchsuchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search Documents"
+          }
+        }
+      }
+    },
+    "Die Bank hat nicht geantwortet (Zeitüberschreitung)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The bank didn’t respond (timeout)."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
