@@ -55,7 +55,8 @@ pub struct MoneyMoneyDbAccount {
     pub bank_code: String,
     pub bank_name: String,
     pub owner: String,
-    /// MoneyMoney sidebar group (taken over with `import_groups`).
+    /// MoneyMoney sidebar group (taken over with `import_groups`); nested
+    /// groups as a path, e.g. "Immobilien › ETW Neckarsulm".
     pub group_name: String,
     pub mm_bank_id: Option<i64>,
     pub is_portfolio: bool,
@@ -132,8 +133,9 @@ pub struct MoneyMoneyDbImportOptions {
     /// Copy saved PINs into the encrypted vault (only with `create_connections`).
     pub import_pins: bool,
     /// Put the accounts into GiroCrab groups named like their MoneyMoney
-    /// groups (created if missing). Accounts the user already placed keep
-    /// their group (or "Ohne Gruppe").
+    /// groups (created if missing, nested and ordered like in MoneyMoney).
+    /// Accounts the user already placed keep their group (or "Ohne
+    /// Gruppe"); groups that already exist stay where the user put them.
     pub import_groups: bool,
 }
 
@@ -232,7 +234,8 @@ struct Source {
     docs: Vec<SrcDoc>,
     accounts: Vec<SrcAccount>,
     banks: Vec<SrcBank>,
-    account_groups: HashMap<i64, String>,
+    /// rowid -> (name, parent group rowid or 0, sort)
+    account_groups: HashMap<i64, (String, i64, i64)>,
     /// category rowid -> path (uncategorised / invalid entries are absent)
     categories: HashMap<i64, Vec<String>>,
     /// all category paths in MoneyMoney order
@@ -709,10 +712,22 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
     }
 
     if have.contains("account_groups") {
-        let sql = select(&conn, "account_groups", &["rowid", "name"], "")?;
+        let sql = select(
+            &conn,
+            "account_groups",
+            &["rowid", "name", "group_key", "sort"],
+            "",
+        )?;
         let mut st = conn.prepare(&sql)?;
         let rows = st.query_map([], |r| {
-            Ok((vint(get(r, 0)?).unwrap_or_default(), vtext(get(r, 1)?)))
+            Ok((
+                vint(get(r, 0)?).unwrap_or_default(),
+                (
+                    vtext(get(r, 1)?).trim().to_string(),
+                    vint(get(r, 2)?).unwrap_or(0),
+                    vint(get(r, 3)?).unwrap_or(0),
+                ),
+            ))
         })?;
         src.account_groups = rows.collect::<Result<_, _>>()?;
     }
@@ -983,6 +998,54 @@ struct AccountRows {
 }
 
 impl Source {
+    /// The account groups from the top level down to `key`: (rowid, name).
+    /// Groups without a name are skipped.
+    fn group_chain(&self, key: Option<i64>) -> Vec<(i64, String)> {
+        let mut chain = Vec::new();
+        let mut next = key.unwrap_or(0);
+        let mut seen = HashSet::new();
+        while next > 0 && seen.insert(next) {
+            let Some((name, parent, _)) = self.account_groups.get(&next) else {
+                break;
+            };
+            if !name.is_empty() {
+                chain.push((next, name.clone()));
+            }
+            next = *parent;
+        }
+        chain.reverse();
+        chain
+    }
+
+    /// Position of every account group in MoneyMoney's sidebar order
+    /// (a group, then its subgroups; siblings by `sort`).
+    fn group_ranks(&self) -> HashMap<i64, usize> {
+        let mut children: HashMap<i64, Vec<i64>> = HashMap::new();
+        for (id, (_, parent, _)) in &self.account_groups {
+            // a parent that doesn't exist counts as top level
+            let p = if self.account_groups.contains_key(parent) {
+                *parent
+            } else {
+                0
+            };
+            children.entry(p).or_default().push(*id);
+        }
+        for list in children.values_mut() {
+            // reversed: the stack below pops the first sibling first
+            list.sort_by_key(|id| std::cmp::Reverse((self.account_groups[id].2, *id)));
+        }
+        let mut rank = HashMap::new();
+        let mut stack = children.get(&0).cloned().unwrap_or_default();
+        while let Some(id) = stack.pop() {
+            if rank.contains_key(&id) {
+                continue;
+            }
+            rank.insert(id, rank.len());
+            stack.extend(children.get(&id).into_iter().flatten().copied());
+        }
+        rank
+    }
+
     fn bank(&self, key: Option<i64>) -> Option<&SrcBank> {
         key.and_then(|k| self.banks.iter().find(|b| b.id == k))
     }
@@ -1259,11 +1322,12 @@ fn preview(conn: &Connection, src: &Source) -> CoreResult<MoneyMoneyDbPreview> {
             suggested_kind: suggest_kind(a, &bank_name),
             bank_name,
             owner: a.owner.clone(),
-            group_name: a
-                .group_key
-                .and_then(|g| src.account_groups.get(&g))
-                .cloned()
-                .unwrap_or_default(),
+            group_name: src
+                .group_chain(a.group_key)
+                .iter()
+                .map(|(_, name)| name.as_str())
+                .collect::<Vec<_>>()
+                .join(" › "),
             mm_bank_id: a.bank_key,
             is_portfolio: a.portfolio,
             existing_account_id: existing.as_ref().map(|e| e.0),
@@ -1393,6 +1457,8 @@ fn import(
         import_category_rules(conn, src, &mut cat_cache, &mut res)?;
     }
     let mut to_link: Vec<(i64, i64)> = Vec::new();
+    // (MoneyMoney group rowid, uuid) of the groups this import creates
+    let mut created_groups: Vec<(i64, String)> = Vec::new();
     for choice in options.accounts.iter().filter(|c| c.import) {
         let a = src
             .accounts
@@ -1404,11 +1470,7 @@ fn import(
         let r = src.rows_for(a);
         let ext = ext_ref(a);
         let kind = choice.kind;
-        let a_group = a
-            .group_key
-            .and_then(|g| src.account_groups.get(&g))
-            .map(|g| g.trim().to_string())
-            .unwrap_or_default();
+        let a_groups = src.group_chain(a.group_key);
         let target = match choice.target_account_id {
             Some(id) => Some(id),
             None => conn
@@ -1507,7 +1569,7 @@ fn import(
                 res.holdings_imported += list.len() as u32;
             }
         }
-        if options.import_groups && !a_group.is_empty() {
+        if options.import_groups && !a_groups.is_empty() {
             // never placed by the user (an explicit "Ohne Gruppe" is kept, too)
             let ungrouped: bool = conn.query_row(
                 "SELECT user_group_uuid IS NULL AND placement_ms = 0 FROM accounts WHERE id = ?1",
@@ -1515,14 +1577,22 @@ fn import(
                 |r| r.get(0),
             )?;
             if ungrouped {
-                let (uuid, created) = crate::user_groups::find_or_create(conn, &a_group, "folder")?;
-                res.groups_created += created as u32;
-                crate::user_groups::assign(
-                    conn,
-                    account_id,
-                    Some(&uuid),
-                    crate::user_groups::now_ms(),
-                )?;
+                let now = crate::user_groups::now_ms();
+                // the MoneyMoney groups from the top level down to the account's own
+                let mut parent: Option<String> = None;
+                for (key, name) in &a_groups {
+                    let (uuid, created) = crate::user_groups::find_or_create(conn, name, "folder")?;
+                    if created {
+                        res.groups_created += 1;
+                        created_groups.push((*key, uuid.clone()));
+                        // only new groups are nested: one the user already has stays where it is
+                        if let Some(p) = parent.as_deref().filter(|p| *p != uuid) {
+                            crate::user_groups::set_parent(conn, &uuid, Some(p), now)?;
+                        }
+                    }
+                    parent = Some(uuid);
+                }
+                crate::user_groups::assign(conn, account_id, parent.as_deref(), now)?;
             }
         }
         res.bookings_new += st.new;
@@ -1557,6 +1627,30 @@ fn import(
         }
         if let (true, Some(bank)) = (owned, a.bank_key) {
             to_link.push((account_id, bank));
+        }
+    }
+
+    // The new groups take MoneyMoney's order among themselves: they share
+    // out the list positions they got (existing groups keep theirs).
+    if created_groups.len() > 1 {
+        let rank = src.group_ranks();
+        let mut slots: Vec<i64> = Vec::with_capacity(created_groups.len());
+        for (_, uuid) in &created_groups {
+            slots.push(conn.query_row(
+                "SELECT sort_order FROM user_groups WHERE uuid = ?1",
+                [uuid],
+                |r| r.get(0),
+            )?);
+        }
+        slots.sort_unstable();
+        created_groups.sort_by_key(|(key, _)| rank.get(key).copied().unwrap_or(usize::MAX));
+        let now = crate::user_groups::now_ms();
+        for ((_, uuid), slot) in created_groups.iter().zip(slots) {
+            conn.execute(
+                "UPDATE user_groups SET sort_order = ?2, order_ms = ?3, updated_ms = max(updated_ms, ?3)
+                 WHERE uuid = ?1 AND sort_order != ?2",
+                params![uuid, slot, now],
+            )?;
         }
     }
 

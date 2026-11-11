@@ -1135,6 +1135,74 @@ fn import_takes_over_moneymoney_groups() {
 }
 
 #[test]
+fn import_takes_over_nested_groups_in_moneymoney_order() {
+    let v = vault();
+    // "Immobilien" (before "Privat") with two subgroups, listed Heilbronn before Neckarsulm
+    let path = fake_db_with(
+        false,
+        "INSERT INTO account_groups (rowid, name, group_key, sort) VALUES
+           (2, 'Immobilien', 0, 0), (3, 'ETW Neckarsulm', 2, 2), (4, 'ETW Heilbronn', 2, 1);
+         UPDATE accounts SET group_key = 3 WHERE rowid = 3;
+         UPDATE accounts SET group_key = 4 WHERE rowid = 4;",
+    );
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    let shown = |name: &str| {
+        p.accounts
+            .iter()
+            .find(|a| a.name == name)
+            .unwrap()
+            .group_name
+            .clone()
+    };
+    assert_eq!(shown("Depot"), "Immobilien › ETW Neckarsulm");
+    assert_eq!(shown("Girokonto"), "Privat");
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!(r.groups_created, 4);
+    let tree = |v: &Vault| -> Vec<(String, u32, Vec<String>)> {
+        v.list_user_groups()
+            .unwrap()
+            .into_iter()
+            .map(|g| {
+                let mut names: Vec<String> = g.accounts.into_iter().map(|a| a.name).collect();
+                names.sort();
+                (g.name, g.depth, names)
+            })
+            .collect()
+    };
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        tree(&v),
+        vec![
+            ("Immobilien".to_string(), 0, vec![]),
+            ("ETW Heilbronn".to_string(), 1, s(&["Dollar-Konto"])),
+            ("ETW Neckarsulm".to_string(), 1, s(&["Depot"])),
+            ("Privat".to_string(), 0, s(&["Girokonto", "Visa-Karte"])),
+        ]
+    );
+    // the parent's sum covers its subgroups
+    let groups = v.list_user_groups().unwrap();
+    assert_eq!(
+        groups[0].balance_cents,
+        groups[1].balance_cents + groups[2].balance_cents
+    );
+
+    // re-import: nothing new, and a group the user moved stays where it is
+    let heilbronn = groups[1].uuid.clone();
+    v.set_user_group_parent(heilbronn, None).unwrap();
+    let r = v
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!(r.groups_created, 0);
+    let after = tree(&v);
+    assert_eq!(after.iter().find(|g| g.0 == "ETW Heilbronn").unwrap().1, 0);
+    assert_eq!(after.iter().find(|g| g.0 == "ETW Neckarsulm").unwrap().1, 1);
+}
+
+#[test]
 fn imports_category_rules() {
     let v = vault();
     let path = fake_db_with(
