@@ -423,9 +423,19 @@ fn find_balance(v: &Value, kind: ConnectorKind) -> Option<(String, i64)> {
                 for (k, val) in o {
                     let kl = norm_key(k);
                     if kl.contains("balance")
-                        && !["available", "minimum", "statement", "previous", "last", "payment", "due", "debit", "charge"]
-                            .iter()
-                            .any(|x| kl.contains(x))
+                        && ![
+                            "available",
+                            "minimum",
+                            "statement",
+                            "previous",
+                            "last",
+                            "payment",
+                            "due",
+                            "debit",
+                            "charge",
+                        ]
+                        .iter()
+                        .any(|x| kl.contains(x))
                     {
                         if let Some(c) = value_cents(val).filter(|c| *c != 0) {
                             return Some((k.clone(), c));
@@ -957,7 +967,8 @@ mod tests {
     #[test]
     fn amex_statement_balance_wins() {
         let b = r#"{"charges_amount":1702.24,"debits_balance_amount":1702.24,"total_debits_balance_amount":1702.24,"last_statement_balance_amount":5515.59,"statement_balance_amount":6879.3,"totalAmount":0}"#;
-        let (_, bal) = super::parse_json_bodies(&[b.to_string()], super::ConnectorKind::AmericanExpress);
+        let (_, bal) =
+            super::parse_json_bodies(&[b.to_string()], super::ConnectorKind::AmericanExpress);
         assert_eq!(bal, Some(-687930));
     }
     use super::*;

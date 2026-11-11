@@ -444,7 +444,8 @@ mod tests {
     fn delete_account_cascades_and_cleans_connection() {
         let p = std::env::temp_dir().join(format!("girocrab-del-{}.db", uuid::Uuid::new_v4()));
         let v = Vault::open(p.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
-        let (mut a1, mut a2, mut conn) = (0i64, 0i64, 0i64);
+        let (mut a1, mut a2) = (0i64, 0i64);
+        let conn;
         {
             let db = v.db().unwrap();
             db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])

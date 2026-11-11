@@ -498,7 +498,10 @@ impl SyncSession {
             Ok(Phase::Challenge(c)) => Ok(SyncStep::NeedsChallenge { challenge: c }),
             Ok(Phase::Pending(c)) => Ok(SyncStep::StillWaiting { challenge: c }),
             Ok(Phase::Ready) => {
-                crate::depot_debug::log(&format!("sync advance: Ready, calling fetch for {:?}", self.kind));
+                crate::depot_debug::log(&format!(
+                    "sync advance: Ready, calling fetch for {:?}",
+                    self.kind
+                ));
                 let fetched = st.connector.fetch(&st.ctx).await;
                 st.connector.finish(&st.ctx).await;
                 st.done = true;

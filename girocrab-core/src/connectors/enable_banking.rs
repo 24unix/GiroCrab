@@ -134,7 +134,12 @@ impl EnableBankingConnector {
         let mut out: Vec<(String, String, String, String)> = Vec::new();
         for a in &list {
             let (uid, name, iban, cur) = if let Some(u) = a.as_str() {
-                (u.to_string(), self.aspsp_default.clone(), String::new(), "EUR".to_string())
+                (
+                    u.to_string(),
+                    self.aspsp_default.clone(),
+                    String::new(),
+                    "EUR".to_string(),
+                )
             } else {
                 (
                     a["uid"].as_str().unwrap_or_default().to_string(),
@@ -143,7 +148,10 @@ impl EnableBankingConnector {
                         .or(a["product"].as_str())
                         .unwrap_or(&self.aspsp_default)
                         .to_string(),
-                    a["account_id"]["iban"].as_str().unwrap_or_default().to_string(),
+                    a["account_id"]["iban"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
                     a["currency"].as_str().unwrap_or("EUR").to_string(),
                 )
             };
@@ -152,8 +160,13 @@ impl EnableBankingConnector {
             }
             if let Some(e) = out.iter_mut().find(|e| e.0 == uid) {
                 // merge: prefer richer object data over a bare uid
-                if e.2.is_empty() { e.2 = iban; }
-                if a.is_object() { e.1 = name; e.3 = cur; }
+                if e.2.is_empty() {
+                    e.2 = iban;
+                }
+                if a.is_object() {
+                    e.1 = name;
+                    e.3 = cur;
+                }
             } else {
                 out.push((uid, name, iban, cur));
             }
@@ -417,8 +430,10 @@ impl BankConnector for EnableBankingConnector {
                 self.st.accounts.len()
             ));
         }
-        let mut out = FetchResult::default();
-        out.state = Some(serde_json::to_value(&self.st)?);
+        let mut out = FetchResult {
+            state: Some(serde_json::to_value(&self.st)?),
+            ..Default::default()
+        };
         for (uid, name, iban, currency) in self.st.accounts.clone() {
             crate::depot_debug::log(&format!(
                 "enable_banking fetch: processing account uid_len={} currency={currency}",
@@ -448,7 +463,6 @@ impl BankConnector for EnableBankingConnector {
                 balance_cents.signum()
             ));
             let acct_idx = out.accounts.len();
-            let tx_start = out.transactions.len();
             out.accounts.push(RemoteAccount {
                 external_ref: uid.clone(),
                 name: name.clone(),
@@ -628,10 +642,7 @@ impl BankConnector for EnableBankingConnector {
                 }
             }
             // Booked-type balances exclude pending authorizations; XPCD/OTHR include them.
-            let excludes_pending = matches!(
-                picked_type.as_deref(),
-                Some("ITBD" | "CLBD" | "OPBD")
-            );
+            let excludes_pending = matches!(picked_type.as_deref(), Some("ITBD" | "CLBD" | "OPBD"));
             if balance_cents != 0 && excludes_pending {
                 balance_cents += pending_sum;
             } else if balance_cents == 0 {
@@ -655,6 +666,7 @@ impl BankConnector for EnableBankingConnector {
 /// Picks the best balance from an Enable Banking `/balances` array and returns
 /// it signed (`DBIT` => negative, i.e. open card debt) plus its reference date.
 /// Returns `(0, None)` when nothing usable is present.
+#[cfg(test)]
 fn pick_balance(balances: &[Value]) -> (i64, Option<String>) {
     let (c, d, _) = pick_balance_typed(balances);
     (c, d)
