@@ -465,7 +465,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Herausgeber in Deutschland: Open Bank S.A. (Marke Zinia). Je nach Listung „Open Bank“ oder „Zinia“ eintragen." => "Issuer in Germany: Open Bank S.A. (brand Zinia). Enter “Open Bank” or “Zinia”, depending on the listing.",
         "Land Amazon Visa" => "Country Amazon Visa",
         "Händler-Logos online laden" => "Load merchant logos online",
-        "Logos per Google-Favicon-Dienst (Ersatz: DuckDuckGo) laden und verschlüsselt zwischenspeichern. Dabei wird nur die Händler-Domain (z. B. lidl.de) übertragen. Standard: an." => "Load logos via Google’s favicon service (fallback: DuckDuckGo) and cache them encrypted. Only the merchant domain (e.g. lidl.de) is sent. Default: on.",
+        "Logos per Google-Favicon-Dienst (Ersatz: DuckDuckGo) laden und verschlüsselt zwischenspeichern. Dabei wird nur die Händler-Domain (z. B. lidl.de) übertragen. Standard: aus." => "Load logos via Google’s favicon service (fallback: DuckDuckGo) and cache them encrypted. Only the merchant domain (e.g. lidl.de) is sent. Default: off.",
         "Händler-Logos" => "Merchant logos",
         "Tage beim ersten Abruf" => "Days on first sync",
         "Ältere Umsätze werden nur einmal abgefragt." => "Older transactions are only fetched once.",

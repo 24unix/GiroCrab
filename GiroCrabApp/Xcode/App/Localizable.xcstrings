@@ -5063,13 +5063,13 @@
         }
       }
     },
-    "Stufe 2 – Logos online laden (Google-Favicon, Ersatz DuckDuckGo; Standard: an)" : {
+    "Stufe 2 – Logos online laden (Google-Favicon, Ersatz DuckDuckGo; Standard: aus)" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tier 2 – Load Logos Online (Google favicon, fallback DuckDuckGo; default: on)"
+            "value" : "Tier 2 – Load Logos Online (Google favicon, fallback DuckDuckGo; default: off)"
           }
         }
       }

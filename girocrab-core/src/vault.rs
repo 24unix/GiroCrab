@@ -190,7 +190,7 @@ pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
     ("enablebanking.country.amex", "Land American Express", "Zweistelliger Ländercode.", "Enable Banking (PSD2)", false, "DE"),
     ("enablebanking.aspsp.amazonvisa", "ASPSP-Name Amazon Visa", "Herausgeber in Deutschland: Open Bank S.A. (Marke Zinia). Je nach Listung „Open Bank“ oder „Zinia“ eintragen.", "Enable Banking (PSD2)", false, "Open Bank"),
     ("enablebanking.country.amazonvisa", "Land Amazon Visa", "Zweistelliger Ländercode.", "Enable Banking (PSD2)", false, "DE"),
-    ("merchants.online_logos", "Händler-Logos online laden", "Logos per Google-Favicon-Dienst (Ersatz: DuckDuckGo) laden und verschlüsselt zwischenspeichern. Dabei wird nur die Händler-Domain (z. B. lidl.de) übertragen. Standard: an.", "Händler-Logos", false, "1"),
+    ("merchants.online_logos", "Händler-Logos online laden", "Logos per Google-Favicon-Dienst (Ersatz: DuckDuckGo) laden und verschlüsselt zwischenspeichern. Dabei wird nur die Händler-Domain (z. B. lidl.de) übertragen. Standard: aus.", "Händler-Logos", false, "0"),
     ("sync.days_back", "Tage beim ersten Abruf", "Ältere Umsätze werden nur einmal abgefragt.", "Allgemein", false, "90"),
 ];
 

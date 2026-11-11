@@ -184,7 +184,7 @@ struct LogoSettings: View {
             Section("Händler-Logos") {
                 LabeledContent("Stufe 1 – offline", value: String(localized: "Mitgelieferte Händlertabelle (Monogramm + Markenfarbe)"))
                 LabeledContent("Stufe 1b – simple-icons", value: String(localized: "Vektor-Markenzeichen (CC0-Datensatz) für bekannte Marken"))
-                Toggle("Stufe 2 – Logos online laden (Google-Favicon, Ersatz DuckDuckGo; Standard: an)", isOn: Binding(
+                Toggle("Stufe 2 – Logos online laden (Google-Favicon, Ersatz DuckDuckGo; Standard: aus)", isOn: Binding(
                     get: { model.onlineLogos },
                     set: { model.saveSetting("merchants.online_logos", $0 ? "1" : "0") }
                 ))

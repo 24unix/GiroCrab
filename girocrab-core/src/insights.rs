@@ -249,7 +249,7 @@ impl Vault {
         let db = self.db()?;
         Ok(Vault::setting_inner(&db, "merchants.online_logos")?
             .map(|v| v == "1" || v == "true")
-            .unwrap_or(true))
+            .unwrap_or(false))
     }
 }
 
@@ -382,6 +382,25 @@ mod logo_tests {
     }
 
     #[test]
+    fn online_logos_are_off_until_enabled() {
+        let p = std::env::temp_dir().join(format!("girocrab-logos-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
+        assert!(!v.online_logos_enabled().unwrap());
+        // Off means no request: an uncached domain comes back empty and is not cached.
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        assert_eq!(rt.block_on(v.fetch_logo("lidl.de".into())).unwrap(), None);
+        let cached: i64 = v
+            .db()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM merchant_logo_cache", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(cached, 0);
+        v.set_setting("merchants.online_logos".into(), "1".into())
+            .unwrap();
+        assert!(v.online_logos_enabled().unwrap());
+    }
+
+    #[test]
     fn domain_override_applies_to_bookings() {
         let p = std::env::temp_dir().join(format!("girocrab-ovr-{}.db", uuid::Uuid::new_v4()));
         let v = Vault::open(p.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
@@ -473,7 +492,7 @@ impl Vault {
             }
             let enabled = Vault::setting_inner(&db, "merchants.online_logos")?
                 .map(|v| v == "1" || v == "true")
-                .unwrap_or(true);
+                .unwrap_or(false);
             if !enabled {
                 return Ok(None);
             }
