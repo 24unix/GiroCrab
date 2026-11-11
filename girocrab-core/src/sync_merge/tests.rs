@@ -209,5 +209,54 @@ fn deleted_category_name_can_be_reused() {
         .map(|r| r.unwrap())
         .collect();
     assert_eq!(u.len(), 2);
-    assert_ne!(u[0], u[1]); // deleted row keeps the path uuid, new one is random
+    // the deleted row keeps the path uuid, the new one gets a random one
+    assert_eq!(u[0], category_uuid_for_path(&["Food"]));
+    assert_ne!(u[0], u[1]);
+}
+
+/// Two vaults built the same way, with a category, a booking and its stamps.
+fn identical_pair(dir: &std::path::Path) -> (Arc<Vault>, Arc<Vault>) {
+    let pair = (open(dir, "p1.db"), open(dir, "p2.db"));
+    for v in [&pair.0, &pair.1] {
+        let db = v.db().unwrap();
+        db.execute_batch(
+            "INSERT INTO account_groups(id, name) VALUES (1, 'G');
+             INSERT INTO accounts(id, group_id, external_ref, name) VALUES (1, 1, 'DE1', 'A');
+             INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, note_ms)
+                 VALUES (1, 'e1', '2026-01-01', 5, 10);
+             INSERT INTO categories(name) VALUES ('Food');",
+        )
+        .unwrap();
+        fill_missing_uuids(&db).unwrap();
+    }
+    pair
+}
+
+#[test]
+fn assert_converged_accepts_identical_vaults() {
+    let dir = temp_dir("conv-ok");
+    let (a, b) = identical_pair(&dir);
+    assert_converged(&a, &b);
+}
+
+#[test]
+fn assert_converged_panics_on_one_differing_stamp() {
+    let dir = temp_dir("conv-stamp");
+    let (a, b) = identical_pair(&dir);
+    b.db()
+        .unwrap()
+        .execute("UPDATE transactions SET note_ms = 11", [])
+        .unwrap();
+    assert!(std::panic::catch_unwind(|| assert_converged(&a, &b)).is_err());
+}
+
+#[test]
+fn assert_converged_panics_on_one_differing_deletion() {
+    let dir = temp_dir("conv-del");
+    let (a, b) = identical_pair(&dir);
+    b.db()
+        .unwrap()
+        .execute("UPDATE categories SET deleted_ms = 5", [])
+        .unwrap();
+    assert!(std::panic::catch_unwind(|| assert_converged(&a, &b)).is_err());
 }
