@@ -182,9 +182,9 @@ struct StreamHeaderCard: View {
 
     @ViewBuilder
     private var kpis: some View {
-        KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.period.title), value: Money.format(-model.consumptionThisMonth), tint: Theme.outflow)
+        KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.periodSubtitle), value: Money.format(-model.consumptionThisMonth), tint: Theme.outflow)
         KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: Money.format(model.investedThisMonth), tint: Theme.invest)
-        KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.period.title), value: Money.format(model.incomeThisMonth), tint: Theme.inflow)
+        KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.periodSubtitle), value: Money.format(model.incomeThisMonth), tint: Theme.inflow)
     }
 
     @ViewBuilder

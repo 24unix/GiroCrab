@@ -23,6 +23,8 @@ enum Period: String, CaseIterable, Identifiable {
     case last3Months = "Letzte 3 Monate"
     case thisQuarter = "Dieses Quartal"
     case thisYear = "Dieses Jahr"
+    /// Pay cycle: from the latest detected salary inflow (GitHub #37).
+    case sinceSalary = "Seit letztem Gehalt"
     var id: String { rawValue }
 
     var title: String {
@@ -33,6 +35,7 @@ enum Period: String, CaseIterable, Identifiable {
         case .last3Months: return String(localized: "Letzte 3 Monate")
         case .thisQuarter: return String(localized: "Dieses Quartal")
         case .thisYear: return String(localized: "Dieses Jahr")
+        case .sinceSalary: return String(localized: "Seit letztem Gehalt")
         }
     }
 
@@ -42,7 +45,8 @@ enum Period: String, CaseIterable, Identifiable {
         let startOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: now))!
         switch self {
         case .all: return (nil, nil)
-        case .thisMonth: return (DateText.iso(startOfMonth), nil)
+        // The salary start date lives in `AppModel.periodRange`; calendar month as fallback.
+        case .thisMonth, .sinceSalary: return (DateText.iso(startOfMonth), nil)
         case .lastMonth:
             let start = cal.date(byAdding: .month, value: -1, to: startOfMonth)!
             let end = cal.date(byAdding: .day, value: -1, to: startOfMonth)!
@@ -214,7 +218,7 @@ public final class AppModel {
     private var logoCache: [String: (image: Image, pixels: Int)] = [:]
 
     // UI state
-    var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; reloadBookings(); reloadHistory() } }
+    var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; refreshSalaryCycle(); reloadBookings(); reloadHistory() } }
     var scope: BookingScope = .all {
         didSet {
             guard scope != oldValue else { return }
@@ -222,7 +226,9 @@ public final class AppModel {
             reloadScopeBookings()
         }
     }
-    var period: Period = .all { didSet { listLimit = Self.defaultListLimit; reloadCategories(); reloadBookings(); reloadHistory() } }
+    var period: Period = .all { didSet { listLimit = Self.defaultListLimit; refreshSalaryCycle(); reloadCategories(); reloadBookings(); reloadHistory() } }
+    /// Latest salary of the selected accounts; start of the `.sinceSalary` period.
+    var salaryCycle: SalaryCycle?
     var statusFilter: StatusFilter = .all
     var searchText: String = "" { didSet { scheduleSearch() } }
     var selectedBookingID: Booking.ID? { didSet { reloadMerchantStats() } }
@@ -577,6 +583,7 @@ public final class AppModel {
 
     func reloadAll() {
         reloadAccounts()
+        refreshSalaryCycle()
         reloadHistory()
         reloadCategories()
         reloadBookings()
@@ -601,7 +608,7 @@ public final class AppModel {
 
     func reloadCategories() {
         guard let vault else { return }
-        let (from, to) = period.range
+        let (from, to) = periodRange
         run {
             categories = try vault.listCategories(dateFrom: from, dateTo: to)
             categoryTree = Self.buildTree(categories)
@@ -656,7 +663,7 @@ public final class AppModel {
     }
 
     var currentFilter: BookingFilter {
-        let (from, to) = period.range
+        let (from, to) = periodRange
         var accountIDs: [Int64] = []
         var category: Int64?
         var uncategorized = false
@@ -749,7 +756,7 @@ public final class AppModel {
     /// period and account/group (no account selected = all accounts).
     func reloadSelectionKPIs() {
         guard let vault else { selectionFlow = nil; return }
-        let (from, to) = period.range
+        let (from, to) = periodRange
         let filter = BookingFilter(
             accountIds: currentFilter.accountIds, categoryId: nil, includeSubcategories: true, uncategorizedOnly: false,
             search: nil, dateFrom: from, dateTo: to, limit: 0, offset: 0,
@@ -783,7 +790,7 @@ public final class AppModel {
         if ids.isEmpty { ids = [-1] }
         // The chart follows the selected period. "Gesamter Zeitraum": up to ~15 years back,
         // then the flat lead-in before the first booking is cut off.
-        let (from, to) = period.range
+        let (from, to) = periodRange
         let today = Calendar.current.startOfDay(for: Date())
         let start = from.flatMap(DateText.date) ?? Calendar.current.date(byAdding: .year, value: -15, to: today)!
         let days = max(2, (Calendar.current.dateComponents([.day], from: start, to: today).day ?? 120) + 1)
@@ -819,6 +826,46 @@ public final class AppModel {
             guard !Task.isCancelled else { return }
             self?.reloadBookings()
         }
+    }
+
+    // MARK: - Pay cycle (GitHub #37)
+
+    /// Accounts of the sidebar selection; empty = all accounts.
+    private var selectionAccountIDs: [Int64] {
+        switch sidebarSelection {
+        case .account(let id): return [id]
+        case .group(let gid): return groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
+        case .userGroup(let uuid): return userGroupAccountIDs(uuid)
+        default: return []
+        }
+    }
+
+    /// Date range of the selected period; `.sinceSalary` starts at the latest salary.
+    var periodRange: (String?, String?) {
+        if period == .sinceSalary, let c = salaryCycle { return (c.lastDate, nil) }
+        return period.range
+    }
+
+    /// Subtitle of the period-based KPI tiles.
+    var periodSubtitle: String {
+        guard period == .sinceSalary else { return period.title }
+        guard let c = salaryCycle else { return String(localized: "Kein Gehalt erkannt – dieser Monat") }
+        return String(localized: "Seit Gehalt am \(DateText.medium(c.lastDate))")
+    }
+
+    func refreshSalaryCycle() {
+        guard let vault else { salaryCycle = nil; return }
+        let ids = selectionAccountIDs
+        run { salaryCycle = try vault.salaryCycle(accountIds: ids) }
+    }
+
+    /// `true` = salary, `false` = never salary, `nil` = automatic detection.
+    func setSalaryFlag(_ booking: Booking, _ flag: Bool?) {
+        guard let vault else { return }
+        run { try vault.setBookingSalaryFlag(bookingId: booking.id, flag: flag) }
+        refreshSalaryCycle()
+        if period == .sinceSalary { reloadCategories(); reloadHistory() }
+        reloadBookings()
     }
 
     private func run(_ body: () throws -> Void) {

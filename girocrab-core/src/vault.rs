@@ -150,6 +150,9 @@ CREATE TABLE IF NOT EXISTS transactions (
     imported_unix      INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     note               TEXT    NOT NULL DEFAULT '',        -- user note (MoneyMoney import / detail view)
     import_fp          TEXT    NOT NULL DEFAULT '',        -- MoneyMoney de-duplication fingerprint
+    purpose_code       TEXT    NOT NULL DEFAULT '',        -- SEPA purpose code (SALA, PENS, …)
+    gvc                TEXT    NOT NULL DEFAULT '',        -- German Geschäftsvorfallcode (153, …)
+    salary_flag        INTEGER,                            -- NULL = auto, 1 = salary, 0 = not salary (user)
     UNIQUE (account_id, external_id)
 );
 CREATE INDEX IF NOT EXISTS tx_account_date ON transactions(account_id, booking_date DESC);
@@ -293,6 +296,32 @@ impl Vault {
                 conn.execute_batch(
                     "ALTER TABLE accounts ADD COLUMN access_revoked INTEGER NOT NULL DEFAULT 0;",
                 )?;
+            }
+        }
+        // transactions.purpose_code / gvc / salary_flag (salary detection) – idempotent
+        if version > 0 {
+            for (col, ddl) in [
+                (
+                    "purpose_code",
+                    "ALTER TABLE transactions ADD COLUMN purpose_code TEXT NOT NULL DEFAULT '';",
+                ),
+                (
+                    "gvc",
+                    "ALTER TABLE transactions ADD COLUMN gvc TEXT NOT NULL DEFAULT '';",
+                ),
+                (
+                    "salary_flag",
+                    "ALTER TABLE transactions ADD COLUMN salary_flag INTEGER;",
+                ),
+            ] {
+                let has: i64 = conn.query_row(
+                    "SELECT count(*) FROM pragma_table_info('transactions') WHERE name = ?1",
+                    [col],
+                    |r| r.get(0),
+                )?;
+                if has == 0 {
+                    conn.execute_batch(ddl)?;
+                }
             }
         }
         // v4: encrypted documents (Beleg-Abruf & PostBox) – idempotent
@@ -1942,7 +1971,8 @@ impl Vault {
         let sql = format!(
             "{cte}SELECT t.id, t.account_id, a.name, t.booking_date, t.value_date, t.amount_cents, t.currency, t.counterparty,
                     t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.category_source, t.rule_id, t.checked, a.kind,
-                    (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note
+                    (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note,
+                    t.purpose_code, t.gvc, t.salary_flag
              {from_sql} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC"
         );
         let mut stmt = db.prepare(&sql)?;
@@ -1984,9 +2014,14 @@ impl Vault {
                 account_kind: AccountKind::from_str(&r.get::<_, String>(15)?),
                 document_count: r.get::<_, i64>(16)? as u32,
                 note: r.get(17)?,
+                purpose_code: r.get(18)?,
+                gvc: r.get(19)?,
+                salary_flag: r.get::<_, Option<i64>>(20)?.map(|f| f != 0),
+                is_salary: false,
             })
         })?;
         let mut txs = Vec::new();
+        let salary_ibans = crate::salary::marked_salary_ibans(&db)?;
         let overrides = crate::insights::load_overrides(&db).unwrap_or_default();
         let (mut income, mut expense, mut consumption, mut investment, mut perk) =
             (0i64, 0i64, 0i64, 0i64, 0i64);
@@ -1999,6 +2034,7 @@ impl Vault {
                 t.category_symbol = sym.clone();
             }
             enrich(&mut t);
+            t.is_salary = crate::salary::is_salary(&t, &salary_ibans);
             // Localise after `enrich`: flow classification needs the stored names.
             t.category_name = display_name(&t.category_name);
             t.category_path = display_path(&t.category_path);

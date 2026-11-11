@@ -36,6 +36,7 @@ pub mod models;
 pub mod money;
 pub mod planning;
 pub mod rules;
+pub mod salary;
 pub mod search_expr;
 pub mod secret;
 pub mod text;

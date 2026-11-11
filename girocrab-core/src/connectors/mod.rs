@@ -435,7 +435,7 @@ pub struct RemoteHolding {
     pub holding: crate::models::Holding,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RemoteTransaction {
     pub account_ref: String,
     /// De-duplication key; derived from bank ids or a content hash.
@@ -448,6 +448,10 @@ pub struct RemoteTransaction {
     pub counterparty_iban: String,
     pub purpose: String,
     pub booking_text: String,
+    /// SEPA purpose code (ISO 20022 `Purp/Cd`, e.g. `SALA`); "" = unknown.
+    pub purpose_code: String,
+    /// German Geschäftsvorfallcode (3 digits, e.g. `153`); "" = unknown.
+    pub gvc: String,
 }
 
 impl RemoteTransaction {
@@ -1005,8 +1009,8 @@ pub(crate) fn store_fetch(
         {
             let mut ins = tx.prepare(
                 "INSERT OR IGNORE INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency,
-                         counterparty, counterparty_iban, purpose, booking_text)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                         counterparty, counterparty_iban, purpose, booking_text, purpose_code, gvc)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             )?;
             for t in &data.transactions {
                 let Some(acc_id) = account_ids.get(&t.account_ref) else {
@@ -1044,7 +1048,9 @@ pub(crate) fn store_fetch(
                     t.counterparty,
                     t.counterparty_iban,
                     t.purpose,
-                    t.booking_text
+                    t.booking_text,
+                    t.purpose_code,
+                    t.gvc
                 ])? as u32;
                 if n > 0 && data.adjust_balances {
                     tx.execute(
@@ -1078,6 +1084,14 @@ pub(crate) fn store_fetch(
                         )
                         .ok();
                     if let Some((row_id, cp, pu)) = existing {
+                        // Backfill bank codes for bookings imported before they were stored.
+                        if !t.purpose_code.is_empty() || !t.gvc.is_empty() {
+                            tx.execute(
+                                "UPDATE transactions SET purpose_code = ?1, gvc = ?2
+                                 WHERE id = ?3 AND purpose_code = '' AND gvc = ''",
+                                params![t.purpose_code, t.gvc, row_id],
+                            )?;
+                        }
                         if bad(&cp) && good(&t.counterparty) {
                             tx.execute(
                                 "UPDATE transactions SET counterparty = ?1 WHERE id = ?2",
@@ -2112,6 +2126,7 @@ mod tests {
             counterparty_iban: String::new(),
             purpose: String::new(),
             booking_text: String::new(),
+            ..Default::default()
         };
         let fetch = |balance: i64, ids: &[&str]| FetchResult {
             accounts: vec![
@@ -2241,6 +2256,7 @@ mod tests {
             counterparty_iban: String::new(),
             purpose: String::new(),
             booking_text: "Kartenzahlung (vorgemerkt)".into(),
+            ..Default::default()
         };
         let fetch = |txs: Vec<RemoteTransaction>| FetchResult {
             accounts: vec![acc.clone()],

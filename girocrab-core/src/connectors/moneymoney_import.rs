@@ -911,8 +911,13 @@ fn sample(r: &MmRow, i: i64, account_id: i64) -> Booking {
         account_kind: AccountKind::Checking,
         document_count: 0,
         note: r.note.clone(),
+        purpose_code: String::new(),
+        gvc: String::new(),
+        salary_flag: None,
+        is_salary: false,
     };
     enrich(&mut b);
+    b.is_salary = crate::salary::salary_signal(&b);
     b
 }
 
