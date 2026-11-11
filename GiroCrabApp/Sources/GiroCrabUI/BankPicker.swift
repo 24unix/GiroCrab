@@ -101,7 +101,7 @@ struct BankAddView: View {
 
     private var manualFinTsButton: some View {
         Button {
-            selected = BankSearchResult(id: "fints:custom", name: "", mode: .finTs, country: "DE", blz: "", url: "", connector: nil, aspsp: "")
+            selected = BankSearchResult(id: "fints:custom", name: "", mode: .finTs, country: "DE", blz: "", url: "", connector: nil, aspsp: "", tested: "")
         } label: {
             Label("Andere FinTS-Bank (BLZ + URL manuell)", systemImage: "square.and.pencil")
         }
@@ -283,7 +283,12 @@ struct Psd2AddForm: View {
         LabeledContent("Verfahren", value: String(localized: "PSD2 über Enable Banking"))
         TextField("Bezeichnung (optional)", text: $label)
             .autocorrectionDisabled()
-        Text("Die Zustimmung geben Sie im Browser Ihrer Bank. Dafür brauchen Sie eine kostenlose eigene Anwendung auf enablebanking.com (Application-ID, privater Schlüssel, Redirect-URL).")
+        if !bank.tested.isEmpty {
+            Label(bank.tested, systemImage: "checkmark.seal")
+                .font(.caption).foregroundStyle(.green)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        Text("Sie melden sich in einem GiroCrab-Fenster direkt bei Ihrer Bank an. Dafür brauchen Sie eine kostenlose eigene Anwendung auf enablebanking.com – die Einrichtung führt Sie Schritt für Schritt hindurch.")
             .font(.caption).foregroundStyle(.secondary)
         if !missing.isEmpty {
             Label("Wird nach dem Hinzufügen abgefragt: \(missing.map { settingLabels[$0] ?? $0 }.joined(separator: ", "))", systemImage: "info.circle")

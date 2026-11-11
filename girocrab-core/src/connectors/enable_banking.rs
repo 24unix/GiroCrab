@@ -37,6 +37,8 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::AccountKind;
 use crate::money::json_number_to_cents;
+use crate::vault::Vault;
+use std::sync::Arc;
 
 const API: &str = "https://api.enablebanking.com";
 /// external_id prefix of pending (not yet booked) bookings in generic mode.
@@ -1491,9 +1493,133 @@ fn pick_balance_typed(balances: &[Value]) -> (i64, Option<String>, Option<String
     )
 }
 
+/// Result of checking the user's Enable Banking application before the first
+/// bank login (`GET /application`).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct EnableBankingAppCheck {
+    pub name: String,
+    /// "PRODUCTION" or "SANDBOX".
+    pub environment: String,
+    pub active: bool,
+    pub redirect_urls: Vec<String>,
+    /// What still has to be fixed, in plain words; empty = ready.
+    pub problems: Vec<String>,
+}
+
+fn same_redirect(a: &str, b: &str) -> bool {
+    let norm = |s: &str| s.trim().trim_end_matches('/').to_lowercase();
+    norm(a) == norm(b)
+}
+
+/// Turns a `GET /application` answer into the check result for `redirect`.
+pub(crate) fn evaluate_application(v: &Value, redirect: &str) -> EnableBankingAppCheck {
+    let redirect_urls: Vec<String> = v["redirect_urls"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let environment = v["environment"].as_str().unwrap_or_default().to_uppercase();
+    let active = v["active"].as_bool().unwrap_or(false);
+    let mut problems = Vec::new();
+    if environment != "PRODUCTION" {
+        problems.push(
+            tr("Das ist eine Sandbox-Anwendung. Für echte Konten auf enablebanking.com eine Anwendung mit „Production“ registrieren.")
+                .to_string(),
+        );
+    }
+    if !active {
+        problems.push(
+            tr("Die Anwendung ist noch nicht aktiv. Auf enablebanking.com bei der Anwendung „Activate by linking accounts“ wählen und alle gewünschten Konten verknüpfen.")
+                .to_string(),
+        );
+    }
+    if !redirect.trim().is_empty() && !redirect_urls.iter().any(|u| same_redirect(u, redirect)) {
+        problems.push(trf(
+            "Die Redirect-URL „{0}“ ist in der Anwendung nicht eingetragen. Bitte auf enablebanking.com unter „Allowed redirect URLs“ ergänzen.",
+            &[&redirect.trim()],
+        ));
+    }
+    EnableBankingAppCheck {
+        name: v["name"].as_str().unwrap_or_default().to_string(),
+        environment,
+        active,
+        redirect_urls,
+        problems,
+    }
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl Vault {
+    /// Checks an Enable Banking application before it is saved / used: the
+    /// key and ID must belong together, and the application must be active,
+    /// in production and allow `redirect_url`.
+    pub async fn check_enable_banking_application(
+        self: Arc<Self>,
+        application_id: String,
+        private_key_pem: String,
+        redirect_url: String,
+    ) -> Result<EnableBankingAppCheck, CoreError> {
+        let jwt = EnableBankingConnector::make_jwt_for(application_id.trim(), &private_key_pem)?;
+        let resp = http_client()?
+            .get(format!("{API}/application"))
+            .bearer_auth(jwt)
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+        let status = resp.status();
+        let v: Value = resp.json().await.unwrap_or(Value::Null);
+        if matches!(status.as_u16(), 401 | 403) {
+            return Err(CoreError::Authentication {
+                message: tr("Enable Banking kennt diese Kombination aus Application-ID und Schlüssel nicht. Bitte die .pem-Datei der Anwendung wählen.")
+                    .into(),
+            });
+        }
+        if !status.is_success() {
+            return Err(api_error(status.as_u16(), &v));
+        }
+        Ok(evaluate_application(&v, &redirect_url))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn application_check_explains_what_is_missing() {
+        let redirect = "https://localhost/girocrab/callback";
+        let ready = evaluate_application(
+            &json!({"name": "GiroCrab privat", "environment": "PRODUCTION", "active": true,
+                    "redirect_urls": ["https://localhost/girocrab/callback/"]}),
+            redirect,
+        );
+        assert!(ready.problems.is_empty(), "{:?}", ready.problems);
+        assert_eq!(ready.name, "GiroCrab privat");
+        // the three things that went wrong for real users: pending app,
+        // sandbox app, redirect URL missing
+        let bad = evaluate_application(
+            &json!({"environment": "SANDBOX", "active": false, "redirect_urls": ["https://example.org/cb"]}),
+            redirect,
+        );
+        assert_eq!(bad.problems.len(), 3);
+        assert!(bad.problems.iter().any(|p| p.contains("Sandbox")));
+        assert!(bad
+            .problems
+            .iter()
+            .any(|p| p.contains("Activate by linking accounts")));
+        assert!(bad
+            .problems
+            .iter()
+            .any(|p| p.contains("localhost/girocrab/callback")));
+        // empty answer: not active, not production
+        assert_eq!(
+            evaluate_application(&Value::Null, redirect).problems.len(),
+            3
+        );
+    }
 
     fn generic() -> EnableBankingConnector {
         EnableBankingConnector::for_aspsp("C24", "DE")

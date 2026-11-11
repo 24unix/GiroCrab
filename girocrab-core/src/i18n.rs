@@ -408,6 +408,11 @@ fn english(de: &str) -> Option<&'static str> {
         // ------------------------------------------------------------ connectors/enable_banking.rs
         "Zustimmung beim Kartenherausgeber erteilen" => "Grant consent at the card issuer",
         "Zustimmung bei der Bank erteilen" => "Grant consent at your bank",
+        "Mit echtem Konto getestet: Girokonto, Gemeinschaftskonto und Tagesgeld-Pocket (auch ohne eigene IBAN); Abruf ohne TAN, Zustimmung 180 Tage." => "Tested with a real account: current account, joint account and savings Pocket (also without its own IBAN); syncs without a TAN, consent 180 days.",
+        "Das ist eine Sandbox-Anwendung. Für echte Konten auf enablebanking.com eine Anwendung mit „Production“ registrieren." => "This is a sandbox application. For real accounts, register an application with “Production” on enablebanking.com.",
+        "Die Anwendung ist noch nicht aktiv. Auf enablebanking.com bei der Anwendung „Activate by linking accounts“ wählen und alle gewünschten Konten verknüpfen." => "The application isn’t active yet. On enablebanking.com, choose “Activate by linking accounts” for the application and link every account you want.",
+        "Die Redirect-URL „{0}“ ist in der Anwendung nicht eingetragen. Bitte auf enablebanking.com unter „Allowed redirect URLs“ ergänzen." => "The redirect URL “{0}” isn’t registered in the application. Please add it on enablebanking.com under “Allowed redirect URLs”.",
+        "Enable Banking kennt diese Kombination aus Application-ID und Schlüssel nicht. Bitte die .pem-Datei der Anwendung wählen." => "Enable Banking doesn’t recognise this combination of application ID and key. Please choose the application’s .pem file.",
         "Automatischer PSD2-Abruf (Stunden)" => "Automatic PSD2 sync (hours)",
         "Solange GiroCrab läuft, werden PSD2-Bankzugänge (Enable Banking) alle N Stunden ohne TAN abgerufen, solange die Zustimmung gilt. Banken erlauben meist nur 4 Abrufe pro Tag. 0 = aus." => "While GiroCrab is running, PSD2 bank connections (Enable Banking) are synced every N hours without a TAN as long as the consent is valid. Banks usually allow only 4 syncs per day. 0 = off.",
         "PSD2-Zustimmung abgelaufen oder widerrufen – bitte die Verbindung neu verbinden" => "PSD2 consent expired or revoked – please reconnect",

@@ -9,6 +9,16 @@ Payments are out of scope: they need a PISP licence. The approach matches the
 FinTS product ID (bring your own): each user registers their own free
 Enable Banking app in restricted mode and links their own accounts.
 
+## Status (2026-11-11)
+
+| Phase | State |
+|---|---|
+| 1 – correct generic connector | ✅ merged (GiroCrab/GiroCrab#66) |
+| 2 – consent visibility, scheduled sync, account changes | ✅ merged (#66) |
+| GiroCode for read-only accounts (not in the original plan) | ✅ merged (GiroCrab/GiroCrab#67) |
+| 3 – smoother setup | ✅ implemented on `feat/enable-banking-setup`: bank login inside GiroCrab (redirect caught, no pasting), guided setup with `.pem` import (application ID from the file name) and `GET /application` check, dialog starts in Downloads. Verified with a real C24 account from an empty vault. |
+| 4 – per-bank verification | C24 ✅ (see below); other banks still need a real account each |
+
 ## 1. What already exists
 
 | Piece | Where | State |
@@ -163,13 +173,30 @@ TAN, and record the results in the bank's entry in `bank_directory.rs`:
    real accounts.
 3. Real C24 account (Phase 4), then Phase 2, then Phase 3.
 
+### Phase 4 results
+
+**C24** (real account, 2026-11-11), recorded in `bank_directory.rs` and
+shown in the bank picker:
+- Current account (`CACC`, product "C24 Smartkonto"), joint account and the
+  savings Pocket all come through. The Pocket has **no IBAN** (BBAN only) and
+  comes as `CACC` with product "C24 PocketZINS Smart" → typed as savings by
+  the product label.
+- Consent: 180 days (`maximum_consent_validity`); later syncs run without a
+  TAN, also the next day.
+- Unlinking accounts in the Enable Banking Control Panel only takes effect on
+  the next consent; "Neu verbinden" then returns only the linked accounts and
+  the others are marked "Zugriff entzogen".
+- The ASPSP name is "C24" (the catalog said "C24 Bank", so C24 appeared twice
+  once the live list was loaded – fixed).
+- No `PDNG` bookings seen so far.
+
 ## 5. Open questions
-- Does C24 return Pockets without their own IBAN? (Forum reports from
-  2020–22 said no.)
-- Does the C24 joint account need to be linked separately by each account
-  holder in their own Enable Banking app?
-- Can a restricted Enable Banking app use a loopback or custom-scheme redirect
-  URL?
+- ~~Does C24 return Pockets without their own IBAN?~~ Yes (BBAN, see above).
+- ~~Does the C24 joint account need to be linked separately by each account
+  holder?~~ It comes through for the holder who links it.
+- ~~Can a restricted Enable Banking app use a loopback or custom-scheme
+  redirect URL?~~ Not needed: GiroCrab's own login window catches the
+  `https://localhost/girocrab/callback` redirect.
 - PSU headers (`Psu-Ip-Address` etc.) mark a request as user-present and so
   aren't counted against the daily limit. Sending them for manual syncs needs
   the public IP, which means an external lookup. Probably not worth it.

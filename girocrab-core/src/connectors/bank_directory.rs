@@ -17,6 +17,7 @@ use std::sync::Arc;
 use super::enable_banking::{parse_aspsps, EnableBankingConnector};
 use super::fints_directory::{self, fold, FinTsBankInfo};
 use crate::error::CoreError;
+use crate::i18n::tr;
 use crate::models::ConnectorKind;
 use crate::vault::Vault;
 
@@ -45,6 +46,8 @@ pub struct Psd2Bank {
     pub connector: Option<ConnectorKind>,
     /// `true` when the entry came from the live `GET /aspsps` list.
     pub live: bool,
+    /// Verified with a real account: what was tested (empty = not yet).
+    pub tested: String,
 }
 
 /// One row of the picker.
@@ -63,6 +66,8 @@ pub struct BankSearchResult {
     pub connector: Option<ConnectorKind>,
     /// PSD2 only: Enable Banking ASPSP name.
     pub aspsp: String,
+    /// PSD2 only: verified with a real account (empty = not yet).
+    pub tested: String,
 }
 
 fn psd2(name: &str, country: &str, aspsp: &str, connector: Option<ConnectorKind>) -> Psd2Bank {
@@ -72,7 +77,15 @@ fn psd2(name: &str, country: &str, aspsp: &str, connector: Option<ConnectorKind>
         aspsp: aspsp.into(),
         connector,
         live: false,
+        tested: String::new(),
     }
+}
+
+/// A catalog entry verified with a real account (Phase 4 of
+/// docs/plans/enable-banking-psd2.md).
+fn tested(mut b: Psd2Bank, note: &str) -> Psd2Bank {
+    b.tested = note.to_string();
+    b
 }
 
 /// Curated, searchable PSD2 catalog (works without any credentials).
@@ -82,7 +95,10 @@ pub fn psd2_catalog() -> Vec<Psd2Bank> {
     vec![
         psd2("N26", "DE", "N26", None),
         psd2("Revolut", "DE", "Revolut", None),
-        psd2("C24 Bank", "DE", "C24 Bank", None),
+        tested(
+            psd2("C24 Bank", "DE", "C24", None),
+            tr("Mit echtem Konto getestet: Girokonto, Gemeinschaftskonto und Tagesgeld-Pocket (auch ohne eigene IBAN); Abruf ohne TAN, Zustimmung 180 Tage."),
+        ),
         psd2("Tomorrow", "DE", "Tomorrow", None),
         psd2("Vivid Money", "DE", "Vivid Money", None),
         psd2("Wise", "DE", "Wise", None),
@@ -148,6 +164,7 @@ fn fints_result(b: FinTsBankInfo) -> BankSearchResult {
         url: b.url,
         connector: None,
         aspsp: String::new(),
+        tested: String::new(),
     }
 }
 
@@ -161,6 +178,7 @@ fn own_result(kind: ConnectorKind, name: &str) -> BankSearchResult {
         url: String::new(),
         connector: Some(kind),
         aspsp: String::new(),
+        tested: String::new(),
     }
 }
 
@@ -174,6 +192,7 @@ fn psd2_result(b: Psd2Bank) -> BankSearchResult {
         url: String::new(),
         connector: b.connector,
         aspsp: b.aspsp,
+        tested: b.tested,
     }
 }
 
@@ -278,6 +297,7 @@ pub(crate) fn live_banks(v: &serde_json::Value) -> Vec<Psd2Bank> {
             aspsp: name,
             connector: None,
             live: true,
+            tested: String::new(),
         })
         .collect()
 }
@@ -449,6 +469,30 @@ mod tests {
     }
 
     #[test]
+    fn c24_is_one_entry_with_its_verification_note() {
+        // the live list spells it "C24"; the catalog must match, or C24 shows twice
+        let live = vec![Psd2Bank {
+            name: "C24".into(),
+            country: "DE".into(),
+            aspsp: "C24".into(),
+            connector: None,
+            live: true,
+            tested: String::new(),
+        }];
+        let r = search("c24", live, 10);
+        let c24: Vec<_> = r
+            .iter()
+            .filter(|b| b.mode == BankAccessMode::Psd2)
+            .collect();
+        assert_eq!(c24.len(), 1, "{:?}", ids(&r));
+        assert_eq!(c24[0].aspsp, "C24");
+        assert!(c24[0].tested.contains("Pocket"));
+        // untested banks carry no note
+        let n26 = search("n26", vec![], 10);
+        assert!(n26.iter().all(|b| b.tested.is_empty()));
+    }
+
+    #[test]
     fn live_list_adds_banks_and_fixes_spelling() {
         let live = vec![
             Psd2Bank {
@@ -457,6 +501,7 @@ mod tests {
                 aspsp: "Sparebank 1".into(),
                 connector: None,
                 live: true,
+                tested: String::new(),
             },
             Psd2Bank {
                 name: "n26".into(),
@@ -464,6 +509,7 @@ mod tests {
                 aspsp: "N26 Bank".into(),
                 connector: None,
                 live: true,
+                tested: String::new(),
             },
         ];
         let r = search("sparebank", live.clone(), 10);
@@ -476,6 +522,7 @@ mod tests {
             aspsp: "n26".into(),
             connector: None,
             live: true,
+            tested: String::new(),
         }];
         let r = search("n26", live_same, 10);
         let de: Vec<_> = r.iter().filter(|b| b.country == "DE").collect();

@@ -8892,6 +8892,248 @@
           }
         }
       }
+    },
+    "Bei der Bank anmelden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in at your bank"
+          }
+        }
+      }
+    },
+    "Sie melden sich direkt bei Ihrer Bank an und erlauben den Zugriff. GiroCrab übernimmt das Ergebnis automatisch." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You sign in directly at your bank and allow access. GiroCrab picks up the result automatically."
+          }
+        }
+      }
+    },
+    "Bei der Bank anmelden und den Zugriff erlauben – das Fenster schließt sich danach von selbst." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in at your bank and allow access – this window then closes by itself."
+          }
+        }
+      }
+    },
+    "Stattdessen im eigenen Browser anmelden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in with your own browser instead"
+          }
+        }
+      }
+    },
+    "Das ist kein privater Schlüssel. Bitte die .pem-Datei wählen, die enablebanking.com beim Registrieren heruntergeladen hat." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "That’s not a private key. Please choose the .pem file enablebanking.com downloaded when you registered the application."
+          }
+        }
+      }
+    },
+    "Application-ID" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Application ID"
+          }
+        }
+      }
+    },
+    "Schlüssel ist gespeichert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Key is stored"
+          }
+        }
+      }
+    },
+    "Schlüsseldatei (.pem) wählen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose key file (.pem) …"
+          }
+        }
+      }
+    },
+    "wird aus dem Dateinamen übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "taken from the file name"
+          }
+        }
+      }
+    },
+    "Anwendung prüfen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check application"
+          }
+        }
+      }
+    },
+    "Anwendung „%@“ ist bereit (Production, aktiv, Redirect-URL eingetragen)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Application “%@” is ready (production, active, redirect URL registered)."
+          }
+        }
+      }
+    },
+    "✓ Schlüssel und Application-ID übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "✓ Key and application ID added"
+          }
+        }
+      }
+    },
+    "✓ Schlüssel übernommen – Application-ID bitte eintragen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "✓ Key added – please enter the application ID"
+          }
+        }
+      }
+    },
+    "So richten Sie Ihre kostenlose Enable-Banking-Anwendung ein:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How to set up your free Enable Banking application:"
+          }
+        }
+      }
+    },
+    "Auf enablebanking.com eine Anwendung registrieren: „Production“ wählen, den Schlüssel im Browser erzeugen lassen und diese Redirect-URL eintragen:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Register an application on enablebanking.com: choose “Production”, let the browser generate the key, and enter this redirect URL:"
+          }
+        }
+      }
+    },
+    "Bei der Anwendung „Activate by linking accounts“ wählen und alle Konten verknüpfen, die GiroCrab sehen soll – nicht verknüpfte Konten liefert die Bank nicht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "For the application, choose “Activate by linking accounts” and link every account GiroCrab should see – the bank doesn’t provide accounts that aren’t linked."
+          }
+        }
+      }
+    },
+    "Hier die heruntergeladene .pem-Datei wählen. GiroCrab übernimmt Schlüssel und Application-ID und prüft die Anwendung." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the downloaded .pem file here. GiroCrab takes the key and application ID and checks the application."
+          }
+        }
+      }
+    },
+    "enablebanking.com/cp/applications öffnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open enablebanking.com/cp/applications"
+          }
+        }
+      }
+    },
+    "Redirect-URL kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy redirect URL"
+          }
+        }
+      }
+    },
+    "%lld." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld."
+          }
+        }
+      }
+    },
+    "Konten in Enable Banking verknüpft oder entfernt? Das wirkt erst nach „Neu verbinden“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linked or removed accounts in Enable Banking? That only takes effect after “Reconnect”."
+          }
+        }
+      }
+    },
+    "Sie melden sich in einem GiroCrab-Fenster direkt bei Ihrer Bank an. Dafür brauchen Sie eine kostenlose eigene Anwendung auf enablebanking.com – die Einrichtung führt Sie Schritt für Schritt hindurch." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You sign in directly at your bank in a GiroCrab window. For this you need your own free application on enablebanking.com – the setup guides you step by step."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

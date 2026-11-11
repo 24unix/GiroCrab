@@ -8,6 +8,9 @@ struct TwoFactorSheet: View {
     @Environment(\.openURL) private var openURL
     @State private var code = ""
     @State private var pulse = false
+    /// The bank's consent page inside GiroCrab (PSD2 redirect).
+    @State private var consent: ConsentBrowser?
+    @State private var showManualRedirect = false
 
     var body: some View {
         if let active = model.activeChallenge {
@@ -62,19 +65,43 @@ struct TwoFactorSheet: View {
                         #endif
                         .onSubmit(submit)
                 case .redirect:
-                    Image(systemName: "safari")
-                        .font(.system(size: 44, weight: .light))
-                        .foregroundStyle(.tint)
-                    Text(c.title).font(.title3.bold())
-                    Text(c.message).multilineTextAlignment(.center).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    if let s = c.redirectUrl, let url = URL(string: s) {
-                        Button { openURL(url) } label: { Label("Zustimmungsseite öffnen", systemImage: "arrow.up.right.square") }
-                            .buttonStyle(.bordered)
+                    if let consent {
+                        // Bank login inside GiroCrab; closes itself on the redirect.
+                        ConsentWebView(browser: consent)
+                            .frame(minWidth: 760, minHeight: 560)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border))
+                        Text("Bei der Bank anmelden und den Zugriff erlauben – das Fenster schließt sich danach von selbst.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    } else {
+                        Image(systemName: "building.columns")
+                            .font(.system(size: 44, weight: .light))
+                            .foregroundStyle(.tint)
+                        Text(c.title).font(.title3.bold())
+                        Text("Sie melden sich direkt bei Ihrer Bank an und erlauben den Zugriff. GiroCrab übernimmt das Ergebnis automatisch.")
+                            .multilineTextAlignment(.center).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        if let s = c.redirectUrl, let url = URL(string: s) {
+                            Button { openConsent(url) } label: { Label("Bei der Bank anmelden", systemImage: "lock.shield") }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.large)
+                        }
                     }
-                    TextField("Weitergeleitete Adresse hier einfügen", text: $code)
-                        .textFieldStyle(.roundedBorder)
-                        .autocorrectionDisabled()
-                        .onSubmit(submit)
+                    // Fallback for banks that block embedded browsers.
+                    DisclosureGroup("Stattdessen im eigenen Browser anmelden", isExpanded: $showManualRedirect) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(c.message).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            if let s = c.redirectUrl, let url = URL(string: s) {
+                                Button { openURL(url) } label: { Label("Zustimmungsseite öffnen", systemImage: "arrow.up.right.square") }
+                                    .buttonStyle(.bordered)
+                            }
+                            TextField("Weitergeleitete Adresse hier einfügen", text: $code)
+                                .textFieldStyle(.roundedBorder)
+                                .autocorrectionDisabled()
+                                .onSubmit(submit)
+                        }
+                        .padding(.top, 4)
+                    }
+                    .font(.callout)
                 }
 
                 if let e = active.error {
@@ -92,7 +119,7 @@ struct TwoFactorSheet: View {
                             .help("Kein Code in der App? Code per SMS anfordern.")
                     }
                     Spacer()
-                    if c.kind != .decoupledPush {
+                    if c.kind == .code || c.kind == .imageCode || (c.kind == .redirect && showManualRedirect) {
                         Button("Weiter", action: submit)
                             .keyboardShortcut(.defaultAction)
                             .buttonStyle(.borderedProminent)
@@ -109,6 +136,18 @@ struct TwoFactorSheet: View {
         let value = code
         code = ""
         model.submitCode(value)
+    }
+
+    private func openConsent(_ url: URL) {
+        let redirect = model.settingEntry("enablebanking.redirect_url")?.value
+            .trimmingCharacters(in: .whitespaces)
+        consent = ConsentBrowser(
+            url: url,
+            redirect: (redirect?.isEmpty == false ? redirect : nil) ?? ConsentRedirect.defaultURL
+        ) { result in
+            consent = nil
+            model.submitCode(result.absoluteString)
+        }
     }
 
     private func platformImage(_ data: Data) -> Image? {

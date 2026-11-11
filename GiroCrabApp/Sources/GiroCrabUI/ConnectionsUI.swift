@@ -189,6 +189,8 @@ struct ConnectionEditSheet: View {
             model.reconnect(connection)
         } label: { Label("Neu verbinden", systemImage: "arrow.triangle.2.circlepath") }
             .help("Neue Zustimmung bei der Bank erteilen (z. B. vor Ablauf oder um Konten hinzuzufügen oder zu entfernen).")
+        Text("Konten in Enable Banking verknüpft oder entfernt? Das wirkt erst nach „Neu verbinden“.")
+            .font(.caption).foregroundStyle(Theme.secondary)
     }
 
     private var isPortal: Bool { connection.connector == .americanExpress || connection.connector == .amazonVisa }
@@ -307,14 +309,16 @@ struct ConnectionEditSheet: View {
         .onAppear(perform: load)
         .fileImporter(isPresented: $importingKey, allowedContentTypes: [.data, .text, .plainText]) { result in
             if case .success(let url) = result {
-                let ok = url.startAccessingSecurityScopedResource()
-                defer { if ok { url.stopAccessingSecurityScopedResource() } }
-                if let pem = try? String(contentsOf: url, encoding: .utf8) {
-                    values["enablebanking.private_key_pem"] = pem
+                // Key and application ID belong together: the downloaded
+                // file is named after the ID.
+                if let key = try? EnableBankingKeyFile.read(url) {
+                    values["enablebanking.private_key_pem"] = key.pem
                     revealed.insert("enablebanking.private_key_pem")
+                    if let id = key.applicationID { values["enablebanking.application_id"] = id }
                 }
             }
         }
+        .fileDialogDefaultDirectory(EnableBankingKeyFile.downloadsFolder)
     }
 
     private var sectionTitle: String {

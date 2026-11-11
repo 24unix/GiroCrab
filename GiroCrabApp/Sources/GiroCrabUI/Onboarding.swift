@@ -113,7 +113,10 @@ struct BankSetupSheet: View {
                         .font(.caption).foregroundStyle(Theme.secondary)
                 }
             }
-            ForEach(request.keys, id: \.self) { key in
+            if request.keys.contains(where: { Self.enableBankingKeys.contains($0) }) {
+                EnableBankingSetupSection(values: $values)
+            }
+            ForEach(request.keys.filter { !Self.enableBankingKeys.contains($0) }, id: \.self) { key in
                 let entry = model.settingEntry(key)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(entry?.label ?? settingLabels[key] ?? key).font(.callout.weight(.medium))
@@ -160,4 +163,9 @@ struct BankSetupSheet: View {
     private func binding(_ key: String) -> Binding<String> {
         Binding(get: { values[key] ?? "" }, set: { values[key] = $0 })
     }
+
+    /// Shown together in `EnableBankingSetupSection` (guide, key file, check).
+    static let enableBankingKeys: Set<String> = [
+        "enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url",
+    ]
 }
