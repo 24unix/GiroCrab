@@ -186,10 +186,11 @@ struct MainSplitView: View {
                     BookingStreamView()
                 }
             }
-            .macColumnWidth(min: 520, ideal: 820)
+            // min widths still sum to 1080 pt (240 + 560 + 280) so the minimum window size stays as before
+            .macColumnWidth(min: 560, ideal: 900)
         } detail: {
             InspectorView()
-                .macColumnWidth(min: 320, ideal: 340, max: 420)
+                .macColumnWidth(min: 280, ideal: 320, max: 380)
         }
         .navigationSplitViewStyle(.balanced)
         .quickLookPreview($model.quickLookURL)
