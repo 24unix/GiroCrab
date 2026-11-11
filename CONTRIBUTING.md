@@ -44,6 +44,19 @@ never a logo.
 5 fictional accounts and exactly 50 invented bookings (`girocrab-core/src/demo.rs`). Change the data
 there only with invented names and amounts.
 
+## Picking up an issue
+
+To avoid two people building the same thing (it has happened, e.g. account groups in #31):
+
+1. **Ask first.** Comment on the issue that you would like to work on it and wait for a maintainer
+   to assign it to you. Please don't start before that, except for tiny fixes (typos, one-line bugs).
+2. **One issue, one assignee.** If an issue is already assigned, talk to the assignee or a maintainer
+   before starting a competing implementation.
+3. **One feature per issue.** Split larger requests into separate issues, so each can be assigned
+   and merged on its own.
+4. **Link your PR** with `Closes #123` (or `Refs #123` if it is only part of it).
+5. **Let go if plans change.** If you can't continue, say so on the issue so it can be reassigned.
+
 ## Pull requests
 
 * Keep PRs focused; describe what and why.
