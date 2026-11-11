@@ -1030,6 +1030,7 @@ pub(crate) fn store_fetch(
                     &t.counterparty_iban,
                     &t.counterparty,
                     &t.purpose,
+                    &t.booking_text,
                 )? {
                     continue;
                 }
@@ -1053,6 +1054,19 @@ pub(crate) fn store_fetch(
                 }
                 imported += n;
                 if n == 0 {
+                    // Old duplicate: bank row exists although an MoneyMoney twin does too.
+                    if moneymoney_import::merge_synced_twin(
+                        &tx,
+                        *acc_id,
+                        &t.external_id,
+                        &t.booking_date,
+                        t.amount_cents,
+                        &t.counterparty_iban,
+                        &t.counterparty,
+                        &t.purpose,
+                    )? {
+                        continue;
+                    }
                     // Existing row: heal corrupted text (U+FFFD / mojibake) with freshly decoded text.
                     let bad = |s: &str| s.contains('\u{FFFD}') || crate::text::has_mojibake(s);
                     let good = |s: &str| !bad(s);

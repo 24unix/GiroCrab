@@ -741,8 +741,51 @@ pub(crate) fn merge_rows(
     Ok(())
 }
 
+/// Finds the one not-yet-adopted MoneyMoney row (`mm-*`) that is the twin of a bank
+/// booking: same amount, booking date within ±2 days and a matching counterparty
+/// (IBAN, name, or the MoneyMoney name appearing in the bank's name/purpose).
+/// Ambiguous (≥ 2) or missing candidates yield `None`.
+fn find_twin(
+    conn: &Connection,
+    account_id: i64,
+    exclude_id: Option<i64>,
+    date: &str,
+    cents: i64,
+    iban: &str,
+    name: &str,
+    purpose: &str,
+) -> CoreResult<Option<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, counterparty, counterparty_iban FROM transactions
+          WHERE account_id = ?1 AND external_id LIKE 'mm-%' AND amount_cents = ?2
+            AND id != ?3 AND abs(julianday(booking_date) - julianday(?4)) <= 2",
+    )?;
+    let rows = stmt.query_map(params![account_id, cents, exclude_id.unwrap_or(-1), date], |r| {
+        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+    })?;
+    let (n_iban, n_name, n_purpose) = (norm(iban), norm(name), norm(purpose));
+    let mut hits = Vec::new();
+    for row in rows {
+        let (id, mm_name, mm_iban) = row?;
+        let (m_iban, m_name) = (norm(&mm_iban), norm(&mm_name));
+        let ok = if !n_iban.is_empty() && !m_iban.is_empty() {
+            n_iban == m_iban
+        } else {
+            let long = n_name.len() >= 3 && m_name.len() >= 3;
+            (long && (n_name.contains(&m_name) || m_name.contains(&n_name)))
+                || (m_name.len() >= 3
+                    && (n_purpose.contains(&m_name) || n_name.contains(&m_name)))
+        };
+        if ok {
+            hits.push(id);
+        }
+    }
+    Ok(if hits.len() == 1 { Some(hits[0]) } else { None })
+}
+
 /// A FinTS/API booking arrives that was already imported from MoneyMoney:
 /// take over the row (category + note stay) instead of inserting a duplicate.
+/// Exact fingerprint first, then a unique fuzzy twin (see [`find_twin`]).
 /// Returns true when an imported row was adopted.
 pub(crate) fn adopt_import(
     conn: &Connection,
@@ -753,15 +796,19 @@ pub(crate) fn adopt_import(
     iban: &str,
     name: &str,
     purpose: &str,
+    booking_text: &str,
 ) -> CoreResult<bool> {
     let fp = fingerprint(date, cents, iban, name, purpose);
-    let row: Option<i64> = conn
+    let mut row: Option<i64> = conn
         .query_row(
             "SELECT id FROM transactions WHERE account_id = ?1 AND import_fp = ?2 AND external_id LIKE 'mm-%' LIMIT 1",
             params![account_id, fp],
             |r| r.get(0),
         )
         .optional()?;
+    if row.is_none() {
+        row = find_twin(conn, account_id, None, date, cents, iban, name, purpose)?;
+    }
     let Some(id) = row else { return Ok(false) };
     let taken: bool = conn
         .query_row(
@@ -774,10 +821,54 @@ pub(crate) fn adopt_import(
     if taken {
         return Ok(false);
     }
+    take_over(conn, id, external_id, iban, booking_text)?;
+    Ok(true)
+}
+
+/// Gives the MoneyMoney row the bank's external id and fills missing bank metadata;
+/// the MoneyMoney counterparty name (cleaner) is kept.
+fn take_over(conn: &Connection, id: i64, external_id: &str, iban: &str, booking_text: &str) -> CoreResult<()> {
     conn.execute(
-        "UPDATE transactions SET external_id = ?1 WHERE id = ?2",
-        params![external_id, id],
+        "UPDATE transactions SET external_id = ?1,
+                counterparty_iban = CASE WHEN counterparty_iban = '' THEN ?3 ELSE counterparty_iban END,
+                booking_text = CASE WHEN booking_text = '' THEN ?4 ELSE booking_text END
+          WHERE id = ?2",
+        params![external_id, id, iban, booking_text],
     )?;
+    Ok(())
+}
+
+/// Re-sync repair: the bank booking `external_id` already exists (old duplicate) while its
+/// MoneyMoney twin is still un-adopted. If the bank row is untouched (no manual category,
+/// note, check mark, splits or documents) it is removed and the rich MoneyMoney row takes
+/// over its external id. Returns true when merged.
+pub(crate) fn merge_synced_twin(
+    conn: &Connection,
+    account_id: i64,
+    external_id: &str,
+    date: &str,
+    cents: i64,
+    iban: &str,
+    name: &str,
+    purpose: &str,
+) -> CoreResult<bool> {
+    let bank: Option<(i64, String, String)> = conn
+        .query_row(
+            "SELECT id, counterparty_iban, booking_text FROM transactions
+              WHERE account_id = ?1 AND external_id = ?2
+                AND category_source != 'manual' AND checked = 0 AND trim(note) = ''
+                AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = transactions.id)
+                AND NOT EXISTS (SELECT 1 FROM booking_documents d WHERE d.booking_id = transactions.id)",
+            params![account_id, external_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()?;
+    let Some((bank_id, bank_iban, bank_text)) = bank else { return Ok(false) };
+    let Some(mm_id) = find_twin(conn, account_id, Some(bank_id), date, cents, iban, name, purpose)? else {
+        return Ok(false);
+    };
+    conn.execute("DELETE FROM transactions WHERE id = ?1", [bank_id])?;
+    take_over(conn, mm_id, external_id, &bank_iban, &bank_text)?;
     Ok(true)
 }
 
@@ -1084,6 +1175,7 @@ mod tests {
             "DE02120300000000202051",
             "REWE Markt",
             "Einkauf Kartenzahlung",
+            "",
         )
         .unwrap();
         assert!(adopted);
@@ -1095,6 +1187,84 @@ mod tests {
             )
             .unwrap();
         assert_eq!(n, 3);
+    }
+
+    fn mm_acct(v: &Vault, rows: &str) -> i64 {
+        let csv = format!("Datum;Name;Verwendungszweck;Betrag;Kategorie;Notiz\n{rows}");
+        v.import_moneymoney_data(csv.into_bytes(), "t.csv".into(), None, true, true)
+            .unwrap()
+            .account_id
+    }
+
+    fn ext_ids(db: &Connection, acc: i64) -> Vec<String> {
+        let mut st = db
+            .prepare("SELECT external_id FROM transactions WHERE account_id = ?1 ORDER BY id")
+            .unwrap();
+        st.query_map([acc], |r| r.get(0)).unwrap().map(|x| x.unwrap()).collect()
+    }
+
+    #[test]
+    fn adopt_fallback_on_differing_purpose_and_comdirect_name_in_purpose() {
+        let v = vault();
+        let acc = mm_acct(
+            &v,
+            "10.05.2026;REWE Markt;Einkauf;-12,50;Essen;n1\n11.05.2026;Stadtwerke Köln;Strom;-80,00;Wohnen;n2\n",
+        );
+        let db = v.db().unwrap();
+        // purpose differs (SEPA tags), date off by one day, name matches
+        assert!(adopt_import(&db, acc, "f1", "2026-05-11", -1250, "", "REWE", "EREF+123 Einkauf", "").unwrap());
+        // comdirect: partner field holds booking text, MM name sits in the purpose
+        assert!(adopt_import(&db, acc, "f2", "2026-05-10", -8000, "", "Lastschrift", "Stadtwerke Köln MREF+9 Strom", "LASTSCHRIFT").unwrap());
+        assert_eq!(ext_ids(&db, acc), vec!["f1", "f2"]);
+        let cp: String = db
+            .query_row("SELECT counterparty FROM transactions WHERE external_id='f2'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(cp, "Stadtwerke Köln");
+        // out of the ±2 day window: no adoption
+        assert!(!adopt_import(&db, acc, "f3", "2026-06-01", -1250, "", "REWE", "x", "").unwrap());
+    }
+
+    #[test]
+    fn adopt_fallback_is_skipped_when_ambiguous() {
+        let v = vault();
+        let acc = mm_acct(
+            &v,
+            "10.05.2026;Bäckerei Müller;Brötchen;-3,00;;\n10.05.2026;Bäckerei Müller;Kuchen;-3,00;;\n",
+        );
+        let db = v.db().unwrap();
+        assert!(!adopt_import(&db, acc, "f1", "2026-05-10", -300, "", "Bäckerei Müller", "EREF+1", "").unwrap());
+        assert!(ext_ids(&db, acc).iter().all(|e| e.starts_with("mm-")));
+    }
+
+    #[test]
+    fn merge_synced_twin_repairs_untouched_duplicate_and_spares_edited() {
+        let v = vault();
+        let acc = mm_acct(
+            &v,
+            "10.05.2026;REWE Markt;Einkauf;-12,50;Essen;wichtig\n12.05.2026;Aldi;Einkauf;-7,00;Essen;\n",
+        );
+        let db = v.db().unwrap();
+        let ins = |ext: &str, date: &str, cents: i64, name: &str| {
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'EREF+1')",
+                params![acc, ext, date, cents, name],
+            )
+            .unwrap();
+        };
+        ins("f1", "2026-05-10", -1250, "REWE");
+        ins("f2", "2026-05-12", -700, "ALDI");
+        db.execute("UPDATE transactions SET note = 'meins' WHERE external_id = 'f2'", []).unwrap();
+
+        assert!(merge_synced_twin(&db, acc, "f1", "2026-05-10", -1250, "", "REWE", "EREF+1").unwrap());
+        assert!(!merge_synced_twin(&db, acc, "f2", "2026-05-12", -700, "", "ALDI", "EREF+1").unwrap());
+
+        let n: i64 = db.query_row("SELECT count(*) FROM transactions WHERE account_id = ?1", [acc], |r| r.get(0)).unwrap();
+        assert_eq!(n, 3); // REWE merged (2 rows -> 1), Aldi pair kept (edited) -> 1 + 2
+        let note: String = db
+            .query_row("SELECT note FROM transactions WHERE external_id = 'f1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(note, "wichtig");
     }
 
     #[test]
