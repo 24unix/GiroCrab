@@ -33,13 +33,14 @@ impl BankConnector for DemoConnector {
     async fn begin(&mut self, _ctx: &ConnectContext) -> CoreResult<Phase> {
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
         let c = match self.kind {
-            ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822 | ConnectorKind::FinTsGeneric | ConnectorKind::Comdirect => Challenge {
+            ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822 | ConnectorKind::FinTsGeneric | ConnectorKind::Comdirect | ConnectorKind::ScalableCapital => Challenge {
                 kind: ChallengeKind::DecoupledPush,
                 title: tr("Bitte in der Banking-App freigeben").into(),
                 message: tr("Demo: Eine Push-Nachricht wurde „gesendet“. Die Freigabe wird nach wenigen Sekunden simuliert.").into(),
                 method_name: match self.kind {
                     ConnectorKind::VolksbankKasselGoettingen => "SecureGo plus (Demo)".into(),
                     ConnectorKind::Direkt1822 => "pushTAN (Demo)".into(),
+                    ConnectorKind::ScalableCapital => "Browser-Anmeldung (Demo)".into(),
                     _ => "photoTAN push (Demo)".into(),
                 },
                 redirect_url: None,
@@ -154,6 +155,7 @@ impl BankConnector for DemoConnector {
             let (cp, purpose, cents) = match self.kind {
                 ConnectorKind::PayPal => ("Lieferando.de", "Bestellung Lieferando", -23_40),
                 ConnectorKind::TradeRepublic => ("Trade Republic", "Zinsen", 3_87),
+                ConnectorKind::ScalableCapital => ("Scalable Capital", "Zinsen Overnight", 5_12),
                 ConnectorKind::AmericanExpress
                 | ConnectorKind::AmazonVisa
                 | ConnectorKind::EnableBanking => ("AMZN Mktp DE", "Amazon.de Bestellung", -34_99),

@@ -25,6 +25,7 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto", "use_pem"] }
 base64 = "0.22"
 rsa = { version = "0.9", features = ["sha2", "pem", "getrandom"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
 sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rand = "0.9"

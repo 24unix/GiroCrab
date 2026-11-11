@@ -2964,6 +2964,50 @@
         }
       }
     },
+    "Depot: Positionen statt Buchungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depot: positions instead of bookings"
+          }
+        }
+      }
+    },
+    "Keine Buchungen im Depot" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No bookings in the depot"
+          }
+        }
+      }
+    },
+    "Ein Depot zeigt seine Positionen oben. Käufe, Verkäufe und Sparpläne stehen als Buchungen im Verrechnungskonto." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A depot shows its positions above. Buys, sells and savings plans appear as bookings on the clearing account."
+          }
+        }
+      }
+    },
+    "Im Browser anmelden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in in the browser"
+          }
+        }
+      }
+    },
     "Im Browser-Fenster anmelden" : {
       "extractionState" : "manual",
       "localizations" : {

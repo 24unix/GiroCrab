@@ -31,6 +31,10 @@ struct TwoFactorSheet: View {
                         .padding(.top, 6)
                     Text(c.title).font(.title3.bold())
                     Text(c.message).multilineTextAlignment(.center).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if let s = c.redirectUrl, let url = URL(string: s) {
+                        Button { openURL(url) } label: { Label("Im Browser anmelden", systemImage: "safari") }
+                            .buttonStyle(.borderedProminent)
+                    }
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
                         Text(active.waiting ? "Warte auf Freigabe …" : "Push-Nachricht gesendet")

@@ -118,6 +118,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
             "trade republic depot broker",
         ),
         (ConnectorKind::PayPal, "PayPal", "paypal"),
+        (
+            ConnectorKind::ScalableCapital,
+            "Scalable Capital",
+            "scalable capital depot broker overnight festgeld",
+        ),
     ]
 }
 
@@ -390,6 +395,8 @@ mod tests {
             ("trade republic", ConnectorKind::TradeRepublic),
             ("PayPal", ConnectorKind::PayPal),
             ("comdirect", ConnectorKind::Comdirect),
+            ("Scalable Capital", ConnectorKind::ScalableCapital),
+            ("scalable", ConnectorKind::ScalableCapital),
         ] {
             let r = search(q, vec![], 10);
             assert!(

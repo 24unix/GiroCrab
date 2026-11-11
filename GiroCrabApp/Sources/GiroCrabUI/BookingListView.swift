@@ -12,6 +12,14 @@ struct BookingStreamView: View {
     @State private var showCashflowIOS = false
     #endif
 
+    /// Depots show positions; bookings (buys, sells) live on the clearing account.
+    private var isDepot: Bool {
+        if case .account(let id)? = model.sidebarSelection, let a = model.account(for: id) {
+            return a.kind == .brokerage || a.name.localizedCaseInsensitiveContains("depot")
+        }
+        return false
+    }
+
     var body: some View {
         @Bindable var model = model
         let isOverview: Bool = { if case .allAccounts? = model.sidebarSelection { return true }; return false }()
@@ -51,7 +59,16 @@ struct BookingStreamView: View {
                             BudgetProgressCard().transition(.opacity.combined(with: .move(edge: .top)))
                             #endif
                         }
-                        if model.dayGroups.isEmpty && !(model.allAccounts.isEmpty && !model.demoActive) {
+                        if model.dayGroups.isEmpty && isDepot && model.searchText.isEmpty {
+                            ContentUnavailableView(
+                                "Keine Buchungen im Depot",
+                                systemImage: "chart.line.uptrend.xyaxis",
+                                description: Text("Ein Depot zeigt seine Positionen oben. Käufe, Verkäufe und Sparpläne stehen als Buchungen im Verrechnungskonto.")
+                            )
+                            .frame(maxWidth: .infinity)
+                            // fill the visible scroll area so the placeholder sits in its middle
+                            .containerRelativeFrame(.vertical, alignment: .center)
+                        } else if model.dayGroups.isEmpty && !(model.allAccounts.isEmpty && !model.demoActive) {
                             ContentUnavailableView(
                                 model.searchText.isEmpty ? "Keine Buchungen" : "Keine Treffer",
                                 systemImage: model.searchText.isEmpty ? "tray" : "magnifyingglass",
@@ -201,7 +218,7 @@ struct BookingStreamView: View {
                     #endif
                     if !emptyVault {
                         StreamHeaderCard()
-                        if !isOverview && model.scope != .investments && !model.allAccounts.isEmpty {
+                        if !isOverview && !isDepot && model.scope != .investments && !model.allAccounts.isEmpty {
                             HStack {
                                 Button {
                                     withAnimation(.easeInOut(duration: 0.25)) { showAnalytics.toggle() }

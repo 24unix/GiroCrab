@@ -28,6 +28,7 @@ pub mod bank_directory;
 pub mod bunq;
 pub mod comdirect;
 pub mod demo;
+pub mod dpop;
 pub mod enable_banking;
 pub mod fints;
 pub mod fints_directory;
@@ -37,6 +38,7 @@ pub mod moneymoney_db;
 pub mod moneymoney_import;
 pub mod paypal;
 pub mod portal_import;
+pub mod scalable;
 pub mod template;
 pub mod trade_republic;
 
@@ -231,6 +233,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
                 "enablebanking.redirect_url",
             ]),
             note: tr("Banken wie N26, Revolut oder C24 per PSD2. Benötigt eine kostenlose eigene Anwendung auf enablebanking.com (Application-ID, privater Schlüssel, Redirect-URL). Die Zustimmung erteilen Sie im Browser Ihrer Bank.").into(),
+        },
+        ConnectorKind::ScalableCapital => BankDescriptor {
+            kind,
+            name: "Scalable Capital".into(),
+            protocol: tr("OAuth-Geräteanmeldung + GraphQL-API der offiziellen CLI").into(),
+            bank_code: String::new(),
+            sf_symbol: "chart.bar.xaxis".into(),
+            login_label: tr("E-Mail (nur Anzeige)").into(),
+            secret_label: tr("(nicht nötig – Anmeldung im Browser)").into(),
+            required_settings: vec![],
+            note: tr("Vorher auf scalable.capital unter Profil → Sicherheit → „Agentic Investing“ den CLI-Zugriff einschalten. Die Anmeldung läuft im Browser und muss alle 7 Tage erneuert werden. Nur Lesezugriff.").into(),
         },
         ConnectorKind::Bunq => BankDescriptor {
             kind,
@@ -442,6 +455,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
             "enablebanking.country.amazonvisa",
         )),
         ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),
+        ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {
             let (country, aspsp) = ConnectorKind::enable_banking_target(key).unwrap_or(("DE", ""));
             Box::new(enable_banking::EnableBankingConnector::for_aspsp(

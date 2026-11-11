@@ -44,6 +44,12 @@ struct StreamHeaderCard: View {
         return nil
     }
 
+    /// Depots show positions; bookings (buys, sells) live on the clearing account.
+    private var isDepot: Bool {
+        guard let a = account else { return false }
+        return a.kind == .brokerage || a.name.localizedCaseInsensitiveContains("depot")
+    }
+
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 9) {
@@ -77,36 +83,59 @@ struct StreamHeaderCard: View {
                 LoanProgressCard(account: a, compact: true)
             }
 
-            if let a = account, a.kind == .brokerage || a.name.localizedCaseInsensitiveContains("depot") {
+            if let a = account, isDepot {
                 HoldingsCard(account: a)
             }
 
-            if model.scope != .investments {
+            if isDepot {
+                depotRow
+            } else {
+                if model.scope != .investments {
+                    #if os(iOS)
+                    BalanceChart(points: model.history) { model.jumpToDay($0) }
+                        .frame(height: 28)
+                    #else
+                    BalanceChart(points: model.history) { model.jumpToDay($0) }
+                        .frame(height: 56)
+                    #endif
+                }
+
                 #if os(iOS)
-                BalanceChart(points: model.history) { model.jumpToDay($0) }
-                    .frame(height: 28)
+                HStack(spacing: 10) {
+                    Text("Konsum \(Money.format(-model.consumptionThisMonth))").foregroundStyle(Theme.outflow)
+                    Text("Einnahmen \(Money.format(model.incomeThisMonth))").foregroundStyle(Theme.inflow)
+                    Spacer(minLength: 0)
+                }
+                .font(.caption.weight(.medium).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 #else
-                BalanceChart(points: model.history) { model.jumpToDay($0) }
-                    .frame(height: 56)
+                HStack(spacing: 10) { kpis }
                 #endif
-            }
 
-            #if os(iOS)
-            HStack(spacing: 10) {
-                Text("Konsum \(Money.format(-model.consumptionThisMonth))").foregroundStyle(Theme.outflow)
-                Text("Einnahmen \(Money.format(model.incomeThisMonth))").foregroundStyle(Theme.inflow)
-                Spacer(minLength: 0)
+                filterRow
             }
-            .font(.caption.weight(.medium).monospacedDigit())
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
-            #else
-            HStack(spacing: 10) { kpis }
-            #endif
-
-            filterRow
         }
         .card()
+    }
+
+    /// Depot: no cash-flow KPIs, chart or period filters – only documents and a hint.
+    @ViewBuilder
+    private var depotRow: some View {
+        HStack(spacing: 12) {
+            if let a = account {
+                Button { showDocuments = true } label: {
+                    Label("Dokumente", systemImage: "doc.text")
+                }
+                .buttonStyle(.borderless)
+                .sheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
+            }
+            Spacer()
+            Text("Depot: Positionen statt Buchungen")
+                .lineLimit(1)
+        }
+        .font(.caption)
+        .foregroundStyle(Theme.secondary)
     }
 
     @ViewBuilder

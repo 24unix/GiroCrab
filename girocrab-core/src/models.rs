@@ -28,6 +28,9 @@ pub enum ConnectorKind {
     /// The bank lives in the connection's connector key
     /// `enablebanking:<country>:<ASPSP name>`.
     EnableBanking,
+    /// Scalable Capital Broker / Overnight / Fixed-Term via the GraphQL API
+    /// of the official CLI (OAuth device flow, DPoP-bound tokens).
+    ScalableCapital,
 }
 
 impl ConnectorKind {
@@ -43,6 +46,7 @@ impl ConnectorKind {
             ConnectorKind::AmazonVisa => "enablebanking:amazonvisa",
             ConnectorKind::Bunq => "bunq",
             ConnectorKind::EnableBanking => "enablebanking",
+            ConnectorKind::ScalableCapital => "scalable",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -86,6 +90,7 @@ impl ConnectorKind {
             ConnectorKind::AmazonVisa,
             ConnectorKind::Bunq,
             ConnectorKind::EnableBanking,
+            ConnectorKind::ScalableCapital,
         ]
     }
 }

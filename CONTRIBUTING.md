@@ -27,7 +27,7 @@ Swift-only changes: `cd GiroCrabApp && swift build -q` (no core rebuild needed).
 3. **Test it with fake data.** Unit-test your parser with invented fixtures, then check the UI via
    `GIROCRAB_DEMO_SEED=1`. Run `cargo fmt`, `cargo clippy` and `cargo test -p girocrab-core`.
 
-Open a *New bank request* issue first if unsure – ING, DKB, N26, Scalable Capital, Consorsbank and
+Open a *New bank request* issue first if unsure – ING, N26, Scalable Capital, Consorsbank and
 Santander are wanted.
 
 ## Adding merchants

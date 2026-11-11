@@ -218,6 +218,7 @@ extension ConnectorKind {
         case .amazonVisa: return "Amazon Visa"
         case .bunq: return "bunq"
         case .enableBanking: return "Enable Banking (PSD2)"
+        case .scalableCapital: return "Scalable Capital"
         }
     }
 
@@ -234,6 +235,7 @@ extension ConnectorKind {
         case .amazonVisa: return "#3C2A7A"
         case .bunq: return "#1F8F5F"
         case .enableBanking: return "#5B5BD6"
+        case .scalableCapital: return "#0E2A47"
         }
     }
 
@@ -251,6 +253,7 @@ extension ConnectorKind {
         case .amazonVisa: return "AV"
         case .bunq: return "bq"
         case .enableBanking: return "PS"
+        case .scalableCapital: return "SC"
         }
     }
 }

@@ -40,7 +40,7 @@ struct BankAddView: View {
     @State private var query = ""
     @State private var selected: BankSearchResult?
 
-    private static let suggestions = ["Sparkasse", "Volksbank", "ING", "DKB", "Postbank", "N26", "Revolut", "C24", "bunq", "Trade Republic", "PayPal"]
+    private static let suggestions = ["Sparkasse", "Volksbank", "ING", "DKB", "Postbank", "N26", "Revolut", "C24", "bunq", "Trade Republic", "Scalable Capital", "PayPal"]
 
     private var results: [BankSearchResult] {
         searchBanks(query: query, livePsd2: model.livePsd2Banks, perGroupLimit: 12)

@@ -128,7 +128,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | PayPal | Transaction-Search-API | ✅ Unterstützt |
 | Trade Republic | WebSocket (inoffiziell) | ⚠️ Unterstützt, kann brechen |
 | American Express / Amazon Visa | PSD2 via Enable Banking | ✅ Unterstützt |
-| ING, DKB, N26, Scalable Capital, Consorsbank, Santander | – | 🙋 **Help Wanted** |
+| ING, N26, Scalable Capital, Consorsbank, Santander | – | 🙋 **Help Wanted** |
 
 Eine neue Bank anzubinden dauert meist unter 100 Zeilen: siehe
 [`connectors/template.rs`](girocrab-core/src/connectors/template.rs) und [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -274,7 +274,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | PayPal | Transaction Search API | ✅ Supported |
 | Trade Republic | WebSocket (unofficial) | ⚠️ Supported, may break |
 | American Express / Amazon Visa | PSD2 via Enable Banking | ✅ Supported |
-| ING, DKB, N26, Scalable Capital, Consorsbank, Santander | – | 🙋 **Help wanted** |
+| ING, N26, Scalable Capital, Consorsbank, Santander | – | 🙋 **Help wanted** |
 
 Adding a bank usually takes under 100 lines – start from
 [`connectors/template.rs`](girocrab-core/src/connectors/template.rs) and read [CONTRIBUTING.md](CONTRIBUTING.md).
