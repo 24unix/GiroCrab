@@ -25,6 +25,7 @@ name = "girocrab"
 path = "src/main.rs"
 
 [profile.release]
-lto = "thin"
-codegen-units = 4
-strip = "debuginfo"
+lto = "fat"
+codegen-units = 1
+opt-level = "s"
+strip = "symbols"

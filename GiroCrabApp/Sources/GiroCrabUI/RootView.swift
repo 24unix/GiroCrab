@@ -116,17 +116,16 @@ public struct GiroCrabRootView: View {
     public var body: some View {
         switch model.vaultState {
         case .starting:
-            VStack(spacing: 16) {
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 54))
-                    .foregroundStyle(Theme.accent)
-                ProgressView()
-                Text("GiroCrab wird vorbereitet …").foregroundStyle(Theme.secondary)
+            // Same background + centred logo as the system launch screen (LaunchInfo.plist),
+            // so there is no visual jump between the two.
+            ZStack {
+                Theme.canvas.ignoresSafeArea()
+                StartLogo()
+                ProgressView().offset(y: 96)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.canvas.ignoresSafeArea())
+            .onAppear { model.bootstrap() }
         case .open:
-            MainSplitView()
+            MainSplitView().onAppear { StartupClock.mark("MainSplitView appear") }
         case .locked, .unlocking:
             LockView()
         case .failed(let message):
@@ -359,5 +358,20 @@ struct MainSplitView: View {
             }
         }
         .animation(.spring(duration: 0.3), value: model.toast)
+    }
+}
+
+/// The launch-screen logo (asset `LaunchLogo`, 120 pt, centred).
+private struct StartLogo: View {
+    var body: some View {
+        #if os(iOS)
+        if let img = UIImage(named: "LaunchLogo") {
+            Image(uiImage: img).resizable().frame(width: 120, height: 120)
+        } else {
+            Image(systemName: "lock.shield.fill").font(.system(size: 54)).foregroundStyle(Theme.accent)
+        }
+        #else
+        Image(systemName: "lock.shield.fill").font(.system(size: 54)).foregroundStyle(Theme.accent)
+        #endif
     }
 }

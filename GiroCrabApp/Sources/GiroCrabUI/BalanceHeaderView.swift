@@ -360,7 +360,23 @@ struct BalanceChart: View {
         var euros: Double { Double(cents) / 100 } // display only; data stays in cents
     }
 
+    /// The chart's first render compiles Metal shaders (gradient + mask, ~1 s on a cold start),
+    /// so it is mounted one run-loop tick + a short delay after the list and cards are shown.
+    @State private var mounted = false
+
     var body: some View {
+        Group {
+            if mounted { chartBody } else { Color.clear }
+        }
+        .task {
+            guard !mounted else { return }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            StartupClock.mark("BalanceChart mounting")
+            mounted = true
+        }
+    }
+
+    @ViewBuilder private var chartBody: some View {
         let pts: [Point] = points.enumerated().compactMap { i, p in
             DateText.date(p.date).map { Point(id: i, date: $0, cents: p.balanceCents) }
         }

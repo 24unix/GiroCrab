@@ -339,21 +339,20 @@ public final class AppModel {
 
     public init(options: LaunchOptions = .current) {
         self.options = options
-        // Core texts follow the language the app bundle actually resolved, so
-        // UI and core never disagree (German without an .app bundle).
-        GiroCrabCore.setLanguage(code: Bundle.main.preferredLocalizations.first ?? "de")
+        StartupClock.mark("AppModel.init begin")
+        if options.freshVault || options.demoSeed {
+            // Developer switches only (screenshots): synchronous, not the normal start path.
+            GiroCrabCore.setLanguage(code: Bundle.main.preferredLocalizations.first ?? "de")
+        }
         if options.freshVault {
             openFreshVault()
             return
         }
-        if !options.demoSeed && !Self.vaultMayHoldRealData {
-            // First start / nothing real yet: straight into the demo, no lock, no prompt.
-            // Seeding runs after the first frame so a loading view shows instead of a blank window.
+        if !options.demoSeed {
+            // Normal start: zero I/O and no FFI here. The first frame shows the loading view;
+            // everything else (language, vault check, demo seeding) runs in `bootstrap()`.
             vaultState = .starting
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(nanoseconds: 50_000_000)
-                self?.openDemoVault()
-            }
+            StartupClock.mark("AppModel.init end")
             return
         }
         if options.demoSeed {
@@ -427,6 +426,67 @@ public final class AppModel {
 
     // MARK: - Vault lifecycle
 
+    /// Called by the root view's first `onAppear`: decides lock vs. demo off the main thread.
+    func bootstrap() {
+        guard !bootstrapped, vaultState == .starting else { return }
+        bootstrapped = true
+        StartupClock.mark("first frame (RootView.onAppear)")
+        Task { @MainActor [weak self] in
+            let mayHoldRealData = await Task.detached(priority: .userInitiated) { () -> Bool in
+                // Core texts follow the language the app bundle resolved (German without a bundle).
+                GiroCrabCore.setLanguage(code: Bundle.main.preferredLocalizations.first ?? "de")
+                return Self.vaultMayHoldRealData
+            }.value
+            guard let self else { return }
+            if mayHoldRealData {
+                self.vaultState = .locked
+            } else {
+                await self.openDemoVaultAsync()
+            }
+        }
+    }
+
+    @ObservationIgnored private var bootstrapped = false
+
+    /// Create + seed the throw-away demo vault on a background thread; only the finished
+    /// vault is handed back to the main actor.
+    private func openDemoVaultAsync() async {
+        let result: Result<Vault, Error> = await Task.detached(priority: .userInitiated) {
+            Result { try Self.makeDemoVault() }
+        }.value
+        StartupClock.mark("demo vault opened+seeded (background)")
+        switch result {
+        case .success(let v): adoptDemoVault(v)
+        case .failure(let error): vaultState = .failed(describe(error))
+        }
+        StartupClock.mark("demo data loaded & shown")
+    }
+
+    nonisolated private static func makeDemoVault() throws -> Vault {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Demo.girocrab")
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(atPath: url.path + suffix)
+        }
+        // Throw-away demo key (the demo vault holds only fictitious data).
+        let key = Data((0..<32).map { UInt8(($0 * 7 + 3) & 0xFF) })
+        let v = try Vault.open(path: url.path, key: key)
+        _ = try v.seedDemoData()
+        return v
+    }
+
+    private func adoptDemoVault(_ v: Vault) {
+        vault = v
+        lockPreview = false
+        demoActive = true
+        vaultState = .open
+        selectedBookingID = nil
+        sidebarSelection = .allAccounts
+        reloadAll()
+        #if os(macOS)
+        selectedBookingID = (bookings.first(where: { $0.flow == .consumption && $0.documentCount > 0 }) ?? bookings.first(where: { $0.flow == .consumption }))?.id
+        #endif
+    }
+
     private func openDemoVault() {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Demo.girocrab")
         for suffix in ["", "-wal", "-shm"] {
@@ -488,7 +548,7 @@ public final class AppModel {
         }
     }
 
-    static var vaultURL: URL {
+    nonisolated static var vaultURL: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("GiroCrab", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
@@ -625,11 +685,11 @@ public final class AppModel {
     /// Set when the user left the demo to the lock screen: no automatic prompt then.
     var demoDismissedLock = false
 
-    private static let realDataKey = "girocrab.hasRealData"
+    nonisolated private static let realDataKey = "girocrab.hasRealData"
 
     /// Real data may exist in the (encrypted, hence unreadable while locked) vault.
     /// Without a stored answer, an existing vault file counts as real data.
-    static var vaultMayHoldRealData: Bool {
+    nonisolated static var vaultMayHoldRealData: Bool {
         if let v = UserDefaults.standard.object(forKey: realDataKey) as? Bool { return v }
         return FileManager.default.fileExists(atPath: vaultURL.path)
     }
@@ -2235,4 +2295,21 @@ func formatIBAN(_ iban: String) -> String {
 struct AccountMarker {
     let label: String
     let color: Color
+}
+
+
+/// Startup timing (unified log, Debug builds only): milliseconds since process start.
+enum StartupClock {
+    @inline(__always)
+    static func mark(_ label: String) {
+        #if DEBUG
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        sysctl(&mib, 4, &info, &size, nil, 0)
+        let start = Double(info.kp_proc.p_un.__p_starttime.tv_sec) + Double(info.kp_proc.p_un.__p_starttime.tv_usec) / 1e6
+        let ms = Int((Date().timeIntervalSince1970 - start) * 1000)
+        NSLog("[startup] %6d ms  %@", ms, label)
+        #endif
+    }
 }
