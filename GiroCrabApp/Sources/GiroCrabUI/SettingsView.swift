@@ -523,12 +523,16 @@ struct ICloudSyncSection: View {
                 }
             if sync.isEnabled {
                 LabeledContent("Ordner", value: sync.folderName ?? "iCloud Drive / GiroCrab")
-                #if os(macOS)
-                Button("Im Finder zeigen", systemImage: "folder") { revealFolder() }
-                #else
-                Button("Ordner wählen …", systemImage: "folder") { picking = true }
-                #endif
-                Button(sync.isSyncing ? "Synchronisiere …" : "Jetzt synchronisieren", systemImage: "arrow.triangle.2.circlepath") {
+                // The app's own iCloud container is neither visible in Finder nor
+                // chosen by the user: only a plain folder gets these buttons.
+                if sync.location == .folder {
+                    #if os(macOS)
+                    Button("Im Finder zeigen", systemImage: "folder") { revealFolder() }
+                    #else
+                    Button("Ordner wählen …", systemImage: "folder") { picking = true }
+                    #endif
+                }
+                Button(sync.isSyncing ? LocalizedStringKey("Synchronisiere …") : LocalizedStringKey("Jetzt synchronisieren"), systemImage: "arrow.triangle.2.circlepath") {
                     model.syncNow()
                 }
                 .disabled(sync.isSyncing)
@@ -562,7 +566,9 @@ struct ICloudSyncSection: View {
                         .font(.caption).foregroundStyle(.orange)
                 }
             }
-            Text("Synchronisiert Ihren verschlüsselten Tresor über iCloud Drive (Ordner „GiroCrab“). Der Schlüssel liegt nie im Ordner: Er wird über den iCloud-Schlüsselbund geteilt oder einmalig auf dem zweiten Gerät eingefügt.")
+            Text(sync.location == .container
+                 ? LocalizedStringKey("Synchronisiert Ihren verschlüsselten Tresor über iCloud. Der Schlüssel liegt nie in iCloud Drive: Er wird über den iCloud-Schlüsselbund geteilt oder einmalig auf dem zweiten Gerät eingefügt.")
+                 : LocalizedStringKey("Synchronisiert Ihren verschlüsselten Tresor über iCloud Drive (Ordner „GiroCrab“). Der Schlüssel liegt nie im Ordner: Er wird über den iCloud-Schlüsselbund geteilt oder einmalig auf dem zweiten Gerät eingefügt."))
                 .font(.caption).foregroundStyle(.secondary)
         }
         .onChange(of: sync.keyMismatch) { _, bad in if bad { showKeySheet = true } }

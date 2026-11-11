@@ -1,6 +1,17 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "Synchronisiert Ihren verschlüsselten Tresor über iCloud. Der Schlüssel liegt nie in iCloud Drive: Er wird über den iCloud-Schlüsselbund geteilt oder einmalig auf dem zweiten Gerät eingefügt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Syncs your encrypted vault via iCloud. The key is never stored in iCloud Drive: it is shared via iCloud Keychain or pasted once on the second device."
+          }
+        }
+      }
+    },
     "Ordner wählen …" : {
       "extractionState" : "manual",
       "localizations" : {

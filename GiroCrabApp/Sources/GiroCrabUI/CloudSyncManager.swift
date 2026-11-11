@@ -424,7 +424,7 @@ public final class CloudSyncManager {
         }
         location = choice.location
         if choice.location == .container {
-            folderName = "iCloud Drive / GiroCrab"
+            folderName = "iCloud (GiroCrab)"
         } else if choice.url == fallback {
             folderName = "iCloud Drive / " + choice.url.lastPathComponent
         }
