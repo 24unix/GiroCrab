@@ -241,7 +241,8 @@ final class CloudSyncTests: XCTestCase {
     func test_merge_does_not_schedule_a_write() {
         var s = AutoSyncState()
         _ = s.tick(changeCount: 10, now: t0)
-        s.merged(changeCount: 25)
+        s.merged(changes: 15)
+        XCTAssertFalse(s.hasPendingWrite)
         XCTAssertFalse(s.tick(changeCount: 25, now: t0 + 5).contains(.write))
         XCTAssertFalse(s.tick(changeCount: 25, now: t0 + 10).contains(.write))
         XCTAssertFalse(s.hasPendingWrite)
@@ -251,8 +252,16 @@ final class CloudSyncTests: XCTestCase {
         var s = AutoSyncState()
         _ = s.tick(changeCount: 10, now: t0)
         _ = s.tick(changeCount: 12, now: t0 + 5) // local edit, not settled yet
-        s.merged(changeCount: 20)
+        s.merged(changes: 8)
         XCTAssertTrue(s.tick(changeCount: 20, now: t0 + 10).contains(.write))
+    }
+
+    func test_local_change_during_merge_is_written() {
+        var s = AutoSyncState()
+        _ = s.tick(changeCount: 10, now: t0)
+        s.merged(changes: 5) // meanwhile the user edited 2 rows: 10 + 5 + 2
+        XCTAssertFalse(s.tick(changeCount: 17, now: t0 + 5).contains(.write))
+        XCTAssertTrue(s.tick(changeCount: 17, now: t0 + 10).contains(.write))
     }
 
     func test_poll_every_30_seconds() {

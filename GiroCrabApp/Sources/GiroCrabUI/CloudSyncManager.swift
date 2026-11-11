@@ -284,7 +284,7 @@ public final class CloudSyncManager {
         }
         if let error = outcome.error { lastError = error }
         if let merge = outcome.merge {
-            autoState.merged(changeCount: vault.changeCount())
+            autoState.merged(changes: merge.stats.reduce(UInt64(0)) { $0 + $1.changes })
             lastError = nil
             record(merge)
             let changed = merge.stats.contains {

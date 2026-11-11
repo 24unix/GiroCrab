@@ -4,8 +4,9 @@ import Foundation
 /// others'. Driven by a 5-second tick with the vault's change counter:
 /// a local change is written once it has been quiet for one tick (so a
 /// fetch's many inserts go out as one write), and the folder is polled
-/// every 30 seconds. Changes made by a merge reset the baseline, so a merge
-/// never causes a write and two devices can't keep answering each other.
+/// every 30 seconds. Rows a merge changes are taken out of the count, so a
+/// merge alone never causes a write and two devices can't keep answering
+/// each other, while local edits made meanwhile are still written.
 struct AutoSyncState {
     enum Action: Equatable { case write, poll }
 
@@ -29,11 +30,11 @@ struct AutoSyncState {
         return actions
     }
 
-    mutating func merged(changeCount: UInt64) {
-        // A local change still waiting to be written stays pending; the
-        // write then carries the merged rows too, which costs nothing.
-        if !hasPendingWrite { baseline = changeCount }
-        previous = changeCount
+    /// A merge changed `changes` rows. Only those are taken out of the
+    /// count: local changes made before or during the merge stay pending.
+    mutating func merged(changes: UInt64) {
+        baseline = baseline.map { $0 + changes }
+        previous = previous.map { $0 + changes }
     }
 
     mutating func wrote(changeCount: UInt64) {

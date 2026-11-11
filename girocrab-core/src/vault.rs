@@ -1153,6 +1153,9 @@ pub struct MergeStats {
     pub bookings_updated: u32,
     /// User groups and account placements taken over from the other vault.
     pub groups_updated: u32,
+    /// Rows this merge changed in the vault (part of [`Vault::change_count`]),
+    /// so the app can tell its own changes from merged ones.
+    pub changes: u64,
 }
 
 #[uniffi::export]
@@ -1309,12 +1312,16 @@ impl Vault {
             Self::migrate(&o)?;
         }
         let conn = self.db()?;
+        let before = conn.total_changes();
         let raw_key = Zeroizing::new(format!("x'{}'", hex::encode(&*key)));
         conn.execute(
             "ATTACH DATABASE ?1 AS other KEY ?2",
             params![other_path, &*raw_key],
         )?;
-        let res = Self::merge_attached(&conn);
+        let res = Self::merge_attached(&conn).map(|mut st| {
+            st.changes = conn.total_changes() - before;
+            st
+        });
         let detach_res = conn.execute_batch("DETACH DATABASE other");
         // Fold WAL frames into the main file so a plain file copy is complete.
         let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
@@ -2776,6 +2783,21 @@ mod merge_tests {
         assert_eq!(a.change_count(), before);
         seed(&a, false, "", false);
         assert!(a.change_count() > before);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn merge_reports_the_rows_it_changed() {
+        let dir = temp_dir("merge-changes");
+        let a = Vault::open(path_in(&dir, "a.db"), vec![7u8; 32]).unwrap();
+        let b = Vault::open(path_in(&dir, "b.db"), vec![7u8; 32]).unwrap();
+        seed(&b, true, "hello", true);
+        let before = a.change_count();
+        let st = a.merge_peer_snapshot(b.file_path()).unwrap();
+        assert!(st.changes > 0);
+        assert_eq!(a.change_count() - before, st.changes);
+        let again = a.merge_peer_snapshot(b.file_path()).unwrap();
+        assert_eq!(again.changes, 0);
         let _ = std::fs::remove_dir_all(dir);
     }
 
