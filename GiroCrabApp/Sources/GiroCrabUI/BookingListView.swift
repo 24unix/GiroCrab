@@ -178,6 +178,11 @@ struct BookingStreamView: View {
                     Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren…", systemImage: "square.and.arrow.up") }
                     Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
                     Button { model.showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
+                    if model.demoActive && model.hasOwnVault {
+                        Button { model.showOwnVault() } label: { Label("Demo beenden", systemImage: "theatermasks") }
+                    } else if !model.demoActive && model.hasOwnVault && model.allAccounts.isEmpty {
+                        Button { model.showDemo() } label: { Label("Demo-Daten laden", systemImage: "theatermasks") }
+                    }
                 } label: { Label("Mehr", systemImage: "ellipsis.circle") }
             }
             #else
@@ -220,7 +225,7 @@ struct BookingStreamView: View {
                     }
                     #if os(iOS)
                     Picker("Ansicht", selection: scope) {
-                        ForEach(BookingScope.ordered, id: \.self) { Text($0.title).tag($0) }
+                        ForEach(BookingScope.ordered, id: \.self) { Text($0.shortTitle).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     #endif
@@ -245,7 +250,7 @@ struct BookingStreamView: View {
                     }
                 }
                 #if os(iOS)
-                .padding(.horizontal, 16)
+                // the scroll content already carries the 20pt side padding
                 .padding(.top, 4)
                 .padding(.bottom, 6)
                 #else

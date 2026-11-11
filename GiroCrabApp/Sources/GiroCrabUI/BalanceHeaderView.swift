@@ -73,6 +73,9 @@ struct AccountCopyMenu: View {
 /// monthly KPIs (consumption is always shown without ETF plans / perks).
 struct StreamHeaderCard: View {
     @Environment(AppModel.self) private var model
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
     @State private var showDocuments = false
 
     private var account: Account? {
@@ -191,7 +194,7 @@ struct StreamHeaderCard: View {
     private var filterRow: some View {
         @Bindable var model = model
         #if os(iOS)
-        ScrollView(.horizontal, showsIndicators: false) { filterContent }
+        ScrollView(.horizontal, showsIndicators: false) { filterContent.fixedSize(horizontal: true, vertical: false) }
         #else
         filterContent
         #endif
@@ -209,7 +212,15 @@ struct StreamHeaderCard: View {
                     }
                     .pickerStyle(.inline)
                 } label: {
+                    #if os(iOS)
+                    if sizeClass == .compact {
+                        Image(systemName: "calendar").accessibilityLabel(model.period.title)
+                    } else {
+                        Label(model.period.title, systemImage: "calendar")
+                    }
+                    #else
                     Label(model.period.title, systemImage: "calendar")
+                    #endif
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -219,23 +230,49 @@ struct StreamHeaderCard: View {
                     }
                     .pickerStyle(.inline)
                 } label: {
+                    #if os(iOS)
+                    if sizeClass == .compact {
+                        // icon only: the segmented period picker already takes most of the width
+                        Image(systemName: "line.3.horizontal.decrease")
+                            .accessibilityLabel("Status: \(model.statusFilter.title)")
+                    } else {
+                        Label("Status: \(model.statusFilter.title)", systemImage: "line.3.horizontal.decrease")
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                    }
+                    #else
                     Label("Status: \(model.statusFilter.title)", systemImage: "line.3.horizontal.decrease")
+                        .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                    #endif
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 if let a = account {
                     Button { showDocuments = true } label: {
                         Label("Dokumente", systemImage: "doc.text")
+                            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                            #if os(iOS)
+                            .labelStyle(.iconOnly)
+                            #endif
                     }
                     .buttonStyle(.borderless)
                     .sheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
                 }
                 Spacer()
+                #if os(iOS)
+                if sizeClass != .compact {
+                    Text("\(model.bookingCountLabel) Buchungen")
+                        .font(.caption)
+                        .foregroundStyle(Theme.secondary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                #else
                 Text("\(model.bookingCountLabel) Buchungen")
                     .font(.caption)
                     .foregroundStyle(Theme.secondary)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
+                #endif
             }
         .font(.caption)
         .foregroundStyle(Theme.secondary)
@@ -251,10 +288,15 @@ struct KPI: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title).font(.caption.weight(.medium)).foregroundStyle(Theme.secondary)
+                .lineLimit(2, reservesSpace: true)
+            Spacer(minLength: 4)
             Text(value).font(.system(size: 16, weight: .semibold).monospacedDigit()).foregroundStyle(tint)
+                .lineLimit(1).minimumScaleFactor(0.75)
+            Spacer(minLength: 4)
             Text(subtitle).font(.caption2).foregroundStyle(Theme.tertiary)
+                .lineLimit(2, reservesSpace: true)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.canvas))
@@ -268,6 +310,15 @@ struct BalanceChart: View {
     var onSelect: ((Date) -> Void)? = nil
     /// Day under the mouse pointer (hover readout: date + balance).
     @State private var hovered: Point?
+
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var tickDays: Int { sizeClass == .compact ? 14 : 7 }
+    private var tickMonths: Int { sizeClass == .compact ? 2 : 1 }
+    #else
+    private var tickDays: Int { 7 }
+    private var tickMonths: Int { 1 }
+    #endif
 
     private struct Point: Identifiable, Equatable {
         let id: Int
@@ -329,12 +380,12 @@ struct BalanceChart: View {
             } else if let first = pts.first?.date, let last = pts.last?.date,
                       last.timeIntervalSince(first) < 62 * 86_400 {
                 // short periods (this/last month): weekly day labels
-                AxisMarks(values: .stride(by: .day, count: 7)) { _ in
+                AxisMarks(values: .stride(by: .day, count: tickDays)) { _ in
                     AxisValueLabel(format: .dateTime.day().month(.abbreviated))
                         .foregroundStyle(Theme.tertiary)
                 }
             } else {
-                AxisMarks(values: .stride(by: .month)) { _ in
+                AxisMarks(values: .stride(by: .month, count: tickMonths)) { _ in
                     AxisValueLabel(format: .dateTime.month(.abbreviated))
                         .foregroundStyle(Theme.tertiary)
                 }

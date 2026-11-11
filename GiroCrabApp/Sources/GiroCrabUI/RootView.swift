@@ -15,6 +15,7 @@ public struct GiroCrabScenes: Scene {
         WindowGroup("GiroCrab", id: "main") {
             GiroCrabRootView()
                 .environment(model)
+                .modifier(AutoLockOnBackground(model: model))
                 #if os(macOS)
                 // Keep the minimum independent of the split columns' ideal heights.
                 .frame(minHeight: 480, maxHeight: .infinity)
@@ -109,6 +110,32 @@ public struct GiroCrabRootView: View {
     }
 }
 
+/// Locks the personal vault again after the app has been in the background
+/// for a while, so the Face ID / passcode prompt returns on the next start.
+struct AutoLockOnBackground: ViewModifier {
+    let model: AppModel
+    @Environment(\.scenePhase) private var phase
+    @State private var backgroundedAt: Date?
+    private let timeout: TimeInterval = 60
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content.onChange(of: phase) { _, new in
+            switch new {
+            case .background:
+                backgroundedAt = Date()
+            case .active:
+                if let t = backgroundedAt, Date().timeIntervalSince(t) >= timeout, model.holdsRealData { model.lock() }
+                backgroundedAt = nil
+            default: break
+            }
+        }
+        #else
+        content
+        #endif
+    }
+}
+
 struct LockView: View {
     @Environment(AppModel.self) private var model
     var error: String?
@@ -123,7 +150,7 @@ struct LockView: View {
                 .foregroundStyle(Theme.accent)
             Text("GiroCrab ist gesperrt")
                 .font(.title.bold())
-            Text("Ihre Buchungen liegen in einem verschlüsselten SQLCipher-Tresor.\nDer Schlüssel verlässt nie den Schlüsselbund dieses Geräts.")
+            Text("Ihre Buchungen liegen in einem verschlüsselten Tresor.\nDer Schlüssel verlässt nie den Schlüsselbund dieses Geräts.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Theme.secondary)
             Button {
@@ -151,14 +178,16 @@ struct LockView: View {
             if let error {
                 Text(error).font(.callout).foregroundStyle(.red).multilineTextAlignment(.center)
             }
-            Button("Ohne Entsperren: Demo-Daten ansehen") { model.showDemo() }
-                .buttonStyle(.borderless)
+            if model.lockPreview && !AppModel.vaultMayHoldRealData && model.vaultState != .unlocking {
+                Button("Zurück zur Demo") { model.endLockPreview() }
+                    .buttonStyle(.borderless)
+            }
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.canvas)
         .task {
-            if model.vaultState == .locked && error == nil { model.unlock() }
+            if model.vaultState == .locked && error == nil && !model.demoDismissedLock { model.unlock() }
         }
         .task(id: model.vaultState == .unlocking) {
             waitingLong = false

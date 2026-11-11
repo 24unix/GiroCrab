@@ -80,6 +80,14 @@ extension BookingScope {
         case .investments: return String(localized: "Sparpläne & Perks")
         }
     }
+    /// Short labels for narrow (compact) screens.
+    var shortTitle: String {
+        switch self {
+        case .all: return String(localized: "Alle")
+        case .everyday: return String(localized: "Alltag")
+        case .investments: return String(localized: "Sparpläne")
+        }
+    }
     static let ordered: [BookingScope] = [.all, .everyday, .investments]
 }
 
@@ -310,6 +318,11 @@ public final class AppModel {
             openFreshVault()
             return
         }
+        if !options.demoSeed && !Self.vaultMayHoldRealData {
+            // First start / nothing real yet: straight into the demo, no lock, no prompt.
+            openDemoVault()
+            return
+        }
         if options.demoSeed {
             openDemoVault()
             switch options.initialView {
@@ -390,6 +403,7 @@ public final class AppModel {
             let v = try Vault.open(path: url.path, key: key)
             _ = try v.seedDemoData()
             vault = v
+            lockPreview = false
             demoActive = true
             vaultState = .open
             selectedBookingID = nil
@@ -445,6 +459,8 @@ public final class AppModel {
 
     func unlock() {
         guard vaultState != .unlocking else { return }
+        demoDismissedLock = false
+        lockPreview = false
         vaultState = .unlocking
         Task {
             do {
@@ -457,6 +473,7 @@ public final class AppModel {
                 self.ownVault = v
                 if try v.accountCount() == 0 && self.connectionsExist(v) == false {
                     // Nothing synced yet: show demo bookings so the UI can be judged.
+                    UserDefaults.standard.set(false, forKey: Self.realDataKey)
                     self.openDemoVault()
                     self.toast = String(localized: "Ihr Tresor ist noch leer – Sie sehen Demo-Daten")
                 } else {
@@ -467,7 +484,12 @@ public final class AppModel {
                         await self.performSyncOrAutoAdopt(vault: v, key: key)
                     }
             } catch {
-                self.vaultState = .failed(describe(error))
+                if self.ownVault == nil && !Self.vaultMayHoldRealData {
+                    // Cancelled before any real data exists: back to the demo, never a dead end.
+                    self.openDemoVault()
+                } else {
+                    self.vaultState = .failed(describe(error))
+                }
             }
         }
     }
@@ -536,6 +558,7 @@ public final class AppModel {
     private func useVault(_ v: Vault, demo: Bool) {
         vault = v
         demoActive = demo
+        if !demo { UserDefaults.standard.set(true, forKey: Self.realDataKey) }
         vaultState = .open
         selectedBookingID = nil
         sidebarSelection = .allAccounts
@@ -561,8 +584,41 @@ public final class AppModel {
         }
     }
 
+    /// Set when the user left the demo to the lock screen: no automatic prompt then.
+    var demoDismissedLock = false
+
+    private static let realDataKey = "girocrab.hasRealData"
+
+    /// Real data may exist in the (encrypted, hence unreadable while locked) vault.
+    /// Without a stored answer, an existing vault file counts as real data.
+    static var vaultMayHoldRealData: Bool {
+        if let v = UserDefaults.standard.object(forKey: realDataKey) as? Bool { return v }
+        return FileManager.default.fileExists(atPath: vaultURL.path)
+    }
+
+    /// The personal vault is what is shown (not the demo): must be locked in the background.
+    var holdsRealData: Bool { ownVault != nil && !demoActive }
+
+    /// Demo only: shows the lock screen once so the protection can be tried out.
+    /// Unlocking afterwards opens the personal vault (or comes back to the demo while it is empty).
+    var lockPreview = false
+    func previewLock() {
+        guard demoActive, ownVault == nil, !Self.vaultMayHoldRealData else { return }
+        lockPreview = true
+        demoDismissedLock = true
+        vaultState = .locked
+    }
+
+    /// Leaves the lock-screen preview back to the demo (never offered with real data).
+    func endLockPreview() {
+        guard lockPreview, !Self.vaultMayHoldRealData else { return }
+        lockPreview = false
+        openDemoVault()
+    }
+
     func lock() {
-        guard ownVault != nil else { return }
+        guard holdsRealData else { return }
+        demoDismissedLock = true
         scopeLoadTask?.cancel()
         stopAutoSync()
         ownVault = nil
