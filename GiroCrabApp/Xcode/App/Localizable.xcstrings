@@ -6196,7 +6196,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Delete…"
+            "value" : "Delete …"
           }
         }
       }
@@ -7237,7 +7237,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Edit note…"
+            "value" : "Edit note …"
           }
         }
       }
@@ -8680,7 +8680,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Syncing…"
+            "value" : "Syncing …"
           }
         }
       }
@@ -11145,579 +11145,6 @@
         }
       }
     },
-    "So richten Sie Ihre kostenlose Enable-Banking-Anwendung ein:" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "How to set up your free Enable Banking application:"
-          }
-        }
-      }
-    },
-    "Auf enablebanking.com eine Anwendung registrieren: „Production“ wählen, den Schlüssel im Browser erzeugen lassen und diese Redirect-URL eintragen:" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Register an application on enablebanking.com: choose “Production”, let the browser generate the key, and enter this redirect URL:"
-          }
-        }
-      }
-    },
-    "Bei der Anwendung „Activate by linking accounts“ wählen und alle Konten verknüpfen, die GiroCrab sehen soll – nicht verknüpfte Konten liefert die Bank nicht." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "For the application, choose “Activate by linking accounts” and link every account GiroCrab should see – the bank doesn’t provide accounts that aren’t linked."
-          }
-        }
-      }
-    },
-    "Hier die heruntergeladene .pem-Datei wählen. GiroCrab übernimmt Schlüssel und Application-ID und prüft die Anwendung." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose the downloaded .pem file here. GiroCrab takes the key and application ID and checks the application."
-          }
-        }
-      }
-    },
-    "enablebanking.com/cp/applications öffnen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open enablebanking.com/cp/applications"
-          }
-        }
-      }
-    },
-    "Redirect-URL kopieren" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Copy redirect URL"
-          }
-        }
-      }
-    },
-    "%lld." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld."
-          }
-        }
-      }
-    },
-    "Konten in Enable Banking verknüpft oder entfernt? Das wirkt erst nach „Neu verbinden“." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Linked or removed accounts in Enable Banking? That only takes effect after “Reconnect”."
-          }
-        }
-      }
-    },
-    "Sie melden sich in einem GiroCrab-Fenster direkt bei Ihrer Bank an. Dafür brauchen Sie eine kostenlose eigene Anwendung auf enablebanking.com – die Einrichtung führt Sie Schritt für Schritt hindurch." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "You sign in directly at your bank in a GiroCrab window. For this you need your own free application on enablebanking.com – the setup guides you step by step."
-          }
-        }
-      }
-    },
-    "%@ × %@ · %@" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ × %2$@ · %3$@"
-          }
-        }
-      }
-    },
-    "Positionen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Positions"
-          }
-        }
-      }
-    },
-    "Notiz bearbeiten (oder Doppelklick)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Edit note (or double-click)"
-          }
-        }
-      }
-    },
-    "Analysen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Analytics"
-          }
-        }
-      }
-    },
-    "Cashflow und Budgets für dieses Konto ein-/ausblenden" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show or hide cash flow and budgets for this account"
-          }
-        }
-      }
-    },
-    "Notiz bearbeiten …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Edit note …"
-          }
-        }
-      }
-    },
-    "%u neue / %u aktualisierte Buchungen, %u Konten" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$u new / %2$u updated transactions, %3$u accounts"
-          }
-        }
-      }
-    },
-    "Bitte einmalig den Ordner „GiroCrab“ in iCloud Drive auswählen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Please choose the “GiroCrab” folder in iCloud Drive once."
-          }
-        }
-      }
-    },
-    "Tresor in iCloud Drive aktualisiert" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vault updated in iCloud Drive"
-          }
-        }
-      }
-    },
-    "Beleg löschen?" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Delete document?"
-          }
-        }
-      }
-    },
-    "Beleg nicht verfügbar" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Document not available"
-          }
-        }
-      }
-    },
-    "Löschen …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Delete …"
-          }
-        }
-      }
-    },
-    "„%@“ wird unwiderruflich gelöscht." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“%@” will be deleted permanently."
-          }
-        }
-      }
-    },
-    "%u Depotpositionen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%u brokerage positions"
-          }
-        }
-      }
-    },
-    "%u Depotpositionen übernommen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%u brokerage positions imported."
-          }
-        }
-      }
-    },
-    "%@ / %@" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ / %2$@"
-          }
-        }
-      }
-    },
-    "DuckDuckGo" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DuckDuckGo"
-          }
-        }
-      }
-    },
-    "Google" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Google"
-          }
-        }
-      }
-    },
-    "Im Finder zeigen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show in Finder"
-          }
-        }
-      }
-    },
-    "Jetzt synchronisieren" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sync now"
-          }
-        }
-      }
-    },
-    "Letzter Sync" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last sync"
-          }
-        }
-      }
-    },
-    "Synchronisiere …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Syncing …"
-          }
-        }
-      }
-    },
-    "Tresor über iCloud synchronisieren" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sync vault via iCloud"
-          }
-        }
-      }
-    },
-    "iCloud Sync" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iCloud Sync"
-          }
-        }
-      }
-    },
-    "Ungültiger Schlüssel (erwartet 32 Byte, Base64 oder Hex)." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Invalid key (expected 32 bytes, Base64 or hex)."
-          }
-        }
-      }
-    },
-    "%u Dateien stimmen nicht mit der Prüfsumme aus MoneyMoney überein und wurden nicht übernommen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%u files don’t match MoneyMoney’s checksum and were not imported."
-          }
-        }
-      }
-    },
-    "%u Dokumente" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%u documents"
-          }
-        }
-      }
-    },
-    "%u Dokumente sind größer als 25 MB und wurden nicht übernommen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%u documents are larger than 25 MB and were not imported."
-          }
-        }
-      }
-    },
-    "%u Dokumente waren bereits vorhanden." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%u documents were already there."
-          }
-        }
-      }
-    },
-    "%u Dokumente wurden nicht gefunden – sie lassen sich später mit dem Ordner der PDF-Dateien nachholen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%u documents were not found – you can add them later with the folder containing the PDF files."
-          }
-        }
-      }
-    },
-    "%u Kontoauszüge und Dokumente (PDF) übernommen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%u statements and documents (PDF) imported."
-          }
-        }
-      }
-    },
-    "%u PDF-Dateien im Ordner kennt MoneyMoney nicht – sie gehören zu keinem Konto und wurden nicht übernommen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%u PDF files in the folder are unknown to MoneyMoney – they belong to no account and were not imported."
-          }
-        }
-      }
-    },
-    "%u PDF-Dokumente (%@) kommen verschlüsselt in den GiroCrab-Tresor." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$u PDF-Dokumente (%2$@) kommen verschlüsselt in den GiroCrab-Tresor."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$u PDF documents (%2$@) will be stored encrypted in the GiroCrab vault."
-          }
-        }
-      }
-    },
-    "%u von %u PDF-Dokumenten gefunden (%@). Die übrigen werden ausgelassen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$u von %2$u PDF-Dokumenten gefunden (%3$@). Die übrigen werden ausgelassen."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$u of %2$u PDF documents found (%3$@). The others are left out."
-          }
-        }
-      }
-    },
-    "Andere Quelle …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Other Source…"
-          }
-        }
-      }
-    },
-    "Kontoauszüge & Dokumente übernehmen (%u)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Import statements & documents (%u)"
-          }
-        }
-      }
-    },
-    "MoneyMoney verzeichnet %u PDF-Dokumente, die Dateien liegen aber nicht bei dieser Datenbank. Wenn Sie sie gesichert haben, wählen Sie den Ordner aus – sonst werden sie ausgelassen und lassen sich später nachholen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney lists %u PDF documents, but the files are not next to this database. If you saved them, choose the folder – otherwise they are left out and can be added later."
-          }
-        }
-      }
-    },
-    "MoneyMoney-Ordner auswählen (mit Kontoauszügen) – oder eine einzelne Datenbank, z. B. ein Backup (MoneyMoney.sqlite)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose the MoneyMoney folder (with statements) – or a single database, e.g. a backup (MoneyMoney.sqlite)"
-          }
-        }
-      }
-    },
-    "MoneyMoney-Ordner oder MoneyMoney.sqlite auswählen …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose the MoneyMoney folder or MoneyMoney.sqlite…"
-          }
-        }
-      }
-    },
-    "Ordner mit Auszügen wählen …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose Folder with Statements…"
-          }
-        }
-      }
-    },
-    "Ordner mit den gesicherten Kontoauszügen (PDF) auswählen – Unterordner werden mit durchsucht" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose the folder with the saved statements (PDF) – subfolders are searched too"
-          }
-        }
-      }
-    },
-    "Anderen Ordner wählen …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose Another Folder…"
-          }
-        }
-      }
-    },
     "%@ von %@ Buchungen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12535,6 +11962,303 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Filter by status or by income and expenses"
+          }
+        }
+      }
+    },
+    "Alle Konten abrufen (⌘R)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh All Accounts (⌘R)"
+          }
+        }
+      }
+    },
+    "Alle Konten dieses Bankzugangs werden samt Buchungen, Belegen und gespeicherten Zugangsdaten aus dem Tresor gelöscht. Das lässt sich nicht widerrufen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All accounts of this bank login are deleted from the vault, including their transactions, documents and stored credentials. This can’t be undone."
+          }
+        }
+      }
+    },
+    "Ansicht wählen (⌘1, ⌘2, ⌘3)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose View (⌘1, ⌘2, ⌘3)"
+          }
+        }
+      }
+    },
+    "Aufteilung entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove Split"
+          }
+        }
+      }
+    },
+    "Beim nächsten Abruf müssen Sie sich erneut anmelden und die Anmeldung in der App Ihrer Bank bestätigen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On the next refresh you’ll need to sign in again and confirm the sign-in in your bank’s app."
+          }
+        }
+      }
+    },
+    "Buchungen als CSV exportieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export Transactions as CSV…"
+          }
+        }
+      }
+    },
+    "Buchungen, die diese Regel kategorisiert hat, sind danach wieder ohne Kategorie. Das lässt sich nicht widerrufen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transactions this rule categorized will be uncategorized again. This can’t be undone."
+          }
+        }
+      }
+    },
+    "Buchungsart" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type"
+          }
+        }
+      }
+    },
+    "Domain bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Domain"
+          }
+        }
+      }
+    },
+    "Regel löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Rule…"
+          }
+        }
+      }
+    },
+    "Regel löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Rule?"
+          }
+        }
+      }
+    },
+    "Sitzung löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Session…"
+          }
+        }
+      }
+    },
+    "Sitzung löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Session?"
+          }
+        }
+      }
+    },
+    "Suche löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear Search"
+          }
+        }
+      }
+    },
+    "Vorlage „%@“ löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Template “%@”?"
+          }
+        }
+      }
+    },
+    "Web-Sitzung (Cookies) löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Web Session (Cookies)…"
+          }
+        }
+      }
+    },
+    "Ziel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Destination"
+          }
+        }
+      }
+    },
+    "%@, neu" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, new"
+          }
+        }
+      }
+    },
+    "%@ …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@…"
+          }
+        }
+      }
+    },
+    "„%@“ importieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import “%@”"
+          }
+        }
+      }
+    },
+    "„%@“ entfernen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove “%@”?"
+          }
+        }
+      }
+    },
+    "„%@“ einklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse “%@”"
+          }
+        }
+      }
+    },
+    "„%@“ ausklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expand “%@”"
+          }
+        }
+      }
+    },
+    "Ausgeklappt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expanded"
+          }
+        }
+      }
+    },
+    "Eingeklappt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapsed"
+          }
+        }
+      }
+    },
+    "Exportieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export"
+          }
+        }
+      }
+    },
+    "Ordner für die exportierten Belege wählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a folder for the exported documents"
           }
         }
       }
