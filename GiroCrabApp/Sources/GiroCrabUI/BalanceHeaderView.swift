@@ -49,7 +49,7 @@ struct StreamHeaderCard: View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(model.title).font(.title2.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                    Text(model.title).font(.title2.weight(.semibold)).foregroundStyle(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
                     Group {
                         if let a = account {
                             Text([a.bankName, a.iban.isEmpty ? "" : formatIBAN(a.iban)].filter { !$0.isEmpty }.joined(separator: " · "))
@@ -66,6 +66,8 @@ struct StreamHeaderCard: View {
                         Text(Money.format(hb.cents))
                             .font(.system(size: 26, weight: .semibold).monospacedDigit())
                             .foregroundStyle(account?.kind == .loan ? Theme.loan : Theme.text)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                         Text(hb.label).font(.caption).foregroundStyle(Theme.secondary)
                     }
                 }
@@ -84,13 +86,39 @@ struct StreamHeaderCard: View {
                     .frame(height: 56)
             }
 
-            HStack(spacing: 10) {
-                KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.period.title), value: Money.format(-model.consumptionThisMonth), tint: Theme.outflow)
-                KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: Money.format(model.investedThisMonth), tint: Theme.invest)
-                KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.period.title), value: Money.format(model.incomeThisMonth), tint: Theme.inflow)
-            }
+            #if os(iOS)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) { kpis }
+            #else
+            HStack(spacing: 10) { kpis }
+            #endif
 
-            HStack(spacing: 12) {
+            filterRow
+        }
+        .card()
+    }
+
+    @ViewBuilder
+    private var kpis: some View {
+        KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.period.title), value: Money.format(-model.consumptionThisMonth), tint: Theme.outflow)
+        KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: Money.format(model.investedThisMonth), tint: Theme.invest)
+        KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.period.title), value: Money.format(model.incomeThisMonth), tint: Theme.inflow)
+    }
+
+    @ViewBuilder
+    private var filterRow: some View {
+        @Bindable var model = model
+        #if os(iOS)
+        ScrollView(.horizontal, showsIndicators: false) { filterContent }
+        #else
+        filterContent
+        #endif
+    }
+
+    @ViewBuilder
+    private var filterContent: some View {
+        @Bindable var model = model
+        let account = self.account
+        HStack(spacing: 12) {
                 PeriodQuickPicker()
                 Menu {
                     Picker("Zeitraum", selection: $model.period) {
@@ -126,10 +154,8 @@ struct StreamHeaderCard: View {
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
-            .font(.caption)
-            .foregroundStyle(Theme.secondary)
-        }
-        .card()
+        .font(.caption)
+        .foregroundStyle(Theme.secondary)
     }
 }
 

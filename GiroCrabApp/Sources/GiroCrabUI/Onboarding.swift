@@ -6,7 +6,9 @@ struct DemoBanner: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack(spacing: 12) {
+        let button = Button(model.hasOwnVault ? "Eigener Tresor" : "Tresor öffnen") { model.showOwnVault() }
+            .controlSize(.small)
+        let content = HStack(alignment: .top, spacing: 12) {
             Image(systemName: "theatermasks.fill")
                 .font(.title3)
                 .foregroundStyle(Theme.accent)
@@ -19,10 +21,18 @@ struct DemoBanner: View {
                     .foregroundStyle(Theme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer()
-            Button(model.hasOwnVault ? "Eigener Tresor" : "Tresor öffnen") { model.showOwnVault() }
-                .controlSize(.small)
+            Spacer(minLength: 0)
+            #if os(macOS)
+            button
+            #endif
         }
+        VStack(alignment: .leading, spacing: 8) {
+            content
+            #if os(iOS)
+            button
+            #endif
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.selection))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent.opacity(0.18), lineWidth: 1))

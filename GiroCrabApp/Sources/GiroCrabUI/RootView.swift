@@ -155,13 +155,17 @@ struct LockView: View {
 
 struct MainSplitView: View {
     @Environment(AppModel.self) private var model
+    #if os(macOS)
     @State private var columns: NavigationSplitViewVisibility = .all
+    #else
+    @State private var columns: NavigationSplitViewVisibility = .automatic
+    #endif
 
     var body: some View {
         @Bindable var model = model
         NavigationSplitView(columnVisibility: $columns) {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 240, ideal: 260, max: 320)
+                .macColumnWidth(min: 240, ideal: 260, max: 320)
         } content: {
             Group {
                 if model.sidebarSelection == .documents {
@@ -170,10 +174,10 @@ struct MainSplitView: View {
                     BookingStreamView()
                 }
             }
-            .navigationSplitViewColumnWidth(min: 520, ideal: 820)
+            .macColumnWidth(min: 520, ideal: 820)
         } detail: {
             InspectorView()
-                .navigationSplitViewColumnWidth(min: 320, ideal: 340, max: 420)
+                .macColumnWidth(min: 320, ideal: 340, max: 420)
         }
         .navigationSplitViewStyle(.balanced)
         .quickLookPreview($model.quickLookURL)

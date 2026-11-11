@@ -19,6 +19,12 @@ struct BookingStreamView: View {
                     if model.demoActive {
                         DemoBanner()
                     }
+                    #if os(iOS)
+                    Picker("Ansicht", selection: $model.scope) {
+                        ForEach(BookingScope.ordered, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    #endif
                     if !emptyVault {
                         StreamHeaderCard()
                         if !isOverview && model.scope != .investments && !model.allAccounts.isEmpty {
@@ -76,6 +82,12 @@ struct BookingStreamView: View {
                     .frame(maxWidth: 720)
                     .frame(maxWidth: .infinity)
                 }
+                #if os(iOS)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    // keeps the last booking clear of the floating search bar
+                    Color.clear.frame(height: 64)
+                }
+                #endif
             }
             .background(Theme.canvas)
             // Drop a receipt anywhere on the stream: matched by amount/date/merchant.
@@ -129,6 +141,18 @@ struct BookingStreamView: View {
         }
         .searchable(text: $model.searchText, placement: .toolbar, prompt: "Händler, Zweck, IBAN, Betrag")
         .toolbar {
+            #if os(iOS)
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
+                Menu {
+                    Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
+                        .disabled(!model.canTransfer)
+                    Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren…", systemImage: "square.and.arrow.up") }
+                    Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
+                    Button { model.showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
+                } label: { Label("Mehr", systemImage: "ellipsis.circle") }
+            }
+            #else
             ToolbarItem(placement: .principal) {
                 Picker("Ansicht", selection: $model.scope) {
                     ForEach(BookingScope.ordered, id: \.self) { Text($0.title).tag($0) }
@@ -149,12 +173,9 @@ struct BookingStreamView: View {
                     .help("Gefilterte Buchungen als CSV exportieren")
                 Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
                     .help("Kategorisierungsregeln")
-                #if os(iOS)
-                Button { model.showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
-                #else
                 SettingsLink { Label("Einstellungen", systemImage: "gearshape") }
-                #endif
             }
+            #endif
         }
         .navigationTitle("")
         .fileExporter(
@@ -277,6 +298,8 @@ struct BookingRow: View {
                     .help("Geprüft")
             }
             AmountLabel(cents: booking.amountCents)
+                .lineLimit(1)
+                .fixedSize()
         }
         .frame(minHeight: 44)
         .padding(.horizontal, 14)
