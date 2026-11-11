@@ -935,3 +935,152 @@ fn order_inside_a_group_is_the_same_on_every_device() {
     assert_eq!(synced_state(&a), synced_state(&b));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+fn archived(v: &Vault, name: &str) -> Option<i64> {
+    v.list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|a| a.name == name)
+        .unwrap()
+        .archived_unix
+}
+
+#[test]
+fn archived_account_keeps_group_and_history_but_leaves_total_and_rules() {
+    let dir = temp_dir("archive");
+    let v = open(&dir, "a.db");
+    let ids = seed(&v);
+    let umzug = v
+        .create_user_group("Depotumzug".into(), "folder".into())
+        .unwrap();
+    v.move_account_to_group(ids[1], Some(umzug.clone()), None)
+        .unwrap();
+    {
+        let db = v.db().unwrap();
+        for (acc, ext) in [(ids[0], "g1"), (ids[1], "d1")] {
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty)
+                 VALUES (?1, ?2, date('now', '-1 day'), -10_00, 'Bäckerei Krume')",
+                params![acc, ext],
+            )
+            .unwrap();
+        }
+        db.execute("INSERT INTO categories(name) VALUES ('Essen')", [])
+            .unwrap();
+    }
+    let total = |v: &Vault| {
+        v.balance_history(vec![], 1)
+            .unwrap()
+            .last()
+            .unwrap()
+            .balance_cents
+    };
+    assert_eq!(total(&v), 5_050_00);
+    assert!(v.set_account_archived(999, true).is_err());
+
+    v.set_account_archived(ids[1], true).unwrap();
+    let depot = v
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|a| a.id == ids[1])
+        .unwrap();
+    let since = depot.archived_unix.expect("archived");
+    assert!(!depot.in_total);
+    assert_eq!(depot.transaction_count, 1, "bookings kept");
+    assert_eq!(
+        total(&v),
+        50_00,
+        "archived account leaves the overall total"
+    );
+    // still a member of its group; the group and an explicit selection keep its history
+    let groups = v.list_user_groups().unwrap();
+    let g = groups.iter().find(|g| g.uuid == umzug).unwrap();
+    assert_eq!(g.accounts.len(), 1);
+    assert_eq!(g.balance_cents, 5_000_00);
+    let hist = v.balance_history(vec![ids[1]], 3).unwrap();
+    assert_eq!(hist.last().unwrap().balance_cents, 5_000_00);
+    assert_eq!(hist.first().unwrap().balance_cents, 5_010_00);
+    // archiving again keeps the date
+    tick();
+    v.set_account_archived(ids[1], true).unwrap();
+    assert_eq!(archived(&v, "Depot"), Some(since));
+
+    // rules only touch bookings of active accounts
+    let cat: i64 = v
+        .db()
+        .unwrap()
+        .query_row("SELECT id FROM categories WHERE name = 'Essen'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    v.db()
+        .unwrap()
+        .execute(
+            "INSERT INTO rules(name, category_id, pattern) VALUES ('Bäcker', ?1, 'krume')",
+            [cat],
+        )
+        .unwrap();
+    assert_eq!(v.apply_rules(false).unwrap(), 1);
+    let cats = |v: &Vault| -> Vec<(String, Option<i64>)> {
+        let db = v.db().unwrap();
+        let mut st = db
+            .prepare("SELECT external_id, category_id FROM transactions ORDER BY external_id")
+            .unwrap();
+        let rows = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        rows
+    };
+    assert_eq!(
+        cats(&v),
+        vec![("d1".into(), None), ("g1".into(), Some(cat))]
+    );
+
+    // reactivated: back in the total, rules apply again
+    v.set_account_archived(ids[1], false).unwrap();
+    assert_eq!(archived(&v, "Depot"), None);
+    assert_eq!(total(&v), 5_050_00);
+    assert_eq!(v.apply_rules(false).unwrap(), 1);
+    assert_eq!(cats(&v)[0].1, Some(cat));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn archived_state_syncs_and_newest_change_wins() {
+    let dir = temp_dir("archive-sync");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let key = vec![7u8; 32];
+    let (ia, _) = (seed(&a), seed(&b));
+    a.set_account_archived(ia[0], true).unwrap();
+    tick();
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    assert_eq!(archived(&b, "Giro"), archived(&a, "Giro"));
+    assert!(archived(&b, "Giro").is_some());
+    assert_eq!(archived(&b, "Visa"), None);
+
+    // reactivated on B later: wins on A, and an old archive never comes back
+    let gb = b
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|x| x.name == "Giro")
+        .unwrap()
+        .id;
+    b.set_account_archived(gb, false).unwrap();
+    tick();
+    a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    assert_eq!(archived(&a, "Giro"), None);
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    assert_eq!(archived(&b, "Giro"), None);
+
+    // an account new to the other device arrives archived
+    let c = open(&dir, "c.db");
+    a.set_account_archived(ia[2], true).unwrap();
+    c.merge_other_vault(a.file_path(), key).unwrap();
+    assert!(archived(&c, "Visa").is_some());
+    assert_eq!(archived(&c, "Giro"), None);
+    let _ = std::fs::remove_dir_all(dir);
+}

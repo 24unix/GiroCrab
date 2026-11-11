@@ -289,6 +289,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Gruppe {0}" => "group {0}",
         "Ungültige Farbe: {0}" => "Invalid colour: {0}",
         "Ohne Gruppe" => "Ungrouped",
+        "Nur archivierte Konten können gelöscht werden. Bitte das Konto zuerst archivieren." => "Only archived accounts can be deleted. Please archive the account first.",
         "Alltag" => "Everyday",
         "Sparen & Vorsorge" => "Savings & retirement",
         "Haus" => "Home",

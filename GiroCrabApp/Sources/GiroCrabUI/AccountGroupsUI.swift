@@ -36,6 +36,14 @@ struct AccountsSectionHeader: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.secondary)
                 Spacer()
+                if model.hasArchivedAccounts {
+                    Button { withAnimation(.easeInOut(duration: 0.15)) { model.showArchivedAccounts.toggle() } } label: {
+                        Image(systemName: model.showArchivedAccounts ? "archivebox.fill" : "archivebox")
+                            .frame(width: 24, height: 18).contentShape(Rectangle())
+                    }
+                    .help(model.showArchivedAccounts ? "Archivierte Konten ausblenden" : "Archivierte Konten einblenden")
+                    .accessibilityLabel(model.showArchivedAccounts ? "Archivierte Konten ausblenden" : "Archivierte Konten einblenden")
+                }
                 if model.accountView == .byGroup {
                     // folder symbols: these act on groups, not on accounts
                     Button { model.groupDialog = .create() } label: {

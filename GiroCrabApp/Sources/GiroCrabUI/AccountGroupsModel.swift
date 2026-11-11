@@ -6,6 +6,12 @@ extension UserGroup: @retroactive Identifiable {
     public var id: String { uuid }
 }
 
+extension Account {
+    /// Archived ("aufgelöst"): kept with all bookings, no syncs or rule runs.
+    var isArchived: Bool { archivedUnix != nil }
+    var archivedDate: Date? { archivedUnix.map { Date(timeIntervalSince1970: TimeInterval($0)) } }
+}
+
 /// How the accounts section of the sidebar is organised.
 enum AccountSidebarMode: String, CaseIterable, Identifiable {
     case byGroup

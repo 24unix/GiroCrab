@@ -153,6 +153,8 @@ pub struct BankConnection {
     pub bank_code: String,
     pub sf_symbol: String,
     pub last_sync_unix: Option<i64>,
+    /// Every account of this login is archived: "sync all" skips it.
+    pub all_accounts_archived: bool,
 }
 
 /// One securities position of a depot account.
@@ -198,6 +200,10 @@ pub struct Account {
     /// Marker colour (`#RRGGBB`): the user's choice or a default derived
     /// from the account's sync identity (same on every device).
     pub color_hex: String,
+    /// When the account was archived ("Das Konto wurde aufgelöst"); `None` =
+    /// active. Archived accounts keep bookings, categories and their group,
+    /// but are skipped by syncs and rule runs and leave the overall total.
+    pub archived_unix: Option<i64>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

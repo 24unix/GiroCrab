@@ -360,6 +360,7 @@ impl Vault {
 
     /// Re-runs rules over transactions that are not manually categorised.
     /// Returns the number of transactions whose category changed.
+    /// Bookings of archived accounts are left alone (GiroCrab/GiroCrab#43).
     pub(crate) fn apply_rules_inner(
         conn: &Connection,
         only_uncategorised: bool,
@@ -368,11 +369,11 @@ impl Vault {
         let sql = if only_uncategorised {
             "SELECT t.id, t.account_id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.rule_id,
                     t.note, t.currency, IFNULL(a.iban, '')
-             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE t.category_source = 'none'"
+             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND t.category_source = 'none'"
         } else {
             "SELECT t.id, t.account_id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.rule_id,
                     t.note, t.currency, IFNULL(a.iban, '')
-             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE t.category_source != 'manual'"
+             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND t.category_source != 'manual'"
         };
         let mut stmt = conn.prepare(sql)?;
         // (note, currency, own account IBAN) ride along for search expressions
@@ -1158,7 +1159,10 @@ impl Vault {
     pub fn list_bank_connections(&self) -> Result<Vec<BankConnection>, CoreError> {
         let db = self.db()?;
         let mut stmt = db.prepare(
-            "SELECT id, connector, display_name, login_name, bank_code, sf_symbol, last_sync_unix FROM bank_connections ORDER BY id",
+            "SELECT id, connector, display_name, login_name, bank_code, sf_symbol, last_sync_unix,
+                    EXISTS (SELECT 1 FROM accounts a WHERE a.connection_id = bank_connections.id)
+                      AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.connection_id = bank_connections.id AND a.archived_unix IS NULL)
+             FROM bank_connections ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
             let kind: String = r.get(1)?;
@@ -1172,6 +1176,7 @@ impl Vault {
                     bank_code: r.get(4)?,
                     sf_symbol: r.get(5)?,
                     last_sync_unix: r.get(6)?,
+                    all_accounts_archived: r.get(7)?,
                 },
             ))
         })?;
@@ -1298,17 +1303,28 @@ impl Vault {
 
     /// Deletes one account with its bookings, documents and holdings. When it was the last
     /// account of its connection, the connection and its stored secrets (PIN, session) go too.
+    /// Only archived accounts can be deleted (`set_account_archived` first).
     pub fn delete_account(&self, account_id: i64) -> Result<(), CoreError> {
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
-        let conn: Option<i64> = tx
+        let Some((conn, archived)) = tx
             .query_row(
-                "SELECT connection_id FROM accounts WHERE id = ?1",
+                "SELECT connection_id, archived_unix IS NOT NULL FROM accounts WHERE id = ?1",
                 [account_id],
-                |r| r.get(0),
+                |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, bool>(1)?)),
             )
             .optional()?
-            .flatten();
+        else {
+            return Err(CoreError::NotFound {
+                what: trf("Konto {0}", &[&account_id]),
+            });
+        };
+        if !archived {
+            return Err(CoreError::InvalidInput {
+                message: tr("Nur archivierte Konten können gelöscht werden. Bitte das Konto zuerst archivieren.")
+                    .to_string(),
+            });
+        }
         Self::delete_account_rows(&tx, account_id)?;
         if let Some(c) = conn {
             let left: i64 = tx.query_row(
@@ -1356,8 +1372,9 @@ impl Vault {
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id),
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.category_id IS NULL),
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0),
-                    a.initial_balance_cents, g.uuid, IFNULL(g.include_in_total, 1),
-                    a.color_hex, IFNULL(c.connector, ''), IFNULL(c.bank_code, ''), IFNULL(c.login_name, ''), a.external_ref
+                    a.initial_balance_cents, g.uuid, IFNULL(g.include_in_total, 1) AND a.archived_unix IS NULL,
+                    a.color_hex, IFNULL(c.connector, ''), IFNULL(c.bank_code, ''), IFNULL(c.login_name, ''), a.external_ref,
+                    a.archived_unix
              FROM accounts a LEFT JOIN bank_connections c ON c.id = a.connection_id
              LEFT JOIN user_groups g ON g.uuid = a.user_group_uuid AND g.deleted_ms IS NULL
              ORDER BY a.sort_order, a.id",
@@ -1407,6 +1424,7 @@ impl Vault {
                         String::new()
                     }
                 },
+                archived_unix: r.get(26)?,
             })
         })?;
         let mut accounts = rows.collect::<Result<Vec<_>, _>>()?;

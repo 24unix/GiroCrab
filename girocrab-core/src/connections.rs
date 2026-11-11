@@ -481,6 +481,11 @@ mod tests {
             .len()
         };
         assert_eq!((n(a1), n(a2)), (1, 1));
+        // only archived accounts can be deleted
+        assert!(v.delete_account(a1).is_err());
+        assert_eq!(n(a1), 1);
+        v.set_account_archived(a1, true).unwrap();
+        v.set_account_archived(a2, true).unwrap();
         v.delete_account(a1).unwrap();
         assert_eq!(v.list_accounts().unwrap().len(), 1);
         assert_eq!(

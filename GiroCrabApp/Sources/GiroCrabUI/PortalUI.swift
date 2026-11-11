@@ -23,6 +23,7 @@ extension AppModel {
         do {
             let s = try vault.importPortalCapture(connectionId: c.id, jsonBodies: bodies, domRowsJson: domRowsJSON)
             toast = String(localized: "\(c.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert")
+                + Self.skippedArchivedNote(s)
             reloadAll()
             return true
         } catch {

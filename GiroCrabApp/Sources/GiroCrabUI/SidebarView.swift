@@ -147,15 +147,20 @@ struct SidebarView: View {
             presenting: dialog
         ) { d in
             switch d {
-            case .deleteAccount(let a): Button("Löschen", role: .destructive) { model.deleteAccount(a.id) }
+            case .archiveAccount(let a): Button("Archivieren") { model.setAccountArchived(a, true) }
+            case .deleteAccount(let a): Button("Endgültig löschen", role: .destructive) { model.deleteAccount(a.id) }
             case .removeConnection(let id): Button("Entfernen", role: .destructive) { model.removeConnection(id) }
             case .deleteCategory(let c): Button("„\(c.name)“ löschen", role: .destructive) { model.deleteCategory(c.id) }
             case .newCategory: EmptyView()
             }
             Button("Abbrechen", role: .cancel) {}
         } message: { d in
-            if case .deleteAccount(let a) = d {
-                Text("„\(a.name)“ wird samt allen Buchungen und Belegen unwiderruflich gelöscht.")
+            switch d {
+            case .archiveAccount(let a):
+                Text("„\(a.name)“ wird nicht mehr abgerufen, von Regeln nicht mehr verändert und zählt nicht mehr zur Gesamtsumme. Buchungen, Kategorien, Belege und die Gruppe bleiben erhalten. Das Konto lässt sich jederzeit reaktivieren.")
+            case .deleteAccount(let a):
+                Text("„\(a.name)“ wird samt \(a.transactionCount) Buchungen, Belegen und Depotpositionen unwiderruflich gelöscht – auch aus Auswertungen und Kategoriesummen. Ist es das letzte Konto seines Bankzugangs, wird auch der Bankzugang mit den gespeicherten Zugangsdaten entfernt.")
+            default: EmptyView()
             }
         }
         .alert(
@@ -196,7 +201,7 @@ struct SidebarView: View {
                     Button("Gruppenübersicht", systemImage: "list.bullet.rectangle") { model.sidebarSelection = .group(group.id) }
                 }
                 #endif
-            ForEach(open ? group.accounts : []) { account in
+            ForEach(open ? group.accounts.filter(isShown) : []) { account in
                 accountRow(account)
             }
         }
@@ -232,7 +237,8 @@ struct SidebarView: View {
                             handleDrop(items, into: group, at: nil)
                         } isTargeted: { dropTarget = $0 ? "e:" + group.uuid : (dropTarget == "e:" + group.uuid ? nil : dropTarget) }
                 }
-                ForEach(Array(group.accounts.enumerated()), id: \.element.id) { i, account in
+                // offsets of the full list: a drop position counts hidden archived accounts too
+                ForEach(Array(group.accounts.enumerated()).filter { isShown($0.element) }, id: \.element.id) { i, account in
                     accountRow(account)
                         .draggable(GroupDrag.account(account.id)) {
                             Label(account.name, systemImage: account.sfSymbol).padding(6)
@@ -272,6 +278,11 @@ struct SidebarView: View {
         return handled
     }
 
+    /// Archived accounts can be hidden (they stay in their group either way).
+    private func isShown(_ account: Account) -> Bool {
+        model.showArchivedAccounts || !account.isArchived
+    }
+
     private func accountRow(_ account: Account) -> some View {
         AccountRow(account: account, syncing: model.syncingConnectionID != nil && model.syncingConnectionID == account.connectionId)
             .tag(SidebarItem.account(account.id))
@@ -289,7 +300,7 @@ struct SidebarView: View {
         AccountGroupMenu(account: account)
         AccountColorMenu(account: account)
         Divider()
-        if let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
+        if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
             Button("\(conn.displayName) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
         }
         if !account.iban.isEmpty {
@@ -303,7 +314,13 @@ struct SidebarView: View {
             }
         }
         Divider()
-        Button("Konto löschen …", systemImage: "trash", role: .destructive) { dialog = .deleteAccount(account) }
+        if account.isArchived {
+            Button("Reaktivieren", systemImage: "arrow.uturn.backward") { model.setAccountArchived(account, false) }
+            // only archived accounts can be deleted (GiroCrab/GiroCrab#43)
+            Button("Konto löschen …", systemImage: "trash", role: .destructive) { dialog = .deleteAccount(account) }
+        } else {
+            Button("Konto archivieren …", systemImage: "archivebox") { dialog = .archiveAccount(account) }
+        }
     }
 
     @ViewBuilder
@@ -382,6 +399,10 @@ struct AccountRow: View {
                         .controlSize(.mini)
                         .frame(maxWidth: 110)
                         .help("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
+                } else if let date = account.archivedDate {
+                    Text("Archiviert \(date.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)))")
+                        .font(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
+                        .help("Archiviert – wird nicht mehr abgerufen")
                 } else {
                     Text(account.bankName).font(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
                 }
@@ -400,6 +421,7 @@ struct AccountRow: View {
             }
         }
         .padding(.vertical, 1)
+        .opacity(account.isArchived ? 0.55 : 1)
     }
 }
 
@@ -454,6 +476,7 @@ private struct DropHighlight: ViewModifier {
 /// Sidebar-only dialogs (account, bank login, category). One state instead
 /// of one flag per dialog.
 private enum SidebarDialog {
+    case archiveAccount(Account)
     case deleteAccount(Account)
     case removeConnection(Int64)
     case deleteCategory(GiroCrabCore.Category)
@@ -467,7 +490,8 @@ private enum SidebarDialog {
 
     var title: Text {
         switch self {
-        case .deleteAccount: Text("Konto löschen?")
+        case .archiveAccount: Text("Konto archivieren?")
+        case .deleteAccount: Text("Archiviertes Konto endgültig löschen?")
         case .removeConnection: Text("Bankzugang entfernen?")
         case .deleteCategory: Text("Kategorie löschen?")
         case .newCategory: Text("Neue Kategorie")

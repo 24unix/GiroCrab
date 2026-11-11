@@ -78,6 +78,8 @@ pub struct SyncSummary {
     pub accounts_updated: u32,
     pub transactions_imported: u32,
     pub transactions_categorized: u32,
+    /// New bookings the bank delivered for archived accounts (not stored).
+    pub transactions_skipped_archived: u32,
 }
 
 #[derive(Debug, Clone, uniffi::Enum)]
@@ -661,6 +663,9 @@ pub(crate) fn store_fetch(
             t.booking_text = crate::text::clean_bank_text(&t.booking_text);
         }
         let mut account_ids: HashMap<String, i64> = HashMap::new();
+        // Archived accounts the bank still delivers: nothing is stored for
+        // them (no balance, bookings, positions or documents).
+        let mut archived_ids: HashMap<String, i64> = HashMap::new();
         let mut accounts_updated = 0u32;
         for acc in &data.accounts {
             let existing: Option<i64> = tx
@@ -689,6 +694,17 @@ pub(crate) fn store_fetch(
                 Some(id) => Some(id),
                 None => adopt_unlinked(&tx, connection_id, &bank_name, acc)?,
             };
+            if let Some(id) = existing {
+                let archived: bool = tx.query_row(
+                    "SELECT archived_unix IS NOT NULL FROM accounts WHERE id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )?;
+                if archived {
+                    archived_ids.insert(acc.external_ref.clone(), id);
+                    continue;
+                }
+            }
             let id = match existing {
                 Some(id) => {
                     if !data.adjust_balances {
@@ -799,6 +815,7 @@ pub(crate) fn store_fetch(
         let depots: Vec<&RemoteAccount> = data
             .accounts
             .iter()
+            .filter(|a| !archived_ids.contains_key(&a.external_ref))
             .filter(|a| a.kind == AccountKind::Brokerage || a.name.to_lowercase().contains("depot"))
             .collect();
         let resolve = |r: &str| -> Option<i64> {
@@ -847,6 +864,7 @@ pub(crate) fn store_fetch(
             }
         }
         let mut imported = 0u32;
+        let mut skipped_archived = 0u32;
         {
             let mut ins = tx.prepare(
                 "INSERT OR IGNORE INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency,
@@ -855,6 +873,14 @@ pub(crate) fn store_fetch(
             )?;
             for t in &data.transactions {
                 let Some(acc_id) = account_ids.get(&t.account_ref) else {
+                    if let Some(id) = archived_ids.get(&t.account_ref) {
+                        let known: bool = tx.query_row(
+                            "SELECT EXISTS (SELECT 1 FROM transactions WHERE account_id = ?1 AND external_id = ?2)",
+                            params![id, t.external_id],
+                            |r| r.get(0),
+                        )?;
+                        skipped_archived += u32::from(!known);
+                    }
                     continue;
                 };
                 // Already imported from MoneyMoney? Adopt that row (keeps category + note).
@@ -955,6 +981,9 @@ pub(crate) fn store_fetch(
             }
         }
         for d in &data.documents {
+            if archived_ids.contains_key(&d.account_ref) {
+                continue;
+            }
             let by_ref = |tx: &rusqlite::Transaction| -> Option<i64> {
                 tx.query_row(
                     "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref = ?2",
@@ -1017,6 +1046,7 @@ pub(crate) fn store_fetch(
             accounts_updated,
             transactions_imported: imported,
             transactions_categorized: categorized,
+            transactions_skipped_archived: skipped_archived,
         })
     }
 }
@@ -1826,6 +1856,100 @@ mod tests {
             let acc = v.list_accounts().unwrap().pop().unwrap();
             assert_eq!(v.list_holdings(acc.id).unwrap().len(), 1, "ref {r}");
         }
+    }
+
+    #[test]
+    fn store_fetch_skips_archived_accounts() {
+        let p = std::env::temp_dir().join(format!("girocrab-arch-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
+        let conn = v
+            .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+            .unwrap();
+        let acc = |r: &str, name: &str, balance: i64| RemoteAccount {
+            external_ref: r.into(),
+            name: name.into(),
+            owner: String::new(),
+            iban: String::new(),
+            account_number: r.into(),
+            currency: "EUR".into(),
+            kind: AccountKind::Checking,
+            balance_cents: balance,
+            balance_date: "2026-11-10".into(),
+        };
+        let tx = |r: &str, id: &str| RemoteTransaction {
+            account_ref: r.into(),
+            external_id: id.into(),
+            booking_date: "2026-11-09".into(),
+            value_date: "2026-11-09".into(),
+            amount_cents: -500,
+            currency: "EUR".into(),
+            counterparty: "Laden".into(),
+            counterparty_iban: String::new(),
+            purpose: String::new(),
+            booking_text: String::new(),
+        };
+        let fetch = |balance: i64, ids: &[&str]| FetchResult {
+            accounts: vec![
+                acc("alt", "Altes Konto", balance),
+                acc("neu", "Neues Konto", balance),
+            ],
+            transactions: ids
+                .iter()
+                .flat_map(|id| [tx("alt", id), tx("neu", id)])
+                .collect(),
+            ..Default::default()
+        };
+        let s = store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(1000, &["t1"])).unwrap();
+        assert_eq!(
+            (s.transactions_imported, s.transactions_skipped_archived),
+            (2, 0)
+        );
+        let old = v
+            .list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.name == "Altes Konto")
+            .unwrap();
+        v.set_account_archived(old.id, true).unwrap();
+        assert!(!v.list_bank_connections().unwrap()[0].all_accounts_archived);
+
+        // t1 is known, t2 is new: only the active account takes it
+        let s = store_fetch(
+            &v,
+            ConnectorKind::Comdirect,
+            conn,
+            fetch(2000, &["t1", "t2"]),
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                s.accounts_updated,
+                s.transactions_imported,
+                s.transactions_skipped_archived
+            ),
+            (1, 1, 1)
+        );
+        let accs = v.list_accounts().unwrap();
+        assert_eq!(accs.len(), 2, "no second account for the archived one");
+        let by = |n: &str| accs.iter().find(|a| a.name == n).unwrap();
+        assert_eq!(
+            (
+                by("Altes Konto").balance_cents,
+                by("Altes Konto").transaction_count
+            ),
+            (1000, 1)
+        );
+        assert_eq!(
+            (
+                by("Neues Konto").balance_cents,
+                by("Neues Konto").transaction_count
+            ),
+            (2000, 2)
+        );
+
+        v.set_account_archived(by("Neues Konto").id, true).unwrap();
+        assert!(v.list_bank_connections().unwrap()[0].all_accounts_archived);
+        let _ = std::fs::remove_file(p);
     }
 
     #[test]

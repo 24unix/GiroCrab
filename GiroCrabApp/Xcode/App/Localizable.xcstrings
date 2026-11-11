@@ -232,17 +232,6 @@
         }
       }
     },
-    "Konto löschen?" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Delete Account?"
-          }
-        }
-      }
-    },
     "Konto: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7253,17 +7242,6 @@
         }
       }
     },
-    "„%@“ wird samt allen Buchungen und Belegen unwiderruflich gelöscht." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“%@” will be permanently deleted, including all its transactions and documents."
-          }
-        }
-      }
-    },
     "•••••• (gespeichert)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8327,6 +8305,177 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$lld of %2$lld bookings loaded – older bookings are not shown yet."
+          }
+        }
+      }
+    },
+    "%u Buchungen archivierter Konten übersprungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u transactions of archived accounts skipped"
+          }
+        }
+      }
+    },
+    "Archivieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archive"
+          }
+        }
+      }
+    },
+    "Archivierte Konten ausblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide Archived Accounts"
+          }
+        }
+      }
+    },
+    "Archivierte Konten einblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Archived Accounts"
+          }
+        }
+      }
+    },
+    "Archiviertes Konto endgültig löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permanently Delete Archived Account?"
+          }
+        }
+      }
+    },
+    "Endgültig löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Permanently"
+          }
+        }
+      }
+    },
+    "Konto archivieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archive Account…"
+          }
+        }
+      }
+    },
+    "Konto archivieren?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archive Account?"
+          }
+        }
+      }
+    },
+    "Reaktivieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reactivate"
+          }
+        }
+      }
+    },
+    "„%@“ archiviert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” archived"
+          }
+        }
+      }
+    },
+    "„%@“ reaktiviert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” reactivated"
+          }
+        }
+      }
+    },
+    "„%@“ wird nicht mehr abgerufen, von Regeln nicht mehr verändert und zählt nicht mehr zur Gesamtsumme. Buchungen, Kategorien, Belege und die Gruppe bleiben erhalten. Das Konto lässt sich jederzeit reaktivieren." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” will no longer be synced, changed by rules or counted in the overall total. Transactions, categories, documents and its group are kept. You can reactivate the account at any time."
+          }
+        }
+      }
+    },
+    "„%@“ wird samt %u Buchungen, Belegen und Depotpositionen unwiderruflich gelöscht – auch aus Auswertungen und Kategoriesummen. Ist es das letzte Konto seines Bankzugangs, wird auch der Bankzugang mit den gespeicherten Zugangsdaten entfernt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "„%1$@“ wird samt %2$u Buchungen, Belegen und Depotpositionen unwiderruflich gelöscht – auch aus Auswertungen und Kategoriesummen. Ist es das letzte Konto seines Bankzugangs, wird auch der Bankzugang mit den gespeicherten Zugangsdaten entfernt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” will be permanently deleted with its %2$u transactions, documents and securities positions – they also disappear from analyses and category totals. If it is the last account of its bank login, the login and its stored credentials are removed too."
+          }
+        }
+      }
+    },
+    "Archiviert %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archived %@"
+          }
+        }
+      }
+    },
+    "Archiviert – wird nicht mehr abgerufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archived – no longer synced"
           }
         }
       }

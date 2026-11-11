@@ -234,6 +234,10 @@ public final class AppModel {
     var collapsedUserGroups: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "sidebar.collapsedUserGroups") ?? []) {
         didSet { UserDefaults.standard.set(Array(collapsedUserGroups), forKey: "sidebar.collapsedUserGroups") }
     }
+    /// Archived accounts stay in their group; this hides their sidebar rows.
+    var showArchivedAccounts: Bool = UserDefaults.standard.object(forKey: "sidebar.showArchived") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showArchivedAccounts, forKey: "sidebar.showArchived") }
+    }
     /// Explicit per-device choice; `nil` = "Nach Gruppe" once groups exist.
     var accountViewChoice: AccountSidebarMode? = UserDefaults.standard.string(forKey: "sidebar.accountView").flatMap(AccountSidebarMode.init) {
         didSet { UserDefaults.standard.set(accountViewChoice?.rawValue, forKey: "sidebar.accountView") }
@@ -964,6 +968,7 @@ public final class AppModel {
     }
 
     var allAccounts: [Account] { groups.flatMap(\.accounts) }
+    var hasArchivedAccounts: Bool { allAccounts.contains(where: \.isArchived) }
     /// Everyday accounts counted in "Verfügbar" (skips groups excluded from the total).
     var liquidAccounts: [Account] { allAccounts.filter { $0.inTotal && [.checking, .savings, .paymentService, .creditCard, .cash].contains($0.kind) } }
     var liquidBalance: Int64 { liquidAccounts.reduce(0) { $0 + $1.balanceCents } }
@@ -1268,7 +1273,20 @@ public final class AppModel {
         (try? vault?.listHoldings(accountId: accountID)) ?? []
     }
 
-    /// Deletes one account incl. bookings/documents/holdings (and its connection if it was the last account).
+    /// Archives ("Das Konto wurde aufgelöst") or reactivates an account. Archived accounts keep
+    /// everything, but are skipped by syncs and rule runs and leave the overall total.
+    func setAccountArchived(_ account: Account, _ archived: Bool) {
+        guard let vault else { return }
+        run {
+            try vault.setAccountArchived(accountId: account.id, archived: archived)
+            toast = archived
+                ? String(localized: "„\(account.name)“ archiviert")
+                : String(localized: "„\(account.name)“ reaktiviert")
+        }
+        reloadAll()
+    }
+
+    /// Deletes one archived account incl. bookings/documents/holdings (and its connection if it was the last account).
     func deleteAccount(_ id: Int64) {
         guard let vault else { return }
         run { try vault.deleteAccount(accountId: id) }
@@ -1482,10 +1500,16 @@ public final class AppModel {
     func requestSyncAll() {
         guard syncingConnectionID == nil else { return }
         // portal connections need an interactive login – not part of "sync all"
-        let batch = connections.filter { !usesPortal($0) }
+        // logins whose accounts are all archived are not asked at all
+        let batch = connections.filter { !usesPortal($0) && !$0.allAccountsArchived }
         guard let head = batch.first else { return }
         syncQueue = Array(batch.dropFirst())
         requestSync(head)
+    }
+
+    /// Toast suffix: new bookings the bank delivered for archived accounts (not stored).
+    static func skippedArchivedNote(_ s: SyncSummary) -> String {
+        s.transactionsSkippedArchived == 0 ? "" : " · " + String(localized: "\(s.transactionsSkippedArchived) Buchungen archivierter Konten übersprungen")
     }
 
     private func syncNextInQueue() {
@@ -1539,6 +1563,7 @@ public final class AppModel {
                 toast = String(localized: "\(connection.displayName): \(n) neue Kontoauszüge")
             } else {
                 toast = String(localized: "\(connection.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert")
+                    + Self.skippedArchivedNote(s)
             }
             reloadAll()
             syncNextInQueue()
@@ -1647,7 +1672,7 @@ extension AppModel {
     /// Checking accounts that are connected via FinTS (HKCCS-capable banks).
     var transferAccounts: [Account] {
         allAccounts.filter {
-            $0.kind == .checking && !$0.iban.isEmpty
+            $0.kind == .checking && !$0.iban.isEmpty && !$0.isArchived
                 && [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .bunq].contains($0.connector)
         }
     }
