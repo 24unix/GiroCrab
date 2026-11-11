@@ -454,6 +454,16 @@ fn english(de: &str) -> Option<&'static str> {
         // ------------------------------------------------------------ connections.rs
         "Bankzugang {0}" => "bank connection {0}",
         "Keine Sitzungs-Cookies übergeben" => "No session cookies were passed",
+        // ------------------------------------------------------------ loans.rs (#36)
+        "Bitte einen Namen für das Darlehen angeben." => "Please enter a name for the loan.",
+        "Der Name ist zu lang (höchstens {0} Zeichen)." => "The name is too long (at most {0} characters).",
+        "Ungültiges Stichtagsdatum." => "Invalid balance date.",
+        "Der Stichtag darf nicht in der Zukunft liegen." => "The balance date can't be in the future.",
+        "Die Restschuld darf nicht negativ sein." => "The outstanding balance can't be negative.",
+        "Der Kreditbetrag muss größer als 0 sein." => "The loan amount must be greater than 0.",
+        "Der Zinssatz muss zwischen 0 und 30 % liegen." => "The interest rate must be between 0 and 30 %.",
+        "Darlehen {0}" => "loan {0}",
+        "Buchungen eines Darlehenskontos lassen sich keinem anderen Darlehen zuordnen." => "Transactions of a loan account can't be assigned to another loan.",
         // ------------------------------------------------------------ documents.rs
         "Leere Datei" => "Empty file",
         "Beleg {0}" => "receipt {0}",

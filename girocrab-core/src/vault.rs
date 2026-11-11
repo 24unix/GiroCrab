@@ -341,6 +341,8 @@ impl Vault {
         conn.execute_batch(crate::recurring::RECURRING_SCHEMA)?;
         // v7: user-defined account groups – idempotent
         crate::user_groups::migrate(conn)?;
+        // manual loans (#36) – idempotent
+        conn.execute_batch(crate::loans::LOAN_SCHEMA)?;
         if version < SCHEMA_VERSION {
             conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
         }
@@ -505,6 +507,8 @@ impl Vault {
                 }
             }
         }
+        // manual loans (#36): link new bookings by expression, refresh balances
+        crate::loans::apply_loan_rules(conn)?;
         Ok(changed)
     }
 
@@ -1059,6 +1063,7 @@ impl Vault {
                 }
             }
         }
+        crate::loans::merge_attached(&tx, &acc_map)?;
         tx.commit()?;
         Ok(st)
     }
@@ -1395,6 +1400,8 @@ impl Vault {
             });
         }
         Self::delete_account_rows(&tx, account_id)?;
+        // linked loan payments of this account are gone with it
+        crate::loans::refresh_all(&tx)?;
         if let Some(c) = conn {
             let left: i64 = tx.query_row(
                 "SELECT count(*) FROM accounts WHERE connection_id = ?1",
@@ -1916,6 +1923,11 @@ impl Vault {
                 }
                 let _ = id;
             }
+            // manual loans (#36): bookings linked by hand or by the loan's expression
+            clause.push_str(&format!(
+                " OR t.id IN (SELECT transaction_id FROM loan_links WHERE source != 'excluded' AND loan_account_id IN ({}))",
+                filter.account_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+            ));
             wh.push(format!("({clause})"));
         }
         if filter.uncategorized_only {
@@ -1976,6 +1988,7 @@ impl Vault {
             }
             wh.push(ors.join(" AND "));
         }
+        let loan_links = crate::loans::link_map(&db)?;
         let where_sql = wh.join(" AND ");
         let from_sql = "FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN categories cat ON cat.id = t.category_id";
         let sql = format!(
@@ -2054,6 +2067,9 @@ impl Vault {
                 t.merchant.domain_candidates = vec![d.clone()];
                 t.merchant.domain_source = "override".into();
                 t.merchant_domain = Some(d.clone());
+            }
+            if loan_links.contains_key(&t.id) {
+                t.flow = FlowKind::Loan;
             }
             let keep = match filter.scope {
                 BookingScope::All => true,

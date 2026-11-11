@@ -644,7 +644,8 @@ fn rules(conn: &Connection, cat: &std::collections::HashMap<&'static str, i64>) 
     Ok(())
 }
 
-/// (account index, days ago, cents, counterparty, purpose, booking text) – exactly 50 invented bookings.
+/// (account index, days ago, cents, counterparty, purpose, booking text) – exactly 52 invented bookings
+/// (the last two are the car-loan rates of the manual demo loan).
 const BOOKINGS: &[(usize, i64, i64, &str, &str, &str)] = &[
     (
         0,
@@ -1032,6 +1033,22 @@ const BOOKINGS: &[(usize, i64, i64, &str, &str, &str)] = &[
         "GUTSCHRIFT",
     ),
     (0, 1, -1500, "Tim Hoffmann", "Konzertticket", "ÜBERWEISUNG"),
+    (
+        0,
+        54,
+        -28900,
+        "Autobank AG",
+        "Rate Kreditvertrag 7731045 Autokredit",
+        "LASTSCHRIFT",
+    ),
+    (
+        0,
+        24,
+        -28900,
+        "Autobank AG",
+        "Rate Kreditvertrag 7731045 Autokredit",
+        "LASTSCHRIFT",
+    ),
 ];
 
 struct Tx {
@@ -1159,9 +1176,27 @@ impl Vault {
             )?;
             acc_ids.insert(spec.external_ref, tx.last_insert_rowid());
         }
+        // manual loan without a bank account (#36): Stand two months ago, rates from the Giro
+        // (linked by `apply_rules_inner` below)
+        let car = crate::loans::create_in(
+            &tx,
+            &crate::loans::LoanSetup {
+                name: "Autokredit".into(),
+                original_cents: Some(15_000_00),
+                anchor_date: (today - Duration::days(60)).format("%Y-%m-%d").to_string(),
+                anchor_balance_cents: 9_400_00,
+                interest_rate_ppm: Some(49_900),
+                match_expr: "Autobank".into(),
+            },
+        )?;
+        acc_ids.insert("demo-autokredit", car);
         // user groups for the "Nach Gruppe" sidebar view
         for (name, sym, refs) in [
-            ("Alltag", "person", &["demo-giro", "demo-visa"][..]),
+            (
+                "Alltag",
+                "person",
+                &["demo-giro", "demo-visa", "demo-autokredit"][..],
+            ),
             (
                 "Sparen & Vorsorge",
                 "chart.pie",
@@ -1212,11 +1247,15 @@ mod tests {
     use crate::models::BookingFilter;
 
     #[test]
-    fn demo_seed_has_five_accounts_and_exactly_fifty_bookings() {
+    fn demo_seed_has_six_accounts_and_exactly_fifty_two_bookings() {
         let dir = std::env::temp_dir().join(format!("girocrab-test-{}.db", uuid::Uuid::new_v4()));
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
-        assert_eq!(v.seed_demo_data().unwrap(), 50);
-        assert_eq!(v.account_count().unwrap(), 5);
+        assert_eq!(v.seed_demo_data().unwrap(), 52);
+        assert_eq!(v.account_count().unwrap(), 6);
+        let car = v.list_manual_loans().unwrap();
+        assert_eq!(car.len(), 1);
+        assert_eq!(car[0].status.payment_count, 2);
+        assert!(car[0].status.remaining_cents < 9_400_00 - 2 * 250_00);
         let accounts = v.list_accounts().unwrap();
         let loan = accounts
             .iter()
