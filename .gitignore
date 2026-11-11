@@ -111,3 +111,8 @@ dist/
 # Build artifacts / archives
 build/
 **/build/
+
+# Certificates / local exports
+DeveloperIDG2CA.cer
+*.cer
+github_issues_prs_full.txt
