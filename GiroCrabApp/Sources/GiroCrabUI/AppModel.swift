@@ -193,6 +193,8 @@ public final class AppModel {
     var statusFilter: StatusFilter = .all
     var searchText: String = "" { didSet { scheduleSearch() } }
     var selectedBookingID: Booking.ID? { didSet { reloadMerchantStats() } }
+    /// iPhone: set by a tap on a booking row, presents the detail sheet.
+    var showBookingSheet = false
     var collapsedGroups: Set<Int64> = []
     var expandedCategories: Set<Int64> = []
     var showRuleEditor = false

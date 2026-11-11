@@ -82,12 +82,24 @@ struct StreamHeaderCard: View {
             }
 
             if model.scope != .investments {
+                #if os(iOS)
+                BalanceChart(points: model.history) { model.jumpToDay($0) }
+                    .frame(height: 28)
+                #else
                 BalanceChart(points: model.history) { model.jumpToDay($0) }
                     .frame(height: 56)
+                #endif
             }
 
             #if os(iOS)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) { kpis }
+            HStack(spacing: 10) {
+                Text("Konsum \(Money.format(-model.consumptionThisMonth))").foregroundStyle(Theme.outflow)
+                Text("Einnahmen \(Money.format(model.incomeThisMonth))").foregroundStyle(Theme.inflow)
+                Spacer(minLength: 0)
+            }
+            .font(.caption.weight(.medium).monospacedDigit())
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
             #else
             HStack(spacing: 10) { kpis }
             #endif

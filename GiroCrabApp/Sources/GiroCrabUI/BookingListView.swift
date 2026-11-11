@@ -7,6 +7,10 @@ struct BookingStreamView: View {
     @Environment(AppModel.self) private var model
     @FocusState private var focused: Bool
     @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var hSize
+    @State private var showCashflowIOS = false
+    #endif
 
     var body: some View {
         @Bindable var model = model
@@ -14,44 +18,15 @@ struct BookingStreamView: View {
         let emptyVault = !model.demoActive && model.allAccounts.isEmpty
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
-                // Header (balance, chart, KPIs) stays put; only the bookings scroll.
-                VStack(alignment: .leading, spacing: 14) {
-                    if model.demoActive {
-                        DemoBanner()
-                    }
-                    #if os(iOS)
-                    Picker("Ansicht", selection: $model.scope) {
-                        ForEach(BookingScope.ordered, id: \.self) { Text($0.title).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    #endif
-                    if !emptyVault {
-                        StreamHeaderCard()
-                        if !isOverview && model.scope != .investments && !model.allAccounts.isEmpty {
-                            HStack {
-                                Button {
-                                    withAnimation(.easeInOut(duration: 0.25)) { showAnalytics.toggle() }
-                                } label: {
-                                    Label("Analysen", systemImage: "chart.bar.xaxis")
-                                        .font(.caption.weight(.medium))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 4)
-                                        .background(showAnalytics ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12), in: Capsule())
-                                }
-                                .buttonStyle(.plain)
-                                .help("Cashflow und Budgets für dieses Konto ein-/ausblenden")
-                                Spacer()
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 10)
-                .frame(maxWidth: 720)
-                .frame(maxWidth: .infinity)
+                #if !os(iOS)
+                header(isOverview: isOverview, emptyVault: emptyVault, scope: $model.scope)
+                #endif
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
+                        #if os(iOS)
+                        // iPhone: header scrolls away so bookings get the screen.
+                        header(isOverview: isOverview, emptyVault: emptyVault, scope: $model.scope)
+                        #endif
                         Color.clear.frame(height: 0).id(Self.topID)
                         if emptyVault {
                             EmptyVaultCard()
@@ -60,8 +35,21 @@ struct BookingStreamView: View {
                             InvestmentDashboardView()
                         } else if !model.allAccounts.isEmpty, isOverview || showAnalytics {
                             // Overview: always; single account: only when toggled on.
+                            #if os(iOS)
+                            DisclosureGroup("Cashflow-Analyse", isExpanded: $showCashflowIOS) {
+                                VStack(spacing: 14) {
+                                    CashflowCard()
+                                    BudgetProgressCard()
+                                }
+                                .padding(.top, 8)
+                            }
+                            .font(.subheadline.weight(.medium))
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
+                            #else
                             CashflowCard().transition(.opacity.combined(with: .move(edge: .top)))
                             BudgetProgressCard().transition(.opacity.combined(with: .move(edge: .top)))
+                            #endif
                         }
                         if model.dayGroups.isEmpty && !(model.allAccounts.isEmpty && !model.demoActive) {
                             ContentUnavailableView(
@@ -90,6 +78,16 @@ struct BookingStreamView: View {
                 #endif
             }
             .background(Theme.canvas)
+            #if os(iOS)
+            // iPhone: the detail column is not reachable by tapping, so show it as a sheet.
+            .sheet(isPresented: Binding(
+                get: { hSize == .compact && model.showBookingSheet && model.selectedBookingID != nil },
+                set: { if !$0 { model.showBookingSheet = false } }
+            )) {
+                NavigationStack { InspectorView() }
+                    .presentationDetents([.medium, .large])
+            }
+            #endif
             // Drop a receipt anywhere on the stream: matched by amount/date/merchant.
             .dropDestination(for: URL.self) { urls, _ in
                 model.dropAnywhere(urls)
@@ -188,6 +186,52 @@ struct BookingStreamView: View {
         }
     }
 
+
+    @ViewBuilder
+    private func header(isOverview: Bool, emptyVault: Bool, scope: Binding<BookingScope>) -> some View {
+                VStack(alignment: .leading, spacing: 14) {
+                    if model.demoActive {
+                        DemoBanner()
+                    }
+                    #if os(iOS)
+                    Picker("Ansicht", selection: scope) {
+                        ForEach(BookingScope.ordered, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    #endif
+                    if !emptyVault {
+                        StreamHeaderCard()
+                        if !isOverview && model.scope != .investments && !model.allAccounts.isEmpty {
+                            HStack {
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.25)) { showAnalytics.toggle() }
+                                } label: {
+                                    Label("Analysen", systemImage: "chart.bar.xaxis")
+                                        .font(.caption.weight(.medium))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(showAnalytics ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .help("Cashflow und Budgets für dieses Konto ein-/ausblenden")
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+                #if os(iOS)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 6)
+                #else
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 10)
+                #endif
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+    }
+
     private static let topID = "stream-top"
 
     private func scrollToTop(_ proxy: ScrollViewProxy) {
@@ -222,7 +266,7 @@ struct DayCard: View {
                         return !urls.isEmpty
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture { model.selectedBookingID = b.id }
+                    .onTapGesture { model.selectedBookingID = b.id; model.showBookingSheet = true }
                     // simultaneous, so single clicks keep selecting without the double-click delay
                     .simultaneousGesture(TapGesture(count: 2).onEnded { model.editNote(for: b) })
                     .contextMenu { rowMenu(b) }
@@ -277,7 +321,12 @@ struct BookingRow: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    if model.showsAccountMarkers {
+                    #if os(iOS)
+                    let showChip = false
+                    #else
+                    let showChip = model.showsAccountMarkers
+                    #endif
+                    if showChip {
                         AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId))
                     }
                     // category with the sidebar's icon and colour, then the payment method
@@ -289,7 +338,10 @@ struct BookingRow: View {
                             .lineLimit(1)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
             }
+            .layoutPriority(0)
             Spacer(minLength: 8)
             if booking.checked {
                 Image(systemName: "checkmark")
