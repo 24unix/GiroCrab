@@ -438,14 +438,11 @@ struct BookingRow: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    #if os(iOS)
-                    let showChip = false
-                    #else
-                    let showChip = model.showsAccountMarkers
-                    #endif
-                    if showChip {
+                    #if !os(iOS)
+                    if model.showsAccountMarkers {
                         AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId), compact: compactChip)
                     }
+                    #endif
                     // category with the sidebar's icon and colour, then the payment method
                     BookingCategoryLabel(booking: booking)
                         .layoutPriority(1)
