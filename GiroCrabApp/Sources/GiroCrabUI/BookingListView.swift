@@ -210,7 +210,7 @@ struct BookingStreamView: View {
                     .help("Neue Überweisung (⌘N)")
                     .disabled(!model.canTransfer)
                 Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
-                    .help("Alle Konten abrufen (⇧⌘R)")
+                    .help("Alle Konten abrufen (⌘R)")
                 Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }
                     .help("Befehlspalette (⌘K)")
                 Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren…", systemImage: "square.and.arrow.up") }

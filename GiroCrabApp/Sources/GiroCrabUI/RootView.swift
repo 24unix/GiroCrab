@@ -26,25 +26,22 @@ public struct GiroCrabScenes: Scene {
         .defaultSize(width: 1500, height: 900)
         .windowResizability(.contentMinSize)
         .commands {
+            // Ablage › Neu: only commands that create something.
             CommandGroup(replacing: .newItem) {
                 Button("Neue Überweisung …") { model.openTransfer() }
                     .keyboardShortcut("n", modifiers: .command)
                     .disabled(!model.canTransfer)
-                Button("Befehlspalette …") { model.showCommandPalette = true }
-                    .keyboardShortcut("k", modifiers: .command)
-                    .disabled(model.vault == nil)
                 Button("Neue Kontogruppe …") { model.groupDialog = .create() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                     .disabled(model.vault == nil)
                 Button("Neues Darlehen …") { model.openLoanEditor(.create) }
                     .disabled(model.vault == nil)
-                Button("Aus MoneyMoney importieren…") { model.openMoneyMoneyImport() }
+            }
+            // Ablage › Import/Export (every toolbar command is also in the menu bar).
+            CommandGroup(replacing: .importExport) {
+                Button("Aus MoneyMoney importieren …") { model.openMoneyMoneyImport() }
                     .disabled(model.vault == nil)
-                Button("Alle Konten abrufen") { model.requestSyncAll() }
-                    .keyboardShortcut("r", modifiers: .command)
-                    .disabled(model.vault == nil)
-                Button("Regeln …") { model.openRuleEditor() }
-                    .keyboardShortcut("k", modifiers: [.command, .option])
+                Button("Buchungen als CSV exportieren …") { model.exportFilteredBookingsCSV() }
                     .disabled(model.vault == nil)
             }
             CommandGroup(replacing: .printItem) {
@@ -52,6 +49,17 @@ public struct GiroCrabScenes: Scene {
                     .keyboardShortcut("p", modifiers: [.command, .shift])
                 Button("Drucken …") { model.showPrintSheet = true }
                     .keyboardShortcut("p", modifiers: .command)
+                    .disabled(model.vault == nil)
+            }
+            CommandMenu("Konten") {
+                Button("Alle Konten abrufen") { model.requestSyncAll() }
+                    .keyboardShortcut("r", modifiers: .command)
+                    .disabled(model.vault == nil)
+                Divider()
+                Button("Regeln …") { model.openRuleEditor() }
+                    .keyboardShortcut("k", modifiers: [.command, .option])
+                    .disabled(model.vault == nil)
+                Button("Wiederkehrende Buchungen …") { model.showRecurringSheet = true }
                     .disabled(model.vault == nil)
             }
             CommandMenu("Buchung") {
@@ -67,14 +75,12 @@ public struct GiroCrabScenes: Scene {
                     set: { on in if let b = model.selectedBooking { model.setSalaryFlag(b, on) } }
                 ))
                 .disabled((model.selectedBooking?.amountCents ?? 0) <= 0)
-                Button("Wiederkehrende Buchungen …") { model.showRecurringSheet = true }
-                    .keyboardShortcut("f", modifiers: [.command, .shift])
-                    .disabled(model.vault == nil)
                 Divider()
+                // ⌘↑/⌘↓ stay with text fields (start/end of text); ↑/↓ work in the list.
                 Button("Nächste Buchung") { model.moveSelection(1) }
-                    .keyboardShortcut(.downArrow, modifiers: .command)
+                    .keyboardShortcut(.downArrow, modifiers: [.command, .control])
                 Button("Vorherige Buchung") { model.moveSelection(-1) }
-                    .keyboardShortcut(.upArrow, modifiers: .command)
+                    .keyboardShortcut(.upArrow, modifiers: [.command, .control])
                 Divider()
                 ForEach(Array(BookingScope.ordered.enumerated()), id: \.offset) { i, s in
                     Button(s.title) { model.scope = s }
@@ -88,7 +94,20 @@ public struct GiroCrabScenes: Scene {
                     .keyboardShortcut("l", modifiers: [.command, .control])
                     .disabled(!model.hasOwnVault)
             }
+            // Bearbeiten › Suchen …: focuses the toolbar search field.
+            CommandGroup(after: .pasteboard) {
+                Divider()
+                Button("Suchen …") { ToolbarSearch.focus() }
+                    .keyboardShortcut("f", modifiers: .command)
+                    .disabled(model.vault == nil)
+            }
+            SidebarCommands()
+            ToolbarCommands()
             CommandGroup(after: .sidebar) {
+                Button("Befehlspalette …") { model.showCommandPalette = true }
+                    .keyboardShortcut("k", modifiers: .command)
+                    .disabled(model.vault == nil)
+                Divider()
                 Picker("Konten anzeigen", selection: Binding(get: { model.accountView }, set: { model.accountView = $0 })) {
                     Text("Nach Gruppe").tag(AccountSidebarMode.byGroup)
                     Text("Nach Kontoart").tag(AccountSidebarMode.byKind)
@@ -404,3 +423,21 @@ private struct StartLogo: View {
         #endif
     }
 }
+
+#if os(macOS)
+import AppKit
+
+/// Bearbeiten › Suchen … (⌘F): puts the cursor into the window's toolbar search
+/// field (`.searchable(placement: .toolbar)`; `searchFocused` needs macOS 15).
+enum ToolbarSearch {
+    @MainActor
+    static func focus() {
+        let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.toolbar != nil }
+        guard let window, let item = window.toolbar?.items.compactMap({ $0 as? NSSearchToolbarItem }).first else {
+            FileHandle.standardError.write("ToolbarSearch: no search field\n".data(using: .utf8)!)
+            return
+        }
+        window.makeFirstResponder(item.searchField)
+    }
+}
+#endif

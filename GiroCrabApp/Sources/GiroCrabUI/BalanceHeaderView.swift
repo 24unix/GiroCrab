@@ -204,7 +204,7 @@ struct StreamHeaderCard: View {
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .help("Wiederkehrende Buchungen anzeigen (⇧⌘F)")
+        .help("Wiederkehrende Buchungen anzeigen")
         .accessibilityHint("Öffnet die Übersicht der wiederkehrenden Buchungen")
     }
 

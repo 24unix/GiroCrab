@@ -497,6 +497,10 @@ public final class AppModel {
             showMoneyMoneyImport = true
         case "recurring":
             showRecurringSheet = true
+        case "find":
+            #if os(macOS)
+            ToolbarSearch.focus() // Bearbeiten › Suchen … (⌘F)
+            #endif
         case "rules":
             ruleDraft = nil
             showRuleEditor = true
