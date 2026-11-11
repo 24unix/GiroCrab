@@ -185,9 +185,24 @@ struct StreamHeaderCard: View {
 
     @ViewBuilder
     private var kpis: some View {
-        KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.period.title), value: Money.format(-model.consumptionThisMonth), tint: Theme.outflow)
+        KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.periodSubtitle), value: Money.format(-model.consumptionThisMonth), tint: Theme.outflow)
         KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: Money.format(model.investedThisMonth), tint: Theme.invest)
-        KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.period.title), value: Money.format(model.incomeThisMonth), tint: Theme.inflow)
+        KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.periodSubtitle), value: Money.format(model.incomeThisMonth), tint: Theme.inflow)
+        fixedCostsKPI
+    }
+
+    /// Recurring expenses still due this month (GitHub #35); opens the overview.
+    @ViewBuilder
+    private var fixedCostsKPI: some View {
+        let open = model.recurringMonth?.items.filter { !$0.booked && $0.amountCents < 0 }.count ?? 0
+        Button { model.showRecurringSheet = true } label: {
+            KPI(title: "Fixkosten offen", subtitle: "Diesen Monat · \(open) offen",
+                value: Money.format(-(model.recurringMonth?.openExpenseCents ?? 0)), tint: Theme.outflow,
+                disclosure: true)
+        }
+        .buttonStyle(.plain)
+        .help("Wiederkehrende Buchungen anzeigen (⇧⌘F)")
+        .accessibilityHint("Öffnet die Übersicht der wiederkehrenden Buchungen")
     }
 
     @ViewBuilder
@@ -284,11 +299,21 @@ struct KPI: View {
     let subtitle: LocalizedStringKey
     let value: String
     let tint: Color
+    /// Tile opens a detail view: shows a chevron next to the title.
+    var disclosure = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.caption.weight(.medium)).foregroundStyle(Theme.secondary)
-                .lineLimit(2, reservesSpace: true)
+            HStack(spacing: 3) {
+                Text(title).font(.caption.weight(.medium)).foregroundStyle(Theme.secondary)
+                    .lineLimit(2, reservesSpace: true)
+                if disclosure {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Theme.tertiary)
+                        .accessibilityHidden(true)
+                }
+            }
             Spacer(minLength: 4)
             Text(value).font(.system(size: 16, weight: .semibold).monospacedDigit()).foregroundStyle(tint)
                 .lineLimit(1).minimumScaleFactor(0.75)
@@ -301,6 +326,8 @@ struct KPI: View {
         .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.canvas))
         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 

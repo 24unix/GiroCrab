@@ -115,7 +115,15 @@ struct BookingStreamView: View {
                 return !urls.isEmpty
             }
             .onChange(of: model.selectedBookingID) { _, id in
-                if let id { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } }
+                guard let id else { return }
+                // Rows live inside lazily built day cards: an off-screen day must be
+                // scrolled to first, otherwise the row's id is unknown to the proxy.
+                if let day = model.dayGroups.first(where: { $0.bookings.contains { $0.id == id } }) {
+                    proxy.scrollTo(day.id)
+                }
+                DispatchQueue.main.async {
+                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) }
+                }
             }
             // another account, group, period or view: back to the newest day
             .onChange(of: model.sidebarSelection) { _, _ in scrollToTop(proxy) }
@@ -402,6 +410,13 @@ struct BookingRow: View {
                             .font(.system(size: 10))
                             .foregroundStyle(Theme.accent.opacity(0.8))
                             .help("\(booking.documentCount) Beleg(e) – Leertaste für QuickLook")
+                    }
+                    if model.recurringSeries(for: booking) != nil {
+                        Image(systemName: "repeat")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Theme.secondary)
+                            .help("Wiederkehrende Buchung")
+                            .accessibilityLabel("Wiederkehrend")
                     }
                 }
                 HStack(spacing: 6) {
