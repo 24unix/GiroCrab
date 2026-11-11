@@ -62,6 +62,20 @@ struct GeneralSettings: View {
 /// Tabs of the settings window (macOS) / sheet (iOS).
 enum SettingsTab: Hashable {
     case general, banks, groups, credentials, logos, documents, security
+
+    /// `--demo-settings <name>` (screenshots).
+    init?(demoName: String) {
+        switch demoName {
+        case "general": self = .general
+        case "banks": self = .banks
+        case "groups": self = .groups
+        case "credentials": self = .credentials
+        case "logos": self = .logos
+        case "documents": self = .documents
+        case "security": self = .security
+        default: return nil
+        }
+    }
 }
 
 struct BankConnectionsSettings: View {
@@ -134,6 +148,15 @@ struct BankConnectionsSettings: View {
         .sheet(item: $editing) { c in
             ConnectionEditSheet(connection: c)
                 .environment(model)
+        }
+        .task {
+            // --demo-settings banks:edit / banks:add (screenshots)
+            switch model.demoSettingsSheet {
+            case "edit": editing = model.connections.first
+            case "add": showAddBank = true
+            default: break
+            }
+            model.demoSettingsSheet = nil
         }
     }
 

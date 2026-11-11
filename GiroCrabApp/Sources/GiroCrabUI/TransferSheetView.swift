@@ -72,6 +72,7 @@ struct TransferSheetView: View {
         }
         .padding(24)
         .macFrame(width: 520)
+        .task { if model.options.demoSheet == "transfer-confirm" { confirming = true } } // screenshots
         .overlay {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6]))

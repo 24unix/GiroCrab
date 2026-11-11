@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import SwiftUI
 
 /// `--screenshot <file.png>`: waits ~120 frames (2 s at 60 Hz), renders the
 /// main window (including title bar and toolbar) into a PNG and quits.
@@ -14,7 +15,15 @@ public enum WindowScreenshot {
 
     @MainActor
     private static func capture(to path: String, attempt: Int) {
-        guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil && $0.frame.width > 400 }),
+        // --demo-settings: capture the Settings window instead of the main window.
+        let wantsSettings = LaunchOptions.current.demoSettings != nil
+        let candidates = NSApp.windows.filter { $0.isVisible && $0.contentView != nil && $0.frame.width > 300 && !$0.isSheet }
+        let settingsWindow = candidates.first { $0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") == true }
+        if wantsSettings && settingsWindow == nil && attempt < 20 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { capture(to: path, attempt: attempt + 1) }
+            return
+        }
+        guard let window = wantsSettings ? settingsWindow : candidates.first(where: { $0.frame.width > 400 && $0 != settingsWindow }),
               let content = window.contentView else {
             if attempt < 20 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { capture(to: path, attempt: attempt + 1) }
@@ -26,9 +35,42 @@ public enum WindowScreenshot {
         }
         // With a sheet open (e.g. --demo-sync), capture the sheet instead.
         let target = window.attachedSheet ?? window
+        // GIROCRAB_SCREENSHOT_NATIVE=1: activate the app and let `screencapture`
+        // grab the real window, so default buttons and focus look as on screen.
+        if ProcessInfo.processInfo.environment["GIROCRAB_SCREENSHOT_NATIVE"] == "1" {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            if let title = LaunchOptions.current.demoMenu {
+                captureMenu(title, over: window, to: path)
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                // A sheet or alert may have appeared meanwhile: take the topmost one.
+                let target = window.attachedSheet?.attachedSheet ?? window.attachedSheet ?? window
+                window.makeKeyAndOrderFront(nil) // looks active, not greyed out
+                // Alerts come out blank with `screencapture -l`: draw those in-process.
+                if target != window, target.className.contains("Alert") || target.contentViewController == nil {
+                    render(target, to: path)
+                    return
+                }
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                task.arguments = ["-x", "-o", "-l", String(target.windowNumber), path]
+                try? task.run()
+                task.waitUntilExit()
+                print("screenshot saved (native): \(path)")
+                exit(task.terminationStatus == 0 ? 0 : 6)
+            }
+            return
+        }
+        _ = content
+        render(target, to: path)
+    }
+
+    @MainActor
+    private static func render(_ target: NSWindow, to path: String) {
         guard let targetContent = target.contentView else { exit(2) }
         let view = targetContent.superview ?? targetContent // frame view = title bar + toolbar + content
-        _ = content
         view.layoutSubtreeIfNeeded()
         view.displayIfNeeded()
         let bounds = view.bounds
@@ -45,6 +87,113 @@ public enum WindowScreenshot {
             FileHandle.standardError.write("screenshot: \(error)\n".data(using: .utf8)!)
             exit(5)
         }
+    }
+
+    /// `--demo-menu <title>`: renders the items of that menu-bar menu (titles,
+    /// key equivalents, separators, enabled state) into a PNG. Drawn by the app
+    /// itself, so no other window on screen can end up in the picture.
+    @MainActor
+    private static func captureMenu(_ title: String, over window: NSWindow, to path: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard let menu = NSApp.mainMenu?.items.first(where: { $0.title == title })?.submenu else {
+                FileHandle.standardError.write("screenshot: menu \(title) not found\n".data(using: .utf8)!)
+                exit(7)
+            }
+            menu.update()
+            // Like NSMenu: no leading, trailing or doubled separators, no empty items.
+            var rows: [MenuRow] = []
+            for row in menu.items.filter({ !$0.isHidden }).map(MenuRow.init) {
+                if row.separator && (rows.isEmpty || rows.last!.separator) { continue }
+                if !row.separator && row.title.isEmpty { continue }
+                rows.append(row)
+            }
+            if rows.last?.separator == true { rows.removeLast() }
+            let renderer = ImageRenderer(content: MenuPicture(title: title, rows: rows))
+            renderer.scale = 2
+            guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
+                  let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { exit(4) }
+            do {
+                try png.write(to: URL(fileURLWithPath: path))
+                print("screenshot saved (menu): \(path)")
+                exit(0)
+            } catch { exit(5) }
+        }
+    }
+}
+
+private struct MenuRow: Identifiable {
+    let id = UUID()
+    let title: String
+    let shortcut: String
+    let separator: Bool
+    let enabled: Bool
+    let submenu: Bool
+    let checked: Bool
+
+    @MainActor
+    init(_ item: NSMenuItem) {
+        title = item.title
+        separator = item.isSeparatorItem
+        enabled = item.isEnabled
+        submenu = item.hasSubmenu
+        checked = item.state == .on
+        var s = ""
+        let m = item.keyEquivalentModifierMask
+        if !item.keyEquivalent.isEmpty {
+            if m.contains(.control) { s += "⌃" }
+            if m.contains(.option) { s += "⌥" }
+            if m.contains(.shift) || item.keyEquivalent != item.keyEquivalent.lowercased() { s += "⇧" }
+            if m.contains(.command) { s += "⌘" }
+            let k = item.keyEquivalent
+            switch k.unicodeScalars.first?.value {
+            case 0xF700: s += "↑"
+            case 0xF701: s += "↓"
+            case 0xF702: s += "←"
+            case 0xF703: s += "→"
+            case 0x08, 0x7F: s += "⌫"
+            default: s += k.uppercased()
+            }
+        }
+        shortcut = s
+    }
+}
+
+private struct MenuPicture: View {
+    let title: String
+    let rows: [MenuRow]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.1)))
+                .padding(.bottom, 6)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(rows) { r in
+                    if r.separator {
+                        Divider().padding(.vertical, 5).padding(.horizontal, 10)
+                    } else {
+                        HStack(spacing: 6) {
+                            Text(r.checked ? "✓" : "").frame(width: 12)
+                            Text(r.title)
+                            Spacer(minLength: 30)
+                            if r.submenu { Text("›") } else { Text(r.shortcut).monospaced() }
+                        }
+                        .font(.system(size: 13))
+                        .foregroundStyle(r.enabled ? Color.primary : Color.secondary.opacity(0.6))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                    }
+                }
+            }
+            .padding(.vertical, 5)
+            .frame(minWidth: 280)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color(nsColor: .windowBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.15)))
+        }
+        .padding(14)
+        .background(Color(nsColor: .underPageBackgroundColor))
+        .environment(\.colorScheme, .light)
     }
 }
 #endif

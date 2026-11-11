@@ -352,6 +352,8 @@ public final class AppModel {
     var settingsTab: SettingsTab = .general
     /// macOS: the main window opens Settings when this is set (see `openSettings(_:)`).
     var settingsRequested = false
+    /// (demo, `--demo-settings banks:edit|banks:add`) sheet the bank settings open on appear.
+    var demoSettingsSheet: String?
     /// The one group dialog on screen (new / rename / delete / move account).
     var groupDialog: GroupDialog?
     var expandedCategories: Set<Int64> = []
@@ -454,6 +456,15 @@ public final class AppModel {
                     self?.presentDemoSheet(sheet)
                 }
             }
+            if let settings = options.demoSettings {
+                let parts = settings.split(separator: ":").map(String.init)
+                settingsTab = SettingsTab(demoName: parts[0]) ?? .general
+                demoSettingsSheet = parts.count > 1 ? parts[1] : nil
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 600_000_000)
+                    self?.groupSettingsRequested = true
+                }
+            }
             if options.demoSync {
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: 400_000_000)
@@ -470,7 +481,7 @@ public final class AppModel {
             // Print dialog (GitHub #53) on last month's demo bookings.
             period = .lastMonth
             showPrintSheet = true
-        case "transfer":
+        case "transfer", "transfer-confirm":
             if let a = transferAccounts.first { sidebarSelection = .account(a.id) }
             openTransfer()
             transferDraft.name = "Stadtwerke München"
@@ -486,6 +497,23 @@ public final class AppModel {
             showMoneyMoneyImport = true
         case "recurring":
             showRecurringSheet = true
+        case "rules":
+            ruleDraft = nil
+            showRuleEditor = true
+        case "palette":
+            showCommandPalette = true
+        case "categorizer":
+            if selectedBookingID == nil { selectedBookingID = bookings.first?.id }
+            showCategorizer = true
+        case "error":
+            errorMessage = "Die Bank hat nicht geantwortet (Zeitüberschreitung)."
+        case "payee-match", "payee-close", "payee-nomatch":
+            guard let connection = connections.first else { break }
+            let result: PayeeMatch = name == "payee-match" ? .match : name == "payee-close" ? .closeMatch : .noMatch
+            payeeCheck = PendingPayeeCheck(connection: connection, check: PayeeCheck(
+                result: result, enteredName: "Stadtwerke Muenchen", iban: "DE89370400440532013000",
+                bankName: result == .closeMatch ? "Stadtwerke München GmbH" : nil, reason: nil,
+                notice: result == .noMatch ? "Wenn Sie die Überweisung trotzdem freigeben, kann das Geld an einen anderen Empfänger gehen." : nil))
         case "moneymoney-db":
             #if os(macOS)
             demoDbPreview = Self.demoMoneyMoneyDbPreview(existingGiro: allAccounts.first { $0.kind == .checking })
