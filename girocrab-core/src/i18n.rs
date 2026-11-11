@@ -477,6 +477,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Der Kategoriename ist leer." => "The category name is empty.",
         "Eine Kategorie kann nicht in sich selbst verschoben werden." => "A category can’t be moved into itself.",
         "Das Suchmuster ist leer." => "The pattern is empty.",
+        "Das Suchmuster ist zu lang." => "The pattern is too long.",
         "Der Suchausdruck ist leer." => "The search expression is empty.",
         "Das Feld „{0}“ wird nicht unterstützt." => "The field “{0}” isn't supported.",
         "{0} (nur für bestimmte Konten)" => "{0} (specific accounts only)",

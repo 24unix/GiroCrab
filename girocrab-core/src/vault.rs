@@ -224,6 +224,8 @@ impl Vault {
         // Raw key syntax: x'..hex..' -> no PBKDF2 on every open, key comes from Keychain.
         let pragma = Zeroizing::new(format!("PRAGMA key = \"x'{}'\";", hex::encode(key)));
         conn.execute_batch(&pragma)?;
+        // Best effort: lock + wipe SQLCipher's in-memory key/page buffers.
+        let _ = conn.execute_batch("PRAGMA cipher_memory_security = ON;");
         Ok(())
     }
 
@@ -874,6 +876,9 @@ impl Vault {
                 let Some(&cat) = cat_map.get(&ocat) else {
                     continue;
                 };
+                if pat.len() > crate::rules::MAX_PATTERN_LEN {
+                    continue;
+                }
                 let acc = oacc.and_then(|a| acc_map.get(&a).copied());
                 if oacc.is_some() && acc.is_none() {
                     continue;
@@ -1146,10 +1151,12 @@ impl Vault {
             params![other_path, &*raw_key],
         )?;
         let res = Self::merge_attached(&conn);
-        let _ = conn.execute_batch("DETACH DATABASE other");
+        let detach_res = conn.execute_batch("DETACH DATABASE other");
         // Fold WAL frames into the main file so a plain file copy is complete.
         let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
-        res
+        let stats = res?;
+        detach_res?;
+        Ok(stats)
     }
 
     /// Flushes the WAL into the main vault file (`wal_checkpoint(TRUNCATE)`),
@@ -1550,15 +1557,18 @@ impl Vault {
         let mut per_day: HashMap<String, i64> = HashMap::new();
         if !ids.is_empty() {
             let db = self.db()?;
-            let list = ids
-                .iter()
-                .map(|i| i.to_string())
+            let list = (0..ids.len())
+                .map(|n| format!("?{}", n + 2))
                 .collect::<Vec<_>>()
                 .join(",");
             let mut stmt = db.prepare(&format!(
                 "SELECT booking_date, SUM(amount_cents) FROM transactions WHERE account_id IN ({list}) AND booking_date > ?1 GROUP BY booking_date"
             ))?;
-            let rows = stmt.query_map([start.format("%Y-%m-%d").to_string()], |r| {
+            let date = start.format("%Y-%m-%d").to_string();
+            let args: Vec<rusqlite::types::Value> = std::iter::once(date.into())
+                .chain(ids.iter().map(|&i| i.into()))
+                .collect();
+            let rows = stmt.query_map(rusqlite::params_from_iter(args), |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
             })?;
             for row in rows {
@@ -2121,6 +2131,11 @@ impl Vault {
 
     /// Creates (id == 0) or updates a rule. Validates the pattern first.
     pub fn save_rule(&self, rule: Rule) -> Result<i64, CoreError> {
+        if rule.pattern.len() > crate::rules::MAX_PATTERN_LEN {
+            return Err(CoreError::InvalidInput {
+                message: tr("Das Suchmuster ist zu lang.").into(),
+            });
+        }
         crate::rules::CompiledRule::compile(rule.clone())?;
         if rule.pattern.trim().is_empty() {
             return Err(CoreError::InvalidInput {

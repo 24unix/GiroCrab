@@ -35,8 +35,16 @@ pub struct CompiledRule {
     matcher: Matcher,
 }
 
+/// Longest accepted rule pattern (bytes); bounds regex automaton allocation.
+pub const MAX_PATTERN_LEN: usize = 2048;
+
 impl CompiledRule {
     pub fn compile(rule: Rule) -> CoreResult<Self> {
+        if rule.pattern.len() > MAX_PATTERN_LEN {
+            return Err(CoreError::InvalidInput {
+                message: format!("rule pattern longer than {MAX_PATTERN_LEN} bytes"),
+            });
+        }
         if rule.match_kind == MatchKind::Expression {
             let expr = SearchExpr::parse(&rule.pattern)
                 .map_err(|message| CoreError::InvalidInput { message })?;

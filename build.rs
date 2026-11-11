@@ -138,7 +138,7 @@ fn make_bundle(app_dir: &Path, exe: &Path) {
     <key>CFBundleExecutable</key><string>GiroCrab</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleShortVersionString</key><string>__VERSION__</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>CFBundleDevelopmentRegion</key><string>de</string>
     <key>CFBundleLocalizations</key><array><string>de</string><string>en</string></array>
@@ -149,6 +149,7 @@ fn make_bundle(app_dir: &Path, exe: &Path) {
 </dict>
 </plist>
 "#;
+    let plist = plist.replace("__VERSION__", env!("CARGO_PKG_VERSION"));
     std::fs::write(app_dir.join("Contents/Info.plist"), plist).unwrap();
     compile_localizations(app_dir);
     // Ad-hoc signature so Keychain + LocalAuthentication accept the bundle.

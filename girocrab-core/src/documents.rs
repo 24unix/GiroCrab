@@ -178,11 +178,17 @@ fn literal_strings(content: &[u8], out: &mut String) {
     }
 }
 
+/// Zip-bomb guards for [`extract_pdf_text`].
+const MAX_INFLATED_STREAM: usize = 8 * 1024 * 1024;
+const MAX_PDF_STREAMS: usize = 256;
+const MAX_PDF_TEXT: usize = 4 * 1024 * 1024;
+
 /// Best-effort text of a PDF: inflates FlateDecode streams and collects the
 /// literal strings of text operators. Good enough for receipts and bank PDFs;
 /// the app passes PDFKit/Vision text as an additional hint.
 pub fn extract_pdf_text(bytes: &[u8]) -> String {
     let mut out = String::new();
+    let mut streams = 0usize;
     let mut i = 0;
     while let Some(pos) = find(bytes, b"stream", i) {
         let dict_start = bytes[..pos]
@@ -202,8 +208,14 @@ pub fn extract_pdf_text(bytes: &[u8]) -> String {
             break;
         };
         let data = &bytes[start..end];
+        if out.len() >= MAX_PDF_TEXT || streams >= MAX_PDF_STREAMS {
+            break;
+        }
+        streams += 1;
         if find(dict, b"FlateDecode", 0).is_some() {
-            if let Ok(inflated) = miniz_oxide::inflate::decompress_to_vec_zlib(data) {
+            if let Ok(inflated) =
+                miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(data, MAX_INFLATED_STREAM)
+            {
                 literal_strings(&inflated, &mut out);
             }
         } else if find(dict, b"Image", 0).is_none() {
@@ -789,5 +801,46 @@ mod tests {
                 >= 2
         );
         let _ = std::fs::remove_file(p);
+    }
+}
+
+#[cfg(test)]
+mod pdf_limit_tests {
+    use super::*;
+
+    fn zlib(data: &[u8]) -> Vec<u8> {
+        miniz_oxide::deflate::compress_to_vec_zlib(data, 6)
+    }
+
+    fn pdf_with(streams: &[Vec<u8>]) -> Vec<u8> {
+        let mut pdf = b"%PDF-1.4\n".to_vec();
+        for s in streams {
+            pdf.extend_from_slice(b"<< /Filter /FlateDecode >>\nstream\n");
+            pdf.extend_from_slice(s);
+            pdf.extend_from_slice(b"\nendstream\n");
+        }
+        pdf
+    }
+
+    #[test]
+    fn small_stream_is_extracted() {
+        let pdf = pdf_with(&[zlib(b"BT (Hello) Tj ET")]);
+        assert!(extract_pdf_text(&pdf).contains("Hello"));
+    }
+
+    #[test]
+    fn oversized_stream_is_skipped() {
+        let mut big = b"BT (Bomb) Tj ET".to_vec();
+        big.resize(MAX_INFLATED_STREAM + 1024, b' ');
+        let pdf = pdf_with(&[zlib(&big)]);
+        assert!(!extract_pdf_text(&pdf).contains("Bomb"));
+    }
+
+    #[test]
+    fn stream_count_is_capped() {
+        let one = zlib(b"BT (Tick) Tj ET");
+        let pdf = pdf_with(&vec![one; MAX_PDF_STREAMS + 50]);
+        let n = extract_pdf_text(&pdf).matches("Tick").count();
+        assert_eq!(n, MAX_PDF_STREAMS);
     }
 }

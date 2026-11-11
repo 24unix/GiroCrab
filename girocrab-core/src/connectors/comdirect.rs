@@ -130,6 +130,11 @@ impl ComdirectConnector {
     }
 
     async fn get(&mut self, path: &str) -> CoreResult<Value> {
+        if !is_api_path(path) {
+            return Err(CoreError::InvalidInput {
+                message: "unsafe comdirect API path".into(),
+            });
+        }
         let client = self.client()?;
         let resp = client
             .get(format!("{BASE}{path}"))
@@ -590,6 +595,44 @@ pub(crate) fn parse_positions(pos: &Value) -> Vec<crate::models::Holding> {
             }
         })
         .collect()
+}
+
+/// A path that stays on the comdirect host when appended to `BASE`: starts
+/// with `/api/`, no `..`, `//`, userinfo (`@`), backslash, whitespace or
+/// control characters.
+fn is_api_path(path: &str) -> bool {
+    path.starts_with("/api/")
+        && !path.contains("..")
+        && !path.contains('@')
+        && !path.contains("//")
+        && !path.contains('\\')
+        && !path.chars().any(|c| c.is_whitespace() || c.is_control())
+}
+
+#[cfg(test)]
+mod api_path_tests {
+    use super::is_api_path;
+
+    #[test]
+    fn only_plain_api_paths_are_sent() {
+        assert!(is_api_path("/api/something/v1/sessions/1?x=2"));
+        for bad in [
+            "",
+            "api/x",
+            "/v1/x",
+            "@evil.com/api/x",
+            "/api/x@evil.com",
+            "//evil.com/api/x",
+            "/api//evil.com",
+            "https://evil.com/api/x",
+            "/api/../x",
+            "/api/x\\y",
+            "/api/x y",
+            "/api/x\n",
+        ] {
+            assert!(!is_api_path(bad), "{bad:?}");
+        }
+    }
 }
 
 #[cfg(test)]
