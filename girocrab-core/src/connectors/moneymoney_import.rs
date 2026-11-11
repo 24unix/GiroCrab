@@ -760,9 +760,16 @@ fn find_twin(
           WHERE account_id = ?1 AND external_id LIKE 'mm-%' AND amount_cents = ?2
             AND id != ?3 AND abs(julianday(booking_date) - julianday(?4)) <= 2",
     )?;
-    let rows = stmt.query_map(params![account_id, cents, exclude_id.unwrap_or(-1), date], |r| {
-        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
-    })?;
+    let rows = stmt.query_map(
+        params![account_id, cents, exclude_id.unwrap_or(-1), date],
+        |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        },
+    )?;
     let (n_iban, n_name, n_purpose) = (norm(iban), norm(name), norm(purpose));
     let mut hits = Vec::new();
     for row in rows {
@@ -773,8 +780,7 @@ fn find_twin(
         } else {
             let long = n_name.len() >= 3 && m_name.len() >= 3;
             (long && (n_name.contains(&m_name) || m_name.contains(&n_name)))
-                || (m_name.len() >= 3
-                    && (n_purpose.contains(&m_name) || n_name.contains(&m_name)))
+                || (m_name.len() >= 3 && (n_purpose.contains(&m_name) || n_name.contains(&m_name)))
         };
         if ok {
             hits.push(id);
@@ -827,7 +833,13 @@ pub(crate) fn adopt_import(
 
 /// Gives the MoneyMoney row the bank's external id and fills missing bank metadata;
 /// the MoneyMoney counterparty name (cleaner) is kept.
-fn take_over(conn: &Connection, id: i64, external_id: &str, iban: &str, booking_text: &str) -> CoreResult<()> {
+fn take_over(
+    conn: &Connection,
+    id: i64,
+    external_id: &str,
+    iban: &str,
+    booking_text: &str,
+) -> CoreResult<()> {
     conn.execute(
         "UPDATE transactions SET external_id = ?1,
                 counterparty_iban = CASE WHEN counterparty_iban = '' THEN ?3 ELSE counterparty_iban END,
@@ -863,8 +875,20 @@ pub(crate) fn merge_synced_twin(
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()?;
-    let Some((bank_id, bank_iban, bank_text)) = bank else { return Ok(false) };
-    let Some(mm_id) = find_twin(conn, account_id, Some(bank_id), date, cents, iban, name, purpose)? else {
+    let Some((bank_id, bank_iban, bank_text)) = bank else {
+        return Ok(false);
+    };
+    let Some(mm_id) = find_twin(
+        conn,
+        account_id,
+        Some(bank_id),
+        date,
+        cents,
+        iban,
+        name,
+        purpose,
+    )?
+    else {
         return Ok(false);
     };
     conn.execute("DELETE FROM transactions WHERE id = ?1", [bank_id])?;
@@ -1206,7 +1230,10 @@ mod tests {
         let mut st = db
             .prepare("SELECT external_id FROM transactions WHERE account_id = ?1 ORDER BY id")
             .unwrap();
-        st.query_map([acc], |r| r.get(0)).unwrap().map(|x| x.unwrap()).collect()
+        st.query_map([acc], |r| r.get(0))
+            .unwrap()
+            .map(|x| x.unwrap())
+            .collect()
     }
 
     #[test]
@@ -1218,12 +1245,38 @@ mod tests {
         );
         let db = v.db().unwrap();
         // purpose differs (SEPA tags), date off by one day, name matches
-        assert!(adopt_import(&db, acc, "f1", "2026-05-11", -1250, "", "REWE", "EREF+123 Einkauf", "").unwrap());
+        assert!(adopt_import(
+            &db,
+            acc,
+            "f1",
+            "2026-05-11",
+            -1250,
+            "",
+            "REWE",
+            "EREF+123 Einkauf",
+            ""
+        )
+        .unwrap());
         // comdirect: partner field holds booking text, MM name sits in the purpose
-        assert!(adopt_import(&db, acc, "f2", "2026-05-10", -8000, "", "Lastschrift", "Stadtwerke Köln MREF+9 Strom", "LASTSCHRIFT").unwrap());
+        assert!(adopt_import(
+            &db,
+            acc,
+            "f2",
+            "2026-05-10",
+            -8000,
+            "",
+            "Lastschrift",
+            "Stadtwerke Köln MREF+9 Strom",
+            "LASTSCHRIFT"
+        )
+        .unwrap());
         assert_eq!(ext_ids(&db, acc), vec!["f1", "f2"]);
         let cp: String = db
-            .query_row("SELECT counterparty FROM transactions WHERE external_id='f2'", [], |r| r.get(0))
+            .query_row(
+                "SELECT counterparty FROM transactions WHERE external_id='f2'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(cp, "Stadtwerke Köln");
         // out of the ±2 day window: no adoption
@@ -1238,7 +1291,18 @@ mod tests {
             "10.05.2026;Bäckerei Müller;Brötchen;-3,00;;\n10.05.2026;Bäckerei Müller;Kuchen;-3,00;;\n",
         );
         let db = v.db().unwrap();
-        assert!(!adopt_import(&db, acc, "f1", "2026-05-10", -300, "", "Bäckerei Müller", "EREF+1", "").unwrap());
+        assert!(!adopt_import(
+            &db,
+            acc,
+            "f1",
+            "2026-05-10",
+            -300,
+            "",
+            "Bäckerei Müller",
+            "EREF+1",
+            ""
+        )
+        .unwrap());
         assert!(ext_ids(&db, acc).iter().all(|e| e.starts_with("mm-")));
     }
 
@@ -1260,15 +1324,33 @@ mod tests {
         };
         ins("f1", "2026-05-10", -1250, "REWE");
         ins("f2", "2026-05-12", -700, "ALDI");
-        db.execute("UPDATE transactions SET note = 'meins' WHERE external_id = 'f2'", []).unwrap();
+        db.execute(
+            "UPDATE transactions SET note = 'meins' WHERE external_id = 'f2'",
+            [],
+        )
+        .unwrap();
 
-        assert!(merge_synced_twin(&db, acc, "f1", "2026-05-10", -1250, "", "REWE", "EREF+1").unwrap());
-        assert!(!merge_synced_twin(&db, acc, "f2", "2026-05-12", -700, "", "ALDI", "EREF+1").unwrap());
+        assert!(
+            merge_synced_twin(&db, acc, "f1", "2026-05-10", -1250, "", "REWE", "EREF+1").unwrap()
+        );
+        assert!(
+            !merge_synced_twin(&db, acc, "f2", "2026-05-12", -700, "", "ALDI", "EREF+1").unwrap()
+        );
 
-        let n: i64 = db.query_row("SELECT count(*) FROM transactions WHERE account_id = ?1", [acc], |r| r.get(0)).unwrap();
+        let n: i64 = db
+            .query_row(
+                "SELECT count(*) FROM transactions WHERE account_id = ?1",
+                [acc],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(n, 3); // REWE merged (2 rows -> 1), Aldi pair kept (edited) -> 1 + 2
         let note: String = db
-            .query_row("SELECT note FROM transactions WHERE external_id = 'f1'", [], |r| r.get(0))
+            .query_row(
+                "SELECT note FROM transactions WHERE external_id = 'f1'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(note, "wichtig");
     }
