@@ -3,8 +3,10 @@ import AppKit
 import SwiftUI
 import GiroCrabCore
 
-/// MoneyMoney database import: pick `MoneyMoney.sqlite`, enter the MoneyMoney
-/// password, preview, then import all accounts in one go. The database is only
+/// MoneyMoney database import: pick MoneyMoney's data folder (database plus
+/// statement PDFs) or a single `MoneyMoney.sqlite` (e.g. a backup; the PDFs
+/// can then come from a separately chosen folder), enter the MoneyMoney
+/// password, preview, then import all accounts in one go. Everything is only
 /// read (never changed); the password is dropped from the view state afterwards.
 struct MoneyMoneyDatabaseImportView: View {
     @Environment(AppModel.self) private var model
@@ -17,7 +19,11 @@ struct MoneyMoneyDatabaseImportView: View {
         var target: Int64?
     }
 
+    /// MoneyMoney's data folder or a single database file.
     @State private var fileURL: URL?
+    /// Folder with the statement PDFs, for a database without its folder (backup).
+    @State private var statementsURL: URL?
+    @State private var importStatements = true
     @State private var password = ""
     @State private var preview: MoneyMoneyDbPreview?
     @State private var choices: [Int64: Choice] = [:]
@@ -60,7 +66,7 @@ struct MoneyMoneyDatabaseImportView: View {
         .interactiveDismissDisabled(importing)
         .onAppear {
             if let demo = model.demoDbPreview {
-                fileURL = URL(fileURLWithPath: "/Users/max/Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney/Database/MoneyMoney.sqlite")
+                fileURL = URL(fileURLWithPath: "/Users/max/Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney")
                 password = "demo-passwort"
                 apply(demo)
             }
@@ -84,14 +90,14 @@ struct MoneyMoneyDatabaseImportView: View {
     private var fileAndPassword: some View {
         Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
             GridRow {
-                Text("Datenbank").font(.callout).foregroundStyle(Theme.secondary)
+                Text("Quelle").font(.callout).foregroundStyle(Theme.secondary)
                 HStack {
-                    Text(fileURL?.lastPathComponent ?? String(localized: "MoneyMoney.sqlite auswählen …"))
+                    Text(fileURL?.lastPathComponent ?? String(localized: "MoneyMoney-Ordner oder MoneyMoney.sqlite auswählen …"))
                         .font(.callout.weight(fileURL == nil ? .regular : .medium))
                         .foregroundStyle(fileURL == nil ? Theme.secondary : Theme.text)
                         .lineLimit(1).truncationMode(.middle)
                     Spacer()
-                    Button(fileURL == nil ? "Auswählen …" : "Andere Datei …") { pickFile() }.controlSize(.small)
+                    Button(fileURL == nil ? "Auswählen …" : "Andere Quelle …") { pickFile() }.controlSize(.small)
                 }
             }
             GridRow {
@@ -117,6 +123,7 @@ struct MoneyMoneyDatabaseImportView: View {
                 stat(p.totalBookings.formatted(), "Buchungen")
                 stat("\(p.notesCount)", "Notizen")
                 stat("\(p.categoryPaths.count)", "Kategorien")
+                if p.statementCount > 0 { stat(p.statementCount.formatted(), "Dokumente") }
             }
             if p.pendingBookings > 0 {
                 Text("\(p.pendingBookings) vorgemerkte Buchungen werden nicht übernommen – die Bank liefert sie nach der Buchung erneut.")
@@ -213,6 +220,9 @@ struct MoneyMoneyDatabaseImportView: View {
             if groupCount > 0 {
                 Toggle("Kontogruppen übernehmen (\(groupCount))", isOn: $importGroups)
             }
+            if p.statementCount > 0 {
+                statementOptions(p)
+            }
             Toggle("Bankzugänge anlegen", isOn: $createConnections)
             Toggle("Gespeicherte PINs übernehmen", isOn: $importPins)
                 .disabled(!createConnections)
@@ -222,6 +232,30 @@ struct MoneyMoneyDatabaseImportView: View {
         .toggleStyle(.switch).controlSize(.small)
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 12)
+    }
+
+    /// Statement PDFs: MoneyMoney's database only lists them, the files are
+    /// in its `Statements` folder – or, for a backup, wherever the user saved them.
+    @ViewBuilder
+    private func statementOptions(_ p: MoneyMoneyDbPreview) -> some View {
+        let size = ByteCountFormatter.string(fromByteCount: Int64(p.statementsBytes), countStyle: .file)
+        Toggle("Kontoauszüge & Dokumente übernehmen (\(p.statementsFound))", isOn: $importStatements)
+            .disabled(p.statementsFound == 0)
+        VStack(alignment: .leading, spacing: 4) {
+            if p.statementsDir == nil {
+                Text("MoneyMoney verzeichnet \(p.statementCount) PDF-Dokumente, die Dateien liegen aber nicht bei dieser Datenbank. Wenn Sie sie gesichert haben, wählen Sie den Ordner aus – sonst werden sie ausgelassen und lassen sich später nachholen.")
+            } else if p.statementsFound < p.statementCount {
+                Text("\(p.statementsFound) von \(p.statementCount) PDF-Dokumenten gefunden (\(size)). Die übrigen werden ausgelassen.")
+            } else {
+                Text("\(p.statementCount) PDF-Dokumente (\(size)) kommen verschlüsselt in den GiroCrab-Tresor.")
+            }
+            if p.statementsFound < p.statementCount {
+                Button(statementsURL == nil ? "Ordner mit Auszügen wählen …" : "Anderen Ordner wählen …") { pickStatementsFolder() }
+                    .controlSize(.small)
+                    .disabled(loading || importing)
+            }
+        }
+        .font(.caption).foregroundStyle(Theme.secondary).padding(.leading, 2)
     }
 
     private func resultCard(_ r: MoneyMoneyDbImportResult) -> some View {
@@ -235,7 +269,22 @@ struct MoneyMoneyDatabaseImportView: View {
             }
             Group {
                 if r.documentsImported > 0 {
-                    Text("\(r.documentsImported) Kontoauszüge (PDF) übernommen.")
+                    Text("\(r.documentsImported) Kontoauszüge und Dokumente (PDF) übernommen.")
+                }
+                if r.documentsExisting > 0 {
+                    Text("\(r.documentsExisting) Dokumente waren bereits vorhanden.")
+                }
+                if r.documentsMissing > 0 {
+                    Text("\(r.documentsMissing) Dokumente wurden nicht gefunden – sie lassen sich später mit dem Ordner der PDF-Dateien nachholen.")
+                }
+                if r.documentsMismatched > 0 {
+                    Text("\(r.documentsMismatched) Dateien stimmen nicht mit der Prüfsumme aus MoneyMoney überein und wurden nicht übernommen.")
+                }
+                if r.documentsTooLarge > 0 {
+                    Text("\(r.documentsTooLarge) Dokumente sind größer als 25 MB und wurden nicht übernommen.")
+                }
+                if r.documentsUnlisted > 0 {
+                    Text("\(r.documentsUnlisted) PDF-Dateien im Ordner kennt MoneyMoney nicht – sie gehören zu keinem Konto und wurden nicht übernommen.")
                 }
                 if r.holdingsImported > 0 {
                     Text("\(r.holdingsImported) Depotpositionen übernommen.")
@@ -313,6 +362,7 @@ struct MoneyMoneyDatabaseImportView: View {
         if let f = a.firstDate, let l = a.lastDate { s += " · \(DateText.medium(f)) – \(DateText.medium(l))" }
         if a.pendingCount > 0 { s += " · " + String(localized: "\(a.pendingCount) vorgemerkt") }
         if a.holdingCount > 0 { s += " · " + String(localized: "\(a.holdingCount) Depotpositionen") }
+        if a.statementCount > 0 { s += " · " + String(localized: "\(a.statementCount) Dokumente") }
         return s
     }
 
@@ -337,16 +387,19 @@ struct MoneyMoneyDatabaseImportView: View {
         #if os(macOS)
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
-        panel.canChooseDirectories = false
+        // the folder brings the statement PDFs along; a single file is a backup
+        panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = String(localized: "MoneyMoney-Datenbank auswählen (MoneyMoney.sqlite)")
+        panel.message = String(localized: "MoneyMoney-Ordner auswählen (mit Kontoauszügen) – oder eine einzelne Datenbank, z. B. ein Backup (MoneyMoney.sqlite)")
         panel.prompt = String(localized: "Auswählen")
         panel.treatsFilePackagesAsDirectories = true
+        // opens inside MoneyMoney's folder: "Auswählen" right away takes the folder
         let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney/Database")
+            .appendingPathComponent("Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney")
         if FileManager.default.fileExists(atPath: dir.path) { panel.directoryURL = dir }
         if panel.runModal() == .OK, let url = panel.url {
             fileURL = url
+            statementsURL = nil
             preview = nil
             choices = [:]
             error = nil
@@ -354,15 +407,34 @@ struct MoneyMoneyDatabaseImportView: View {
         #endif
     }
 
+    /// Folder with separately saved statement PDFs (for a backup database).
+    private func pickStatementsFolder() {
+        #if os(macOS)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = String(localized: "Ordner mit den gesicherten Kontoauszügen (PDF) auswählen – Unterordner werden mit durchsucht")
+        panel.prompt = String(localized: "Auswählen")
+        if panel.runModal() == .OK, let url = panel.url {
+            statementsURL = url
+            loadPreview()
+        }
+        #endif
+    }
+
     private func loadPreview() {
         guard let vault = model.vault, let url = fileURL else { return }
+        let statements = statementsURL
         let pw = password
         loading = true; error = nil
         Task {
             let result = await Task.detached { () -> Result<MoneyMoneyDbPreview, Error> in
                 let ok = url.startAccessingSecurityScopedResource()
                 defer { if ok { url.stopAccessingSecurityScopedResource() } }
-                return Result { try vault.previewMoneymoneyDatabase(path: url.path, password: pw) }
+                let ok2 = statements?.startAccessingSecurityScopedResource() ?? false
+                defer { if ok2 { statements?.stopAccessingSecurityScopedResource() } }
+                return Result { try vault.previewMoneymoneyDatabase(path: url.path, password: pw, statementsDir: statements?.path) }
             }.value
             loading = false
             switch result {
@@ -378,7 +450,7 @@ struct MoneyMoneyDatabaseImportView: View {
         guard let vault = model.vault, let url = fileURL, let preview else { return }
         if model.demoDbPreview != nil {
             // demo: nothing to read – show what the summary looks like
-            result = MoneyMoneyDbImportResult(accountsCreated: 5, accountsMerged: 1, groupsCreated: 2, bookingsNew: preview.totalBookings, bookingsDuplicates: 0, bookingsEnriched: 0, pendingSkipped: preview.pendingBookings, notesImported: preview.notesCount, categoriesCreated: UInt32(preview.categoryPaths.count), connectionsCreated: 3, connectionsExisting: 0, pinsStored: 0, banksSkippedUnsupported: 1, documentsImported: 0, holdingsImported: 0, rulesCreated: 0, rulesDisabled: 0)
+            result = MoneyMoneyDbImportResult(accountsCreated: 5, accountsMerged: 1, groupsCreated: 2, bookingsNew: preview.totalBookings, bookingsDuplicates: 0, bookingsEnriched: 0, pendingSkipped: preview.pendingBookings, notesImported: preview.notesCount, categoriesCreated: UInt32(preview.categoryPaths.count), connectionsCreated: 3, connectionsExisting: 0, pinsStored: 0, banksSkippedUnsupported: 1, documentsImported: importStatements ? preview.statementsFound : 0, documentsExisting: 0, documentsMissing: 0, documentsMismatched: 0, documentsTooLarge: 0, documentsUnlisted: 0, holdingsImported: 0, rulesCreated: 0, rulesDisabled: 0)
             password = ""
             return
         }
@@ -391,13 +463,18 @@ struct MoneyMoneyDatabaseImportView: View {
             importNotes: importNotes,
             createConnections: createConnections,
             importPins: createConnections && importPins,
-            importGroups: importGroups)
+            importGroups: importGroups,
+            importStatements: importStatements && preview.statementsFound > 0,
+            statementsDir: statementsURL?.path)
+        let statements = statementsURL
         let pw = password
         importing = true; error = nil
         Task {
             let result = await Task.detached { () -> Result<MoneyMoneyDbImportResult, Error> in
                 let ok = url.startAccessingSecurityScopedResource()
                 defer { if ok { url.stopAccessingSecurityScopedResource() } }
+                let ok2 = statements?.startAccessingSecurityScopedResource() ?? false
+                defer { if ok2 { statements?.stopAccessingSecurityScopedResource() } }
                 return Result { try vault.importMoneymoneyDatabase(path: url.path, password: pw, options: options) }
             }.value
             importing = false
@@ -447,7 +524,7 @@ extension AppModel {
             MoneyMoneyDbAccount(mmId: id, name: name, iban: iban, accountNumber: number, currency: currency, bankCode: code, bankName: bank,
                                 owner: "Max Mustermann", groupName: group, mmBankId: nil, isPortfolio: portfolio, suggestedKind: kind,
                                 existingAccountId: existing?.id, existingAccountName: existing?.name, bookingCount: count, pendingCount: pending, holdingCount: portfolio ? 3 : 0,
-                                notesCount: 0, firstDate: from, lastDate: to, computedBalanceCents: balance,
+                                notesCount: 0, firstDate: from, lastDate: to, statementCount: kind == .checking ? 48 : 0, computedBalanceCents: balance,
                                 balanceSource: "Anfangssaldo laut MoneyMoney-Saldenverlauf + Umsätze")
         }
         let accounts = [
@@ -479,7 +556,10 @@ extension AppModel {
                           "Steuern", "Reisen", "Abos", "Gesundheit", "Geschenke", "Sparen"]
         return MoneyMoneyDbPreview(accounts: accounts, banks: banks, categoryPaths: categories, totalBookings: 6790,
                                    pendingBookings: 5, notesCount: 312, splitParts: 14,
-                                   dateRangeStart: "2009-04-01", dateRangeEnd: "2026-11-09", replacesStarterCategories: true)
+                                   dateRangeStart: "2009-04-01", dateRangeEnd: "2026-11-09", replacesStarterCategories: true,
+                                   databasePath: "MoneyMoney.sqlite",
+                                   statementCount: accounts.reduce(0) { $0 + $1.statementCount }, statementsDir: "Statements",
+                                   statementsFound: accounts.reduce(0) { $0 + $1.statementCount }, statementsBytes: 38_400_000)
     }
 }
 

@@ -19,6 +19,7 @@ CREATE TABLE category_groups (rowid INTEGER PRIMARY KEY, name TEXT, perspective 
 CREATE TABLE pins (bank_key INTEGER PRIMARY KEY, pin TEXT);
 CREATE TABLE recipients (local_account_key INTEGER, name TEXT, owner TEXT, account TEXT, subaccount TEXT, bankcode TEXT, iban TEXT, bic TEXT, type INTEGER);
 CREATE TABLE securities (rowid INTEGER PRIMARY KEY, account_key INTEGER, ident TEXT, isin TEXT, wpn TEXT, symbol TEXT, quantity REAL, quantity_cur TEXT, amount REAL, amount_cur TEXT, ocmt REAL, ocmt_cur TEXT, purchase REAL, purchase_cur TEXT, price REAL, price_cur TEXT, exch REAL, trade_date INTEGER, trade_tsp INTEGER, purchase_tsp INTEGER, market TEXT, comment TEXT, userdata BLOB, visited INTEGER, deleted INTEGER, asset_class INTEGER);
+CREATE TABLE statements (rowid INTEGER PRIMARY KEY, account_key INTEGER, name TEXT, directory TEXT, filename TEXT, created_tsp INTEGER, fetched_tsp INTEGER, orderid INTEGER, userorder INTEGER, imported INTEGER, visited INTEGER, deleted INTEGER, number TEXT, year TEXT, identifier BLOB, digest TEXT);
 CREATE TABLE transactions (rowid INTEGER PRIMARY KEY, local_account_key INTEGER, account TEXT, bankcode TEXT, amount REAL, currency TEXT, timestamp INTEGER, value_timestamp INTEGER, pn TEXT, eref TEXT, mref TEXT, kref TEXT, cred TEXT, dept TEXT, rtcd TEXT, rtrn TEXT, ocmt REAL, ocmt_cur TEXT, chgs REAL, chgs_cur TEXT, coam REAL, coam_cur TEXT, oamt REAL, oamt_cur TEXT, exch REAL, abwe TEXT, abwa TEXT, seq TEXT, comment TEXT, attachment TEXT, booked INTEGER, nopretty INTEGER, unformatted_type TEXT, unformatted_name TEXT, unformatted_purpose TEXT, identifier TEXT, name TEXT, a1490107618 TEXT, visited INTEGER, checkmark INTEGER, splitted INTEGER, split_key INTEGER, reverse_key INTEGER, category_key INTEGER);
 "#;
 
@@ -125,6 +126,8 @@ fn options_from(
         create_connections: connections,
         import_pins: pins,
         import_groups: true,
+        import_statements: true,
+        statements_dir: None,
     }
 }
 
@@ -177,17 +180,17 @@ fn wrong_password_and_missing_file() {
     let path = fake_db();
     let v = vault();
     let err = v
-        .preview_moneymoney_database(path.clone(), "falsch".into())
+        .preview_moneymoney_database(path.clone(), "falsch".into(), None)
         .unwrap_err();
     assert!(matches!(err, CoreError::Authentication { .. }));
     assert!(err.to_string().contains("Falsches Passwort"));
     assert!(!err.to_string().contains("falsch\""));
     let err = v
-        .preview_moneymoney_database(path, String::new())
+        .preview_moneymoney_database(path, String::new(), None)
         .unwrap_err();
     assert!(matches!(err, CoreError::Authentication { .. }));
     let err = v
-        .preview_moneymoney_database("/nonexistent/MoneyMoney.sqlite".into(), PW.into())
+        .preview_moneymoney_database("/nonexistent/MoneyMoney.sqlite".into(), PW.into(), None)
         .unwrap_err();
     assert!(matches!(err, CoreError::NotFound { .. }));
     // an unencrypted SQLite file that is not MoneyMoney's
@@ -197,7 +200,7 @@ fn wrong_password_and_missing_file() {
         .execute_batch("CREATE TABLE x (a);")
         .unwrap();
     let err = v
-        .preview_moneymoney_database(plain.to_string_lossy().to_string(), PW.into())
+        .preview_moneymoney_database(plain.to_string_lossy().to_string(), PW.into(), None)
         .unwrap_err();
     assert!(matches!(err, CoreError::Authentication { .. }));
 }
@@ -207,19 +210,21 @@ fn unencrypted_database_opens_with_empty_password() {
     let path = fake_db_unencrypted();
     let v = vault();
     let p = v
-        .preview_moneymoney_database(path.clone(), String::new())
+        .preview_moneymoney_database(path.clone(), String::new(), None)
         .unwrap();
     assert_eq!(p.accounts.len(), 4);
     // an encrypted file must not open without a password
     let enc = fake_db();
-    assert!(v.preview_moneymoney_database(enc, String::new()).is_err());
+    assert!(v
+        .preview_moneymoney_database(enc, String::new(), None)
+        .is_err());
 }
 
 #[test]
 fn older_cipher_compatibility_3_opens() {
     let path = fake_db_with(true, "");
     let p = vault()
-        .preview_moneymoney_database(path, PW.into())
+        .preview_moneymoney_database(path, PW.into(), None)
         .unwrap();
     assert_eq!(p.accounts.len(), 4);
 }
@@ -231,7 +236,7 @@ fn source_file_bytes_unchanged_after_preview_and_import() {
     let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
     let v = vault();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true, true))
         .unwrap();
@@ -250,7 +255,9 @@ fn source_file_bytes_unchanged_after_preview_and_import() {
 #[test]
 fn preview_lists_accounts_banks_categories_and_totals() {
     let v = vault();
-    let p = v.preview_moneymoney_database(fake_db(), PW.into()).unwrap();
+    let p = v
+        .preview_moneymoney_database(fake_db(), PW.into(), None)
+        .unwrap();
     let giro = p.accounts.iter().find(|a| a.mm_id == 1).unwrap();
     assert_eq!(giro.iban, "DE89370400440532013000");
     assert_eq!(giro.group_name, "Privat");
@@ -314,7 +321,7 @@ fn import_categories_splits_pending_notes_and_balance() {
     let v = vault();
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let r = v
         .import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
@@ -397,7 +404,7 @@ fn reimport_is_idempotent() {
     let v = vault();
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let first = v
         .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true, true))
@@ -416,7 +423,7 @@ fn reimport_is_idempotent() {
     let after_first = count(&v);
     // second run with the options a fresh preview suggests …
     let p2 = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     assert!(p2.accounts.iter().all(|a| a.existing_account_id.is_some()));
     assert!(p2.banks[..2]
@@ -476,7 +483,7 @@ fn iban_match_merges_into_existing_synced_account() {
     };
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let giro = p.accounts.iter().find(|a| a.mm_id == 1).unwrap();
     assert_eq!(giro.existing_account_id, Some(existing));
@@ -512,7 +519,7 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
     let v = vault();
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
         .unwrap();
@@ -559,7 +566,7 @@ fn connections_for_supported_banks_only_and_pins_on_request() {
     let v = vault();
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     // without import_pins: connections, but no PIN
     let r = v
@@ -648,7 +655,7 @@ fn secret_columns_and_pins_are_never_read_unless_requested() {
     drop(c);
     let v = vault();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     assert!(p.banks[0].has_saved_pin);
     // connections without PINs, and PINs requested without connections: pin column untouched
@@ -667,7 +674,7 @@ fn kind_override_on_reimport() {
     let v = vault();
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let mut o = options_from(&p, false, false);
     for c in &mut o.accounts {
@@ -699,7 +706,7 @@ fn imported_accounts_are_linked_to_their_bank_login() {
     let v = vault();
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
         .unwrap();
@@ -720,7 +727,7 @@ fn accounts_stay_unlinked_without_bank_logins() {
     let v = vault();
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
         .unwrap();
@@ -736,7 +743,7 @@ fn first_bank_sync_adopts_imported_card_without_iban_by_kind() {
     let v = vault();
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
         .unwrap();
@@ -777,7 +784,7 @@ fn starter_categories_are_replaced_in_an_empty_vault() {
     assert!(!v.list_rules().unwrap().is_empty());
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     assert!(p.replaces_starter_categories);
     v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
@@ -810,13 +817,13 @@ fn starter_categories_stay_when_the_vault_has_bookings() {
     let starter = v.seed_starter_categories().unwrap() as usize;
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
         .unwrap();
     // second run: the vault now has bookings, nothing is replaced
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     assert!(!p.replaces_starter_categories);
     let before = v.list_categories(None, None).unwrap().len();
@@ -828,7 +835,7 @@ fn starter_categories_stay_when_the_vault_has_bookings() {
     v.seed_starter_categories().unwrap();
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     // categories not wanted: the starter set stays
     let mut o = options_from(&p, false, false);
@@ -895,42 +902,195 @@ fn generic_enable_banking_connection_is_stored_once() {
     assert_eq!(c[0].display_name, "N26");
 }
 
-#[test]
-fn pdf_statements_are_imported_once() {
-    // "%PDF-1.4\n%%EOF" and a non-PDF blob that must be ignored
-    let probe = fake_db();
-    let v = vault();
-    let first_id = v
-        .preview_moneymoney_database(probe, PW.into())
+fn sha256(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02X}"))
+        .collect()
+}
+
+fn pdf(text: &str) -> Vec<u8> {
+    format!("%PDF-1.4\n{text}\n%%EOF").into_bytes()
+}
+
+/// A MoneyMoney database listing four documents (and a deleted one) the way
+/// MoneyMoney does: bank folder, file name, date, upper-case SHA-256.
+fn statements_db() -> String {
+    let (a, b, c, d) = (pdf("A"), pdf("B"), pdf("C"), pdf("D"));
+    fake_db_with(
+        false,
+        &format!(
+            "INSERT INTO statements (rowid, account_key, name, directory, filename, created_tsp, deleted, digest) VALUES
+               (1, 1, 'Girokonto', 'Musterbank', 'Kontoauszug_2026_001.pdf', 1767225600, 0, '{}'),
+               (2, 1, 'Girokonto', 'Musterbank', 'Steuerbescheinigung_2025.pdf', 1767312000, 0, '{}'),
+               (3, 1, 'Girokonto', 'Musterbank', 'Kreditkartenabrechnung_2026_01.pdf', 1767398400, 0, '{}'),
+               (4, 1, 'Girokonto', 'Musterbank', 'Geloescht.pdf', 1767398400, 1, ''),
+               (5, 2, 'Visa-Karte', 'Musterbank', 'Vertragsinformationen.pdf', 1767484800, 0, '{}');",
+            sha256(&a),
+            sha256(&b),
+            sha256(&c),
+            sha256(&d)
+        ),
+    )
+}
+
+fn docs(v: &Vault) -> Vec<(String, String, String, String)> {
+    let mut out: Vec<_> = v
+        .list_all_documents(crate::documents::DocumentFilter::default())
         .unwrap()
-        .accounts[0]
-        .mm_id;
-    let extra = format!(
-        "CREATE TABLE statements (rowid INTEGER PRIMARY KEY, local_account_key INTEGER, name TEXT, timestamp INTEGER, data BLOB);
-         INSERT INTO statements VALUES (1, {first_id}, 'Kontoauszug 01/2026', 1767225600, X'255044462d312e340a2525454f46');
-         INSERT INTO statements VALUES (2, {first_id}, 'Kaputt', 1767225600, X'0102030405');"
-    );
-    let path = fake_db_with(false, &extra);
+        .into_iter()
+        .map(|d| (d.file_name, d.doc_type, d.doc_date, d.title))
+        .collect();
+    out.sort();
+    out
+}
+
+#[test]
+fn statements_are_imported_from_the_moneymoney_folder() {
+    // <folder>/Database/MoneyMoney.sqlite + <folder>/Statements/<bank>/<file>
+    let folder = temp("mm-folder");
+    let bank = folder.join("Statements").join("Musterbank");
+    std::fs::create_dir_all(&bank).unwrap();
+    std::fs::create_dir_all(folder.join("Database")).unwrap();
+    std::fs::rename(
+        statements_db(),
+        folder.join("Database").join("MoneyMoney.sqlite"),
+    )
+    .unwrap();
+    std::fs::write(bank.join("Kontoauszug_2026_001.pdf"), pdf("A")).unwrap();
+    // B is missing, C has other content than the database says, D is fine
+    std::fs::write(bank.join("Kreditkartenabrechnung_2026_01.pdf"), pdf("X")).unwrap();
+    std::fs::write(bank.join("Vertragsinformationen.pdf"), pdf("D")).unwrap();
+    std::fs::write(bank.join("Fremd.pdf"), pdf("F")).unwrap();
+    let path = folder.to_string_lossy().to_string();
+
+    let v = vault();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    let r1 = v
+    assert!(p.database_path.ends_with("MoneyMoney.sqlite"));
+    assert!(p.statements_dir.as_deref().unwrap().ends_with("Statements"));
+    assert_eq!((p.statement_count, p.statements_found), (4, 3));
+    assert_eq!(p.statements_bytes, 3 * pdf("A").len() as u64);
+    let giro = p.accounts.iter().find(|a| a.name == "Girokonto").unwrap();
+    assert_eq!(giro.statement_count, 3, "the deleted one is not counted");
+
+    let r = v
         .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
         .unwrap();
-    assert_eq!(r1.documents_imported, 1);
-    let r2 = v
-        .import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+    assert_eq!(
+        (
+            r.documents_imported,
+            r.documents_missing,
+            r.documents_mismatched,
+            r.documents_unlisted
+        ),
+        (2, 1, 1, 1)
+    );
+    assert_eq!(
+        docs(&v),
+        vec![
+            (
+                "Kontoauszug_2026_001.pdf".to_string(),
+                "kontoauszug".to_string(),
+                "2026-01-01".to_string(),
+                "Kontoauszug 2026 001".to_string()
+            ),
+            (
+                "Vertragsinformationen.pdf".to_string(),
+                "postbox".to_string(),
+                "2026-01-04".to_string(),
+                "Vertragsinformationen".to_string()
+            ),
+        ]
+    );
+    // linked to their accounts
+    let giro_id = account_by_name(&v, "Girokonto").id;
+    let of_giro = v
+        .list_all_documents(crate::documents::DocumentFilter {
+            account_id: Some(giro_id),
+            ..Default::default()
+        })
         .unwrap();
-    assert_eq!(r2.documents_imported, 0);
-    let docs = v
-        .list_all_documents(crate::documents::DocumentFilter::default())
+    assert_eq!(of_giro.len(), 1);
+
+    // again: nothing twice; and without the option nothing at all
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
         .unwrap();
-    assert_eq!(docs.len(), 1);
-    assert_eq!(docs[0].doc_type, "kontoauszug");
-    assert!(v
-        .get_document_bytes(docs[0].id)
-        .unwrap()
-        .starts_with(b"%PDF-1.4"));
+    assert_eq!((r.documents_imported, r.documents_existing), (0, 2));
+    let mut off = options_from(&p, false, false);
+    off.import_statements = false;
+    let r = v.import_moneymoney_database(path, PW.into(), off).unwrap();
+    assert_eq!(
+        (
+            r.documents_imported,
+            r.documents_existing,
+            r.documents_missing
+        ),
+        (0, 0, 0)
+    );
+    assert_eq!(docs(&v).len(), 2);
+    let _ = std::fs::remove_dir_all(folder);
+}
+
+#[test]
+fn statements_of_a_backup_come_from_a_separately_saved_folder() {
+    // a single database file somewhere: documents are listed, but no files
+    let path = statements_db();
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    assert_eq!(
+        (
+            p.statement_count,
+            p.statements_found,
+            p.statements_dir.clone()
+        ),
+        (4, 0, None)
+    );
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!((r.documents_imported, r.documents_missing), (0, 4));
+
+    // later, with a manual backup of the PDFs: A renamed in a subfolder (found
+    // by checksum), B by its name without the bank folder, C and D not saved
+    let saved = temp("mm-saved");
+    std::fs::create_dir_all(saved.join("alt")).unwrap();
+    std::fs::write(saved.join("alt").join("scan 1.PDF"), pdf("A")).unwrap();
+    std::fs::write(saved.join("Steuerbescheinigung_2025.pdf"), pdf("B")).unwrap();
+    std::fs::write(saved.join("notiz.txt"), b"kein PDF").unwrap();
+    let dir = saved.to_string_lossy().to_string();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), Some(dir.clone()))
+        .unwrap();
+    assert_eq!((p.statement_count, p.statements_found), (4, 2));
+    let mut options = options_from(&p, false, false);
+    options.statements_dir = Some(dir);
+    let r = v
+        .import_moneymoney_database(path, PW.into(), options)
+        .unwrap();
+    assert_eq!(
+        (
+            r.documents_imported,
+            r.documents_missing,
+            r.documents_mismatched,
+            r.documents_unlisted
+        ),
+        (2, 2, 0, 0)
+    );
+    let d = docs(&v);
+    assert_eq!(d.len(), 2);
+    // the original file name and date come from the database
+    assert_eq!(d[0].0, "Kontoauszug_2026_001.pdf");
+    assert_eq!(
+        (d[1].0.as_str(), d[1].1.as_str(), d[1].2.as_str()),
+        ("Steuerbescheinigung_2025.pdf", "steuer", "2026-01-02")
+    );
+    let _ = std::fs::remove_dir_all(saved);
 }
 
 #[test]
@@ -952,7 +1112,7 @@ fn depot_balance_from_shown_balance_and_holdings() {
     let v = vault();
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let depot = p.accounts.iter().find(|a| a.name == "Depot").unwrap();
     assert!(depot.is_portfolio);
@@ -993,7 +1153,7 @@ fn depot_balance_from_shown_balance_and_holdings() {
 
     // second run replaces instead of duplicating
     let p2 = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let r2 = v
         .import_moneymoney_database(path, PW.into(), options_from(&p2, false, false))
@@ -1019,7 +1179,9 @@ fn balances_blob_parsing() {
 #[test]
 fn reimport_of_emptied_depot_removes_stale_holdings() {
     let v = vault();
-    let p = v.preview_moneymoney_database(fake_db(), PW.into()).unwrap();
+    let p = v
+        .preview_moneymoney_database(fake_db(), PW.into(), None)
+        .unwrap();
     v.import_moneymoney_database(fake_db(), PW.into(), options_from(&p, false, false))
         .unwrap();
     let depot = account_by_name(&v, "Depot");
@@ -1032,7 +1194,7 @@ fn reimport_of_emptied_depot_removes_stale_holdings() {
          UPDATE accounts SET balances = CAST('6:0.010000,3:EUR,' AS BLOB) WHERE rowid = 3;",
     );
     let p2 = v
-        .preview_moneymoney_database(sold.clone(), PW.into())
+        .preview_moneymoney_database(sold.clone(), PW.into(), None)
         .unwrap();
     let d2 = p2.accounts.iter().find(|a| a.name == "Depot").unwrap();
     assert_eq!(d2.holding_count, 0);
@@ -1064,7 +1226,7 @@ fn shown_balance_also_wins_for_checking_accounts() {
         "UPDATE accounts SET balances = CAST('10:1234.560000,3:EUR,' AS BLOB), balance_tsp = 1772971200 WHERE rowid = 1;",
     );
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let giro = p.accounts.iter().find(|a| a.name == "Girokonto").unwrap();
     assert_eq!(giro.computed_balance_cents, 123_456);
@@ -1094,7 +1256,7 @@ fn import_takes_over_moneymoney_groups() {
     let v = vault();
     let path = fake_db();
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let r = v
         .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
@@ -1146,7 +1308,7 @@ fn import_takes_over_nested_groups_in_moneymoney_order() {
          UPDATE accounts SET group_key = 4 WHERE rowid = 4;",
     );
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let shown = |name: &str| {
         p.accounts
@@ -1216,7 +1378,7 @@ fn imports_category_rules() {
            (7, 'Sonstiges', 1, 0, 5, '   ');",
     );
     let p = v
-        .preview_moneymoney_database(path.clone(), PW.into())
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let r = v
         .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))

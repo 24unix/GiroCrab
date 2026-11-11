@@ -98,7 +98,7 @@ pub fn sniff_mime(bytes: &[u8], file_name: &str) -> String {
     .to_string()
 }
 
-fn title_from_file(file_name: &str) -> String {
+pub(crate) fn title_from_file(file_name: &str) -> String {
     let stem = file_name
         .rsplit_once('.')
         .map(|(s, _)| s)
