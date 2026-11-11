@@ -124,6 +124,7 @@ fn options_from(
         import_notes: true,
         create_connections: connections,
         import_pins: pins,
+        import_groups: true,
     }
 }
 
@@ -1086,4 +1087,49 @@ fn shown_balance_also_wins_for_checking_accounts() {
     assert_eq!(acc.balance_cents, 123_456);
     // balance date = max(newest booking, balance timestamp)
     assert_eq!(acc.balance_date, "2026-03-08");
+}
+
+#[test]
+fn import_takes_over_moneymoney_groups() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!(r.groups_created, 1);
+    let gs = v.list_user_groups().unwrap();
+    let privat = gs
+        .iter()
+        .find(|g| g.name == "Privat")
+        .expect("group 'Privat'");
+    let mut n: Vec<_> = privat.accounts.iter().map(|a| a.name.as_str()).collect();
+    n.sort();
+    assert_eq!(n, ["Girokonto", "Visa-Karte"]);
+    assert!(
+        gs.iter().any(|g| g.is_ungrouped),
+        "accounts without MoneyMoney group stay ungrouped"
+    );
+    // idempotent: no second group, a user move is kept on re-import
+    let giro = privat
+        .accounts
+        .iter()
+        .find(|a| a.name == "Girokonto")
+        .unwrap()
+        .id;
+    v.move_account_to_group(giro, None, None).unwrap();
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!(r.groups_created, 0);
+    let gs = v.list_user_groups().unwrap();
+    assert!(gs
+        .iter()
+        .find(|g| g.is_ungrouped)
+        .unwrap()
+        .accounts
+        .iter()
+        .any(|a| a.id == giro));
 }

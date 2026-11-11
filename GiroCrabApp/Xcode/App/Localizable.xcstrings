@@ -3536,6 +3536,17 @@
         }
       }
     },
+    "Kontogruppen übernehmen (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep Account Groups (%lld)"
+          }
+        }
+      }
+    },
     "Kontostand" : {
       "extractionState" : "manual",
       "localizations" : {

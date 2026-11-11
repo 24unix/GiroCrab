@@ -1159,6 +1159,21 @@ impl Vault {
             )?;
             acc_ids.insert(spec.external_ref, tx.last_insert_rowid());
         }
+        // user groups for the "Nach Gruppe" sidebar view
+        for (name, sym, refs) in [
+            ("Alltag", "person", &["demo-giro", "demo-visa"][..]),
+            (
+                "Sparen & Vorsorge",
+                "chart.pie",
+                &["demo-tagesgeld", "demo-depot"][..],
+            ),
+            ("Haus", "house", &["demo-darlehen"][..]),
+        ] {
+            let (uuid, _) = crate::user_groups::find_or_create(&tx, crate::i18n::tr(name), sym)?;
+            for r in refs {
+                crate::user_groups::assign(&tx, acc_ids[r], Some(&uuid), 0)?;
+            }
+        }
         let mut n = 0u32;
         {
             let mut ins = tx.prepare(

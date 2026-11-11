@@ -1,0 +1,937 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
+use rusqlite::params;
+
+use crate::vault::Vault;
+
+fn temp_dir(tag: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "gc-groups-{tag}-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn open(dir: &std::path::Path, file: &str) -> Arc<Vault> {
+    Vault::open(dir.join(file).to_string_lossy().into(), vec![7u8; 32]).unwrap()
+}
+
+/// Same bank login + accounts in a vault: (Giro, Depot, Visa) with balances.
+fn seed(v: &Vault) -> Vec<i64> {
+    let db = v.db().unwrap();
+    db.execute(
+        "INSERT INTO bank_connections(connector, display_name, login_name) VALUES ('fints:12345678', 'Bank', 'me')",
+        [],
+    )
+    .unwrap();
+    let con = db.last_insert_rowid();
+    db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+        .unwrap();
+    let g = db.last_insert_rowid();
+    let mut ids = vec![];
+    for (ext, name, kind, bal) in [
+        ("A1", "Giro", "checking", 100_00),
+        ("A2", "Depot", "brokerage", 5_000_00),
+        ("A3", "Visa", "credit_card", -50_00),
+    ] {
+        db.execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, kind, balance_cents) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![con, g, ext, name, kind, bal],
+        )
+        .unwrap();
+        ids.push(db.last_insert_rowid());
+    }
+    ids
+}
+
+fn tick() {
+    std::thread::sleep(Duration::from_millis(3));
+}
+
+fn names(v: &Vault) -> Vec<(String, Vec<String>)> {
+    v.list_user_groups()
+        .unwrap()
+        .into_iter()
+        .map(|g| (g.name, g.accounts.into_iter().map(|a| a.name).collect()))
+        .collect()
+}
+
+fn s(v: &[&str]) -> Vec<String> {
+    v.iter().map(|x| x.to_string()).collect()
+}
+
+#[test]
+fn create_rename_delete() {
+    let dir = temp_dir("crud");
+    let v = open(&dir, "a.db");
+    let ids = seed(&v);
+
+    // nothing grouped yet: only "Ohne Gruppe", sorted by kind (Giro, Visa, Depot)
+    let gs = v.list_user_groups().unwrap();
+    assert_eq!(gs.len(), 1);
+    assert!(gs[0].is_ungrouped && gs[0].uuid.is_empty());
+    assert_eq!(names(&v)[0].1, s(&["Giro", "Visa", "Depot"]));
+
+    let privat = v
+        .create_user_group(" Privat ".into(), "person".into())
+        .unwrap();
+    assert!(
+        v.create_user_group("privat".into(), "person".into())
+            .is_err(),
+        "names are unique, ignoring case"
+    );
+    assert!(v.create_user_group("  ".into(), "person".into()).is_err());
+    let firma = v
+        .create_user_group("Firma".into(), "briefcase".into())
+        .unwrap();
+
+    // empty user groups are listed (drop targets)
+    assert_eq!(
+        names(&v),
+        vec![
+            ("Privat".into(), vec![]),
+            ("Firma".into(), vec![]),
+            ("Ohne Gruppe".into(), s(&["Giro", "Visa", "Depot"]))
+        ]
+    );
+
+    v.move_account_to_group(ids[0], Some(privat.clone()), None)
+        .unwrap();
+    v.move_account_to_group(ids[1], Some(privat.clone()), Some(0))
+        .unwrap();
+    v.move_account_to_group(ids[2], Some(firma.clone()), None)
+        .unwrap();
+    let gs = v.list_user_groups().unwrap();
+    assert_eq!(
+        gs.len(),
+        2,
+        "no 'Ohne Gruppe' when every account is grouped"
+    );
+    assert_eq!(
+        names(&v)[0].1,
+        s(&["Depot", "Giro"]),
+        "index 0 puts Depot first"
+    );
+    assert_eq!(gs[0].balance_cents, 5_100_00);
+    assert_eq!(gs[0].sf_symbol, "person");
+
+    v.update_user_group(firma.clone(), "Geschäft".into(), "building.2".into(), true)
+        .unwrap();
+    assert!(v
+        .update_user_group(firma.clone(), "PRIVAT".into(), "x".into(), true)
+        .is_err());
+    assert!(v
+        .update_user_group("nope".into(), "X".into(), "x".into(), true)
+        .is_err());
+
+    v.reorder_user_groups(vec![firma.clone(), privat.clone()])
+        .unwrap();
+    v.reorder_accounts_in_group(Some(privat.clone()), vec![ids[0], ids[1], ids[2]])
+        .unwrap();
+    assert_eq!(
+        names(&v),
+        vec![
+            ("Geschäft".into(), s(&["Visa"])),
+            ("Privat".into(), s(&["Giro", "Depot"]))
+        ]
+    );
+
+    // deleting keeps the accounts, they go to "Ohne Gruppe"
+    v.delete_user_group(privat.clone()).unwrap();
+    assert!(
+        v.move_account_to_group(ids[0], Some(privat), None).is_err(),
+        "deleted group"
+    );
+    assert_eq!(
+        names(&v),
+        vec![
+            ("Geschäft".into(), s(&["Visa"])),
+            ("Ohne Gruppe".into(), s(&["Giro", "Depot"]))
+        ]
+    );
+    assert_eq!(v.list_accounts().unwrap().len(), 3);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn excluded_group_leaves_the_total() {
+    let dir = temp_dir("total");
+    let v = open(&dir, "a.db");
+    let ids = seed(&v);
+    let firma = v
+        .create_user_group("Firma".into(), "briefcase".into())
+        .unwrap();
+    v.move_account_to_group(ids[1], Some(firma.clone()), None)
+        .unwrap();
+    let total = |v: &Vault| {
+        v.balance_history(vec![], 1)
+            .unwrap()
+            .last()
+            .unwrap()
+            .balance_cents
+    };
+    assert_eq!(total(&v), 5_050_00);
+
+    v.update_user_group(firma.clone(), "Firma".into(), "briefcase".into(), false)
+        .unwrap();
+    let accs = v.list_accounts().unwrap();
+    assert!(!accs.iter().find(|a| a.id == ids[1]).unwrap().in_total);
+    assert!(accs.iter().find(|a| a.id == ids[0]).unwrap().in_total);
+    assert_eq!(total(&v), 50_00, "Depot excluded from the overall total");
+    // explicitly selected accounts are still summed
+    let one = v.balance_history(vec![ids[1]], 1).unwrap();
+    assert_eq!(one.last().unwrap().balance_cents, 5_000_00);
+    assert!(!v.list_user_groups().unwrap()[0].include_in_total);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn new_bank_account_joins_its_siblings_group() {
+    let dir = temp_dir("place");
+    let v = open(&dir, "a.db");
+    let ids = seed(&v);
+    let mama = v.create_user_group("Mama".into(), "person".into()).unwrap();
+    v.move_account_to_group(ids[0], Some(mama.clone()), None)
+        .unwrap();
+    v.move_account_to_group(ids[1], Some(mama.clone()), None)
+        .unwrap();
+    let db = v.db().unwrap();
+    db.execute(
+        "INSERT INTO accounts(connection_id, group_id, external_ref, name) SELECT connection_id, group_id, 'A4', 'Neu' FROM accounts WHERE id = ?1",
+        [ids[0]],
+    )
+    .unwrap();
+    let new = db.last_insert_rowid();
+    super::place_new_account(&db, new).unwrap();
+    let (uuid, ms): (Option<String>, i64) = db
+        .query_row(
+            "SELECT user_group_uuid, placement_ms FROM accounts WHERE id = ?1",
+            [new],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(uuid.as_deref(), Some(mama.as_str()));
+    assert_eq!(
+        ms, 0,
+        "automatic placement never beats a user choice on sync"
+    );
+
+    // other login without grouped accounts → stays ungrouped
+    db.execute("INSERT INTO accounts(group_id, external_ref, name) SELECT group_id, 'X', 'Bar' FROM accounts LIMIT 1", []).unwrap();
+    let other = db.last_insert_rowid();
+    super::place_new_account(&db, other).unwrap();
+    let uuid: Option<String> = db
+        .query_row(
+            "SELECT user_group_uuid FROM accounts WHERE id = ?1",
+            [other],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(uuid, None);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn merge_newest_edit_wins_and_deletions_stick() {
+    let dir = temp_dir("merge");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let ia = seed(&a);
+    let ib = seed(&b);
+
+    // A creates a group and moves Giro into it → B gets both
+    let privat = a
+        .create_user_group("Privat".into(), "person".into())
+        .unwrap();
+    a.move_account_to_group(ia[0], Some(privat.clone()), None)
+        .unwrap();
+    tick();
+    let st = b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    assert!(st.groups_updated >= 2);
+    assert_eq!(names(&b)[0], ("Privat".into(), s(&["Giro"])));
+
+    // concurrent edits: B renames the group, A moves Visa in and renames an account
+    b.update_user_group(privat.clone(), "Familie".into(), "person.2".into(), true)
+        .unwrap();
+    tick();
+    a.move_account_to_group(ia[2], Some(privat.clone()), None)
+        .unwrap();
+    a.rename_account(ia[1], "Mein Depot".into()).unwrap();
+    tick();
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    for v in [&a, &b] {
+        assert_eq!(
+            names(v),
+            vec![
+                ("Familie".into(), s(&["Giro", "Visa"])),
+                ("Ohne Gruppe".into(), s(&["Mein Depot"]))
+            ]
+        );
+    }
+    // an older rename doesn't overwrite a newer one
+    let depot_b = ib[1];
+    b.rename_account(depot_b, "Depot B".into()).unwrap();
+    tick();
+    a.rename_account(ia[1], "Depot A".into()).unwrap();
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    for v in [&a, &b] {
+        assert!(v
+            .list_accounts()
+            .unwrap()
+            .iter()
+            .any(|x| x.name == "Depot A"));
+    }
+
+    // A deletes the group; B (which still has it) must not bring it back
+    tick();
+    a.delete_user_group(privat.clone()).unwrap();
+    a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    assert!(a.list_user_groups().unwrap().iter().all(|g| g.is_ungrouped));
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    for v in [&a, &b] {
+        let gs = v.list_user_groups().unwrap();
+        assert_eq!(gs.len(), 1);
+        assert!(gs[0].is_ungrouped);
+        assert_eq!(gs[0].accounts.len(), 3);
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn merge_brings_new_accounts_with_their_group() {
+    let dir = temp_dir("merge-new");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let ia = seed(&a);
+    let g = a
+        .create_user_group("Kinder".into(), "figure.and.child.holdinghands".into())
+        .unwrap();
+    a.move_account_to_group(ia[2], Some(g.clone()), None)
+        .unwrap();
+    let st = b.merge_other_vault(a.file_path(), key).unwrap();
+    assert_eq!(st.accounts_added, 3);
+    assert_eq!(names(&b)[0], ("Kinder".into(), s(&["Visa"])));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+fn colors(v: &Vault) -> Vec<(String, String)> {
+    let mut c: Vec<_> = v
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .map(|a| (a.name, a.color_hex))
+        .collect();
+    c.sort();
+    c
+}
+
+#[test]
+fn account_colors_default_stable_and_sync() {
+    let dir = temp_dir("colors");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let bar = |v: &Vault| {
+        let db = v.db().unwrap();
+        db.execute(
+            "INSERT OR IGNORE INTO account_groups(name) VALUES ('H')",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO accounts(group_id, external_ref, name) \
+             VALUES ((SELECT id FROM account_groups WHERE name = 'H'), 'unrelated', 'Bar')",
+            [],
+        )
+        .unwrap();
+    };
+    // the same accounts, created in a different order → different local ids
+    let ia = seed(&a);
+    bar(&a);
+    bar(&b);
+    seed(&b);
+
+    // same default colours on both devices, distinct, nothing stored
+    let ca = colors(&a);
+    assert_eq!(ca, colors(&b));
+    let distinct: std::collections::HashSet<_> = ca.iter().map(|(_, c)| c.clone()).collect();
+    assert_eq!(
+        distinct.len(),
+        ca.len(),
+        "no two accounts share a default colour"
+    );
+    assert!(
+        ca.iter()
+            .all(|(_, c)| super::ACCOUNT_COLOR_PALETTE[..super::DISTINCT].contains(&c.as_str())),
+        "a few accounts only get the clearly distinct hues"
+    );
+    assert!(ca
+        .iter()
+        .all(|(_, c)| super::ACCOUNT_COLOR_PALETTE.contains(&c.as_str())));
+    let stored: i64 = a
+        .db()
+        .unwrap()
+        .query_row(
+            "SELECT count(*) FROM accounts WHERE color_hex IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, 0);
+
+    // a user choice syncs both ways; the newer one wins
+    assert!(a.set_account_color(ia[0], Some("blue".into())).is_err());
+    assert!(a.set_account_color(999, Some("#123456".into())).is_err());
+    a.set_account_color(ia[0], Some("#abcdef".into())).unwrap();
+    tick();
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    let giro = |v: &Vault| {
+        v.list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.name == "Giro")
+            .unwrap()
+            .color_hex
+    };
+    assert_eq!(giro(&b), "#ABCDEF");
+    let gb = b
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|x| x.name == "Giro")
+        .unwrap()
+        .id;
+    b.set_account_color(gb, None).unwrap();
+    tick();
+    a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    assert_eq!(
+        giro(&a),
+        ca.iter().find(|(n, _)| n == "Giro").unwrap().1,
+        "reset to default syncs too"
+    );
+    assert_eq!(super::account_color_palette().len(), 12);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn default_colors_distinct_up_to_twelve_and_respect_choices() {
+    let dir = temp_dir("colors12");
+    let v = open(&dir, "a.db");
+    let ids = seed(&v);
+    let add = |n: usize| {
+        let db = v.db().unwrap();
+        for i in 0..n {
+            db.execute(
+                "INSERT INTO accounts(group_id, external_ref, name) VALUES (1, ?1, ?1)",
+                [format!("X{i}-{}", uuid::Uuid::new_v4())],
+            )
+            .unwrap();
+        }
+    };
+    let counts = |v: &Vault| {
+        let mut m: HashMap<String, usize> = HashMap::new();
+        for a in v.list_accounts().unwrap() {
+            *m.entry(a.color_hex).or_default() += 1;
+        }
+        m
+    };
+    // a chosen colour is reserved: no default account gets it
+    v.set_account_color(ids[0], Some(super::ACCOUNT_COLOR_PALETTE[3].into()))
+        .unwrap();
+    add(9); // 12 accounts
+    let c = counts(&v);
+    assert_eq!(c.len(), 12, "12 accounts → 12 different colours");
+    assert_eq!(c[super::ACCOUNT_COLOR_PALETTE[3]], 1);
+    add(1); // 13th account: colours repeat as evenly as possible
+    let c = counts(&v);
+    assert_eq!(c.len(), 12);
+    assert_eq!(c.values().max(), Some(&2));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Creates a group and gives it a fixed uuid, so a test knows which one
+/// survives when two same-name groups are combined (the lower uuid).
+fn group_with_uuid(v: &Vault, name: &str, uuid: &str) -> String {
+    let made = v.create_user_group(name.into(), "folder".into()).unwrap();
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE user_groups SET uuid = ?2 WHERE uuid = ?1",
+            params![made, uuid],
+        )
+        .unwrap();
+    uuid.to_string()
+}
+
+fn live_groups(v: &Vault) -> Vec<(String, String)> {
+    v.list_user_groups()
+        .unwrap()
+        .into_iter()
+        .filter(|g| !g.is_ungrouped)
+        .map(|g| (g.uuid, g.name))
+        .collect()
+}
+
+#[test]
+fn same_name_groups_combine_on_sync() {
+    let dir = temp_dir("samename");
+    let key = vec![7u8; 32];
+    let (a, b, c) = (open(&dir, "a.db"), open(&dir, "b.db"), open(&dir, "c.db"));
+    let (ia, ib, ic) = (seed(&a), seed(&b), seed(&c));
+    let keep = "00000000-0000-4000-8000-000000000000";
+    let lose = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+
+    // both devices create "Privat" independently (different case even)
+    group_with_uuid(&a, "Privat", keep);
+    a.move_account_to_group(ia[0], Some(keep.into()), None)
+        .unwrap();
+    tick();
+    group_with_uuid(&b, "privat", lose);
+    b.update_user_group(lose.into(), "privat".into(), "person".into(), false)
+        .unwrap();
+    b.move_account_to_group(ib[2], Some(lose.into()), None)
+        .unwrap();
+    // C only knows B's group so far and puts Depot into it
+    c.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    tick();
+    c.move_account_to_group(ic[1], Some(lose.into()), None)
+        .unwrap();
+    tick();
+
+    // A ← B, B ← A: one group, same uuid, newest settings, both accounts
+    a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    for v in [&a, &b] {
+        assert_eq!(live_groups(v), vec![(keep.into(), "privat".into())]);
+        let g = &v.list_user_groups().unwrap()[0];
+        assert_eq!(g.sf_symbol, "person");
+        assert!(!g.include_in_total);
+        let mut accs: Vec<_> = g.accounts.iter().map(|x| x.name.clone()).collect();
+        accs.sort();
+        assert_eq!(accs, s(&["Giro", "Visa"]));
+    }
+    assert_eq!(synced_state(&a), synced_state(&b));
+    // C hasn't seen the combination yet: its later placement into the old
+    // group follows the pointer instead of dropping to "Ohne Gruppe"
+    c.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    a.merge_other_vault(c.file_path(), key.clone()).unwrap();
+    for v in [&a, &c] {
+        assert_eq!(live_groups(v), vec![(keep.into(), "privat".into())]);
+        assert_eq!(v.list_user_groups().unwrap()[0].accounts.len(), 3);
+    }
+    // the group is no longer stuck: saving it (same name) works, and so does
+    // a case-only rename
+    a.update_user_group(keep.into(), "privat".into(), "house".into(), true)
+        .unwrap();
+    a.update_user_group(keep.into(), "Privat".into(), "house".into(), true)
+        .unwrap();
+    assert_eq!(live_groups(&a), vec![(keep.into(), "Privat".into())]);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn deleted_group_stays_deleted_after_later_rename() {
+    let dir = temp_dir("delwins");
+    let key = vec![7u8; 32];
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let (ia, ib) = (seed(&a), seed(&b));
+    let g = a.create_user_group("Haus".into(), "house".into()).unwrap();
+    a.move_account_to_group(ia[0], Some(g.clone()), None)
+        .unwrap();
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    tick();
+
+    a.delete_user_group(g.clone()).unwrap();
+    tick();
+    // B, not synced yet, renames the group and moves another account in
+    b.update_user_group(g.clone(), "Wohnung".into(), "house".into(), true)
+        .unwrap();
+    b.move_account_to_group(ib[1], Some(g.clone()), None)
+        .unwrap();
+    tick();
+
+    a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    assert_eq!(synced_state(&a), synced_state(&b));
+    for v in [&a, &b] {
+        let gs = v.list_user_groups().unwrap();
+        assert_eq!(gs.len(), 1, "deleted group came back");
+        assert!(gs[0].is_ungrouped);
+        assert_eq!(gs[0].accounts.len(), 3);
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn user_merges_groups_and_other_devices_follow() {
+    let dir = temp_dir("usermerge");
+    let key = vec![7u8; 32];
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let ia = seed(&a);
+    seed(&b);
+    let privat = a
+        .create_user_group("Privat".into(), "person".into())
+        .unwrap();
+    let familie = a
+        .create_user_group("Familie".into(), "person.2".into())
+        .unwrap();
+    a.move_account_to_group(ia[0], Some(privat.clone()), None)
+        .unwrap();
+    a.move_account_to_group(ia[1], Some(familie.clone()), None)
+        .unwrap();
+    a.move_account_to_group(ia[2], Some(familie.clone()), None)
+        .unwrap();
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    tick();
+
+    a.merge_user_groups(familie.clone(), privat.clone())
+        .unwrap();
+    assert_eq!(
+        names(&a),
+        vec![("Privat".into(), s(&["Giro", "Depot", "Visa"]))]
+    );
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    for v in [&a, &b] {
+        assert_eq!(
+            names(v),
+            vec![("Privat".into(), s(&["Giro", "Depot", "Visa"]))]
+        );
+    }
+    assert!(a.merge_user_groups(familie, privat).is_err());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+fn user_version(v: &Vault) -> i64 {
+    v.db()
+        .unwrap()
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .unwrap()
+}
+
+fn columns(v: &Vault, table: &str) -> Vec<String> {
+    let db = v.db().unwrap();
+    let mut st = db
+        .prepare("SELECT name FROM pragma_table_info(?1)")
+        .unwrap();
+    st.query_map([table], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
+}
+
+fn total(v: &Vault) -> i64 {
+    v.balance_history(vec![], 1)
+        .unwrap()
+        .last()
+        .unwrap()
+        .balance_cents
+}
+
+/// Takes the v7 additions out again, leaving the schema a v6 build (GiroCrab
+/// ≤ 0.5.x, `main` before this PR) writes: no `user_groups` table, none of
+/// the new `accounts` columns, `user_version` 6.
+fn downgrade_to_v6(v: &Vault) {
+    let db = v.db().unwrap();
+    db.execute_batch("DROP TABLE user_groups;").unwrap();
+    for (col, _) in super::ACCOUNT_COLUMNS {
+        db.execute_batch(&format!("ALTER TABLE accounts DROP COLUMN {col};"))
+            .unwrap();
+    }
+    db.execute_batch("PRAGMA user_version = 6;").unwrap();
+}
+
+/// (a) A vault written by a v6 build is migrated in place when the new build
+/// opens it: nothing is lost, all accounts land in "Ohne Gruppe" and count
+/// towards the total, and opening it again changes nothing.
+#[test]
+fn v6_vault_is_migrated_by_this_build() {
+    let dir = temp_dir("v6");
+    let v = open(&dir, "vault.db");
+    let ids = seed(&v);
+    downgrade_to_v6(&v);
+    assert_eq!(user_version(&v), 6);
+    assert!(!columns(&v, "accounts").contains(&"user_group_uuid".to_string()));
+    assert!(columns(&v, "user_groups").is_empty());
+    // what a v6 build shows as the total: all accounts
+    let before: i64 = v
+        .db()
+        .unwrap()
+        .query_row("SELECT sum(balance_cents) FROM accounts", [], |r| r.get(0))
+        .unwrap();
+    drop(v);
+
+    for round in 0..2 {
+        let v = open(&dir, "vault.db");
+        assert_eq!(user_version(&v), 7, "round {round}");
+        let cols = columns(&v, "accounts");
+        for (col, _) in super::ACCOUNT_COLUMNS {
+            assert!(cols.contains(&col.to_string()), "accounts.{col}");
+        }
+        assert!(columns(&v, "user_groups").contains(&"merged_into".to_string()));
+        assert_eq!(total(&v), before, "visible total unchanged");
+        let accs = v.list_accounts().unwrap();
+        assert_eq!(accs.len(), 3);
+        assert!(accs.iter().all(|a| a.in_total && !a.color_hex.is_empty()));
+        if round == 0 {
+            assert!(accs.iter().all(|a| a.user_group_uuid.is_none()));
+            assert_eq!(
+                names(&v),
+                vec![("Ohne Gruppe".into(), s(&["Giro", "Visa", "Depot"]))]
+            );
+            // usable right away
+            let g = v
+                .create_user_group("Privat".into(), "person".into())
+                .unwrap();
+            v.move_account_to_group(ids[0], Some(g), None).unwrap();
+        } else {
+            // opening again changes nothing
+            assert_eq!(names(&v)[0], ("Privat".into(), s(&["Giro"])));
+        }
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// (c) A v7 vault opened and written by a v6 build, then opened by this build
+/// again. A v6 build never lowers `user_version` (it only migrates when the
+/// version is below 6) and writes accounts with explicit column lists, so the
+/// v7 columns keep their values or defaults. Simulated here with the
+/// statements a v6 build runs: a rename (`rename_account` without `name_ms`)
+/// and a new account from a bank sync (no group placement).
+#[test]
+fn v7_vault_survives_a_round_trip_through_a_v6_build() {
+    let dir = temp_dir("roundtrip");
+    let v = open(&dir, "vault.db");
+    let ids = seed(&v);
+    let firma = v
+        .create_user_group("Firma".into(), "briefcase".into())
+        .unwrap();
+    v.move_account_to_group(ids[0], Some(firma.clone()), None)
+        .unwrap();
+    v.update_user_group(firma.clone(), "Firma".into(), "briefcase".into(), false)
+        .unwrap();
+    v.set_account_color(ids[0], Some("#DC2626".into())).unwrap();
+    drop(v);
+
+    // --- the v6 build ---
+    {
+        let v = open(&dir, "vault.db");
+        let db = v.db().unwrap();
+        db.execute(
+            "UPDATE accounts SET name = 'Geschäftskonto' WHERE id = ?1",
+            [ids[0]],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, kind, balance_cents)
+             SELECT connection_id, group_id, 'A4', 'Tagesgeld', 'savings', 1000_00 FROM accounts WHERE id = ?1",
+            [ids[0]],
+        )
+        .unwrap();
+    }
+
+    // --- back in this build ---
+    let v = open(&dir, "vault.db");
+    assert_eq!(user_version(&v), 7);
+    let gs = v.list_user_groups().unwrap();
+    assert_eq!(gs[0].uuid, firma);
+    assert!(!gs[0].include_in_total);
+    let mut listed = names(&v);
+    listed[1].1.sort();
+    assert_eq!(
+        listed,
+        vec![
+            ("Firma".into(), s(&["Geschäftskonto"])),
+            ("Ohne Gruppe".into(), s(&["Depot", "Tagesgeld", "Visa"]))
+        ]
+    );
+    let accs = v.list_accounts().unwrap();
+    let giro = accs.iter().find(|a| a.id == ids[0]).unwrap();
+    assert_eq!(giro.color_hex, "#DC2626");
+    // the account the v6 build added counts towards the total; Firma doesn't
+    assert_eq!(total(&v), 5_000_00 - 50_00 + 1000_00);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Known limit, pinned: a rename made by a v6 build carries no `name_ms`, so
+/// an older but stamped rename from a v7 device wins the next merge.
+#[test]
+fn v6_rename_loses_against_a_stamped_rename_on_merge() {
+    let dir = temp_dir("v6rename");
+    let key = vec![7u8; 32];
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let ia = seed(&a);
+    let ib = seed(&b);
+    b.rename_account(ib[0], "Giro (B)".into()).unwrap();
+    tick();
+    // later, a v6 build renames the same account on A without a stamp
+    a.db()
+        .unwrap()
+        .execute(
+            "UPDATE accounts SET name = 'Giro (A, v6)' WHERE id = ?1",
+            [ia[0]],
+        )
+        .unwrap();
+    a.merge_other_vault(b.file_path(), key).unwrap();
+    let name = |v: &Vault, id: i64| {
+        v.list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.id == id)
+            .unwrap()
+            .name
+    };
+    assert_eq!(name(&a, ia[0]), "Giro (B)");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Everything that syncs, keyed by synced identities only: both devices
+/// must end up byte-for-byte equal here after merging both ways.
+#[allow(clippy::type_complexity)]
+fn synced_state(
+    v: &Vault,
+) -> (
+    Vec<(
+        String,
+        String,
+        String,
+        i64,
+        i64,
+        Option<i64>,
+        Option<String>,
+    )>,
+    Vec<(String, Option<String>, i64, i64, String)>,
+) {
+    let db = v.db().unwrap();
+    let groups = db
+        .prepare(
+            "SELECT uuid, name, sf_symbol, include_in_total, sort_order, deleted_ms, merged_into
+             FROM user_groups ORDER BY uuid",
+        )
+        .unwrap()
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    let accounts = db
+        .prepare(
+            "SELECT external_ref, user_group_uuid, user_sort_order, placement_ms, name
+             FROM accounts ORDER BY external_ref",
+        )
+        .unwrap()
+        .query_map([], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+        })
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    (groups, accounts)
+}
+
+fn sync_both_ways(a: &Vault, b: &Vault) {
+    let key = vec![7u8; 32];
+    a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    b.merge_other_vault(a.file_path(), key).unwrap();
+}
+
+/// Review point 3: edits of different fields on two devices both survive.
+#[test]
+fn concurrent_edits_of_different_fields_both_survive() {
+    let dir = temp_dir("fields");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    seed(&a);
+    seed(&b);
+    let g = a
+        .create_user_group("Privat".into(), "folder".into())
+        .unwrap();
+    let h = a
+        .create_user_group("Firma".into(), "folder".into())
+        .unwrap();
+    sync_both_ways(&a, &b);
+    tick();
+    // A renames and reorders; later B changes symbol and total flag
+    a.update_user_group(g.clone(), "Familie".into(), "folder".into(), true)
+        .unwrap();
+    a.reorder_user_groups(vec![h.clone(), g.clone()]).unwrap();
+    tick();
+    b.update_user_group(g.clone(), "Privat".into(), "house".into(), false)
+        .unwrap();
+    tick();
+    sync_both_ways(&a, &b);
+    for v in [&a, &b] {
+        let gs = live_groups(v);
+        assert_eq!(
+            gs,
+            vec![(h.clone(), "Firma".into()), (g.clone(), "Familie".into())]
+        );
+        let fam = v
+            .list_user_groups()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.uuid == g)
+            .unwrap();
+        assert_eq!(fam.sf_symbol, "house");
+        assert!(!fam.include_in_total);
+    }
+    assert_eq!(synced_state(&a), synced_state(&b));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Review point 4: sort positions that collide after a merge still give
+/// the same order on every device (no local ids in the tie-break).
+#[test]
+fn order_inside_a_group_is_the_same_on_every_device() {
+    let dir = temp_dir("order");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let ia = seed(&a);
+    let ib = seed(&b);
+    // Giro and Visa of the same kind, and B's local ids in the other order
+    for v in [&a, &b] {
+        v.db()
+            .unwrap()
+            .execute(
+                "UPDATE accounts SET kind = 'checking' WHERE external_ref = 'A3'",
+                [],
+            )
+            .unwrap();
+    }
+    b.db()
+        .unwrap()
+        .execute(
+            "UPDATE accounts SET id = id + 100 WHERE external_ref = 'A1'",
+            [],
+        )
+        .unwrap();
+    let ib = [ib[0] + 100, ib[1], ib[2]];
+    let g = a.create_user_group("Alle".into(), "folder".into()).unwrap();
+    sync_both_ways(&a, &b);
+    // each device puts a different account of that kind first → both at 0
+    a.move_account_to_group(ia[0], Some(g.clone()), Some(0))
+        .unwrap();
+    b.move_account_to_group(ib[2], Some(g.clone()), Some(0))
+        .unwrap();
+    sync_both_ways(&a, &b);
+    let ga = names(&a);
+    assert_eq!(ga[0].1.len(), 2, "both accounts in the group");
+    assert_eq!(ga, names(&b));
+    assert_eq!(synced_state(&a), synced_state(&b));
+    let _ = std::fs::remove_dir_all(dir);
+}

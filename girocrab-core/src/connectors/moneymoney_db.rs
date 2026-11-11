@@ -55,7 +55,7 @@ pub struct MoneyMoneyDbAccount {
     pub bank_code: String,
     pub bank_name: String,
     pub owner: String,
-    /// MoneyMoney sidebar group (display only).
+    /// MoneyMoney sidebar group (taken over with `import_groups`).
     pub group_name: String,
     pub mm_bank_id: Option<i64>,
     pub is_portfolio: bool,
@@ -131,12 +131,18 @@ pub struct MoneyMoneyDbImportOptions {
     pub create_connections: bool,
     /// Copy saved PINs into the encrypted vault (only with `create_connections`).
     pub import_pins: bool,
+    /// Put the accounts into GiroCrab groups named like their MoneyMoney
+    /// groups (created if missing). Accounts the user already placed keep
+    /// their group (or "Ohne Gruppe").
+    pub import_groups: bool,
 }
 
 #[derive(Debug, Clone, Default, uniffi::Record)]
 pub struct MoneyMoneyDbImportResult {
     pub accounts_created: u32,
     pub accounts_merged: u32,
+    /// GiroCrab groups created from MoneyMoney groups.
+    pub groups_created: u32,
     pub bookings_new: u32,
     pub bookings_duplicates: u32,
     /// Existing bookings that received a category and/or note.
@@ -1319,6 +1325,11 @@ fn import(
         let r = src.rows_for(a);
         let ext = ext_ref(a);
         let kind = choice.kind;
+        let a_group = a
+            .group_key
+            .and_then(|g| src.account_groups.get(&g))
+            .map(|g| g.trim().to_string())
+            .unwrap_or_default();
         let target = match choice.target_account_id {
             Some(id) => Some(id),
             None => conn
@@ -1415,6 +1426,24 @@ fn import(
                     )?;
                 }
                 res.holdings_imported += list.len() as u32;
+            }
+        }
+        if options.import_groups && !a_group.is_empty() {
+            // never placed by the user (an explicit "Ohne Gruppe" is kept, too)
+            let ungrouped: bool = conn.query_row(
+                "SELECT user_group_uuid IS NULL AND placement_ms = 0 FROM accounts WHERE id = ?1",
+                [account_id],
+                |r| r.get(0),
+            )?;
+            if ungrouped {
+                let (uuid, created) = crate::user_groups::find_or_create(conn, &a_group, "folder")?;
+                res.groups_created += created as u32;
+                crate::user_groups::assign(
+                    conn,
+                    account_id,
+                    Some(&uuid),
+                    crate::user_groups::now_ms(),
+                )?;
             }
         }
         res.bookings_new += st.new;

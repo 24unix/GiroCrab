@@ -285,6 +285,15 @@ fn english(de: &str) -> Option<&'static str> {
         "Das Konto hat keine IBAN." => "The account has no IBAN.",
         "Bankverbindung {0}" => "bank connection {0}",
         "Konto {0}" => "account {0}",
+        // ------------------------------------------------------ user_groups.rs
+        "Gruppe {0}" => "group {0}",
+        "Ungültige Farbe: {0}" => "Invalid colour: {0}",
+        "Ohne Gruppe" => "Ungrouped",
+        "Alltag" => "Everyday",
+        "Sparen & Vorsorge" => "Savings & retirement",
+        "Haus" => "Home",
+        "Der Gruppenname darf nicht leer sein" => "The group name must not be empty",
+        "Es gibt schon eine Gruppe „{0}“" => "A group named “{0}” already exists",
         // ------------------------------------------------------------ connectors/fints
         "Bitte in der Banking-App freigeben" => "Approve in your banking app",
         "TAN eingeben" => "Enter TAN",

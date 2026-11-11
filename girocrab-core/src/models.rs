@@ -191,6 +191,13 @@ pub struct Account {
     /// Original loan amount ("Ursprünglicher Kreditbetrag", positive cents).
     /// Auto-derived from statement history, editable by the user.
     pub initial_balance_cents: Option<i64>,
+    /// User-defined group ("Nach Gruppe" view); `None` = "Ohne Gruppe".
+    pub user_group_uuid: Option<String>,
+    /// Counts towards the overall total (false if its user group is excluded).
+    pub in_total: bool,
+    /// Marker colour (`#RRGGBB`): the user's choice or a default derived
+    /// from the account's sync identity (same on every device).
+    pub color_hex: String,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -199,6 +206,23 @@ pub struct AccountGroup {
     pub name: String,
     pub sf_symbol: String,
     pub sort_order: i32,
+    /// Sum of all EUR account balances in this group.
+    pub balance_cents: i64,
+    pub accounts: Vec<Account>,
+}
+
+/// A user-defined sidebar group ("Nach Gruppe" view).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct UserGroup {
+    /// Stable across devices. Empty for the "Ohne Gruppe" entry.
+    pub uuid: String,
+    pub name: String,
+    pub sf_symbol: String,
+    pub sort_order: i32,
+    /// Accounts of this group count towards the overall total.
+    pub include_in_total: bool,
+    /// The trailing "Ohne Gruppe" entry (accounts without a user group).
+    pub is_ungrouped: bool,
     /// Sum of all EUR account balances in this group.
     pub balance_cents: i64,
     pub accounts: Vec<Account>,

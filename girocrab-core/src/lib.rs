@@ -38,6 +38,7 @@ pub mod planning;
 pub mod rules;
 pub mod secret;
 pub mod text;
+pub mod user_groups;
 pub mod vault;
 
 pub use connectors::{

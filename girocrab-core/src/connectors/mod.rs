@@ -636,7 +636,9 @@ pub(crate) fn store_fetch(
                         params![connection_id, gid, acc.external_ref, acc.name, bank_name, acc.owner, acc.iban, acc.account_number,
                                 acc.currency, acc.kind.as_str(), acc.balance_cents, acc.balance_date, acc.kind.sf_symbol()],
                     )?;
-                    tx.last_insert_rowid()
+                    let id = tx.last_insert_rowid();
+                    crate::user_groups::place_new_account(&tx, id)?;
+                    id
                 }
             };
             accounts_updated += 1;

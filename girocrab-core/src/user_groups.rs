@@ -1,0 +1,813 @@
+//! User-defined account groups ("Kontogruppen") for the "Nach Gruppe"
+//! sidebar view – e.g. "Privat", "Geschäft", "Kinder".
+//!
+//! Independent of the kind-based `account_groups` (the "Nach Kontoart" view),
+//! which stay untouched. An account belongs to at most one user group
+//! (`accounts.user_group_uuid`); accounts without one are listed under
+//! "Ohne Gruppe".
+//!
+//! iCloud sync: groups are keyed by a random uuid. Every user edit stamps a
+//! millisecond timestamp per field (`user_groups.name_ms` / `symbol_ms` /
+//! `total_ms` / `order_ms`, `accounts.placement_ms` / `name_ms` /
+//! `color_ms`); when merging two vaults the newer edit wins field by field, so
+//! renaming a group on one device and switching its total flag on another
+//! keeps both. Equal stamps with different values (rare) resolve to the larger
+//! value, so both sides still end up identical. Deleted
+//! groups stay as tombstones (`deleted_ms`): a merge never brings them back,
+//! even if another device edited them later (delete wins).
+//! Automatic placements use timestamp 0, so any explicit user choice wins.
+//!
+//! The name is a group's identity for the user, so live names are unique
+//! (case-insensitive) across devices too: if two devices each created
+//! "Privat", the merge combines them into the one with the lower uuid. A
+//! combined group is a tombstone with `merged_into`; accounts placed in it –
+//! also later, from a device that hasn't merged yet – follow that pointer.
+//! The user can combine groups the same way (`merge_user_groups`).
+//!
+//! Derived changes are not stamped: moving accounts out of a deleted or
+//! combined group keeps their `placement_ms`, because every device derives
+//! the same result from the same tombstones; stamping them with "now" would
+//! make the devices race. Tombstones are kept forever on purpose: they are a
+//! few tiny rows, and pruning one would let a device that was offline long
+//! enough bring the group back.
+//!
+//! Older builds (schema v6) ignore all of this. They keep `user_version` at 7
+//! and write accounts with explicit column lists, so groups, colours and
+//! placements survive a round trip. A rename made by such a build doesn't
+//! stamp `name_ms`, though, so a stamped rename from another device wins the
+//! next merge even if it is older.
+//!
+//! Account colours (booking-list markers, sidebar dot) follow the same rule:
+//! without a user choice the colour is derived from the account's sync
+//! identity, so every device shows the same colour without storing it.
+
+use std::collections::{HashMap, HashSet};
+
+use rusqlite::{params, Connection, OptionalExtension};
+
+use crate::connectors::group_for;
+use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
+use crate::models::{Account, UserGroup};
+use crate::vault::Vault;
+
+const SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS user_groups (
+    uuid             TEXT    PRIMARY KEY,
+    name             TEXT    NOT NULL,
+    sf_symbol        TEXT    NOT NULL DEFAULT 'folder',
+    sort_order       INTEGER NOT NULL DEFAULT 0,
+    include_in_total INTEGER NOT NULL DEFAULT 1,
+    updated_ms       INTEGER NOT NULL DEFAULT 0,     -- last edit of any field
+    name_ms          INTEGER NOT NULL DEFAULT 0,
+    symbol_ms        INTEGER NOT NULL DEFAULT 0,
+    total_ms         INTEGER NOT NULL DEFAULT 0,
+    order_ms         INTEGER NOT NULL DEFAULT 0,
+    deleted_ms       INTEGER,                      -- tombstone, kept for sync
+    merged_into      TEXT                          -- tombstone of a combined group → survivor
+);";
+
+/// New `accounts` columns (name, definition).
+const ACCOUNT_COLUMNS: &[(&str, &str)] = &[
+    ("user_group_uuid", "TEXT"),
+    ("user_sort_order", "INTEGER NOT NULL DEFAULT 0"),
+    ("placement_ms", "INTEGER NOT NULL DEFAULT 0"),
+    ("name_ms", "INTEGER NOT NULL DEFAULT 0"),
+    ("color_hex", "TEXT"),
+    ("color_ms", "INTEGER NOT NULL DEFAULT 0"),
+];
+
+/// `user_groups` columns added after the first v7 table (name, definition).
+const GROUP_COLUMNS: &[(&str, &str)] = &[
+    ("name_ms", "INTEGER NOT NULL DEFAULT 0"),
+    ("symbol_ms", "INTEGER NOT NULL DEFAULT 0"),
+    ("total_ms", "INTEGER NOT NULL DEFAULT 0"),
+    ("order_ms", "INTEGER NOT NULL DEFAULT 0"),
+    ("merged_into", "TEXT"),
+];
+
+/// Group fields that merge independently, each with its own stamp.
+const GROUP_FIELDS: &[(&str, &str)] = &[
+    ("name", "name_ms"),
+    ("sf_symbol", "symbol_ms"),
+    ("include_in_total", "total_ms"),
+    ("sort_order", "order_ms"),
+];
+
+/// Account colours (the palette of GiroCrab/GiroCrab#26), readable in light
+/// and dark mode. Ordered by hue spread: the first [`DISTINCT`] (blue, amber,
+/// green, red, fuchsia, lime) are far apart and used first; the rest (pink,
+/// violet, cyan, orange, indigo, teal) each sit close to one of them – e.g.
+/// blue and violet both turn lavender in dark mode.
+pub const ACCOUNT_COLOR_PALETTE: [&str; 12] = [
+    "#2563EB", "#D97706", "#059669", "#DC2626", "#C026D3", "#65A30D", // distinct
+    "#DB2777", "#7C3AED", "#0891B2", "#EA580C", "#4F46E5", "#0D9488",
+];
+
+/// Hash of what the iCloud merge identifies an account by (bank login +
+/// external ref): the same on every device. FNV-1a, so it never changes
+/// with the Rust version.
+pub(crate) fn account_color_hash(
+    connector: &str,
+    bank_code: &str,
+    login: &str,
+    external_ref: &str,
+) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for part in [connector, bank_code, login, external_ref] {
+        for b in part.bytes().chain(std::iter::once(0x1f)) {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    h
+}
+
+/// Default colours for accounts without a chosen one (`hashes`: account id →
+/// [`account_color_hash`]). Chosen colours are reserved first; each other
+/// account starts at its hashed palette slot and takes the next free one –
+/// the six clearly distinct hues first, so a few accounts never get look-
+/// alikes like amber and orange. Up to 12 accounts get distinct colours,
+/// the same on every device with the same accounts; beyond 12 the
+/// least-used colours repeat.
+pub(crate) fn assign_default_colors(accounts: &mut [Account], hashes: &HashMap<i64, u64>) {
+    let n = ACCOUNT_COLOR_PALETTE.len();
+    let mut used = [0u32; ACCOUNT_COLOR_PALETTE.len()];
+    for a in accounts.iter().filter(|a| !hashes.contains_key(&a.id)) {
+        if let Some(i) = ACCOUNT_COLOR_PALETTE
+            .iter()
+            .position(|c| c.eq_ignore_ascii_case(&a.color_hex))
+        {
+            used[i] += 1;
+        }
+    }
+    let mut order: Vec<(u64, i64)> = hashes.iter().map(|(id, h)| (*h, *id)).collect();
+    order.sort_unstable();
+    let mut chosen: HashMap<i64, usize> = HashMap::new();
+    for (h, id) in order {
+        // least-used colours, and among those the clearly distinct first six
+        let least = *used.iter().min().unwrap_or(&0);
+        let tier = (0..n)
+            .filter(|&i| used[i] == least)
+            .map(|i| i / DISTINCT)
+            .min()
+            .unwrap_or(0);
+        let start = (h % n as u64) as usize;
+        let slot = (0..n)
+            .map(|k| (start + k) % n)
+            .find(|&i| used[i] == least && i / DISTINCT == tier)
+            .unwrap_or(start);
+        used[slot] += 1;
+        chosen.insert(id, slot);
+    }
+    for a in accounts.iter_mut() {
+        if let Some(&slot) = chosen.get(&a.id) {
+            a.color_hex = ACCOUNT_COLOR_PALETTE[slot].to_string();
+        }
+    }
+}
+
+/// Number of clearly distinct palette colours handed out first.
+const DISTINCT: usize = 6;
+
+/// The palette offered in the colour picker.
+#[uniffi::export]
+pub fn account_color_palette() -> Vec<String> {
+    ACCOUNT_COLOR_PALETTE
+        .iter()
+        .map(|c| c.to_string())
+        .collect()
+}
+
+/// Idempotent schema setup (also for brand-new vaults).
+pub(crate) fn migrate(conn: &Connection) -> CoreResult<()> {
+    conn.execute_batch(SCHEMA)?;
+    for (col, def) in ACCOUNT_COLUMNS {
+        let has: i64 = conn.query_row(
+            "SELECT count(*) FROM pragma_table_info('accounts') WHERE name = ?1",
+            [col],
+            |r| r.get(0),
+        )?;
+        if has == 0 {
+            conn.execute_batch(&format!("ALTER TABLE accounts ADD COLUMN {col} {def};"))?;
+        }
+    }
+    // added during review, for vaults that already had the first v7 table
+    for (col, def) in GROUP_COLUMNS {
+        let has: i64 = conn.query_row(
+            "SELECT count(*) FROM pragma_table_info('user_groups') WHERE name = ?1",
+            [col],
+            |r| r.get(0),
+        )?;
+        if has == 0 {
+            conn.execute_batch(&format!("ALTER TABLE user_groups ADD COLUMN {col} {def};"))?;
+            if col.ends_with("_ms") {
+                conn.execute_batch(&format!("UPDATE user_groups SET {col} = updated_ms;"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn now_ms() -> i64 {
+    chrono::Utc::now().timestamp_millis()
+}
+
+fn group_exists(conn: &Connection, uuid: &str) -> CoreResult<bool> {
+    Ok(conn
+        .query_row(
+            "SELECT 1 FROM user_groups WHERE uuid = ?1 AND deleted_ms IS NULL",
+            [uuid],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some())
+}
+
+fn not_found(uuid: &str) -> CoreError {
+    CoreError::NotFound {
+        what: trf("Gruppe {0}", &[&uuid]),
+    }
+}
+
+/// Trimmed, non-empty name that no other live group uses (case-insensitive).
+fn valid_name(conn: &Connection, name: &str, except: Option<&str>) -> CoreResult<String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(CoreError::InvalidInput {
+            message: tr("Der Gruppenname darf nicht leer sein").into(),
+        });
+    }
+    let clash: Option<i64> = conn
+        .query_row(
+            "SELECT 1 FROM user_groups WHERE deleted_ms IS NULL AND lower(name) = lower(?1) AND uuid IS NOT ?2",
+            params![name, except],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if clash.is_some() {
+        return Err(CoreError::InvalidInput {
+            message: trf("Es gibt schon eine Gruppe „{0}“", &[&name]),
+        });
+    }
+    Ok(name)
+}
+
+/// Finds a live group by name (case-insensitive) or creates it.
+/// Returns `(uuid, created)`.
+pub(crate) fn find_or_create(
+    conn: &Connection,
+    name: &str,
+    symbol: &str,
+) -> CoreResult<(String, bool)> {
+    if let Some(uuid) = conn
+        .query_row(
+            "SELECT uuid FROM user_groups WHERE deleted_ms IS NULL AND lower(name) = lower(?1)",
+            [name.trim()],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+    {
+        return Ok((uuid, false));
+    }
+    let name = valid_name(conn, name, None)?;
+    let uuid = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO user_groups(uuid, name, sf_symbol, sort_order, updated_ms, name_ms, symbol_ms, total_ms, order_ms)
+         VALUES (?1, ?2, ?3, (SELECT IFNULL(MAX(sort_order), -1) + 1 FROM user_groups WHERE deleted_ms IS NULL), ?4, ?4, ?4, ?4, ?4)",
+        params![uuid, name, symbol, now_ms()],
+    )?;
+    Ok((uuid, true))
+}
+
+/// Puts an account at the end of a group (`None` = "Ohne Gruppe").
+/// `stamp` = 0 for automatic placements, so an explicit user choice wins on sync.
+pub(crate) fn assign(
+    conn: &Connection,
+    account_id: i64,
+    uuid: Option<&str>,
+    stamp: i64,
+) -> CoreResult<()> {
+    conn.execute(
+        "UPDATE accounts SET user_group_uuid = ?1,
+                user_sort_order = (SELECT IFNULL(MAX(user_sort_order), -1) + 1 FROM accounts
+                                   WHERE user_group_uuid IS ?1 AND id != ?2),
+                placement_ms = ?3
+         WHERE id = ?2",
+        params![uuid, account_id, stamp],
+    )?;
+    Ok(())
+}
+
+/// A freshly created bank account joins the group most of its bank login's
+/// other accounts are in (a family member's login stays with their group).
+/// Otherwise it stays in "Ohne Gruppe".
+pub(crate) fn place_new_account(conn: &Connection, account_id: i64) -> CoreResult<()> {
+    let target: Option<String> = conn
+        .query_row(
+            "SELECT a.user_group_uuid FROM accounts a
+               JOIN user_groups g ON g.uuid = a.user_group_uuid AND g.deleted_ms IS NULL
+             WHERE a.id != ?1
+               AND a.connection_id = (SELECT connection_id FROM accounts WHERE id = ?1)
+             GROUP BY a.user_group_uuid ORDER BY count(*) DESC, MIN(a.id) LIMIT 1",
+            [account_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(uuid) = target {
+        assign(conn, account_id, Some(&uuid), 0)?;
+    }
+    Ok(())
+}
+
+/// Merges user groups, account placements and account names from the
+/// attached `other` vault (newest edit wins). `acc_map` maps other → local
+/// account ids; accounts in `inserted` were just created by the merge and
+/// take the other side's values unconditionally.
+pub(crate) fn merge_attached(
+    tx: &Connection,
+    acc_map: &HashMap<i64, i64>,
+    inserted: &HashSet<i64>,
+) -> CoreResult<u32> {
+    // Field by field the newer edit wins (equal stamps: the larger value);
+    // tombstones only ever get set (delete wins). Both rules are symmetric, so
+    // A←B and B←A end up identical.
+    // (`merge_other_vault` migrates the other file first, so it has all columns.)
+    let mut changed = tx.execute(&group_upsert_sql(), [])? as u32;
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(i64, Option<String>, i64, i64, String, i64, Option<String>, i64)> = tx
+        .prepare(
+            "SELECT id, user_group_uuid, user_sort_order, placement_ms, name, name_ms, color_hex, color_ms
+             FROM other.accounts",
+        )?
+        .query_map([], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?))
+        })?
+        .collect::<Result<_, _>>()?;
+    for (oid, uuid, order, placed, name, named, color, colored) in rows {
+        let Some(&id) = acc_map.get(&oid) else {
+            continue;
+        };
+        let fresh = inserted.contains(&id);
+        changed += tx.execute(
+            "UPDATE accounts SET user_group_uuid = ?2, user_sort_order = ?3, placement_ms = ?4
+             WHERE id = ?1 AND (?5 OR placement_ms < ?4)",
+            params![id, uuid, order, placed, fresh],
+        )? as u32;
+        tx.execute(
+            "UPDATE accounts SET name = ?2, name_ms = ?3 WHERE id = ?1 AND (?4 OR name_ms < ?3)",
+            params![id, name, named, fresh],
+        )?;
+        changed += tx.execute(
+            "UPDATE accounts SET color_hex = ?2, color_ms = ?3 WHERE id = ?1 AND (?4 OR color_ms < ?3)",
+            params![id, color, colored, fresh],
+        )? as u32;
+    }
+    changed += combine_same_names(tx)?;
+    changed += follow_merges(tx)?;
+    // Placements pointing at a group deleted on either side → "Ohne Gruppe".
+    tx.execute(
+        "UPDATE accounts SET user_group_uuid = NULL
+         WHERE user_group_uuid IN (SELECT uuid FROM user_groups WHERE deleted_ms IS NOT NULL)",
+        [],
+    )?;
+    Ok(changed)
+}
+
+/// `INSERT … ON CONFLICT DO UPDATE` for all groups of the attached vault.
+fn group_upsert_sql() -> String {
+    let wins = |f: &str, ms: &str| {
+        format!(
+            "(excluded.{ms} > user_groups.{ms} OR (excluded.{ms} = user_groups.{ms} AND excluded.{f} > user_groups.{f}))"
+        )
+    };
+    let mut cols = vec!["uuid", "updated_ms", "deleted_ms", "merged_into"];
+    let mut sets = vec![
+        "updated_ms = max(excluded.updated_ms, user_groups.updated_ms)".to_string(),
+        "deleted_ms = coalesce(min(user_groups.deleted_ms, excluded.deleted_ms), user_groups.deleted_ms, excluded.deleted_ms)".into(),
+        "merged_into = coalesce(min(user_groups.merged_into, excluded.merged_into), user_groups.merged_into, excluded.merged_into)".into(),
+    ];
+    let mut when = vec![
+        "(excluded.deleted_ms IS NOT NULL AND user_groups.deleted_ms IS NULL)".to_string(),
+        "(excluded.merged_into IS NOT NULL AND user_groups.merged_into IS NOT excluded.merged_into)".into(),
+    ];
+    for (f, ms) in GROUP_FIELDS {
+        cols.extend([*f, *ms]);
+        let w = wins(f, ms);
+        sets.push(format!(
+            "{f} = CASE WHEN {w} THEN excluded.{f} ELSE user_groups.{f} END"
+        ));
+        sets.push(format!("{ms} = max(excluded.{ms}, user_groups.{ms})"));
+        when.push(w);
+    }
+    let cols = cols.join(", ");
+    format!(
+        "INSERT INTO user_groups({cols}) SELECT {cols} FROM other.user_groups WHERE true
+         ON CONFLICT(uuid) DO UPDATE SET {} WHERE {}",
+        sets.join(", "),
+        when.join(" OR ")
+    )
+}
+
+/// Live groups with the same name (case-insensitive, e.g. "Privat" created on
+/// two devices) become one: the lower uuid survives – the same choice on every
+/// device – and takes each field from the duplicate that edited it last (the
+/// same rule as the merge). The others become tombstones pointing at it.
+/// Nothing is stamped with the current time, so every device computes exactly
+/// the same result.
+fn combine_same_names(tx: &Connection) -> CoreResult<u32> {
+    let rows: Vec<(String, String)> = tx
+        .prepare(
+            "SELECT lower(trim(name)), uuid FROM user_groups g
+             WHERE deleted_ms IS NULL AND EXISTS (
+                SELECT 1 FROM user_groups o WHERE o.deleted_ms IS NULL AND o.uuid != g.uuid
+                  AND lower(trim(o.name)) = lower(trim(g.name)))
+             ORDER BY 1, uuid",
+        )?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    let mut changed = 0;
+    for dups in rows.chunk_by(|a, b| a.0 == b.0) {
+        let survivor = &dups[0].1;
+        for (f, ms) in GROUP_FIELDS {
+            // the winning value among all duplicates, by (stamp, value)
+            tx.execute(
+                &format!(
+                    "UPDATE user_groups SET ({f}, {ms}) = (
+                        SELECT d.{f}, d.{ms} FROM user_groups d
+                        WHERE d.deleted_ms IS NULL AND lower(trim(d.name)) = ?2
+                        ORDER BY d.{ms} DESC, d.{f} DESC LIMIT 1)
+                     WHERE uuid = ?1"
+                ),
+                params![survivor, dups[0].0],
+            )?;
+        }
+        let stamp: i64 = tx.query_row(
+            "SELECT max(updated_ms) FROM user_groups WHERE deleted_ms IS NULL AND lower(trim(name)) = ?1",
+            [&dups[0].0],
+            |r| r.get(0),
+        )?;
+        tx.execute(
+            "UPDATE user_groups SET updated_ms = ?2 WHERE uuid = ?1",
+            params![survivor, stamp],
+        )?;
+        for d in &dups[1..] {
+            retire_into(tx, &d.1, survivor, stamp)?;
+            changed += 1;
+        }
+    }
+    Ok(changed)
+}
+
+/// Turns `from` into a tombstone that points at `into`.
+fn retire_into(tx: &Connection, from: &str, into: &str, stamp: i64) -> CoreResult<()> {
+    tx.execute(
+        "UPDATE user_groups SET deleted_ms = coalesce(deleted_ms, ?3),
+                updated_ms = max(updated_ms, ?3), merged_into = ?2
+         WHERE uuid = ?1",
+        params![from, into, stamp],
+    )?;
+    Ok(())
+}
+
+/// Moves the accounts of combined groups to the end of the group they were
+/// combined into (following chains). Placement stamps stay as they are: this
+/// is derived from the tombstones, not a new user edit.
+fn follow_merges(tx: &Connection) -> CoreResult<u32> {
+    let mut moved = 0;
+    for _ in 0..8 {
+        let pairs: Vec<(String, String)> = tx
+            .prepare(
+                "SELECT DISTINCT g.uuid, g.merged_into FROM accounts a
+                   JOIN user_groups g ON g.uuid = a.user_group_uuid
+                 WHERE g.merged_into IS NOT NULL ORDER BY g.uuid",
+            )?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+        if pairs.is_empty() {
+            break;
+        }
+        for (from, into) in pairs {
+            let ids: Vec<i64> = tx
+                .prepare(
+                    "SELECT id FROM accounts WHERE user_group_uuid = ?1
+                     ORDER BY user_sort_order, name, id",
+                )?
+                .query_map([&from], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            let base: i64 = tx.query_row(
+                "SELECT IFNULL(MAX(user_sort_order), -1) + 1 FROM accounts WHERE user_group_uuid = ?1",
+                [&into],
+                |r| r.get(0),
+            )?;
+            for (i, id) in ids.iter().enumerate() {
+                tx.execute(
+                    "UPDATE accounts SET user_group_uuid = ?2, user_sort_order = ?3 WHERE id = ?1",
+                    params![id, into, base + i as i64],
+                )?;
+                moved += 1;
+            }
+        }
+    }
+    Ok(moved)
+}
+
+/// Order of kinds inside a group: Giro → Karten → Depots → Darlehen.
+fn kind_rank(a: &Account) -> i32 {
+    group_for(a.kind).2
+}
+
+#[uniffi::export]
+impl Vault {
+    /// Sidebar data for the "Nach Gruppe" view: all user groups (also empty
+    /// ones) in their order, then – if any account has no group – an
+    /// "Ohne Gruppe" entry (`is_ungrouped`, empty uuid).
+    pub fn list_user_groups(&self) -> Result<Vec<UserGroup>, CoreError> {
+        let accounts = self.list_accounts()?;
+        let order: HashMap<i64, i64> = {
+            let db = self.db()?;
+            let mut stmt = db.prepare("SELECT id, user_sort_order FROM accounts")?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<Result<_, _>>()?
+        };
+        let groups: Vec<(String, String, String, i32, bool)> = {
+            let db = self.db()?;
+            let mut stmt = db.prepare(
+                "SELECT uuid, name, sf_symbol, sort_order, include_in_total FROM user_groups
+                 WHERE deleted_ms IS NULL ORDER BY sort_order, name COLLATE NOCASE",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+            })?;
+            rows.collect::<Result<_, _>>()?
+        };
+        let members = |uuid: Option<&str>| -> Vec<Account> {
+            let mut v: Vec<Account> = accounts
+                .iter()
+                .filter(|a| a.user_group_uuid.as_deref() == uuid)
+                .cloned()
+                .collect();
+            v.sort_by_key(|a| {
+                (
+                    order.get(&a.id).copied().unwrap_or(0),
+                    kind_rank(a),
+                    // then synced values only (local ids differ between devices)
+                    a.name.to_lowercase(),
+                    a.iban.clone(),
+                    a.account_number.clone(),
+                    a.id,
+                )
+            });
+            v
+        };
+        let sum = |v: &[Account]| {
+            v.iter()
+                .filter(|a| a.currency == "EUR")
+                .map(|a| a.balance_cents)
+                .sum()
+        };
+        let mut out: Vec<UserGroup> = groups
+            .into_iter()
+            .map(|(uuid, name, sf_symbol, sort_order, include_in_total)| {
+                let accs = members(Some(&uuid));
+                UserGroup {
+                    balance_cents: sum(&accs),
+                    uuid,
+                    name,
+                    sf_symbol,
+                    sort_order,
+                    include_in_total,
+                    is_ungrouped: false,
+                    accounts: accs,
+                }
+            })
+            .collect();
+        let rest = members(None);
+        if !rest.is_empty() {
+            out.push(UserGroup {
+                uuid: String::new(),
+                name: tr("Ohne Gruppe").into(),
+                sf_symbol: "tray".into(),
+                sort_order: i32::MAX,
+                include_in_total: true,
+                is_ungrouped: true,
+                balance_cents: sum(&rest),
+                accounts: rest,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Creates a group at the end of the list and returns its uuid.
+    pub fn create_user_group(&self, name: String, sf_symbol: String) -> Result<String, CoreError> {
+        let db = self.db()?;
+        let name = valid_name(&db, &name, None)?;
+        Ok(find_or_create(&db, &name, &sf_symbol)?.0)
+    }
+
+    /// Renames a group, changes its symbol and whether it counts towards the total.
+    pub fn update_user_group(
+        &self,
+        uuid: String,
+        name: String,
+        sf_symbol: String,
+        include_in_total: bool,
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        if !group_exists(&db, &uuid)? {
+            return Err(not_found(&uuid));
+        }
+        let same: bool = db.query_row(
+            "SELECT lower(name) = lower(trim(?2)) FROM user_groups WHERE uuid = ?1",
+            params![uuid, name],
+            |r| r.get(0),
+        )?;
+        let name = if same && !name.trim().is_empty() {
+            name.trim().to_string()
+        } else {
+            valid_name(&db, &name, Some(&uuid))?
+        };
+        // only fields that actually change get a new stamp, so a concurrent
+        // edit of another field on another device survives the merge
+        db.execute(
+            "UPDATE user_groups SET
+                name_ms   = CASE WHEN name IS NOT ?2 THEN ?5 ELSE name_ms END,
+                symbol_ms = CASE WHEN sf_symbol IS NOT ?3 THEN ?5 ELSE symbol_ms END,
+                total_ms  = CASE WHEN include_in_total IS NOT ?4 THEN ?5 ELSE total_ms END,
+                updated_ms = CASE WHEN name IS NOT ?2 OR sf_symbol IS NOT ?3 OR include_in_total IS NOT ?4
+                                  THEN ?5 ELSE updated_ms END,
+                name = ?2, sf_symbol = ?3, include_in_total = ?4
+             WHERE uuid = ?1",
+            params![uuid, name, sf_symbol, include_in_total, now_ms()],
+        )?;
+        Ok(())
+    }
+
+    /// Deletes a group. Its accounts are kept and move to "Ohne Gruppe".
+    pub fn delete_user_group(&self, uuid: String) -> Result<(), CoreError> {
+        let db = self.db()?;
+        if !group_exists(&db, &uuid)? {
+            return Err(not_found(&uuid));
+        }
+        let now = now_ms();
+        let tx = db.unchecked_transaction()?;
+        tx.execute(
+            "UPDATE user_groups SET deleted_ms = ?2, updated_ms = ?2 WHERE uuid = ?1",
+            params![uuid, now],
+        )?;
+        let ids: Vec<i64> = tx
+            .prepare(
+                "SELECT id FROM accounts WHERE user_group_uuid = ?1 ORDER BY user_sort_order, id",
+            )?
+            .query_map([&uuid], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        for id in ids {
+            assign(&tx, id, None, now)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Combines two groups: the accounts of `from` move to the end of `into`
+    /// and `from` is removed. Other devices follow on their next sync.
+    pub fn merge_user_groups(&self, from_uuid: String, into_uuid: String) -> Result<(), CoreError> {
+        let db = self.db()?;
+        for u in [&from_uuid, &into_uuid] {
+            if !group_exists(&db, u)? {
+                return Err(not_found(u));
+            }
+        }
+        if from_uuid == into_uuid {
+            return Ok(());
+        }
+        let tx = db.unchecked_transaction()?;
+        retire_into(&tx, &from_uuid, &into_uuid, now_ms())?;
+        follow_merges(&tx)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Moves an account into a group (`None` = "Ohne Gruppe"), at `index`
+    /// within that group (`None` = at the end).
+    pub fn move_account_to_group(
+        &self,
+        account_id: i64,
+        group_uuid: Option<String>,
+        index: Option<u32>,
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        if let Some(u) = &group_uuid {
+            if !group_exists(&db, u)? {
+                return Err(not_found(u));
+            }
+        }
+        let mut ids: Vec<i64> = db
+            .prepare(
+                "SELECT id FROM accounts WHERE user_group_uuid IS ?1 AND id != ?2
+                 ORDER BY user_sort_order, id",
+            )?
+            .query_map(params![group_uuid, account_id], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        let at = index.map_or(ids.len(), |i| (i as usize).min(ids.len()));
+        ids.insert(at, account_id);
+        let tx = db.unchecked_transaction()?;
+        let n = tx.execute(
+            "UPDATE accounts SET user_group_uuid = ?2 WHERE id = ?1",
+            params![account_id, group_uuid],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound {
+                what: trf("Konto {0}", &[&account_id]),
+            });
+        }
+        renumber(&tx, &ids)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Sets an account's colour (`#RRGGBB`); `None` = back to its default.
+    pub fn set_account_color(
+        &self,
+        account_id: i64,
+        color_hex: Option<String>,
+    ) -> Result<(), CoreError> {
+        let hex = match color_hex.map(|h| h.trim().to_uppercase()) {
+            Some(h)
+                if h.len() == 7
+                    && h.starts_with('#')
+                    && h[1..].chars().all(|c| c.is_ascii_hexdigit()) =>
+            {
+                Some(h)
+            }
+            Some(h) => {
+                return Err(CoreError::InvalidInput {
+                    message: trf("Ungültige Farbe: {0}", &[&h]),
+                })
+            }
+            None => None,
+        };
+        let n = self.db()?.execute(
+            "UPDATE accounts SET color_hex = ?2, color_ms = ?3 WHERE id = ?1",
+            params![account_id, hex, now_ms()],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound {
+                what: trf("Konto {0}", &[&account_id]),
+            });
+        }
+        Ok(())
+    }
+
+    /// Sets the order of all groups (uuids in the new order).
+    pub fn reorder_user_groups(&self, uuids: Vec<String>) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let now = now_ms();
+        let tx = db.unchecked_transaction()?;
+        for (i, u) in uuids.iter().enumerate() {
+            tx.execute(
+                "UPDATE user_groups SET sort_order = ?2, order_ms = ?3, updated_ms = ?3
+                 WHERE uuid = ?1 AND (sort_order != ?2)",
+                params![u, i as i64, now],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Sets the order of the accounts inside one group (`None` = "Ohne Gruppe").
+    /// Ids not in that group are ignored.
+    pub fn reorder_accounts_in_group(
+        &self,
+        group_uuid: Option<String>,
+        account_ids: Vec<i64>,
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let members: HashSet<i64> = db
+            .prepare("SELECT id FROM accounts WHERE user_group_uuid IS ?1")?
+            .query_map([&group_uuid], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        let ids: Vec<i64> = account_ids
+            .into_iter()
+            .filter(|i| members.contains(i))
+            .collect();
+        let tx = db.unchecked_transaction()?;
+        renumber(&tx, &ids)?;
+        tx.commit()?;
+        Ok(())
+    }
+}
+
+/// Gives `ids` the sort orders 0, 1, 2 … and stamps changed placements.
+fn renumber(tx: &Connection, ids: &[i64]) -> CoreResult<()> {
+    let now = now_ms();
+    for (i, id) in ids.iter().enumerate() {
+        tx.execute(
+            "UPDATE accounts SET user_sort_order = ?2, placement_ms = ?3 WHERE id = ?1",
+            params![id, i as i64, now],
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests;

@@ -23,6 +23,7 @@ struct MoneyMoneyDatabaseImportView: View {
     @State private var choices: [Int64: Choice] = [:]
     @State private var importCategories = true
     @State private var importNotes = true
+    @State private var importGroups = true
     @State private var createConnections = true
     @State private var importPins = false
     @State private var loading = false
@@ -208,6 +209,10 @@ struct MoneyMoneyDatabaseImportView: View {
                     .font(.caption).foregroundStyle(Theme.secondary).padding(.leading, 2)
             }
             Toggle("Notizen übernehmen (\(p.notesCount))", isOn: $importNotes)
+            let groupCount = Set(p.accounts.map(\.groupName).filter { !$0.isEmpty }).count
+            if groupCount > 0 {
+                Toggle("Kontogruppen übernehmen (\(groupCount))", isOn: $importGroups)
+            }
             Toggle("Bankzugänge anlegen", isOn: $createConnections)
             Toggle("Gespeicherte PINs übernehmen", isOn: $importPins)
                 .disabled(!createConnections)
@@ -367,7 +372,7 @@ struct MoneyMoneyDatabaseImportView: View {
         guard let vault = model.vault, let url = fileURL, let preview else { return }
         if model.demoDbPreview != nil {
             // demo: nothing to read – show what the summary looks like
-            result = MoneyMoneyDbImportResult(accountsCreated: 5, accountsMerged: 1, bookingsNew: preview.totalBookings, bookingsDuplicates: 0, bookingsEnriched: 0, pendingSkipped: preview.pendingBookings, notesImported: preview.notesCount, categoriesCreated: UInt32(preview.categoryPaths.count), connectionsCreated: 3, connectionsExisting: 0, pinsStored: 0, banksSkippedUnsupported: 1, documentsImported: 0, holdingsImported: 0)
+            result = MoneyMoneyDbImportResult(accountsCreated: 5, accountsMerged: 1, groupsCreated: 2, bookingsNew: preview.totalBookings, bookingsDuplicates: 0, bookingsEnriched: 0, pendingSkipped: preview.pendingBookings, notesImported: preview.notesCount, categoriesCreated: UInt32(preview.categoryPaths.count), connectionsCreated: 3, connectionsExisting: 0, pinsStored: 0, banksSkippedUnsupported: 1, documentsImported: 0, holdingsImported: 0)
             password = ""
             return
         }
@@ -379,7 +384,8 @@ struct MoneyMoneyDatabaseImportView: View {
             importCategories: importCategories,
             importNotes: importNotes,
             createConnections: createConnections,
-            importPins: createConnections && importPins)
+            importPins: createConnections && importPins,
+            importGroups: importGroups)
         let pw = password
         importing = true; error = nil
         Task {

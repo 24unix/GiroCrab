@@ -4,7 +4,8 @@
 //!   bank_connections  1─n accounts 1─n transactions n─1 categories (tree)
 //!   rules             n─1 categories, optional n─1 accounts
 //!   settings          key/value, secrets flagged, all inside the encrypted file
-//!   account_groups    sidebar grouping (Giro, Credit cards, ...)
+//!   account_groups    sidebar grouping by account kind (Giro, Credit cards, ...)
+//!   user_groups       user-defined sidebar groups ("Privat", "Geschäft", ...), synced by uuid
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -61,7 +62,7 @@ CREATE TABLE IF NOT EXISTS holdings (
 CREATE INDEX IF NOT EXISTS holdings_account ON holdings(account_id);
 ";
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS bank_connections (
@@ -276,6 +277,8 @@ impl Vault {
         conn.execute_batch(crate::insights::OVERRIDE_SCHEMA)?;
         conn.execute_batch(HOLDINGS_SCHEMA)?;
         conn.execute_batch(crate::planning::PLANNING_SCHEMA)?;
+        // v7: user-defined account groups – idempotent
+        crate::user_groups::migrate(conn)?;
         if version < SCHEMA_VERSION {
             conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
         }
@@ -650,6 +653,7 @@ impl Vault {
 
         // accounts (by connection + external_ref)
         let mut acc_map: HashMap<i64, i64> = HashMap::new();
+        let mut acc_inserted: std::collections::HashSet<i64> = Default::default();
         {
             #[allow(clippy::type_complexity)]
             let rows: Vec<(i64, Option<i64>, i64, String, String, String, String, String, String, String, String, i64, String, String, i64, Option<i64>)> = tx
@@ -711,12 +715,15 @@ impl Vault {
                             params![con, grp, ext, name, bank, owner, iban, num, cur, kind, bal, bdate, sym, ord, init],
                         )?;
                         st.accounts_added += 1;
+                        acc_inserted.insert(tx.last_insert_rowid());
                         tx.last_insert_rowid()
                     }
                 };
                 acc_map.insert(oid, id);
             }
         }
+        // user groups, account placements and names (newest edit wins)
+        st.groups_updated = crate::user_groups::merge_attached(&tx, &acc_map, &acc_inserted)?;
 
         // categories (parents first, by parent + name)
         let mut cat_map: HashMap<i64, i64> = HashMap::new();
@@ -978,6 +985,8 @@ pub struct MergeStats {
     pub rules_added: u32,
     pub bookings_added: u32,
     pub bookings_updated: u32,
+    /// User groups and account placements taken over from the other vault.
+    pub groups_updated: u32,
 }
 
 #[uniffi::export]
@@ -1326,10 +1335,13 @@ impl Vault {
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id),
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.category_id IS NULL),
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0),
-                    a.initial_balance_cents
+                    a.initial_balance_cents, g.uuid, IFNULL(g.include_in_total, 1),
+                    a.color_hex, IFNULL(c.connector, ''), IFNULL(c.bank_code, ''), IFNULL(c.login_name, ''), a.external_ref
              FROM accounts a LEFT JOIN bank_connections c ON c.id = a.connection_id
+             LEFT JOIN user_groups g ON g.uuid = a.user_group_uuid AND g.deleted_ms IS NULL
              ORDER BY a.sort_order, a.id",
         )?;
+        let mut color_hashes: HashMap<i64, u64> = HashMap::new();
         let rows = stmt.query_map([], |r| {
             Ok(Account {
                 id: r.get(0)?,
@@ -1356,9 +1368,28 @@ impl Vault {
                     .get::<_, Option<i64>>(18)?
                     .map(i64::abs)
                     .filter(|c| *c > 0),
+                user_group_uuid: r.get(19)?,
+                in_total: r.get(20)?,
+                // filled in below for accounts without a chosen colour
+                color_hex: match r.get::<_, Option<String>>(21)? {
+                    Some(c) => c,
+                    None => {
+                        color_hashes.insert(
+                            r.get(0)?,
+                            crate::user_groups::account_color_hash(
+                                &r.get::<_, String>(22)?,
+                                &r.get::<_, String>(23)?,
+                                &r.get::<_, String>(24)?,
+                                &r.get::<_, String>(25)?,
+                            ),
+                        );
+                        String::new()
+                    }
+                },
             })
         })?;
         let mut accounts = rows.collect::<Result<Vec<_>, _>>()?;
+        crate::user_groups::assign_default_colors(&mut accounts, &color_hashes);
         // Credit cards stored with balance 0: derive the open amount from bookings.
         for a in accounts.iter_mut().filter(|a| {
             a.kind == AccountKind::CreditCard && a.balance_cents == 0 && a.transaction_count > 0
@@ -1432,7 +1463,12 @@ impl Vault {
         let chosen: Vec<&Account> = accounts
             .iter()
             .filter(|a| {
-                a.currency == "EUR" && (account_ids.is_empty() || account_ids.contains(&a.id))
+                a.currency == "EUR"
+                    && if account_ids.is_empty() {
+                        a.in_total
+                    } else {
+                        account_ids.contains(&a.id)
+                    }
             })
             .collect();
         let mut balance: i64 = chosen.iter().map(|a| a.balance_cents).sum();
@@ -1475,8 +1511,8 @@ impl Vault {
 
     pub fn rename_account(&self, account_id: i64, name: String) -> Result<(), CoreError> {
         let n = self.db()?.execute(
-            "UPDATE accounts SET name = ?1 WHERE id = ?2",
-            params![name, account_id],
+            "UPDATE accounts SET name = ?1, name_ms = ?3 WHERE id = ?2",
+            params![name, account_id, crate::user_groups::now_ms()],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
