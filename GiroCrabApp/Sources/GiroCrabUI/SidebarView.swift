@@ -4,12 +4,12 @@ import GiroCrabCore
 /// Column 1: collapsible account sections with subtotals, then categories.
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
-    @State private var newCategoryParent: Int64?? = nil
-    @State private var budgetCategory: IDBox?
+    /// The one sidebar dialog on screen (group dialogs live in `model.groupDialog`).
+    @State private var dialog: SidebarDialog?
     @State private var newCategoryName = ""
-    @State private var accountToDelete: Account?
-    @State private var categoryToDelete: GiroCrabCore.Category?
-    @State private var connectionToRemove: Int64?
+    @State private var budgetCategory: IDBox?
+    /// Row a drag is hovering over (drop highlight).
+    @State private var dropTarget: String?
 
     var body: some View {
         @Bindable var model = model
@@ -42,22 +42,13 @@ struct SidebarView: View {
             }
             .buttonStyle(.plain)
 
-            ForEach(model.groups) { group in
-                let open = !model.collapsedGroups.contains(group.id)
-                // Plain rows instead of List sections: macOS would otherwise
-                // restore its own saved collapse state for sidebar sections.
-                SectionHeader(group: group, open: open) {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        if open { model.collapsedGroups.insert(group.id) } else { model.collapsedGroups.remove(group.id) }
-                    }
-                }
-                .padding(.top, 10)
-                .tag(SidebarItem.group(group.id))
-                ForEach(open ? group.accounts : []) { account in
-                    AccountRow(account: account, syncing: model.syncingConnectionID != nil && model.syncingConnectionID == account.connectionId)
-                        .tag(SidebarItem.account(account.id))
-                        .contextMenu { accountMenu(account) }
-                }
+            if !model.allAccounts.isEmpty {
+                AccountsSectionHeader()
+            }
+            if model.accountView == .byGroup {
+                userGroupRows
+            } else {
+                kindGroupRows
             }
 
             let pending = model.connections.filter { c in !model.allAccounts.contains { $0.connectionId == c.id } }
@@ -81,7 +72,7 @@ struct SidebarView: View {
                     }
                     .contextMenu {
                         Divider()
-                        Button("Bankzugang entfernen …", systemImage: "trash", role: .destructive) { connectionToRemove = c.id }
+                        Button("Bankzugang entfernen …", systemImage: "trash", role: .destructive) { dialog = .removeConnection(c.id) }
                     }
                 }
             }
@@ -149,36 +140,155 @@ struct SidebarView: View {
             .padding(8)
             .background(.bar)
         }
-        .alert("Konto löschen?", isPresented: Binding(get: { accountToDelete != nil }, set: { if !$0 { accountToDelete = nil } }), presenting: accountToDelete) { account in
-            Button("Löschen", role: .destructive) { model.deleteAccount(account.id) }
+        .confirmationDialog(
+            dialog?.title ?? Text(verbatim: ""),
+            isPresented: Binding(get: { dialog?.isConfirmation == true }, set: { if !$0, dialog?.isConfirmation == true { dialog = nil } }),
+            titleVisibility: .visible,
+            presenting: dialog
+        ) { d in
+            switch d {
+            case .deleteAccount(let a): Button("Löschen", role: .destructive) { model.deleteAccount(a.id) }
+            case .removeConnection(let id): Button("Entfernen", role: .destructive) { model.removeConnection(id) }
+            case .deleteCategory(let c): Button("„\(c.name)“ löschen", role: .destructive) { model.deleteCategory(c.id) }
+            case .newCategory: EmptyView()
+            }
             Button("Abbrechen", role: .cancel) {}
-        } message: { account in
-            Text("„\(account.name)“ wird samt allen Buchungen und Belegen unwiderruflich gelöscht.")
+        } message: { d in
+            if case .deleteAccount(let a) = d {
+                Text("„\(a.name)“ wird samt allen Buchungen und Belegen unwiderruflich gelöscht.")
+            }
         }
-        .confirmationDialog("Bankzugang entfernen?", isPresented: Binding(get: { connectionToRemove != nil }, set: { if !$0 { connectionToRemove = nil } }), presenting: connectionToRemove) { id in
-            Button("Entfernen", role: .destructive) { model.removeConnection(id) }
-            Button("Abbrechen", role: .cancel) {}
-        }
-        .confirmationDialog("Kategorie löschen?", isPresented: Binding(get: { categoryToDelete != nil }, set: { if !$0 { categoryToDelete = nil } }), presenting: categoryToDelete) { cat in
-            Button("„\(cat.name)“ löschen", role: .destructive) { model.deleteCategory(cat.id) }
-            Button("Abbrechen", role: .cancel) {}
-        }
-        .sheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
-        .alert("Neue Kategorie", isPresented: Binding(get: { newCategoryParent != nil }, set: { if !$0 { newCategoryParent = nil } })) {
+        .alert(
+            "Neue Kategorie",
+            isPresented: Binding(get: { dialog?.isConfirmation == false }, set: { if !$0, dialog?.isConfirmation == false { dialog = nil } }),
+            presenting: dialog
+        ) { d in
             TextField("Name", text: $newCategoryName)
             Button("Anlegen") {
-                let parent = newCategoryParent ?? nil
-                let color = parent.flatMap { p in model.categories.first { $0.id == p }?.colorHex } ?? "#7A808A"
-                model.createCategory(name: newCategoryName, parent: parent, symbol: "tag.fill", color: color)
+                if case .newCategory(let parent) = d {
+                    let color = parent.flatMap { p in model.categories.first { $0.id == p }?.colorHex } ?? "#7A808A"
+                    model.createCategory(name: newCategoryName, parent: parent, symbol: "tag.fill", color: color)
+                }
                 newCategoryName = ""
-                newCategoryParent = nil
             }
-            Button("Abbrechen", role: .cancel) { newCategoryParent = nil }
+            Button("Abbrechen", role: .cancel) { newCategoryName = "" }
         }
+        .sheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
+    }
+
+    /// "Nach Kontoart": the fixed kind sections.
+    @ViewBuilder
+    private var kindGroupRows: some View {
+        ForEach(model.groups) { group in
+            let open = !model.collapsedGroups.contains(group.id)
+            let toggle = {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    if open { model.collapsedGroups.insert(group.id) } else { model.collapsedGroups.remove(group.id) }
+                }
+            }
+            // Plain rows instead of List sections: macOS would otherwise
+            // restore its own saved collapse state for sidebar sections.
+            SectionHeader(group: group, open: open, toggle: toggle)
+                .padding(.top, 10)
+                .groupHeaderTap(SidebarItem.group(group.id), toggle: toggle)
+                #if os(iOS)
+                .contextMenu {
+                    Button("Gruppenübersicht", systemImage: "list.bullet.rectangle") { model.sidebarSelection = .group(group.id) }
+                }
+                #endif
+            ForEach(open ? group.accounts : []) { account in
+                accountRow(account)
+            }
+        }
+    }
+
+    /// "Nach Gruppe": user groups, then "Ohne Gruppe".
+    @ViewBuilder
+    private var userGroupRows: some View {
+        ForEach(model.userGroups) { group in
+            let open = !model.collapsedUserGroups.contains(group.uuid)
+            let toggle = { withAnimation(.easeInOut(duration: 0.15)) { model.toggleCollapsed(group) } }
+            UserGroupHeader(group: group, open: open, toggle: toggle)
+                .padding(.top, 10)
+                .groupHeaderTap(SidebarItem.userGroup(group.uuid), toggle: toggle)
+                .contextMenu {
+                    UserGroupMenu(group: group)
+                }
+                .modifier(DropHighlight(key: "g:" + group.uuid, target: $dropTarget))
+                .draggable(GroupDrag.group(group.uuid)) {
+                    Label(group.name, systemImage: group.sfSymbol).padding(6)
+                }
+                .dropDestination(for: String.self) { items, _ in
+                    handleDrop(items, into: group, at: nil)
+                } isTargeted: { dropTarget = $0 ? "g:" + group.uuid : (dropTarget == "g:" + group.uuid ? nil : dropTarget) }
+            if open {
+                if group.accounts.isEmpty && !group.isUngrouped {
+                    Text(emptyHint)
+                        .font(.caption)
+                        .foregroundStyle(Theme.tertiary)
+                        .padding(.leading, 33)
+                        .modifier(DropHighlight(key: "e:" + group.uuid, target: $dropTarget))
+                        .dropDestination(for: String.self) { items, _ in
+                            handleDrop(items, into: group, at: nil)
+                        } isTargeted: { dropTarget = $0 ? "e:" + group.uuid : (dropTarget == "e:" + group.uuid ? nil : dropTarget) }
+                }
+                ForEach(Array(group.accounts.enumerated()), id: \.element.id) { i, account in
+                    accountRow(account)
+                        .draggable(GroupDrag.account(account.id)) {
+                            Label(account.name, systemImage: account.sfSymbol).padding(6)
+                        }
+                        .modifier(DropHighlight(key: "a:\(account.id)", target: $dropTarget))
+                        .dropDestination(for: String.self) { items, _ in
+                            handleDrop(items, into: group, at: i)
+                        } isTargeted: { dropTarget = $0 ? "a:\(account.id)" : (dropTarget == "a:\(account.id)" ? nil : dropTarget) }
+                }
+            }
+        }
+    }
+
+    private var emptyHint: LocalizedStringKey {
+        #if os(macOS)
+        "Konten hierher ziehen"
+        #else
+        "Keine Konten – Konto lange drücken, um es zuzuordnen"
+        #endif
+    }
+
+    /// Account dropped on a row/header → move there; group dropped on a header → reorder.
+    private func handleDrop(_ items: [String], into group: UserGroup, at index: Int?) -> Bool {
+        var handled = false
+        for item in items {
+            if let id = GroupDrag.accountID(item) {
+                model.moveAccount(id, to: group.uuid, at: index)
+                handled = true
+            } else if let uuid = GroupDrag.groupUUID(item), uuid != group.uuid, !uuid.isEmpty {
+                var order = model.namedUserGroups.map(\.uuid).filter { $0 != uuid }
+                let at = group.isUngrouped ? order.count : (order.firstIndex(of: group.uuid) ?? order.count)
+                order.insert(uuid, at: at)
+                model.reorderUserGroups(order)
+                handled = true
+            }
+        }
+        return handled
+    }
+
+    private func accountRow(_ account: Account) -> some View {
+        AccountRow(account: account, syncing: model.syncingConnectionID != nil && model.syncingConnectionID == account.connectionId)
+            .tag(SidebarItem.account(account.id))
+            .contextMenu { accountMenu(account) }
+            #if os(iOS)
+            .swipeActions(edge: .trailing) {
+                Button("Gruppe …", systemImage: "folder") { model.groupDialog = .moveAccount(account) }
+                    .tint(Theme.accent)
+            }
+            #endif
     }
 
     @ViewBuilder
     private func accountMenu(_ account: Account) -> some View {
+        AccountGroupMenu(account: account)
+        AccountColorMenu(account: account)
+        Divider()
         if let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
             Button("\(conn.displayName) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
         }
@@ -193,15 +303,15 @@ struct SidebarView: View {
             }
         }
         Divider()
-        Button("Konto löschen …", systemImage: "trash", role: .destructive) { accountToDelete = account }
+        Button("Konto löschen …", systemImage: "trash", role: .destructive) { dialog = .deleteAccount(account) }
     }
 
     @ViewBuilder
     private func categoryMenu(_ category: GiroCrabCore.Category) -> some View {
-        Button("Neue Unterkategorie …", systemImage: "plus") { newCategoryParent = .some(category.id) }
+        Button("Neue Unterkategorie …", systemImage: "plus") { dialog = .newCategory(parent: category.id) }
         Button("Monatsbudget festlegen …", systemImage: "gauge.with.dots.needle.67percent") { budgetCategory = IDBox(id: category.id) }
         Divider()
-        Button("„\(category.name)“ löschen …", systemImage: "trash", role: .destructive) { categoryToDelete = category }
+        Button("„\(category.name)“ löschen …", systemImage: "trash", role: .destructive) { dialog = .deleteCategory(category) }
     }
 }
 
@@ -308,6 +418,59 @@ struct CategoryRow: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(Theme.secondary)
             }
+        }
+    }
+}
+
+private extension View {
+    /// macOS: clicking the header selects the group (the chevron collapses).
+    /// iOS: the whole header collapses/expands – a bigger target than the
+    /// chevron; the group overview is in the long-press menu.
+    @ViewBuilder
+    func groupHeaderTap(_ item: SidebarItem, toggle: @escaping () -> Void) -> some View {
+        #if os(macOS)
+        self.tag(item)
+        #else
+        self.contentShape(Rectangle()).onTapGesture(perform: toggle)
+        #endif
+    }
+}
+
+/// Accent outline on the row a drag is hovering over.
+private struct DropHighlight: ViewModifier {
+    let key: String
+    @Binding var target: String?
+
+    func body(content: Content) -> some View {
+        content.background(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(Theme.accent, lineWidth: 1.5)
+                .opacity(target == key ? 1 : 0)
+                .padding(-3)
+        )
+    }
+}
+
+/// Sidebar-only dialogs (account, bank login, category). One state instead
+/// of one flag per dialog.
+private enum SidebarDialog {
+    case deleteAccount(Account)
+    case removeConnection(Int64)
+    case deleteCategory(GiroCrabCore.Category)
+    case newCategory(parent: Int64?)
+
+    /// Confirmation dialog vs. text-input alert.
+    var isConfirmation: Bool {
+        if case .newCategory = self { return false }
+        return true
+    }
+
+    var title: Text {
+        switch self {
+        case .deleteAccount: Text("Konto löschen?")
+        case .removeConnection: Text("Bankzugang entfernen?")
+        case .deleteCategory: Text("Kategorie löschen?")
+        case .newCategory: Text("Neue Kategorie")
         }
     }
 }

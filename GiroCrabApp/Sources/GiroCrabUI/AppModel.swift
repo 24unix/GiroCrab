@@ -7,6 +7,8 @@ import GiroCrabCore
 enum SidebarItem: Hashable {
     case allAccounts
     case group(Int64)
+    /// User-defined group ("Nach Gruppe"); empty uuid = "Ohne Gruppe".
+    case userGroup(String)
     case account(Int64)
     case category(Int64)
     case uncategorized
@@ -171,6 +173,11 @@ public final class AppModel {
 
     // Data
     var groups: [AccountGroup] = []
+    /// "Nach Gruppe" sidebar view (user groups, then "Ohne Gruppe").
+    var userGroups: [UserGroup] = []
+    /// Lookups for booking rows (see `rebuildAccountIndex`).
+    private(set) var accountsByID: [Int64: Account] = [:]
+    private(set) var accountMarkers: [Int64: AccountMarker] = [:]
     var categories: [GiroCrabCore.Category] = []
     var categoryTree: [CategoryNode] = []
     var bookings: [Booking] = []
@@ -195,7 +202,22 @@ public final class AppModel {
     var selectedBookingID: Booking.ID? { didSet { reloadMerchantStats() } }
     /// iPhone: set by a tap on a booking row, presents the detail sheet.
     var showBookingSheet = false
-    var collapsedGroups: Set<Int64> = []
+    var collapsedGroups: Set<Int64> = Set(UserDefaults.standard.array(forKey: "sidebar.collapsedKindGroups") as? [Int64] ?? []) {
+        didSet { UserDefaults.standard.set(Array(collapsedGroups), forKey: "sidebar.collapsedKindGroups") }
+    }
+    var collapsedUserGroups: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "sidebar.collapsedUserGroups") ?? []) {
+        didSet { UserDefaults.standard.set(Array(collapsedUserGroups), forKey: "sidebar.collapsedUserGroups") }
+    }
+    /// Explicit per-device choice; `nil` = "Nach Gruppe" once groups exist.
+    var accountViewChoice: AccountSidebarMode? = UserDefaults.standard.string(forKey: "sidebar.accountView").flatMap(AccountSidebarMode.init) {
+        didSet { UserDefaults.standard.set(accountViewChoice?.rawValue, forKey: "sidebar.accountView") }
+    }
+    /// Settings tab on screen (set to `.groups` by "Gruppen bearbeiten …").
+    var settingsTab: SettingsTab = .banks
+    /// macOS: the main window opens Settings when this is set.
+    var groupSettingsRequested = false
+    /// The one group dialog on screen (new / rename / delete / move account).
+    var groupDialog: GroupDialog?
     var expandedCategories: Set<Int64> = []
     var showRuleEditor = false
     var ruleDraft: Rule?
@@ -502,7 +524,7 @@ public final class AppModel {
         ownVault = nil
         demoActive = false
         vault = nil
-        groups = []; bookings = []; categories = []; categoryTree = []; rules = []; connections = []; settings = []
+        groups = []; userGroups = []; accountsByID = [:]; accountMarkers = [:]; bookings = []; categories = []; categoryTree = []; rules = []; connections = []; settings = []
         page = nil; dashboard = nil; merchantStats = nil; logoCache = [:]
         vaultState = .locked
     }
@@ -523,6 +545,12 @@ public final class AppModel {
         guard let vault else { return }
         run {
             groups = try vault.listAccountGroups()
+            userGroups = try vault.listUserGroups()
+            // a group removed or combined (also via sync) can't stay selected
+            if case .userGroup(let u) = sidebarSelection, !userGroups.contains(where: { $0.uuid == u }) {
+                sidebarSelection = .allAccounts
+            }
+            rebuildAccountIndex()
             connections = try vault.listBankConnections()
         }
     }
@@ -569,6 +597,7 @@ public final class AppModel {
         switch sidebarSelection {
         case .account(let id): accountIDs = [id]
         case .group(let gid): accountIDs = groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
+        case .userGroup(let uuid): accountIDs = userGroupAccountIDs(uuid)
         case .category(let id): category = id
         case .uncategorized: uncategorized = true
         case .allAccounts, .documents, .none: break
@@ -645,6 +674,7 @@ public final class AppModel {
         switch sidebarSelection {
         case .account(let id): ids = [id]
         case .group(let gid): ids = groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
+        case .userGroup(let uuid): ids = userGroupAccountIDs(uuid)
         default: ids = liquidAccounts.map(\.id)
         }
         if ids.isEmpty { ids = [-1] }
@@ -841,7 +871,8 @@ public final class AppModel {
     }
 
     var allAccounts: [Account] { groups.flatMap(\.accounts) }
-    var liquidAccounts: [Account] { allAccounts.filter { [.checking, .savings, .paymentService, .creditCard, .cash].contains($0.kind) } }
+    /// Everyday accounts counted in "Verfügbar" (skips groups excluded from the total).
+    var liquidAccounts: [Account] { allAccounts.filter { $0.inTotal && [.checking, .savings, .paymentService, .creditCard, .cash].contains($0.kind) } }
     var liquidBalance: Int64 { liquidAccounts.reduce(0) { $0 + $1.balanceCents } }
     var newCount: Int { allAccounts.reduce(0) { $0 + Int($1.newCount) } }
     var uncategorizedCount: Int { allAccounts.filter { $0.kind != .loan }.reduce(0) { $0 + Int($1.uncategorizedCount) } }
@@ -861,6 +892,7 @@ public final class AppModel {
         switch sidebarSelection {
         case .allAccounts, .none: return String(localized: "Übersicht")
         case .group(let id): return groups.first { $0.id == id }?.name ?? String(localized: "Gruppe")
+        case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }?.name ?? String(localized: "Gruppe")
         case .account(let id): return allAccounts.first { $0.id == id }?.name ?? String(localized: "Konto")
         case .category(let id): return categories.first { $0.id == id }?.path ?? String(localized: "Kategorie")
         case .uncategorized: return String(localized: "Ohne Kategorie")
@@ -872,6 +904,7 @@ public final class AppModel {
         switch sidebarSelection {
         case .account(let id): return allAccounts.first { $0.id == id }.map { (String(localized: "Kontostand"), $0.balanceCents) }
         case .group(let id): return groups.first { $0.id == id }.map { (String(localized: "Summe"), $0.balanceCents) }
+        case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .allAccounts, .none: return (String(localized: "Verfügbar (Giro, Tagesgeld, Karten)"), liquidBalance)
         case .category(let id): return categories.first { $0.id == id }.map { (String(localized: "Summe im Zeitraum"), $0.totalCents) }
         case .uncategorized, .documents: return nil
@@ -888,36 +921,52 @@ public final class AppModel {
         return String(localized: "Aktualisiert \(relative)")
     }
 
-    func account(for id: Int64) -> Account? { allAccounts.first { $0.id == id } }
+    func account(for id: Int64) -> Account? { accountsByID[id] }
 
     // MARK: - Account markers (which account a booking belongs to)
 
-    /// Distinct, readable colours; assigned by account id so they stay put
-    /// when accounts move between sidebar sections.
-    private static let accountMarkerPalette = [
-        "#2563EB", "#D97706", "#059669", "#DB2777", "#7C3AED", "#0891B2",
-        "#DC2626", "#65A30D", "#C026D3", "#EA580C", "#4F46E5", "#0D9488",
-    ]
-
+    /// The account's colour (stored in the core: the user's choice, else a
+    /// default from its sync identity – the same on every device). Looked up
+    /// in `accountMarkers`, built once per account reload.
     func accountColor(_ accountId: Int64) -> Color {
-        let ids = allAccounts.map(\.id).sorted()
-        let i = ids.firstIndex(of: accountId) ?? Int(accountId)
-        return Color.readable(hex: Self.accountMarkerPalette[abs(i) % Self.accountMarkerPalette.count])
+        accountMarkers[accountId]?.color ?? Theme.tertiary
     }
 
-    /// Short account label for the booking list, e.g. "Girokonto ··3000".
+    /// Short account label for the booking list, e.g. "Girokonto" – with
+    /// "··3000" only when another account has the same name.
     func accountShortLabel(_ accountId: Int64) -> String {
-        guard let a = account(for: accountId) else { return "" }
-        var name = a.name.replacingOccurrences(of: " (MoneyMoney)", with: "")
-        let digits = String((a.iban.isEmpty ? a.accountNumber : a.iban).filter(\.isNumber).suffix(4))
-        if !digits.isEmpty && !name.contains(digits) { name += " ··\(digits)" }
-        return name
+        accountMarkers[accountId]?.label ?? ""
     }
 
-    /// Markers only where bookings of several accounts are mixed.
+    /// Markers only where the list mixes bookings of several accounts.
     var showsAccountMarkers: Bool {
-        if case .account = sidebarSelection { return false }
-        return allAccounts.count > 1
+        switch sidebarSelection {
+        case .account: false
+        case .group(let id): (groups.first { $0.id == id }?.accounts.count ?? 0) > 1
+        case .userGroup(let uuid): (userGroups.first { $0.uuid == uuid }?.accounts.count ?? 0) > 1
+        default: accountMarkers.count > 1
+        }
+    }
+
+    func setAccountColor(_ accountId: Int64, hex: String?) {
+        guard let vault else { return }
+        run { try vault.setAccountColor(accountId: accountId, colorHex: hex) }
+        reloadAccounts()
+    }
+
+    fileprivate func rebuildAccountIndex() {
+        let accounts = allAccounts
+        accountsByID = Dictionary(accounts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        func base(_ a: Account) -> String { a.name.replacingOccurrences(of: " (MoneyMoney)", with: "") }
+        let nameCount = Dictionary(accounts.map { (base($0).lowercased(), 1) }, uniquingKeysWith: +)
+        accountMarkers = Dictionary(accounts.map { a in
+            var label = base(a)
+            if nameCount[label.lowercased(), default: 0] > 1 {
+                let digits = String((a.iban.isEmpty ? a.accountNumber : a.iban).filter(\.isNumber).suffix(4))
+                if !digits.isEmpty && !label.contains(digits) { label += " ··\(digits)" }
+            }
+            return (a.id, AccountMarker(label: label, color: Color.readable(hex: a.colorHex)))
+        }, uniquingKeysWith: { a, _ in a })
     }
 
     // MARK: - Keyboard navigation
@@ -1655,4 +1704,10 @@ func formatIBAN(_ iban: String) -> String {
         out.append(ch)
     }
     return out
+}
+
+/// How a booking row marks its account: short name and colour.
+struct AccountMarker {
+    let label: String
+    let color: Color
 }

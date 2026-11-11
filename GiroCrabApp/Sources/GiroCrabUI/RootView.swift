@@ -26,6 +26,9 @@ public struct GiroCrabScenes: Scene {
                 Button("Befehlspalette …") { model.showCommandPalette = true }
                     .keyboardShortcut("k", modifiers: .command)
                     .disabled(model.vault == nil)
+                Button("Neue Kontogruppe …") { model.groupDialog = .create() }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                    .disabled(model.vault == nil)
                 Button("Aus MoneyMoney importieren…") { model.openMoneyMoneyImport() }
                     .disabled(model.vault == nil)
                 Button("Alle Konten abrufen") { model.requestSyncAll() }
@@ -57,6 +60,14 @@ public struct GiroCrabScenes: Scene {
                     .disabled(!model.hasOwnVault)
             }
             CommandGroup(after: .sidebar) {
+                Picker("Konten anzeigen", selection: Binding(get: { model.accountView }, set: { model.accountView = $0 })) {
+                    Text("Nach Gruppe").tag(AccountSidebarMode.byGroup)
+                    Text("Nach Kontoart").tag(AccountSidebarMode.byKind)
+                }
+                .disabled(model.vault == nil)
+                Button("Kontogruppen bearbeiten …") { model.openGroupSettings() }
+                    .disabled(model.vault == nil)
+                Divider()
                 Button(model.demoActive ? "Eigenen Tresor anzeigen" : "Demo-Daten anzeigen") {
                     if model.demoActive { model.showOwnVault() } else { model.showDemo() }
                 }
@@ -157,6 +168,7 @@ struct MainSplitView: View {
     @Environment(AppModel.self) private var model
     #if os(macOS)
     @State private var columns: NavigationSplitViewVisibility = .all
+    @Environment(\.openSettings) private var openSettings
     #else
     @State private var columns: NavigationSplitViewVisibility = .automatic
     #endif
@@ -181,6 +193,15 @@ struct MainSplitView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .quickLookPreview($model.quickLookURL)
+        .accountGroupDialogs($model.groupDialog)
+        #if os(macOS)
+        // "Gruppen bearbeiten …" → Settings › Kontogruppen
+        .onChange(of: model.groupSettingsRequested) { _, requested in
+            guard requested else { return }
+            model.groupSettingsRequested = false
+            openSettings()
+        }
+        #endif
         .sheet(isPresented: $model.showRuleEditor) {
             RuleEditorView(initialDraft: model.ruleDraft)
                 .environment(model)

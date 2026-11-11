@@ -8,6 +8,7 @@
 //                  macOS and iOS; used by the Xcode project in Xcode/).
 //  * GiroCrabMac – a plain macOS executable for `swift run` / `cargo run`
 //                  (supports --demo-seed and --screenshot <file.png>).
+//  * GiroCrabUITests – AppModel tests on the demo vault (macOS + iOS).
 import PackageDescription
 
 let package = Package(
@@ -30,6 +31,13 @@ let package = Package(
             name: "GiroCrabMac",
             dependencies: ["GiroCrabUI"],
             path: "Sources/GiroCrabMac"
+        ),
+        // App-model tests on the demo vault; run on macOS (`swift test`) and
+        // the iOS Simulator (`xcodebuild test -scheme GiroCrabApp-Package`).
+        .testTarget(
+            name: "GiroCrabUITests",
+            dependencies: ["GiroCrabUI"],
+            path: "Tests/GiroCrabUITests"
         ),
     ]
 )

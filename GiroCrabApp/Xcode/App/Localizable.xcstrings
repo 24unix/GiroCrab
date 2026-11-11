@@ -1,6 +1,127 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "1 Konto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 account"
+          }
+        }
+      }
+    },
+    "Bankzugang entfernen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove Bank Login…"
+          }
+        }
+      }
+    },
+    "Bankzugang entfernen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove Bank Login?"
+          }
+        }
+      }
+    },
+    "Bernstein" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amber"
+          }
+        }
+      }
+    },
+    "Blau" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blue"
+          }
+        }
+      }
+    },
+    "Cyan" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cyan"
+          }
+        }
+      }
+    },
+    "Das Konto wird nach „Ohne Gruppe“ verschoben. Es werden keine Konten oder Buchungen gelöscht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The account will be moved to “Ungrouped”. No accounts or transactions are deleted."
+          }
+        }
+      }
+    },
+    "Die Konten aus „%@“ kommen nach „%@“. „%@“ wird entfernt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The accounts in “%1$@” move to “%2$@”. “%3$@” is removed."
+          }
+        }
+      }
+    },
+    "Entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove"
+          }
+        }
+      }
+    },
+    "Farbe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Colour"
+          }
+        }
+      }
+    },
+    "Fuchsia" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fuchsia"
+          }
+        }
+      }
+    },
     "GiroCrab — Cyan & Orange" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8,6 +129,215 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GiroCrab — Cyan & Orange"
+          }
+        }
+      }
+    },
+    "Gruppe löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Group"
+          }
+        }
+      }
+    },
+    "Gruppe · %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Group · %@"
+          }
+        }
+      }
+    },
+    "Gruppen bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Groups"
+          }
+        }
+      }
+    },
+    "Grün" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Green"
+          }
+        }
+      }
+    },
+    "Indigo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Indigo"
+          }
+        }
+      }
+    },
+    "Kategorie löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Category?"
+          }
+        }
+      }
+    },
+    "Keine Gruppe ausgewählt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Group Selected"
+          }
+        }
+      }
+    },
+    "Konten anzeigen nach" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Accounts By"
+          }
+        }
+      }
+    },
+    "Konto löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Account…"
+          }
+        }
+      }
+    },
+    "Konto löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Account?"
+          }
+        }
+      }
+    },
+    "Konto: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account: %@"
+          }
+        }
+      }
+    },
+    "Kontoart" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account Type"
+          }
+        }
+      }
+    },
+    "Limette" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lime"
+          }
+        }
+      }
+    },
+    "Mit + legen Sie die erste Gruppe an." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use + to create your first group."
+          }
+        }
+      }
+    },
+    "Mit „%@“ zusammenführen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merge with “%@”?"
+          }
+        }
+      }
+    },
+    "Noch keine Gruppen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Groups Yet"
+          }
+        }
+      }
+    },
+    "Orange" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orange"
+          }
+        }
+      }
+    },
+    "Petrol" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teal"
+          }
+        }
+      }
+    },
+    "Pink" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pink"
           }
         }
       }
@@ -52,6 +382,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Instant transfer (SEPA Instant)"
+          }
+        }
+      }
+    },
+    "Rot" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Red"
+          }
+        }
+      }
+    },
+    "Standardfarbe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default Colour"
           }
         }
       }
@@ -415,6 +767,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$lld categories: %2$@"
+          }
+        }
+      }
+    },
+    "%lld Konten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld accounts"
+          }
+        }
+      }
+    },
+    "%lld Konten werden nach „Ohne Gruppe“ verschoben. Es werden keine Konten oder Buchungen gelöscht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld accounts will be moved to “Ungrouped”. No accounts or transactions are deleted."
           }
         }
       }
@@ -1169,6 +1543,17 @@
         }
       }
     },
+    "Ausbildung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Education"
+          }
+        }
+      }
+    },
     "Ausführung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1199,6 +1584,17 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "Ausgeschaltet zählen die Konten dieser Gruppe nicht zu „Verfügbar“ und zum Saldoverlauf der Übersicht – z. B. für Geschäfts- oder Kinderkonten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When off, this group’s accounts don’t count towards “Available” or the overview’s balance history – e.g. for business or children’s accounts."
           }
         }
       }
@@ -1577,6 +1973,17 @@
         }
       }
     },
+    "Beruf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Work"
+          }
+        }
+      }
+    },
     "Betrag" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1946,6 +2353,17 @@
         }
       }
     },
+    "Die Gruppe ist leer." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The group is empty."
+          }
+        }
+      }
+    },
     "Die PIN wird nur für diesen Abruf verwendet und nie gespeichert." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2194,6 +2612,17 @@
         }
       }
     },
+    "Ein Konto gehört zu höchstens einer Gruppe." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An account belongs to at most one group."
+          }
+        }
+      }
+    },
     "Einnahme" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2403,6 +2832,17 @@
         }
       }
     },
+    "Familie" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Family"
+          }
+        }
+      }
+    },
     "Fehlende Angaben ergänzen (z. B. FinTS-Produkt-ID, API-Schlüssel) – das Formular öffnet sich automatisch" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2502,6 +2942,17 @@
         }
       }
     },
+    "Firma" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Company"
+          }
+        }
+      }
+    },
     "Firmenname" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2575,6 +3026,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Correct counterparty and purpose"
+          }
+        }
+      }
+    },
+    "Geld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Money"
           }
         }
       }
@@ -2755,6 +3217,61 @@
         }
       }
     },
+    "Gruppe ausklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expand group"
+          }
+        }
+      }
+    },
+    "Gruppe einklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse group"
+          }
+        }
+      }
+    },
+    "Gruppe gelöscht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Group Deleted"
+          }
+        }
+      }
+    },
+    "Gruppe löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Group…"
+          }
+        }
+      }
+    },
+    "Gruppe umbenennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename Group"
+          }
+        }
+      }
+    },
     "Gruppe „%@“" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2762,6 +3279,72 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Group “%@”"
+          }
+        }
+      }
+    },
+    "Gruppe „%@“ gelöscht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Group “%@” deleted"
+          }
+        }
+      }
+    },
+    "Gruppe „%@“ löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete group “%@”?"
+          }
+        }
+      }
+    },
+    "Gruppe …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Group…"
+          }
+        }
+      }
+    },
+    "Gruppen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Groups"
+          }
+        }
+      }
+    },
+    "Gruppen bearbeiten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Groups…"
+          }
+        }
+      }
+    },
+    "Gruppenübersicht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Group Overview"
           }
         }
       }
@@ -2784,6 +3367,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Master key"
+          }
+        }
+      }
+    },
+    "Haus" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Home"
+          }
+        }
+      }
+    },
+    "Herz" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heart"
           }
         }
       }
@@ -3063,6 +3668,17 @@
         }
       }
     },
+    "In Gesamtsumme einbeziehen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Include in Total"
+          }
+        }
+      }
+    },
     "In MoneyMoney ist eine PIN gespeichert" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3158,6 +3774,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fetch now"
+          }
+        }
+      }
+    },
+    "Jetzt in „%@“" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Currently in “%@”"
           }
         }
       }
@@ -3360,6 +3987,28 @@
         }
       }
     },
+    "Keine Konten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Accounts"
+          }
+        }
+      }
+    },
+    "Keine Konten – Konto lange drücken, um es zuzuordnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No accounts – long-press an account to add it"
+          }
+        }
+      }
+    },
     "Keine Regel ausgewählt" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3459,6 +4108,17 @@
         }
       }
     },
+    "Konten anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Accounts"
+          }
+        }
+      }
+    },
     "Konten ergänzt" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3466,6 +4126,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "accounts updated"
+          }
+        }
+      }
+    },
+    "Konten hierher ziehen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag accounts here"
+          }
+        }
+      }
+    },
+    "Konten nach Gruppe anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Accounts by Group"
+          }
+        }
+      }
+    },
+    "Konten nach Kontoart anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Accounts by Account Type"
           }
         }
       }
@@ -3532,6 +4225,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Account · %@"
+          }
+        }
+      }
+    },
+    "Kontogruppen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account Groups"
+          }
+        }
+      }
+    },
+    "Kontogruppen bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Account Groups"
+          }
+        }
+      }
+    },
+    "Kontogruppen bearbeiten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Account Groups…"
           }
         }
       }
@@ -3789,6 +4515,17 @@
         }
       }
     },
+    "Mit Gruppen trennen Sie z. B. private und geschäftliche Konten oder die Konten von Familienmitgliedern." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use groups to separate, for example, personal and business accounts or the accounts of family members."
+          }
+        }
+      }
+    },
     "Mitgelieferte Händlertabelle (Monogramm + Markenfarbe)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3961,6 +4698,28 @@
         }
       }
     },
+    "Nach Gruppe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By Group"
+          }
+        }
+      }
+    },
+    "Nach Kontoart" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By Account Type"
+          }
+        }
+      }
+    },
     "Nach „%@“ suchen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4005,6 +4764,17 @@
         }
       }
     },
+    "Name, z. B. „Privat“ oder „Geschäft“" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name, e.g. “Personal” or “Business”"
+          }
+        }
+      }
+    },
     "Netzwerkfehler: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4038,6 +4808,28 @@
         }
       }
     },
+    "Neue Gruppe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Group"
+          }
+        }
+      }
+    },
+    "Neue Gruppe …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Group…"
+          }
+        }
+      }
+    },
     "Neue Kategorie" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4045,6 +4837,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New Category"
+          }
+        }
+      }
+    },
+    "Neue Kontogruppe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Account Group"
+          }
+        }
+      }
+    },
+    "Neue Kontogruppe …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Account Group…"
           }
         }
       }
@@ -4155,6 +4969,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Not found: %@"
+          }
+        }
+      }
+    },
+    "Nicht in der Gesamtsumme" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not included in the total"
           }
         }
       }
@@ -4357,6 +5182,17 @@
         }
       }
     },
+    "Ohne Gruppe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungrouped"
+          }
+        }
+      }
+    },
     "Ohne Kategorie" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4364,6 +5200,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Uncategorised"
+          }
+        }
+      }
+    },
+    "Ordner" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Folder"
           }
         }
       }
@@ -4434,6 +5281,17 @@
         }
       }
     },
+    "Paar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couple"
+          }
+        }
+      }
+    },
     "Passwort" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4474,6 +5332,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Perk"
+          }
+        }
+      }
+    },
+    "Person" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Person"
           }
         }
       }
@@ -4794,6 +5663,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Regular Expression"
+          }
+        }
+      }
+    },
+    "Reihenfolge per Ziehen ändern. Konten ohne Gruppe erscheinen unter „Ohne Gruppe“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag to reorder. Accounts without a group appear under “Ungrouped”."
+          }
+        }
+      }
+    },
+    "Reisen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel"
           }
         }
       }
@@ -5206,6 +6097,17 @@
         }
       }
     },
+    "Symbol" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Icon"
+          }
+        }
+      }
+    },
     "TAN / Code" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5360,6 +6262,28 @@
         }
       }
     },
+    "Umbenennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename"
+          }
+        }
+      }
+    },
+    "Umbenennen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename…"
+          }
+        }
+      }
+    },
     "Umbuchung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5503,6 +6427,17 @@
         }
       }
     },
+    "Vermögen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wealth"
+          }
+        }
+      }
+    },
     "Verschlüsselt in der SQLCipher-Datenbank; beim nächsten Abruf wird nicht mehr gefragt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5554,6 +6489,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Purpose (raw)"
+          }
+        }
+      }
+    },
+    "Violett" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Violet"
           }
         }
       }
@@ -5767,6 +6713,17 @@
         }
       }
     },
+    "Wählen Sie links eine Gruppe aus." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select a group on the left."
+          }
+        }
+      }
+    },
     "Wörterbuch" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5774,6 +6731,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "dictionary"
+          }
+        }
+      }
+    },
+    "Zusammenführen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merge"
           }
         }
       }
@@ -6237,6 +7205,72 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Delete “%@”"
+          }
+        }
+      }
+    },
+    "„%@“ löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete “%@”…"
+          }
+        }
+      }
+    },
+    "„%@“ mit „%@“ zusammengeführt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” merged into “%2$@”"
+          }
+        }
+      }
+    },
+    "„%@“ nach „%@“ verschieben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move “%1$@” to “%2$@”"
+          }
+        }
+      }
+    },
+    "„%@“ verschieben nach" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move “%@” to"
+          }
+        }
+      }
+    },
+    "„%@“ wird in die neue Gruppe verschoben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” will be moved into the new group."
+          }
+        }
+      }
+    },
+    "„%@“ wird samt allen Buchungen und Belegen unwiderruflich gelöscht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” will be permanently deleted, including all its transactions and documents."
           }
         }
       }

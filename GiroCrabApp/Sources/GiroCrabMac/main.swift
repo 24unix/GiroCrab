@@ -3,6 +3,10 @@
 //
 //   GiroCrabMac --demo-seed                 explore with demo data
 //   GiroCrabMac --screenshot out.png        render the window to a PNG and quit
+//
+// Compiled empty on other platforms, so the package scheme (and its tests)
+// also builds for the iOS Simulator.
+#if os(macOS)
 import AppKit
 import SwiftUI
 import GiroCrabUI
@@ -58,3 +62,4 @@ struct GiroCrabMacApp: App {
 }
 
 GiroCrabMacApp.main()
+#endif

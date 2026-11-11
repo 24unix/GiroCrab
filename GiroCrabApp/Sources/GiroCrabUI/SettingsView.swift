@@ -10,15 +10,23 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        TabView {
+        @Bindable var model = model
+        TabView(selection: $model.settingsTab) {
             BankConnectionsSettings()
                 .tabItem { Label("Banken", systemImage: "building.columns") }
+                .tag(SettingsTab.banks)
+            AccountGroupsSettings()
+                .tabItem { Label("Kontogruppen", systemImage: "folder") }
+                .tag(SettingsTab.groups)
             CredentialsSettings()
                 .tabItem { Label("FinTS & API-Schlüssel", systemImage: "key.horizontal") }
+                .tag(SettingsTab.credentials)
             LogoSettings()
                 .tabItem { Label("Händler-Logos", systemImage: "photo.on.rectangle") }
+                .tag(SettingsTab.logos)
             SecuritySettings()
                 .tabItem { Label("Sicherheit", systemImage: "lock.shield") }
+                .tag(SettingsTab.security)
         }
         .disabled(model.vault == nil)
         #if os(iOS)
@@ -26,6 +34,11 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
     }
+}
+
+/// Tabs of the settings window (macOS) / sheet (iOS).
+enum SettingsTab: Hashable {
+    case banks, groups, credentials, logos, security
 }
 
 struct BankConnectionsSettings: View {

@@ -321,6 +321,13 @@ struct BookingRow: View {
     let booking: Booking
     var selected = false
 
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var compactChip: Bool { sizeClass == .compact }
+    #else
+    private let compactChip = false
+    #endif
+
     var body: some View {
         HStack(spacing: 12) {
             MerchantSignet(merchant: booking.merchant, categorySymbol: booking.categorySymbol, showNewDot: !booking.checked)
@@ -344,15 +351,17 @@ struct BookingRow: View {
                     let showChip = model.showsAccountMarkers
                     #endif
                     if showChip {
-                        AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId))
+                        AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId), compact: compactChip)
                     }
                     // category with the sidebar's icon and colour, then the payment method
                     BookingCategoryLabel(booking: booking)
+                        .layoutPriority(1)
                     if !booking.paymentMethod.isEmpty {
                         Text("· \(booking.paymentMethod)")
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.secondary)
                             .lineLimit(1)
+                            .layoutPriority(-1)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -400,20 +409,26 @@ struct BookingCategoryLabel: View {
 struct AccountChip: View {
     let label: String
     let color: Color
+    /// Narrow iPhone rows: just the dot (the category keeps the room).
+    var compact = false
 
     var body: some View {
         HStack(spacing: 4) {
             Circle().fill(color).frame(width: 6, height: 6)
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(color)
-                .lineLimit(1)
+            if !compact {
+                Text(label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+            }
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, compact ? 0 : 6)
         .padding(.vertical, 1.5)
-        .background(Capsule().fill(color.opacity(0.12)))
+        .background(Capsule().fill(color.opacity(compact ? 0 : 0.12)))
         .fixedSize()
         .help(label)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Konto: \(label)"))
     }
 }
 

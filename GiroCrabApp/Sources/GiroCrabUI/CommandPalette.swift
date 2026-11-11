@@ -43,6 +43,22 @@ struct CommandPaletteView: View {
         out.append(Item(title: String(localized: "Einstellungen"), subtitle: action, symbol: "gearshape") { model.showSettings = true })
         #endif
         out.append(Item(title: String(localized: "Übersicht"), subtitle: String(localized: "Konten"), symbol: "square.grid.2x2") { model.sidebarSelection = .allAccounts })
+        out.append(Item(title: String(localized: "Neue Kontogruppe"), subtitle: "\(action) · ⇧⌘N", symbol: "folder.badge.plus") { model.groupDialog = .create() })
+        out.append(Item(title: String(localized: "Kontogruppen bearbeiten"), subtitle: action, symbol: "slider.horizontal.3") { model.openGroupSettings() })
+        for m in AccountSidebarMode.allCases where m != model.accountView {
+            out.append(Item(title: m == .byGroup ? String(localized: "Konten nach Gruppe anzeigen") : String(localized: "Konten nach Kontoart anzeigen"), subtitle: String(localized: "Ansicht"), symbol: m.symbol) { model.accountView = m })
+        }
+        for g in model.namedUserGroups {
+            out.append(Item(title: g.name, subtitle: String(localized: "Gruppe · \(accountCountText(g.accounts.count))"), symbol: g.sfSymbol) {
+                model.accountView = .byGroup
+                model.sidebarSelection = .userGroup(g.uuid)
+            })
+        }
+        if case .account(let id) = model.sidebarSelection, let a = model.account(for: id) {
+            for g in model.namedUserGroups where g.uuid != a.userGroupUuid {
+                out.append(Item(title: String(localized: "„\(a.name)“ nach „\(g.name)“ verschieben"), subtitle: action, symbol: "folder") { model.moveAccount(a.id, to: g.uuid) })
+            }
+        }
         for a in model.allAccounts {
             out.append(Item(title: a.name, subtitle: String(localized: "Konto · \(a.bankName)"), symbol: a.sfSymbol) { model.sidebarSelection = .account(a.id) })
         }
