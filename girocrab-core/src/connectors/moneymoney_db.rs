@@ -395,9 +395,7 @@ fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
         }
         _ => {}
     }
-    if code.len() == 8 {
-        return None; // another German bank
-    }
+    // Brands MoneyMoney files under a pseudo bank code (Trade Republic: 10012345).
     let n = name.to_lowercase();
     if n.contains("paypal") {
         Some(ConnectorKind::PayPal)
@@ -410,7 +408,7 @@ fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
     } else if n.contains("comdirect") {
         Some(ConnectorKind::Comdirect)
     } else {
-        None
+        None // incl. any other German bank with an 8-digit code
     }
 }
 

@@ -924,3 +924,17 @@ fn pdf_statements_are_imported_once() {
         .unwrap()
         .starts_with(b"%PDF-1.4"));
 }
+
+#[test]
+fn brand_banks_with_pseudo_bank_code_map_to_their_connector() {
+    assert_eq!(
+        connector_for("10012345", "Trade Republic"),
+        Some(ConnectorKind::TradeRepublic)
+    );
+    assert_eq!(connector_for("", "PayPal"), Some(ConnectorKind::PayPal));
+    assert_eq!(connector_for("12345678", "Sparkasse Musterstadt"), None);
+    assert_eq!(
+        connector_for("20041111", "comdirect"),
+        Some(ConnectorKind::Comdirect)
+    );
+}
