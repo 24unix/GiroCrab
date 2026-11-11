@@ -293,6 +293,10 @@ public final class AppModel {
     var splitBooking: Booking?
     var transferBusy = false
     private var syncQueue: [BankConnection] = []
+    /// Scheduled PSD2 sync loop (see PSD2Consent.swift).
+    @ObservationIgnored var autoSyncTask: Task<Void, Never>?
+    /// The running sync was started by the schedule: no login prompts, no error dialogs.
+    var quietSyncConnectionID: Int64?
     private var pollTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var scopeLoadTask: Task<Void, Never>?
@@ -538,6 +542,7 @@ public final class AppModel {
         logoCache = [:]
         reloadAll()
         selectedBookingID = bookings.first?.id
+        if demo { stopAutoSync() } else { startAutoSync() }
     }
 
     /// Switch to the demo data (own vault stays unlocked in the background).
@@ -559,6 +564,7 @@ public final class AppModel {
     func lock() {
         guard ownVault != nil else { return }
         scopeLoadTask?.cancel()
+        stopAutoSync()
         ownVault = nil
         demoActive = false
         vault = nil
@@ -1540,6 +1546,22 @@ public final class AppModel {
     }
 
     private func handle(_ step: SyncStep, connection: BankConnection) {
+        // A scheduled sync never asks for a login: the bank wants a new
+        // consent, so stop quietly – the connection view shows it.
+        if quietSyncConnectionID == connection.id {
+            switch step {
+            case .needsChallenge, .stillWaiting:
+                quietSyncConnectionID = nil
+                let s = activeSession
+                activeSession = nil
+                syncingConnectionID = nil
+                Task { await s?.cancel() }
+                checkConsentExpiry()
+                return
+            case .finished:
+                break
+            }
+        }
         switch step {
         case .needsChallenge(let c):
             activeChallenge = ActiveChallenge(connection: connection, challenge: c, waiting: false)
@@ -1562,9 +1584,13 @@ public final class AppModel {
                 let n = max(0, accountDocuments(accountID).count - statementsCountBefore)
                 toast = String(localized: "\(connection.displayName): \(n) neue Kontoauszüge")
             } else {
-                toast = String(localized: "\(connection.displayName): \(s.transactionsImported) neue Buchungen, \(s.transactionsCategorized) kategorisiert")
-                    + Self.skippedArchivedNote(s)
+                let quiet = quietSyncConnectionID == connection.id
+                // scheduled syncs only speak up when something changed
+                if !quiet || s.transactionsImported > 0 || !s.newAccounts.isEmpty || !s.revokedAccounts.isEmpty {
+                    toast = syncNotice(connection, s) + Self.skippedArchivedNote(s)
+                }
             }
+            quietSyncConnectionID = nil
             reloadAll()
             syncNextInQueue()
         }
@@ -1642,6 +1668,17 @@ public final class AppModel {
     private var syncingConnectionIDBeforeError: Int64?
 
     private func finishSync(error: Error) {
+        if let quietID = quietSyncConnectionID {
+            // scheduled sync: a notice instead of dialogs / login prompts
+            quietSyncConnectionID = nil
+            pollTask?.cancel()
+            activeSession = nil
+            activeChallenge = nil
+            syncingConnectionID = nil
+            let name = connections.first { $0.id == quietID }?.displayName ?? ""
+            toast = String(localized: "\(name): automatischer Abruf fehlgeschlagen – \(describe(error))")
+            return
+        }
         statementsAccountID = nil
         syncingConnectionIDBeforeError = syncingConnectionID
         pollTask?.cancel()

@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     sf_symbol       TEXT    NOT NULL DEFAULT 'building.columns',
     sort_order      INTEGER NOT NULL DEFAULT 0,
     initial_balance_cents INTEGER,                 -- original amount of a Darlehen (i64 cents)
+    access_revoked  INTEGER NOT NULL DEFAULT 0,    -- bank / PSD2 consent no longer grants access
     UNIQUE (connection_id, external_ref)
 );
 
@@ -191,7 +192,13 @@ pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
     ("enablebanking.country.amex", "Land American Express", "Zweistelliger Ländercode.", "Enable Banking (PSD2)", false, "DE"),
     ("enablebanking.aspsp.amazonvisa", "ASPSP-Name Amazon Visa", "Herausgeber in Deutschland: Open Bank S.A. (Marke Zinia). Je nach Listung „Open Bank“ oder „Zinia“ eintragen.", "Enable Banking (PSD2)", false, "Open Bank"),
     ("enablebanking.country.amazonvisa", "Land Amazon Visa", "Zweistelliger Ländercode.", "Enable Banking (PSD2)", false, "DE"),
+    // Opt-in per card: the Enable Banking credentials are shared with PSD2
+    // banks (C24, N26 …), so having them must not switch the cards away from
+    // the web login.
+    ("enablebanking.use.amex", "American Express per Enable Banking abrufen", "1 = PSD2-API statt Web-Login (eigene Enable-Banking-Anwendung nötig). Leer oder 0 = Web-Login.", "Enable Banking (PSD2)", false, ""),
+    ("enablebanking.use.amazonvisa", "Amazon Visa per Enable Banking abrufen", "1 = PSD2-API statt Web-Login (eigene Enable-Banking-Anwendung nötig). Leer oder 0 = Web-Login.", "Enable Banking (PSD2)", false, ""),
     ("merchants.online_logos", "Händler-Logos online laden", "Anbieter für Händler-Logos: off, duckduckgo oder google. Logos werden verschlüsselt zwischengespeichert; übertragen wird nur die Händler-Domain (z. B. lidl.de). Standard: off.", "Händler-Logos", false, "off"),
+    ("sync.psd2_auto_hours", "Automatischer PSD2-Abruf (Stunden)", "Solange GiroCrab läuft, werden PSD2-Bankzugänge (Enable Banking) alle N Stunden ohne TAN abgerufen, solange die Zustimmung gilt. Banken erlauben meist nur 4 Abrufe pro Tag. 0 = aus.", "Allgemein", false, "6"),
     ("sync.days_back", "Tage beim ersten Abruf", "Ältere Umsätze werden nur einmal abgefragt.", "Allgemein", false, "90"),
 ];
 
@@ -269,6 +276,19 @@ impl Vault {
                     "ALTER TABLE transactions ADD COLUMN note TEXT NOT NULL DEFAULT '';
                      ALTER TABLE transactions ADD COLUMN import_fp TEXT NOT NULL DEFAULT '';
                      CREATE INDEX IF NOT EXISTS tx_import_fp ON transactions(account_id, import_fp) WHERE import_fp != '';",
+                )?;
+            }
+        }
+        // accounts.access_revoked (PSD2 access withdrawn) – idempotent
+        if version > 0 {
+            let has: i64 = conn.query_row(
+                "SELECT count(*) FROM pragma_table_info('accounts') WHERE name = 'access_revoked'",
+                [],
+                |r| r.get(0),
+            )?;
+            if has == 0 {
+                conn.execute_batch(
+                    "ALTER TABLE accounts ADD COLUMN access_revoked INTEGER NOT NULL DEFAULT 0;",
                 )?;
             }
         }
@@ -1374,7 +1394,7 @@ impl Vault {
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0),
                     a.initial_balance_cents, g.uuid, IFNULL(g.include_in_total, 1) AND a.archived_unix IS NULL,
                     a.color_hex, IFNULL(c.connector, ''), IFNULL(c.bank_code, ''), IFNULL(c.login_name, ''), a.external_ref,
-                    a.archived_unix
+                    a.archived_unix, a.access_revoked
              FROM accounts a LEFT JOIN bank_connections c ON c.id = a.connection_id
              LEFT JOIN user_groups g ON g.uuid = a.user_group_uuid AND g.deleted_ms IS NULL
              ORDER BY a.sort_order, a.id",
@@ -1425,6 +1445,7 @@ impl Vault {
                     }
                 },
                 archived_unix: r.get(26)?,
+                access_revoked: r.get::<_, i64>(27)? != 0,
             })
         })?;
         let mut accounts = rows.collect::<Result<Vec<_>, _>>()?;

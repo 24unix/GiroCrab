@@ -388,6 +388,12 @@ struct AccountRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(account.name).lineLimit(1)
+                    if account.accessRevoked {
+                        Image(systemName: "lock.slash")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .help("Zugriff entzogen: Die Bank liefert dieses Konto nicht mehr. Buchungen bleiben erhalten.")
+                    }
                     if account.newCount > 0 {
                         Circle().fill(Theme.accent).frame(width: 6, height: 6)
                     }

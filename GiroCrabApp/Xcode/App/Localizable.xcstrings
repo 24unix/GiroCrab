@@ -8534,6 +8534,193 @@
           }
         }
       }
+    },
+    "Zustimmung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consent"
+          }
+        }
+      }
+    },
+    "gültig bis %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "valid until %@"
+          }
+        }
+      }
+    },
+    "abgelaufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "expired"
+          }
+        }
+      }
+    },
+    "noch %lld Tage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld days left"
+          }
+        }
+      }
+    },
+    "keine Zustimmung gespeichert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no consent stored"
+          }
+        }
+      }
+    },
+    "Ohne Zugriff" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No access"
+          }
+        }
+      }
+    },
+    "%u Konten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u accounts"
+          }
+        }
+      }
+    },
+    "Diese Konten sind in der Zustimmung nicht mehr enthalten. Buchungen bleiben erhalten; Konto bei Bedarf selbst löschen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "These accounts are no longer included in the consent. Their bookings are kept; delete an account yourself if you no longer need it."
+          }
+        }
+      }
+    },
+    "Neu verbinden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reconnect"
+          }
+        }
+      }
+    },
+    "Neue Zustimmung bei der Bank erteilen (z. B. vor Ablauf oder um Konten hinzuzufügen oder zu entfernen)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grant a new consent at the bank (e.g. before it expires, or to add or remove accounts)."
+          }
+        }
+      }
+    },
+    "Zugriff entzogen: Die Bank liefert dieses Konto nicht mehr. Buchungen bleiben erhalten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Access withdrawn: the bank no longer provides this account. Its bookings are kept."
+          }
+        }
+      }
+    },
+    "%@: automatischer Abruf fehlgeschlagen – %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: automatic sync failed – %2$@"
+          }
+        }
+      }
+    },
+    "Die PSD2-Zustimmung für %@ ist abgelaufen. Bitte in GiroCrab neu verbinden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The PSD2 consent for %@ has expired. Please reconnect in GiroCrab."
+          }
+        }
+      }
+    },
+    "Die PSD2-Zustimmung für %@ läuft in %lld Tagen ab. Bitte in GiroCrab neu verbinden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The PSD2 consent for %1$@ expires in %2$lld days. Please reconnect in GiroCrab."
+          }
+        }
+      }
+    },
+    "Bankzugang erneuern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renew bank connection"
+          }
+        }
+      }
+    },
+    "Neue Konten: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New accounts: %@"
+          }
+        }
+      }
+    },
+    "Kein Zugriff mehr: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No access anymore: %@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

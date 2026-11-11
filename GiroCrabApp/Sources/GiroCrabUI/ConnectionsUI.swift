@@ -146,11 +146,51 @@ struct ConnectionEditSheet: View {
     /// Optional power-user PSD2 credentials (collapsed "Erweitert" section).
     private var advancedKeys: [String] {
         switch connection.connector {
-        case .americanExpress: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url", "enablebanking.aspsp.amex", "enablebanking.country.amex"]
-        case .amazonVisa: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url", "enablebanking.aspsp.amazonvisa", "enablebanking.country.amazonvisa"]
+        case .americanExpress: return ["enablebanking.use.amex", "enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url", "enablebanking.aspsp.amex", "enablebanking.country.amex"]
+        case .amazonVisa: return ["enablebanking.use.amazonvisa", "enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url", "enablebanking.aspsp.amazonvisa", "enablebanking.country.amazonvisa"]
         default: return []
         }
     }
+    /// PSD2 consent: end date, warning before expiry, accounts without
+    /// access, and "Neu verbinden" (new consent at the bank).
+    @ViewBuilder private func consentRows(_ st: ConnectionStatus) -> some View {
+        let end = PSD2Consent.parse(st.consentValidUntil)
+        let stage = PSD2Consent.stage(until: end)
+        LabeledContent("Zustimmung") {
+            if let end {
+                HStack(spacing: 6) {
+                    Text("gültig bis \(end.formatted(date: .abbreviated, time: .omitted))")
+                    switch stage {
+                    case .expired:
+                        Label("abgelaufen", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                    case .expiringSoon:
+                        Label("noch \(max(0, PSD2Consent.daysLeft(until: end))) Tage", systemImage: "clock.badge.exclamationmark")
+                            .foregroundStyle(.orange)
+                    default:
+                        EmptyView()
+                    }
+                }
+                .font(.callout)
+            } else {
+                Text("keine Zustimmung gespeichert").foregroundStyle(Theme.secondary)
+            }
+        }
+        if st.revokedAccountCount > 0 {
+            LabeledContent("Ohne Zugriff") {
+                Label("\(st.revokedAccountCount) Konten", systemImage: "lock.slash")
+                    .foregroundStyle(.orange)
+                    .help("Diese Konten sind in der Zustimmung nicht mehr enthalten. Buchungen bleiben erhalten; Konto bei Bedarf selbst löschen.")
+            }
+        }
+        Button {
+            save()
+            dismiss()
+            model.reconnect(connection)
+        } label: { Label("Neu verbinden", systemImage: "arrow.triangle.2.circlepath") }
+            .help("Neue Zustimmung bei der Bank erteilen (z. B. vor Ablauf oder um Konten hinzuzufügen oder zu entfernen).")
+    }
+
     private var isPortal: Bool { connection.connector == .americanExpress || connection.connector == .amazonVisa }
     @State private var importingStatement = false
     @State private var showAdvanced = false
@@ -229,6 +269,9 @@ struct ConnectionEditSheet: View {
                     if let st = status {
                         LabeledContent("Konten", value: "\(st.accountCount)")
                         LabeledContent("Buchungen", value: "\(st.bookingCount)")
+                        if connection.connector == .enableBanking {
+                            consentRows(st)
+                        }
                         if isTR {
                             LabeledContent("Sitzung", value: st.hasSession ? sessionText(st) : "keine gespeichert")
                             if st.hasSession {

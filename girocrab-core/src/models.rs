@@ -204,6 +204,9 @@ pub struct Account {
     /// active. Archived accounts keep bookings, categories and their group,
     /// but are skipped by syncs and rule runs and leave the overall total.
     pub archived_unix: Option<i64>,
+    /// The bank / PSD2 consent no longer grants access (e.g. not included in a
+    /// renewed Enable Banking consent). Kept with its bookings, not synced.
+    pub access_revoked: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

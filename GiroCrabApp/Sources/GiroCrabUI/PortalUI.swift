@@ -7,13 +7,24 @@ import GiroCrabCore
 // MARK: - Model glue (American Express / Amazon Visa: keyless import)
 
 extension AppModel {
-    /// Amex / Amazon Visa use the embedded web portal unless the user filled in
-    /// their own Enable-Banking (PSD2) credentials under "Erweitert".
+    /// Amex / Amazon Visa use the embedded web portal unless the user switched
+    /// that card to Enable Banking (PSD2) under "Erweitert" *and* set the
+    /// credentials. The credentials alone don't count: they are shared with
+    /// PSD2 banks such as C24 and must not move the cards off the web login.
     func usesPortal(_ c: BankConnection) -> Bool {
         guard !isDemo, c.connector == .americanExpress || c.connector == .amazonVisa else { return false }
-        let hasApp = settingEntry("enablebanking.application_id")?.hasValue ?? false
-        let hasKey = settingEntry("enablebanking.private_key_pem")?.hasValue ?? false
-        return !(hasApp && hasKey)
+        return !Self.cardUsesEnableBanking(
+            optIn: settingEntry(Self.enableBankingOptInKey(c.connector))?.value,
+            hasApp: settingEntry("enablebanking.application_id")?.hasValue ?? false,
+            hasKey: settingEntry("enablebanking.private_key_pem")?.hasValue ?? false)
+    }
+
+    static func enableBankingOptInKey(_ kind: ConnectorKind) -> String {
+        kind == .amazonVisa ? "enablebanking.use.amazonvisa" : "enablebanking.use.amex"
+    }
+
+    static func cardUsesEnableBanking(optIn: String?, hasApp: Bool, hasKey: Bool) -> Bool {
+        optIn?.trimmingCharacters(in: .whitespaces) == "1" && hasApp && hasKey
     }
 
     /// Returns true when transactions were recognised (even if all were already known).

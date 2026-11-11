@@ -19,6 +19,10 @@ pub struct ConnectionStatus {
     pub session_saved_unix: Option<i64>,
     pub account_count: u32,
     pub booking_count: u32,
+    /// End of the stored PSD2 consent (RFC 3339), e.g. Enable Banking.
+    pub consent_valid_until: Option<String>,
+    /// Accounts of this connection the bank no longer grants access to.
+    pub revoked_account_count: u32,
 }
 
 /// Login names are compared normalised (phone numbers in E.164).
@@ -281,11 +285,12 @@ impl Vault {
                 .as_str()
                 .map(|s| !s.is_empty())
                 .unwrap_or(false);
-        let (accounts, bookings): (i64, i64) = db.query_row(
+        let (accounts, bookings, revoked): (i64, i64, i64) = db.query_row(
             "SELECT (SELECT count(*) FROM accounts WHERE connection_id = ?1),
-                    (SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE a.connection_id = ?1)",
+                    (SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE a.connection_id = ?1),
+                    (SELECT count(*) FROM accounts WHERE connection_id = ?1 AND access_revoked != 0)",
             [connection_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
         Ok(ConnectionStatus {
             connection_id,
@@ -294,6 +299,11 @@ impl Vault {
             session_saved_unix: v["saved_unix"].as_i64(),
             account_count: accounts as u32,
             booking_count: bookings as u32,
+            consent_valid_until: v["valid_until"]
+                .as_str()
+                .filter(|s| !s.is_empty() && has_session)
+                .map(str::to_string),
+            revoked_account_count: revoked as u32,
         })
     }
 
