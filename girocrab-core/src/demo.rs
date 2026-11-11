@@ -10,6 +10,59 @@ use crate::error::CoreResult;
 use crate::models::{AccountKind, ConnectorKind};
 use crate::vault::Vault;
 
+/// Minimal single-page PDF with one line of text (valid enough for PDFKit).
+fn demo_pdf(line: &str) -> Vec<u8> {
+    let stream = format!("BT /F1 18 Tf 72 720 Td ({line}) Tj ET");
+    let objs = [
+        "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>".to_string(),
+        format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+    ];
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    for (i, o) in objs.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend(format!("{} 0 obj\n{o}\nendobj\n", i + 1).into_bytes());
+    }
+    let xref = out.len();
+    out.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).into_bytes());
+    for off in offsets {
+        out.extend(format!("{off:010} 00000 n \n").into_bytes());
+    }
+    out.extend(
+        format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1)
+            .into_bytes(),
+    );
+    out
+}
+
+/// Three unlinked PostBox documents so the documents view has rows in demo mode.
+fn demo_documents(conn: &Connection, today: NaiveDate, account_id: i64) -> CoreResult<()> {
+    let _ = today;
+    let docs = [
+        ("BioMarkt Sonnenberg – Kassenbeleg", "beleg", "biomarkt_kassenbeleg.pdf", "BioMarkt Sonnenberg - Kassenbeleg - 47,85 EUR", "2026-11-04"),
+        ("Stadtwerke Energie – Stromabschlag", "abrechnung", "stadtwerke_stromabschlag.pdf", "Stadtwerke Energie - Stromabschlag - 78,00 EUR", "2026-11-01"),
+        ("ConnectMobile – Monatsrechnung", "abrechnung", "connectmobile_monatsrechnung.pdf", "ConnectMobile - Monatsrechnung - 19,99 EUR", "2026-10-28"),
+    ];
+    for (i, (title, ty, file, text, date)) in docs.into_iter().enumerate() {
+        crate::documents::insert_doc(
+            conn,
+            None,
+            Some(account_id),
+            title,
+            ty,
+            "application/pdf",
+            file,
+            &demo_pdf(text),
+            &format!("demo-doc-{i}"),
+            date,
+        )?;
+    }
+    Ok(())
+}
+
 pub struct DemoAccountSpec {
     pub connector: ConnectorKind,
     pub external_ref: &'static str,
@@ -1110,6 +1163,7 @@ impl Vault {
             }
         }
         Vault::apply_rules_inner(&tx, true)?;
+        demo_documents(&tx, today, acc_ids["demo-giro"])?;
         tx.commit()?;
         Ok(n)
     }

@@ -207,21 +207,13 @@ struct DocumentsView: View {
                     Text("Wertpapierabrechnungen, Kontoauszüge, Kassenbons – verschlüsselt im Tresor. PDF oder Foto hierher ziehen: GiroCrab ordnet es dem passenden Umsatz zu.")
                         .font(.caption).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                if isCompact {
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextField("Suchen …", text: $search).textFieldStyle(.roundedBorder)
-                        HStack(spacing: 12) {
-                            Toggle("Nur ohne Buchung", isOn: $unlinkedOnly).toggleStyle(.switch).controlSize(.small)
-                                .lineLimit(1).fixedSize()
-                            Spacer(minLength: 0)
-                            Button { exporting = true } label: { Label("Alle exportieren", systemImage: "square.and.arrow.up").lineLimit(1).fixedSize() }
-                        }
-                    }
-                } else {
-                    HStack {
-                        TextField("Suchen …", text: $search).textFieldStyle(.roundedBorder)
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Suchen …", text: $search).textFieldStyle(.roundedBorder)
+                    HStack(spacing: 12) {
                         Toggle("Nur ohne Buchung", isOn: $unlinkedOnly).toggleStyle(.switch).controlSize(.small)
-                        Button { exporting = true } label: { Label("Alle exportieren", systemImage: "square.and.arrow.up") }
+                            .lineLimit(1).fixedSize()
+                        Spacer(minLength: 0)
+                        Button { exporting = true } label: { Label("Alle exportieren", systemImage: "square.and.arrow.up").lineLimit(1).fixedSize() }
                     }
                 }
                 List(selection: $selected) {
@@ -229,7 +221,7 @@ struct DocumentsView: View {
                         HStack(spacing: 10) {
                             Image(systemName: docSymbol(d)).foregroundStyle(Theme.accent).frame(width: 22)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(d.title).fontWeight(.medium).lineLimit(1)
+                                Text(d.title).fontWeight(.medium).lineLimit(2)
                                 Text(d.bookingLabel.isEmpty ? "PostBox · \(d.accountName)" : d.bookingLabel)
                                     .font(.caption).foregroundStyle(d.bookingLabel.isEmpty ? Theme.warning : Theme.secondary).lineLimit(1)
                             }
