@@ -149,7 +149,16 @@ struct BookingStreamView: View {
             if model.quickLookURL != nil { model.quickLookURL = nil } else { model.quickLook(d) }
             return .handled
         }
+        #if os(macOS)
+        // ⌘C copies the selected booking (Edit ▸ Copy)
+        .onCopyCommand {
+            guard let b = model.selectedBooking else { return [] }
+            return [NSItemProvider(object: b.clipboardLine as NSString)]
+        }
+        #endif
         .onKeyPress(characters: CharacterSet(charactersIn: "cCrR")) { press in
+            // leave ⌘C to the copy command above
+            guard !press.modifiers.contains(.command) else { return .ignored }
             guard model.options.screenshotPath == nil, let b = model.selectedBooking else { return .ignored }
             if press.characters.lowercased() == "c" {
                 model.showCategorizer = true
@@ -355,6 +364,7 @@ struct DayCard: View {
         .disabled(b.counterparty.isEmpty && b.merchantName.isEmpty)
         Button("Neue Überweisung aus Buchung …", systemImage: "paperplane") { model.openTransfer(from: b) }
             .disabled(!model.canTransfer)
+        Button("Umsatz kopieren", systemImage: "doc.on.doc") { copyToPasteboard(b.clipboardLine) }
         Divider()
         Button(b.checked ? "Als neu markieren" : "Als geprüft markieren", systemImage: "checkmark.circle") { model.setChecked(!b.checked, for: b) }
     }

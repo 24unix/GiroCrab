@@ -33,6 +33,42 @@ struct HoldingsCard: View {
     }
 }
 
+/// Right-click menu on the header's account info: copies bank details,
+/// IBAN or balance as plain text.
+struct AccountCopyMenu: View {
+    let account: Account
+
+    var body: some View {
+        // From the Bundesbank BLZ list (German IBANs only); looked up once per menu.
+        let bic = bicForIban(iban: account.iban)
+        Section("In Zwischenablage kopieren") {
+            if !account.iban.isEmpty {
+                Button("Bankverbindung") { copyToPasteboard(bankDetails(bic: bic)) }
+                Button("IBAN") { copyToPasteboard(account.iban) }
+            }
+            if let bic {
+                Button("BIC") { copyToPasteboard(bic) }
+            }
+            Button("Kontostand") { copyToPasteboard(Money.clipboard(account.balanceCents)) }
+        }
+    }
+
+    private func bankDetails(bic: String?) -> String {
+        let bank: String
+        switch (bic, account.bankName.isEmpty) {
+        case (let b?, false): bank = "BIC: \(b) (\(account.bankName))"
+        case (let b?, true): bank = "BIC: \(b)"
+        case (nil, false): bank = "Bank: \(account.bankName)"
+        case (nil, true): bank = ""
+        }
+        return [
+            account.owner.isEmpty ? "" : "Name: \(account.owner)",
+            "IBAN: \(formatIBAN(account.iban))",
+            bank,
+        ].filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+}
+
 /// Header card of the stream: title, balance, calm balance chart and the
 /// monthly KPIs (consumption is always shown without ETF plans / perks).
 struct StreamHeaderCard: View {
@@ -66,6 +102,9 @@ struct StreamHeaderCard: View {
                     .font(.caption)
                     .foregroundStyle(Theme.secondary)
                 }
+                .contextMenu {
+                    if let a = account { AccountCopyMenu(account: a) }
+                }
                 Spacer()
                 if let hb = model.headerBalance {
                     VStack(alignment: .trailing, spacing: 2) {
@@ -75,6 +114,9 @@ struct StreamHeaderCard: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
                         Text(hb.label).font(.caption).foregroundStyle(Theme.secondary)
+                    }
+                    .contextMenu {
+                        Button("\(hb.label) kopieren", systemImage: "doc.on.doc") { copyToPasteboard(Money.clipboard(hb.cents)) }
                     }
                 }
             }

@@ -6,6 +6,7 @@
 //! is a binary search over that static table – no network, no allocation until
 //! a result is returned.
 
+use super::bic_directory_data::BICS;
 use super::fints::sepa;
 use super::fints_directory_data::{ENTRIES, HOSTS};
 
@@ -159,10 +160,34 @@ pub fn lookup_fints_bank_by_input(input: String) -> Option<FinTsBankInfo> {
     blz_from_input(&input).and_then(|b| lookup(&b))
 }
 
+/// BIC of a German IBAN's bank, from the Bundesbank BLZ list in
+/// `bic_directory_data.rs` ("INGDDEFF"). `None` for non-German or invalid IBANs.
+#[uniffi::export]
+pub fn bic_for_iban(iban: String) -> Option<String> {
+    let blz = blz_from_german_iban(&iban)?;
+    BICS.binary_search_by(|e| e.0.cmp(blz.as_str()))
+        .ok()
+        .map(|i| BICS[i].1.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::fints_presets::is_valid_fints_url;
     use super::*;
+
+    #[test]
+    fn bic_table_sorted_and_lookup_works() {
+        assert!(BICS.len() > 3000);
+        for w in BICS.windows(2) {
+            assert!(w[0].0 < w[1].0, "{} !< {}", w[0].0, w[1].0);
+        }
+        assert_eq!(
+            bic_for_iban("DE89 3704 0044 0532 0130 00".into()).as_deref(),
+            Some("COBADEFF")
+        );
+        assert_eq!(bic_for_iban("AT611904300234573201".into()), None);
+        assert_eq!(bic_for_iban("".into()), None);
+    }
 
     #[test]
     fn table_is_sorted_unique_and_https() {

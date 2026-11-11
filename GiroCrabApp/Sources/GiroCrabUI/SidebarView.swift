@@ -308,14 +308,7 @@ struct SidebarView: View {
             Button("\(conn.displayName) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
         }
         if !account.iban.isEmpty {
-            Button("IBAN kopieren", systemImage: "doc.on.doc") {
-                #if os(macOS)
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(account.iban, forType: .string)
-                #else
-                UIPasteboard.general.string = account.iban
-                #endif
-            }
+            Button("IBAN kopieren", systemImage: "doc.on.doc") { copyToPasteboard(account.iban) }
         }
         Divider()
         if account.isArchived {

@@ -1,6 +1,17 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "%@ kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy %@"
+          }
+        }
+      }
+    },
     "1 Konto" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8,6 +19,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 account"
+          }
+        }
+      }
+    },
+    "Bankverbindung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank details"
           }
         }
       }
@@ -162,6 +184,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Green"
+          }
+        }
+      }
+    },
+    "In Zwischenablage kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy to Clipboard"
           }
         }
       }
@@ -6225,6 +6258,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Internal transfer"
+          }
+        }
+      }
+    },
+    "Umsatz kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy Transaction"
           }
         }
       }

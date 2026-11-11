@@ -79,6 +79,11 @@ enum Money {
         cents > 0 ? "+" + format(cents) : format(cents)
     }
 
+    /// "2.064,83" / "-15,00" for the clipboard (ASCII minus, no currency sign).
+    static func clipboard(_ cents: Int64) -> String {
+        plain(cents).replacingOccurrences(of: "−", with: "-")
+    }
+
     static func plain(_ cents: Int64) -> String {
         (decimal.string(from: (Decimal(cents) / 100) as NSDecimalNumber) ?? "\(cents)").replacingOccurrences(of: "-", with: "−")
     }
@@ -280,7 +285,33 @@ extension FlowKind {
     }
 }
 
+/// Puts plain text on the clipboard (stays there; for secrets use
+/// `VaultKeyManager.copyToPasteboard`, which clears it after 60 s).
+func copyToPasteboard(_ text: String) {
+    #if os(macOS)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+    #else
+    UIPasteboard.general.string = text
+    #endif
+}
+
 extension Booking {
+    /// Tab-separated line for pasting into a spreadsheet:
+    /// date · name · purpose · category · note · amount.
+    var clipboardLine: String {
+        [
+            DateText.medium(bookingDate),
+            counterparty.isEmpty ? merchantName : counterparty,
+            purpose,
+            categoryName,
+            note,
+            Money.clipboard(amountCents),
+        ]
+        .map { $0.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ") }
+        .joined(separator: "\t")
+    }
+
     /// "Supermarkt · Kartenzahlung"
     var subtitle: String {
         let cat = categoryName.isEmpty ? String(localized: "Ohne Kategorie") : categoryName

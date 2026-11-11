@@ -765,6 +765,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "gen-bic-directory"
+version = "0.5.1"
+
+[[package]]
 name = "generic-array"
 version = "0.14.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"

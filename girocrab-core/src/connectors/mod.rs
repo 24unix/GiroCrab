@@ -26,6 +26,7 @@ use crate::vault::Vault;
 
 pub mod amazon_orders;
 pub mod bank_directory;
+mod bic_directory_data;
 pub mod bunq;
 pub mod comdirect;
 pub mod demo;
