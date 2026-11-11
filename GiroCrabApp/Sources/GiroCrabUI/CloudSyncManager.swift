@@ -19,12 +19,15 @@ public final class CloudSyncManager {
         static let last = "girocrab.sync.last"
         static let stats = "girocrab.sync.stats"
         static let seen = "girocrab.sync.seen"
+        static let failed = "girocrab.sync.failed"
     }
     /// Legacy plaintext key file of v0.4.0. Never written anymore; removed on sync.
     private let legacyKeyFileName = "tresor.key"
     private let defaults = UserDefaults.standard
     /// Modification date of each peer snapshot when it was last merged.
     @ObservationIgnored private var seen: [String: Double]
+    /// Same for peers this vault's key didn't open (not retried until they change).
+    @ObservationIgnored private var failed: [String: Double]
     @ObservationIgnored private var cachedDeviceID: String?
     @ObservationIgnored private var folderOverride: URL?
 
@@ -53,6 +56,7 @@ public final class CloudSyncManager {
         lastSync = defaults.object(forKey: K.last) as? Date
         lastStats = defaults.string(forKey: K.stats)
         seen = defaults.dictionary(forKey: K.seen) as? [String: Double] ?? [:]
+        failed = defaults.dictionary(forKey: K.failed) as? [String: Double] ?? [:]
         if let url = try? resolveBookmark() {
             folderName = url.lastPathComponent
         } else if isEnabled {
@@ -112,16 +116,17 @@ public final class CloudSyncManager {
             defer { release() }
             let folder = SyncFolder(dir: dir, deviceID: deviceID)
             let legacyKeyFile = dir.appendingPathComponent(legacyKeyFileName)
-            let result = try await Task.detached { () throws -> SyncMergeResult in
+            let seen = self.seen
+            let (result, written) = try await Task.detached { () throws -> (SyncMergeResult, SyncWrite) in
                 // Security: never leave the raw vault key next to the vault in iCloud Drive.
                 Self.removeLegacyKeyFile(legacyKeyFile)
                 // Someone is waiting for this sync: give iCloud time to download.
                 folder.waitForDownloads(timeout: 30)
                 let r = folder.merge(vault: vault, peers: folder.peers(), remoteKey: remoteKey)
-                if !mergeOnly { try folder.write(vault: vault) }
-                return r
+                let w = mergeOnly ? SyncWrite() : try folder.write(vault: vault, merged: seen.merging(r.seen) { $1 })
+                return (r, w)
             }.value
-            record(result)
+            record(result, written)
         } catch {
             lastError = error.localizedDescription
         }
@@ -129,9 +134,13 @@ public final class CloudSyncManager {
 
     /// Stores what a merge did: last sync time and summary, the peers'
     /// modification dates, a key mismatch or per-file errors.
-    private func record(_ result: SyncMergeResult) {
+    private func record(_ result: SyncMergeResult, _ written: SyncWrite = SyncWrite()) {
         seen.merge(result.seen) { $1 }
+        if let m = written.legacyModified { seen[SyncFolder.legacyName] = m }
+        failed.merge(result.failed) { $1 }
+        for name in result.seen.keys { failed[name] = nil }
         defaults.set(seen, forKey: K.seen)
+        defaults.set(failed, forKey: K.failed)
         lastSync = Date()
         defaults.set(lastSync, forKey: K.last)
         if result.stats.isEmpty {
@@ -249,22 +258,27 @@ public final class CloudSyncManager {
         defer { autoBusy = false; release() }
         let folder = SyncFolder(dir: dir, deviceID: deviceID)
         let seen = self.seen
+        let skip = seen.merging(failed) { $1 }
         let count = vault.changeCount()
-        let outcome = await Task.detached { () -> (wrote: Bool, merge: SyncMergeResult?, error: String?) in
-            var wrote = false
+        let outcome = await Task.detached { () -> (written: SyncWrite, merge: SyncMergeResult?, error: String?) in
+            var written = SyncWrite()
             var error: String?
             if write {
-                do { wrote = try folder.write(vault: vault) } catch let e { error = e.localizedDescription }
+                do { written = try folder.write(vault: vault, merged: seen) } catch let e { error = e.localizedDescription }
             }
             var merge: SyncMergeResult?
             if poll {
-                let changed = folder.changedPeers(seen: seen)
+                let changed = folder.changedPeers(seen: skip)
                 if !changed.isEmpty { merge = folder.merge(vault: vault, peers: changed, remoteKey: nil) }
             }
-            return (wrote, merge, error)
+            return (written, merge, error)
         }.value
-        if outcome.wrote {
+        if outcome.written.wrote {
             autoState.wrote(changeCount: count)
+            if let m = outcome.written.legacyModified {
+                self.seen[SyncFolder.legacyName] = m
+                defaults.set(self.seen, forKey: K.seen)
+            }
             lastSync = Date()
             defaults.set(lastSync, forKey: K.last)
         }

@@ -78,7 +78,7 @@ final class CloudSyncTests: XCTestCase {
         let folder = try tempDir()
         let a = try device(folder, seeded: true)
         let b = try device(folder)
-        XCTAssertTrue(try a.1.write(vault: a.0))
+        XCTAssertTrue(try a.1.write(vault: a.0).wrote)
         _ = b.1.merge(vault: b.0, peers: b.1.peers(), remoteKey: nil)
         XCTAssertGreaterThan(try bookings(b.0).count, 1)
         return (folder, a, b)
@@ -94,10 +94,10 @@ final class CloudSyncTests: XCTestCase {
     func test_two_devices_see_each_others_changes() throws {
         let (_, a, b) = try pair()
         try note(a.0, newest: true, "from A")
-        XCTAssertTrue(try a.1.write(vault: a.0))
+        XCTAssertTrue(try a.1.write(vault: a.0).wrote)
         _ = b.1.merge(vault: b.0, peers: b.1.peers(), remoteKey: nil)
         try note(b.0, newest: false, "from B")
-        XCTAssertTrue(try b.1.write(vault: b.0))
+        XCTAssertTrue(try b.1.write(vault: b.0).wrote)
         _ = a.1.merge(vault: a.0, peers: a.1.peers(), remoteKey: nil)
         XCTAssertEqual(try notes(a.0), ["from A", "from B"])
         XCTAssertEqual(try notes(b.0), ["from A", "from B"])
@@ -108,8 +108,8 @@ final class CloudSyncTests: XCTestCase {
         try note(a.0, newest: true, "from A")
         try note(b.0, newest: false, "from B")
         // both write before either has seen the other's change
-        XCTAssertTrue(try a.1.write(vault: a.0))
-        XCTAssertTrue(try b.1.write(vault: b.0))
+        XCTAssertTrue(try a.1.write(vault: a.0).wrote)
+        XCTAssertTrue(try b.1.write(vault: b.0).wrote)
         _ = a.1.merge(vault: a.0, peers: a.1.peers(), remoteKey: nil)
         _ = b.1.merge(vault: b.0, peers: b.1.peers(), remoteKey: nil)
         XCTAssertEqual(try notes(a.0), ["from A", "from B"])
@@ -148,8 +148,8 @@ final class CloudSyncTests: XCTestCase {
         let folder = try tempDir()
         let b = try device(folder, seeded: true)
         let c = try device(folder, key: Data(repeating: 9, count: 32), seeded: true)
-        XCTAssertTrue(try b.1.write(vault: b.0))
-        XCTAssertTrue(try c.1.write(vault: c.0))
+        XCTAssertTrue(try b.1.write(vault: b.0).wrote)
+        XCTAssertTrue(try c.1.write(vault: c.0).wrote)
         let (v, f) = try device(folder)
         let r = f.merge(vault: v, peers: f.peers(), remoteKey: nil)
         XCTAssertTrue(r.keyMismatch)
@@ -162,9 +162,51 @@ final class CloudSyncTests: XCTestCase {
         let r = b.1.merge(vault: b.0, peers: b.1.peers(), remoteKey: nil)
         XCTAssertEqual(b.1.changedPeers(seen: r.seen), [])
         try note(a.0, newest: true, "from A")
-        XCTAssertTrue(try a.1.write(vault: a.0))
-        // A also rewrites the transition file
-        XCTAssertEqual(b.1.changedPeers(seen: r.seen).map(\.lastPathComponent), [a.1.ownURL.lastPathComponent, SyncFolder.legacyName])
+        XCTAssertTrue(try a.1.write(vault: a.0).wrote)
+        // A hasn't merged the transition file B could have changed, so it leaves it alone
+        XCTAssertEqual(b.1.changedPeers(seen: r.seen).map(\.lastPathComponent), [a.1.ownURL.lastPathComponent])
+    }
+
+    private func legacyData(_ folder: URL) -> Data? {
+        FileManager.default.contents(atPath: folder.appendingPathComponent(SyncFolder.legacyName).path)
+    }
+
+    func test_legacy_not_overwritten_after_key_mismatch() throws {
+        let folder = try tempDir()
+        let (old, _) = try device(folder, key: Data(repeating: 9, count: 32), seeded: true)
+        try old.writeSnapshot(destPath: folder.appendingPathComponent(SyncFolder.legacyName).path)
+        let before = legacyData(folder)
+        let (v, f) = try device(folder, seeded: true)
+        let r = f.merge(vault: v, peers: f.peers(), remoteKey: nil)
+        XCTAssertTrue(r.keyMismatch)
+        let w = try f.write(vault: v, merged: r.seen)
+        XCTAssertTrue(w.wrote)
+        XCTAssertNil(w.legacyModified)
+        XCTAssertEqual(legacyData(folder), before)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: f.ownURL.path))
+    }
+
+    func test_legacy_written_once_merged() throws {
+        let folder = try tempDir()
+        let (old, _) = try device(folder, seeded: true)
+        try old.writeSnapshot(destPath: folder.appendingPathComponent(SyncFolder.legacyName).path)
+        let before = legacyData(folder)
+        let (v, f) = try device(folder)
+        let r = f.merge(vault: v, peers: f.peers(), remoteKey: nil)
+        let w = try f.write(vault: v, merged: r.seen)
+        XCTAssertNotNil(w.legacyModified)
+        XCTAssertNotEqual(legacyData(folder), before)
+        // our own write counts as merged: not picked up again as a change
+        XCTAssertEqual(f.changedPeers(seen: r.seen.merging([SyncFolder.legacyName: w.legacyModified!]) { $1 }), [])
+    }
+
+    func test_legacy_not_overwritten_while_downloading() throws {
+        let folder = try tempDir()
+        FileManager.default.createFile(atPath: folder.appendingPathComponent(".\(SyncFolder.legacyName).icloud").path, contents: Data())
+        let (v, f) = try device(folder, seeded: true)
+        let w = try f.write(vault: v, merged: [:])
+        XCTAssertTrue(w.wrote)
+        XCTAssertNil(legacyData(folder))
     }
 
     func test_placeholder_peer_is_skipped_and_download_started() throws {
@@ -179,7 +221,7 @@ final class CloudSyncTests: XCTestCase {
     func test_empty_vault_writes_nothing() throws {
         let folder = try tempDir()
         let (v, f) = try device(folder)
-        XCTAssertFalse(try f.write(vault: v))
+        XCTAssertFalse(try f.write(vault: v).wrote)
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
     }
 

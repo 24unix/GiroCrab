@@ -106,39 +106,63 @@ struct SyncFolder: Sendable {
                 }
             } catch CoreError.WrongKey {
                 result.keyMismatch = true
+                if let modified { result.failed[name] = modified }
+                continue
             } catch {
                 result.errors.append("\(name): \(error.localizedDescription)")
                 continue
             }
-            // Also for a key mismatch: retried when the file changes, not every round.
             if let modified { result.seen[name] = modified }
         }
         return result
     }
 
-    /// Writes this device's snapshot (and the legacy file). Returns false
-    /// without touching the folder when the vault has no accounts, so a
-    /// fresh vault never replaces a filled one.
+    /// Writes this device's snapshot. The transition file `tresor.girocrab`
+    /// is replaced only when it is absent or its current version was merged
+    /// (`merged`: name → modification date), so a file this device couldn't
+    /// read (other key, error, still downloading) is never overwritten.
+    /// Writes nothing when the vault has no accounts, so a fresh vault never
+    /// replaces a filled one.
     @discardableResult
-    func write(vault: Vault) throws -> Bool {
-        guard try vault.accountCount() > 0 else { return false }
+    func write(vault: Vault, merged: [String: Double] = [:]) throws -> SyncWrite {
+        guard try vault.accountCount() > 0 else { return SyncWrite() }
         let fm = FileManager.default
         let tmp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".girocrab")
         defer { try? fm.removeItem(at: tmp) }
         try vault.writeSnapshot(destPath: tmp.path)
-        for target in [ownURL, legacyURL] {
-            let copy = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".girocrab")
-            try fm.copyItem(at: tmp, to: copy)
-            defer { try? fm.removeItem(at: copy) }
-            try Self.coordinate(writing: target) { url in
-                if fm.fileExists(atPath: url.path) {
-                    _ = try fm.replaceItemAt(url, withItemAt: copy)
-                } else {
-                    try fm.moveItem(at: copy, to: url)
-                }
+        try Self.replace(ownURL, with: tmp)
+        var result = SyncWrite(wrote: true)
+        if legacyMayBeReplaced(merged: merged) {
+            // Best effort: the own file is what this device's peers read.
+            if (try? Self.replace(legacyURL, with: tmp)) != nil {
+                result.legacyModified = Self.modified(legacyURL)
             }
         }
-        return true
+        return result
+    }
+
+    private func legacyMayBeReplaced(merged: [String: Double]) -> Bool {
+        let fm = FileManager.default
+        let placeholder = dir.appendingPathComponent(".\(Self.legacyName).icloud")
+        if fm.fileExists(atPath: legacyURL.path) {
+            return Self.modified(legacyURL) == merged[Self.legacyName]
+        }
+        return !fm.fileExists(atPath: placeholder.path)
+    }
+
+    /// Puts a copy of `snapshot` at `target` inside a coordinated write.
+    private static func replace(_ target: URL, with snapshot: URL) throws {
+        let fm = FileManager.default
+        let copy = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".girocrab")
+        try fm.copyItem(at: snapshot, to: copy)
+        defer { try? fm.removeItem(at: copy) }
+        try coordinate(writing: target) { url in
+            if fm.fileExists(atPath: url.path) {
+                _ = try fm.replaceItemAt(url, withItemAt: copy)
+            } else {
+                try fm.moveItem(at: copy, to: url)
+            }
+        }
     }
 
     private static func coordinate(reading url: URL, _ body: (URL) throws -> Void) throws {
@@ -162,8 +186,17 @@ struct SyncFolder: Sendable {
 
 struct SyncMergeResult: Sendable {
     var stats: [MergeStats] = []
-    /// File name → modification date (seconds since 1970) of each peer handled.
+    /// File name → modification date (seconds since 1970) of each peer merged.
     var seen: [String: Double] = [:]
+    /// Peers this vault's key doesn't open: skipped by automatic sync
+    /// until they change, but never counted as merged.
+    var failed: [String: Double] = [:]
     var keyMismatch = false
     var errors: [String] = []
+}
+
+struct SyncWrite: Sendable {
+    var wrote = false
+    /// Modification date of the transition file when it was written too.
+    var legacyModified: Double?
 }
