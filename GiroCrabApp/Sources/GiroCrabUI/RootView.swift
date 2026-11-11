@@ -111,6 +111,16 @@ public struct GiroCrabRootView: View {
 
     public var body: some View {
         switch model.vaultState {
+        case .starting:
+            VStack(spacing: 16) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 54))
+                    .foregroundStyle(Theme.accent)
+                ProgressView()
+                Text("GiroCrab wird vorbereitet …").foregroundStyle(Theme.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.canvas.ignoresSafeArea())
         case .open:
             MainSplitView()
         case .locked, .unlocking:

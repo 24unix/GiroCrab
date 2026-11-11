@@ -190,6 +190,8 @@ struct CategoryNode: Identifiable, Hashable {
 @Observable
 public final class AppModel {
     enum VaultState: Equatable {
+        /// First start: the demo is being prepared; a loading view shows meanwhile.
+        case starting
         case locked
         case unlocking
         case open
@@ -344,7 +346,12 @@ public final class AppModel {
         }
         if !options.demoSeed && !Self.vaultMayHoldRealData {
             // First start / nothing real yet: straight into the demo, no lock, no prompt.
-            openDemoVault()
+            // Seeding runs after the first frame so a loading view shows instead of a blank window.
+            vaultState = .starting
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                self?.openDemoVault()
+            }
             return
         }
         if options.demoSeed {
@@ -435,7 +442,10 @@ public final class AppModel {
             selectedBookingID = nil
             sidebarSelection = .allAccounts
             reloadAll()
+            #if os(macOS)
+            // iPhone: a preselected booking would push the detail page over the list.
             selectedBookingID = (bookings.first(where: { $0.flow == .consumption && $0.documentCount > 0 }) ?? bookings.first(where: { $0.flow == .consumption }))?.id
+            #endif
         } catch {
             vaultState = .failed(describe(error))
         }

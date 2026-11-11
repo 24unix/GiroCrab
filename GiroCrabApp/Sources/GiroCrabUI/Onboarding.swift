@@ -7,7 +7,7 @@ struct DemoBanner: View {
 
     var body: some View {
         let button = HStack(spacing: 14) {
-            Button(model.hasOwnVault ? "Eigener Tresor" : "Eigenes Konto anlegen") { model.showOwnVault() }
+            Button(model.hasOwnVault || AppModel.vaultMayHoldRealData ? "Zurück zum eigenen Tresor" : "Eigenes Konto anlegen") { model.showOwnVault() }
             if !model.hasOwnVault && !AppModel.vaultMayHoldRealData {
                 Button("Sperrbildschirm testen") { model.previewLock() }
             }
