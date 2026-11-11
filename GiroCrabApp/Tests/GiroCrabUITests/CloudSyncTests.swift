@@ -350,6 +350,31 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertEqual(own.count, 1, "the pending change was written after the poll")
     }
 
+    // MARK: where to sync
+
+    private let container = URL(fileURLWithPath: "/c/Documents")
+    private let bookmark = URL(fileURLWithPath: "/b/Chosen")
+    private let fallback = URL(fileURLWithPath: "/f/GiroCrab")
+
+    func test_container_wins_over_chosen_and_default_folder() {
+        let c = CloudSyncManager.syncLocation(override: nil, container: container, bookmark: bookmark, fallback: fallback)
+        XCTAssertEqual(c?.url, container)
+        XCTAssertEqual(c?.location, .container)
+    }
+
+    func test_without_container_the_chosen_folder_then_the_default_is_used() {
+        XCTAssertEqual(CloudSyncManager.syncLocation(override: nil, container: nil, bookmark: bookmark, fallback: fallback)?.url, bookmark)
+        let d = CloudSyncManager.syncLocation(override: nil, container: nil, bookmark: nil, fallback: fallback)
+        XCTAssertEqual(d?.url, fallback)
+        XCTAssertEqual(d?.location, .folder)
+        XCTAssertNil(CloudSyncManager.syncLocation(override: nil, container: nil, bookmark: nil, fallback: nil))
+    }
+
+    func test_test_override_wins() {
+        let o = URL(fileURLWithPath: "/tmp/test")
+        XCTAssertEqual(CloudSyncManager.syncLocation(override: o, container: container, bookmark: bookmark, fallback: fallback)?.url, o)
+    }
+
     // MARK: folder access
 
     /// A folder the app may not read, like iCloud Drive before the user

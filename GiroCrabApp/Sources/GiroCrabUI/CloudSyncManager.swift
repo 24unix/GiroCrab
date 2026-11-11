@@ -67,7 +67,9 @@ public final class CloudSyncManager {
         }
     }
 
-    public var containerAvailable: Bool { false }
+    /// Whether this build has its own iCloud container (iCloud entitlement).
+    public private(set) var containerAvailable = false
+    @ObservationIgnored private var containerLookup: Task<URL?, Never>?
 
     #if os(macOS)
     private var defaultMacICloudURL: URL? {
@@ -112,7 +114,7 @@ public final class CloudSyncManager {
         isSyncing = true; lastError = nil; keyMismatch = false
         defer { isSyncing = false }
         do {
-            let (dir, release) = try syncDirectory()
+            let (dir, release) = try await syncDirectory()
             defer { release() }
             let folder = SyncFolder(dir: dir, deviceID: deviceID)
             let legacyKeyFile = dir.appendingPathComponent(legacyKeyFileName)
@@ -288,7 +290,7 @@ public final class CloudSyncManager {
     }
 
     private func perform(vault: Vault, write: Bool, poll: Bool) async {
-        guard !autoBusy, let (dir, release) = try? syncDirectory() as (URL, () -> Void) else { return }
+        guard !autoBusy, let (dir, release) = try? await syncDirectory() as (URL, () -> Void) else { return }
         autoBusy = true
         defer { autoBusy = false; release() }
         let folder = SyncFolder(dir: dir, deviceID: deviceID)
@@ -369,26 +371,64 @@ public final class CloudSyncManager {
         return nil
     }
 
-    private func syncDirectory() throws -> (URL, () -> Void) {
-        if let folderOverride { return (folderOverride, {}) }
-        if let url = try resolveBookmark() {
+    /// Where to sync, in this order: a test folder; the app's own iCloud
+    /// container (needs no permission and is the same on every device with
+    /// this app); a folder the user chose; the default folder in iCloud Drive.
+    nonisolated static func syncLocation(override: URL?, container: URL?, bookmark: URL?, fallback: URL?) -> (url: URL, location: Location)? {
+        if let override { return (override, .folder) }
+        if let container { return (container, .container) }
+        if let bookmark { return (bookmark, .folder) }
+        if let fallback { return (fallback, .folder) }
+        return nil
+    }
+
+    /// The `Documents` folder of the app's iCloud container, or nil when
+    /// the build has no iCloud entitlement (ad-hoc builds, CI). Looked up
+    /// once, off the main thread: Apple documents the call as blocking.
+    private func ubiquityContainer() async -> URL? {
+        if containerLookup == nil {
+            containerLookup = Task.detached {
+                guard let base = FileManager.default.url(forUbiquityContainerIdentifier: nil) else { return nil }
+                let docs = base.appendingPathComponent("Documents", isDirectory: true)
+                try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+                return docs
+            }
+        }
+        let url = await containerLookup?.value
+        containerAvailable = url != nil
+        return url
+    }
+
+    private func syncDirectory() async throws -> (URL, () -> Void) {
+        let container = folderOverride == nil ? await ubiquityContainer() : nil
+        var bookmark: URL?
+        var release: () -> Void = {}
+        if folderOverride == nil, container == nil, let url = try resolveBookmark() {
             let ok = url.startAccessingSecurityScopedResource()
+            bookmark = url
+            release = { if ok { url.stopAccessingSecurityScopedResource() } }
             #if os(macOS)
-            if !ok && !FileManager.default.isReadableFile(atPath: url.path), let dir = defaultMacICloudURL {
+            if !ok && !FileManager.default.isReadableFile(atPath: url.path) {
                 defaults.removeObject(forKey: K.bookmark)
-                folderName = "iCloud Drive / " + dir.lastPathComponent
-                return (dir, {})
+                bookmark = nil
+                release = {}
             }
             #endif
-            return (url, { if ok { url.stopAccessingSecurityScopedResource() } })
         }
+        var fallback: URL?
         #if os(macOS)
-        if let dir = defaultMacICloudURL {
-            folderName = "iCloud Drive / " + dir.lastPathComponent
-            return (dir, {})
-        }
+        if folderOverride == nil, container == nil, bookmark == nil { fallback = defaultMacICloudURL }
         #endif
-        throw NSError(domain: "CloudSync", code: 2, userInfo: [NSLocalizedDescriptionKey: String(localized: "Bitte einmalig den Ordner „GiroCrab“ in iCloud Drive auswählen.")])
+        guard let choice = Self.syncLocation(override: folderOverride, container: container, bookmark: bookmark, fallback: fallback) else {
+            throw NSError(domain: "CloudSync", code: 2, userInfo: [NSLocalizedDescriptionKey: String(localized: "Bitte einmalig den Ordner „GiroCrab“ in iCloud Drive auswählen.")])
+        }
+        location = choice.location
+        if choice.location == .container {
+            folderName = "iCloud Drive / GiroCrab"
+        } else if choice.url == fallback {
+            folderName = "iCloud Drive / " + choice.url.lastPathComponent
+        }
+        return (choice.url, release)
     }
 }
 
