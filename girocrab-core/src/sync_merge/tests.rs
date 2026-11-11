@@ -544,7 +544,16 @@ fn deleting_a_category_soft_deletes_it_its_children_and_rules() {
             )
             .unwrap();
         }
-        db.execute("INSERT INTO transaction_splits(transaction_id, category_id, amount_cents) VALUES (2, ?1, -5)", [child]).ok();
+        db.execute(
+            "INSERT INTO transaction_splits(id, transaction_id, category_id, amount_cents) VALUES (1, 2, ?1, -3)",
+            [child],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO transaction_splits(id, transaction_id, category_id, amount_cents) VALUES (2, 2, ?1, -2)",
+            [other],
+        )
+        .unwrap();
     }
     v.delete_category(parent).unwrap();
     let db = v.db().unwrap();
@@ -573,14 +582,17 @@ fn deleting_a_category_soft_deletes_it_its_children_and_rules() {
         )
         .unwrap();
     assert_eq!((cat, src.as_str()), (Some(other), "manual"));
-    let splits: i64 = db
-        .query_row(
-            "SELECT count(*) FROM transaction_splits WHERE category_id = ?1",
-            [child],
+    let split_cat = |id: i64| -> Option<i64> {
+        db.query_row(
+            "SELECT category_id FROM transaction_splits WHERE id = ?1",
+            [id],
             |r| r.get(0),
         )
-        .unwrap();
-    assert_eq!(splits, 0);
+        .unwrap()
+    };
+    // the split row stays, uncategorised; the unrelated split is untouched
+    assert_eq!(split_cat(1), None);
+    assert_eq!(split_cat(2), Some(other));
     drop(db);
     let ids: Vec<i64> = v
         .list_categories(None, None)
