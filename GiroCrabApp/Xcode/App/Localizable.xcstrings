@@ -8066,6 +8066,182 @@
           }
         }
       }
+    },
+    "Das Konto gehört nicht zum eingegebenen Namen. Wenn Sie trotzdem senden, kann das Geld beim falschen Empfänger landen und lässt sich womöglich nicht zurückholen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The account does not belong to the name you entered. If you send anyway, the money may reach the wrong recipient and may not be recoverable."
+          }
+        }
+      }
+    },
+    "Der eingegebene Name weicht vom Namen des Kontoinhabers ab. Übernehmen Sie den Namen, wenn das der richtige Empfänger ist." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The name you entered differs from the account holder's name. Use the holder's name if this is the right recipient."
+          }
+        }
+      }
+    },
+    "Die Bank verlangt trotzdem eine ausdrückliche Bestätigung, bevor sie die Freigabe anfordert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The bank still requires your explicit confirmation before it asks for the approval."
+          }
+        }
+      }
+    },
+    "Die Empfängerbank konnte den Namen nicht prüfen%@. Senden Sie nur, wenn Sie sich bei IBAN und Empfänger sicher sind." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The recipient's bank could not verify the name%@. Only send if you are sure about the IBAN and recipient."
+          }
+        }
+      }
+    },
+    "Eingegeben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entered"
+          }
+        }
+      }
+    },
+    "Empfängerüberprüfung · %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Payee verification · %@"
+          }
+        }
+      }
+    },
+    "Kontoinhaber" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account holder"
+          }
+        }
+      }
+    },
+    "Name des Kontoinhabers übernommen – bitte prüfen und erneut freigeben. Es wurde nichts gesendet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account holder's name applied – please check and approve again. Nothing was sent."
+          }
+        }
+      }
+    },
+    "Name konnte nicht geprüft werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name could not be verified"
+          }
+        }
+      }
+    },
+    "Name stimmt nicht überein" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name does not match"
+          }
+        }
+      }
+    },
+    "Name stimmt nur teilweise überein" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name is a close match"
+          }
+        }
+      }
+    },
+    "Name stimmt überein" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name matches"
+          }
+        }
+      }
+    },
+    "Namen übernehmen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use this name"
+          }
+        }
+      }
+    },
+    "Trotzdem senden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send anyway"
+          }
+        }
+      }
+    },
+    "Weiter zur Freigabe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continue to approval"
+          }
+        }
+      }
+    },
+    "Überweisung abgebrochen – es wurde nichts gesendet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transfer cancelled – nothing was sent."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

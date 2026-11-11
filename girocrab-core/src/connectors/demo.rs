@@ -131,6 +131,12 @@ impl BankConnector for DemoConnector {
                     self.approved()
                 }
             }
+            ChallengeResponse::ConfirmPayee => {
+                // The transfer challenge was held back until the user confirmed.
+                Ok(Phase::Challenge(
+                    self.challenge.clone().ok_or(CoreError::SessionClosed)?,
+                ))
+            }
             ChallengeResponse::Code(code) => {
                 if self.kind == ConnectorKind::TradeRepublic
                     && !(code.expose().len() == 4
@@ -193,6 +199,29 @@ impl BankConnector for DemoConnector {
             poll_interval_seconds: 2,
         };
         self.challenge = Some(c.clone());
+        // Demo name check: "…fast…" = close match, "…falsch…" = no match.
+        let name = job.recipient_name.to_lowercase();
+        let result = if name.contains("fast") {
+            Some(super::PayeeMatch::CloseMatch)
+        } else if name.contains("falsch") {
+            Some(super::PayeeMatch::NoMatch)
+        } else {
+            None
+        };
+        if let Some(result) = result {
+            return Ok(Phase::ConfirmPayee(super::PayeeCheck {
+                result,
+                entered_name: job.recipient_name.clone(),
+                iban: job.recipient_iban.clone(),
+                bank_name: (result == super::PayeeMatch::CloseMatch)
+                    .then(|| "Erika Mustermann".to_string()),
+                reason: None,
+                notice: Some(
+                    tr("Demo: Wenn Sie die Überweisung trotzdem freigeben, kann das Geld auf einem Konto landen, das nicht dem gewünschten Empfänger gehört.")
+                        .into(),
+                ),
+            }));
+        }
         Ok(Phase::Challenge(c))
     }
 

@@ -26,6 +26,12 @@
 //!      is resent automatically. The app may offer a regular transfer, which
 //!      is a new order with its own approval. Ambiguous replies and lost
 //!      connections after submission mean "outcome unknown".
+//!   6. Name check (Verification of Payee), where the BPD (HIVPPS) requires it
+//!      for the order: HKVPP goes in front of the order; the bank answers with
+//!      HIVPP (VOP-ID + result, possibly after polling). A match continues to
+//!      the approval (HKVPA is sent with the TAN). Anything else is shown to
+//!      the user; on confirmation, HKVPA + order + HKTAN is sent again. Cancel
+//!      ends the dialog without HKVPA, so the order is never approved.
 //!
 //! The registration-bound product ID is never hardcoded; it comes from
 //! Settings (`fints.product_id`).
@@ -44,8 +50,8 @@ use serde::{Deserialize, Serialize};
 
 use self::syntax::{escape, parse_response, Segment, SegmentBuilder};
 use super::{
-    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, TransferJob, TransferResult,
+    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult,
+    PayeeCheck, PayeeMatch, Phase, RemoteAccount, TransferJob, TransferResult,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -73,6 +79,12 @@ struct FinTsState {
     /// parameter segments HICCSS / HIIPZS / HICSES.
     #[serde(default)]
     pain_formats: HashMap<String, Vec<String>>,
+    /// Payment status report format for the name check (HIVPPS), "" = none.
+    #[serde(default)]
+    vop_format: String,
+    /// Orders that need a name check first (HIVPPS), e.g. HKCCS, HKIPZ.
+    #[serde(default)]
+    vop_orders: Vec<String>,
 }
 
 /// Versions of each business transaction this client implements.
@@ -82,6 +94,7 @@ const IMPLEMENTED: &[(&str, &[u32])] = &[
     ("HKCCS", &[1]),
     ("HKIPZ", &[1]),
     ("HKCSE", &[1]),
+    ("HKVPP", &[1]),
     ("HKKAZ", &[5, 6, 7]),
     ("HKTAN", &[6, 7]),
     ("HKSPA", &[1, 2, 3]),
@@ -267,6 +280,15 @@ pub struct FinTsConnector {
     result: TransferResult,
     /// The order being sent.
     order: Option<PreparedOrder>,
+    /// Segment number of the order in the last order message (the name check
+    /// segment shifts it), to read the bank's per-segment confirmation.
+    order_seg_no: u32,
+    /// VOP-ID from HIVPP, sent back with HKVPA.
+    vop_id: Option<Vec<u8>>,
+    /// Name matched: send HKVPA along with the TAN.
+    vop_with_tan: bool,
+    /// Name-check result shown to the user, awaiting confirmation.
+    vop_pending: Option<PayeeMatch>,
 }
 
 /// A transfer order ready to send (segment number set at send time).
@@ -277,6 +299,28 @@ struct PreparedOrder {
     descriptor: &'static str,
     xml: String,
     instant: bool,
+    recipient_name: String,
+    recipient_iban: String,
+}
+
+/// Longest wait between two name-check polls, and in total.
+const VOP_POLL_WAIT_MAX: std::time::Duration = std::time::Duration::from_secs(3);
+const VOP_POLL_TOTAL_MAX: std::time::Duration = std::time::Duration::from_secs(25);
+
+/// Name-check part of an order message.
+enum Vop {
+    None,
+    /// HKVPP + order + HKTAN: the first name check request.
+    Check,
+    /// HKVPP only, with the polling ID (and the continuation point from
+    /// 3040): asks again while the result is pending. Never carries the
+    /// order or HKTAN, so polling cannot create a second order.
+    Poll {
+        polling_id: Vec<u8>,
+        touchdown: Option<String>,
+    },
+    /// HKVPA with the VOP-ID.
+    Execute,
 }
 
 /// What a bank reply means for a transfer order.
@@ -313,6 +357,10 @@ impl FinTsConnector {
             order_submitted: false,
             result: TransferResult::default(),
             order: None,
+            order_seg_no: 3,
+            vop_id: None,
+            vop_with_tan: false,
+            vop_pending: None,
         }
     }
 
@@ -564,6 +612,11 @@ impl FinTsConnector {
                     list.push(f);
                 }
             }
+        }
+        if let Some(vpps) = reply.first("HIVPPS") {
+            let (format, orders) = vop_parameters(vpps);
+            self.st.vop_format = format;
+            self.st.vop_orders = orders;
         }
         let upds: Vec<UpdAccount> = reply.all("HIUPD").map(parse_upd).collect();
         for a in upds {
@@ -1302,29 +1355,37 @@ impl FinTsConnector {
             descriptor: version.descriptor(),
             xml,
             instant,
+            recipient_name: job.recipient_name.clone(),
+            recipient_iban: job.recipient_iban.clone(),
         });
-        let reply = self.send_order(ctx).await?;
-        match classify_submit_reply(&reply, instant) {
-            OrderReply::Accepted => {
-                if let Some(p) = self.challenge_from(&reply)? {
-                    return Ok(p);
-                }
-                self.result = TransferResult::Executed { instant };
-                Ok(Phase::Ready)
-            }
-            OrderReply::Rejected => {
-                reply.check_transfer()?;
-                unreachable!("Rejected implies errors")
-            }
-            OrderReply::InstantDeclined(reason) => {
-                self.result = TransferResult::InstantDeclined { reason };
-                Ok(Phase::Ready)
-            }
-            OrderReply::Unknown(reason) => {
-                self.result = TransferResult::Unknown { reason };
-                Ok(Phase::Ready)
-            }
+        self.vop_id = None;
+        self.vop_with_tan = false;
+        self.vop_pending = None;
+        let needs_vop =
+            !self.st.vop_format.is_empty() && self.st.vop_orders.iter().any(|o| o == seg_id);
+        if !needs_vop {
+            let reply = self.send_order(ctx, Vop::None).await?;
+            return self.finish_submit(&reply);
         }
+        let (reply, polled) = self.check_payee(ctx).await?;
+        if let Some(early) = self.reject_or_stop(&reply)? {
+            return Ok(early);
+        }
+        let Some(check) = self.evaluate_payee(&reply) else {
+            // Match (or no result reported): on to the approval.
+            if polled && self.vop_id.is_some() {
+                // The last reply answered a bare HKVPP poll and carries no
+                // challenge: authorise with HKVPA + order + HKTAN now.
+                self.vop_with_tan = false;
+                let reply = self.send_order(ctx, Vop::Execute).await?;
+                return self.finish_submit(&reply);
+            }
+            return self.finish_submit(&reply);
+        };
+        // Anything but a clean match: nothing more is sent until the user
+        // confirms (`confirm_payee`); cancelling ends the dialog instead.
+        self.vop_pending = Some(check.result);
+        Ok(Phase::ConfirmPayee(check))
     }
 
     /// Instant not possible before anything was sent: nothing to approve.
@@ -1335,21 +1396,195 @@ impl FinTsConnector {
         Phase::Ready
     }
 
-    /// Sends order + HKTAN process 4. Marks the order as submitted first:
-    /// once the bytes may have left, the result can be "unknown".
-    async fn send_order(&mut self, ctx: &ConnectContext) -> CoreResult<BankReply> {
+    /// Segments of one order message: [HKVPP|HKVPA] + order + HKTAN
+    /// process 4, or HKVPP alone for a polling request.
+    fn order_payload(&mut self, vop: Vop) -> CoreResult<Vec<Vec<u8>>> {
         let order = self.order.clone().ok_or(CoreError::SessionClosed)?;
-        let payload = vec![
-            SegmentBuilder::new(order.seg_id, 3, self.version(order.seg_id))
+        let mut n = 3;
+        let mut payload = Vec::new();
+        match vop {
+            Vop::None => {}
+            Vop::Check => {
+                payload.push(
+                    SegmentBuilder::new("HKVPP", n, self.version("HKVPP"))
+                        .de(&[&self.st.vop_format])
+                        .build(),
+                );
+                n += 1;
+            }
+            Vop::Poll {
+                polling_id,
+                touchdown,
+            } => {
+                // Polling: HKVPP only (format, polling ID, max. entries,
+                // continuation point), no order and no HKTAN.
+                let mut b = SegmentBuilder::new("HKVPP", n, self.version("HKVPP"))
+                    .de(&[&self.st.vop_format])
+                    .binary(&polling_id);
+                if let Some(t) = touchdown {
+                    b = b.raw("").de(&[&t]);
+                }
+                return Ok(vec![b.build()]);
+            }
+            Vop::Execute => {
+                payload.push(self.hkvpa(n)?);
+                n += 1;
+            }
+        }
+        self.order_seg_no = n;
+        payload.push(
+            SegmentBuilder::new(order.seg_id, n, self.version(order.seg_id))
                 .raw(&order.kti)
                 .de(&[order.descriptor])
                 .binary(order.xml.as_bytes())
                 .build(),
-            self.hktan_process4(4, order.seg_id),
-        ];
+        );
+        payload.push(self.hktan_process4(n + 1, order.seg_id));
+        Ok(payload)
+    }
+
+    /// Sends one order message. Marks the order as submitted first: once the
+    /// bytes may have left, the result can be "unknown".
+    async fn send_order(&mut self, ctx: &ConnectContext, vop: Vop) -> CoreResult<BankReply> {
+        let payload = self.order_payload(vop)?;
         let sec = self.sec();
         self.order_submitted = true;
         self.send(ctx, payload, &sec, None).await
+    }
+
+    fn hkvpa(&self, n: u32) -> CoreResult<Vec<u8>> {
+        // No VOP-ID: nothing can be approved (and nothing was sent).
+        let id = self
+            .vop_id
+            .as_deref()
+            .ok_or_else(|| CoreError::InvalidInput {
+                message: "name check: no VOP-ID from the bank".into(),
+            })?;
+        Ok(SegmentBuilder::new("HKVPA", n, 1).binary(id).build())
+    }
+
+    /// HKVPP + order; asks again (HKVPP only, with the polling ID) while the
+    /// result is pending. Waits at most `VOP_POLL_WAIT_MAX` per round and
+    /// `VOP_POLL_TOTAL_MAX` overall, so the session lock is never held long.
+    /// Returns the last reply and whether polling happened.
+    async fn check_payee(&mut self, ctx: &ConnectContext) -> CoreResult<(BankReply, bool)> {
+        let mut reply = self.send_order(ctx, Vop::Check).await?;
+        let mut polled = false;
+        let mut waited = std::time::Duration::ZERO;
+        for _ in 0..10 {
+            let Some(h) = reply.first("HIVPP") else { break };
+            let code = vop_result_code(h);
+            let polling = h.binary(3).map(|b| b.to_vec());
+            if !reply.errors().is_empty()
+                || !(code.is_empty() || code == "PDNG")
+                || polling.is_none()
+            {
+                break;
+            }
+            let wait = std::time::Duration::from_secs(
+                h.get(8, 0)
+                    .parse::<u64>()
+                    .unwrap_or(2)
+                    .clamp(1, VOP_POLL_WAIT_MAX.as_secs()),
+            );
+            if waited + wait > VOP_POLL_TOTAL_MAX {
+                break;
+            }
+            waited += wait;
+            tokio::time::sleep(wait).await;
+            let touchdown = reply.code("3040").and_then(|c| c.3.first().cloned());
+            polled = true;
+            reply = self
+                .send_order(
+                    ctx,
+                    Vop::Poll {
+                        polling_id: polling.unwrap_or_default(),
+                        touchdown,
+                    },
+                )
+                .await?;
+        }
+        Ok((reply, polled))
+    }
+
+    /// Reads HIVPP. `None` = go on to the approval (match, or the bank did
+    /// not report a result); `Some` = the user has to confirm.
+    fn evaluate_payee(&mut self, reply: &BankReply) -> Option<PayeeCheck> {
+        let h = reply.first("HIVPP")?;
+        self.vop_id = h.binary(1).map(|b| b.to_vec()).filter(|b| !b.is_empty());
+        let code = vop_result_code(h);
+        let order = self.order.as_ref()?;
+        let opt = |s: &str, max: usize| Some(clean_bank_text(s, max)).filter(|s| !s.is_empty());
+        let result = match code.as_str() {
+            "RCVC" => PayeeMatch::Match,
+            "RVMC" => PayeeMatch::CloseMatch,
+            "RVNM" => PayeeMatch::NoMatch,
+            _ => PayeeMatch::NotPossible,
+        };
+        if result == PayeeMatch::Match && !reply.has("3945") {
+            self.vop_with_tan = self.vop_id.is_some();
+            return None;
+        }
+        Some(PayeeCheck {
+            result,
+            entered_name: order.recipient_name.clone(),
+            iban: order.recipient_iban.clone(),
+            bank_name: opt(h.get(6, 2), VOP_NAME_MAX),
+            reason: opt(h.get(6, 5), VOP_TEXT_MAX).or_else(|| {
+                (code.is_empty() || code == "PDNG")
+                    .then(|| tr("Die Empfängerbank hat kein Ergebnis geliefert.").to_string())
+            }),
+            notice: opt(h.get(7, 0), VOP_TEXT_MAX),
+        })
+    }
+
+    /// Classifies the reply to the order message. `Some(phase)` ends the
+    /// transfer (declined / unknown); `None` = accepted, go on. Rejections
+    /// are returned as errors.
+    fn reject_or_stop(&mut self, reply: &BankReply) -> CoreResult<Option<Phase>> {
+        let instant = self.order.as_ref().is_some_and(|o| o.instant);
+        match classify_submit_reply(reply, instant, self.order_seg_no) {
+            OrderReply::Accepted => Ok(None),
+            OrderReply::Rejected => {
+                reply.check_transfer()?;
+                unreachable!("Rejected implies errors")
+            }
+            OrderReply::InstantDeclined(reason) => {
+                self.result = TransferResult::InstantDeclined { reason };
+                Ok(Some(Phase::Ready))
+            }
+            OrderReply::Unknown(reason) => {
+                self.result = TransferResult::Unknown { reason };
+                Ok(Some(Phase::Ready))
+            }
+        }
+    }
+
+    /// Reply to an order message that needs no further name check: classify
+    /// it, then wait for the approval or finish.
+    fn finish_submit(&mut self, reply: &BankReply) -> CoreResult<Phase> {
+        if let Some(early) = self.reject_or_stop(reply)? {
+            return Ok(early);
+        }
+        if let Some(p) = self.challenge_from(reply)? {
+            return Ok(p);
+        }
+        let instant = self.order.as_ref().is_some_and(|o| o.instant);
+        self.result = TransferResult::Executed { instant };
+        Ok(Phase::Ready)
+    }
+
+    /// The user confirmed despite the name-check result: HKVPA + order + HKTAN.
+    /// Only ever reached from the user's explicit confirmation.
+    async fn confirm_payee(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
+        // A stray/duplicate confirmation must not look like an unknown outcome.
+        if self.vop_pending.take().is_none() {
+            return Err(CoreError::InvalidInput {
+                message: "no name check awaiting confirmation".into(),
+            });
+        }
+        let reply = self.send_order(ctx, Vop::Execute).await?;
+        self.finish_submit(&reply)
     }
 
     /// Reply to an approved TAN / decoupled poll. For a login this checks
@@ -1504,7 +1739,7 @@ fn reason_text(reply: &BankReply) -> String {
 /// before the user approved anything. Errors here mean the bank refused the
 /// order before executing it, unless the reply also confirms the order
 /// segment (contradictory: unknown).
-fn classify_submit_reply(reply: &BankReply, instant: bool) -> OrderReply {
+fn classify_submit_reply(reply: &BankReply, instant: bool, order_seg: u32) -> OrderReply {
     let errs = reply.errors();
     if errs.is_empty() {
         return OrderReply::Accepted;
@@ -1512,7 +1747,7 @@ fn classify_submit_reply(reply: &BankReply, instant: bool) -> OrderReply {
     let order_confirmed = reply
         .codes
         .iter()
-        .any(|c| c.0.starts_with('0') && c.1 == Some(3));
+        .any(|c| c.0.starts_with('0') && c.1 == Some(order_seg));
     if order_confirmed {
         return OrderReply::Unknown(reason_text(reply));
     }
@@ -1547,6 +1782,66 @@ fn classify_approval_reply(reply: &BankReply, instant: bool) -> OrderReply {
         (true, false) => OrderReply::Rejected,
         (false, _) => OrderReply::Unknown(reason_text(reply)),
     }
+}
+
+/// HIVPPS: (payment status report format, orders that need a name check).
+/// Parameter group: max. entries : structured : V/S : batch : count : format : HKxxx …
+fn vop_parameters(seg: &Segment) -> (String, Vec<String>) {
+    let mut format = String::new();
+    let mut orders = Vec::new();
+    for el in &seg.elements {
+        for v in el {
+            let t = v.text();
+            if format.is_empty() && t.contains("pain.002") {
+                format = t.to_string();
+            } else if t.len() == 5
+                && t.starts_with("HK")
+                && t[2..].chars().all(|c| c.is_ascii_uppercase())
+            {
+                orders.push(t.to_string());
+            }
+        }
+    }
+    (format, orders)
+}
+
+/// Max. length of an account holder name (SEPA) and of bank free texts.
+const VOP_NAME_MAX: usize = 70;
+const VOP_TEXT_MAX: usize = 500;
+
+/// Bank free text for display / the form: control characters dropped,
+/// whitespace collapsed, cut to `max` characters.
+fn clean_bank_text(s: &str, max: usize) -> String {
+    s.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(max)
+        .collect()
+}
+
+/// The worst result among all codes found: a match must never mask a
+/// mismatch. Worst first: RVNM, RVMC, RVNA, PDNG, RCVC.
+fn worst_vop_code(candidates: &[&str]) -> String {
+    ["RVNM", "RVMC", "RVNA", "PDNG", "RCVC"]
+        .iter()
+        .find(|c| candidates.iter().any(|t| t.contains(*c)))
+        .map(|c| c.to_string())
+        .unwrap_or_default()
+}
+
+/// VOP result code from HIVPP: the single-transaction result (EVPE) and the
+/// codes in the payment status report; the worst one wins.
+fn vop_result_code(h: &Segment) -> String {
+    let evpe = h.get(6, 4).trim().to_string();
+    let report = h
+        .binary(5)
+        .map(crate::text::decode_bank_bytes)
+        .unwrap_or_default();
+    worst_vop_code(&[&evpe, &report])
 }
 
 /// pain.001 descriptors from a BPD parameter segment (HICCSS / HIIPZS / HICSES).
@@ -1687,6 +1982,9 @@ impl BankConnector for FinTsConnector {
         ctx: &ConnectContext,
         response: ChallengeResponse,
     ) -> CoreResult<Phase> {
+        if let ChallengeResponse::ConfirmPayee = response {
+            return self.confirm_payee(ctx).await;
+        }
         let task = self
             .task_reference
             .clone()
@@ -1694,9 +1992,18 @@ impl BankConnector for FinTsConnector {
                 message: "no pending TAN task".into(),
             })?;
         let sec = self.sec();
+        // Name matched: HKVPA (VOP-ID) goes along with the approval.
+        let mut payload = Vec::new();
+        // Only with the first step after the name check, not with the
+        // following decoupled status polls.
+        if std::mem::take(&mut self.vop_with_tan) {
+            payload.push(self.hkvpa(3)?);
+        }
+        let n = 3 + payload.len() as u32;
         match response {
+            ChallengeResponse::ConfirmPayee => unreachable!(),
             ChallengeResponse::Poll => {
-                let seg = SegmentBuilder::new("HKTAN", 3, self.version("HKTAN"))
+                let seg = SegmentBuilder::new("HKTAN", n, self.version("HKTAN"))
                     .raw("S")
                     .raw("")
                     .raw("")
@@ -1704,7 +2011,8 @@ impl BankConnector for FinTsConnector {
                     .de(&[&task])
                     .raw("N")
                     .build();
-                let reply = self.send(ctx, vec![seg], &sec, None).await?;
+                payload.push(seg);
+                let reply = self.send(ctx, payload, &sec, None).await?;
                 if reply.has("3956") && reply.errors().is_empty() {
                     let c = self.challenge.clone().ok_or(CoreError::SessionClosed)?;
                     return Ok(Phase::Pending(c));
@@ -1712,7 +2020,7 @@ impl BankConnector for FinTsConnector {
                 self.after_approval(ctx, reply).await
             }
             ChallengeResponse::Code(tan) => {
-                let seg = SegmentBuilder::new("HKTAN", 3, self.version("HKTAN"))
+                let seg = SegmentBuilder::new("HKTAN", n, self.version("HKTAN"))
                     .raw("2")
                     .raw("")
                     .raw("")
@@ -1721,7 +2029,8 @@ impl BankConnector for FinTsConnector {
                     .raw("N")
                     .build();
                 self.tan_for_next = None;
-                let reply = self.send(ctx, vec![seg], &sec, Some(tan.expose())).await?;
+                payload.push(seg);
+                let reply = self.send(ctx, payload, &sec, Some(tan.expose())).await?;
                 self.after_approval(ctx, reply).await
             }
         }
@@ -2080,31 +2389,50 @@ mod tests {
         // Order refused before any approval -> instant declined, with the
         // specific code rather than the generic 9050.
         let r = reply(b"HIRMG:2:2+9050::Die Nachricht enth\xe4lt Fehler.'HIRMS:3:2:3+9210::Empf\xe4ngerbank nimmt nicht an SEPA Instant teil.'");
-        let OrderReply::InstantDeclined(why) = classify_submit_reply(&r, true) else {
+        let OrderReply::InstantDeclined(why) = classify_submit_reply(&r, true, 3) else {
             panic!()
         };
         assert!(why.starts_with("9210 "), "{why}");
         assert!(!why.contains("9050"), "{why}");
         // Same reply for a regular order -> plain error.
-        assert_eq!(classify_submit_reply(&r, false), OrderReply::Rejected);
+        assert_eq!(classify_submit_reply(&r, false, 3), OrderReply::Rejected);
         // Accepted, TAN required.
         let r = reply(b"HIRMG:2:2+0010::Nachricht entgegengenommen.'HIRMS:3:2:3+0030::Auftrag empfangen - TAN erforderlich.'");
-        assert_eq!(classify_submit_reply(&r, true), OrderReply::Accepted);
+        assert_eq!(classify_submit_reply(&r, true, 3), OrderReply::Accepted);
         // Wrong PIN -> not executed, no instant decline either.
         let r = reply(b"HIRMG:2:2+9942::PIN falsch.'");
-        assert_eq!(classify_submit_reply(&r, true), OrderReply::Rejected);
+        assert_eq!(classify_submit_reply(&r, true, 3), OrderReply::Rejected);
         // Dialog abort on an instant order: may have been executed.
         let r = reply(b"HIRMG:2:2+9800::Dialog abgebrochen.'");
         assert!(matches!(
-            classify_submit_reply(&r, true),
+            classify_submit_reply(&r, true, 3),
             OrderReply::Unknown(_)
         ));
         // Contradictory: order segment confirmed but errors present -> unknown.
         let r =
             reply(b"HIRMG:2:2+9800::Dialog abgebrochen.'HIRMS:3:2:3+0020::Auftrag ausgef\xfchrt.'");
         assert!(matches!(
-            classify_submit_reply(&r, true),
+            classify_submit_reply(&r, true, 3),
             OrderReply::Unknown(_)
+        ));
+    }
+
+    #[test]
+    fn submit_reply_reads_the_order_segment_behind_the_name_check() {
+        // With HKVPP in front, the order is segment 4: its confirmation plus
+        // an error elsewhere is contradictory (unknown), not a plain decline.
+        let r =
+            reply(b"HIRMG:2:2+9800::Dialog abgebrochen.'HIRMS:4:2:4+0020::Auftrag ausgef\xfchrt.'");
+        assert!(matches!(
+            classify_submit_reply(&r, true, 4),
+            OrderReply::Unknown(_)
+        ));
+        // A success code for the name-check segment (3) says nothing about the order.
+        let r =
+            reply(b"HIRMG:2:2+9050::Fehler.'HIRMS:3:2:3+0020::ok.'HIRMS:4:2:4+9210::Abgelehnt.'");
+        assert!(matches!(
+            classify_submit_reply(&r, true, 4),
+            OrderReply::InstantDeclined(_)
         ));
     }
 
@@ -2196,6 +2524,108 @@ mod tests {
                 sepa::PAIN_DESCRIPTOR.to_string()
             ]
         );
+    }
+
+    fn order_for(c: &mut FinTsConnector) {
+        c.order = Some(PreparedOrder {
+            seg_id: "HKCCS",
+            kti: String::new(),
+            descriptor: sepa::PAIN_DESCRIPTOR,
+            xml: String::new(),
+            instant: false,
+            recipient_name: "Erika Musterfrau".into(),
+            recipient_iban: "DE89370400440532013000".into(),
+        });
+    }
+
+    #[test]
+    fn reads_vop_parameters_from_bpd() {
+        // HIVPPS as sent by comdirect.
+        let raw =
+            b"HIVPPS:7:1:3+1+1+0+20:J:S:N:N:sepade.pain.002.001.10.xsd:HKIPZ:HKCUI:HKCCS:HKCDE'";
+        let mut c = FinTsConnector::new("20041111");
+        c.learn_bpd(&reply(raw));
+        assert_eq!(c.st.vop_format, "sepade.pain.002.001.10.xsd");
+        assert_eq!(c.st.vop_orders, vec!["HKIPZ", "HKCUI", "HKCCS", "HKCDE"]);
+        // Consorsbank sends no HIVPPS: no name check.
+        let c = FinTsConnector::new("76030080");
+        assert!(c.st.vop_format.is_empty());
+    }
+
+    #[test]
+    fn polling_sends_only_hkvpp_without_order_or_hktan() {
+        let mut c = FinTsConnector::new("20041111");
+        order_for(&mut c);
+        c.st.vop_format = "urn:iso:std:iso:20022:tech:xsd:pain.002.001.14".into();
+        let text = |p: Vec<Vec<u8>>| String::from_utf8_lossy(&p.concat()).to_string();
+        let first = text(c.order_payload(Vop::Check).unwrap());
+        assert!(first.contains("HKVPP") && first.contains("HKCCS") && first.contains("HKTAN"));
+        let poll = text(
+            c.order_payload(Vop::Poll {
+                polling_id: b"POLL-1".to_vec(),
+                touchdown: Some("TD1".into()),
+            })
+            .unwrap(),
+        );
+        assert!(poll.contains("HKVPP") && poll.contains("@6@POLL-1") && poll.contains("TD1"));
+        for seg in ["HKCCS", "HKIPZ", "HKCSE", "HKTAN"] {
+            assert!(!poll.contains(seg), "{seg} in {poll}");
+        }
+    }
+
+    #[test]
+    fn worst_vop_result_wins_and_bank_texts_are_cleaned() {
+        assert_eq!(worst_vop_code(&["RCVC", "... RVNM ..."]), "RVNM");
+        assert_eq!(worst_vop_code(&["", "RCVC RVMC"]), "RVMC");
+        assert_eq!(worst_vop_code(&["RCVC", "PDNG"]), "PDNG");
+        assert_eq!(worst_vop_code(&["RCVC"]), "RCVC");
+        assert_eq!(worst_vop_code(&["", ""]), "");
+        let dirty = format!("Max\u{0}\n  Muster\u{7}{}", "x".repeat(100));
+        let clean = clean_bank_text(&dirty, VOP_NAME_MAX);
+        assert_eq!(clean.chars().count(), VOP_NAME_MAX);
+        assert!(clean.starts_with("Max Muster") && !clean.chars().any(|c| c.is_control()));
+    }
+
+    #[test]
+    fn evaluates_vop_results() {
+        // Close match: bank reports the holder's name and a notice.
+        let r = reply(b"HIRMG:2:2+3060::Hinweise.'HIRMS:3:2:4+3945::Freigabe ohne VOP-Best\xe4tigung nicht m\xf6glich.'HIVPP:5:1:3+@8@VOPID123+++++DE89370400440532013000::Erika Mustermann::RVMC+Trotzdem freigeben??'");
+        let mut c = FinTsConnector::new("20041111");
+        order_for(&mut c);
+        let check = c.evaluate_payee(&r).unwrap();
+        assert_eq!(check.result, PayeeMatch::CloseMatch);
+        assert_eq!(check.bank_name.as_deref(), Some("Erika Mustermann"));
+        assert_eq!(check.entered_name, "Erika Musterfrau");
+        assert_eq!(check.notice.as_deref(), Some("Trotzdem freigeben?"));
+        assert_eq!(c.vop_id.as_deref(), Some(&b"VOPID123"[..]));
+        assert!(!c.vop_with_tan);
+        assert_eq!(c.hkvpa(3).unwrap(), b"HKVPA:3:1+@8@VOPID123'".to_vec());
+
+        // Match without 3945: go on to the approval, HKVPA with the TAN.
+        let r =
+            reply(b"HIRMG:2:2+0010::OK.'HIVPP:5:1:3+@4@ABCD+++++DE89370400440532013000::::RCVC'");
+        let mut c = FinTsConnector::new("20041111");
+        order_for(&mut c);
+        assert!(c.evaluate_payee(&r).is_none());
+        assert!(c.vop_with_tan);
+
+        // Pending (polling ID, no result) is reported as "not possible".
+        let r = reply(b"HIVPP:6:1:3+++@36@6b1a5ec1-9af5-4398-b0da-6526cbf210dd+++++2'");
+        let h = r.first("HIVPP").unwrap();
+        assert_eq!(vop_result_code(h), "");
+        assert_eq!(h.binary(3).map(|b| b.len()), Some(36));
+        assert_eq!(h.get(8, 0), "2");
+        let mut c = FinTsConnector::new("20041111");
+        order_for(&mut c);
+        assert_eq!(
+            c.evaluate_payee(&r).unwrap().result,
+            PayeeMatch::NotPossible
+        );
+
+        // No HIVPP at all: continue without a check.
+        let mut c = FinTsConnector::new("20041111");
+        order_for(&mut c);
+        assert!(c.evaluate_payee(&reply(b"HIRMG:2:2+0010::OK.'")).is_none());
     }
 
     #[test]

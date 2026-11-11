@@ -389,6 +389,11 @@ impl BankConnector for ComdirectConnector {
                 self.activate_session(None).await?;
             }
             ChallengeResponse::Code(tan) => self.activate_session(Some(tan.expose())).await?,
+            ChallengeResponse::ConfirmPayee => {
+                return Err(CoreError::Protocol {
+                    message: "comdirect: no payee confirmation pending".into(),
+                })
+            }
         }
         self.secondary_token(ctx).await?;
         Ok(Phase::Ready)

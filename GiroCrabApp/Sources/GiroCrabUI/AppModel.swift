@@ -155,6 +155,14 @@ struct TransferUnknownNotice: Identifiable {
     let endToEndId: String
 }
 
+/// Name check (Verification of Payee) result awaiting the user's decision.
+struct PendingPayeeCheck: Identifiable {
+    let id = UUID()
+    let connection: BankConnection
+    let check: PayeeCheck
+    var busy = false
+}
+
 struct PendingLogin: Identifiable {
     let id = UUID()
     let connection: BankConnection
@@ -252,6 +260,7 @@ public final class AppModel {
     /// The personal vault while demo data is shown (nil if never unlocked).
     private(set) var ownVault: Vault?
     var activeChallenge: ActiveChallenge?
+    var payeeCheck: PendingPayeeCheck?
     var syncingConnectionID: Int64?
     var toast: String?
     var errorMessage: String?
@@ -1656,7 +1665,12 @@ extension AppModel {
     }
 
     fileprivate func handleTransfer(_ step: TransferStep, connection: BankConnection) {
+        if case .needsPayeeConfirmation = step {} else { payeeCheck = nil }
         switch step {
+        case .needsPayeeConfirmation(let check):
+            pollTask?.cancel()
+            activeChallenge = nil
+            payeeCheck = PendingPayeeCheck(connection: connection, check: check)
         case .needsChallenge(let c):
             activeChallenge = ActiveChallenge(connection: connection, challenge: c, waiting: false)
             if c.kind == .decoupledPush { schedulePoll(connection: connection, interval: c.pollIntervalSeconds) }
@@ -1702,8 +1716,40 @@ extension AppModel {
         }
     }
 
+    /// Name check: send anyway (the bank then asks for the approval).
+    func confirmPayee() {
+        guard let transfer = activeTransfer, let pending = payeeCheck else { return }
+        payeeCheck?.busy = true
+        Task {
+            do {
+                self.handleTransfer(try await transfer.confirmPayee(), connection: pending.connection)
+            } catch {
+                self.finishTransfer(error: error)
+            }
+        }
+    }
+
+    /// Name check: do not send. `useBankName` takes over the account
+    /// holder's name reported by the bank and reopens the form.
+    func cancelPayee(useBankName: Bool = false) {
+        guard let pending = payeeCheck else { return }
+        let transfer = activeTransfer
+        payeeCheck = nil
+        activeTransfer = nil
+        transferBusy = false
+        if useBankName, let name = pending.check.bankName {
+            transferDraft.name = name
+            transferError = String(localized: "Name des Kontoinhabers übernommen – bitte prüfen und erneut freigeben. Es wurde nichts gesendet.")
+        } else {
+            transferError = String(localized: "Überweisung abgebrochen – es wurde nichts gesendet.")
+        }
+        showTransferSheet = true
+        Task { await transfer?.cancel() }
+    }
+
     fileprivate func finishTransfer(error: Error) {
         pollTask?.cancel()
+        payeeCheck = nil
         activeChallenge = nil
         activeTransfer = nil
         transferBusy = false

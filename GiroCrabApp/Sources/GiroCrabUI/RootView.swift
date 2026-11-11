@@ -226,6 +226,11 @@ struct MainSplitView: View {
         .sheet(isPresented: Binding(get: { model.splitBooking != nil }, set: { if !$0 { model.splitBooking = nil } })) {
             if let b = model.splitBooking { SplitSheet(booking: b).environment(model) }
         }
+        .sheet(item: $model.payeeCheck) { _ in
+            PayeeCheckSheet()
+                .environment(model)
+                .interactiveDismissDisabled()
+        }
         .sheet(item: $model.activeChallenge) { _ in
             TwoFactorSheet()
                 .environment(model)

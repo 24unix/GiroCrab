@@ -478,6 +478,10 @@ fn english(de: &str) -> Option<&'static str> {
         "FinTS-PIN/TAN-Adresse laut öffentlicher DK-Institutsliste." => "FinTS PIN/TAN address from the public DK institute list.",
         "Server 1822direkt (BLZ 50050201)" => "Server 1822direkt (bank code 50050201)",
         // ------------------------------------------------------------ SEPA Instant
+        "Demo: Wenn Sie die Überweisung trotzdem freigeben, kann das Geld auf einem Konto landen, das nicht dem gewünschten Empfänger gehört." => {
+            "Demo: If you approve the transfer anyway, the money may end up in an account that does not belong to the intended recipient."
+        }
+        "Die Empfängerbank hat kein Ergebnis geliefert." => "The recipient's bank did not return a result.",
         "Demo: Die Empfängerbank ist für Echtzeitüberweisungen gerade nicht erreichbar." => {
             "Demo: The recipient's bank is currently not reachable for instant transfers."
         }

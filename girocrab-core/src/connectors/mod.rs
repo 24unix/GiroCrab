@@ -103,6 +103,11 @@ pub enum TransferStep {
     StillWaiting {
         challenge: Challenge,
     },
+    /// Name check (Verification of Payee) did not confirm the recipient:
+    /// show `check`, then `confirm_payee()` to send anyway or `cancel()`.
+    NeedsPayeeConfirmation {
+        check: PayeeCheck,
+    },
     /// Bank accepted the transfer; an optimistic booking was stored.
     Finished {
         outcome: TransferOutcome,
@@ -122,6 +127,33 @@ pub enum TransferStep {
         reason: String,
         end_to_end_id: String,
     },
+}
+
+/// Result of the recipient name check (Verification of Payee).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PayeeMatch {
+    /// Name matches the account holder (RCVC).
+    Match,
+    /// Name is close; `bank_name` holds the account holder's name (RVMC).
+    CloseMatch,
+    /// Name does not match the account holder (RVNM).
+    NoMatch,
+    /// The check could not be carried out (RVNA, or no result).
+    NotPossible,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PayeeCheck {
+    pub result: PayeeMatch,
+    /// Name as entered by the user.
+    pub entered_name: String,
+    pub iban: String,
+    /// Account holder's name reported by the recipient bank (close match).
+    pub bank_name: Option<String>,
+    /// Why the check was not possible (RVNA reason).
+    pub reason: Option<String>,
+    /// Bank's text on authorising despite a mismatch (must be shown).
+    pub notice: Option<String>,
 }
 
 /// How an executed transfer was sent.
@@ -316,6 +348,8 @@ pub enum ChallengeResponse {
     Poll,
     /// Code typed by the user (TAN, 2FA PIN, redirect URL/code).
     Code(SecretString),
+    /// The user confirmed the transfer despite a name-check mismatch.
+    ConfirmPayee,
 }
 
 #[derive(Debug)]
@@ -324,6 +358,8 @@ pub enum Phase {
     Challenge(Challenge),
     /// Decoupled approval still pending.
     Pending(Challenge),
+    /// Transfers only: the name check needs the user's confirmation.
+    ConfirmPayee(PayeeCheck),
 }
 
 /// Everything a connector needs to log in. Secrets are wiped on drop.
@@ -574,6 +610,13 @@ impl SyncSession {
             }
             Ok(Phase::Challenge(c)) => Ok(SyncStep::NeedsChallenge { challenge: c }),
             Ok(Phase::Pending(c)) => Ok(SyncStep::StillWaiting { challenge: c }),
+            Ok(Phase::ConfirmPayee(_)) => {
+                st.done = true;
+                st.connector.finish(&st.ctx).await;
+                Err(CoreError::Protocol {
+                    message: "payee confirmation outside of a transfer".into(),
+                })
+            }
             Ok(Phase::Ready) => {
                 crate::depot_debug::log(&format!(
                     "sync advance: Ready, calling fetch for {:?}",
@@ -1275,6 +1318,9 @@ impl TransferSession {
                     return Ok(TransferStep::NeedsChallenge { challenge: c })
                 }
                 Ok(Phase::Pending(c)) => return Ok(TransferStep::StillWaiting { challenge: c }),
+                Ok(Phase::ConfirmPayee(check)) => {
+                    return Ok(TransferStep::NeedsPayeeConfirmation { check })
+                }
                 Ok(Phase::Ready) if !st.submitted => {
                     st.submitted = true;
                     phase = st.connector.send_transfer(&st.ctx, &st.job).await;
@@ -1360,6 +1406,20 @@ impl TransferSession {
         }
         let TransferState { connector, ctx, .. } = &mut *st;
         let phase = connector.respond(ctx, ChallengeResponse::Poll).await;
+        self.advance(phase, &mut st).await
+    }
+
+    /// Send the transfer although the name check did not confirm the
+    /// recipient (after `NeedsPayeeConfirmation`).
+    pub async fn confirm_payee(&self) -> Result<TransferStep, CoreError> {
+        let mut st = self.state.lock().await;
+        if st.done {
+            return Err(CoreError::SessionClosed);
+        }
+        let TransferState { connector, ctx, .. } = &mut *st;
+        let phase = connector
+            .respond(ctx, ChallengeResponse::ConfirmPayee)
+            .await;
         self.advance(phase, &mut st).await
     }
 
@@ -2132,6 +2192,56 @@ mod tests {
         };
         assert!(!outcome.instant);
 
+        // Name check: close match needs confirmation, then the approval.
+        let mut close = req("DE89370400440532013000", 500);
+        close.recipient_name = "Fast Mustermann".into();
+        let s = v.clone().begin_transfer(close, "pin".into(), true).unwrap();
+        let mut step = s.start().await.unwrap();
+        while matches!(
+            step,
+            TransferStep::NeedsChallenge { .. } | TransferStep::StillWaiting { .. }
+        ) {
+            step = s.poll().await.unwrap();
+        }
+        let TransferStep::NeedsPayeeConfirmation { check } = step else {
+            panic!("{step:?}")
+        };
+        assert_eq!(check.result, PayeeMatch::CloseMatch);
+        assert_eq!(check.bank_name.as_deref(), Some("Erika Mustermann"));
+        let mut step = s.confirm_payee().await.unwrap();
+        while matches!(
+            step,
+            TransferStep::NeedsChallenge { .. } | TransferStep::StillWaiting { .. }
+        ) {
+            step = s.poll().await.unwrap();
+        }
+        assert!(matches!(step, TransferStep::Finished { .. }));
+
+        // Cancelling at the name check sends nothing.
+        let mut wrong = req("DE89370400440532013000", 700);
+        wrong.recipient_name = "Falsch GmbH".into();
+        let s = v.clone().begin_transfer(wrong, "pin".into(), true).unwrap();
+        let mut step = s.start().await.unwrap();
+        while matches!(
+            step,
+            TransferStep::NeedsChallenge { .. } | TransferStep::StillWaiting { .. }
+        ) {
+            step = s.poll().await.unwrap();
+        }
+        assert!(matches!(
+            step,
+            TransferStep::NeedsPayeeConfirmation {
+                check: PayeeCheck {
+                    result: PayeeMatch::NoMatch,
+                    ..
+                }
+            }
+        ));
+        s.cancel().await;
+        assert!(matches!(
+            s.confirm_payee().await,
+            Err(CoreError::SessionClosed)
+        ));
         let _ = std::fs::remove_file(path);
     }
 }
