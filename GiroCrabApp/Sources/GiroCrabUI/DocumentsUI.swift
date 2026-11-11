@@ -190,6 +190,13 @@ struct DocumentsView: View {
     @State private var exporting = false
     @State private var targeted = false
     @State private var docToDelete: DocumentInfo?
+    @State private var previewDoc: DocumentInfo?
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    private var isCompact: Bool { horizontalSizeClass == .compact }
+    #else
+    private var isCompact: Bool { false }
+    #endif
 
     var body: some View {
         let docs = model.allDocuments(search: search, unlinkedOnly: unlinkedOnly)
@@ -200,10 +207,22 @@ struct DocumentsView: View {
                     Text("Wertpapierabrechnungen, Kontoauszüge, Kassenbons – verschlüsselt im Tresor. PDF oder Foto hierher ziehen: GiroCrab ordnet es dem passenden Umsatz zu.")
                         .font(.caption).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                HStack {
-                    TextField("Suchen …", text: $search).textFieldStyle(.roundedBorder)
-                    Toggle("Nur ohne Buchung", isOn: $unlinkedOnly).toggleStyle(.switch).controlSize(.small)
-                    Button { exporting = true } label: { Label("Alle exportieren", systemImage: "square.and.arrow.up") }
+                if isCompact {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("Suchen …", text: $search).textFieldStyle(.roundedBorder)
+                        HStack(spacing: 12) {
+                            Toggle("Nur ohne Buchung", isOn: $unlinkedOnly).toggleStyle(.switch).controlSize(.small)
+                                .lineLimit(1).fixedSize()
+                            Spacer(minLength: 0)
+                            Button { exporting = true } label: { Label("Alle exportieren", systemImage: "square.and.arrow.up").lineLimit(1).fixedSize() }
+                        }
+                    }
+                } else {
+                    HStack {
+                        TextField("Suchen …", text: $search).textFieldStyle(.roundedBorder)
+                        Toggle("Nur ohne Buchung", isOn: $unlinkedOnly).toggleStyle(.switch).controlSize(.small)
+                        Button { exporting = true } label: { Label("Alle exportieren", systemImage: "square.and.arrow.up") }
+                    }
                 }
                 List(selection: $selected) {
                     ForEach(docs) { d in
@@ -218,6 +237,8 @@ struct DocumentsView: View {
                             Text(DateText.medium(d.docDate)).font(.caption.monospacedDigit()).foregroundStyle(Theme.secondary)
                         }
                         .tag(d.id)
+                        .contentShape(Rectangle())
+                        .onTapGesture { if isCompact { previewDoc = d } }
                         .contextMenu {
                             Button("QuickLook") { model.quickLook(d) }
                             Button("Verknüpfung lösen") { model.linkDocument(d, to: nil) }
@@ -233,8 +254,9 @@ struct DocumentsView: View {
                     }
                 }
             }
-            .padding(18)
-            .frame(maxWidth: 520)
+            .padding(isCompact ? 12 : 18)
+            .frame(maxWidth: isCompact ? .infinity : 520)
+            if !isCompact {
             Divider()
             Group {
                 if let id = selected, let d = docs.first(where: { $0.id == id }), let data = model.documentData(d) {
@@ -245,8 +267,22 @@ struct DocumentsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.canvas)
+            }
         }
         .background(Theme.canvas)
+        .sheet(item: $previewDoc) { d in
+            NavigationStack {
+                Group {
+                    if let data = model.documentData(d) { DocumentPreview(doc: d, data: data) }
+                    else { ContentUnavailableView("Beleg nicht verfügbar", systemImage: "doc") }
+                }
+                .navigationTitle(d.title)
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fertig") { previewDoc = nil } } }
+            }
+        }
         .overlay {
             if targeted {
                 RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4])).padding(8)
