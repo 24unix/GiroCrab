@@ -1,0 +1,22 @@
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: "✨ Neue Funktionen"
+      labels:
+        - feat
+        - enhancement
+        - feature
+    - title: "⚡ Performance"
+      labels:
+        - perf
+        - performance
+    - title: "🐛 Fehlerbehebungen"
+      labels:
+        - fix
+        - bug
+        - bugfix
+    - title: "🛠 Weitere Änderungen"
+      labels:
+        - "*"
