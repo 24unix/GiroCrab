@@ -9893,6 +9893,138 @@
           }
         }
       }
+    },
+    "Aktuell (geprüft %@)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up to date (checked %@)"
+          }
+        }
+      }
+    },
+    "%u Dokument(e) gesichert (%@)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u document(s) saved (%@)"
+          }
+        }
+      }
+    },
+    "Kontoauszüge automatisch beim Sync abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch statements automatically when syncing"
+          }
+        }
+      }
+    },
+    "Höchstens einmal pro Woche. Je nach Bank ist dafür eine zusätzliche TAN nötig. Ist ein Dokumentenordner eingestellt, landen die PDFs auch dort." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "At most once a week. Depending on the bank, this may need an extra TAN. If a document folder is set, the PDFs are copied there too."
+          }
+        }
+      }
+    },
+    "Dokumentenordner" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Document Folder"
+          }
+        }
+      }
+    },
+    "Dokumente automatisch in einen Ordner sichern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatically save documents to a folder"
+          }
+        }
+      }
+    },
+    "Ändern …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change…"
+          }
+        }
+      }
+    },
+    "Im Finder zeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show in Finder"
+          }
+        }
+      }
+    },
+    "Jetzt sichern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save Now"
+          }
+        }
+      }
+    },
+    "Kontoauszüge, Belege und PostBox-Dokumente werden nach jedem Sync als Kopie abgelegt: <Ordner>/<Konto>/<Jahr>/. Vorhandene Dateien werden nie überschrieben. Achtung: Im Ordner liegen die PDFs unverschlüsselt – in iCloud Drive also auch in Ihrer iCloud." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statements, receipts and PostBox documents are copied after every sync to <folder>/<account>/<year>/. Existing files are never overwritten. Note: the PDFs in this folder are not encrypted – in iCloud Drive they are also stored in your iCloud."
+          }
+        }
+      }
+    },
+    "Automatischer Abruf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatic Fetch"
+          }
+        }
+      }
+    },
+    "Ob GiroCrab die PDF-Kontoauszüge eines FinTS-Kontos bei jedem Sync mit abruft, stellen Sie pro Konto unter „Dokumente / Kontoauszüge“ ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Whether GiroCrab fetches the PDF statements of a FinTS account on every sync is set per account under “Documents / Statements”."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

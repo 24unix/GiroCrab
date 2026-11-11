@@ -327,6 +327,14 @@ impl Vault {
         }
         // v4: encrypted documents (Beleg-Abruf & PostBox) – idempotent
         conn.execute_batch(crate::documents::DOC_SCHEMA)?;
+        let has_export: i64 = conn.query_row(
+            "SELECT count(*) FROM pragma_table_info('booking_documents') WHERE name = 'exported_at'",
+            [],
+            |r| r.get(0),
+        )?;
+        if has_export == 0 {
+            conn.execute_batch("ALTER TABLE booking_documents ADD COLUMN exported_at INTEGER;")?;
+        }
         conn.execute_batch(crate::insights::OVERRIDE_SCHEMA)?;
         conn.execute_batch(HOLDINGS_SCHEMA)?;
         conn.execute_batch(crate::planning::PLANNING_SCHEMA)?;

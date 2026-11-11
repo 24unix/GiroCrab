@@ -592,6 +592,7 @@ public final class AppModel {
         reloadAccounts()
         refreshSalaryCycle()
         refreshRecurring()
+        mirrorDocumentsIfEnabled()
         reloadHistory()
         reloadCategories()
         reloadBookings()
@@ -874,6 +875,74 @@ public final class AppModel {
         refreshSalaryCycle()
         if period == .sinceSalary { reloadCategories(); reloadHistory() }
         reloadBookings()
+    }
+
+    // MARK: - PDF statements & document folder (GitHub #57)
+
+    private static let mirrorDirKey = "documents.mirrorDir"
+    /// Folder that receives a copy of every document (nil = off). Per Mac, not per vault.
+    var documentMirrorPath: String? = UserDefaults.standard.string(forKey: "documents.mirrorDir")
+    /// Result of the latest mirror run, for the settings.
+    var documentMirrorStatus: String?
+    private var mirrorRunning = false
+
+    /// Suggested mirror folder: iCloud Drive/GiroCrab/Kontoauszüge (if iCloud Drive exists).
+    static var suggestedMirrorURL: URL? {
+        #if os(macOS)
+        let docs = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: docs.path) else { return nil }
+        return docs.appendingPathComponent("GiroCrab/Kontoauszüge", isDirectory: true)
+        #else
+        return nil
+        #endif
+    }
+
+    /// Turns the document folder on (all documents are copied once) or off.
+    func setDocumentMirror(_ url: URL?) {
+        if let url {
+            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            documentMirrorPath = url.path
+            UserDefaults.standard.set(url.path, forKey: Self.mirrorDirKey)
+            if let vault { run { try vault.resetDocumentMirror() } }
+            mirrorDocumentsIfEnabled()
+        } else {
+            documentMirrorPath = nil
+            documentMirrorStatus = nil
+            UserDefaults.standard.removeObject(forKey: Self.mirrorDirKey)
+        }
+    }
+
+    /// Copies documents that are not in the folder yet (after syncs, imports, drops).
+    func mirrorDocumentsIfEnabled() {
+        guard let vault, let dir = documentMirrorPath, !isDemo, !mirrorRunning else { return }
+        mirrorRunning = true
+        Task { @MainActor [weak self] in
+            let result: Result<UInt32, Error> = await Task.detached(priority: .utility) {
+                Result { try vault.mirrorNewDocuments(destDir: dir) }
+            }.value
+            guard let self else { return }
+            mirrorRunning = false
+            switch result {
+            case .success(let n):
+                let time = Date().formatted(date: .omitted, time: .shortened)
+                documentMirrorStatus = n == 0
+                    ? String(localized: "Aktuell (geprüft \(time))")
+                    : String(localized: "\(n) Dokument(e) gesichert (\(time))")
+            case .failure(let e):
+                documentMirrorStatus = describe(e)
+            }
+        }
+    }
+
+    func autoStatements(_ account: Account) -> Bool {
+        guard let vault else { return false }
+        return (try? vault.autoStatementsEnabled(accountId: account.id)) ?? false
+    }
+
+    func setAutoStatements(_ account: Account, _ on: Bool) {
+        guard let vault else { return }
+        run { try vault.setAutoStatements(accountId: account.id, enabled: on) }
     }
 
     // MARK: - Recurring bookings (GitHub #35)
