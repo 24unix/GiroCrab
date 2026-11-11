@@ -173,6 +173,25 @@ public final class CloudSyncManager {
         folderOverride = url
     }
 
+    // Automatic sync without its timer, for tests.
+    func prepareAutoSyncForTesting(vault: Vault) {
+        autoVault = vault
+        autoState = AutoSyncState()
+        _ = autoState.tick(changeCount: vault.changeCount(), now: Date())
+    }
+
+    func runForTesting(write: Bool, poll: Bool) async {
+        guard let autoVault else { return }
+        await run(vault: autoVault, write: write, poll: poll)
+    }
+
+    func flushForTesting() async {
+        guard let autoVault else { return }
+        await flush(autoVault)
+    }
+
+    var isAutoBusy: Bool { autoBusy }
+
     // MARK: automatic sync
 
     @ObservationIgnored private var autoVault: Vault?
@@ -180,6 +199,8 @@ public final class CloudSyncManager {
     @ObservationIgnored private var autoState = AutoSyncState()
     @ObservationIgnored private var autoTask: Task<Void, Never>?
     @ObservationIgnored private var autoBusy = false
+    /// The automatic run in progress; a flush waits for it instead of being dropped.
+    @ObservationIgnored private var inFlight: Task<Void, Never>?
 
     /// Keeps `vault` in sync while the app runs: writes this device's
     /// snapshot after local changes and merges other devices' snapshots
@@ -216,13 +237,14 @@ public final class CloudSyncManager {
         #if os(iOS)
         case .background:
             // iOS suspends the app: write what's pending, then stop until it's back.
+            // The background time covers a run still in progress, too.
+            guard let vault = autoVault else { return }
+            let background = BackgroundTask(name: "GiroCrab sync")
             autoTask?.cancel()
             autoTask = nil
-            guard let vault = autoVault else { return }
-            let id = UIApplication.shared.beginBackgroundTask(withName: "GiroCrab sync")
             Task {
                 await flush(vault)
-                UIApplication.shared.endBackgroundTask(id)
+                background.end()
             }
         #endif
         default:
@@ -240,6 +262,7 @@ public final class CloudSyncManager {
     }
 
     private func flush(_ vault: Vault) async {
+        while let running = inFlight { await running.value }
         _ = autoState.tick(changeCount: vault.changeCount(), now: Date())
         guard autoState.hasPendingWrite else { return }
         await run(vault: vault, write: true, poll: false)
@@ -253,6 +276,17 @@ public final class CloudSyncManager {
     }
 
     private func run(vault: Vault, write: Bool, poll: Bool) async {
+        guard inFlight == nil else { return }
+        // Cleared inside the task, before anyone awaiting it resumes.
+        let task = Task {
+            await self.perform(vault: vault, write: write, poll: poll)
+            self.inFlight = nil
+        }
+        inFlight = task
+        await task.value
+    }
+
+    private func perform(vault: Vault, write: Bool, poll: Bool) async {
         guard !autoBusy, let (dir, release) = try? syncDirectory() as (URL, () -> Void) else { return }
         autoBusy = true
         defer { autoBusy = false; release() }
@@ -340,3 +374,24 @@ public final class CloudSyncManager {
         throw NSError(domain: "CloudSync", code: 2, userInfo: [NSLocalizedDescriptionKey: String(localized: "Bitte einmalig den Ordner „GiroCrab“ in iCloud Drive auswählen.")])
     }
 }
+
+#if os(iOS)
+/// Background time for the last write before iOS suspends the app; ended
+/// when the write is done or when the time runs out, whichever comes first.
+@MainActor
+private final class BackgroundTask {
+    private var id = UIBackgroundTaskIdentifier.invalid
+
+    init(name: String) {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            self?.end()
+        }
+    }
+
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
+    }
+}
+#endif

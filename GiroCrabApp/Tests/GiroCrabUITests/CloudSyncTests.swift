@@ -329,6 +329,27 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertTrue(names.contains { $0.hasPrefix("tresor-") })
     }
 
+    @MainActor
+    func test_flush_waits_for_a_running_poll() async throws {
+        let folder = try tempDir()
+        let peer = try device(folder, seeded: true)
+        XCTAssertTrue(try peer.1.write(vault: peer.0).wrote)
+        let (v, _) = try device(folder, seeded: true)
+        let sync = CloudSyncManager.shared
+        sync.setFolderForTesting(folder)
+        defer { sync.setFolderForTesting(nil); sync.stopAutoSync() }
+        sync.prepareAutoSyncForTesting(vault: v)
+        try note(v, newest: true, "pending")
+        let polling = Task { await sync.runForTesting(write: false, poll: true) }
+        for _ in 0..<1000 where !sync.isAutoBusy { await Task.yield() }
+        XCTAssertTrue(sync.isAutoBusy, "the poll should be running")
+        await sync.flushForTesting()
+        await polling.value
+        let own = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            .filter { $0.hasPrefix("tresor-") && $0 != peer.1.ownURL.lastPathComponent }
+        XCTAssertEqual(own.count, 1, "the pending change was written after the poll")
+    }
+
     func test_contains_vault_detects_new_names() throws {
         let folder = try tempDir()
         XCTAssertFalse(SyncFolder.containsVault(folder))
