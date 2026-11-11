@@ -82,7 +82,7 @@ struct UserGroupHeader: View {
         HStack(spacing: 5) {
             Button(action: toggle) {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .rotationEffect(.degrees(open ? 90 : 0))
                     .frame(width: 12, height: 14)
                     .contentShape(Rectangle())
@@ -91,13 +91,13 @@ struct UserGroupHeader: View {
             .foregroundStyle(Theme.tertiary)
             .accessibilityLabel(open ? "Gruppe einklappen" : "Gruppe ausklappen")
             Image(systemName: group.sfSymbol)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(Theme.tertiary)
                 .frame(width: 14)
             Text(group.name).lineLimit(1)
             if !group.inTotal {
                 Image(systemName: "eye.slash")
-                    .font(.system(size: 9))
+                    .font(.caption2)
                     .foregroundStyle(Theme.tertiary)
                     .help("Nicht in der Gesamtsumme")
                     .accessibilityLabel("Nicht in der Gesamtsumme")
@@ -509,7 +509,7 @@ struct GroupDetailEditor: View {
                         ForEach(GroupSymbols.all, id: \.self) { s in
                             Button { model.updateUserGroup(g, symbol: s) } label: {
                                 Image(systemName: s)
-                                    .font(.system(size: 16))
+                                    .font(.title3)
                                     .frame(width: 38, height: 38)
                                     .background(RoundedRectangle(cornerRadius: 8).fill(s == g.sfSymbol ? Theme.accent.opacity(0.18) : Color.clear))
                                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(s == g.sfSymbol ? Theme.accent : Theme.tertiary.opacity(0.3)))

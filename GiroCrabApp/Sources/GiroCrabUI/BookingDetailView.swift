@@ -91,7 +91,7 @@ struct ReceiptCard: View {
                 Spacer()
             }
             Text(Money.signed(booking.amountCents))
-                .font(.system(size: 30, weight: .semibold, design: .rounded).monospacedDigit())
+                .font(.system(.largeTitle, design: .rounded, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Money.ink(booking.amountCents))
             HStack(spacing: 6) {
                 Image(systemName: "calendar").foregroundStyle(Theme.tertiary)
@@ -199,7 +199,7 @@ struct MerchantDomainRow: View {
             }
         } else {
             HStack(spacing: 4) {
-                Image(systemName: "globe").font(.system(size: 9))
+                Image(systemName: "globe").font(.caption2)
                 Text(merchant.domain.isEmpty ? (merchant.isPerson ? String(localized: "Privatperson – kein Logo") : String(localized: "Domain festlegen")) : merchant.domain)
                     .font(.caption.monospaced())
                 if !merchant.domain.isEmpty {
@@ -431,7 +431,7 @@ struct CategoryChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: category.sfSymbol).font(.system(size: 11))
+                Image(systemName: category.sfSymbol).font(.subheadline)
                 Text(category.name).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
             }

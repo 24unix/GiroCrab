@@ -430,18 +430,18 @@ struct BookingRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(booking.merchant.name.isEmpty ? booking.bookingText : booking.merchant.name)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.body.weight(.semibold))
                         .foregroundStyle(Theme.text)
                         .lineLimit(1)
                     if booking.documentCount > 0 {
                         Image(systemName: "doc.text.fill")
-                            .font(.system(size: 10))
+                            .font(.caption)
                             .foregroundStyle(Theme.accent.opacity(0.8))
                             .help("\(booking.documentCount) Beleg(e) – Leertaste für QuickLook")
                     }
                     if model.recurringSeries(for: booking) != nil {
                         Image(systemName: "repeat")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(Theme.secondary)
                             .help("Wiederkehrende Buchung")
                             .accessibilityLabel("Wiederkehrend")
@@ -458,7 +458,7 @@ struct BookingRow: View {
                         .layoutPriority(1)
                     if !booking.paymentMethod.isEmpty {
                         Text("· \(booking.paymentMethod)")
-                            .font(.system(size: 12))
+                            .font(.callout)
                             .foregroundStyle(Theme.secondary)
                             .lineLimit(1)
                             .layoutPriority(-1)
@@ -471,7 +471,7 @@ struct BookingRow: View {
             Spacer(minLength: 8)
             if booking.checked {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.tertiary)
                     .help("Geprüft")
             }
@@ -496,9 +496,9 @@ struct BookingCategoryLabel: View {
         let color = none ? Theme.warning : Color.readable(hex: booking.categoryColorHex)
         HStack(spacing: 3) {
             Image(systemName: none ? "questionmark.folder" : (booking.categorySymbol.isEmpty ? "tag.fill" : booking.categorySymbol))
-                .font(.system(size: 10))
+                .font(.caption)
             Text(none ? String(localized: "Ohne Kategorie") : booking.categoryName)
-                .font(.system(size: 12, weight: .medium))
+                .font(.callout.weight(.medium))
                 .lineLimit(1)
         }
         .foregroundStyle(color)
@@ -517,7 +517,7 @@ struct AccountChip: View {
             Circle().fill(color).frame(width: 6, height: 6)
             if !compact {
                 Text(label)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(color)
                     .lineLimit(1)
             }
@@ -535,18 +535,17 @@ struct AccountChip: View {
 /// Outflows dark slate, inflows an emerald badge.
 struct AmountLabel: View {
     let cents: Int64
-    var size: CGFloat = 14
 
     var body: some View {
         if cents > 0 {
             Text(Money.signed(cents))
-                .font(.system(size: size, weight: .semibold).monospacedDigit())
+                .font(.body.weight(.semibold).monospacedDigit())
                 .foregroundStyle(Theme.inflow)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(Capsule().fill(Theme.inflowBadge))
         } else {
             Text(Money.format(cents))
-                .font(.system(size: size, weight: .medium).monospacedDigit())
+                .font(.body.weight(.medium).monospacedDigit())
                 .foregroundStyle(Theme.outflow)
         }
     }

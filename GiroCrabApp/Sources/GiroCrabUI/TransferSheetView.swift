@@ -280,7 +280,7 @@ struct TransferSheetView: View {
                 .frame(width: 200, height: 200)
                 VStack(alignment: .leading, spacing: 8) {
                     Text(Money.format(-(cents ?? 0)).replacingOccurrences(of: "-", with: ""))
-                        .font(.system(size: 26, weight: .semibold).monospacedDigit())
+                        .font(.largeTitle.weight(.semibold).monospacedDigit())
                     summaryRow("An", d.name)
                     summaryRow("IBAN", d.iban)
                     if !bicText.isEmpty { summaryRow("BIC", bicText.uppercased()) }
@@ -303,7 +303,7 @@ struct TransferSheetView: View {
         return VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(Money.format(-(cents ?? 0)).replacingOccurrences(of: "-", with: ""))
-                    .font(.system(size: 32, weight: .semibold).monospacedDigit())
+                    .font(.largeTitle.weight(.semibold).monospacedDigit())
                 summaryRow("An", d.name)
                 summaryRow("IBAN", d.iban)
                 if !bicText.isEmpty { summaryRow("BIC", bicText.uppercased()) }

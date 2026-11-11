@@ -112,7 +112,7 @@ struct StreamHeaderCard: View {
                 if let hb = model.headerBalance {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(Money.format(hb.cents))
-                            .font(.system(size: 26, weight: .semibold).monospacedDigit())
+                            .font(.largeTitle.weight(.semibold).monospacedDigit())
                             .foregroundStyle(account?.kind == .loan ? Theme.loan : Theme.text)
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
@@ -329,13 +329,13 @@ struct KPI: View {
                     .lineLimit(2, reservesSpace: true)
                 if disclosure {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.caption2.weight(.bold)).imageScale(.small)
                         .foregroundStyle(Theme.tertiary)
                         .accessibilityHidden(true)
                 }
             }
             Spacer(minLength: 4)
-            Text(value).font(.system(size: 16, weight: .semibold).monospacedDigit()).foregroundStyle(tint)
+            Text(value).font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(tint)
                 .lineLimit(1).minimumScaleFactor(0.75)
             Spacer(minLength: 4)
             Text(subtitle).font(.caption2).foregroundStyle(Theme.tertiary)
