@@ -233,7 +233,7 @@ struct BookingStreamView: View {
             contentType: .commaSeparatedText,
             defaultFilename: "GiroCrab-Buchungen"
         ) { result in
-            if case .failure(let e) = result { model.errorMessage = e.localizedDescription }
+            if case .failure(let e) = result { model.showError(String(localized: "Export fehlgeschlagen"), e.localizedDescription) }
         }
     }
 

@@ -16,7 +16,7 @@ extension AppModel {
             return true
         } catch {
             AppModel.debugLog("amazon import failed: \(describe(error))")
-            errorMessage = describe(error)
+            showError(String(localized: "Amazon-Bestellungen konnten nicht übernommen werden"), describe(error))
             return false
         }
     }
@@ -203,7 +203,7 @@ struct AmazonWebSheet: View {
                 pageIsOrders = false
                 browser.webView.load(URLRequest(url: URL(string: "https://www.amazon.de/gp/css/order-history")!))
             } catch {
-                model.errorMessage = error.localizedDescription
+                model.showError(String(localized: "Amazon-Abruf fehlgeschlagen"), error.localizedDescription)
             }
         }
     }

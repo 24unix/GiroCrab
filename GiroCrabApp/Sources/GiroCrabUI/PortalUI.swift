@@ -63,12 +63,12 @@ extension AppModel {
             reloadAll()
         } catch let e as CoreError {
             if case .InvalidInput = e {
-                errorMessage = String(localized: "In \(url.lastPathComponent) wurden keine Umsätze erkannt. Erwartet: CSV mit Datum, Beschreibung, Betrag oder ein Kontoauszug als PDF mit Textebene.")
+                showError(String(localized: "Keine Umsätze erkannt"), String(localized: "In \(url.lastPathComponent) wurden keine Umsätze erkannt. Erwartet: CSV mit Datum, Beschreibung, Betrag oder ein Kontoauszug als PDF mit Textebene."))
             } else {
-                errorMessage = describe(e)
+                showError(String(localized: "Kontoauszug-Import fehlgeschlagen"), describe(e))
             }
         } catch {
-            errorMessage = describe(error)
+            showError(String(localized: "Kontoauszug-Import fehlgeschlagen"), describe(error))
         }
     }
 }

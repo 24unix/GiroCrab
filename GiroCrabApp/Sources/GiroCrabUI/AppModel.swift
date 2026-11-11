@@ -384,7 +384,21 @@ public final class AppModel {
     var payeeCheck: PendingPayeeCheck?
     var syncingConnectionID: Int64?
     var toast: String?
-    var errorMessage: String?
+    /// Text of the error alert. Clearing it also clears title and retry.
+    var errorMessage: String? {
+        didSet { if errorMessage == nil { errorTitle = nil; errorRetry = nil } }
+    }
+    /// Alert title naming what failed (HIG: specific, not "something went wrong").
+    var errorTitle: String?
+    /// Optional "Erneut versuchen" action of the error alert.
+    @ObservationIgnored var errorRetry: (@MainActor () -> Void)?
+
+    /// Error alert with a specific title and, where it helps, a retry action.
+    func showError(_ title: String, _ message: String, retry: (@MainActor () -> Void)? = nil) {
+        errorMessage = message
+        errorTitle = title
+        errorRetry = retry
+    }
 
     private var activeSession: SyncSession?
     private var activeTransfer: TransferSession?
@@ -510,7 +524,10 @@ public final class AppModel {
             if selectedBookingID == nil { selectedBookingID = bookings.first?.id }
             showCategorizer = true
         case "error":
-            errorMessage = "Die Bank hat nicht geantwortet (Zeitüberschreitung)."
+            if let c = connections.first {
+                showError(String(localized: "Abruf von „\(c.displayName)“ fehlgeschlagen"),
+                          String(localized: "Die Bank hat nicht geantwortet (Zeitüberschreitung).")) { [weak self] in self?.requestSync(c) }
+            }
         case "payee-match", "payee-close", "payee-nomatch":
             guard let connection = connections.first else { break }
             let result: PayeeMatch = name == "payee-match" ? .match : name == "payee-close" ? .closeMatch : .noMatch
@@ -962,7 +979,7 @@ public final class AppModel {
             csvExport = CSVFileDocument(data: Data(csv.utf8))
             showCSVExporter = true
         } catch {
-            errorMessage = error.localizedDescription
+            showError(String(localized: "Export fehlgeschlagen"), error.localizedDescription)
         }
     }
 
@@ -995,7 +1012,7 @@ public final class AppModel {
             }
             return report
         } catch {
-            errorMessage = error.localizedDescription
+            showError(String(localized: "Drucken nicht möglich"), error.localizedDescription)
             return nil
         }
     }
@@ -1692,7 +1709,7 @@ public final class AppModel {
             reloadAll()
             return id
         } catch {
-            errorMessage = describe(error)
+            showError(String(localized: "Regel konnte nicht gespeichert werden"), describe(error))
             return nil
         }
     }
@@ -1922,7 +1939,7 @@ public final class AppModel {
                         unmatched += 1
                     }
                 } catch {
-                    errorMessage = describe(error)
+                    showError(String(localized: "Beleg konnte nicht zugeordnet werden"), describe(error))
                 }
             }
             if !linked.isEmpty {
@@ -1999,7 +2016,7 @@ public final class AppModel {
             toast = String(localized: "Trade-Republic-Sitzung übernommen")
             startSync(connection, secret: "")
         } catch {
-            errorMessage = describe(error)
+            showError(String(localized: "Anmeldung konnte nicht übernommen werden"), describe(error))
         }
     }
 
@@ -2231,7 +2248,14 @@ public final class AppModel {
             setupRequest = SetupRequest(connection: conn, keys: keys)
             return
         }
-        errorMessage = describe(error)
+        if let conn = connections.first(where: { $0.id == syncingConnectionIDBeforeError }) {
+            showError(String(localized: "Abruf von „\(conn.displayName)“ fehlgeschlagen"), describe(error)) { [weak self] in
+                guard let self, let c = self.connections.first(where: { $0.id == conn.id }) else { return }
+                self.requestSync(c)
+            }
+        } else {
+            showError(String(localized: "Abruf fehlgeschlagen"), describe(error))
+        }
     }
 }
 
