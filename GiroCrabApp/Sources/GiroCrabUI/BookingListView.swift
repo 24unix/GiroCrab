@@ -223,7 +223,9 @@ struct BookingStreamView: View {
             }
             #endif
         }
-        .navigationTitle("")
+        // A real window title (Window menu, Mission Control, VoiceOver); the
+        // toolbar keeps its room for the scope picker.
+        .modifier(WindowTitle(title: model.title))
         .sheet(isPresented: $model.showPrintSheet) { PrintSheet() }
         .fileExporter(
             isPresented: $model.showCSVExporter,
@@ -340,10 +342,10 @@ private struct BookingScopePicker: View {
         .background(Theme.canvas, in: Capsule())
         .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1).allowsHitTesting(false))
         .frame(width: 430)
-        .animation(.easeOut(duration: 0.16), value: model.scope)
+        .animation(Motion.animation(.easeOut(duration: 0.16)), value: model.scope)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Ansicht")
-        .help("⌘1 / ⌘2 / ⌘3")
+        .help("Ansicht wählen (⌘1, ⌘2, ⌘3)")
     }
 }
 #endif
@@ -568,5 +570,23 @@ struct LoadMoreBookingsFooter: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
+    }
+}
+
+/// macOS: the window carries the view's title, the toolbar does not show it
+/// (macOS 15+). iOS keeps the empty navigation title as before.
+private struct WindowTitle: ViewModifier {
+    let title: String
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        if #available(macOS 15.0, *) {
+            content.navigationTitle(title).toolbar(removing: .title)
+        } else {
+            content.navigationTitle(title)
+        }
+        #else
+        content.navigationTitle("")
+        #endif
     }
 }

@@ -264,7 +264,7 @@ struct PortalWebSheet: View {
             .padding(14)
             Divider()
             PortalWebView(browser: browser)
-                .macFrame(minWidth: 760, minHeight: 640)
+                .macFrame(minWidth: 760, minHeight: 520)
             Divider()
             HStack {
                 Button("Abbrechen", role: .cancel) { close() }

@@ -23,7 +23,8 @@ public struct GiroCrabScenes: Scene {
                 #endif
         }
         #if os(macOS)
-        .defaultSize(width: 1500, height: 900)
+        // Fits a 13" MacBook Air (1470 × 956 pt) with room for the Dock.
+        .defaultSize(width: 1280, height: 820)
         .windowResizability(.contentMinSize)
         .commands {
             // Ablage › Neu: only commands that create something.
@@ -127,9 +128,9 @@ public struct GiroCrabScenes: Scene {
 
         #if os(macOS)
         Settings {
+            // HIG: the Settings window fits each tab (SettingsView sizes them).
             SettingsView()
                 .environment(model)
-                .frame(width: 760, height: 600)
         }
         #endif
     }
@@ -294,7 +295,7 @@ struct MainSplitView: View {
             }
             .frame(minHeight: 0, maxHeight: .infinity)
             // min widths still sum to 1080 pt (240 + 560 + 280) so the minimum window size stays as before
-            .macColumnWidth(min: 560, ideal: 900)
+            .macColumnWidth(min: 560, ideal: 700)
         } detail: {
             InspectorView()
                 .frame(minHeight: 0, maxHeight: .infinity)

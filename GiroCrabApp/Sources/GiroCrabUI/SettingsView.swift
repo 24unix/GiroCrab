@@ -13,31 +13,38 @@ struct SettingsView: View {
         @Bindable var model = model
         TabView(selection: $model.settingsTab) {
             GeneralSettings()
+                .settingsPane(height: 170)
                 .tabItem { Label("Allgemein", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
             BankConnectionsSettings()
+                .settingsPane(height: 520)
                 .disabled(model.vault == nil)
                 .tabItem { Label("Banken", systemImage: "building.columns") }
                 .tag(SettingsTab.banks)
             AccountGroupsSettings()
+                .settingsPane(height: 560)
                 .disabled(model.vault == nil)
                 .tabItem { Label("Kontogruppen", systemImage: "folder") }
                 .tag(SettingsTab.groups)
             CredentialsSettings()
+                .settingsPane(height: 560)
                 .disabled(model.vault == nil)
                 .tabItem { Label("FinTS & API-Schlüssel", systemImage: "key.horizontal") }
                 .tag(SettingsTab.credentials)
             LogoSettings()
+                .settingsPane(height: 460)
                 .disabled(model.vault == nil)
                 .tabItem { Label("Händler-Logos", systemImage: "photo.on.rectangle") }
                 .tag(SettingsTab.logos)
             #if os(macOS)
             DocumentFolderSettings()
+                .settingsPane(height: 420)
                 .disabled(model.vault == nil)
                 .tabItem { Label("Dokumente", systemImage: "doc.on.doc") }
                 .tag(SettingsTab.documents)
             #endif
             SecuritySettings()
+                .settingsPane(height: 420)
                 .disabled(model.vault == nil)
                 .tabItem { Label("Sicherheit", systemImage: "lock.shield") }
                 .tag(SettingsTab.security)
@@ -487,5 +494,18 @@ struct KeyPasteSheet: View {
         }
         .padding(24)
         .macFrame(minWidth: 420)
+    }
+}
+
+private extension View {
+    /// macOS: each Settings tab has its own size and the window follows it
+    /// (HIG: no large empty panes); iOS: the sheet decides.
+    @ViewBuilder
+    func settingsPane(height: CGFloat) -> some View {
+        #if os(macOS)
+        frame(width: 680, height: height)
+        #else
+        self
+        #endif
     }
 }

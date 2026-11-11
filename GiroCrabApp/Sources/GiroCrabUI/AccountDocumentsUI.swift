@@ -127,7 +127,7 @@ struct DocumentPreviewSheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 640, minHeight: 720)
+        .frame(minWidth: 640, minHeight: 520)
         #endif
         .task { data = model.documentData(doc) }
         .fileExporter(

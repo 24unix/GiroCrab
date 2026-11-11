@@ -67,7 +67,7 @@ struct MoneyMoneyDatabaseImportView: View {
                         }
                         .padding(.trailing, 6)
                     }
-                    .frame(height: 560)
+                    .frame(minHeight: 280, idealHeight: 460, maxHeight: 560) // fits a 13" screen
                 }
             }
             if let error { Label(error, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(Theme.warning) }
