@@ -325,6 +325,8 @@ pub struct Booking {
     pub salary_flag: Option<bool>,
     /// Detected (or marked) salary / pension inflow.
     pub is_salary: bool,
+    /// Series key for recurring bookings (see `list_recurring`); "" = none.
+    pub recurrence_key: String,
 }
 
 /// Dry-run result of a MoneyMoney import (nothing stored).

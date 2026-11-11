@@ -44,6 +44,7 @@ pub(crate) fn enrich(t: &mut Booking) {
     );
     t.payment_method = payment_method(&t.booking_text, &t.purpose, t.account_kind, t.amount_cents);
     t.clean_purpose = clean_purpose(&t.purpose);
+    t.recurrence_key = crate::recurring::series_key(t);
 }
 
 /// Securities positions of depot accounts (replaced on every sync).
@@ -329,6 +330,7 @@ impl Vault {
         conn.execute_batch(crate::insights::OVERRIDE_SCHEMA)?;
         conn.execute_batch(HOLDINGS_SCHEMA)?;
         conn.execute_batch(crate::planning::PLANNING_SCHEMA)?;
+        conn.execute_batch(crate::recurring::RECURRING_SCHEMA)?;
         // v7: user-defined account groups – idempotent
         crate::user_groups::migrate(conn)?;
         if version < SCHEMA_VERSION {
@@ -2018,6 +2020,7 @@ impl Vault {
                 gvc: r.get(19)?,
                 salary_flag: r.get::<_, Option<i64>>(20)?.map(|f| f != 0),
                 is_salary: false,
+                recurrence_key: String::new(),
             })
         })?;
         let mut txs = Vec::new();

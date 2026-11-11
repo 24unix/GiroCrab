@@ -236,6 +236,7 @@ mod tests {
             gvc: String::new(),
             salary_flag: None,
             is_salary: false,
+            recurrence_key: String::new(),
         }
     }
 

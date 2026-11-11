@@ -398,6 +398,12 @@ struct BookingRow: View {
                             .foregroundStyle(Theme.accent.opacity(0.8))
                             .help("\(booking.documentCount) Beleg(e) – Leertaste für QuickLook")
                     }
+                    if model.recurringSeries(for: booking) != nil {
+                        Image(systemName: "repeat")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Theme.secondary)
+                            .help("Wiederkehrende Buchung")
+                    }
                 }
                 HStack(spacing: 6) {
                     #if os(iOS)

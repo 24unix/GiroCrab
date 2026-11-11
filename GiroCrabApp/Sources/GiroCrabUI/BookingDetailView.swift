@@ -15,6 +15,7 @@ struct InspectorView: View {
                     ReceiptCard(booking: b)
                     NoteCard(booking: b).id(b.id)
                     if b.amountCents > 0 { SalaryCard(booking: b) }
+                    RecurringCard(booking: b)
                     MerchantHistoryCard(booking: b)
                     CategoryGridCard(booking: b)
                     DocumentsCard(booking: b)

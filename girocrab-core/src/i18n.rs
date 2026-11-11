@@ -593,6 +593,8 @@ fn english(de: &str) -> Option<&'static str> {
         "Erstattung" => "Refund",
         "Überweisung" => "Transfer",
         "Buchung" => "Transaction",
+        "Bitte mindestens ein Datum angeben (z. B. 15.03.)." => "Please enter at least one date (e.g. 15.03.).",
+        "Buchung ohne Gegenpartei kann nicht als wiederkehrend markiert werden." => "A transaction without a counterparty can't be marked as recurring.",
         "ETF" => "ETF",
         "Aktie" => "Stock",
         "Gehalt" => "Salary",

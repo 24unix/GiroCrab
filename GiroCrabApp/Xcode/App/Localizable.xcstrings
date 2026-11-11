@@ -9563,6 +9563,336 @@
           }
         }
       }
+    },
+    "Monatlich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monthly"
+          }
+        }
+      }
+    },
+    "Vierteljährlich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quarterly"
+          }
+        }
+      }
+    },
+    "Halbjährlich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Semi-annually"
+          }
+        }
+      }
+    },
+    "Jährlich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yearly"
+          }
+        }
+      }
+    },
+    "Individuell" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom"
+          }
+        }
+      }
+    },
+    "Wiederkehrend" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recurring"
+          }
+        }
+      }
+    },
+    "Individuell …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom…"
+          }
+        }
+      }
+    },
+    "Automatisch erkennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detect Automatically"
+          }
+        }
+      }
+    },
+    "Nicht wiederkehrend" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not Recurring"
+          }
+        }
+      }
+    },
+    "Markieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark"
+          }
+        }
+      }
+    },
+    "%@ · nächste am %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · next on %@"
+          }
+        }
+      }
+    },
+    "Manuell markiert · ca. %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marked manually · approx. %@"
+          }
+        }
+      }
+    },
+    "Automatisch erkannt aus %lld Buchungen · ca. %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detected from %lld transactions · approx. %@"
+          }
+        }
+      }
+    },
+    "Nicht als wiederkehrend erkannt. Markieren Sie die Buchung, damit sie in den anstehenden Fixkosten erscheint." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not detected as recurring. Mark this transaction so it shows up in upcoming fixed costs."
+          }
+        }
+      }
+    },
+    "Individueller Turnus" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom Schedule"
+          }
+        }
+      }
+    },
+    "Tage im Jahr, an denen die Buchung fällig ist, z. B. „15.03., 15.08.“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Days of the year the payment is due, e.g. “15.03., 15.08.”."
+          }
+        }
+      }
+    },
+    "Wiederkehrende Buchungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recurring Transactions"
+          }
+        }
+      }
+    },
+    "Diesen Monat ist nichts fällig." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nothing is due this month."
+          }
+        }
+      }
+    },
+    "Diesen Monat" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This Month"
+          }
+        }
+      }
+    },
+    "Noch offen: %@ Ausgaben, %@ Einnahmen · bereits gebucht: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Still due: %@ expenses, %@ income · already booked: %@"
+          }
+        }
+      }
+    },
+    "Noch keine wiederkehrenden Buchungen erkannt. Sie können eine Buchung in der Detailansicht als wiederkehrend markieren." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No recurring transactions detected yet. You can mark a transaction as recurring in its detail view."
+          }
+        }
+      }
+    },
+    "Alle (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All (%lld)"
+          }
+        }
+      }
+    },
+    "Gebucht am %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Booked on %@"
+          }
+        }
+      }
+    },
+    "Fällig am %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Due on %@"
+          }
+        }
+      }
+    },
+    "Manuell markiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marked manually"
+          }
+        }
+      }
+    },
+    "Automatisch erkannt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detected automatically"
+          }
+        }
+      }
+    },
+    "Fixkosten offen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fixed Costs Due"
+          }
+        }
+      }
+    },
+    "Diesen Monat · %lld offen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This month · %lld due"
+          }
+        }
+      }
+    },
+    "Wiederkehrende Buchungen anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show recurring transactions"
+          }
+        }
+      }
+    },
+    "Wiederkehrende Buchung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recurring transaction"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -218,7 +218,7 @@ public final class AppModel {
     private var logoCache: [String: (image: Image, pixels: Int)] = [:]
 
     // UI state
-    var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; refreshSalaryCycle(); reloadBookings(); reloadHistory() } }
+    var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; refreshSalaryCycle(); refreshRecurring(); reloadBookings(); reloadHistory() } }
     var scope: BookingScope = .all {
         didSet {
             guard scope != oldValue else { return }
@@ -229,6 +229,11 @@ public final class AppModel {
     var period: Period = .all { didSet { listLimit = Self.defaultListLimit; refreshSalaryCycle(); reloadCategories(); reloadBookings(); reloadHistory() } }
     /// Latest salary of the selected accounts; start of the `.sinceSalary` period.
     var salaryCycle: SalaryCycle?
+    /// Recurring series of the selected accounts (GitHub #35).
+    var recurring: [RecurringSeries] = []
+    /// Recurring bookings of the current month: booked vs. still due.
+    var recurringMonth: RecurringMonthOverview?
+    var showRecurringSheet = false
     var statusFilter: StatusFilter = .all
     var searchText: String = "" { didSet { scheduleSearch() } }
     var selectedBookingID: Booking.ID? { didSet { reloadMerchantStats() } }
@@ -364,6 +369,8 @@ public final class AppModel {
                 detectedCategories: ["Haushalt > Lebensmittel", "Gehalt", "Steuern", "Wohnen > Miete", "Mobilität > Tanken", "Freizeit > Restaurants", "Versicherungen", "Reisen"],
                 sampleBookings: [], suggestedAccountName: "MoneyMoney-Archiv")
             showMoneyMoneyImport = true
+        case "recurring":
+            showRecurringSheet = true
         case "moneymoney-db":
             #if os(macOS)
             demoDbPreview = Self.demoMoneyMoneyDbPreview(existingGiro: allAccounts.first { $0.kind == .checking })
@@ -584,6 +591,7 @@ public final class AppModel {
     func reloadAll() {
         reloadAccounts()
         refreshSalaryCycle()
+        refreshRecurring()
         reloadHistory()
         reloadCategories()
         reloadBookings()
@@ -866,6 +874,47 @@ public final class AppModel {
         refreshSalaryCycle()
         if period == .sinceSalary { reloadCategories(); reloadHistory() }
         reloadBookings()
+    }
+
+    // MARK: - Recurring bookings (GitHub #35)
+
+    func refreshRecurring() {
+        guard let vault else { recurring = []; recurringMonth = nil; return }
+        let ids = selectionAccountIDs
+        let c = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: Date())
+        run {
+            recurring = try vault.listRecurring(accountIds: ids)
+            recurringMonth = try vault.recurringMonth(accountIds: ids, year: Int32(c.year ?? 2026), month: UInt32(c.month ?? 1))
+        }
+    }
+
+    /// The recurring series a booking belongs to, if any.
+    func recurringSeries(for b: Booking) -> RecurringSeries? {
+        guard !b.recurrenceKey.isEmpty else { return nil }
+        return recurring.first { s in
+            s.baseKey == b.recurrenceKey
+                && (!s.amountSpecific || abs(b.amountCents - s.amountCents) * 100 <= abs(s.amountCents) * 15)
+        }
+    }
+
+    func markRecurring(_ b: Booking, _ interval: RecurrenceInterval, customDates: [String] = []) {
+        guard let vault else { return }
+        run { try vault.markBookingRecurring(bookingId: b.id, interval: interval, customDates: customDates) }
+        refreshRecurring()
+    }
+
+    /// "Nicht wiederkehrend" for a detected or marked series.
+    func ignoreRecurring(_ s: RecurringSeries) {
+        guard let vault else { return }
+        run { try vault.ignoreRecurring(seriesKey: s.seriesKey) }
+        refreshRecurring()
+    }
+
+    /// Back to automatic detection.
+    func resetRecurring(_ s: RecurringSeries) {
+        guard let vault else { return }
+        run { try vault.resetRecurring(seriesKey: s.seriesKey) }
+        refreshRecurring()
     }
 
     private func run(_ body: () throws -> Void) {

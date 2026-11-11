@@ -185,6 +185,21 @@ struct StreamHeaderCard: View {
         KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.periodSubtitle), value: Money.format(-model.consumptionThisMonth), tint: Theme.outflow)
         KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: Money.format(model.investedThisMonth), tint: Theme.invest)
         KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.periodSubtitle), value: Money.format(model.incomeThisMonth), tint: Theme.inflow)
+        fixedCostsKPI
+    }
+
+    /// Recurring expenses still due this month (GitHub #35); opens the overview.
+    @ViewBuilder
+    private var fixedCostsKPI: some View {
+        @Bindable var model = model
+        let open = model.recurringMonth?.items.filter { !$0.booked && $0.amountCents < 0 }.count ?? 0
+        Button { model.showRecurringSheet = true } label: {
+            KPI(title: "Fixkosten offen", subtitle: "Diesen Monat · \(open) offen",
+                value: Money.format(-(model.recurringMonth?.openExpenseCents ?? 0)), tint: Theme.outflow)
+        }
+        .buttonStyle(.plain)
+        .help("Wiederkehrende Buchungen anzeigen")
+        .sheet(isPresented: $model.showRecurringSheet) { RecurringSheet() }
     }
 
     @ViewBuilder
