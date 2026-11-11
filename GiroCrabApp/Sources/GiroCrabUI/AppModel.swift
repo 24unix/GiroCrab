@@ -361,6 +361,8 @@ public final class AppModel {
     var ruleDraft: Rule?
     var showSettings = false
     var showCommandPalette = false
+    /// Run after the command palette sheet has been dismissed (opens the next sheet).
+    @ObservationIgnored var afterPaletteDismiss: (@MainActor () -> Void)?
     var showCategorizer = false
     /// Booking whose inspector note field should take focus (double-click / Return in the list).
     /// Carries the id because the NoteCard is recreated per booking and claims it on appear.

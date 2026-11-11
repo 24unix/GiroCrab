@@ -323,7 +323,13 @@ struct MainSplitView: View {
             RuleEditorView(initialDraft: model.ruleDraft)
                 .environment(model)
         }
-        .sheet(isPresented: $model.showCommandPalette) {
+        .sheet(isPresented: $model.showCommandPalette, onDismiss: {
+            // Follow-up sheet/popover chosen in the palette: opened once the
+            // palette is really gone, instead of after a guessed delay.
+            let next = model.afterPaletteDismiss
+            model.afterPaletteDismiss = nil
+            next?()
+        }) {
             CommandPaletteView()
                 .environment(model)
         }
