@@ -327,3 +327,23 @@ extension Booking {
         return paymentMethod.isEmpty ? cat : "\(cat) · \(paymentMethod)"
     }
 }
+
+/// HIG / accessibility: with "Bewegung reduzieren" on, nothing slides or
+/// springs – changes appear at once or fade.
+enum Motion {
+    static var reduced: Bool {
+        #if os(macOS)
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #else
+        UIAccessibility.isReduceMotionEnabled
+        #endif
+    }
+
+    /// `animation`, or none when Reduce Motion is on.
+    static func animation(_ animation: Animation) -> Animation? { reduced ? nil : animation }
+
+    /// Slide in from `edge` with a fade; only the fade when Reduce Motion is on.
+    static func slide(_ edge: Edge) -> AnyTransition {
+        reduced ? .opacity : .move(edge: edge).combined(with: .opacity)
+    }
+}

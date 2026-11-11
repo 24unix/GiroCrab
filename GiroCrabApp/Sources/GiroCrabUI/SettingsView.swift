@@ -209,7 +209,8 @@ struct SettingField: View {
                 Spacer()
                 if entry.isSecret {
                     if editing {
-                        SecureField("", text: $text)
+                        SecureField(entry.label, text: $text)
+                            .labelsHidden()
                             .frame(maxWidth: 280)
                             .onSubmit(save)
                         Button("Speichern", action: save)
@@ -218,7 +219,8 @@ struct SettingField: View {
                         Button(entry.hasValue ? "Ändern" : "Festlegen") { text = ""; editing = true }
                     }
                 } else {
-                    TextField("", text: $text, prompt: Text("nicht gesetzt"))
+                    TextField(entry.label, text: $text, prompt: Text("nicht gesetzt"))
+                        .labelsHidden()
                         .frame(maxWidth: 340)
                         .multilineTextAlignment(.trailing)
                         .autocorrectionDisabled()

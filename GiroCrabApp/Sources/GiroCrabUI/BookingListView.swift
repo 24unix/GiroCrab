@@ -59,8 +59,8 @@ struct BookingStreamView: View {
                             .frame(maxWidth: .infinity)
                             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
                             #else
-                            CashflowCard().transition(.opacity.combined(with: .move(edge: .top)))
-                            BudgetProgressCard().transition(.opacity.combined(with: .move(edge: .top)))
+                            CashflowCard().transition(Motion.slide(.top))
+                            BudgetProgressCard().transition(Motion.slide(.top))
                             #endif
                         }
                         if model.dayGroups.isEmpty && isDepot && model.searchText.isEmpty {
@@ -128,7 +128,7 @@ struct BookingStreamView: View {
                     proxy.scrollTo(day.id)
                 }
                 DispatchQueue.main.async {
-                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) }
+                    withAnimation(Motion.animation(.easeOut(duration: 0.15))) { proxy.scrollTo(id) }
                 }
             }
             // another account, group, period or view: back to the newest day
@@ -137,7 +137,7 @@ struct BookingStreamView: View {
             .onChange(of: model.scope) { _, _ in scrollToTop(proxy) }
             .onChange(of: model.scrollToDay) { _, jump in
                 guard let day = jump?.day else { return }
-                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(day, anchor: .top) }
+                withAnimation(Motion.animation(.easeOut(duration: 0.25))) { proxy.scrollTo(day, anchor: .top) }
                 // select the day's first booking so the detail pane follows
                 if let first = model.dayGroups.first(where: { $0.date == day })?.bookings.first {
                     model.selectedBookingID = first.id
@@ -253,7 +253,7 @@ struct BookingStreamView: View {
                         if !isOverview && !isDepot && model.scope != .investments && !model.allAccounts.isEmpty {
                             HStack {
                                 Button {
-                                    withAnimation(.easeInOut(duration: 0.25)) { showAnalytics.toggle() }
+                                    withAnimation(Motion.animation(.easeInOut(duration: 0.25))) { showAnalytics.toggle() }
                                 } label: {
                                     Label("Analysen", systemImage: "chart.bar.xaxis")
                                         .font(.caption.weight(.medium))
@@ -376,6 +376,7 @@ struct DayCard: View {
                     }
                     .contentShape(Rectangle())
                     .onTapGesture { model.selectedBookingID = b.id; model.showBookingSheet = true }
+                    .accessibilityAddTraits(model.selectedBookingID == b.id ? [.isButton, .isSelected] : .isButton)
                     // simultaneous, so single clicks keep selecting without the double-click delay
                     .simultaneousGesture(TapGesture(count: 2).onEnded { model.editNote(for: b) })
                     .contextMenu { rowMenu(b) }

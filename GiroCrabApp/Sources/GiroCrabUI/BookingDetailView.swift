@@ -189,10 +189,13 @@ struct MerchantDomainRow: View {
                     .onSubmit(save)
                 Button("Logo laden", action: save).controlSize(.small)
                 if merchant.domainSource == "override" {
-                    Button { model.setMerchantDomain(merchant, nil); editing = false } label: { Image(systemName: "arrow.uturn.backward") }
+                    Button { model.setMerchantDomain(merchant, nil); editing = false } label: { Label("Automatische Erkennung wiederherstellen", systemImage: "arrow.uturn.backward") }
+                        .labelStyle(.iconOnly)
                         .buttonStyle(.borderless).help("Automatische Erkennung wiederherstellen")
                 }
-                Button { editing = false } label: { Image(systemName: "xmark") }.buttonStyle(.borderless)
+                Button { editing = false } label: { Label("Abbrechen", systemImage: "xmark") }
+                    .labelStyle(.iconOnly).buttonStyle(.borderless)
+                    .help("Abbrechen").keyboardShortcut(.cancelAction)
             }
         } else {
             HStack(spacing: 4) {
@@ -205,7 +208,7 @@ struct MerchantDomainRow: View {
                 Button {
                     text = merchant.domain
                     editing = true
-                } label: { Image(systemName: "pencil").font(.system(size: 10)) }
+                } label: { Label("Domain bearbeiten", systemImage: "pencil").labelStyle(.iconOnly).font(.caption2) }
                     .buttonStyle(.borderless)
                     .help("Eigene Domain für das Logo eintragen")
             }
@@ -438,6 +441,7 @@ struct CategoryChip: View {
             .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(selected ? Theme.accent.opacity(0.5) : Theme.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

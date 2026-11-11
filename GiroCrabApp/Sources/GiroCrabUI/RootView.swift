@@ -398,14 +398,14 @@ struct MainSplitView: View {
                     .background(.regularMaterial, in: Capsule())
                     .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
                     .padding(.bottom, 22)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(Motion.slide(.bottom))
                     .task {
                         try? await Task.sleep(nanoseconds: 3_500_000_000)
                         withAnimation { model.toast = nil }
                     }
             }
         }
-        .animation(.spring(duration: 0.3), value: model.toast)
+        .animation(Motion.animation(.spring(duration: 0.3)), value: model.toast)
     }
 }
 

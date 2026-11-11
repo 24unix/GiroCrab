@@ -120,7 +120,7 @@ struct TransferSheetView: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
             HStack { Spacer(); TransferTemplatesMenu() }
             field("Von Konto") {
-                Picker("", selection: draft.accountID) {
+                Picker("Von Konto", selection: draft.accountID) {
                     ForEach(model.transferFormAccounts) { a in
                         Text("\(a.name) · \(formatIBAN(a.iban))").tag(Optional(a.id))
                     }

@@ -116,6 +116,8 @@ struct CommandPaletteView: View {
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(Array(list.enumerated()), id: \.element.id) { i, item in
+                        // A real button: VoiceOver and Full Keyboard Access can run it.
+                        Button { index = i; run(list) } label: {
                         HStack(spacing: 10) {
                             Image(systemName: item.symbol).frame(width: 20).foregroundStyle(i == index ? Theme.accent : Theme.secondary)
                             Text(item.title).foregroundStyle(Theme.text)
@@ -125,7 +127,9 @@ struct CommandPaletteView: View {
                         .padding(.horizontal, 12).padding(.vertical, 7)
                         .background(RoundedRectangle(cornerRadius: 7).fill(i == index ? Theme.selection : Color.clear))
                         .contentShape(Rectangle())
-                        .onTapGesture { index = i; run(list) }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(i == index ? .isSelected : [])
                     }
                 }
                 .padding(8)

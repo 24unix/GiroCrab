@@ -37,7 +37,7 @@ struct AccountsSectionHeader: View {
                     .foregroundStyle(Theme.secondary)
                 Spacer()
                 if model.hasArchivedAccounts {
-                    Button { withAnimation(.easeInOut(duration: 0.15)) { model.showArchivedAccounts.toggle() } } label: {
+                    Button { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { model.showArchivedAccounts.toggle() } } label: {
                         Image(systemName: model.showArchivedAccounts ? "archivebox.fill" : "archivebox")
                             .frame(width: 24, height: 18).contentShape(Rectangle())
                     }
@@ -517,7 +517,8 @@ struct GroupDetailEditor: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(s == g.sfSymbol ? Theme.accent : Theme.secondary)
-                            .accessibilityLabel(s)
+                            .accessibilityLabel(GroupSymbols.named.first { $0.symbol == s }.map { Text($0.name) } ?? Text(verbatim: s))
+                            .help(GroupSymbols.named.first { $0.symbol == s }.map { Text($0.name) } ?? Text(verbatim: s))
                             .accessibilityAddTraits(s == g.sfSymbol ? .isSelected : [])
                         }
                     }

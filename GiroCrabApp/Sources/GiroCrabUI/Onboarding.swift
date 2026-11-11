@@ -131,10 +131,12 @@ struct BankSetupSheet: View {
                             .frame(height: 80)
                             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.border))
                     } else if entry?.isSecret ?? key.contains("secret") {
-                        SecureField("", text: binding(key))
+                        SecureField(entry?.label ?? settingLabels[key] ?? key, text: binding(key))
+                            .labelsHidden()
                             .textFieldStyle(.roundedBorder)
                     } else {
-                        TextField("", text: binding(key), prompt: Text(entry?.value.isEmpty == false ? entry!.value : ""))
+                        TextField(entry?.label ?? settingLabels[key] ?? key, text: binding(key), prompt: Text(entry?.value.isEmpty == false ? entry!.value : ""))
+                            .labelsHidden()
                             .textFieldStyle(.roundedBorder)
                             .autocorrectionDisabled()
                     }

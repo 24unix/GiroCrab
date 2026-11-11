@@ -66,7 +66,8 @@ struct MerchantSignet: View {
         .task(id: merchant.domainCandidates.joined(separator: "|") + merchant.domain + model.logoProvider + "\(model.logoVersion)") {
             logo = await model.logo(for: merchant)
         }
-        .accessibilityLabel(merchant.name)
+        // The blue dot is the only "new" signal on screen: say it, too.
+        .accessibilityLabel(showNewDot ? Text("\(merchant.name), neu") : Text(merchant.name))
     }
 }
 

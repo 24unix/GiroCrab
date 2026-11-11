@@ -169,7 +169,7 @@ struct SidebarView: View {
         ForEach(model.groups) { group in
             let open = !model.collapsedGroups.contains(group.id)
             let toggle = {
-                withAnimation(.easeInOut(duration: 0.15)) {
+                withAnimation(Motion.animation(.easeInOut(duration: 0.15))) {
                     if open { model.collapsedGroups.insert(group.id) } else { model.collapsedGroups.remove(group.id) }
                 }
             }
@@ -195,7 +195,7 @@ struct SidebarView: View {
         // a flattened tree: subgroups follow their group, indented by depth
         ForEach(model.userGroups.filter(model.isUserGroupVisible)) { group in
             let open = !model.collapsedUserGroups.contains(group.uuid)
-            let toggle = { withAnimation(.easeInOut(duration: 0.15)) { model.toggleCollapsed(group) } }
+            let toggle = { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { model.toggleCollapsed(group) } }
             let indent = CGFloat(group.depth) * 14
             UserGroupHeader(group: group, open: open, toggle: toggle)
                 .padding(.top, group.depth == 0 ? 10 : 4)
@@ -344,13 +344,15 @@ struct SectionHeader: View {
         HStack(spacing: 5) {
             Button(action: toggle) {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .rotationEffect(.degrees(open ? 90 : 0))
                     .frame(width: 12, height: 14)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(Theme.tertiary)
+            .accessibilityLabel(open ? "„\(group.name)“ einklappen" : "„\(group.name)“ ausklappen")
+            .accessibilityValue(open ? "Ausgeklappt" : "Eingeklappt")
             Text(group.name)
             Spacer()
             Text(Money.format(group.balanceCents))

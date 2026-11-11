@@ -130,8 +130,9 @@ struct DocumentsCard: View {
                         Button("In PostBox verschieben (Verknüpfung lösen)") { model.linkDocument(d, to: nil) }
                         Divider()
                         Button("Löschen …", role: .destructive) { docToDelete = d }
-                    } label: { Image(systemName: "ellipsis.circle") }
+                    } label: { Label("Aktionen", systemImage: "ellipsis.circle").labelStyle(.iconOnly) }
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .help("Aktionen")
                 }
                 .padding(6)
                 .background(RoundedRectangle(cornerRadius: 7).fill(selected == d.id ? Theme.selection : Color.clear))

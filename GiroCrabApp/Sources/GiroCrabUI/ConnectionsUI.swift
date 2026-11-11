@@ -386,9 +386,9 @@ struct ConnectionEditSheet: View {
                     Text(label)
                     Spacer()
                     if revealed.contains(key) {
-                        TextField("", text: binding(key)).frame(maxWidth: 300).multilineTextAlignment(.trailing)
+                        TextField(label, text: binding(key)).labelsHidden().frame(maxWidth: 300).multilineTextAlignment(.trailing)
                     } else {
-                        SecureField("", text: binding(key)).frame(maxWidth: 300).multilineTextAlignment(.trailing)
+                        SecureField(label, text: binding(key)).labelsHidden().frame(maxWidth: 300).multilineTextAlignment(.trailing)
                     }
                     revealButton(key)
                 }

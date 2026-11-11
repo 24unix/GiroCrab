@@ -75,8 +75,10 @@ struct BankAddView: View {
                 .textInputAutocapitalization(.never)
                 #endif
             if !query.isEmpty {
-                Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                Button { query = "" } label: { Label("Suche löschen", systemImage: "xmark.circle.fill") }
+                    .labelStyle(.iconOnly)
                     .buttonStyle(.borderless)
+                    .help("Suche löschen")
                     .foregroundStyle(.secondary)
             }
         }

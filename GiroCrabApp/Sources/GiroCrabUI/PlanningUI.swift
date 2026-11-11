@@ -250,7 +250,7 @@ struct CashflowCard: View {
                 }
                 .menuStyle(.borderlessButton).fixedSize()
                 .help(Text("Farbschema"))
-                Picker("", selection: $granularity) {
+                Picker("Zeitraum", selection: $granularity) {
                     Text("Monat").tag(PeriodGranularity.month)
                     Text("Quartal").tag(PeriodGranularity.quarter)
                     Text("Jahr").tag(PeriodGranularity.year)
@@ -360,7 +360,7 @@ struct SplitSheet: View {
             Text("\(booking.merchantName) · \(Money.format(booking.amountCents))").foregroundStyle(Theme.secondary)
             ForEach($parts) { $p in
                 HStack(spacing: 8) {
-                    Picker("", selection: $p.categoryID) {
+                    Picker("Kategorie", selection: $p.categoryID) {
                         Text("Ohne Kategorie").tag(Int64?.none)
                         ForEach(model.categories, id: \.id) { c in Text(c.path).tag(Int64?.some(c.id)) }
                     }
@@ -370,8 +370,10 @@ struct SplitSheet: View {
                         .font(.body.monospacedDigit()).frame(width: 90)
                     TextField("Notiz", text: $p.note).textFieldStyle(.roundedBorder)
                     if parts.count > 2 {
-                        Button { parts.removeAll { $0.id == p.id } } label: { Image(systemName: "minus.circle") }
+                        Button { parts.removeAll { $0.id == p.id } } label: { Label("Aufteilung entfernen", systemImage: "minus.circle") }
+                            .labelStyle(.iconOnly)
                             .buttonStyle(.borderless)
+                            .help("Aufteilung entfernen")
                     }
                 }
             }

@@ -193,7 +193,7 @@ struct MoneyMoneyDatabaseImportView: View {
     private func accountRow(_ a: MoneyMoneyDbAccount) -> some View {
         let choice = binding(a)
         return HStack(alignment: .center, spacing: 10) {
-            Toggle("", isOn: choice.selected).labelsHidden().toggleStyle(.checkbox)
+            Toggle("„\(a.name)“ importieren", isOn: choice.selected).labelsHidden().toggleStyle(.checkbox)
             VStack(alignment: .leading, spacing: 2) {
                 Text(a.name).font(.callout.weight(.medium)).lineLimit(1)
                 Text(accountSubtitle(a)).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
@@ -207,11 +207,11 @@ struct MoneyMoneyDatabaseImportView: View {
             }
             .help(a.balanceSource)
             .frame(width: 110, alignment: .trailing)
-            Picker("", selection: choice.kind) {
+            Picker("Kontoart", selection: choice.kind) {
                 ForEach(AccountKind.importChoices, id: \.self) { k in Text(k.label).tag(k) }
             }
             .labelsHidden().frame(width: 150)
-            Picker("", selection: choice.target) {
+            Picker("Ziel", selection: choice.target) {
                 Text("Neues Konto").tag(Int64?.none)
                 ForEach(model.allAccounts) { acc in
                     Text(acc.id == a.existingAccountId ? String(localized: "\(acc.name) (gleiche IBAN)") : acc.name).tag(Int64?.some(acc.id))
