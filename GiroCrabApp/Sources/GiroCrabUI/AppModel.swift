@@ -427,6 +427,8 @@ public final class AppModel {
     private var searchTask: Task<Void, Never>?
     private var scopeLoadTask: Task<Void, Never>?
     @ObservationIgnored private var selectionLoadTask: Task<Void, Never>?
+    /// A selection made in the UI is loading: list and chart are empty meanwhile.
+    private(set) var isLoadingSelection = false
     @ObservationIgnored private var loadsSelectionInBackground = false
     @ObservationIgnored private var merchantStatsTask: Task<Void, Never>?
     @ObservationIgnored private var merchantStatsCache: [String: MerchantStats] = [:]
@@ -863,6 +865,7 @@ public final class AppModel {
         scopeLoadTask?.cancel()
         selectionLoadTask?.cancel()
         selectionLoadTask = nil
+        isLoadingSelection = false
         merchantStatsTask?.cancel()
         merchantStatsCache = [:]
         stopAutoSync()
@@ -1207,6 +1210,7 @@ public final class AppModel {
         guard let task = selectionLoadTask else { return }
         task.cancel()
         selectionLoadTask = nil
+        isLoadingSelection = false
         refreshSalaryCycle()
         refreshRecurring()
         reloadCategories()
@@ -1224,13 +1228,18 @@ public final class AppModel {
     }
 
     /// Everything a selection change needs, loaded off the main thread and
-    /// published in one go; until then the previous data stays on screen.
+    /// published in one go; until then list and chart are empty, so nothing of
+    /// the previous selection shows under the new title.
     private func startSelectionLoad() {
         selectionLoadTask?.cancel()
         scopeLoadTask?.cancel()
         guard let vault else { return }
         let ids = selectionAccountIDs
         let month = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: Date())
+        isLoadingSelection = true
+        page = nil
+        bookings = []
+        history = []
         let task = Task { [weak self] in
             do {
                 // The pay cycle comes first: `.sinceSalary` derives the period from it.
@@ -1255,6 +1264,7 @@ public final class AppModel {
                 // A newer selection or a synchronous reload cancelled this request.
                 guard !Task.isCancelled else { return }
                 self.selectionLoadTask = nil
+                self.isLoadingSelection = false
                 self.page = loaded.page
                 self.bookings = loaded.page.transactions
                 if let sel = self.selectedBookingID, self.booking(withID: sel) == nil, self.stickyBooking?.id != sel {
@@ -1270,6 +1280,7 @@ public final class AppModel {
             } catch {
                 guard !Task.isCancelled, let self else { return }
                 self.selectionLoadTask = nil
+                self.isLoadingSelection = false
                 self.errorMessage = describe(error)
             }
         }

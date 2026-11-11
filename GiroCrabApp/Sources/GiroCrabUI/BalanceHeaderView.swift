@@ -147,8 +147,8 @@ struct StreamHeaderCard: View {
 
                 #if os(iOS)
                 HStack(spacing: 10) {
-                    Text("Konsum \(Money.format(-model.consumptionThisMonth))").foregroundStyle(Theme.outflow)
-                    Text("Einnahmen \(Money.format(model.incomeThisMonth))").foregroundStyle(Theme.inflow)
+                    Text("Konsum \(kpiValue(-model.consumptionThisMonth))").foregroundStyle(Theme.outflow)
+                    Text("Einnahmen \(kpiValue(model.incomeThisMonth))").foregroundStyle(Theme.inflow)
                     Spacer(minLength: 0)
                 }
                 .font(.caption.weight(.medium).monospacedDigit())
@@ -185,11 +185,16 @@ struct StreamHeaderCard: View {
         .foregroundStyle(Theme.secondary)
     }
 
+    /// The tiles belong to the selection: no stale sums while it loads.
+    private func kpiValue(_ cents: Int64) -> String {
+        model.isLoadingSelection ? "–" : Money.format(cents)
+    }
+
     @ViewBuilder
     private var kpis: some View {
-        KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.periodSubtitle), value: Money.format(-model.consumptionThisMonth), tint: Theme.outflow)
-        KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: Money.format(model.investedThisMonth), tint: Theme.invest)
-        KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.periodSubtitle), value: Money.format(model.incomeThisMonth), tint: Theme.inflow)
+        KPI(title: "Konsumausgaben", subtitle: LocalizedStringKey(model.periodSubtitle), value: kpiValue(-model.consumptionThisMonth), tint: Theme.outflow)
+        KPI(title: "Investiert", subtitle: "Sparpläne & Perks", value: kpiValue(model.investedThisMonth), tint: Theme.invest)
+        KPI(title: "Einnahmen", subtitle: LocalizedStringKey(model.periodSubtitle), value: kpiValue(model.incomeThisMonth), tint: Theme.inflow)
         fixedCostsKPI
     }
 

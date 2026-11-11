@@ -63,7 +63,11 @@ struct BookingStreamView: View {
                             BudgetProgressCard().transition(Motion.slide(.top))
                             #endif
                         }
-                        if model.dayGroups.isEmpty && isDepot && model.searchText.isEmpty {
+                        if model.isLoadingSelection {
+                            ProgressView().controlSize(.small)
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 40)
+                        } else if model.dayGroups.isEmpty && isDepot && model.searchText.isEmpty {
                             ContentUnavailableView(
                                 "Keine Buchungen im Depot",
                                 systemImage: "chart.line.uptrend.xyaxis",

@@ -45,15 +45,20 @@ final class SelectionLoadTests: XCTestCase {
 
     func testInteractiveAccountSwitchLoadsInBackground() async throws {
         let account = try XCTUnwrap(model.allAccounts.first { $0.kind == .checking })
-        let before = model.bookings.map(\.id)
+        XCTAssertFalse(model.bookings.isEmpty)
 
         model.interactiveSidebarSelection = .account(account.id)
         XCTAssertEqual(model.sidebarSelection, .account(account.id))
-        XCTAssertEqual(model.bookings.map(\.id), before, "old list stays until the new one arrives")
+        XCTAssertTrue(model.isLoadingSelection)
+        XCTAssertTrue(model.bookings.isEmpty, "nothing of the previous selection shows while loading")
+        XCTAssertTrue(model.dayGroups.isEmpty)
+        XCTAssertTrue(model.history.isEmpty)
+        XCTAssertFalse(model.hasMoreBookings)
 
         let expected = try expectedIDs()
-        XCTAssertNotEqual(expected, before)
+        XCTAssertFalse(expected.isEmpty)
         try await awaitBookings(expected)
+        XCTAssertFalse(model.isLoadingSelection)
         XCTAssertTrue(model.bookings.allSatisfy { $0.accountId == account.id })
         XCTAssertNil(model.errorMessage)
         try assertMatchesSynchronousLoad()
@@ -87,6 +92,7 @@ final class SelectionLoadTests: XCTestCase {
         model.reloadBookings()
         let expected = try expectedIDs()
         XCTAssertEqual(model.bookings.map(\.id), expected)
+        XCTAssertFalse(model.isLoadingSelection)
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertEqual(model.bookings.map(\.id), expected)
         try assertMatchesSynchronousLoad()
