@@ -65,7 +65,7 @@ struct PinSheet: View {
                         model.pendingLogin = nil
                         model.webLoginConnection = currentConnection
                     } label: {
-                        Label("Im Browser-Fenster anmelden", systemImage: "safari")
+                        Label("Im Browser-Fenster anmelden …", systemImage: "safari")
                     }
                 }
             }
@@ -160,7 +160,7 @@ struct ConnectionEditSheet: View {
         }
     }
     /// PSD2 consent: end date, warning before expiry, accounts without
-    /// access, and "Neu verbinden" (new consent at the bank).
+    /// access, and "Neu verbinden …" (new consent at the bank).
     @ViewBuilder private func consentRows(_ st: ConnectionStatus) -> some View {
         let end = PSD2Consent.parse(st.consentValidUntil)
         let stage = PSD2Consent.stage(until: end)
@@ -195,7 +195,7 @@ struct ConnectionEditSheet: View {
             save()
             dismiss()
             model.reconnect(connection)
-        } label: { Label("Neu verbinden", systemImage: "arrow.triangle.2.circlepath") }
+        } label: { Label("Neu verbinden …", systemImage: "arrow.triangle.2.circlepath") }
             .help("Neue Zustimmung bei der Bank erteilen (z. B. vor Ablauf oder um Konten hinzuzufügen oder zu entfernen).")
         Text("Konten in Enable Banking verknüpft oder entfernt? Das wirkt erst nach „Neu verbinden“.")
             .font(.caption).foregroundStyle(Theme.secondary)
@@ -255,7 +255,7 @@ struct ConnectionEditSheet: View {
                             model.webLoginConnection = model.connections.first { $0.id == connection.id } ?? connection
                         } label: { Label("Anmelden & Abrufen", systemImage: "safari") }
                             .buttonStyle(.borderedProminent)
-                        Button { importingStatement = true } label: { Label("CSV- oder PDF-Kontoauszug importieren", systemImage: "doc.badge.plus") }
+                        Button { importingStatement = true } label: { Label("CSV- oder PDF-Kontoauszug importieren …", systemImage: "doc.badge.plus") }
                             .fileImporter(isPresented: $importingStatement, allowedContentTypes: [.commaSeparatedText, .plainText, .pdf, .data]) { result in
                                 if case .success(let url) = result {
                                     save()
@@ -295,7 +295,7 @@ struct ConnectionEditSheet: View {
                             save()
                             dismiss()
                             model.webLoginConnection = model.connections.first { $0.id == connection.id } ?? connection
-                        } label: { Label("Im Browser-Fenster anmelden", systemImage: "safari") }
+                        } label: { Label("Im Browser-Fenster anmelden …", systemImage: "safari") }
                     }
                 }
             }

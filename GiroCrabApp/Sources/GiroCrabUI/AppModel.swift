@@ -462,7 +462,7 @@ public final class AppModel {
                 demoSettingsSheet = parts.count > 1 ? parts[1] : nil
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: 600_000_000)
-                    self?.groupSettingsRequested = true
+                    self?.settingsRequested = true
                 }
             }
             if options.demoSync {

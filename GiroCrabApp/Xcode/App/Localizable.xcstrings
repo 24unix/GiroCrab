@@ -1205,13 +1205,13 @@
         }
       }
     },
-    "Alle Belege exportieren (Ordner)" : {
+    "Alle Belege exportieren …" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Export All Documents (Folder)"
+            "value" : "Export All Documents…"
           }
         }
       }
@@ -1282,13 +1282,13 @@
         }
       }
     },
-    "Alle exportieren" : {
+    "Alle exportieren …" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Export All"
+            "value" : "Export All…"
           }
         }
       }
@@ -1821,7 +1821,7 @@
         }
       }
     },
-    "Aus MoneyMoney importieren…" : {
+    "Aus MoneyMoney importieren …" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -1960,7 +1960,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose …"
+            "value" : "Choose…"
           }
         }
       }
@@ -2147,7 +2147,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Search and add a bank …"
+            "value" : "Search and add a bank…"
           }
         }
       }
@@ -2180,7 +2180,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Search bank, bank code or IBAN …"
+            "value" : "Search bank, bank code or IBAN…"
           }
         }
       }
@@ -2713,7 +2713,7 @@
         }
       }
     },
-    "CSV exportieren…" : {
+    "CSV exportieren …" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -2724,13 +2724,13 @@
         }
       }
     },
-    "CSV- oder PDF-Kontoauszug importieren" : {
+    "CSV- oder PDF-Kontoauszug importieren …" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Import CSV or PDF Statement"
+            "value" : "Import CSV or PDF Statement…"
           }
         }
       }
@@ -2999,7 +2999,7 @@
         }
       }
     },
-    "Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Die Überweisung wurde möglicherweise bereits ausgeführt.\n\nBitte prüfe zuerst dein Konto (Umsätze oder Online-Banking), bevor du sie erneut sendest. In GiroCrab ist sie als „Status unklar“ vorgemerkt.\n\nReferenz (EndToEnd-ID): %@\nBank: %@" : {
+    "Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Die Überweisung wurde möglicherweise bereits ausgeführt.\n\nBitte prüfen Sie zuerst Ihr Konto (Umsätze oder Online-Banking), bevor Sie sie erneut senden. In GiroCrab ist sie als „Status unklar“ vorgemerkt.\n\nReferenz (EndToEnd-ID): %@\nBank: %@" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -4947,13 +4947,13 @@
         }
       }
     },
-    "Im Browser-Fenster anmelden" : {
+    "Im Browser-Fenster anmelden …" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sign in with browser"
+            "value" : "Sign In with Browser…"
           }
         }
       }
@@ -5629,7 +5629,7 @@
         }
       }
     },
-    "Kommt in Sekunden an und ist nicht rückholbar. Bietet die Bank sie nicht an, wird nichts gesendet; du kannst sie dann als normale Überweisung senden." : {
+    "Kommt in Sekunden an und ist nicht rückholbar. Bietet die Bank sie nicht an, wird nichts gesendet; Sie können sie dann als normale Überweisung senden." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -5640,7 +5640,7 @@
         }
       }
     },
-    "Kommt in der Regel am nächsten Bankarbeitstag an. Du gibst sie erneut frei." : {
+    "Kommt in der Regel am nächsten Bankarbeitstag an. Sie geben sie erneut frei." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -6196,7 +6196,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Delete …"
+            "value" : "Delete…"
           }
         }
       }
@@ -6824,13 +6824,13 @@
         }
       }
     },
-    "Neu verbinden" : {
+    "Neu verbinden …" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reconnect"
+            "value" : "Reconnect…"
           }
         }
       }
@@ -7143,7 +7143,7 @@
         }
       }
     },
-    "Noch keine Budgets. Lege über das Kontextmenü einer Kategorie ein Monatsbudget fest." : {
+    "Noch keine Budgets. Legen Sie über das Kontextmenü einer Kategorie ein Monatsbudget fest." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -7237,7 +7237,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Edit note …"
+            "value" : "Edit note…"
           }
         }
       }
@@ -7891,17 +7891,6 @@
         }
       }
     },
-    "Regel für diesen Händler erstellen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Create Rule for This Merchant"
-          }
-        }
-      }
-    },
     "Regel für diesen Händler erstellen …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8162,7 +8151,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Paste key …"
+            "value" : "Paste key…"
           }
         }
       }
@@ -8223,7 +8212,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose key file (.pem) …"
+            "value" : "Choose key file (.pem)…"
           }
         }
       }
@@ -8284,7 +8273,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Save …"
+            "value" : "Save…"
           }
         }
       }
@@ -8603,7 +8592,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Search by bank name, bank code or IBAN: FinTS banks, banks with their own API (bunq, comdirect, Trade Republic, PayPal) and PSD2 banks (N26, Revolut, C24 …)."
+            "value" : "Search by bank name, bank code or IBAN: FinTS banks, banks with their own API (bunq, comdirect, Trade Republic, PayPal) and PSD2 banks (N26, Revolut, C24…)."
           }
         }
       }
@@ -8691,7 +8680,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Syncing …"
+            "value" : "Syncing…"
           }
         }
       }
@@ -8806,13 +8795,13 @@
         }
       }
     },
-    "Text bearbeiten" : {
+    "Text bearbeiten …" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Edit Text"
+            "value" : "Edit Text…"
           }
         }
       }
@@ -9433,24 +9422,13 @@
         }
       }
     },
-    "Gleiche Schreibweise wie bei Regeln: Wörter, \"Phrasen\", name:, purpose:, AND, OR, NOT. Einzelne Buchungen ordnen Sie im Kontextmenü zu oder heben die Zuordnung dort auf." : {
+    "Gleiche Schreibweise wie bei Regeln: Wörter, „Phrasen“, name:, purpose:, AND, OR, NOT. Einzelne Buchungen ordnen Sie im Kontextmenü zu oder heben die Zuordnung dort auf." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Same syntax as rules: words, \"phrases\", name:, purpose:, AND, OR, NOT. Assign or remove single transactions in their context menu."
-          }
-        }
-      }
-    },
-    "Sichern" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Save"
           }
         }
       }
@@ -9472,7 +9450,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Searching matching transactions …"
+            "value" : "Searching matching transactions…"
           }
         }
       }
@@ -9615,7 +9593,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "New Loan from This Transaction …"
+            "value" : "New Loan from This Transaction…"
           }
         }
       }
@@ -9626,7 +9604,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Edit Loan …"
+            "value" : "Edit Loan…"
           }
         }
       }
@@ -9637,7 +9615,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Set New Balance …"
+            "value" : "Set New Balance…"
           }
         }
       }
@@ -9681,7 +9659,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Edit …"
+            "value" : "Edit…"
           }
         }
       }
@@ -9725,7 +9703,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "New Loan …"
+            "value" : "New Loan…"
           }
         }
       }
@@ -10077,7 +10055,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Waiting for macOS …"
+            "value" : "Waiting for macOS…"
           }
         }
       }

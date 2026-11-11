@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import GiroCrabCore
 
-/// "Aus MoneyMoney importieren…": either reads MoneyMoney's own database
+/// "Aus MoneyMoney importieren …": either reads MoneyMoney's own database
 /// (recommended, everything in one go) or a per-account CSV/XML export.
 struct MoneyMoneyImportSheet: View {
     @Environment(AppModel.self) private var model

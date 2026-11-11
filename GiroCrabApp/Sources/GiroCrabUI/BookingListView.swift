@@ -190,7 +190,7 @@ struct BookingStreamView: View {
                 Menu {
                     Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
                         .disabled(!model.canTransfer)
-                    Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren…", systemImage: "square.and.arrow.up") }
+                    Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren …", systemImage: "square.and.arrow.up") }
                     Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
                     Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
                     Button { model.showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
@@ -213,7 +213,7 @@ struct BookingStreamView: View {
                     .help("Alle Konten abrufen (⌘R)")
                 Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }
                     .help("Befehlspalette (⌘K)")
-                Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren…", systemImage: "square.and.arrow.up") }
+                Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren …", systemImage: "square.and.arrow.up") }
                     .help("Gefilterte Buchungen als CSV exportieren")
                 Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
                     .help("Gefilterte Buchungen drucken (⌘P)")

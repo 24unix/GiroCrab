@@ -348,7 +348,7 @@ struct LoanEditorSheet: View {
                 } header: {
                     Text("Raten automatisch zuordnen")
                 } footer: {
-                    FormFooter("Gleiche Schreibweise wie bei Regeln: Wörter, \"Phrasen\", name:, purpose:, AND, OR, NOT. Einzelne Buchungen ordnen Sie im Kontextmenü zu oder heben die Zuordnung dort auf.")
+                    FormFooter("Gleiche Schreibweise wie bei Regeln: Wörter, „Phrasen“, name:, purpose:, AND, OR, NOT. Einzelne Buchungen ordnen Sie im Kontextmenü zu oder heben die Zuordnung dort auf.")
                 }
             }
             Section("Vorschau") { previewRows }
@@ -374,7 +374,7 @@ struct LoanEditorSheet: View {
     }
 
     private var saveButton: some View {
-        Button(request.mode == .create ? "Anlegen" : "Sichern", action: save)
+        Button(request.mode == .create ? "Anlegen" : "Speichern", action: save)
             .keyboardShortcut(.defaultAction)
             .disabled(problem != nil)
     }

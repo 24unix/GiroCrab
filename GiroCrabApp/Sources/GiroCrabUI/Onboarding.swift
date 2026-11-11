@@ -65,7 +65,7 @@ struct EmptyVaultCard: View {
             .controlSize(.large)
             #if os(macOS)
             Button { model.openMoneyMoneyImport() } label: {
-                Label("Aus MoneyMoney importieren…", systemImage: "square.and.arrow.down.on.square")
+                Label("Aus MoneyMoney importieren …", systemImage: "square.and.arrow.down.on.square")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)

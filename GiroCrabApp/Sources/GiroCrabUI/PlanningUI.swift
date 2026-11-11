@@ -103,7 +103,7 @@ struct BudgetProgressCard: View {
                 .menuStyle(.borderlessButton).fixedSize()
             }
             if items.isEmpty {
-                Text("Noch keine Budgets. Lege über das Kontextmenü einer Kategorie ein Monatsbudget fest.")
+                Text("Noch keine Budgets. Legen Sie über das Kontextmenü einer Kategorie ein Monatsbudget fest.")
                     .font(.caption).foregroundStyle(Theme.secondary)
             }
             ForEach(items, id: \.categoryId) { s in

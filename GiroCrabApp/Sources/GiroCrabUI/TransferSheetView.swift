@@ -219,7 +219,7 @@ struct TransferSheetView: View {
                             .onChange(of: draft.wrappedValue.instant) { _, on in
                                 if on { model.transferDraft.scheduled = false }
                             }
-                        Text("Kommt in Sekunden an und ist nicht rückholbar. Bietet die Bank sie nicht an, wird nichts gesendet; du kannst sie dann als normale Überweisung senden.")
+                        Text("Kommt in Sekunden an und ist nicht rückholbar. Bietet die Bank sie nicht an, wird nichts gesendet; Sie können sie dann als normale Überweisung senden.")
                             .font(.caption).foregroundStyle(Theme.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         if draft.wrappedValue.instant, let c = cents, c >= 10_000_000 {
@@ -343,7 +343,7 @@ struct TransferSheetView: View {
                 .font(.callout).fixedSize(horizontal: false, vertical: true)
             Button("Als normale Überweisung senden") { model.sendAsRegularTransfer() }
                 .disabled(model.transferBusy)
-            Text("Kommt in der Regel am nächsten Bankarbeitstag an. Du gibst sie erneut frei.")
+            Text("Kommt in der Regel am nächsten Bankarbeitstag an. Sie geben sie erneut frei.")
                 .font(.caption).foregroundStyle(Theme.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

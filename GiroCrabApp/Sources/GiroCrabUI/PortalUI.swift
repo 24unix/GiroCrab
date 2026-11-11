@@ -269,7 +269,7 @@ struct PortalWebSheet: View {
             HStack {
                 Button("Abbrechen", role: .cancel) { close() }
                     .keyboardShortcut(.cancelAction)
-                Button { importing = true } label: { Label("CSV- oder PDF-Kontoauszug importieren", systemImage: "doc.badge.plus") }
+                Button { importing = true } label: { Label("CSV- oder PDF-Kontoauszug importieren …", systemImage: "doc.badge.plus") }
                 if recognized == 0 && !browser.onLoginPage {
                     Button("Portal-Struktur prüfen") { Task { await dumpSchema() } }
                         .help("Speichert nur Feldnamen und Typen (keine Werte) nach /tmp/girocrab-portal-schema.json")

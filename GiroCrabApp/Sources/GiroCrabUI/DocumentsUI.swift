@@ -161,7 +161,7 @@ struct DocumentsCard: View {
             Button {
                 exporting = true
             } label: {
-                Label("Alle Belege exportieren (Ordner)", systemImage: "square.and.arrow.up.on.square")
+                Label("Alle Belege exportieren …", systemImage: "square.and.arrow.up.on.square")
                     .frame(maxWidth: .infinity)
             }
             .help("Für die Steuererklärung: alle Belege nach Jahr sortiert in einen Ordner")
@@ -213,7 +213,7 @@ struct DocumentsView: View {
                         Toggle("Nur ohne Buchung", isOn: $unlinkedOnly).toggleStyle(.switch).controlSize(.small)
                             .lineLimit(1).fixedSize()
                         Spacer(minLength: 0)
-                        Button { exporting = true } label: { Label("Alle exportieren", systemImage: "square.and.arrow.up").lineLimit(1).fixedSize() }
+                        Button { exporting = true } label: { Label("Alle exportieren …", systemImage: "square.and.arrow.up").lineLimit(1).fixedSize() }
                     }
                 }
                 List(selection: $selected) {

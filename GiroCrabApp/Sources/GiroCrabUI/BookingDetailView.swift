@@ -53,7 +53,7 @@ struct ReceiptCard: View {
                     draftName = booking.counterparty
                     draftPurpose = booking.purpose
                     editing = true
-                } label: { Label("Text bearbeiten", systemImage: "pencil") }
+                } label: { Label("Text bearbeiten …", systemImage: "pencil") }
                     .buttonStyle(.borderless).controlSize(.small).font(.caption)
                     .help("Gegenpartei und Verwendungszweck korrigieren")
             }
@@ -339,7 +339,7 @@ struct MerchantHistoryCard: View {
 
 /// 1-click category grid: top-level categories, then one grid of
 /// sub-categories per opened level (any depth, #101); plus
-/// "Regel für diesen Händler erstellen".
+/// "Regel für diesen Händler erstellen …".
 struct CategoryGridCard: View {
     @Environment(AppModel.self) private var model
     let booking: Booking
@@ -405,7 +405,7 @@ struct CategoryGridCard: View {
             Button {
                 model.openRuleEditor(from: booking)
             } label: {
-                Label("Regel für diesen Händler erstellen", systemImage: "wand.and.stars")
+                Label("Regel für diesen Händler erstellen …", systemImage: "wand.and.stars")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)

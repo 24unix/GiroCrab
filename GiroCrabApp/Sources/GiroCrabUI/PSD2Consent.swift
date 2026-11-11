@@ -58,7 +58,7 @@ extension AppModel {
         return PSD2Consent.parse(connectionStatus(connection.id)?.consentValidUntil)
     }
 
-    /// "Neu verbinden": drop the stored consent and start a new one (the bank's
+    /// "Neu verbinden …": drop the stored consent and start a new one (the bank's
     /// login opens). Accounts and bookings stay; accounts the new consent no
     /// longer includes are marked "Zugriff entzogen" by the sync.
     func reconnect(_ connection: BankConnection) {
