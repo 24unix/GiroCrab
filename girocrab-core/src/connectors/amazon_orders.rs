@@ -335,12 +335,15 @@ impl Vault {
                 message: tr("Keine Bestellungen erkannt.").into(),
             });
         }
-        store_fetch(
+        let summary = store_fetch(
             &self,
             kind,
             connection_id,
             to_fetch(connection_id, &name, parsed),
-        )
+        )?;
+        // Fold the import into the main file; best effort, it is committed.
+        let _ = self.checkpoint();
+        Ok(summary)
     }
 }
 

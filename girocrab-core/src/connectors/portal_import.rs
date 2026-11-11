@@ -871,12 +871,15 @@ impl Vault {
                 message: tr("Keine Umsätze erkannt.").into(),
             });
         }
-        store_fetch(
+        let summary = store_fetch(
             self,
             kind,
             connection_id,
             to_fetch(connection_id, &name, kind, parsed, balance),
-        )
+        )?;
+        // Fold the import into the main file; best effort, it is committed.
+        let _ = self.checkpoint();
+        Ok(summary)
     }
 }
 

@@ -2161,6 +2161,10 @@ impl Vault {
         // dropped without commit on error or cancel: nothing is stored
         let res = import(&tx, &src, &options, files, observer)?;
         tx.commit()?;
+        // The import is one big transaction (bookings plus statement PDFs), so
+        // the WAL now holds all of it. Fold it into the main file and truncate
+        // it; best effort, the data is committed either way.
+        let _ = db.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
         Ok(res)
     }
 }
