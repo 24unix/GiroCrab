@@ -8953,6 +8953,611 @@
         }
       }
     },
+    "Darlehenszuordnung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loan assignment"
+          }
+        }
+      }
+    },
+    "„%@“ dem Darlehen „%@“ zugeordnet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assigned “%1$@” to the loan “%2$@”"
+          }
+        }
+      }
+    },
+    "Zuordnung von „%@“ aufgehoben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Removed “%@” from its loan"
+          }
+        }
+      }
+    },
+    "Darlehen ändern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change Loan"
+          }
+        }
+      }
+    },
+    "Neues Darlehen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Loan"
+          }
+        }
+      }
+    },
+    "Für Kredite ohne eigenes Konto bei der Bank, z. B. einen Autokredit, den Sie vom Girokonto abbezahlen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "For loans without an account at the bank, e.g. a car loan you pay off from your current account."
+          }
+        }
+      }
+    },
+    "Darlehen anlegen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Loan"
+          }
+        }
+      }
+    },
+    "Darlehen bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Loan"
+          }
+        }
+      }
+    },
+    "Stand neu setzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set New Balance"
+          }
+        }
+      }
+    },
+    "Bitte einen Namen angeben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please enter a name."
+          }
+        }
+      }
+    },
+    "Bitte die Restschuld am Stichtag angeben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please enter the outstanding balance on the balance date."
+          }
+        }
+      }
+    },
+    "Der ursprüngliche Kreditbetrag ist keine gültige Zahl." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The original loan amount isn't a valid number."
+          }
+        }
+      }
+    },
+    "Der Sollzins muss zwischen 0 und 30 % liegen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The interest rate must be between 0 and 30 %."
+          }
+        }
+      }
+    },
+    "z. B. Autokredit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "e.g. Car loan"
+          }
+        }
+      }
+    },
+    "Ursprünglicher Kreditbetrag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original loan amount"
+          }
+        }
+      }
+    },
+    "optional" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "optional"
+          }
+        }
+      }
+    },
+    "Stichtag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance date"
+          }
+        }
+      }
+    },
+    "Restschuld am Stichtag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outstanding balance on that date"
+          }
+        }
+      }
+    },
+    "Stand" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance"
+          }
+        }
+      }
+    },
+    "Die Restschuld am Ende des Stichtags, z. B. aus dem Jahreskontoauszug. Raten ab dem Folgetag werden abgezogen. Fehlt etwas oder stimmt etwas nicht, setzen Sie einfach einen neuen Stand." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The outstanding balance at the end of the balance date, e.g. from the annual statement. Payments from the next day on are deducted. If something is missing or wrong, simply set a new balance."
+          }
+        }
+      }
+    },
+    "Sollzins p. a. in %" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interest rate p.a. in %"
+          }
+        }
+      }
+    },
+    "z. B. 4,99" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "e.g. 4.99"
+          }
+        }
+      }
+    },
+    "Zinsen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interest"
+          }
+        }
+      }
+    },
+    "Mit Sollzins zählt von jeder Rate nur der Tilgungsanteil (Zinsen taggenau). Ohne Sollzins senkt die ganze Rate die Restschuld." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With an interest rate, only the principal share of each payment counts (interest accrues daily). Without one, the whole payment reduces the balance."
+          }
+        }
+      }
+    },
+    "Suchregel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search rule"
+          }
+        }
+      }
+    },
+    "z. B. Autobank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "e.g. Autobank"
+          }
+        }
+      }
+    },
+    "Raten automatisch zuordnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assign Payments Automatically"
+          }
+        }
+      }
+    },
+    "Gleiche Schreibweise wie bei Regeln: Wörter, \"Phrasen\", name:, purpose:, AND, OR, NOT. Einzelne Buchungen ordnen Sie im Kontextmenü zu oder heben die Zuordnung dort auf." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Same syntax as rules: words, \"phrases\", name:, purpose:, AND, OR, NOT. Assign or remove single transactions in their context menu."
+          }
+        }
+      }
+    },
+    "Sichern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save"
+          }
+        }
+      }
+    },
+    "Keine passenden Buchungen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No matching transactions."
+          }
+        }
+      }
+    },
+    "Suche passende Buchungen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Searching matching transactions …"
+          }
+        }
+      }
+    },
+    "und %lld weitere" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "and %lld more"
+          }
+        }
+      }
+    },
+    "Restschuld bisher" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Previous balance"
+          }
+        }
+      }
+    },
+    "Restschuld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outstanding balance"
+          }
+        }
+      }
+    },
+    "Stand vom" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As of"
+          }
+        }
+      }
+    },
+    "Raten seit Stichtag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Payments since balance date"
+          }
+        }
+      }
+    },
+    "davon Zinsen / Tilgung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "of which interest / principal"
+          }
+        }
+      }
+    },
+    "Ältere Buchungen (nicht gezählt)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Older transactions (not counted)"
+          }
+        }
+      }
+    },
+    "Voraussichtlich noch" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expected remaining"
+          }
+        }
+      }
+    },
+    "%lld Monatsraten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld monthly payments"
+          }
+        }
+      }
+    },
+    "Vorschau erscheint, sobald Restschuld und Stichtag ausgefüllt sind." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The preview appears once the balance and date are filled in."
+          }
+        }
+      }
+    },
+    "Darlehen zuordnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assign to Loan"
+          }
+        }
+      }
+    },
+    "Keinem Darlehen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Loan"
+          }
+        }
+      }
+    },
+    "Neues Darlehen aus dieser Buchung …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Loan from This Transaction …"
+          }
+        }
+      }
+    },
+    "Darlehen bearbeiten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Loan …"
+          }
+        }
+      }
+    },
+    "Stand neu setzen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set New Balance …"
+          }
+        }
+      }
+    },
+    "Stand %@: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance on %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Sollzins %@ % · Zinsen seit Stichtag %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interest rate %1$@ % · interest since balance date %2$@"
+          }
+        }
+      }
+    },
+    "Voraussichtlich noch %lld Monatsraten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About %lld monthly payments left"
+          }
+        }
+      }
+    },
+    "Bearbeiten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit …"
+          }
+        }
+      }
+    },
+    "Noch keine Raten zugeordnet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No payments assigned yet"
+          }
+        }
+      }
+    },
+    "Noch keine Raten seit dem Stichtag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No payments since the balance date yet"
+          }
+        }
+      }
+    },
+    "%lld Raten seit Stichtag · %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld payments since balance date · %2$@"
+          }
+        }
+      }
+    },
+    "Neues Darlehen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Loan …"
+          }
+        }
+      }
+    },
+    "Stand von „%@“ neu setzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set New Balance of “%@”"
+          }
+        }
+      }
+    },
     "Vektor-Markenzeichen (CC0-Datensatz) für bekannte Marken" : {
       "extractionState" : "manual",
       "localizations" : {

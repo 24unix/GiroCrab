@@ -301,6 +301,7 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func accountMenu(_ account: Account) -> some View {
+        ManualLoanAccountMenu(model: model, account: account)
         AccountGroupMenu(account: account)
         AccountColorMenu(account: account)
         Divider()

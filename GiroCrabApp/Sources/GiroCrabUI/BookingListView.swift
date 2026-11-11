@@ -388,6 +388,7 @@ struct DayCard: View {
         Button("Regel für diesen Händler erstellen …", systemImage: "wand.and.stars") { model.openRuleEditor(from: b) }
         Button("Notiz bearbeiten …", systemImage: "note.text") { model.editNote(for: b) }
         Button("Umsatz aufteilen (Splitbuchung) …", systemImage: "arrow.triangle.branch") { model.splitBooking = b }
+        LoanAssignMenu(model: model, booking: b, hidesWhenUnavailable: true)
         Divider()
         Button("Nach „\(b.counterparty.isEmpty ? b.merchantName : b.counterparty)“ suchen", systemImage: "magnifyingglass") {
             model.searchText = b.counterparty.isEmpty ? b.merchantName : b.counterparty

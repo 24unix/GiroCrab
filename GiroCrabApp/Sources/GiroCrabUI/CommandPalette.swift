@@ -47,6 +47,10 @@ struct CommandPaletteView: View {
         out.append(Item(title: String(localized: "Übersicht"), subtitle: String(localized: "Konten"), symbol: "square.grid.2x2") { model.sidebarSelection = .allAccounts })
         out.append(Item(title: String(localized: "Neue Kontogruppe"), subtitle: "\(action) · ⇧⌘N", symbol: "folder.badge.plus") { model.groupDialog = .create() })
         out.append(Item(title: String(localized: "Kontogruppen bearbeiten"), subtitle: action, symbol: "slider.horizontal.3") { model.openGroupSettings() })
+        out.append(Item(title: String(localized: "Neues Darlehen"), subtitle: action, symbol: "car") { model.openLoanEditor(.create) })
+        if case .account(let id) = model.sidebarSelection, let loan = model.manualLoan(id) {
+            out.append(Item(title: String(localized: "Stand von „\(loan.setup.name)“ neu setzen"), subtitle: action, symbol: "calendar.badge.clock") { model.openLoanEditor(.anchor, accountId: id) })
+        }
         for m in AccountSidebarMode.allCases where m != model.accountView {
             out.append(Item(title: m == .byGroup ? String(localized: "Konten nach Gruppe anzeigen") : String(localized: "Konten nach Kontoart anzeigen"), subtitle: String(localized: "Ansicht"), symbol: m.symbol) { model.accountView = m })
         }

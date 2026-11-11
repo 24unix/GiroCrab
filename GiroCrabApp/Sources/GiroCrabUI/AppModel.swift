@@ -200,6 +200,8 @@ public final class AppModel {
 
     let options: LaunchOptions
     private(set) var vault: Vault?
+    /// Manual loans (GitHub #36), see ManualLoansUI.swift.
+    @ObservationIgnored let loanStore = ManualLoanStore()
     var vaultState: VaultState = .locked
 
     // Data
@@ -1333,6 +1335,7 @@ public final class AppModel {
     }
 
     fileprivate func rebuildAccountIndex() {
+        reloadLoans()
         let accounts = allAccounts
         accountsByID = Dictionary(accounts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         func base(_ a: Account) -> String { a.name.replacingOccurrences(of: " (MoneyMoney)", with: "") }

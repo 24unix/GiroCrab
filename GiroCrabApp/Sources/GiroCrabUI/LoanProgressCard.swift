@@ -10,6 +10,7 @@ struct LoanProgressCard: View {
     @State private var text = ""
     @State private var editing = false
 
+    private var manual: ManualLoan? { model.manualLoan(account.id) }
     private var initial: Int64? { account.initialBalanceCents.map { abs($0) }.flatMap { $0 > 0 ? $0 : nil } }
     private var repaid: Double? {
         guard let p = initial else { return nil }
@@ -36,7 +37,13 @@ struct LoanProgressCard: View {
                     Text("Ursprünglicher Kreditbetrag fehlt").font(.caption).foregroundStyle(Theme.secondary)
                 }
                 Spacer()
-                if editing {
+                if manual != nil {
+                    // manual loans: amount, Stand and rate live in the loan editor
+                    if compact {
+                        Button("Stand neu setzen …") { model.openLoanEditor(.anchor, accountId: account.id) }
+                            .buttonStyle(.borderless).font(.caption)
+                    }
+                } else if editing {
                     TextField("z. B. \(Money.plain(28_000_000))", text: $text)
                         .textFieldStyle(.roundedBorder).frame(width: 130).onSubmit(commit)
                     Button("OK", action: commit).controlSize(.small)
@@ -51,6 +58,11 @@ struct LoanProgressCard: View {
             }
             if let repaid {
                 ProgressView(value: repaid).progressViewStyle(.linear).tint(Theme.loan)
+                    .accessibilityLabel("Tilgung")
+                    .accessibilityValue("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
+            }
+            if let manual, !compact {
+                ManualLoanDetails(loan: manual)
             }
         }
         .modifier(CardIf(enabled: !compact))
