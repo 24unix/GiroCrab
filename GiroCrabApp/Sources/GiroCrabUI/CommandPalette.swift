@@ -39,9 +39,9 @@ struct CommandPaletteView: View {
             }
         })
         out.append(Item(title: String(localized: "Wiederkehrende Buchungen"), subtitle: action, symbol: "repeat") { model.showRecurringSheet = true })
-        out.append(Item(title: String(localized: "Zeitraum: Seit letztem Gehalt"), subtitle: String(localized: "Ansicht"), symbol: "banknote") { model.period = .sinceSalary })
-        out.append(Item(title: String(localized: "Zeitraum: Letzte 12 Monate"), subtitle: String(localized: "Ansicht"), symbol: "calendar") { model.period = .last12Months })
-        out.append(Item(title: String(localized: "Zeitraum: Letztes Jahr"), subtitle: String(localized: "Ansicht"), symbol: "calendar") { model.period = .lastYear })
+        out.append(Item(title: String(localized: "Zeitraum: Seit letztem Gehalt"), subtitle: String(localized: "Ansicht"), symbol: "banknote") { model.interactivePeriod = .sinceSalary })
+        out.append(Item(title: String(localized: "Zeitraum: Letzte 12 Monate"), subtitle: String(localized: "Ansicht"), symbol: "calendar") { model.interactivePeriod = .last12Months })
+        out.append(Item(title: String(localized: "Zeitraum: Letztes Jahr"), subtitle: String(localized: "Ansicht"), symbol: "calendar") { model.interactivePeriod = .lastYear })
         out.append(Item(title: String(localized: "Zeitraum: Benutzerdefiniert …"), subtitle: String(localized: "Ansicht"), symbol: "calendar.badge.clock") {
             // after the palette has closed, so the popover can anchor
             Task { @MainActor in
@@ -60,7 +60,7 @@ struct CommandPaletteView: View {
         #else
         out.append(Item(title: String(localized: "Einstellungen"), subtitle: action, symbol: "gearshape") { model.showSettings = true })
         #endif
-        out.append(Item(title: String(localized: "Übersicht"), subtitle: String(localized: "Konten"), symbol: "square.grid.2x2") { model.sidebarSelection = .allAccounts })
+        out.append(Item(title: String(localized: "Übersicht"), subtitle: String(localized: "Konten"), symbol: "square.grid.2x2") { model.interactiveSidebarSelection = .allAccounts })
         out.append(Item(title: String(localized: "Neue Kontogruppe"), subtitle: "\(action) · ⇧⌘N", symbol: "folder.badge.plus") { model.groupDialog = .create() })
         out.append(Item(title: String(localized: "Kontogruppen bearbeiten"), subtitle: action, symbol: "slider.horizontal.3") { model.openGroupSettings() })
         out.append(Item(title: String(localized: "Neues Darlehen"), subtitle: action, symbol: "car") { model.openLoanEditor(.create) })
@@ -73,7 +73,7 @@ struct CommandPaletteView: View {
         for g in model.namedUserGroups {
             out.append(Item(title: g.name, subtitle: String(localized: "Gruppe · \(accountCountText(g.accounts.count))"), symbol: g.sfSymbol) {
                 model.accountView = .byGroup
-                model.sidebarSelection = .userGroup(g.uuid)
+                model.interactiveSidebarSelection = .userGroup(g.uuid)
             })
         }
         if case .account(let id) = model.sidebarSelection, let a = model.account(for: id) {
@@ -82,10 +82,10 @@ struct CommandPaletteView: View {
             }
         }
         for a in model.allAccounts {
-            out.append(Item(title: a.name, subtitle: String(localized: "Konto · \(a.bankName)"), symbol: a.sfSymbol) { model.sidebarSelection = .account(a.id) })
+            out.append(Item(title: a.name, subtitle: String(localized: "Konto · \(a.bankName)"), symbol: a.sfSymbol) { model.interactiveSidebarSelection = .account(a.id) })
         }
         for c in model.categories {
-            out.append(Item(title: c.name, subtitle: String(localized: "Kategorie · \(c.path)"), symbol: c.sfSymbol) { model.sidebarSelection = .category(c.id) })
+            out.append(Item(title: c.name, subtitle: String(localized: "Kategorie · \(c.path)"), symbol: c.sfSymbol) { model.interactiveSidebarSelection = .category(c.id) })
         }
         var seen = Set<String>()
         for b in model.bookings where seen.insert(b.merchant.key).inserted && seen.count < 300 {

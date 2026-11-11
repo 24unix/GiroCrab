@@ -2062,7 +2062,7 @@ impl Vault {
                 },
                 rule_id: r.get(13)?,
                 checked: r.get::<_, i64>(14)? != 0,
-                merchant: MerchantResolver::resolve("", ""),
+                merchant: MerchantResolver::placeholder(),
                 merchant_name: String::new(),
                 merchant_domain: None,
                 merchant_svg_path: None,
@@ -2096,6 +2096,7 @@ impl Vault {
         };
         let (mut income, mut expense, mut consumption, mut investment, mut perk) =
             (0i64, 0i64, 0i64, 0i64, 0i64);
+        let mut flow = SelectionFlow::default();
         for row in rows {
             let mut t = row?;
             if let Some((name, path, color, sym)) = t.category_id.and_then(|c| paths.get(&c)) {
@@ -2149,6 +2150,7 @@ impl Vault {
                 FlowKind::Perk => perk += t.amount_cents,
                 _ => {}
             }
+            flow.add(&t);
             txs.push(t);
         }
         let total = txs.len() as u32;
@@ -2170,6 +2172,7 @@ impl Vault {
             consumption_cents: consumption,
             investment_cents: investment,
             perk_cents: perk,
+            flow,
         })
     }
 

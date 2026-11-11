@@ -75,6 +75,24 @@ impl Vault {
         })
     }
 
+    /// KPI tiles for the selected accounts (empty = all) and period. Sums in the
+    /// core, so the bookings never cross the FFI boundary.
+    pub fn selection_flow(
+        &self,
+        account_ids: Vec<i64>,
+        date_from: Option<String>,
+        date_to: Option<String>,
+    ) -> Result<SelectionFlow, CoreError> {
+        Ok(self
+            .list_transactions(BookingFilter {
+                account_ids,
+                date_from,
+                date_to,
+                ..Default::default()
+            })?
+            .flow)
+    }
+
     /// "Sparpläne & Perks": recurring plans with a month grid, Saveback and
     /// Round up totals, and consumption vs. investment per month.
     pub fn investment_dashboard(&self, months: u32) -> Result<InvestmentDashboard, CoreError> {

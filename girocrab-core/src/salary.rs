@@ -221,7 +221,7 @@ mod tests {
             category_source: CategorySource::None,
             rule_id: None,
             checked: false,
-            merchant: MerchantResolver::resolve("", ""),
+            merchant: MerchantResolver::placeholder(),
             merchant_name: String::new(),
             merchant_domain: None,
             merchant_svg_path: None,

@@ -181,7 +181,7 @@ struct UserGroupMenu: View {
 
     var body: some View {
         #if os(iOS)
-        Button("Gruppenübersicht", systemImage: "list.bullet.rectangle") { model.sidebarSelection = .userGroup(group.uuid) }
+        Button("Gruppenübersicht", systemImage: "list.bullet.rectangle") { model.interactiveSidebarSelection = .userGroup(group.uuid) }
         #endif
         if !group.isUngrouped {
             Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .rename(group) }

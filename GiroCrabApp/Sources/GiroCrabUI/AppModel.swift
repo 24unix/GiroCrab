@@ -257,7 +257,10 @@ public final class AppModel {
     private(set) var accountMarkers: [Int64: AccountMarker] = [:]
     var categories: [GiroCrabCore.Category] = []
     var categoryTree: [CategoryNode] = []
-    var bookings: [Booking] = []
+    var bookings: [Booking] = [] { didSet { rebuildBookingIndex() } }
+    /// Derived from `bookings` once per reload instead of on every view access.
+    private(set) var dayGroups: [DayGroup] = []
+    @ObservationIgnored private var bookingIndexByID: [Booking.ID: Int] = [:]
     var page: BookingPage?
     /// Flows of the selected account/group in the selected period; nil = not loaded yet.
     var selectionFlow: (consumption: Int64, invested: Int64, income: Int64)?
@@ -274,12 +277,13 @@ public final class AppModel {
     private var logoCache: [String: (image: Image, pixels: Int)] = [:]
 
     // UI state
-    var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; refreshSalaryCycle(); refreshRecurring(); reloadBookings(); reloadHistory() } }
+    var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; reloadSelection(periodChanged: false) } }
     var scope: BookingScope = .all {
         didSet {
             guard scope != oldValue else { return }
             listLimit = Self.defaultListLimit
-            reloadScopeBookings()
+            // A selection still loading in the background has to pick up the new scope.
+            if selectionLoadTask != nil { startSelectionLoad() } else { reloadScopeBookings() }
         }
     }
     var period: Period = .all { didSet { periodDidChange() } }
@@ -288,6 +292,18 @@ public final class AppModel {
     private(set) var customPeriodTo: String = UserDefaults.standard.string(forKey: "period.customTo") ?? AppModel.defaultCustomPeriod.to
     /// Shows the start/end date dialog of the period filter.
     var showCustomPeriod = false
+
+    /// Sidebar selection and period as set by UI controls: the new data loads in
+    /// the background, so the control responds at once. Setting `sidebarSelection`
+    /// or `period` directly loads synchronously (the data is there on return).
+    var interactiveSidebarSelection: SidebarItem? {
+        get { sidebarSelection }
+        set { loadsSelectionInBackground = true; sidebarSelection = newValue; loadsSelectionInBackground = false }
+    }
+    var interactivePeriod: Period {
+        get { period }
+        set { loadsSelectionInBackground = true; period = newValue; loadsSelectionInBackground = false }
+    }
     /// Latest salary of the selected accounts; start of the `.sinceSalary` period.
     var salaryCycle: SalaryCycle?
     /// Recurring series of the selected accounts (GitHub #35).
@@ -299,7 +315,7 @@ public final class AppModel {
     var recurringHidden: [IgnoredRecurring] = []
     /// Booking whose custom recurrence dates are being edited.
     var customRecurringBooking: Booking?
-    var statusFilter: StatusFilter = .all
+    var statusFilter: StatusFilter = .all { didSet { rebuildDayGroups() } }
 
     /// Label of the header filter menu: "Status: Alle" or the active filters.
     var filterTitle: String {
@@ -325,7 +341,7 @@ public final class AppModel {
     var selectedBookingID: Booking.ID? {
         didSet {
             if stickyBooking?.id != selectedBookingID { stickyBooking = nil }
-            reloadMerchantStats()
+            loadMerchantStats()
         }
     }
     /// A booking that left the filtered list because the user just edited it
@@ -410,6 +426,10 @@ public final class AppModel {
     private var pollTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var scopeLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var selectionLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var loadsSelectionInBackground = false
+    @ObservationIgnored private var merchantStatsTask: Task<Void, Never>?
+    @ObservationIgnored private var merchantStatsCache: [String: MerchantStats] = [:]
 
     public init(options: LaunchOptions = .current) {
         self.options = options
@@ -841,6 +861,10 @@ public final class AppModel {
         guard holdsRealData else { return }
         demoDismissedLock = true
         scopeLoadTask?.cancel()
+        selectionLoadTask?.cancel()
+        selectionLoadTask = nil
+        merchantStatsTask?.cancel()
+        merchantStatsCache = [:]
         stopAutoSync()
         ownVault = nil
         demoActive = false
@@ -880,6 +904,7 @@ public final class AppModel {
     }
 
     func reloadCategories() {
+        settlePendingSelectionLoad()
         guard let vault else { return }
         let (from, to) = periodRange
         run {
@@ -893,9 +918,31 @@ public final class AppModel {
         run { dashboard = try vault.investmentDashboard(months: 6) }
     }
 
+    /// After an edit that can change a merchant's history: drop the cache, load again.
     func reloadMerchantStats() {
-        guard let vault, let b = selectedBooking else { merchantStats = nil; return }
-        merchantStats = try? vault.merchantStats(merchantKey: b.merchant.key)
+        merchantStatsCache = [:]
+        loadMerchantStats()
+    }
+
+    /// Merchant history of the selected booking. The core scans every booking
+    /// for it, so it runs off the main thread and is cached per merchant; the
+    /// short delay keeps arrow-key navigation from queueing one scan per row.
+    private func loadMerchantStats() {
+        merchantStatsTask?.cancel()
+        guard let vault, let key = selectedBooking?.merchant.key else { merchantStats = nil; return }
+        if let cached = merchantStatsCache[key] { merchantStats = cached; return }
+        merchantStats = nil
+        merchantStatsTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled else { return }
+            let stats = await Task.detached(priority: .userInitiated) {
+                try? vault.merchantStats(merchantKey: key)
+            }.value
+            // A vault switch or data change in the meantime cancels this task.
+            guard !Task.isCancelled, let self, let stats else { return }
+            self.merchantStatsCache[key] = stats
+            if self.selectedBooking?.merchant.key == key { self.merchantStats = stats }
+        }
     }
 
     static func buildTree(_ flat: [GiroCrabCore.Category]) -> [CategoryNode] {
@@ -1028,6 +1075,7 @@ public final class AppModel {
     func reloadBookings() {
         // A synchronous refresh (account, period, edit, vault change) supersedes
         // any scope request still running in the background.
+        settlePendingSelectionLoad()
         scopeLoadTask?.cancel()
         guard let vault else { return }
         run {
@@ -1035,10 +1083,13 @@ public final class AppModel {
             page = p
             bookings = p.transactions
         }
-        if let sel = selectedBookingID, !bookings.contains(where: { $0.id == sel }), stickyBooking?.id != sel {
+        if let sel = selectedBookingID, booking(withID: sel) == nil, stickyBooking?.id != sel {
             selectedBookingID = bookings.first?.id
         }
         reloadSelectionKPIs()
+        // Every edit, sync and import ends up here: cached merchant histories may be stale.
+        merchantStatsCache = [:]
+        if merchantStats == nil { loadMerchantStats() }
     }
 
     /// Let the segmented control finish updating immediately. Database work
@@ -1080,29 +1131,29 @@ public final class AppModel {
     func reloadSelectionKPIs() {
         guard let vault else { selectionFlow = nil; return }
         let (from, to) = periodRange
-        let filter = BookingFilter(
-            accountIds: currentFilter.accountIds, categoryId: nil, includeSubcategories: true, uncategorizedOnly: false,
-            search: nil, dateFrom: from, dateTo: to, limit: 0, offset: 0,
-            scope: .all, merchantKey: nil, direction: .all
-        )
+        let filter = currentFilter
+        // The list query already summed the same bookings unless it is narrowed further.
+        if let page, filter.scope == .all, filter.direction == .all, filter.search == nil, filter.categoryId == nil, !filter.uncategorizedOnly {
+            selectionFlow = (page.flow.consumptionCents, page.flow.investedCents, page.flow.incomeCents)
+            return
+        }
+        let ids = filter.accountIds
         run {
-            let p = try vault.listTransactions(filter: filter)
-            var consumption: Int64 = 0, invested: Int64 = 0, income: Int64 = 0
-            for b in p.transactions {
-                switch b.flow {
-                case .consumption: consumption += -b.amountCents
-                case .investment: invested += -b.amountCents
-                case .perk where b.amountCents < 0: invested += -b.amountCents
-                case .income: income += b.amountCents
-                default: break
-                }
-            }
-            selectionFlow = (consumption, invested, income)
+            let f = try vault.selectionFlow(accountIds: ids, dateFrom: from, dateTo: to)
+            selectionFlow = (f.consumptionCents, f.investedCents, f.incomeCents)
         }
     }
 
     func reloadHistory() {
+        settlePendingSelectionLoad()
         guard let vault else { return }
+        let (ids, days) = historyRequest
+        let (from, to) = periodRange
+        run { history = Self.trimmedHistory(try vault.balanceHistory(accountIds: ids, days: days), from: from, to: to) }
+    }
+
+    /// Accounts and day count of the balance chart for the current selection and period.
+    private var historyRequest: (ids: [Int64], days: UInt32) {
         var ids: [Int64]
         switch sidebarSelection {
         case .account(let id): ids = [id]
@@ -1113,20 +1164,116 @@ public final class AppModel {
         if ids.isEmpty { ids = [-1] }
         // The chart follows the selected period. "Gesamter Zeitraum": up to ~15 years back,
         // then the flat lead-in before the first booking is cut off.
-        let (from, to) = periodRange
         let today = Calendar.current.startOfDay(for: Date())
-        let start = from.flatMap(DateText.date) ?? Calendar.current.date(byAdding: .year, value: -15, to: today)!
+        let start = periodRange.0.flatMap(DateText.date) ?? Calendar.current.date(byAdding: .year, value: -15, to: today)!
         let days = max(2, (Calendar.current.dateComponents([.day], from: start, to: today).day ?? 120) + 1)
-        run {
-            var points = try vault.balanceHistory(accountIds: ids, days: UInt32(days))
-            if let to { points = points.filter { $0.date <= to } }
-            if from == nil,
-               let firstChange = points.indices.dropFirst().first(where: { points[$0].balanceCents != points[$0 - 1].balanceCents }) {
-                // keep one point before the first change
-                points = Array(points[(firstChange - 1)...])
-            }
-            history = points
+        return (ids, UInt32(days))
+    }
+
+    private static func trimmedHistory(_ all: [DailyBalance], from: String?, to: String?) -> [DailyBalance] {
+        var points = all
+        if let to { points = points.filter { $0.date <= to } }
+        if from == nil,
+           let firstChange = points.indices.dropFirst().first(where: { points[$0].balanceCents != points[$0 - 1].balanceCents }) {
+            // keep one point before the first change
+            points = Array(points[(firstChange - 1)...])
         }
+        return points
+    }
+
+    // MARK: - Selection change (account, group, category, period)
+
+    private func reloadSelection(periodChanged: Bool) {
+        if loadsSelectionInBackground, vault != nil {
+            startSelectionLoad()
+        } else if selectionLoadTask != nil {
+            settlePendingSelectionLoad() // reloads everything
+        } else {
+            reloadSelectionNow(periodChanged: periodChanged)
+        }
+    }
+
+    private func reloadSelectionNow(periodChanged: Bool) {
+        refreshSalaryCycle()
+        if periodChanged { reloadCategories() } else { refreshRecurring() }
+        reloadBookings()
+        reloadHistory()
+    }
+
+    /// A synchronous reload while a background selection load is still running:
+    /// drop that load and bring everything it would have delivered up to date
+    /// now, so its older result can never overwrite fresher data.
+    private func settlePendingSelectionLoad() {
+        guard let task = selectionLoadTask else { return }
+        task.cancel()
+        selectionLoadTask = nil
+        refreshSalaryCycle()
+        refreshRecurring()
+        reloadCategories()
+        reloadBookings()
+        reloadHistory()
+    }
+
+    /// Runs blocking core calls off the main thread; cancelling the caller cancels the work.
+    private nonisolated static func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        let job = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            return try work()
+        }
+        return try await withTaskCancellationHandler { try await job.value } onCancel: { job.cancel() }
+    }
+
+    /// Everything a selection change needs, loaded off the main thread and
+    /// published in one go; until then the previous data stays on screen.
+    private func startSelectionLoad() {
+        selectionLoadTask?.cancel()
+        scopeLoadTask?.cancel()
+        guard let vault else { return }
+        let ids = selectionAccountIDs
+        let month = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: Date())
+        let task = Task { [weak self] in
+            do {
+                // The pay cycle comes first: `.sinceSalary` derives the period from it.
+                let cycle = try await Self.offMain { try vault.salaryCycle(accountIds: ids) }
+                guard !Task.isCancelled, let self else { return }
+                self.salaryCycle = cycle
+                let filter = self.currentFilter
+                let (from, to) = self.periodRange
+                let chart = self.historyRequest
+                let listHasFlow = filter.scope == .all && filter.direction == .all && filter.search == nil && filter.categoryId == nil && !filter.uncategorizedOnly
+                let loaded = try await Self.offMain {
+                    let page = try vault.listTransactions(filter: filter)
+                    try Task.checkCancellation()
+                    let flow = listHasFlow ? page.flow : try vault.selectionFlow(accountIds: filter.accountIds, dateFrom: from, dateTo: to)
+                    try Task.checkCancellation()
+                    let recurring = try vault.recurringSnapshot(accountIds: ids, year: Int32(month.year ?? 2026), month: UInt32(month.month ?? 1))
+                    let categories = try vault.listCategories(dateFrom: from, dateTo: to)
+                    try Task.checkCancellation()
+                    let history = try vault.balanceHistory(accountIds: chart.ids, days: chart.days)
+                    return (page: page, flow: flow, recurring: recurring, categories: categories, history: history)
+                }
+                // A newer selection or a synchronous reload cancelled this request.
+                guard !Task.isCancelled else { return }
+                self.selectionLoadTask = nil
+                self.page = loaded.page
+                self.bookings = loaded.page.transactions
+                if let sel = self.selectedBookingID, self.booking(withID: sel) == nil, self.stickyBooking?.id != sel {
+                    self.selectedBookingID = self.bookings.first?.id
+                }
+                self.selectionFlow = (loaded.flow.consumptionCents, loaded.flow.investedCents, loaded.flow.incomeCents)
+                self.recurring = loaded.recurring.series
+                self.recurringHidden = loaded.recurring.ignored
+                self.recurringMonth = loaded.recurring.month
+                self.categories = loaded.categories
+                self.categoryTree = Self.buildTree(loaded.categories)
+                self.history = Self.trimmedHistory(loaded.history, from: from, to: to)
+            } catch {
+                guard !Task.isCancelled, let self else { return }
+                self.selectionLoadTask = nil
+                self.errorMessage = describe(error)
+            }
+        }
+        selectionLoadTask = task
     }
 
     func reloadRules() {
@@ -1194,10 +1341,7 @@ public final class AppModel {
 
     private func periodDidChange() {
         listLimit = Self.defaultListLimit
-        refreshSalaryCycle()
-        reloadCategories()
-        reloadBookings()
-        reloadHistory()
+        reloadSelection(periodChanged: true)
     }
 
     /// Subtitle of the period-based KPI tiles.
@@ -1208,6 +1352,7 @@ public final class AppModel {
     }
 
     func refreshSalaryCycle() {
+        settlePendingSelectionLoad()
         guard let vault else { salaryCycle = nil; return }
         let ids = selectionAccountIDs
         run { salaryCycle = try vault.salaryCycle(accountIds: ids) }
@@ -1304,13 +1449,15 @@ public final class AppModel {
     // MARK: - Recurring bookings (GitHub #35)
 
     func refreshRecurring() {
+        settlePendingSelectionLoad()
         guard let vault else { recurring = []; recurringMonth = nil; return }
         let ids = selectionAccountIDs
         let c = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: Date())
         run {
-            recurring = try vault.listRecurring(accountIds: ids)
-            recurringHidden = try vault.listIgnoredRecurring(accountIds: ids)
-            recurringMonth = try vault.recurringMonth(accountIds: ids, year: Int32(c.year ?? 2026), month: UInt32(c.month ?? 1))
+            let snapshot = try vault.recurringSnapshot(accountIds: ids, year: Int32(c.year ?? 2026), month: UInt32(c.month ?? 1))
+            recurring = snapshot.series
+            recurringHidden = snapshot.ignored
+            recurringMonth = snapshot.month
         }
     }
 
@@ -1347,7 +1494,7 @@ public final class AppModel {
 
     /// Selects a booking in the list, widening the period if it is outside of it.
     func revealBooking(_ id: Int64) {
-        if !bookings.contains(where: { $0.id == id }) {
+        if booking(withID: id) == nil {
             sidebarSelection = .allAccounts
             period = .all
             directionFilter = .all
@@ -1493,7 +1640,15 @@ public final class AppModel {
         scrollToDay = DayJump(day: target.date)
     }
 
-    var dayGroups: [DayGroup] {
+    private func rebuildBookingIndex() {
+        var index: [Booking.ID: Int] = [:]
+        index.reserveCapacity(bookings.count)
+        for (i, b) in bookings.enumerated() { index[b.id] = i }
+        bookingIndexByID = index
+        rebuildDayGroups()
+    }
+
+    private func rebuildDayGroups() {
         var out: [DayGroup] = []
         var current: [Booking] = []
         var day = ""
@@ -1506,12 +1661,16 @@ public final class AppModel {
             current.append(b)
         }
         if !current.isEmpty { out.append(DayGroup(date: day, bookings: current)) }
-        return out
+        dayGroups = out
+    }
+
+    private func booking(withID id: Booking.ID) -> Booking? {
+        bookingIndexByID[id].map { bookings[$0] }
     }
 
     var selectedBooking: Booking? {
         guard let id = selectedBookingID else { return nil }
-        return bookings.first { $0.id == id } ?? (stickyBooking?.id == id ? stickyBooking : nil)
+        return booking(withID: id) ?? (stickyBooking?.id == id ? stickyBooking : nil)
     }
 
     var allAccounts: [Account] { groups.flatMap(\.accounts) }

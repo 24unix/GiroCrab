@@ -417,6 +417,8 @@ pub struct BookingPage {
     pub investment_cents: i64,
     /// Saveback + Round up movements (net).
     pub perk_cents: i64,
+    /// KPI flows of all matching bookings (not only the loaded page).
+    pub flow: SelectionFlow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -519,6 +521,29 @@ pub struct MerchantStats {
     pub average_cents: i64,
     pub first_date: String,
     pub last_date: String,
+}
+
+/// KPI tiles: flows of a selection (accounts + period), all positive.
+#[derive(Debug, Clone, Default, uniffi::Record)]
+pub struct SelectionFlow {
+    /// Everyday spending.
+    pub consumption_cents: i64,
+    /// Savings plans / purchases plus perk outflows (Round up).
+    pub invested_cents: i64,
+    pub income_cents: i64,
+}
+
+impl SelectionFlow {
+    pub(crate) fn add(&mut self, b: &Booking) {
+        use crate::merchants::FlowKind;
+        match b.flow {
+            FlowKind::Consumption => self.consumption_cents -= b.amount_cents,
+            FlowKind::Investment => self.invested_cents -= b.amount_cents,
+            FlowKind::Perk if b.amount_cents < 0 => self.invested_cents -= b.amount_cents,
+            FlowKind::Income => self.income_cents += b.amount_cents,
+            _ => {}
+        }
+    }
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

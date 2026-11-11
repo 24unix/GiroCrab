@@ -13,7 +13,7 @@ struct SidebarView: View {
 
     var body: some View {
         @Bindable var model = model
-        List(selection: $model.sidebarSelection) {
+        List(selection: $model.interactiveSidebarSelection) {
             HStack(spacing: 8) {
                 Image(systemName: "square.grid.2x2").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Übersicht").fontWeight(.medium)
@@ -164,7 +164,7 @@ struct SidebarView: View {
                 .groupHeaderTap(SidebarItem.group(group.id), toggle: toggle)
                 #if os(iOS)
                 .contextMenu {
-                    Button("Gruppenübersicht", systemImage: "list.bullet.rectangle") { model.sidebarSelection = .group(group.id) }
+                    Button("Gruppenübersicht", systemImage: "list.bullet.rectangle") { model.interactiveSidebarSelection = .group(group.id) }
                 }
                 #endif
             ForEach(open ? group.accounts.filter(isShown) : []) { account in

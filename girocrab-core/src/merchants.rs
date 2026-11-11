@@ -1024,7 +1024,10 @@ pub fn normalise(s: &str) -> String {
         " s.a.",
         " e.v.",
     ] {
-        s = s.replace(noise, " ");
+        // `replace` allocates even without a match; most texts contain none.
+        if s.contains(noise) {
+            s = s.replace(noise, " ");
+        }
     }
     if !s.ends_with(' ') {
         s.push(' ');
@@ -1546,6 +1549,12 @@ impl MerchantResolver {
             c.insert(key, info.clone());
         }
         info
+    }
+
+    /// Empty merchant for a booking that is enriched right afterwards.
+    pub fn placeholder() -> MerchantInfo {
+        static EMPTY: OnceLock<MerchantInfo> = OnceLock::new();
+        EMPTY.get_or_init(|| Self::resolve_uncached("", "")).clone()
     }
 
     fn resolve_uncached(counterparty: &str, purpose: &str) -> MerchantInfo {

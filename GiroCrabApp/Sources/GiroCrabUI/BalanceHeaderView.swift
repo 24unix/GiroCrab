@@ -231,7 +231,7 @@ struct StreamHeaderCard: View {
         let account = self.account
         HStack(spacing: 12) {
                 Menu {
-                    Picker("Zeitraum", selection: $model.period) {
+                    Picker("Zeitraum", selection: $model.interactivePeriod) {
                         ForEach(Period.presets) { Text($0.title).tag($0) }
                     }
                     .pickerStyle(.inline)

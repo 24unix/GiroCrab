@@ -138,6 +138,15 @@ pub struct RecurringMonthItem {
     pub amount_cents: i64,
 }
 
+/// Everything the recurring UI shows for one selection, from a single pass
+/// over the bookings.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct RecurringSnapshot {
+    pub series: Vec<RecurringSeries>,
+    pub ignored: Vec<IgnoredRecurring>,
+    pub month: RecurringMonthOverview,
+}
+
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct RecurringMonthOverview {
     pub year: i32,
@@ -607,6 +616,24 @@ impl Vault {
         Ok(month_items(&series, &bookings, year, month))
     }
 
+    /// `list_recurring`, `list_ignored_recurring` and `recurring_month` in one
+    /// call: the bookings are loaded and the series detected only once.
+    pub fn recurring_snapshot(
+        &self,
+        account_ids: Vec<i64>,
+        year: i32,
+        month: u32,
+    ) -> Result<RecurringSnapshot, CoreError> {
+        let (bookings, today) = self.recurring_input(account_ids)?;
+        let stored = load_stored(&*self.db()?)?;
+        let series = build_series(&bookings, &stored, today);
+        Ok(RecurringSnapshot {
+            month: month_items(&series, &bookings, year, month),
+            ignored: ignored_series(&bookings, &stored),
+            series,
+        })
+    }
+
     /// Series hidden with "Nicht wiederkehrend" that still have bookings in
     /// the detection window, so the user can show them again.
     pub fn list_ignored_recurring(
@@ -734,7 +761,7 @@ mod tests {
             category_source: CategorySource::None,
             rule_id: None,
             checked: false,
-            merchant: MerchantResolver::resolve("", ""),
+            merchant: MerchantResolver::placeholder(),
             merchant_name: String::new(),
             merchant_domain: None,
             merchant_svg_path: None,
