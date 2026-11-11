@@ -195,7 +195,8 @@ pub struct Account {
     pub initial_balance_cents: Option<i64>,
     /// User-defined group ("Nach Gruppe" view); `None` = "Ohne Gruppe".
     pub user_group_uuid: Option<String>,
-    /// Counts towards the overall total (false if its user group is excluded).
+    /// Counts towards the overall total (false if its user group, or a group
+    /// that one is in, is excluded).
     pub in_total: bool,
     /// Marker colour (`#RRGGBB`): the user's choice or a default derived
     /// from the account's sync identity (same on every device).
@@ -228,12 +229,20 @@ pub struct UserGroup {
     pub name: String,
     pub sf_symbol: String,
     pub sort_order: i32,
-    /// Accounts of this group count towards the overall total.
+    /// The group's own switch: its accounts count towards the overall total.
     pub include_in_total: bool,
+    /// Effective: false if this group or a group it is in is excluded.
+    pub in_total: bool,
     /// The trailing "Ohne Gruppe" entry (accounts without a user group).
     pub is_ungrouped: bool,
-    /// Sum of all EUR account balances in this group.
+    /// The group this one is a subgroup of; `None` = top level.
+    pub parent_uuid: Option<String>,
+    /// Nesting level (0 = top level). The list is a flattened tree: a
+    /// group's subgroups follow it directly.
+    pub depth: u32,
+    /// Sum of all EUR account balances in this group and its subgroups.
     pub balance_cents: i64,
+    /// The group's own accounts (without those of its subgroups).
     pub accounts: Vec<Account>,
 }
 

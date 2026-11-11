@@ -95,7 +95,7 @@ struct UserGroupHeader: View {
                 .foregroundStyle(Theme.tertiary)
                 .frame(width: 14)
             Text(group.name).lineLimit(1)
-            if !group.includeInTotal {
+            if !group.inTotal {
                 Image(systemName: "eye.slash")
                     .font(.system(size: 9))
                     .foregroundStyle(Theme.tertiary)
@@ -106,7 +106,7 @@ struct UserGroupHeader: View {
             Text(Money.format(group.balanceCents))
                 .monospacedDigit()
                 .foregroundStyle(group.balanceCents < 0 ? Theme.negative : Theme.secondary)
-                .opacity(group.includeInTotal ? 1 : 0.6)
+                .opacity(group.inTotal ? 1 : 0.6)
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(Theme.secondary)
@@ -125,7 +125,7 @@ struct AccountGroupMenu: View {
                     get: { account.userGroupUuid == g.uuid },
                     set: { _ in model.moveAccount(account.id, to: g.uuid) }
                 )) {
-                    Label(g.name, systemImage: g.sfSymbol)
+                    Label(g.indentedName, systemImage: g.sfSymbol)
                 }
             }
             Toggle(isOn: Binding(
@@ -197,9 +197,29 @@ struct UserGroupMenu: View {
             )) {
                 Label("In Gesamtsumme einbeziehen", systemImage: "sum")
             }
+            Menu("Verschieben nach", systemImage: "arrow.turn.down.right") {
+                Toggle(isOn: Binding(
+                    get: { group.parentUuid == nil },
+                    set: { _ in model.setUserGroupParent(group, parent: nil) }
+                )) {
+                    Label("Oberste Ebene", systemImage: "arrow.up.to.line")
+                }
+                Divider()
+                ForEach(model.parentCandidates(for: group)) { g in
+                    Toggle(isOn: Binding(
+                        get: { group.parentUuid == g.uuid },
+                        set: { _ in model.setUserGroupParent(group, parent: g.uuid) }
+                    )) {
+                        Label(g.indentedName, systemImage: g.sfSymbol)
+                    }
+                }
+            }
         }
         Divider()
         Button("Neue Gruppe …", systemImage: "folder.badge.plus") { model.groupDialog = .create() }
+        if !group.isUngrouped {
+            Button("Neue Untergruppe …", systemImage: "folder.badge.plus") { model.groupDialog = .create(parent: group) }
+        }
         Button("Gruppen bearbeiten …", systemImage: "slider.horizontal.3") { model.openGroupSettings() }
         if !group.isUngrouped {
             Divider()
@@ -234,7 +254,7 @@ struct AccountGroupDialogs: ViewModifier {
                 Button(d.isRename ? "Umbenennen" : "Anlegen") { submit(d) }
                 Button("Abbrechen", role: .cancel) {}
             } message: { d in
-                if case .create(let id?) = d, let a = model.account(for: id) {
+                if case .create(let id?, _) = d, let a = model.account(for: id) {
                     Text("„\(a.name)“ wird in die neue Gruppe verschoben.")
                 }
             }
@@ -250,7 +270,7 @@ struct AccountGroupDialogs: ViewModifier {
                 case .moveAccount(let a):
                     ForEach(model.namedUserGroups) { g in
                         Button { model.moveAccount(a.id, to: g.uuid) } label: {
-                            Text(verbatim: a.userGroupUuid == g.uuid ? "✓ \(g.name)" : g.name)
+                            Text(verbatim: a.userGroupUuid == g.uuid ? "✓ \(g.indentedName)" : g.indentedName)
                         }
                     }
                     Button { model.moveAccount(a.id, to: nil) } label: {
@@ -268,7 +288,7 @@ struct AccountGroupDialogs: ViewModifier {
                 Button("Abbrechen", role: .cancel) {}
             } message: { d in
                 switch d {
-                case .delete(let g): Text(deleteMessage(g))
+                case .delete(let g): Text(deleteMessage(g, parent: model.userGroups.first { $0.uuid == g.parentUuid }, subgroups: model.userGroupSubtree(g.uuid).count - 1))
                 case .merge(let from, let into):
                     Text("Die Konten aus „\(from.name)“ kommen nach „\(into.name)“. „\(from.name)“ wird entfernt.")
                 default: EmptyView()
@@ -281,7 +301,7 @@ struct AccountGroupDialogs: ViewModifier {
         let name = text.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
         switch d {
-        case .create(let accountID): model.createUserGroup(name: name, moving: accountID)
+        case .create(let accountID, let parent): model.createUserGroup(name: name, moving: accountID, parent: parent?.uuid)
         case .rename(let g):
             // after the alert has closed
             if let next = model.renameUserGroup(g, to: name) { DispatchQueue.main.async { dialog = next } }
@@ -325,7 +345,7 @@ struct AccountGroupsSettings: View {
 
     private var footer: LocalizedStringKey {
         model.hasUserGroups
-            ? "Reihenfolge per Ziehen ändern. Konten ohne Gruppe erscheinen unter „Ohne Gruppe“."
+            ? "Reihenfolge per Ziehen ändern, Untergruppen über „Übergeordnete Gruppe“. Konten ohne Gruppe erscheinen unter „Ohne Gruppe“."
             : "Mit Gruppen trennen Sie z. B. private und geschäftliche Konten oder die Konten von Familienmitgliedern."
     }
 
@@ -416,13 +436,14 @@ struct GroupListRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: group.sfSymbol).foregroundStyle(Theme.accent).frame(width: 22)
+                .padding(.leading, CGFloat(group.depth) * 14)
             VStack(alignment: .leading, spacing: 1) {
                 Text(group.name).lineLimit(1)
                 Text(accountCountText(group.accounts.count))
                     .font(.caption).foregroundStyle(Theme.secondary)
             }
             Spacer(minLength: 4)
-            if !group.includeInTotal {
+            if !group.inTotal {
                 Image(systemName: "eye.slash").foregroundStyle(Theme.tertiary).help("Nicht in der Gesamtsumme")
             }
         }
@@ -430,12 +451,27 @@ struct GroupListRow: View {
     }
 }
 
-func deleteMessage(_ g: UserGroup) -> String {
+/// `parent`: the group `g` is in; `subgroups`: number of groups below it.
+func deleteMessage(_ g: UserGroup, parent: UserGroup? = nil, subgroups: Int = 0) -> String {
+    let target = parent?.name ?? String(localized: "Ohne Gruppe")
+    var parts: [String] = []
     switch g.accounts.count {
-    case 0: String(localized: "Die Gruppe ist leer.")
-    case 1: String(localized: "Das Konto wird nach „Ohne Gruppe“ verschoben. Es werden keine Konten oder Buchungen gelöscht.")
-    case let n: String(localized: "\(n) Konten werden nach „Ohne Gruppe“ verschoben. Es werden keine Konten oder Buchungen gelöscht.")
+    case 0: if subgroups == 0 { return String(localized: "Die Gruppe ist leer.") }
+    case 1: parts.append(String(localized: "Das Konto wird nach „\(target)“ verschoben."))
+    case let n: parts.append(String(localized: "\(n) Konten werden nach „\(target)“ verschoben."))
     }
+    if subgroups > 0 {
+        parts.append(parent == nil
+            ? String(localized: "Die Untergruppen bleiben erhalten und rücken auf die oberste Ebene.")
+            : String(localized: "Die Untergruppen bleiben erhalten und rücken nach „\(target)“."))
+    }
+    parts.append(String(localized: "Es werden keine Konten oder Buchungen gelöscht."))
+    return parts.joined(separator: " ")
+}
+
+extension UserGroup {
+    /// Name indented by nesting level, for menus and pickers.
+    var indentedName: String { String(repeating: "\u{2003}", count: Int(depth)) + name }
 }
 
 /// "Keine Konten" / "1 Konto" / "3 Konten".
@@ -488,12 +524,27 @@ struct GroupDetailEditor: View {
                     .padding(.vertical, 4)
                 }
                 Section {
+                    Picker("Übergeordnete Gruppe", selection: Binding(
+                        get: { g.parentUuid ?? "" },
+                        set: { model.setUserGroupParent(g, parent: $0.isEmpty ? nil : $0) }
+                    )) {
+                        Text("Keine (oberste Ebene)").tag("")
+                        ForEach(model.parentCandidates(for: g)) { c in
+                            Text(verbatim: c.indentedName).tag(c.uuid)
+                        }
+                    }
+                } footer: {
+                    Text("Summe, Buchungsliste und Saldoverlauf einer Gruppe enthalten auch ihre Untergruppen.")
+                }
+                Section {
                     Toggle("In Gesamtsumme einbeziehen", isOn: Binding(
                         get: { g.includeInTotal },
                         set: { model.updateUserGroup(g, includeInTotal: $0) }
                     ))
                 } footer: {
-                    Text("Ausgeschaltet zählen die Konten dieser Gruppe nicht zu „Verfügbar“ und zum Saldoverlauf der Übersicht – z. B. für Geschäfts- oder Kinderkonten.")
+                    Text(g.includeInTotal && !g.inTotal
+                         ? "Diese Gruppe liegt in einer Gruppe, die nicht zur Gesamtsumme zählt – ihre Konten zählen deshalb ebenfalls nicht."
+                         : "Ausgeschaltet zählen die Konten dieser Gruppe und ihrer Untergruppen nicht zu „Verfügbar“ und zum Saldoverlauf der Übersicht – z. B. für Geschäfts- oder Kinderkonten.")
                 }
                 Section {
                     ForEach(model.allAccounts) { a in

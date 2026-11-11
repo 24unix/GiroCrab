@@ -34,8 +34,9 @@ enum AccountSidebarMode: String, CaseIterable, Identifiable {
 /// Group dialogs. One state for all of them, set from menus, ⇧⌘N, the
 /// editor sheet and swipe actions, presented in one place.
 enum GroupDialog {
-    /// "Neue Gruppe …", optionally moving an account into the new group.
-    case create(movingAccount: Int64? = nil)
+    /// "Neue Gruppe …", optionally moving an account into the new group;
+    /// with `parent`: "Neue Untergruppe …" of that group.
+    case create(movingAccount: Int64? = nil, parent: UserGroup? = nil)
     case rename(UserGroup)
     case delete(UserGroup)
     /// iOS swipe "Gruppe …".
@@ -53,6 +54,7 @@ enum GroupDialog {
 
     var title: Text {
         switch self {
+        case .create(_, let parent?): Text("Neue Untergruppe in „\(parent.name)“")
         case .create: Text("Neue Gruppe")
         case .rename: Text("Gruppe umbenennen")
         case .delete(let g): Text("Gruppe „\(g.name)“ löschen?")
@@ -96,8 +98,47 @@ extension AppModel {
     /// Real groups only (without "Ohne Gruppe"), for menus.
     var namedUserGroups: [UserGroup] { userGroups.filter { !$0.isUngrouped } }
 
+    /// The group and all its subgroups (the list is a flattened tree: a
+    /// group's subgroups follow it with a greater depth).
+    func userGroupSubtree(_ uuid: String) -> [UserGroup] {
+        guard !uuid.isEmpty, let i = userGroups.firstIndex(where: { $0.uuid == uuid }) else {
+            return userGroups.filter { $0.uuid == uuid }
+        }
+        let depth = userGroups[i].depth
+        return [userGroups[i]] + userGroups[(i + 1)...].prefix { $0.depth > depth && !$0.isUngrouped }
+    }
+
+    /// Accounts of the group including its subgroups.
     func userGroupAccountIDs(_ uuid: String) -> [Int64] {
-        userGroups.first { $0.uuid == uuid }?.accounts.map(\.id) ?? []
+        userGroupSubtree(uuid).flatMap { $0.accounts.map(\.id) }
+    }
+
+    /// Groups `g` can be moved into: all but itself and its own subgroups.
+    func parentCandidates(for g: UserGroup) -> [UserGroup] {
+        let own = Set(userGroupSubtree(g.uuid).map(\.uuid))
+        return namedUserGroups.filter { !own.contains($0.uuid) }
+    }
+
+    /// Shown in the sidebar: no group above it is collapsed.
+    func isUserGroupVisible(_ g: UserGroup) -> Bool {
+        var parent = g.parentUuid
+        while let p = parent {
+            if collapsedUserGroups.contains(p) { return false }
+            parent = userGroups.first { $0.uuid == p }?.parentUuid
+        }
+        return true
+    }
+
+    /// Makes `g` a subgroup of `parent` (`nil` = top level).
+    func setUserGroupParent(_ g: UserGroup, parent: String?) {
+        guard let vault, !g.isUngrouped else { return }
+        do {
+            try vault.setUserGroupParent(uuid: g.uuid, parentUuid: parent)
+            if let parent { collapsedUserGroups.remove(parent) }
+            afterGroupChange()
+        } catch {
+            errorMessage = describe(error)
+        }
     }
 
     func userGroup(of account: Account) -> UserGroup? {
@@ -140,10 +181,14 @@ extension AppModel {
 
     /// Creates a group (and moves `accountID` into it). Returns the uuid.
     @discardableResult
-    func createUserGroup(name: String, symbol: String = "folder", moving accountID: Int64? = nil) -> String? {
+    func createUserGroup(name: String, symbol: String = "folder", moving accountID: Int64? = nil, parent: String? = nil) -> String? {
         guard let vault else { return nil }
         do {
             let uuid = try vault.createUserGroup(name: name, sfSymbol: symbol)
+            if let parent {
+                try vault.setUserGroupParent(uuid: uuid, parentUuid: parent)
+                collapsedUserGroups.remove(parent)
+            }
             if let accountID { try vault.moveAccountToGroup(accountId: accountID, groupUuid: uuid, index: nil) }
             accountView = .byGroup
             collapsedUserGroups.remove(uuid)

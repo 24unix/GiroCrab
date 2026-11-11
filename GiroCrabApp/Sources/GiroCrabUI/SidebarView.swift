@@ -210,11 +210,14 @@ struct SidebarView: View {
     /// "Nach Gruppe": user groups, then "Ohne Gruppe".
     @ViewBuilder
     private var userGroupRows: some View {
-        ForEach(model.userGroups) { group in
+        // a flattened tree: subgroups follow their group, indented by depth
+        ForEach(model.userGroups.filter(model.isUserGroupVisible)) { group in
             let open = !model.collapsedUserGroups.contains(group.uuid)
             let toggle = { withAnimation(.easeInOut(duration: 0.15)) { model.toggleCollapsed(group) } }
+            let indent = CGFloat(group.depth) * 14
             UserGroupHeader(group: group, open: open, toggle: toggle)
-                .padding(.top, 10)
+                .padding(.top, group.depth == 0 ? 10 : 4)
+                .padding(.leading, indent)
                 .groupHeaderTap(SidebarItem.userGroup(group.uuid), toggle: toggle)
                 .contextMenu {
                     UserGroupMenu(group: group)
@@ -227,11 +230,11 @@ struct SidebarView: View {
                     handleDrop(items, into: group, at: nil)
                 } isTargeted: { dropTarget = $0 ? "g:" + group.uuid : (dropTarget == "g:" + group.uuid ? nil : dropTarget) }
             if open {
-                if group.accounts.isEmpty && !group.isUngrouped {
+                if group.accounts.isEmpty && !group.isUngrouped && model.userGroupSubtree(group.uuid).count == 1 {
                     Text(emptyHint)
                         .font(.caption)
                         .foregroundStyle(Theme.tertiary)
-                        .padding(.leading, 33)
+                        .padding(.leading, 33 + indent)
                         .modifier(DropHighlight(key: "e:" + group.uuid, target: $dropTarget))
                         .dropDestination(for: String.self) { items, _ in
                             handleDrop(items, into: group, at: nil)
@@ -240,6 +243,7 @@ struct SidebarView: View {
                 // offsets of the full list: a drop position counts hidden archived accounts too
                 ForEach(Array(group.accounts.enumerated()).filter { isShown($0.element) }, id: \.element.id) { i, account in
                     accountRow(account)
+                        .padding(.leading, indent)
                         .draggable(GroupDrag.account(account.id)) {
                             Label(account.name, systemImage: account.sfSymbol).padding(6)
                         }

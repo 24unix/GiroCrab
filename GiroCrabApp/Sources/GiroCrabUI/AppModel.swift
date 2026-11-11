@@ -1047,7 +1047,7 @@ public final class AppModel {
         switch sidebarSelection {
         case .account: false
         case .group(let id): (groups.first { $0.id == id }?.accounts.count ?? 0) > 1
-        case .userGroup(let uuid): (userGroups.first { $0.uuid == uuid }?.accounts.count ?? 0) > 1
+        case .userGroup(let uuid): userGroupAccountIDs(uuid).count > 1
         default: accountMarkers.count > 1
         }
     }

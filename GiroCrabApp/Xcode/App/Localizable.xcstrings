@@ -67,17 +67,6 @@
         }
       }
     },
-    "Das Konto wird nach „Ohne Gruppe“ verschoben. Es werden keine Konten oder Buchungen gelöscht." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The account will be moved to “Ungrouped”. No accounts or transactions are deleted."
-          }
-        }
-      }
-    },
     "Die Konten aus „%@“ kommen nach „%@“. „%@“ wird entfernt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -767,17 +756,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld accounts"
-          }
-        }
-      }
-    },
-    "%lld Konten werden nach „Ohne Gruppe“ verschoben. Es werden keine Konten oder Buchungen gelöscht." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld accounts will be moved to “Ungrouped”. No accounts or transactions are deleted."
           }
         }
       }
@@ -1573,17 +1551,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "Ausgeschaltet zählen die Konten dieser Gruppe nicht zu „Verfügbar“ und zum Saldoverlauf der Übersicht – z. B. für Geschäfts- oder Kinderkonten." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "When off, this group’s accounts don’t count towards “Available” or the overview’s balance history – e.g. for business or children’s accounts."
           }
         }
       }
@@ -5656,17 +5623,6 @@
         }
       }
     },
-    "Reihenfolge per Ziehen ändern. Konten ohne Gruppe erscheinen unter „Ohne Gruppe“." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Drag to reorder. Accounts without a group appear under “Ungrouped”."
-          }
-        }
-      }
-    },
     "Reisen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8718,6 +8674,177 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No access anymore: %@"
+          }
+        }
+      }
+    },
+    "%lld Konten werden nach „%@“ verschoben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld Konten werden nach „%2$@“ verschoben."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld accounts will be moved to “%2$@”."
+          }
+        }
+      }
+    },
+    "Ausgeschaltet zählen die Konten dieser Gruppe und ihrer Untergruppen nicht zu „Verfügbar“ und zum Saldoverlauf der Übersicht – z. B. für Geschäfts- oder Kinderkonten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When off, the accounts of this group and its subgroups don’t count towards “Available” or the overview’s balance history – e.g. for business or children’s accounts."
+          }
+        }
+      }
+    },
+    "Das Konto wird nach „%@“ verschoben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The account will be moved to “%@”."
+          }
+        }
+      }
+    },
+    "Die Untergruppen bleiben erhalten und rücken auf die oberste Ebene." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its subgroups are kept and move to the top level."
+          }
+        }
+      }
+    },
+    "Die Untergruppen bleiben erhalten und rücken nach „%@“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Its subgroups are kept and move to “%@”."
+          }
+        }
+      }
+    },
+    "Diese Gruppe liegt in einer Gruppe, die nicht zur Gesamtsumme zählt – ihre Konten zählen deshalb ebenfalls nicht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This group is inside a group that is excluded from the overall total, so its accounts don’t count either."
+          }
+        }
+      }
+    },
+    "Es werden keine Konten oder Buchungen gelöscht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No accounts or transactions are deleted."
+          }
+        }
+      }
+    },
+    "Keine (oberste Ebene)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None (Top Level)"
+          }
+        }
+      }
+    },
+    "Neue Untergruppe in „%@“" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Subgroup in “%@”"
+          }
+        }
+      }
+    },
+    "Neue Untergruppe …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Subgroup…"
+          }
+        }
+      }
+    },
+    "Oberste Ebene" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Top Level"
+          }
+        }
+      }
+    },
+    "Reihenfolge per Ziehen ändern, Untergruppen über „Übergeordnete Gruppe“. Konten ohne Gruppe erscheinen unter „Ohne Gruppe“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag to reorder; create subgroups with “Parent Group”. Accounts without a group appear under “Ungrouped”."
+          }
+        }
+      }
+    },
+    "Summe, Buchungsliste und Saldoverlauf einer Gruppe enthalten auch ihre Untergruppen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A group’s total, transaction list and balance history include its subgroups."
+          }
+        }
+      }
+    },
+    "Übergeordnete Gruppe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parent Group"
+          }
+        }
+      }
+    },
+    "Verschieben nach" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move To"
           }
         }
       }

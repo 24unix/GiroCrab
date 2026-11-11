@@ -936,6 +936,190 @@ fn order_inside_a_group_is_the_same_on_every_device() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// (name, depth, sum, own accounts) of all named groups, in list order.
+fn tree(v: &Vault) -> Vec<(String, u32, i64, Vec<String>)> {
+    v.list_user_groups()
+        .unwrap()
+        .into_iter()
+        .filter(|g| !g.is_ungrouped)
+        .map(|g| {
+            (
+                g.name,
+                g.depth,
+                g.balance_cents,
+                g.accounts.into_iter().map(|a| a.name).collect(),
+            )
+        })
+        .collect()
+}
+
+fn group(v: &Vault, name: &str) -> crate::models::UserGroup {
+    v.list_user_groups()
+        .unwrap()
+        .into_iter()
+        .find(|g| g.name == name)
+        .unwrap()
+}
+
+#[test]
+fn subgroups_nest_sum_up_and_inherit_the_total_switch() {
+    let dir = temp_dir("nest");
+    let v = open(&dir, "a.db");
+    let ids = seed(&v);
+    let new = |n: &str| v.create_user_group(n.into(), "folder".into()).unwrap();
+    let (immo, nsu, hn, privat) = (
+        new("Immobilien"),
+        new("ETW Neckarsulm"),
+        new("ETW Heilbronn"),
+        new("Privat"),
+    );
+    v.set_user_group_parent(nsu.clone(), Some(immo.clone()))
+        .unwrap();
+    v.set_user_group_parent(hn.clone(), Some(immo.clone()))
+        .unwrap();
+    v.move_account_to_group(ids[0], Some(nsu.clone()), None)
+        .unwrap();
+    v.move_account_to_group(ids[1], Some(hn.clone()), None)
+        .unwrap();
+    v.move_account_to_group(ids[2], Some(immo.clone()), None)
+        .unwrap();
+    assert_eq!(
+        tree(&v),
+        vec![
+            ("Immobilien".into(), 0, 5_050_00, s(&["Visa"])),
+            ("ETW Neckarsulm".into(), 1, 100_00, s(&["Giro"])),
+            ("ETW Heilbronn".into(), 1, 5_000_00, s(&["Depot"])),
+            ("Privat".into(), 0, 0, vec![]),
+        ]
+    );
+    assert_eq!(group(&v, "ETW Heilbronn").parent_uuid, Some(immo.clone()));
+
+    // not into itself or its own subgroups; unknown groups are rejected
+    assert!(v
+        .set_user_group_parent(immo.clone(), Some(immo.clone()))
+        .is_err());
+    assert!(v
+        .set_user_group_parent(immo.clone(), Some(nsu.clone()))
+        .is_err());
+    assert!(v
+        .set_user_group_parent(immo.clone(), Some("nope".into()))
+        .is_err());
+    // deeper nesting, and back to the top level
+    v.set_user_group_parent(immo.clone(), Some(privat.clone()))
+        .unwrap();
+    assert_eq!(
+        tree(&v)
+            .iter()
+            .map(|g| (g.0.as_str(), g.1, g.2))
+            .collect::<Vec<_>>(),
+        vec![
+            ("Privat", 0, 5_050_00),
+            ("Immobilien", 1, 5_050_00),
+            ("ETW Neckarsulm", 2, 100_00),
+            ("ETW Heilbronn", 2, 5_000_00),
+        ]
+    );
+    v.set_user_group_parent(immo.clone(), None).unwrap();
+
+    // excluding the parent excludes the accounts of its subgroups too
+    v.update_user_group(immo.clone(), "Immobilien".into(), "house".into(), false)
+        .unwrap();
+    assert!(v.list_accounts().unwrap().iter().all(|a| !a.in_total));
+    let hn_group = group(&v, "ETW Heilbronn");
+    assert!(hn_group.include_in_total && !hn_group.in_total);
+    assert_eq!(
+        v.balance_history(vec![], 1)
+            .unwrap()
+            .last()
+            .unwrap()
+            .balance_cents,
+        0
+    );
+    v.update_user_group(immo.clone(), "Immobilien".into(), "house".into(), true)
+        .unwrap();
+
+    // deleting a subgroup moves its accounts up into the parent …
+    v.delete_user_group(nsu).unwrap();
+    assert_eq!(
+        tree(&v)[0],
+        ("Immobilien".into(), 0, 5_050_00, s(&["Visa", "Giro"]))
+    );
+    // … and deleting the parent moves its subgroups up, its accounts to "Ohne Gruppe"
+    v.delete_user_group(immo).unwrap();
+    assert_eq!(
+        names(&v),
+        vec![
+            ("ETW Heilbronn".to_string(), s(&["Depot"])),
+            ("Privat".to_string(), vec![]),
+            ("Ohne Gruppe".to_string(), s(&["Visa", "Giro"])),
+        ]
+    );
+    assert_eq!(group(&v, "ETW Heilbronn").depth, 0);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn nesting_syncs_and_survives_conflicts() {
+    let dir = temp_dir("nest-sync");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let (ia, _) = (seed(&a), seed(&b));
+    let new = |n: &str| a.create_user_group(n.into(), "folder".into()).unwrap();
+    let (x, y, z) = (new("X"), new("Y"), new("Z"));
+    a.move_account_to_group(ia[0], Some(y.clone()), None)
+        .unwrap();
+    a.set_user_group_parent(y.clone(), Some(x.clone())).unwrap();
+    tick();
+    sync_both_ways(&a, &b);
+    let shape = |v: &Vault| {
+        tree(v)
+            .into_iter()
+            .map(|g| (g.0, g.1, g.2))
+            .collect::<Vec<_>>()
+    };
+    let nested = vec![
+        ("X".to_string(), 0, 100_00),
+        ("Y".to_string(), 1, 100_00),
+        ("Z".to_string(), 0, 0),
+    ];
+    assert_eq!(shape(&a), nested);
+    assert_eq!(shape(&b), nested);
+
+    // both devices nest two groups into each other: no loop, same tree on both
+    a.set_user_group_parent(z.clone(), Some(y.clone())).unwrap();
+    tick();
+    b.set_user_group_parent(x.clone(), Some(z.clone())).unwrap();
+    tick();
+    sync_both_ways(&a, &b);
+    assert_eq!(shape(&a), shape(&b));
+    assert_eq!(shape(&a).len(), 3, "every group is still listed");
+    assert!(shape(&a).iter().any(|g| g.1 == 0));
+
+    // a parent deleted on one device: its subgroups move up on the other
+    b.set_user_group_parent(x.clone(), None).unwrap();
+    b.set_user_group_parent(z.clone(), None).unwrap();
+    tick();
+    sync_both_ways(&a, &b);
+    assert_eq!(shape(&a), nested);
+    // (B still has Y inside X when A deletes X)
+    a.delete_user_group(x).unwrap();
+    tick();
+    sync_both_ways(&a, &b);
+    let flat = vec![("Y".to_string(), 0, 100_00), ("Z".to_string(), 0, 0)];
+    assert_eq!(shape(&a), flat);
+    assert_eq!(shape(&b), flat);
+
+    // combining groups takes the subgroups along
+    a.set_user_group_parent(y.clone(), Some(z.clone())).unwrap();
+    let w = a.create_user_group("W".into(), "folder".into()).unwrap();
+    a.merge_user_groups(z, w).unwrap();
+    tick();
+    sync_both_ways(&a, &b);
+    let merged = vec![("W".to_string(), 0, 100_00), ("Y".to_string(), 1, 100_00)];
+    assert_eq!(shape(&a), merged);
+    assert_eq!(shape(&b), merged);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 fn archived(v: &Vault, name: &str) -> Option<i64> {
     v.list_accounts()
         .unwrap()

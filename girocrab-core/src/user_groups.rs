@@ -24,6 +24,16 @@
 //! also later, from a device that hasn't merged yet – follow that pointer.
 //! The user can combine groups the same way (`merge_user_groups`).
 //!
+//! Groups can be nested (`parent_uuid`, stamped with `parent_ms` and merged
+//! like the other fields). A group's sum, booking list and balance chart
+//! include its subgroups. The stored parent is only what the user chose; the
+//! tree shown is derived from it on every read ([`effective_parents`]), the
+//! same way on every device: a parent that was deleted is skipped (the
+//! subgroup moves up), one that was combined is followed to the surviving
+//! group, and a loop – two devices nesting two groups into each other – is
+//! cut at its lowest uuid. Nothing of this is written back, so devices
+//! never race over it.
+//!
 //! Derived changes are not stamped: moving accounts out of a deleted or
 //! combined group keeps their `placement_ms`, because every device derives
 //! the same result from the same tombstones; stamping them with "now" would
@@ -64,7 +74,9 @@ CREATE TABLE IF NOT EXISTS user_groups (
     total_ms         INTEGER NOT NULL DEFAULT 0,
     order_ms         INTEGER NOT NULL DEFAULT 0,
     deleted_ms       INTEGER,                      -- tombstone, kept for sync
-    merged_into      TEXT                          -- tombstone of a combined group → survivor
+    merged_into      TEXT,                         -- tombstone of a combined group → survivor
+    parent_uuid      TEXT,                         -- subgroup of this group (NULL = top level)
+    parent_ms        INTEGER NOT NULL DEFAULT 0
 );";
 
 /// New `accounts` columns (name, definition).
@@ -87,6 +99,9 @@ const GROUP_COLUMNS: &[(&str, &str)] = &[
     ("total_ms", "INTEGER NOT NULL DEFAULT 0"),
     ("order_ms", "INTEGER NOT NULL DEFAULT 0"),
     ("merged_into", "TEXT"),
+    // nested groups (GiroCrab/GiroCrab#58)
+    ("parent_uuid", "TEXT"),
+    ("parent_ms", "INTEGER NOT NULL DEFAULT 0"),
 ];
 
 /// Group fields that merge independently, each with its own stamp.
@@ -95,6 +110,7 @@ const GROUP_FIELDS: &[(&str, &str)] = &[
     ("sf_symbol", "symbol_ms"),
     ("include_in_total", "total_ms"),
     ("sort_order", "order_ms"),
+    ("parent_uuid", "parent_ms"),
 ];
 
 /// Account colours (the palette of GiroCrab/GiroCrab#26), readable in light
@@ -204,7 +220,8 @@ pub(crate) fn migrate(conn: &Connection) -> CoreResult<()> {
         )?;
         if has == 0 {
             conn.execute_batch(&format!("ALTER TABLE user_groups ADD COLUMN {col} {def};"))?;
-            if col.ends_with("_ms") {
+            // (a parent was never chosen in such a vault: its stamp stays 0)
+            if col.ends_with("_ms") && *col != "parent_ms" {
                 conn.execute_batch(&format!("UPDATE user_groups SET {col} = updated_ms;"))?;
             }
         }
@@ -392,7 +409,7 @@ pub(crate) fn merge_attached(
 fn group_upsert_sql() -> String {
     let wins = |f: &str, ms: &str| {
         format!(
-            "(excluded.{ms} > user_groups.{ms} OR (excluded.{ms} = user_groups.{ms} AND excluded.{f} > user_groups.{f}))"
+            "(excluded.{ms} > user_groups.{ms} OR (excluded.{ms} = user_groups.{ms} AND IFNULL(excluded.{f}, '') > IFNULL(user_groups.{f}, '')))"
         )
     };
     let mut cols = vec!["uuid", "updated_ms", "deleted_ms", "merged_into"];
@@ -450,7 +467,7 @@ fn combine_same_names(tx: &Connection) -> CoreResult<u32> {
                     "UPDATE user_groups SET ({f}, {ms}) = (
                         SELECT d.{f}, d.{ms} FROM user_groups d
                         WHERE d.deleted_ms IS NULL AND lower(trim(d.name)) = ?2
-                        ORDER BY d.{ms} DESC, d.{f} DESC LIMIT 1)
+                        ORDER BY d.{ms} DESC, IFNULL(d.{f}, '') DESC LIMIT 1)
                      WHERE uuid = ?1"
                 ),
                 params![survivor, dups[0].0],
@@ -526,6 +543,124 @@ fn follow_merges(tx: &Connection) -> CoreResult<u32> {
     Ok(moved)
 }
 
+/// The group tree as shown: live group uuid → its parent (`None` = top
+/// level). Derived from the stored parents, identically on every device:
+/// deleted parents are skipped, combined ones followed to the survivor, and
+/// a loop is cut at its lowest uuid.
+pub(crate) fn effective_parents(conn: &Connection) -> CoreResult<HashMap<String, Option<String>>> {
+    struct Row {
+        parent: Option<String>,
+        live: bool,
+        merged_into: Option<String>,
+    }
+    let rows: HashMap<String, Row> = conn
+        .prepare("SELECT uuid, parent_uuid, deleted_ms IS NULL, merged_into FROM user_groups")?
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                Row {
+                    parent: r.get(1)?,
+                    live: r.get(2)?,
+                    merged_into: r.get(3)?,
+                },
+            ))
+        })?
+        .collect::<Result<_, _>>()?;
+    let mut out: HashMap<String, Option<String>> = HashMap::new();
+    for (uuid, row) in rows.iter().filter(|(_, r)| r.live) {
+        let mut next = row.parent.clone();
+        let mut parent = None;
+        for _ in 0..64 {
+            let Some(p) = next else { break };
+            match rows.get(&p) {
+                Some(r) if r.live => {
+                    parent = Some(p);
+                    break;
+                }
+                // tombstone: the group it was combined into, else its own parent
+                Some(r) => next = r.merged_into.clone().or_else(|| r.parent.clone()),
+                None => break,
+            }
+        }
+        out.insert(uuid.clone(), parent.filter(|p| p != uuid));
+    }
+    // cut loops, always at the lowest uuid of the loop
+    let mut uuids: Vec<String> = out.keys().cloned().collect();
+    uuids.sort_unstable();
+    for start in &uuids {
+        let mut path = vec![start.clone()];
+        while let Some(Some(p)) = out.get(path.last().unwrap()).cloned() {
+            if let Some(i) = path.iter().position(|x| *x == p) {
+                let cut = path[i..].iter().min().unwrap().clone();
+                out.insert(cut, None);
+                break;
+            }
+            path.push(p);
+        }
+    }
+    Ok(out)
+}
+
+/// Groups whose accounts don't count towards the overall total: excluded
+/// themselves or inside an excluded group.
+pub(crate) fn excluded_from_total(conn: &Connection) -> CoreResult<HashSet<String>> {
+    let parents = effective_parents(conn)?;
+    let own: HashSet<String> = conn
+        .prepare("SELECT uuid FROM user_groups WHERE deleted_ms IS NULL AND include_in_total = 0")?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    if own.is_empty() {
+        return Ok(own);
+    }
+    Ok(parents
+        .keys()
+        .filter(|u| {
+            let mut cur = Some((*u).clone());
+            while let Some(c) = cur {
+                if own.contains(&c) {
+                    return true;
+                }
+                cur = parents.get(&c).cloned().flatten();
+            }
+            false
+        })
+        .cloned()
+        .collect())
+}
+
+/// `uuid` and all groups below it.
+fn subtree(parents: &HashMap<String, Option<String>>, uuid: &str) -> HashSet<String> {
+    parents
+        .keys()
+        .filter(|u| {
+            let mut cur = Some((*u).clone());
+            while let Some(c) = cur {
+                if c == uuid {
+                    return true;
+                }
+                cur = parents.get(&c).cloned().flatten();
+            }
+            false
+        })
+        .cloned()
+        .collect()
+}
+
+/// Makes `uuid` a subgroup of `parent` (`None` = top level).
+pub(crate) fn set_parent(
+    conn: &Connection,
+    uuid: &str,
+    parent: Option<&str>,
+    stamp: i64,
+) -> CoreResult<()> {
+    conn.execute(
+        "UPDATE user_groups SET parent_uuid = ?2, parent_ms = ?3, updated_ms = max(updated_ms, ?3)
+         WHERE uuid = ?1 AND (parent_uuid IS NOT ?2 OR parent_ms < ?3)",
+        params![uuid, parent, stamp],
+    )?;
+    Ok(())
+}
+
 /// Order of kinds inside a group: Giro → Karten → Depots → Darlehen.
 fn kind_rank(a: &Account) -> i32 {
     group_for(a.kind).2
@@ -534,8 +669,10 @@ fn kind_rank(a: &Account) -> i32 {
 #[uniffi::export]
 impl Vault {
     /// Sidebar data for the "Nach Gruppe" view: all user groups (also empty
-    /// ones) in their order, then – if any account has no group – an
-    /// "Ohne Gruppe" entry (`is_ungrouped`, empty uuid).
+    /// ones) as a flattened tree – every group is followed by its subgroups
+    /// (`depth`, `parent_uuid`) – then, if any account has no group, an
+    /// "Ohne Gruppe" entry (`is_ungrouped`, empty uuid). `balance_cents`
+    /// includes the subgroups; `accounts` are the group's own.
     pub fn list_user_groups(&self) -> Result<Vec<UserGroup>, CoreError> {
         let accounts = self.list_accounts()?;
         let order: HashMap<i64, i64> = {
@@ -580,22 +717,53 @@ impl Vault {
                 .map(|a| a.balance_cents)
                 .sum()
         };
-        let mut out: Vec<UserGroup> = groups
-            .into_iter()
-            .map(|(uuid, name, sf_symbol, sort_order, include_in_total)| {
-                let accs = members(Some(&uuid));
-                UserGroup {
-                    balance_cents: sum(&accs),
-                    uuid,
-                    name,
-                    sf_symbol,
-                    sort_order,
-                    include_in_total,
-                    is_ungrouped: false,
-                    accounts: accs,
-                }
-            })
+        let (parents, excluded) = {
+            let db = self.db()?;
+            (effective_parents(&db)?, excluded_from_total(&db)?)
+        };
+        // children in list order (`groups` is sorted), then depth-first
+        let mut children: HashMap<Option<&str>, Vec<usize>> = HashMap::new();
+        for (i, g) in groups.iter().enumerate() {
+            let parent = parents.get(&g.0).and_then(|p| p.as_deref());
+            children.entry(parent).or_default().push(i);
+        }
+        let mut out: Vec<UserGroup> = Vec::with_capacity(groups.len() + 1);
+        // (index into `groups`, depth); a group's subgroups follow it
+        let mut stack: Vec<(usize, u32)> = children
+            .get(&None)
+            .map(|v| v.iter().rev().map(|i| (*i, 0)).collect())
+            .unwrap_or_default();
+        while let Some((i, depth)) = stack.pop() {
+            let (uuid, name, sf_symbol, sort_order, include_in_total) = &groups[i];
+            let accs = members(Some(uuid));
+            if let Some(kids) = children.get(&Some(uuid.as_str())) {
+                stack.extend(kids.iter().rev().map(|k| (*k, depth + 1)));
+            }
+            out.push(UserGroup {
+                balance_cents: sum(&accs),
+                uuid: uuid.clone(),
+                name: name.clone(),
+                sf_symbol: sf_symbol.clone(),
+                sort_order: *sort_order,
+                include_in_total: *include_in_total,
+                in_total: !excluded.contains(uuid),
+                is_ungrouped: false,
+                parent_uuid: parents.get(uuid).cloned().flatten(),
+                depth,
+                accounts: accs,
+            });
+        }
+        // sums include the subgroups: add each group to its parent, deepest first
+        let index: HashMap<String, usize> = out
+            .iter()
+            .enumerate()
+            .map(|(i, g)| (g.uuid.clone(), i))
             .collect();
+        for i in (0..out.len()).rev() {
+            if let Some(p) = out[i].parent_uuid.as_ref().and_then(|p| index.get(p)) {
+                out[*p].balance_cents += out[i].balance_cents;
+            }
+        }
         let rest = members(None);
         if !rest.is_empty() {
             out.push(UserGroup {
@@ -604,7 +772,10 @@ impl Vault {
                 sf_symbol: "tray".into(),
                 sort_order: i32::MAX,
                 include_in_total: true,
+                in_total: true,
                 is_ungrouped: true,
+                parent_uuid: None,
+                depth: 0,
                 balance_cents: sum(&rest),
                 accounts: rest,
             });
@@ -657,7 +828,31 @@ impl Vault {
         Ok(())
     }
 
-    /// Deletes a group. Its accounts are kept and move to "Ohne Gruppe".
+    /// Makes a group a subgroup of `parent_uuid` (`None` = top level). A group
+    /// can't be moved into itself or one of its own subgroups.
+    pub fn set_user_group_parent(
+        &self,
+        uuid: String,
+        parent_uuid: Option<String>,
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        for u in std::iter::once(&uuid).chain(parent_uuid.iter()) {
+            if !group_exists(&db, u)? {
+                return Err(not_found(u));
+            }
+        }
+        if let Some(p) = &parent_uuid {
+            if subtree(&effective_parents(&db)?, &uuid).contains(p) {
+                return Err(CoreError::InvalidInput {
+                    message: tr("Eine Gruppe kann nicht in sich selbst oder eine ihrer Untergruppen verschoben werden").into(),
+                });
+            }
+        }
+        set_parent(&db, &uuid, parent_uuid.as_deref(), now_ms())
+    }
+
+    /// Deletes a group. Its accounts and subgroups are kept and move up into
+    /// the group it was in (accounts of a top-level group: "Ohne Gruppe").
     pub fn delete_user_group(&self, uuid: String) -> Result<(), CoreError> {
         let db = self.db()?;
         if !group_exists(&db, &uuid)? {
@@ -665,6 +860,14 @@ impl Vault {
         }
         let now = now_ms();
         let tx = db.unchecked_transaction()?;
+        let parents = effective_parents(&tx)?;
+        let parent = parents.get(&uuid).cloned().flatten();
+        for (child, _) in parents
+            .iter()
+            .filter(|(_, p)| p.as_deref() == Some(uuid.as_str()))
+        {
+            set_parent(&tx, child, parent.as_deref(), now)?;
+        }
         tx.execute(
             "UPDATE user_groups SET deleted_ms = ?2, updated_ms = ?2 WHERE uuid = ?1",
             params![uuid, now],
@@ -676,14 +879,15 @@ impl Vault {
             .query_map([&uuid], |r| r.get(0))?
             .collect::<Result<_, _>>()?;
         for id in ids {
-            assign(&tx, id, None, now)?;
+            assign(&tx, id, parent.as_deref(), now)?;
         }
         tx.commit()?;
         Ok(())
     }
 
-    /// Combines two groups: the accounts of `from` move to the end of `into`
-    /// and `from` is removed. Other devices follow on their next sync.
+    /// Combines two groups: the accounts of `from` move to the end of `into`,
+    /// its subgroups become subgroups of `into` and `from` is removed. Other
+    /// devices follow on their next sync.
     pub fn merge_user_groups(&self, from_uuid: String, into_uuid: String) -> Result<(), CoreError> {
         let db = self.db()?;
         for u in [&from_uuid, &into_uuid] {
@@ -695,7 +899,20 @@ impl Vault {
             return Ok(());
         }
         let tx = db.unchecked_transaction()?;
-        retire_into(&tx, &from_uuid, &into_uuid, now_ms())?;
+        let now = now_ms();
+        let parents = effective_parents(&tx)?;
+        // `into` inside `from`: it takes the place of `from`
+        if subtree(&parents, &from_uuid).contains(&into_uuid) {
+            let up = parents.get(&from_uuid).cloned().flatten();
+            set_parent(&tx, &into_uuid, up.as_deref(), now)?;
+        }
+        for (child, _) in parents
+            .iter()
+            .filter(|(c, p)| p.as_deref() == Some(from_uuid.as_str()) && **c != into_uuid)
+        {
+            set_parent(&tx, child, Some(&into_uuid), now)?;
+        }
+        retire_into(&tx, &from_uuid, &into_uuid, now)?;
         follow_merges(&tx)?;
         tx.commit()?;
         Ok(())

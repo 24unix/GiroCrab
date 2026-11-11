@@ -1449,6 +1449,18 @@ impl Vault {
             })
         })?;
         let mut accounts = rows.collect::<Result<Vec<_>, _>>()?;
+        // a subgroup of an excluded group is excluded too
+        let excluded = crate::user_groups::excluded_from_total(&db)?;
+        if !excluded.is_empty() {
+            for a in accounts.iter_mut() {
+                if a.user_group_uuid
+                    .as_ref()
+                    .is_some_and(|u| excluded.contains(u))
+                {
+                    a.in_total = false;
+                }
+            }
+        }
         crate::user_groups::assign_default_colors(&mut accounts, &color_hashes);
         // Credit cards stored with balance 0: derive the open amount from bookings.
         for a in accounts.iter_mut().filter(|a| {
