@@ -173,12 +173,7 @@ struct BookingStreamView: View {
             }
             #else
             ToolbarItem(placement: .principal) {
-                Picker("Ansicht", selection: $model.scope) {
-                    ForEach(BookingScope.ordered, id: \.self) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .macFrame(width: 430)
-                .help("⌘1 / ⌘2 / ⌘3")
+                BookingScopePicker()
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
@@ -259,6 +254,52 @@ struct BookingStreamView: View {
         proxy.scrollTo(Self.topID, anchor: .top)
     }
 }
+
+#if os(macOS)
+/// Keep the toolbar control independent of list, chart and inspector updates.
+/// Its only observable dependency is the selected scope.
+private struct BookingScopePicker: View {
+    @Environment(AppModel.self) private var model
+    @Namespace private var selectionAnimation
+
+    var body: some View {
+        // The native toolbar Picker can animate its selection back through an
+        // intermediate segment while the stream changes. Animate one stable
+        // highlight locally instead; hover and selection remain independent.
+        HStack(spacing: 0) {
+            ForEach(BookingScope.ordered, id: \.self) { scope in
+                Button {
+                    model.scope = scope
+                } label: {
+                    Text(scope.title)
+                        .font(.callout)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .background {
+                    if model.scope == scope {
+                        Capsule()
+                            .fill(Color.primary.opacity(0.09))
+                            .matchedGeometryEffect(id: "scope-selection", in: selectionAnimation)
+                    }
+                }
+                .accessibilityAddTraits(model.scope == scope ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(Theme.canvas, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1).allowsHitTesting(false))
+        .frame(width: 430)
+        .animation(.easeOut(duration: 0.16), value: model.scope)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Ansicht")
+        .help("⌘1 / ⌘2 / ⌘3")
+    }
+}
+#endif
 
 struct DayCard: View {
     @Environment(AppModel.self) private var model

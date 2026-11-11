@@ -215,7 +215,13 @@ public final class AppModel {
 
     // UI state
     var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; reloadBookings(); reloadHistory() } }
-    var scope: BookingScope = .all { didSet { listLimit = Self.defaultListLimit; reloadBookings() } }
+    var scope: BookingScope = .all {
+        didSet {
+            guard scope != oldValue else { return }
+            listLimit = Self.defaultListLimit
+            reloadScopeBookings()
+        }
+    }
     var period: Period = .all { didSet { listLimit = Self.defaultListLimit; reloadCategories(); reloadBookings(); reloadHistory() } }
     var statusFilter: StatusFilter = .all
     var searchText: String = "" { didSet { scheduleSearch() } }
@@ -285,6 +291,7 @@ public final class AppModel {
     private var syncQueue: [BankConnection] = []
     private var pollTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
+    private var scopeLoadTask: Task<Void, Never>?
 
     public init(options: LaunchOptions = .current) {
         self.options = options
@@ -547,6 +554,7 @@ public final class AppModel {
 
     func lock() {
         guard ownVault != nil else { return }
+        scopeLoadTask?.cancel()
         ownVault = nil
         demoActive = false
         vault = nil
@@ -678,6 +686,9 @@ public final class AppModel {
     }
 
     func reloadBookings() {
+        // A synchronous refresh (account, period, edit, vault change) supersedes
+        // any scope request still running in the background.
+        scopeLoadTask?.cancel()
         guard let vault else { return }
         run {
             let p = try vault.listTransactions(filter: currentFilter)
@@ -688,6 +699,40 @@ public final class AppModel {
             selectedBookingID = bookings.first?.id
         }
         reloadSelectionKPIs()
+    }
+
+    /// Let the segmented control finish updating immediately. Database work
+    /// and UniFFI conversion must not run inside its selection setter.
+    private func reloadScopeBookings() {
+        scopeLoadTask?.cancel()
+        guard let vault else { return }
+        let filter = currentFilter
+        scopeLoadTask = Task { [weak self] in
+            guard !Task.isCancelled else { return }
+            let load = Task.detached(priority: .userInitiated) {
+                try Task.checkCancellation()
+                return try vault.listTransactions(filter: filter)
+            }
+            do {
+                let p = try await withTaskCancellationHandler {
+                    try await load.value
+                } onCancel: {
+                    load.cancel()
+                }
+                // Rapid switches or a different vault/filter must never publish
+                // a result from an older request, including an older error.
+                guard !Task.isCancelled, let self else { return }
+                self.page = p
+                self.bookings = p.transactions
+                if let id = self.selectedBookingID, !p.transactions.contains(where: { $0.id == id }) {
+                    self.selectedBookingID = p.transactions.first?.id
+                }
+                // selectionFlow always uses scope .all and is unchanged here.
+            } catch {
+                guard !Task.isCancelled, let self else { return }
+                self.errorMessage = describe(error)
+            }
+        }
     }
 
     /// KPI tiles: same flow rules as the dashboard, but for the selected
