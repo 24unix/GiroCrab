@@ -11,6 +11,8 @@ import GiroCrabCore
 struct MoneyMoneyDatabaseImportView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    /// Tells the sheet that an import is running (it locks the source tabs).
+    @Binding var running: Bool
 
     struct Choice: Equatable {
         var selected: Bool
@@ -34,6 +36,11 @@ struct MoneyMoneyDatabaseImportView: View {
     @State private var importPins = false
     @State private var loading = false
     @State private var importing = false
+    /// Where the running import is (shown instead of the options).
+    @State private var progress = ImportProgressState()
+    /// The running import's observer; `cancel()` stops it.
+    @State private var relay: ImportProgressRelay?
+    @State private var cancelling = false
     @State private var error: String?
     @State private var result: MoneyMoneyDbImportResult?
 
@@ -41,6 +48,9 @@ struct MoneyMoneyDatabaseImportView: View {
         VStack(alignment: .leading, spacing: 14) {
             if let result {
                 resultCard(result)
+            } else if importing {
+                // nothing can be changed while the import runs: progress instead of the options
+                progressCard
             } else {
                 info
                 fileAndPassword
@@ -64,6 +74,7 @@ struct MoneyMoneyDatabaseImportView: View {
             footer
         }
         .interactiveDismissDisabled(importing)
+        .onChange(of: importing) { _, now in running = now }
         .onAppear {
             if let demo = model.demoDbPreview {
                 fileURL = URL(fileURLWithPath: "/Users/max/Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney")
@@ -111,6 +122,40 @@ struct MoneyMoneyDatabaseImportView: View {
                 }
             }
         }
+    }
+
+    private var progressCard: some View {
+        let p = progress.value
+        return VStack(alignment: .leading, spacing: 10) {
+            Label("Import läuft …", systemImage: "square.and.arrow.down.on.square").font(.headline)
+            ProgressView(value: p.fraction)
+                .progressViewStyle(.linear)
+                .tint(Theme.accent)
+            Text(progressStatus(p)).font(.callout).foregroundStyle(Theme.text).lineLimit(1).truncationMode(.middle)
+            if p.bookingsTotal > 0 || p.documentsTotal > 0 {
+                Text(progressCounts(p)).font(.caption.monospacedDigit()).foregroundStyle(Theme.secondary)
+            }
+            Text(cancelling
+                 ? "Der Import wird abgebrochen …"
+                 : "Bitte warten Sie, bis der Import fertig ist. „Import abbrechen“ verwirft alles – es wird dann nichts übernommen.")
+                .font(.caption).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+
+    private func progressStatus(_ p: MoneyMoneyDbImportProgress) -> String {
+        if p.accountIndex == 0 { return String(localized: "MoneyMoney-Datenbank wird gelesen …") }
+        if p.accountIndex > p.accountCount { return String(localized: "Bankzugänge und Gruppen werden angelegt …") }
+        return String(localized: "Konto \(p.accountIndex) von \(p.accountCount) · \(p.accountName)")
+    }
+
+    private func progressCounts(_ p: MoneyMoneyDbImportProgress) -> String {
+        var s = String(localized: "\(p.bookingsDone.formatted()) von \(p.bookingsTotal.formatted()) Buchungen")
+        if p.documentsTotal > 0 {
+            s += " · " + String(localized: "\(p.documentsDone.formatted()) von \(p.documentsTotal.formatted()) Dokumenten")
+        }
+        return s
     }
 
     private func totals(_ p: MoneyMoneyDbPreview) -> some View {
@@ -321,6 +366,14 @@ struct MoneyMoneyDatabaseImportView: View {
             Spacer()
             if result != nil {
                 Button("Fertig") { dismiss() }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+            } else if importing {
+                // closing the dialog would leave the import running unseen: cancel it instead
+                Button(cancelling ? "Wird abgebrochen …" : "Import abbrechen") {
+                    cancelling = true
+                    relay?.cancel()
+                }
+                .keyboardShortcut(.cancelAction)
+                .disabled(cancelling)
             } else {
                 Button("Abbrechen") { password = ""; dismiss() }.keyboardShortcut(.cancelAction)
                 Button(importing ? "Importiere …" : "Importieren") { runImport() }
@@ -468,6 +521,10 @@ struct MoneyMoneyDatabaseImportView: View {
             statementsDir: statementsURL?.path)
         let statements = statementsURL
         let pw = password
+        progress.value = MoneyMoneyDbImportProgress(fraction: 0, accountIndex: 0, accountCount: 0, accountName: "", bookingsDone: 0, bookingsTotal: 0, documentsDone: 0, documentsTotal: 0)
+        let observer = ImportProgressRelay(state: progress)
+        relay = observer
+        cancelling = false
         importing = true; error = nil
         Task {
             let result = await Task.detached { () -> Result<MoneyMoneyDbImportResult, Error> in
@@ -475,18 +532,60 @@ struct MoneyMoneyDatabaseImportView: View {
                 defer { if ok { url.stopAccessingSecurityScopedResource() } }
                 let ok2 = statements?.startAccessingSecurityScopedResource() ?? false
                 defer { if ok2 { statements?.stopAccessingSecurityScopedResource() } }
-                return Result { try vault.importMoneymoneyDatabase(path: url.path, password: pw, options: options) }
+                return Result { try vault.importMoneymoneyDatabaseWithProgress(path: url.path, password: pw, options: options, observer: observer) }
             }.value
             importing = false
-            password = ""
+            relay = nil
+            // after a cancel the form comes back as it was, ready for another try
+            let wasCancelled = cancelling
+            if !wasCancelled { password = "" }
+            cancelling = false
             switch result {
             case .success(let r):
                 self.result = r
                 model.finishMoneyMoneyDbImport(r)
+            case .failure where wasCancelled:
+                error = String(localized: "Import abgebrochen – es wurde nichts übernommen.")
             case .failure(let e):
                 if case CoreError.Authentication(let m) = e { error = m } else { error = describe(e) }
             }
         }
+    }
+}
+
+/// The running import's progress, for the view (main actor only).
+@MainActor @Observable
+final class ImportProgressState {
+    var value = MoneyMoneyDbImportProgress(fraction: 0, accountIndex: 0, accountCount: 0, accountName: "", bookingsDone: 0, bookingsTotal: 0, documentsDone: 0, documentsTotal: 0)
+}
+
+/// Receives the core's progress on the importing thread, passes it on to the
+/// view (at most ~20 times a second) and tells the core when to cancel.
+final class ImportProgressRelay: MoneyMoneyImportObserver, @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+    private var lastSent = Date.distantPast
+    private var lastAccount: UInt32 = .max
+    private let state: ImportProgressState
+
+    init(state: ImportProgressState) { self.state = state }
+
+    func cancel() {
+        lock.lock(); cancelled = true; lock.unlock()
+    }
+
+    func progress(progress: MoneyMoneyDbImportProgress) -> Bool {
+        lock.lock()
+        let now = Date()
+        let send = progress.accountIndex != lastAccount || progress.fraction >= 1 || now.timeIntervalSince(lastSent) > 0.05
+        if send { lastSent = now; lastAccount = progress.accountIndex }
+        let go = !cancelled
+        lock.unlock()
+        if send {
+            let state = state
+            Task { @MainActor in state.value = progress }
+        }
+        return go
     }
 }
 

@@ -441,7 +441,8 @@ fn english(de: &str) -> Option<&'static str> {
         // ------------------------------------------------------------ connectors/moneymoney_import.rs
         "Keine MoneyMoney-Kopfzeile (Datum/Buchungstag und Betrag) gefunden." => "No MoneyMoney header row (date/booking date and amount) found.",
         // ------------------------------------------------------------ connectors/moneymoney_db.rs
-        "Falsches Passwort oder keine MoneyMoney-Datenbank." => "Wrong password or not a MoneyMoney database.",
+"Import abgebrochen – es wurde nichts übernommen." => "Import cancelled – nothing was imported.",
+                "Falsches Passwort oder keine MoneyMoney-Datenbank." => "Wrong password or not a MoneyMoney database.",
         "MoneyMoney-Datenbank" => "MoneyMoney database",
         "Anfangssaldo laut MoneyMoney-Saldenverlauf ({0}) + Umsätze" => {
             "Opening balance from MoneyMoney balance history ({0}) + transactions"

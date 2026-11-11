@@ -15,6 +15,9 @@ struct MoneyMoneyImportSheet: View {
     @State private var source: Source = .export
     #endif
 
+    /// An import is running in the view below.
+    @State private var importRunning = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
@@ -32,12 +35,14 @@ struct MoneyMoneyImportSheet: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            // switching would drop the view of a running import
+            .disabled(importRunning)
             switch source {
-            case .database: MoneyMoneyDatabaseImportView()
-            case .export: MoneyMoneyExportImportView()
+            case .database: MoneyMoneyDatabaseImportView(running: $importRunning)
+            case .export: MoneyMoneyExportImportView(running: $importRunning)
             }
             #else
-            MoneyMoneyExportImportView()
+            MoneyMoneyExportImportView(running: $importRunning)
             #endif
         }
         .padding(20)
@@ -56,6 +61,8 @@ struct MoneyMoneyImportSheet: View {
 struct MoneyMoneyExportImportView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    /// Tells the sheet that an import is running (it locks the source tabs).
+    @Binding var running: Bool
 
     @State private var picking = false
     @State private var targeted = false
@@ -78,21 +85,27 @@ struct MoneyMoneyExportImportView: View {
             guide
             Text("Auch möglich: Kontoauszüge als CAMT.053 (XML) oder MT940 (.sta / .mt940).")
                 .font(.caption).foregroundStyle(Theme.secondary)
-            dropZone
-            if fileData != nil {
-                Picker("Zielkonto", selection: $target) {
-                    Text("Neues Konto aus Datei anlegen").tag(Int64?.none)
-                    ForEach(model.allAccounts) { a in Text("\(a.name) · \(a.bankName)").tag(Int64?.some(a.id)) }
+            // nothing can be changed while the import runs
+            Group {
+                dropZone
+                if fileData != nil {
+                    Picker("Zielkonto", selection: $target) {
+                        Text("Neues Konto aus Datei anlegen").tag(Int64?.none)
+                        ForEach(model.allAccounts) { a in Text("\(a.name) · \(a.bankName)").tag(Int64?.some(a.id)) }
+                    }
+                    Toggle("Kategorien übernehmen", isOn: $keepCategories).toggleStyle(.switch).controlSize(.small)
+                    Toggle("Notizen übernehmen", isOn: $keepNotes).toggleStyle(.switch).controlSize(.small)
                 }
-                Toggle("Kategorien übernehmen", isOn: $keepCategories).toggleStyle(.switch).controlSize(.small)
-                Toggle("Notizen übernehmen", isOn: $keepNotes).toggleStyle(.switch).controlSize(.small)
             }
+            .disabled(importing)
             if loading { ProgressView().controlSize(.small) }
+            if importing { ProgressView().progressViewStyle(.linear) }
             if let preview { previewCard(preview) }
             if let error { Label(error, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(Theme.warning) }
             HStack {
                 Spacer()
                 Button("Abbrechen") { dismiss() }.keyboardShortcut(.cancelAction)
+                    .disabled(importing)
                 Button(importing ? "Importiere …" : "Importieren") { runImport() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
@@ -100,6 +113,7 @@ struct MoneyMoneyExportImportView: View {
             }
         }
         .interactiveDismissDisabled(importing)
+        .onChange(of: importing) { _, now in running = now }
         .onAppear {
             if let demo = model.demoImportPreview {
                 preview = demo

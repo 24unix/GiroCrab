@@ -35,6 +35,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use rusqlite::types::Value;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
@@ -205,6 +206,68 @@ pub struct MoneyMoneyDbImportResult {
     /// Of those, switched off: unsupported fields, account restriction or
     /// invalid syntax.
     pub rules_disabled: u32,
+}
+
+/// Where a running import is, for a progress bar.
+#[derive(Debug, Clone, Default, uniffi::Record)]
+pub struct MoneyMoneyDbImportProgress {
+    /// 0.0 ..= 1.0 over the whole import (bookings and documents weighted).
+    pub fraction: f64,
+    /// Account being imported, 1-based; 0 = still reading the database,
+    /// `account_count + 1` = finishing (bank logins, groups).
+    pub account_index: u32,
+    pub account_count: u32,
+    /// Name of the account being imported ("" before and after the accounts).
+    pub account_name: String,
+    pub bookings_done: u32,
+    pub bookings_total: u32,
+    /// Statements / bank documents handled so far (imported or skipped).
+    pub documents_done: u32,
+    pub documents_total: u32,
+}
+
+/// Receives the progress of `import_moneymoney_database_with_progress`.
+/// Called on the importing thread, often (once per document).
+#[uniffi::export(with_foreign)]
+pub trait MoneyMoneyImportObserver: Send + Sync {
+    /// Returns `false` to cancel: the import stops and nothing is stored.
+    fn progress(&self, progress: MoneyMoneyDbImportProgress) -> bool;
+}
+
+/// One document counts as much as this many bookings (file read + checksum).
+const DOCUMENT_WEIGHT: u64 = 25;
+
+/// Tells the observer where the import is; turns its "cancel" into an error.
+struct Reporter<'a> {
+    observer: Option<&'a dyn MoneyMoneyImportObserver>,
+    state: MoneyMoneyDbImportProgress,
+}
+
+impl Reporter<'_> {
+    fn emit(&mut self) -> CoreResult<()> {
+        let Some(observer) = self.observer else {
+            return Ok(());
+        };
+        let p = &mut self.state;
+        let total = p.bookings_total as u64 + DOCUMENT_WEIGHT * p.documents_total as u64;
+        let done = p.bookings_done as u64 + DOCUMENT_WEIGHT * p.documents_done as u64;
+        p.fraction = if total == 0 {
+            0.0
+        } else {
+            (done as f64 / total as f64).min(1.0)
+        };
+        if observer.progress(p.clone()) {
+            Ok(())
+        } else {
+            Err(cancelled())
+        }
+    }
+}
+
+fn cancelled() -> CoreError {
+    CoreError::InvalidInput {
+        message: tr("Import abgebrochen – es wurde nichts übernommen.").into(),
+    }
 }
 
 // ------------------------------------------------------------------ source model
@@ -1724,8 +1787,39 @@ fn import(
     src: &Source,
     options: &MoneyMoneyDbImportOptions,
     mut files: Option<StatementFiles>,
+    observer: Option<&dyn MoneyMoneyImportObserver>,
 ) -> CoreResult<MoneyMoneyDbImportResult> {
     let mut res = MoneyMoneyDbImportResult::default();
+    // what there is to do, for the progress bar
+    let mut plan = Vec::new();
+    for choice in options.accounts.iter().filter(|c| c.import) {
+        let a = src
+            .accounts
+            .iter()
+            .find(|a| a.id == choice.mm_id)
+            .ok_or_else(|| CoreError::NotFound {
+                what: format!("MoneyMoney-Konto {}", choice.mm_id),
+            })?;
+        plan.push((choice, a, src.rows_for(a)));
+    }
+    let mut report = Reporter {
+        observer,
+        state: MoneyMoneyDbImportProgress {
+            account_count: plan.len() as u32,
+            bookings_total: plan.iter().map(|(_, _, r)| r.rows.len() as u32).sum(),
+            documents_total: if options.import_statements {
+                plan.iter()
+                    .map(|(_, a, _)| {
+                        src.docs.iter().filter(|d| d.account_key == a.id).count() as u32
+                    })
+                    .sum()
+            } else {
+                0
+            },
+            ..Default::default()
+        },
+    };
+    report.emit()?;
     let mut cat_cache = HashMap::new();
     if options.import_categories && replaces_starter_categories(conn, src)? {
         // rules and assignments go with them (ON DELETE CASCADE / SET NULL)
@@ -1741,15 +1835,10 @@ fn import(
     let mut to_link: Vec<(i64, i64)> = Vec::new();
     // (MoneyMoney group rowid, uuid) of the groups this import creates
     let mut created_groups: Vec<(i64, String)> = Vec::new();
-    for choice in options.accounts.iter().filter(|c| c.import) {
-        let a = src
-            .accounts
-            .iter()
-            .find(|a| a.id == choice.mm_id)
-            .ok_or_else(|| CoreError::NotFound {
-                what: format!("MoneyMoney-Konto {}", choice.mm_id),
-            })?;
-        let r = src.rows_for(a);
+    for (choice, a, r) in plan {
+        report.state.account_index += 1;
+        report.state.account_name = src.account_name(a);
+        report.emit()?;
         let ext = ext_ref(a);
         let kind = choice.kind;
         let a_groups = src.group_chain(a.group_key);
@@ -1827,6 +1916,8 @@ fn import(
             &mut cat_cache,
             &mut st,
         )?;
+        report.state.bookings_done += r.rows.len() as u32;
+        report.emit()?;
         if owned {
             let (group, sym, order) = group_for(kind);
             let gid = Vault::ensure_group(conn, group, sym, order)?;
@@ -1886,6 +1977,8 @@ fn import(
         if options.import_statements {
             for d in src.docs.iter().filter(|d| d.account_key == a.id) {
                 import_document(conn, a.id, account_id, d, files.as_mut(), &mut res)?;
+                report.state.documents_done += 1;
+                report.emit()?;
             }
         }
         if let (true, Some(bank)) = (owned, a.bank_key) {
@@ -1917,6 +2010,9 @@ fn import(
         }
     }
 
+    report.state.account_index += 1;
+    report.state.account_name.clear();
+    report.emit()?;
     if let (true, Some(files)) = (options.import_statements, files.as_mut()) {
         res.documents_unlisted = files.unlisted();
     }
@@ -2019,15 +2115,47 @@ impl Vault {
         password: String,
         options: MoneyMoneyDbImportOptions,
     ) -> Result<MoneyMoneyDbImportResult, CoreError> {
+        self.import_moneymoney(path, password, options, None)
+    }
+
+    /// `import_moneymoney_database` that reports its progress to `observer`
+    /// and can be cancelled by it. A cancelled import stores nothing (the
+    /// whole import is one transaction) and returns an error.
+    pub fn import_moneymoney_database_with_progress(
+        &self,
+        path: String,
+        password: String,
+        options: MoneyMoneyDbImportOptions,
+        observer: Arc<dyn MoneyMoneyImportObserver>,
+    ) -> Result<MoneyMoneyDbImportResult, CoreError> {
+        self.import_moneymoney(path, password, options, Some(observer.as_ref()))
+    }
+}
+
+impl Vault {
+    fn import_moneymoney(
+        &self,
+        path: String,
+        password: String,
+        options: MoneyMoneyDbImportOptions,
+        observer: Option<&dyn MoneyMoneyImportObserver>,
+    ) -> CoreResult<MoneyMoneyDbImportResult> {
         let password = SecretString::new(password);
         let with_pins = options.import_pins && options.create_connections;
         let (db_path, found) = locate(&path)?;
+        // "reading the database" until the accounts start
+        if let Some(o) = observer {
+            if !o.progress(MoneyMoneyDbImportProgress::default()) {
+                return Err(cancelled());
+            }
+        }
         let src = read_source(&db_path, &password, with_pins)?;
         drop(password);
         let files = statement_files(options.statements_dir.clone(), found);
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
-        let res = import(&tx, &src, &options, files)?;
+        // dropped without commit on error or cancel: nothing is stored
+        let res = import(&tx, &src, &options, files, observer)?;
         tx.commit()?;
         Ok(res)
     }

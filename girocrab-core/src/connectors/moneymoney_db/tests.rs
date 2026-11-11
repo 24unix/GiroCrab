@@ -1414,3 +1414,82 @@ fn imports_category_rules() {
     assert_eq!((again.rules_created, again.rules_disabled), (0, 0));
     assert_eq!(v.list_rules().unwrap().len(), rules.len());
 }
+
+/// Records every progress report; cancels after `cancel_after` of them.
+struct Recorder {
+    seen: std::sync::Mutex<Vec<MoneyMoneyDbImportProgress>>,
+    cancel_after: Option<usize>,
+}
+
+impl MoneyMoneyImportObserver for Recorder {
+    fn progress(&self, progress: MoneyMoneyDbImportProgress) -> bool {
+        let mut seen = self.seen.lock().unwrap();
+        seen.push(progress);
+        self.cancel_after.is_none_or(|n| seen.len() < n)
+    }
+}
+
+#[test]
+fn import_reports_progress_and_can_be_cancelled() {
+    let folder = temp("mm-progress");
+    let bank = folder.join("Statements").join("Musterbank");
+    std::fs::create_dir_all(&bank).unwrap();
+    std::fs::create_dir_all(folder.join("Database")).unwrap();
+    std::fs::rename(
+        statements_db(),
+        folder.join("Database").join("MoneyMoney.sqlite"),
+    )
+    .unwrap();
+    std::fs::write(bank.join("Kontoauszug_2026_001.pdf"), pdf("A")).unwrap();
+    let path = folder.to_string_lossy().to_string();
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+
+    // cancelled in the middle: an error, and nothing at all is stored
+    let stop = Arc::new(Recorder {
+        seen: Default::default(),
+        cancel_after: Some(4),
+    });
+    let r = v.import_moneymoney_database_with_progress(
+        path.clone(),
+        PW.into(),
+        options_from(&p, true, false),
+        stop.clone(),
+    );
+    assert!(matches!(r, Err(CoreError::InvalidInput { .. })));
+    assert_eq!(stop.seen.lock().unwrap().len(), 4);
+    assert!(v.list_accounts().unwrap().is_empty());
+    assert!(v.list_bank_connections().unwrap().is_empty());
+    assert!(docs(&v).is_empty());
+
+    // a full run: from "reading" over every account to the end
+    let all = Arc::new(Recorder {
+        seen: Default::default(),
+        cancel_after: None,
+    });
+    let r = v
+        .import_moneymoney_database_with_progress(
+            path,
+            PW.into(),
+            options_from(&p, false, false),
+            all.clone(),
+        )
+        .unwrap();
+    assert_eq!(r.documents_imported, 1);
+    let seen = all.seen.lock().unwrap();
+    let (first, last) = (seen.first().unwrap(), seen.last().unwrap());
+    assert_eq!((first.account_index, first.account_count), (0, 0));
+    let n = p.accounts.len() as u32;
+    assert_eq!((last.account_index, last.account_count), (n + 1, n));
+    assert_eq!(last.fraction, 1.0);
+    assert_eq!(last.bookings_done, last.bookings_total);
+    assert_eq!((last.documents_done, last.documents_total), (4, 4));
+    assert!(last.account_name.is_empty());
+    assert!(seen
+        .windows(2)
+        .all(|w| w[0].fraction <= w[1].fraction && w[0].account_index <= w[1].account_index));
+    assert!(seen.iter().any(|s| s.account_name == "Girokonto"));
+    let _ = std::fs::remove_dir_all(folder);
+}
