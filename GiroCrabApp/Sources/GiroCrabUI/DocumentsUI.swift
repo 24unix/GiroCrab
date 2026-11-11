@@ -160,7 +160,7 @@ struct DocumentsCard: View {
                 return !urls.isEmpty
             } isTargeted: { targeted = $0 }
             Button {
-                exporting = true
+                chooseExportFolder(model: model, fallback: $exporting)
             } label: {
                 Label("Alle Belege exportieren …", systemImage: "square.and.arrow.up.on.square")
                     .frame(maxWidth: .infinity)
@@ -214,7 +214,7 @@ struct DocumentsView: View {
                         Toggle("Nur ohne Buchung", isOn: $unlinkedOnly).toggleStyle(.switch).controlSize(.small)
                             .lineLimit(1).fixedSize()
                         Spacer(minLength: 0)
-                        Button { exporting = true } label: { Label("Alle exportieren …", systemImage: "square.and.arrow.up").lineLimit(1).fixedSize() }
+                        Button { chooseExportFolder(model: model, fallback: $exporting) } label: { Label("Alle exportieren …", systemImage: "square.and.arrow.up").lineLimit(1).fixedSize() }
                     }
                 }
                 List(selection: $selected) {
@@ -295,5 +295,26 @@ struct DocumentsView: View {
             Text("„\(d.title)“ wird unwiderruflich gelöscht.")
         }
         .navigationTitle("")
+    }
+}
+
+extension View {
+    /// Ordner wählen für „Alle Belege exportieren …“. macOS: a save-style
+    /// panel whose button says „Exportieren“ (a file importer would say
+    /// „Öffnen“ for an export) and that can create a new folder.
+    @MainActor
+    func chooseExportFolder(model: AppModel, fallback: Binding<Bool>) {
+        #if os(macOS)
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = String(localized: "Ordner für die exportierten Belege wählen")
+        panel.prompt = String(localized: "Exportieren")
+        if panel.runModal() == .OK, let url = panel.url { model.exportAllDocuments(to: url) }
+        #else
+        fallback.wrappedValue = true
+        #endif
     }
 }
