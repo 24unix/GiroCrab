@@ -521,7 +521,8 @@ fn open_source(path: &str, password: &SecretString) -> CoreResult<Connection> {
         if conn.execute_batch(&pragma).is_err() {
             continue;
         }
-        let _ = conn.execute_batch("PRAGMA cipher_memory_security = ON;");
+        let _ = conn.query_row("PRAGMA cipher_log_level = NONE;", [], |_| Ok(()));
+        let _ = conn.query_row("PRAGMA cipher_memory_security = ON;", [], |_| Ok(()));
         if let Some(v) = compat {
             if conn
                 .execute_batch(&format!("PRAGMA cipher_compatibility = {v};"))

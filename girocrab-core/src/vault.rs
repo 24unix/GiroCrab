@@ -225,7 +225,8 @@ impl Vault {
         let pragma = Zeroizing::new(format!("PRAGMA key = \"x'{}'\";", hex::encode(key)));
         conn.execute_batch(&pragma)?;
         // Best effort: lock + wipe SQLCipher's in-memory key/page buffers.
-        let _ = conn.execute_batch("PRAGMA cipher_memory_security = ON;");
+        let _ = conn.query_row("PRAGMA cipher_log_level = NONE;", [], |_| Ok(()));
+        let _ = conn.query_row("PRAGMA cipher_memory_security = ON;", [], |_| Ok(()));
         Ok(())
     }
 
@@ -1051,10 +1052,12 @@ impl Vault {
         let mut first_err: Option<CoreError> = None;
         for compat in [None, Some(4u8), Some(3u8)] {
             let conn = Connection::open(&path)?;
-            if let Some(c) = compat {
-                conn.execute_batch(&format!("PRAGMA cipher_compatibility = {c};"))?;
-            }
             Self::apply_key(&conn, &key)?;
+            if let Some(c) = compat {
+                let _ = conn.query_row(&format!("PRAGMA cipher_compatibility = {c};"), [], |_| {
+                    Ok(())
+                });
+            }
             match Self::migrate(&conn) {
                 Ok(()) => {
                     if compat.is_some() {
