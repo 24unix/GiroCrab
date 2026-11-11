@@ -158,6 +158,11 @@ pub struct MoneyMoneyDbImportResult {
     pub documents_imported: u32,
     /// Securities positions stored for depot accounts (replaced per account).
     pub holdings_imported: u32,
+    /// Category rules taken over as search-expression rules.
+    pub rules_created: u32,
+    /// Of those, switched off: unsupported fields, account restriction or
+    /// invalid syntax.
+    pub rules_disabled: u32,
 }
 
 // ------------------------------------------------------------------ source model
@@ -232,6 +237,9 @@ struct Source {
     categories: HashMap<i64, Vec<String>>,
     /// all category paths in MoneyMoney order
     category_order: Vec<Vec<String>>,
+    /// (category path, rule expression, restricted to certain accounts), in
+    /// MoneyMoney order; only categories with a non-blank rule
+    category_rules: Vec<(Vec<String>, String, bool)>,
     txs: Vec<SrcTx>,
     /// newest `balances` row per (account, currency): (timestamp, initial balance)
     balances: HashMap<(i64, String), (i64, f64)>,
@@ -731,7 +739,14 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
         let sql = select(
             &conn,
             "categories",
-            &["rowid", "name", "type", "group_key"],
+            &[
+                "rowid",
+                "name",
+                "type",
+                "group_key",
+                "rules",
+                "apply_to_account",
+            ],
             "ORDER BY group_key, sort, rowid",
         )?;
         let mut st = conn.prepare(&sql)?;
@@ -741,10 +756,12 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
                 vtext(get(r, 1)?),
                 vint(get(r, 2)?),
                 vint(get(r, 3)?).unwrap_or(0),
+                vtext(get(r, 4)?),
+                vtext(get(r, 5)?),
             ))
         })?;
         for row in rows {
-            let (id, name, typ, group) = row?;
+            let (id, name, typ, group, rules, apply_to_account) = row?;
             // rowid 1 / type 0 / empty name = "Ohne Kategorie"
             if name.is_empty() || typ == Some(0) {
                 continue;
@@ -763,6 +780,12 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
                 g = *parent;
             }
             path.reverse();
+            let rules = rules.trim();
+            if !rules.is_empty() {
+                let restricted = !apply_to_account.trim().is_empty();
+                src.category_rules
+                    .push((path.clone(), rules.to_string(), restricted));
+            }
             src.category_order.push(path.clone());
             src.categories.insert(id, path);
         }
@@ -1296,6 +1319,61 @@ fn preview(conn: &Connection, src: &Source) -> CoreResult<MoneyMoneyDbPreview> {
     })
 }
 
+/// Priority of the first imported category rule: after GiroCrab's own rules
+/// (default 100), in MoneyMoney's category order.
+const IMPORTED_RULE_PRIORITY: i32 = 1000;
+
+/// One search-expression rule per MoneyMoney category rule. Rules GiroCrab
+/// can't apply as they are (unknown fields, an account restriction, invalid
+/// syntax) are kept but switched off. A rule already present for the same
+/// category and expression is skipped, so a re-import adds nothing.
+fn import_category_rules(
+    conn: &Connection,
+    src: &Source,
+    cat_cache: &mut HashMap<String, i64>,
+    res: &mut MoneyMoneyDbImportResult,
+) -> CoreResult<()> {
+    for (i, (path, expr, restricted)) in src.category_rules.iter().enumerate() {
+        let category_id =
+            find_or_create_category(conn, path, cat_cache, &mut res.categories_created)?;
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM rules WHERE category_id = ?1 AND pattern = ?2)",
+            params![category_id, expr],
+            |r| r.get(0),
+        )?;
+        if exists {
+            continue;
+        }
+        let usable = crate::search_expr::SearchExpr::parse(expr)
+            .is_ok_and(|e| e.unsupported_fields().is_empty());
+        let enabled = usable && !restricted;
+        let leaf = path.last().cloned().unwrap_or_default();
+        // GiroCrab can't map the restriction to accounts yet: say so in the
+        // name, so nobody switches the rule on for all accounts unawares.
+        let name = if *restricted {
+            trf("{0} (nur für bestimmte Konten)", &[&leaf])
+        } else {
+            leaf
+        };
+        conn.execute(
+            "INSERT INTO rules(name, category_id, field, match_kind, pattern, priority, enabled)
+             VALUES (?1, ?2, 'any', 'expression', ?3, ?4, ?5)",
+            params![
+                name,
+                category_id,
+                expr,
+                IMPORTED_RULE_PRIORITY + i as i32,
+                enabled
+            ],
+        )?;
+        res.rules_created += 1;
+        if !enabled {
+            res.rules_disabled += 1;
+        }
+    }
+    Ok(())
+}
+
 fn import(
     conn: &Connection,
     src: &Source,
@@ -1312,6 +1390,7 @@ fn import(
         for path in &src.category_order {
             find_or_create_category(conn, path, &mut cat_cache, &mut res.categories_created)?;
         }
+        import_category_rules(conn, src, &mut cat_cache, &mut res)?;
     }
     let mut to_link: Vec<(i64, i64)> = Vec::new();
     for choice in options.accounts.iter().filter(|c| c.import) {

@@ -243,6 +243,12 @@ struct MoneyMoneyDatabaseImportView: View {
                 if r.categoriesCreated > 0 || r.notesImported > 0 {
                     Text("\(r.categoriesCreated) Kategorien angelegt, \(r.notesImported) Notizen übernommen.")
                 }
+                if r.rulesCreated > 0 {
+                    Text("\(r.rulesCreated) Regeln übernommen.")
+                }
+                if r.rulesDisabled > 0 {
+                    Text("\(r.rulesDisabled) davon ausgeschaltet – sie nutzen Angaben, die GiroCrab nicht kennt, gelten nur für bestimmte Konten oder sind fehlerhaft.")
+                }
                 if r.connectionsCreated > 0 || r.connectionsExisting > 0 {
                     Text(String(localized: "\(r.connectionsCreated) Bankzugänge angelegt")
                         + (r.connectionsExisting > 0 ? String(localized: ", \(r.connectionsExisting) bereits vorhanden") : "")
@@ -372,7 +378,7 @@ struct MoneyMoneyDatabaseImportView: View {
         guard let vault = model.vault, let url = fileURL, let preview else { return }
         if model.demoDbPreview != nil {
             // demo: nothing to read – show what the summary looks like
-            result = MoneyMoneyDbImportResult(accountsCreated: 5, accountsMerged: 1, groupsCreated: 2, bookingsNew: preview.totalBookings, bookingsDuplicates: 0, bookingsEnriched: 0, pendingSkipped: preview.pendingBookings, notesImported: preview.notesCount, categoriesCreated: UInt32(preview.categoryPaths.count), connectionsCreated: 3, connectionsExisting: 0, pinsStored: 0, banksSkippedUnsupported: 1, documentsImported: 0, holdingsImported: 0)
+            result = MoneyMoneyDbImportResult(accountsCreated: 5, accountsMerged: 1, groupsCreated: 2, bookingsNew: preview.totalBookings, bookingsDuplicates: 0, bookingsEnriched: 0, pendingSkipped: preview.pendingBookings, notesImported: preview.notesCount, categoriesCreated: UInt32(preview.categoryPaths.count), connectionsCreated: 3, connectionsExisting: 0, pinsStored: 0, banksSkippedUnsupported: 1, documentsImported: 0, holdingsImported: 0, rulesCreated: 0, rulesDisabled: 0)
             password = ""
             return
         }

@@ -2,7 +2,7 @@
 //! SQLCipher-encrypted with a test password).
 
 use super::*;
-use crate::models::{BookingFilter, CategorySource};
+use crate::models::{BookingFilter, CategorySource, MatchKind};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -1132,4 +1132,55 @@ fn import_takes_over_moneymoney_groups() {
         .accounts
         .iter()
         .any(|a| a.id == giro));
+}
+
+#[test]
+fn imports_category_rules() {
+    let v = vault();
+    let path = fake_db_with(
+        false,
+        "UPDATE categories SET rules = 'name:REWE OR name:EDEKA' WHERE rowid = 2;
+         UPDATE categories SET rules = '(Gehalt' WHERE rowid = 3;
+         UPDATE categories SET rules = 'purpose:Strom* AND amount<0' WHERE rowid = 4;
+         UPDATE categories SET rules = 'name:Finanzamt', apply_to_account = '1' WHERE rowid = 5;
+         INSERT INTO categories (rowid, name, type, group_key, sort, rules) VALUES
+           (6, 'Spenden', 1, 0, 4, 'reference:X'),
+           (7, 'Sonstiges', 1, 0, 5, '   ');",
+    );
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!((r.rules_created, r.rules_disabled), (5, 3));
+
+    let rules = v.list_rules().unwrap();
+    let by_name = |n: &str| rules.iter().find(|r| r.name == n).unwrap().clone();
+    let supermarkt = by_name("Supermarkt");
+    assert_eq!(supermarkt.match_kind, MatchKind::Expression);
+    assert_eq!(supermarkt.pattern, "name:REWE OR name:EDEKA");
+    assert!(supermarkt.enabled);
+    assert!(supermarkt.priority >= 1000);
+    assert!(by_name("Strom").enabled);
+    assert!(
+        by_name("Strom").priority > supermarkt.priority,
+        "MoneyMoney order"
+    );
+    assert!(!by_name("Gehalt").enabled, "broken syntax");
+    assert!(
+        !by_name("Steuern / Büro (nur für bestimmte Konten)").enabled,
+        "account restriction is named in the rule"
+    );
+    assert!(!by_name("Spenden").enabled, "unsupported field");
+    assert!(
+        rules.iter().all(|r| r.name != "Sonstiges"),
+        "blank rule skipped"
+    );
+
+    let again = v
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!((again.rules_created, again.rules_disabled), (0, 0));
+    assert_eq!(v.list_rules().unwrap().len(), rules.len());
 }

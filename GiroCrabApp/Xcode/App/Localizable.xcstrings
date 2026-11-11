@@ -7946,6 +7946,50 @@
         }
       }
     },
+    "Suchausdruck" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search expression"
+          }
+        }
+      }
+    },
+    "Mit AND, OR, NOT, Klammern, „Wortgruppen“, * und ?, /Regex/, Feldern wie name: oder purpose: und Beträgen wie amount<0." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With AND, OR, NOT, parentheses, “phrases”, * and ?, /regex/, fields such as name: or purpose: and amounts such as amount<0."
+          }
+        }
+      }
+    },
+    "%u Regeln übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u rules imported."
+          }
+        }
+      }
+    },
+    "%u davon ausgeschaltet – sie nutzen Angaben, die GiroCrab nicht kennt, gelten nur für bestimmte Konten oder sind fehlerhaft." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u of them switched off – they use details GiroCrab doesn't know, apply to specific accounts only, or contain errors."
+          }
+        }
+      }
+    },
     "%lld Depotpositionen" : {
       "extractionState" : "manual",
       "localizations" : {

@@ -407,6 +407,9 @@ pub enum MatchKind {
     Keyword,
     /// A full regular expression.
     Regex,
+    /// A search expression: AND/OR/NOT, "phrases", wildcards, /regex/,
+    /// field prefixes and amount comparisons (see `search_expr`).
+    Expression,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

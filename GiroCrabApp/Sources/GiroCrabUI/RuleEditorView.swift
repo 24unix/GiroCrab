@@ -117,22 +117,31 @@ struct RuleForm: View {
                     Stepper("Priorität \(rule.priority)", value: $rule.priority, in: 0...10_000, step: 10)
                 }
                 Section("Treffer") {
-                    Picker("Suchen in", selection: $rule.field) {
-                        Text("Name, Verwendungszweck und Buchungstext").tag(RuleField.any)
-                        Text("Name").tag(RuleField.counterparty)
-                        Text("Verwendungszweck").tag(RuleField.purpose)
-                        Text("Buchungstext").tag(RuleField.bookingText)
-                        Text("IBAN").tag(RuleField.counterpartyIban)
+                    // A search expression names its fields itself and ignores case.
+                    if rule.matchKind != .expression {
+                        Picker("Suchen in", selection: $rule.field) {
+                            Text("Name, Verwendungszweck und Buchungstext").tag(RuleField.any)
+                            Text("Name").tag(RuleField.counterparty)
+                            Text("Verwendungszweck").tag(RuleField.purpose)
+                            Text("Buchungstext").tag(RuleField.bookingText)
+                            Text("IBAN").tag(RuleField.counterpartyIban)
+                        }
                     }
                     Picker("Muster", selection: $rule.matchKind) {
                         Text("Stichwörter").tag(MatchKind.keyword)
                         Text("Regulärer Ausdruck").tag(MatchKind.regex)
+                        Text("Suchausdruck").tag(MatchKind.expression)
                     }
                     .pickerStyle(.segmented)
-                    TextField(rule.matchKind == .keyword ? "REWE | EDEKA | ALDI" : #"^DB\s+(Fernverkehr|Vertrieb)"#, text: $rule.pattern)
+                    TextField(placeholder, text: $rule.pattern)
                         .font(.body.monospaced())
                         .autocorrectionDisabled()
-                    Toggle("Groß-/Kleinschreibung beachten", isOn: $rule.caseSensitive)
+                    if rule.matchKind == .expression {
+                        Text("Mit AND, OR, NOT, Klammern, „Wortgruppen“, * und ?, /Regex/, Feldern wie name: oder purpose: und Beträgen wie amount<0.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Toggle("Groß-/Kleinschreibung beachten", isOn: $rule.caseSensitive)
+                    }
                 }
                 Section("Betrag") {
                     Picker("Richtung", selection: $direction) {
@@ -193,6 +202,14 @@ struct RuleForm: View {
             case 2: rule.minAmountCents = 1; rule.maxAmountCents = nil
             default: rule.minAmountCents = nil; rule.maxAmountCents = nil
             }
+        }
+    }
+
+    private var placeholder: String {
+        switch rule.matchKind {
+        case .keyword: "REWE | EDEKA | ALDI"
+        case .regex: #"^DB\s+(Fernverkehr|Vertrieb)"#
+        case .expression: #"name:REWE OR purpose:"Bahn AG""#
         }
     }
 

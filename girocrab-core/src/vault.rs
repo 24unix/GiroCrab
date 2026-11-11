@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS rules (
     name              TEXT    NOT NULL,
     category_id       INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
     field             TEXT    NOT NULL DEFAULT 'any',
-    match_kind        TEXT    NOT NULL DEFAULT 'keyword',   -- keyword | regex
+    match_kind        TEXT    NOT NULL DEFAULT 'keyword',   -- keyword | regex | expression
     pattern           TEXT    NOT NULL,
     case_sensitive    INTEGER NOT NULL DEFAULT 0,
     min_amount_cents  INTEGER,
@@ -320,7 +320,11 @@ impl Vault {
     }
 
     pub(crate) fn rule_set(conn: &Connection) -> CoreResult<RuleSet> {
-        RuleSet::new(Self::load_rules(conn)?)
+        // Disabled rules never match; skipping them also keeps a switched-off
+        // rule with an invalid pattern (e.g. imported) from breaking the set.
+        let mut rules = Self::load_rules(conn)?;
+        rules.retain(|r| r.enabled);
+        RuleSet::new(rules)
     }
 
     fn load_rules(conn: &Connection) -> CoreResult<Vec<Rule>> {
@@ -336,10 +340,10 @@ impl Vault {
                 name: r.get(1)?,
                 category_id: r.get(2)?,
                 field: RuleField::from_str(&r.get::<_, String>(3)?),
-                match_kind: if r.get::<_, String>(4)? == "regex" {
-                    MatchKind::Regex
-                } else {
-                    MatchKind::Keyword
+                match_kind: match r.get::<_, String>(4)?.as_str() {
+                    "regex" => MatchKind::Regex,
+                    "expression" => MatchKind::Expression,
+                    _ => MatchKind::Keyword,
                 },
                 pattern: r.get(5)?,
                 case_sensitive: r.get::<_, i64>(6)? != 0,
@@ -362,42 +366,56 @@ impl Vault {
     ) -> CoreResult<u32> {
         let set = Self::rule_set(conn)?;
         let sql = if only_uncategorised {
-            "SELECT id, account_id, amount_cents, counterparty, counterparty_iban, purpose, booking_text, category_id, rule_id
-             FROM transactions WHERE category_source = 'none'"
+            "SELECT t.id, t.account_id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.rule_id,
+                    t.note, t.currency, IFNULL(a.iban, '')
+             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE t.category_source = 'none'"
         } else {
-            "SELECT id, account_id, amount_cents, counterparty, counterparty_iban, purpose, booking_text, category_id, rule_id
-             FROM transactions WHERE category_source != 'manual'"
+            "SELECT t.id, t.account_id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.rule_id,
+                    t.note, t.currency, IFNULL(a.iban, '')
+             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE t.category_source != 'manual'"
         };
         let mut stmt = conn.prepare(sql)?;
+        // (note, currency, own account IBAN) ride along for search expressions
+        #[allow(clippy::type_complexity)]
         let rows: Vec<(
-            i64,
-            i64,
-            i64,
-            String,
-            String,
-            String,
-            String,
-            Option<i64>,
-            Option<i64>,
+            (
+                i64,
+                i64,
+                i64,
+                String,
+                String,
+                String,
+                String,
+                Option<i64>,
+                Option<i64>,
+            ),
+            (String, String, String),
         )> = stmt
             .query_map([], |r| {
                 Ok((
-                    r.get(0)?,
-                    r.get(1)?,
-                    r.get(2)?,
-                    r.get(3)?,
-                    r.get(4)?,
-                    r.get(5)?,
-                    r.get(6)?,
-                    r.get(7)?,
-                    r.get(8)?,
+                    (
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                        r.get(8)?,
+                    ),
+                    (r.get(9)?, r.get(10)?, r.get(11)?),
                 ))
             })?
             .collect::<Result<_, _>>()?;
         let mut changed = 0u32;
         let mut upd_rule = conn.prepare("UPDATE transactions SET category_id = ?1, rule_id = ?2, category_source = 'rule' WHERE id = ?3")?;
         let mut upd_none = conn.prepare("UPDATE transactions SET category_id = NULL, rule_id = NULL, category_source = 'none' WHERE id = ?1")?;
-        for (id, account_id, amount, cp, iban, purpose, bt, cat, rule) in rows {
+        for (
+            (id, account_id, amount, cp, iban, purpose, bt, cat, rule),
+            (note, currency, own_iban),
+        ) in rows
+        {
             let input = RuleInput {
                 account_id,
                 amount_cents: amount,
@@ -405,6 +423,9 @@ impl Vault {
                 counterparty_iban: &iban,
                 purpose: &purpose,
                 booking_text: &bt,
+                note: &note,
+                currency: &currency,
+                account_iban: &own_iban,
             };
             match set.categorise(&input) {
                 Some((rule_id, cat_id)) => {
@@ -2056,10 +2077,19 @@ impl Vault {
             });
         }
         let db = self.db()?;
-        let kind = if rule.match_kind == MatchKind::Regex {
-            "regex"
-        } else {
-            "keyword"
+        let kind = match rule.match_kind {
+            MatchKind::Keyword => "keyword",
+            MatchKind::Regex => "regex",
+            MatchKind::Expression => {
+                let expr = crate::search_expr::SearchExpr::parse(&rule.pattern)
+                    .map_err(|message| CoreError::InvalidInput { message })?;
+                if let Some(f) = expr.unsupported_fields().first() {
+                    return Err(CoreError::InvalidInput {
+                        message: trf("Das Feld „{0}“ wird nicht unterstützt.", &[f]),
+                    });
+                }
+                "expression"
+            }
         };
         if rule.id == 0 {
             db.execute(
@@ -2098,6 +2128,12 @@ impl Vault {
             limit: 20000,
             ..Default::default()
         })?;
+        let ibans: HashMap<i64, String> = {
+            let db = self.db()?;
+            let mut st = db.prepare("SELECT id, iban FROM accounts")?;
+            let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<Result<_, _>>()?
+        };
         Ok(page
             .transactions
             .into_iter()
@@ -2109,6 +2145,9 @@ impl Vault {
                     counterparty_iban: &t.counterparty_iban,
                     purpose: &t.purpose,
                     booking_text: &t.booking_text,
+                    note: &t.note,
+                    currency: &t.currency,
+                    account_iban: ibans.get(&t.account_id).map_or("", String::as_str),
                 })
             })
             .take(limit.max(1) as usize)
@@ -2339,5 +2378,87 @@ mod merge_tests {
         let st2 = a.merge_other_vault(b.file_path(), key).unwrap();
         assert_eq!((st2.bookings_added, st2.bookings_updated), (0, 0));
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod expression_rule_tests {
+    use super::*;
+
+    #[test]
+    fn expression_rules_round_trip_and_apply() {
+        let p = std::env::temp_dir().join(format!("girocrab-expr-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
+        let cat = {
+            let c = v.db().unwrap();
+            c.execute(
+                "INSERT OR IGNORE INTO account_groups(name) VALUES ('G')",
+                [],
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO accounts(group_id, external_ref, name, iban) \
+                 VALUES ((SELECT id FROM account_groups LIMIT 1), 'A1', 'Konto', 'DE02120300000000202051')",
+                [],
+            )
+            .unwrap();
+            c.execute("INSERT INTO categories(name) VALUES ('Lebensmittel')", [])
+                .unwrap();
+            for (ext, cp, amount) in [
+                ("T1", "REWE Markt", -2350),
+                ("T2", "REWE Markt", 500),
+                ("T3", "Lidl", -100),
+            ] {
+                c.execute(
+                    "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty) \
+                     VALUES ((SELECT id FROM accounts LIMIT 1), ?1, '2026-01-02', ?2, ?3)",
+                    params![ext, amount, cp],
+                )
+                .unwrap();
+            }
+            c.query_row(
+                "SELECT id FROM categories WHERE name = 'Lebensmittel'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap()
+        };
+        let rule = Rule {
+            id: 0,
+            name: "REWE".into(),
+            category_id: cat,
+            field: RuleField::Any,
+            match_kind: MatchKind::Expression,
+            pattern: "name:REWE AND amount<0 AND local_account:DE02*".into(),
+            case_sensitive: false,
+            min_amount_cents: None,
+            max_amount_cents: None,
+            account_id: None,
+            priority: 0,
+            enabled: true,
+            match_count: 0,
+        };
+        let id = v.save_rule(rule.clone()).unwrap();
+        let listed = v.list_rules().unwrap();
+        let saved = listed.iter().find(|r| r.id == id).unwrap();
+        assert_eq!(saved.match_kind, MatchKind::Expression);
+        assert_eq!(v.preview_rule(rule.clone(), 10).unwrap().len(), 1);
+        v.apply_rules(true).unwrap();
+        let hits: i64 = v
+            .db()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM transactions WHERE rule_id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(hits, 1, "only the REWE debit");
+        let err = v.save_rule(Rule {
+            pattern: "reference:X".into(),
+            ..rule
+        });
+        assert!(err.is_err(), "unsupported field can't be saved");
+        let _ = std::fs::remove_file(p);
     }
 }
