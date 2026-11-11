@@ -260,3 +260,183 @@ fn assert_converged_panics_on_one_differing_deletion() {
         .unwrap();
     assert!(std::panic::catch_unwind(|| assert_converged(&a, &b)).is_err());
 }
+
+const STAMP_COLS: [&str; 5] = [
+    "category_ms",
+    "note_ms",
+    "checked_ms",
+    "text_ms",
+    "splits_ms",
+];
+
+fn stamps(v: &Vault) -> Vec<i64> {
+    let db = v.db().unwrap();
+    STAMP_COLS
+        .iter()
+        .map(|c| {
+            db.query_row(
+                &format!("SELECT {c} FROM transactions WHERE id = 1"),
+                [],
+                |r| r.get(0),
+            )
+            .unwrap()
+        })
+        .collect()
+}
+
+fn stamp_vault(tag: &str) -> Arc<Vault> {
+    let v = open(&temp_dir(tag), "s.db");
+    v.db()
+        .unwrap()
+        .execute_batch(
+            "INSERT INTO account_groups(id, name) VALUES (1, 'G');
+             INSERT INTO accounts(id, group_id, external_ref, name) VALUES (1, 1, 'DE1', 'A');
+             INSERT INTO transactions(id, account_id, external_id, booking_date, amount_cents, counterparty)
+                 VALUES (1, 1, 'e1', '2026-01-01', 5, 'Shop');",
+        )
+        .unwrap();
+    v
+}
+
+#[test]
+fn editing_a_booking_stamps_only_that_field() {
+    let v = stamp_vault("stamp-fields");
+    assert_eq!(stamps(&v), vec![0; 5]);
+    let cat = v
+        .create_category("Food".into(), None, String::new(), String::new())
+        .unwrap();
+    // (edit, index of the one stamp that must move)
+    type Edit = Box<dyn Fn(&Vault)>;
+    let edits: Vec<(usize, Edit)> = vec![
+        (
+            0,
+            Box::new(move |v| v.set_transaction_category(1, Some(cat)).unwrap()),
+        ),
+        (
+            1,
+            Box::new(|v| v.update_transaction_note(1, "n".into()).unwrap()),
+        ),
+        (2, Box::new(|v| v.set_transaction_checked(1, true).unwrap())),
+        (
+            3,
+            Box::new(|v| {
+                v.update_transaction_text(1, "X".into(), "Y".into())
+                    .unwrap()
+            }),
+        ),
+        (
+            4,
+            Box::new(move |v| {
+                v.set_transaction_splits(
+                    1,
+                    vec![
+                        crate::models::TransactionSplitInput {
+                            category_id: Some(cat),
+                            amount_cents: 3,
+                            note: String::new(),
+                        },
+                        crate::models::TransactionSplitInput {
+                            category_id: None,
+                            amount_cents: 2,
+                            note: String::new(),
+                        },
+                    ],
+                )
+                .unwrap()
+            }),
+        ),
+    ];
+    for (idx, edit) in edits {
+        let before = stamps(&v);
+        edit(&v);
+        let after = stamps(&v);
+        for i in 0..5 {
+            if i == idx {
+                assert!(
+                    after[i] > 0 && after[i] >= before[i],
+                    "{} not stamped",
+                    STAMP_COLS[i]
+                );
+            } else {
+                assert_eq!(after[i], before[i], "{} must not move", STAMP_COLS[i]);
+            }
+        }
+    }
+}
+
+#[test]
+fn rule_assignment_does_not_stamp() {
+    let v = stamp_vault("stamp-rule");
+    let cat = v
+        .create_category("Food".into(), None, String::new(), String::new())
+        .unwrap();
+    v.save_rule(crate::models::Rule {
+        id: 0,
+        name: "shop".into(),
+        category_id: cat,
+        field: crate::models::RuleField::Counterparty,
+        match_kind: crate::models::MatchKind::Keyword,
+        pattern: "Shop".into(),
+        case_sensitive: false,
+        min_amount_cents: None,
+        max_amount_cents: None,
+        account_id: None,
+        priority: 0,
+        enabled: true,
+        match_count: 0,
+    })
+    .unwrap();
+    v.apply_rules(false).unwrap();
+    let src: String = v
+        .db()
+        .unwrap()
+        .query_row(
+            "SELECT category_source FROM transactions WHERE id = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(src, "rule");
+    assert_eq!(stamps(&v), vec![0; 5]);
+}
+
+#[test]
+fn manual_clear_stamps_and_lets_rules_refill() {
+    let v = stamp_vault("stamp-clear");
+    let cat = v
+        .create_category("Food".into(), None, String::new(), String::new())
+        .unwrap();
+    v.save_rule(crate::models::Rule {
+        id: 0,
+        name: "shop".into(),
+        category_id: cat,
+        field: crate::models::RuleField::Counterparty,
+        match_kind: crate::models::MatchKind::Keyword,
+        pattern: "Shop".into(),
+        case_sensitive: false,
+        min_amount_cents: None,
+        max_amount_cents: None,
+        account_id: None,
+        priority: 0,
+        enabled: true,
+        match_count: 0,
+    })
+    .unwrap();
+    v.set_transaction_category(1, None).unwrap();
+    let ms = stamps(&v)[0];
+    assert!(ms > 0);
+    let row = |v: &Vault| -> (Option<i64>, String) {
+        v.db()
+            .unwrap()
+            .query_row(
+                "SELECT category_id, category_source FROM transactions WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+    };
+    assert_eq!(row(&v), (None, "none".to_string()));
+    v.apply_rules(true).unwrap();
+    assert_eq!(row(&v), (Some(cat), "rule".to_string()));
+    assert_eq!(stamps(&v)[0], ms);
+}

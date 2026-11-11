@@ -236,6 +236,10 @@ impl Vault {
                 params![transaction_id, s.category_id, s.amount_cents, s.note.trim()],
             )?;
         }
+        tx.execute(
+            "UPDATE transactions SET splits_ms = ?1 WHERE id = ?2",
+            params![crate::user_groups::now_ms(), transaction_id],
+        )?;
         tx.commit()?;
         Ok(())
     }

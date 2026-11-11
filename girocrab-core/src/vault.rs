@@ -2243,8 +2243,8 @@ impl Vault {
     ) -> Result<(), CoreError> {
         let db = self.db()?;
         let n = db.execute(
-            "UPDATE transactions SET category_id = ?1, rule_id = NULL, category_source = CASE WHEN ?1 IS NULL THEN 'none' ELSE 'manual' END WHERE id = ?2",
-            params![category_id, transaction_id],
+            "UPDATE transactions SET category_id = ?1, rule_id = NULL, category_source = CASE WHEN ?1 IS NULL THEN 'none' ELSE 'manual' END, category_ms = ?3 WHERE id = ?2",
+            params![category_id, transaction_id, crate::user_groups::now_ms()],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
@@ -2260,8 +2260,8 @@ impl Vault {
         checked: bool,
     ) -> Result<(), CoreError> {
         self.db()?.execute(
-            "UPDATE transactions SET checked = ?1 WHERE id = ?2",
-            params![checked as i64, transaction_id],
+            "UPDATE transactions SET checked = ?1, checked_ms = ?3 WHERE id = ?2",
+            params![checked as i64, transaction_id, crate::user_groups::now_ms()],
         )?;
         Ok(())
     }
@@ -2274,8 +2274,13 @@ impl Vault {
         purpose: String,
     ) -> Result<(), CoreError> {
         let n = self.db()?.execute(
-            "UPDATE transactions SET counterparty = ?1, purpose = ?2 WHERE id = ?3",
-            params![counterparty.trim(), purpose.trim(), transaction_id],
+            "UPDATE transactions SET counterparty = ?1, purpose = ?2, text_ms = ?4 WHERE id = ?3",
+            params![
+                counterparty.trim(),
+                purpose.trim(),
+                transaction_id,
+                crate::user_groups::now_ms()
+            ],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
@@ -2292,8 +2297,8 @@ impl Vault {
         note: String,
     ) -> Result<(), CoreError> {
         let n = self.db()?.execute(
-            "UPDATE transactions SET note = ?1 WHERE id = ?2",
-            params![note.trim(), transaction_id],
+            "UPDATE transactions SET note = ?1, note_ms = ?3 WHERE id = ?2",
+            params![note.trim(), transaction_id, crate::user_groups::now_ms()],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
