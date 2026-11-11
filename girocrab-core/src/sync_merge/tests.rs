@@ -968,3 +968,59 @@ fn twin_merge_soft_deletes_the_bank_copy() {
         1
     );
 }
+
+#[test]
+fn revive_brings_back_cascade_bookings_but_not_individually_deleted_ones() {
+    let v = open(&temp_dir("cascade"), "a.db");
+    let c = v
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    let fetch = || crate::connectors::FetchResult {
+        accounts: vec![remote_account("DE1")],
+        transactions: ["b1", "b2", "b3"]
+            .iter()
+            .map(|i| remote_tx("DE1", i))
+            .collect(),
+        ..Default::default()
+    };
+    crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch()).unwrap();
+    let live = |v: &Vault| {
+        let mut ids = uuids(
+            v,
+            "SELECT external_id FROM transactions WHERE deleted_ms IS NULL ORDER BY 1",
+        );
+        ids.sort();
+        ids
+    };
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE transactions SET deleted_ms = 5 WHERE external_id = 'b1'",
+            [],
+        )
+        .unwrap();
+    // connection delete + re-add + fetch
+    v.delete_bank_connection(c).unwrap();
+    assert!(live(&v).is_empty());
+    let again = v
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    assert_eq!(again, c);
+    assert!(live(&v).is_empty(), "bookings wait for the account");
+    crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch()).unwrap();
+    assert_eq!(live(&v), vec!["b2", "b3"]);
+    // account delete + fetch
+    let acc = n(&v, "SELECT id FROM accounts");
+    v.set_account_archived(acc, true).unwrap();
+    v.delete_account(acc).unwrap();
+    assert!(live(&v).is_empty());
+    crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch()).unwrap();
+    assert_eq!(live(&v), vec!["b2", "b3"]);
+    assert_eq!(
+        n(
+            &v,
+            "SELECT deleted_ms FROM transactions WHERE external_id = 'b1'"
+        ),
+        5
+    );
+}

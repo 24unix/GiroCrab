@@ -1849,3 +1849,55 @@ fn import_stamps_manual_category_and_note() {
         0
     );
 }
+
+#[test]
+fn reimport_revives_deleted_account_with_its_cascade_bookings_only() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true, false))
+        .unwrap();
+    let giro = account_by_name(&v, "Girokonto").id;
+    let live = |v: &Vault| -> i64 {
+        v.db()
+            .unwrap()
+            .query_row(
+                "SELECT count(*) FROM transactions WHERE account_id = ?1 AND deleted_ms IS NULL",
+                [giro],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    let total = live(&v);
+    assert!(total >= 2);
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE transactions SET deleted_ms = 5 WHERE id = (SELECT min(id) FROM transactions WHERE account_id = ?1)",
+            [giro],
+        )
+        .unwrap();
+    v.set_account_archived(giro, true).unwrap();
+    v.delete_account(giro).unwrap();
+    assert_eq!(live(&v), 0);
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+        .unwrap();
+    assert_eq!(
+        v.list_accounts()
+            .unwrap()
+            .iter()
+            .filter(|a| a.id == giro)
+            .count(),
+        1
+    );
+    assert_eq!(
+        live(&v),
+        total - 1,
+        "individually deleted booking stays deleted"
+    );
+}

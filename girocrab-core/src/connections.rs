@@ -38,7 +38,8 @@ pub(crate) fn pin_key(connection_id: i64) -> String {
 }
 
 /// Merges duplicate logins (same connector + same normalised login) into the
-/// oldest one, keeping every account and booking. Returns the number removed.
+/// oldest one, keeping every account and booking. Soft-deleted connections are
+/// left alone. Returns the number removed.
 /// All or nothing: runs in a savepoint (works inside a caller's transaction too).
 pub(crate) fn deduplicate(conn: &Connection) -> CoreResult<u32> {
     conn.execute_batch("SAVEPOINT dedup_logins")?;
@@ -169,7 +170,7 @@ fn merge_duplicate_account(conn: &Connection, keep: i64, dup: i64) -> CoreResult
 fn deduplicate_inner(conn: &Connection) -> CoreResult<u32> {
     let rows: Vec<(i64, String, String)> = {
         let mut st =
-            conn.prepare("SELECT id, connector, login_name FROM bank_connections ORDER BY id")?;
+            conn.prepare("SELECT id, connector, login_name FROM bank_connections WHERE deleted_ms IS NULL ORDER BY id")?;
         let r = st
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<Result<Vec<_>, _>>()?;
@@ -649,6 +650,40 @@ mod tests {
             )
             .unwrap();
         assert_eq!(left, 0);
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn deduplicate_leaves_soft_deleted_twin_alone() {
+        let p =
+            std::env::temp_dir().join(format!("girocrab-dedup-del-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![4u8; 32]).unwrap();
+        {
+            let db = v.db().unwrap();
+            let g: i64 = {
+                db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+                    .unwrap();
+                db.last_insert_rowid()
+            };
+            // the deleted twin has the lower id
+            db.execute("INSERT INTO bank_connections(connector, display_name, login_name, deleted_ms) VALUES ('fints:52090000', 'VB', '1234567890', 9)", []).unwrap();
+            db.execute("INSERT INTO bank_connections(connector, display_name, login_name) VALUES ('fints:52090000', 'VB', '1234567890')", []).unwrap();
+            let live = db.last_insert_rowid();
+            db.execute("INSERT INTO accounts(connection_id, group_id, external_ref, name) VALUES (?1, ?2, 'DE1', 'Giro')", params![live, g]).unwrap();
+        }
+        let removed = deduplicate(&v.db().unwrap()).unwrap();
+        assert_eq!(removed, 0);
+        let db = v.db().unwrap();
+        let q = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        assert_eq!(q("SELECT count(*) FROM bank_connections"), 2);
+        assert_eq!(
+            q("SELECT count(*) FROM bank_connections WHERE deleted_ms IS NULL"),
+            1
+        );
+        assert_eq!(
+            q("SELECT count(*) FROM accounts a JOIN bank_connections c ON c.id = a.connection_id WHERE c.deleted_ms IS NULL AND a.deleted_ms IS NULL"),
+            1
+        );
         let _ = std::fs::remove_file(p);
     }
 }

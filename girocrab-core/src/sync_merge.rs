@@ -316,7 +316,12 @@ pub(crate) fn soft_delete_booking(conn: &Connection, id: i64) -> CoreResult<()> 
 
 /// Soft-deletes an account and its bookings (what the FK cascade did).
 pub(crate) fn soft_delete_account(conn: &Connection, id: i64) -> CoreResult<()> {
-    let now = crate::user_groups::now_ms();
+    soft_delete_account_at(conn, id, crate::user_groups::now_ms())
+}
+
+/// The cascade shares one stamp, so a revive can tell the bookings deleted
+/// together with the account from individually deleted ones.
+fn soft_delete_account_at(conn: &Connection, id: i64, now: i64) -> CoreResult<()> {
     // derived loan links went with the rows (FK cascade) before
     conn.execute(
         "DELETE FROM loan_links WHERE loan_account_id = ?1
@@ -341,12 +346,13 @@ pub(crate) fn soft_delete_connection(conn: &Connection, id: i64) -> CoreResult<(
         let rows = q.query_map([id], |r| r.get(0))?;
         rows.collect::<Result<_, _>>()?
     };
+    let now = crate::user_groups::now_ms();
     for a in accounts {
-        soft_delete_account(conn, a)?;
+        soft_delete_account_at(conn, a, now)?;
     }
     conn.execute(
         "UPDATE bank_connections SET deleted_ms = ?1 WHERE id = ?2 AND deleted_ms IS NULL",
-        params![crate::user_groups::now_ms(), id],
+        params![now, id],
     )?;
     Ok(())
 }
@@ -361,12 +367,23 @@ pub(crate) fn revive_connection(conn: &Connection, id: i64) -> CoreResult<()> {
 }
 
 /// A deleted account the bank (or an import) delivers again comes back with a
-/// new `created_ms`; its deleted bookings stay deleted.
+/// new `created_ms`, together with the bookings deleted in the same cascade;
+/// individually deleted bookings stay deleted.
 pub(crate) fn revive_account_if_deleted(conn: &Connection, id: i64) -> CoreResult<()> {
+    let stamp: Option<i64> = conn
+        .query_row("SELECT deleted_ms FROM accounts WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
+        .optional()?
+        .flatten();
+    let Some(stamp) = stamp else { return Ok(()) };
     conn.execute(
-        "UPDATE accounts SET deleted_ms = NULL, archived_unix = NULL, created_ms = ?1
-         WHERE id = ?2 AND deleted_ms IS NOT NULL",
+        "UPDATE accounts SET deleted_ms = NULL, archived_unix = NULL, created_ms = ?1 WHERE id = ?2",
         params![crate::user_groups::now_ms(), id],
+    )?;
+    conn.execute(
+        "UPDATE transactions SET deleted_ms = NULL WHERE account_id = ?1 AND deleted_ms = ?2",
+        params![id, stamp],
     )?;
     Ok(())
 }
