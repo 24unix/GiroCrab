@@ -105,6 +105,12 @@ struct BookingStreamView: View {
         .onAppear { focused = model.options.screenshotPath == nil }
         .onKeyPress(.downArrow) { model.moveSelection(1); return .handled }
         .onKeyPress(.upArrow) { model.moveSelection(-1); return .handled }
+        .onKeyPress(.return) {
+            guard model.options.screenshotPath == nil, let b = model.selectedBooking else { return .ignored }
+            model.editNote(for: b)
+            return .handled
+        }
+        .onChange(of: model.focusListToken) { _, _ in focused = true }
         .onKeyPress(.space) {
             guard model.options.screenshotPath == nil, let b = model.selectedBooking else { return .ignored }
             // No receipt attached: Space toggles "checked" instead of QuickLook.
@@ -196,6 +202,8 @@ struct DayCard: View {
                     }
                     .contentShape(Rectangle())
                     .onTapGesture { model.selectedBookingID = b.id }
+                    // simultaneous, so single clicks keep selecting without the double-click delay
+                    .simultaneousGesture(TapGesture(count: 2).onEnded { model.editNote(for: b) })
                     .contextMenu { rowMenu(b) }
                 if i < day.bookings.count - 1 {
                     Rectangle().fill(Theme.border.opacity(0.7)).frame(height: 1).padding(.leading, 64)
@@ -211,6 +219,7 @@ struct DayCard: View {
     private func rowMenu(_ b: Booking) -> some View {
         Button("Kategorisieren …", systemImage: "tag") { model.selectedBookingID = b.id; model.showCategorizer = true }
         Button("Regel für diesen Händler erstellen …", systemImage: "wand.and.stars") { model.openRuleEditor(from: b) }
+        Button("Notiz bearbeiten …", systemImage: "note.text") { model.editNote(for: b) }
         Button("Umsatz aufteilen (Splitbuchung) …", systemImage: "arrow.triangle.branch") { model.splitBooking = b }
         Divider()
         Button("Nach „\(b.counterparty.isEmpty ? b.merchantName : b.counterparty)“ suchen", systemImage: "magnifyingglass") {

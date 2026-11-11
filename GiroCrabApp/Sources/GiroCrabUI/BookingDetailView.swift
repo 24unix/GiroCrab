@@ -131,11 +131,26 @@ struct NoteCard: View {
                 .focused($focused)
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.border))
                 .onChange(of: focused) { _, f in if !f { save() } }
+                // Esc: leave the note (saves via focus loss) and go back to the list
+                .onKeyPress(.escape) {
+                    focused = false
+                    model.focusListToken &+= 1
+                    return .handled
+                }
         }
         .card()
-        .onAppear { draft = booking.note }
+        .onAppear { draft = booking.note; claimFocus() }
         .onDisappear { save() }
         .onChange(of: booking.note) { _, n in if !focused { draft = n } }
+        .onChange(of: model.pendingNoteFocus) { _, _ in claimFocus() }
+    }
+
+    /// Takes the focus requested by a double-click / Return in the list for this booking.
+    private func claimFocus() {
+        guard model.pendingNoteFocus == booking.id else { return }
+        model.pendingNoteFocus = nil
+        // deferred: focus on a just-appeared TextEditor is otherwise dropped
+        DispatchQueue.main.async { focused = true }
     }
 
     private func save() {
@@ -396,6 +411,7 @@ struct ShortcutHintCard: View {
             Text("Tastatur").font(.caption.weight(.semibold)).foregroundStyle(Theme.secondary)
             hint("⌘K", "Befehlspalette")
             hint("↑ ↓", "Buchung wechseln")
+            hint("↩", "Notiz bearbeiten (oder Doppelklick)")
             hint("C", "Kategorisieren")
             hint("R", "Regel erstellen")
             hint("⌘1–3", "Alle · Alltag · Sparpläne")

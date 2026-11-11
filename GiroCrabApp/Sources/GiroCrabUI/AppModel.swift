@@ -200,6 +200,11 @@ public final class AppModel {
     var showSettings = false
     var showCommandPalette = false
     var showCategorizer = false
+    /// Booking whose inspector note field should take focus (double-click / Return in the list).
+    /// Carries the id because the NoteCard is recreated per booking and claims it on appear.
+    var pendingNoteFocus: Booking.ID?
+    /// Bumped to hand keyboard focus back to the booking list (e.g. Esc in the note field).
+    var focusListToken = 0
     var showMoneyMoneyImport = false
     /// (demo, `--demo-sheet moneymoney`) canned preview so the sheet can be shown without a file.
     var demoImportPreview: MoneyMoneyImportPreview?
@@ -940,6 +945,12 @@ public final class AppModel {
         guard let vault else { return }
         run { try vault.updateTransactionText(transactionId: booking.id, counterparty: counterparty, purpose: purpose) }
         reloadBookings(); reloadMerchantStats()
+    }
+
+    /// Select the booking and put the cursor into its note field in the inspector.
+    func editNote(for booking: Booking) {
+        selectedBookingID = booking.id
+        pendingNoteFocus = booking.id
     }
 
     func updateNote(_ note: String, for booking: Booking) {
