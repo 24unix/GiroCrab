@@ -32,8 +32,11 @@ fn demo_pdf(line: &str) -> Vec<u8> {
         out.extend(format!("{off:010} 00000 n \n").into_bytes());
     }
     out.extend(
-        format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objs.len() + 1)
-            .into_bytes(),
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objs.len() + 1
+        )
+        .into_bytes(),
     );
     out
 }
@@ -42,9 +45,27 @@ fn demo_pdf(line: &str) -> Vec<u8> {
 fn demo_documents(conn: &Connection, today: NaiveDate, account_id: i64) -> CoreResult<()> {
     let _ = today;
     let docs = [
-        ("BioMarkt Sonnenberg – Kassenbeleg", "beleg", "biomarkt_kassenbeleg.pdf", "BioMarkt Sonnenberg - Kassenbeleg - 47,85 EUR", "2026-11-04"),
-        ("Stadtwerke Energie – Stromabschlag", "abrechnung", "stadtwerke_stromabschlag.pdf", "Stadtwerke Energie - Stromabschlag - 78,00 EUR", "2026-11-01"),
-        ("ConnectMobile – Monatsrechnung", "abrechnung", "connectmobile_monatsrechnung.pdf", "ConnectMobile - Monatsrechnung - 19,99 EUR", "2026-10-28"),
+        (
+            "BioMarkt Sonnenberg – Kassenbeleg",
+            "beleg",
+            "biomarkt_kassenbeleg.pdf",
+            "BioMarkt Sonnenberg - Kassenbeleg - 47,85 EUR",
+            "2026-11-04",
+        ),
+        (
+            "Stadtwerke Energie – Stromabschlag",
+            "abrechnung",
+            "stadtwerke_stromabschlag.pdf",
+            "Stadtwerke Energie - Stromabschlag - 78,00 EUR",
+            "2026-11-01",
+        ),
+        (
+            "ConnectMobile – Monatsrechnung",
+            "abrechnung",
+            "connectmobile_monatsrechnung.pdf",
+            "ConnectMobile - Monatsrechnung - 19,99 EUR",
+            "2026-10-28",
+        ),
     ];
     for (i, (title, ty, file, text, date)) in docs.into_iter().enumerate() {
         crate::documents::insert_doc(
