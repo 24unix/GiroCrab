@@ -18,14 +18,8 @@ struct SidebarView: View {
                 Image(systemName: "square.grid.2x2").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Übersicht").fontWeight(.medium)
                 Spacer()
-                if model.newCount > 0 {
-                    Text("\(model.newCount)")
-                        .font(.caption2.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(Theme.accent)
-                        .padding(.horizontal, 7).padding(.vertical, 1)
-                        .background(Capsule().fill(Theme.selection))
-                }
             }
+            .badge(model.newCount) // system sidebar badge (hidden at 0)
             .tag(SidebarItem.allAccounts)
             HStack(spacing: 8) {
                 Image(systemName: "doc.on.doc").foregroundStyle(Theme.secondary).frame(width: 20)
@@ -33,14 +27,9 @@ struct SidebarView: View {
                 Spacer()
             }
             .tag(SidebarItem.documents)
-            Button { model.openMoneyMoneyImport() } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "square.and.arrow.down.on.square").foregroundStyle(Theme.secondary).frame(width: 20)
-                    Text("MoneyMoney-Import").fontWeight(.medium)
-                    Spacer()
-                }
-            }
-            .buttonStyle(.plain)
+            // The MoneyMoney import is an action, not a place: it lives in
+            // Ablage › Aus MoneyMoney importieren …, the command palette and
+            // the welcome card (HIG: sidebar rows are navigation destinations).
 
             if !model.allAccounts.isEmpty {
                 AccountsSectionHeader()
@@ -53,10 +42,7 @@ struct SidebarView: View {
 
             let pending = model.connections.filter { c in !model.allAccounts.contains { $0.connectionId == c.id } }
             if !pending.isEmpty {
-                Text("Neue Bankzugänge")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.secondary)
-                    .padding(.top, 10)
+                Section("Neue Bankzugänge") {
                 ForEach(pending) { c in
                     HStack(spacing: 9) {
                         SymbolTile(symbol: c.sfSymbol, tint: c.connector.tint, size: 24)
@@ -71,9 +57,9 @@ struct SidebarView: View {
                             .controlSize(.small)
                     }
                     .contextMenu {
-                        Divider()
                         Button("Bankzugang entfernen …", systemImage: "trash", role: .destructive) { dialog = .removeConnection(c.id) }
                     }
+                }
                 }
             }
 
@@ -82,10 +68,8 @@ struct SidebarView: View {
                     Image(systemName: "questionmark.folder").foregroundStyle(Theme.warning).frame(width: 20)
                     Text("Ohne Kategorie")
                     Spacer()
-                    if model.uncategorizedCount > 0 {
-                        Text("\(model.uncategorizedCount)").font(.caption2.monospacedDigit()).foregroundStyle(Theme.secondary)
-                    }
                 }
+                .badge(model.uncategorizedCount)
                 .tag(SidebarItem.uncategorized)
                 categoryRows(model.categoryTree)
             } header: {
