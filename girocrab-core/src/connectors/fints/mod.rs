@@ -20,6 +20,12 @@
 //!      segments): always the highest version both sides support.
 //!   4. Any 9xxx return code is reported with the code and the offending
 //!      segment ("9050 [HKKAZ #3] Auftragsart wird nicht unterstützt").
+//!   5. Transfers: HKCCS (regular SEPA) or HKIPZ (SEPA Instant), each with
+//!      HKTAN process 4. An instant transfer the bank does not offer or rejects
+//!      (on submission or after the approval) is reported as declined; nothing
+//!      is resent automatically. The app may offer a regular transfer, which
+//!      is a new order with its own approval. Ambiguous replies and lost
+//!      connections after submission mean "outcome unknown".
 //!
 //! The registration-bound product ID is never hardcoded; it comes from
 //! Settings (`fints.product_id`).
@@ -39,7 +45,7 @@ use serde::{Deserialize, Serialize};
 use self::syntax::{escape, parse_response, Segment, SegmentBuilder};
 use super::{
     BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, TransferJob,
+    RemoteAccount, TransferJob, TransferResult,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -250,11 +256,41 @@ pub struct FinTsConnector {
     product_version: String,
     /// Accounts from the user parameter data (HIUPD).
     upd: Vec<UpdAccount>,
-    /// A SEPA transfer (HKCCS) is awaiting its TAN.
+    /// A SEPA transfer (HKCCS/HKIPZ) is awaiting its TAN.
     transferring: bool,
     /// TAN medium name entered by the user (e.g. Postbank BestSign `SO:Gerät`);
     /// wins over the HKTAB lookup.
     tan_medium_override: String,
+    /// The order was handed to the bank: from here on, an unclear reply or a
+    /// lost connection means "result unknown", never "not executed".
+    order_submitted: bool,
+    result: TransferResult,
+    /// The order being sent.
+    order: Option<PreparedOrder>,
+}
+
+/// A transfer order ready to send (segment number set at send time).
+#[derive(Clone)]
+struct PreparedOrder {
+    seg_id: &'static str,
+    kti: String,
+    descriptor: &'static str,
+    xml: String,
+    instant: bool,
+}
+
+/// What a bank reply means for a transfer order.
+#[derive(Debug, PartialEq, Eq)]
+enum OrderReply {
+    /// No errors: accepted (a challenge may follow) or executed.
+    Accepted,
+    /// Clearly not executed; report the bank's error.
+    Rejected,
+    /// Instant order clearly not executed; the user may send it as a
+    /// regular transfer (new order, new approval).
+    InstantDeclined(String),
+    /// The order may have been executed.
+    Unknown(String),
 }
 
 impl FinTsConnector {
@@ -274,6 +310,9 @@ impl FinTsConnector {
             upd: Vec::new(),
             transferring: false,
             tan_medium_override: String::new(),
+            order_submitted: false,
+            result: TransferResult::default(),
+            order: None,
         }
     }
 
@@ -518,17 +557,11 @@ impl FinTsConnector {
             ("HIIPZS", "HKIPZ"),
             ("HICSES", "HKCSE"),
         ] {
-            for s in reply.all(seg) {
-                for el in &s.elements {
-                    for v in el {
-                        let t = v.text();
-                        if t.contains("pain.001") {
-                            let list = self.st.pain_formats.entry(tx.to_string()).or_default();
-                            if !list.iter().any(|f| f == t) {
-                                list.push(t.to_string());
-                            }
-                        }
-                    }
+            // Merge across BPD messages (anonymous and authenticated dialog).
+            for f in pain_formats(reply, seg) {
+                let list = self.st.pain_formats.entry(tx.to_string()).or_default();
+                if !list.contains(&f) {
+                    list.push(f);
                 }
             }
         }
@@ -1147,14 +1180,17 @@ impl FinTsConnector {
         }
     }
 
-    /// Sends HKCCS (or HKIPZ for instant / HKCSE for scheduled transfers) + HKTAN
-    /// (process 4) and returns the bank's reply.
-    async fn submit_hkccs(
+    /// Sends HKCCS (regular), HKCSE (scheduled) or HKIPZ (instant) + HKTAN
+    /// process 4. An instant order the bank does not offer ends as
+    /// `TransferResult::InstantDeclined` without sending anything. There is
+    /// never an automatic second order.
+    async fn start_transfer(
         &mut self,
         ctx: &ConnectContext,
         job: &TransferJob,
-    ) -> CoreResult<BankReply> {
-        let code: &'static str = if job.instant {
+    ) -> CoreResult<Phase> {
+        let instant = job.instant;
+        let seg_id: &'static str = if instant {
             "HKIPZ"
         } else if job.execution_date.is_some() {
             "HKCSE"
@@ -1163,8 +1199,8 @@ impl FinTsConnector {
         };
         let not_allowed = || {
             CoreError::Bank {
-            code: code.into(),
-            message: match code {
+            code: seg_id.into(),
+            message: match seg_id {
                 "HKIPZ" => tr("Dieses Konto oder diese Bank erlaubt keine Echtzeitüberweisungen per FinTS (HKIPZ). Bitte in der Banking-App überweisen."),
                 "HKCSE" => tr("Dieses Konto oder diese Bank erlaubt keine Terminüberweisungen per FinTS (HKCSE). Bitte in der Banking-App überweisen."),
                 _ => tr("Dieses Konto oder diese Bank erlaubt keine SEPA-Überweisungen per FinTS (HKCCS). Bitte in der Banking-App überweisen."),
@@ -1172,7 +1208,12 @@ impl FinTsConnector {
             .into(),
         }
         };
-        if !self.bank_supports(code) {
+        if !self.bank_supports(seg_id) {
+            if instant {
+                return Ok(self.decline_instant(tr(
+                    "Die Bank bietet per FinTS keine Echtzeitüberweisung (HKIPZ) an.",
+                )));
+            }
             return Err(not_allowed());
         }
         let sec = self.sec();
@@ -1202,10 +1243,23 @@ impl FinTsConnector {
                 ),
             })?;
         if let Some(u) = &upd {
-            if !u.allowed.is_empty() && !u.allowed.contains(code) {
+            if !u.allowed.is_empty() && !u.allowed.contains(seg_id) {
+                if instant {
+                    return Ok(self.decline_instant(tr(
+                        "Für dieses Konto ist die Echtzeitüberweisung per FinTS nicht freigeschaltet.",
+                    )));
+                }
                 return Err(not_allowed());
             }
         }
+        let version = match self.pain_version(seg_id) {
+            Some(v) => v,
+            None => {
+                return Ok(self.decline_instant(tr(
+                    "Die Bank erwartet für Echtzeitüberweisungen ein Datenformat, das GiroCrab nicht unterstützt.",
+                )))
+            }
+        };
         let (date, time) = Self::now();
         let created = format!(
             "{}-{}-{}T{}:{}:{}",
@@ -1226,7 +1280,6 @@ impl FinTsConnector {
         } else {
             job.source_owner.trim()
         };
-        let pain09 = self.use_pain09(code, job.instant);
         let xml = sepa::build_pain001(&sepa::Pain001 {
             message_id: &msg_id,
             created: &created,
@@ -1239,40 +1292,135 @@ impl FinTsConnector {
             creditor_bic: job.recipient_bic.as_deref(),
             amount_cents: job.amount_cents,
             purpose: &job.purpose,
-            instant: job.instant,
-            pain09,
+            version,
+            end_to_end_id: &job.end_to_end_id,
+            instant,
         })?;
-        let descriptor = if pain09 {
-            sepa::PAIN_DESCRIPTOR_INSTANT
-        } else {
-            sepa::PAIN_DESCRIPTOR
+        self.order = Some(PreparedOrder {
+            seg_id,
+            kti: Self::kti(&acc),
+            descriptor: version.descriptor(),
+            xml,
+            instant,
+        });
+        let reply = self.send_order(ctx).await?;
+        match classify_submit_reply(&reply, instant) {
+            OrderReply::Accepted => {
+                if let Some(p) = self.challenge_from(&reply)? {
+                    return Ok(p);
+                }
+                self.result = TransferResult::Executed { instant };
+                Ok(Phase::Ready)
+            }
+            OrderReply::Rejected => {
+                reply.check_transfer()?;
+                unreachable!("Rejected implies errors")
+            }
+            OrderReply::InstantDeclined(reason) => {
+                self.result = TransferResult::InstantDeclined { reason };
+                Ok(Phase::Ready)
+            }
+            OrderReply::Unknown(reason) => {
+                self.result = TransferResult::Unknown { reason };
+                Ok(Phase::Ready)
+            }
+        }
+    }
+
+    /// Instant not possible before anything was sent: nothing to approve.
+    fn decline_instant(&mut self, reason: &str) -> Phase {
+        self.result = TransferResult::InstantDeclined {
+            reason: reason.to_string(),
         };
-        let hkccs = SegmentBuilder::new(code, 3, self.version(code))
-            .raw(&Self::kti(&acc))
-            .de(&[descriptor])
-            .binary(xml.as_bytes())
-            .build();
-        let payload = vec![hkccs, self.hktan_process4(4, code)];
+        Phase::Ready
+    }
+
+    /// Sends order + HKTAN process 4. Marks the order as submitted first:
+    /// once the bytes may have left, the result can be "unknown".
+    async fn send_order(&mut self, ctx: &ConnectContext) -> CoreResult<BankReply> {
+        let order = self.order.clone().ok_or(CoreError::SessionClosed)?;
+        let payload = vec![
+            SegmentBuilder::new(order.seg_id, 3, self.version(order.seg_id))
+                .raw(&order.kti)
+                .de(&[order.descriptor])
+                .binary(order.xml.as_bytes())
+                .build(),
+            self.hktan_process4(4, order.seg_id),
+        ];
+        let sec = self.sec();
+        self.order_submitted = true;
+        self.send(ctx, payload, &sec, None).await
+    }
+
+    /// Reply to an approved TAN / decoupled poll. For a login this checks
+    /// the reply; for a transfer it decides executed / rejected / unknown.
+    async fn after_approval(
+        &mut self,
+        _ctx: &ConnectContext,
+        reply: BankReply,
+    ) -> CoreResult<Phase> {
+        if !self.order_submitted {
+            self.check_reply(&reply)?;
+            return Ok(Phase::Ready);
+        }
+        let instant = self.order.as_ref().is_some_and(|o| o.instant);
+        match classify_approval_reply(&reply, instant) {
+            OrderReply::Accepted => {
+                self.result = TransferResult::Executed { instant };
+            }
+            OrderReply::Rejected => {
+                reply.check_transfer()?;
+                unreachable!("Rejected implies errors")
+            }
+            OrderReply::InstantDeclined(reason) => {
+                self.result = TransferResult::InstantDeclined { reason };
+            }
+            OrderReply::Unknown(reason) => {
+                self.result = TransferResult::Unknown { reason };
+            }
+        }
+        Ok(Phase::Ready)
+    }
+
+    /// Authenticated dialog (HKIDN/HKVVB + HKTAN process 4 for SCA).
+    async fn open_dialog(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
+        // Authenticated dialog with strong customer authentication.
+        self.reset_dialog();
+        let sec = self.sec();
+        let mut payload = vec![self.hkidn(ctx, 3), self.hkvvb(4)];
+        if sec != "999" {
+            payload.push(self.hktan_process4(5, "HKIDN"));
+        }
         let reply = self.send(ctx, payload, &sec, None).await?;
-        reply.check_transfer()?;
-        Ok(reply)
+        self.learn_bpd(&reply);
+        if let Err(e) = reply.check() {
+            // Stale system ID / TAN method -> force re-sync next time.
+            if reply.has("9931") || reply.has("9942") || reply.has("9010") {
+                self.st.system_id.clear();
+            }
+            return Err(e);
+        }
+        if let Some(p) = self.challenge_from(&reply)? {
+            return Ok(p);
+        }
+        Ok(Phase::Ready)
     }
 
     /// Whether the transfer document should be `pain.001.001.09` (true) or `.03` (false).
     /// Instant payments (HKIPZ) are always `.09`. Otherwise the BPD descriptors decide:
     /// `.03` if advertised, else `.09` if only that is advertised; nothing advertised
     /// (or only formats we cannot produce) falls back to `.03`.
-    fn use_pain09(&self, code: &str, instant: bool) -> bool {
-        if instant {
-            return true;
+    fn pain_version(&self, code: &str) -> Option<sepa::PainVersion> {
+        let formats = self.st.pain_formats.get(code);
+        if code == "HKIPZ" {
+            return sepa::PainVersion::pick(formats.map(Vec::as_slice).unwrap_or(&[]));
         }
-        let has = |suffix: &str| {
-            self.st
-                .pain_formats
-                .get(code)
-                .is_some_and(|l| l.iter().any(|f| f.ends_with(suffix)))
-        };
-        !has(".001.03") && has(".001.09")
+        let has = |suffix: &str| formats.is_some_and(|l| l.iter().any(|f| f.ends_with(suffix)));
+        Some(if !has(".001.03") && has(".001.09") {
+            sepa::PainVersion::V09
+        } else {
+            sepa::PainVersion::V03
+        })
     }
 
     fn sec(&self) -> String {
@@ -1318,6 +1466,106 @@ fn account_label(acc: &SepaAccount) -> String {
     } else {
         format!("{}-{}", acc.account_number, acc.sub_account)
     }
+}
+
+/// PIN/TAN/approval/SCA errors: the order was certainly not executed.
+fn is_auth_error(code: &str) -> bool {
+    code.starts_with("99") || matches!(code, "9075" | "9076" | "9078")
+}
+
+/// Message-level codes that say nothing about the order itself.
+fn is_generic_error(code: &str) -> bool {
+    matches!(code, "9010" | "9050" | "9800")
+}
+
+/// Order-specific rejections that unambiguously mean "not executed"
+/// (invalid order, limit exceeded, account does not allow it / is blocked).
+fn is_clear_rejection(code: &str) -> bool {
+    matches!(code, "9210" | "9380" | "9390" | "9391")
+}
+
+/// Bank errors in user-facing form ("9380 Der Betrag überschreitet …").
+fn reason_text(reply: &BankReply) -> String {
+    let errs = reply.errors();
+    let specific: Vec<_> = errs.iter().filter(|e| !is_generic_error(&e.0)).collect();
+    let shown: Vec<_> = if specific.is_empty() {
+        errs.iter().collect()
+    } else {
+        specific
+    };
+    shown
+        .iter()
+        .map(|e| explain_transfer_code(e))
+        .collect::<Vec<_>>()
+        .join(" / ")
+}
+
+/// Reply to the order itself (HKCCS/HKCSE/HKIPZ + HKTAN process 4), i.e.
+/// before the user approved anything. Errors here mean the bank refused the
+/// order before executing it, unless the reply also confirms the order
+/// segment (contradictory: unknown).
+fn classify_submit_reply(reply: &BankReply, instant: bool) -> OrderReply {
+    let errs = reply.errors();
+    if errs.is_empty() {
+        return OrderReply::Accepted;
+    }
+    let order_confirmed = reply
+        .codes
+        .iter()
+        .any(|c| c.0.starts_with('0') && c.1 == Some(3));
+    if order_confirmed {
+        return OrderReply::Unknown(reason_text(reply));
+    }
+    if !instant || errs.iter().any(|e| is_auth_error(&e.0)) {
+        return OrderReply::Rejected;
+    }
+    // Dialog aborted: without SCA an instant order may already be executed.
+    if reply.has("9800") {
+        return OrderReply::Unknown(reason_text(reply));
+    }
+    OrderReply::InstantDeclined(reason_text(reply))
+}
+
+/// Reply after the user approved the order (TAN / decoupled poll). Only
+/// auth errors and clear order rejections count as "not executed"; generic
+/// codes, 9800 (dialog aborted) and anything else mean the instant payment
+/// may already have been executed.
+fn classify_approval_reply(reply: &BankReply, instant: bool) -> OrderReply {
+    let errs = reply.errors();
+    if errs.is_empty() {
+        return OrderReply::Accepted;
+    }
+    if errs.iter().any(|e| is_auth_error(&e.0)) {
+        return OrderReply::Rejected;
+    }
+    let specific: Vec<_> = errs.iter().filter(|e| !is_generic_error(&e.0)).collect();
+    let clear = !reply.has("9800")
+        && !specific.is_empty()
+        && specific.iter().all(|e| is_clear_rejection(&e.0));
+    match (clear, instant) {
+        (true, true) => OrderReply::InstantDeclined(reason_text(reply)),
+        (true, false) => OrderReply::Rejected,
+        (false, _) => OrderReply::Unknown(reason_text(reply)),
+    }
+}
+
+/// pain.001 descriptors from a BPD parameter segment (HICCSS / HIIPZS / HICSES).
+fn pain_formats(reply: &BankReply, seg_id: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for seg in reply.all(seg_id) {
+        for el in &seg.elements {
+            for v in el {
+                let t = v.text();
+                if t.starts_with("urn:iso:std:iso:20022:tech:xsd:pain.001")
+                    && !t.ends_with(".xsd")
+                    && !out.iter().any(|f| f == t)
+                {
+                    out.push(t.to_string());
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Localised text for a bank return code (HIRMG/HIRMS) during a transfer.
@@ -1431,26 +1679,7 @@ impl BankConnector for FinTsConnector {
         if self.st.system_id.is_empty() || self.st.sec_func.is_empty() {
             self.sync_dialog(ctx).await?;
         }
-        // Authenticated dialog with strong customer authentication.
-        self.reset_dialog();
-        let sec = self.sec();
-        let mut payload = vec![self.hkidn(ctx, 3), self.hkvvb(4)];
-        if sec != "999" {
-            payload.push(self.hktan_process4(5, "HKIDN"));
-        }
-        let reply = self.send(ctx, payload, &sec, None).await?;
-        self.learn_bpd(&reply);
-        if let Err(e) = reply.check() {
-            // Stale system ID / TAN method -> force re-sync next time.
-            if reply.has("9931") || reply.has("9942") || reply.has("9010") {
-                self.st.system_id.clear();
-            }
-            return Err(e);
-        }
-        if let Some(p) = self.challenge_from(&reply)? {
-            return Ok(p);
-        }
-        Ok(Phase::Ready)
+        self.open_dialog(ctx).await
     }
 
     async fn respond(
@@ -1476,12 +1705,11 @@ impl BankConnector for FinTsConnector {
                     .raw("N")
                     .build();
                 let reply = self.send(ctx, vec![seg], &sec, None).await?;
-                self.check_reply(&reply)?;
-                if reply.has("3956") {
+                if reply.has("3956") && reply.errors().is_empty() {
                     let c = self.challenge.clone().ok_or(CoreError::SessionClosed)?;
                     return Ok(Phase::Pending(c));
                 }
-                Ok(Phase::Ready)
+                self.after_approval(ctx, reply).await
             }
             ChallengeResponse::Code(tan) => {
                 let seg = SegmentBuilder::new("HKTAN", 3, self.version("HKTAN"))
@@ -1494,8 +1722,7 @@ impl BankConnector for FinTsConnector {
                     .build();
                 self.tan_for_next = None;
                 let reply = self.send(ctx, vec![seg], &sec, Some(tan.expose())).await?;
-                self.check_reply(&reply)?;
-                Ok(Phase::Ready)
+                self.after_approval(ctx, reply).await
             }
         }
     }
@@ -1722,16 +1949,22 @@ impl BankConnector for FinTsConnector {
         job: &TransferJob,
     ) -> CoreResult<Phase> {
         self.transferring = true;
-        let reply = self.submit_hkccs(ctx, job).await;
-        if reply.is_err() {
+        self.result = TransferResult::default();
+        self.order_submitted = false;
+        self.order = None;
+        let r = self.start_transfer(ctx, job).await;
+        if r.is_err() {
             self.transferring = false;
         }
-        let reply = reply?;
-        if let Some(p) = self.challenge_from(&reply)? {
-            return Ok(p);
-        }
-        self.transferring = false;
-        Ok(Phase::Ready)
+        r
+    }
+
+    fn transfer_result(&self) -> TransferResult {
+        self.result.clone()
+    }
+
+    fn order_submitted(&self) -> bool {
+        self.order_submitted
     }
 }
 
@@ -1840,6 +2073,129 @@ mod tests {
         let err = r.check().unwrap_err().to_string();
         assert!(err.contains("9050 [Nachricht]"), "{err}");
         assert!(err.contains("9010 [HKKAZ #3]"), "{err}");
+    }
+
+    #[test]
+    fn submit_reply_declines_instant_only_when_order_was_refused() {
+        // Order refused before any approval -> instant declined, with the
+        // specific code rather than the generic 9050.
+        let r = reply(b"HIRMG:2:2+9050::Die Nachricht enth\xe4lt Fehler.'HIRMS:3:2:3+9210::Empf\xe4ngerbank nimmt nicht an SEPA Instant teil.'");
+        let OrderReply::InstantDeclined(why) = classify_submit_reply(&r, true) else {
+            panic!()
+        };
+        assert!(why.starts_with("9210 "), "{why}");
+        assert!(!why.contains("9050"), "{why}");
+        // Same reply for a regular order -> plain error.
+        assert_eq!(classify_submit_reply(&r, false), OrderReply::Rejected);
+        // Accepted, TAN required.
+        let r = reply(b"HIRMG:2:2+0010::Nachricht entgegengenommen.'HIRMS:3:2:3+0030::Auftrag empfangen - TAN erforderlich.'");
+        assert_eq!(classify_submit_reply(&r, true), OrderReply::Accepted);
+        // Wrong PIN -> not executed, no instant decline either.
+        let r = reply(b"HIRMG:2:2+9942::PIN falsch.'");
+        assert_eq!(classify_submit_reply(&r, true), OrderReply::Rejected);
+        // Dialog abort on an instant order: may have been executed.
+        let r = reply(b"HIRMG:2:2+9800::Dialog abgebrochen.'");
+        assert!(matches!(
+            classify_submit_reply(&r, true),
+            OrderReply::Unknown(_)
+        ));
+        // Contradictory: order segment confirmed but errors present -> unknown.
+        let r =
+            reply(b"HIRMG:2:2+9800::Dialog abgebrochen.'HIRMS:3:2:3+0020::Auftrag ausgef\xfchrt.'");
+        assert!(matches!(
+            classify_submit_reply(&r, true),
+            OrderReply::Unknown(_)
+        ));
+    }
+
+    #[test]
+    fn approval_reply_never_treats_ambiguous_codes_as_not_executed() {
+        // Executed.
+        let r = reply(b"HIRMG:2:2+0010::Nachricht entgegengenommen.'HIRMS:3:2:3+0020::Auftrag ausgef\xfchrt.'");
+        assert_eq!(classify_approval_reply(&r, true), OrderReply::Accepted);
+        // Generic codes, dialog abort, unknown order codes, transient errors:
+        // the instant payment may have been executed -> unknown, both for
+        // instant and regular orders.
+        for raw in [
+            &b"HIRMG:2:2+9050::Die Nachricht enth\xe4lt Fehler.'"[..],
+            &b"HIRMG:2:2+9010::Verarbeitung nicht m\xf6glich.'"[..],
+            &b"HIRMG:2:2+9800::Dialog abgebrochen.'"[..],
+            &b"HIRMG:2:2+9800::Dialog abgebrochen.'HIRMS:3:2:3+9210::Auftrag abgelehnt.'"[..],
+            &b"HIRMG:2:2+9050::Fehler.'HIRMS:3:2:3+9110::Verarbeitung abgebrochen.'"[..],
+            &b"HIRMG:2:2+9050::Fehler.'HIRMS:3:2:3+9210::Abgelehnt.'HIRMS:4:2:4+9160::Unbekannt.'"
+                [..],
+        ] {
+            for instant in [true, false] {
+                let got = classify_approval_reply(&reply(raw), instant);
+                assert!(
+                    matches!(got, OrderReply::Unknown(_)),
+                    "{:?} -> {got:?}",
+                    String::from_utf8_lossy(raw)
+                );
+            }
+        }
+        // Clear order-specific rejection (9210, limit 9380) without 9800:
+        // instant -> declined (user may resend as regular), regular -> error.
+        for raw in [
+            &b"HIRMG:2:2+9050::Fehler.'HIRMS:3:2:3+9210::Empf\xe4ngerbank nicht erreichbar.'"[..],
+            &b"HIRMG:2:2+3060::Warnungen.'HIRMS:3:2:3+9380::Betrag \xfcbersteigt Limit.'"[..],
+        ] {
+            let r = reply(raw);
+            assert!(matches!(
+                classify_approval_reply(&r, true),
+                OrderReply::InstantDeclined(_)
+            ));
+            assert_eq!(classify_approval_reply(&r, false), OrderReply::Rejected);
+        }
+        // Declined in the app, wrong TAN -> not executed.
+        for raw in [
+            &b"HIRMG:2:2+9050::Fehler.'HIRMS:3:2:3+9955::Auftrag abgelehnt.'"[..],
+            &b"HIRMG:2:2+9050::Fehler.'HIRMS:3:2:3+9941::TAN ung\xfcltig.'"[..],
+        ] {
+            assert_eq!(
+                classify_approval_reply(&reply(raw), true),
+                OrderReply::Rejected
+            );
+        }
+    }
+
+    #[test]
+    fn reads_instant_formats_and_negotiates_hkipz() {
+        // HIIPZS as sent by Consorsbank (purpose codes empty) and comdirect.
+        let raw = b"HIIPZS:11:1:3+1+1+0+:urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.001.001.09:urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.001.001.03'";
+        let r = reply(raw);
+        assert_eq!(
+            pain_formats(&r, "HIIPZS"),
+            vec![
+                sepa::PAIN_09_DESCRIPTOR.to_string(),
+                sepa::PAIN_DESCRIPTOR.to_string()
+            ]
+        );
+        let raw = b"HIIPZS:20:1:3+999+1+0+BENE,BONU:urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.001.001.09:urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.001.001.09.xsd'";
+        assert_eq!(
+            pain_formats(&reply(raw), "HIIPZS"),
+            vec![sepa::PAIN_09_DESCRIPTOR.to_string()]
+        );
+
+        let mut c = FinTsConnector::new("76030080");
+        c.learn_bpd(&reply(raw));
+        assert!(c.bank_supports("HKIPZ"));
+        assert_eq!(c.version("HKIPZ"), 1);
+        assert_eq!(
+            c.st.pain_formats["HKIPZ"],
+            vec![sepa::PAIN_09_DESCRIPTOR.to_string()]
+        );
+        // A second BPD message adds formats instead of replacing them.
+        c.learn_bpd(&reply(
+            b"HIIPZS:20:1:3+999+1+0+:urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.001.001.03'",
+        ));
+        assert_eq!(
+            c.st.pain_formats["HKIPZ"],
+            vec![
+                sepa::PAIN_09_DESCRIPTOR.to_string(),
+                sepa::PAIN_DESCRIPTOR.to_string()
+            ]
+        );
     }
 
     #[test]

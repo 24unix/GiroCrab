@@ -2568,6 +2568,17 @@
         }
       }
     },
+    "Echtzeitüberweisung freigegeben und vorgemerkt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instant transfer approved and recorded as pending"
+          }
+        }
+      }
+    },
     "Eigene Domain für das Logo eintragen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7953,6 +7964,105 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld portfolio positions imported."
+          }
+        }
+      }
+    },
+    "Echtzeitüberweisung nicht ausgeführt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instant transfer not executed"
+          }
+        }
+      }
+    },
+    "Es wurde kein Geld gesendet. Grund der Bank: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No money was sent. The bank's reason: %@"
+          }
+        }
+      }
+    },
+    "Als normale Überweisung senden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send as regular transfer"
+          }
+        }
+      }
+    },
+    "Kommt in der Regel am nächsten Bankarbeitstag an. Du gibst sie erneut frei." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usually arrives on the next business day. You approve it again."
+          }
+        }
+      }
+    },
+    "Kommt in Sekunden an und ist nicht rückholbar. Bietet die Bank sie nicht an, wird nichts gesendet; du kannst sie dann als normale Überweisung senden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrives within seconds and cannot be recalled. If the bank does not offer it, nothing is sent; you can then send it as a regular transfer."
+          }
+        }
+      }
+    },
+    "Viele Banken begrenzen Echtzeitüberweisungen (oft auf 100.000 € oder ein eigenes Limit). Die Bank kann den Auftrag dann ablehnen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Many banks limit instant transfers (often to €100,000 or a personal limit). The bank may then reject the order."
+          }
+        }
+      }
+    },
+    "Status der Überweisung unklar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transfer status unclear"
+          }
+        }
+      }
+    },
+    "Verstanden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Understood"
+          }
+        }
+      }
+    },
+    "Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Die Überweisung wurde möglicherweise bereits ausgeführt.\n\nBitte prüfe zuerst dein Konto (Umsätze oder Online-Banking), bevor du sie erneut sendest. In GiroCrab ist sie als „Status unklar“ vorgemerkt.\n\nReferenz (EndToEnd-ID): %@\nBank: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The order reached the bank, but the reply is not clear. The transfer may already have been executed.\n\nPlease check your account (transactions or online banking) before sending it again. GiroCrab has recorded it as “status unclear”.\n\nReference (EndToEnd ID): %1$@\nBank: %2$@"
           }
         }
       }

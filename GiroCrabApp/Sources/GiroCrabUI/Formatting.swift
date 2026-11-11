@@ -241,6 +241,12 @@ extension ConnectorKind {
 
     var tint: Color { Color.readable(hex: tintHex) }
 
+    /// FinTS banks: the user can choose SEPA Instant (HKIPZ, with fallback to
+    /// a regular transfer). bunq decides on its own.
+    var offersInstantChoice: Bool {
+        [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric].contains(self)
+    }
+
     var monogram: String {
         switch self {
         case .volksbankKasselGoettingen: return "VB"

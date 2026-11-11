@@ -16,6 +16,19 @@ pub struct DemoConnector {
     kind: ConnectorKind,
     polls: u32,
     challenge: Option<Challenge>,
+    result: super::TransferResult,
+    /// Demo scenario for the approval reply of the current transfer.
+    after_approval: DemoApproval,
+    order_submitted: bool,
+    /// Orders "sent" to the demo bank (tests: never more than one).
+    pub orders_sent: u32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DemoApproval {
+    Executed,
+    Unclear,
+    ConnectionLost,
 }
 
 impl DemoConnector {
@@ -24,7 +37,34 @@ impl DemoConnector {
             kind,
             polls: 0,
             challenge: None,
+            result: super::TransferResult::default(),
+            after_approval: DemoApproval::Executed,
+            order_submitted: false,
+            orders_sent: 0,
         }
+    }
+}
+
+impl DemoConnector {
+    /// Approval done (login or transfer). For a transfer, apply the scenario.
+    fn approved(&mut self) -> CoreResult<Phase> {
+        if !self.order_submitted {
+            return Ok(Phase::Ready);
+        }
+        match self.after_approval {
+            DemoApproval::Executed => {}
+            DemoApproval::Unclear => {
+                self.result = super::TransferResult::Unknown {
+                    reason: tr("Demo: 9800 Dialog abgebrochen.").to_string(),
+                };
+            }
+            DemoApproval::ConnectionLost => {
+                return Err(CoreError::Network {
+                    message: tr("Demo: Verbindung zur Bank unterbrochen.").into(),
+                });
+            }
+        }
+        Ok(Phase::Ready)
     }
 }
 
@@ -88,7 +128,7 @@ impl BankConnector for DemoConnector {
                         self.challenge.clone().ok_or(CoreError::SessionClosed)?,
                     ))
                 } else {
-                    Ok(Phase::Ready)
+                    self.approved()
                 }
             }
             ChallengeResponse::Code(code) => {
@@ -100,7 +140,7 @@ impl BankConnector for DemoConnector {
                         message: tr("Demo: Der Code muss 4 Ziffern haben").into(),
                     });
                 }
-                Ok(Phase::Ready)
+                self.approved()
             }
         }
     }
@@ -111,6 +151,31 @@ impl BankConnector for DemoConnector {
         job: &TransferJob,
     ) -> CoreResult<Phase> {
         self.polls = 0;
+        // Demo scenarios by recipient name (instant only):
+        //   "…langsam…"    – bank does not offer instant: declined, nothing sent
+        //   "…unklar…"     – ambiguous bank reply after the approval
+        //   "…netzfehler…" – connection lost after the approval
+        let name = job.recipient_name.to_lowercase();
+        self.result = super::TransferResult::Executed {
+            instant: job.instant,
+        };
+        self.after_approval = DemoApproval::Executed;
+        if job.instant && name.contains("langsam") {
+            self.result = super::TransferResult::InstantDeclined {
+                reason: tr(
+                    "Demo: Die Empfängerbank ist für Echtzeitüberweisungen gerade nicht erreichbar.",
+                )
+                .to_string(),
+            };
+            return Ok(Phase::Ready);
+        }
+        if job.instant && name.contains("unklar") {
+            self.after_approval = DemoApproval::Unclear;
+        } else if job.instant && name.contains("netzfehler") {
+            self.after_approval = DemoApproval::ConnectionLost;
+        }
+        self.order_submitted = true;
+        self.orders_sent += 1;
         let c = Challenge {
             kind: ChallengeKind::DecoupledPush,
             title: tr("Überweisung in der Banking-App freigeben").into(),
@@ -129,6 +194,14 @@ impl BankConnector for DemoConnector {
         };
         self.challenge = Some(c.clone());
         Ok(Phase::Challenge(c))
+    }
+
+    fn transfer_result(&self) -> super::TransferResult {
+        self.result.clone()
+    }
+
+    fn order_submitted(&self) -> bool {
+        self.order_submitted
     }
 
     async fn fetch(&mut self, _ctx: &ConnectContext) -> CoreResult<FetchResult> {
@@ -182,5 +255,61 @@ impl BankConnector for DemoConnector {
         // the new bookings to the stored balances instead.
         out.adjust_balances = true;
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::connectors::{BankConnector, TransferResult};
+    use crate::secret::SecretString;
+
+    fn ctx() -> ConnectContext {
+        ConnectContext {
+            connection_id: 1,
+            login_name: String::new(),
+            secret: SecretString::new("pin".into()),
+            settings: Default::default(),
+            state: serde_json::Value::Null,
+            since: String::new(),
+        }
+    }
+
+    fn job(name: &str) -> TransferJob {
+        TransferJob {
+            source_iban: "DE02120300000000202051".into(),
+            source_owner: String::new(),
+            recipient_name: name.into(),
+            recipient_iban: "DE89370400440532013000".into(),
+            recipient_bic: None,
+            amount_cents: 100,
+            purpose: String::new(),
+            instant: true,
+            execution_date: None,
+            end_to_end_id: "GCTEST".into(),
+        }
+    }
+
+    /// No scenario ever sends a second order: declined instant sends none,
+    /// unclear / lost connection after approval stay at exactly one.
+    #[tokio::test]
+    async fn never_sends_a_second_order() {
+        let c = ctx();
+        for (name, sent, want_unknown) in [
+            ("Langsam AG", 0, false),
+            ("Unklar KG", 1, true),
+            ("Netzfehler GmbH", 1, true),
+            ("Schnell GmbH", 1, false),
+        ] {
+            let mut d = DemoConnector::new(ConnectorKind::FinTsGeneric);
+            let mut phase = d.send_transfer(&c, &job(name)).await;
+            while let Ok(Phase::Challenge(_) | Phase::Pending(_)) = phase {
+                phase = d.respond(&c, ChallengeResponse::Poll).await;
+            }
+            assert_eq!(d.orders_sent, sent, "{name}");
+            let unknown = matches!(d.transfer_result(), TransferResult::Unknown { .. })
+                || (phase.is_err() && d.order_submitted());
+            assert_eq!(unknown, want_unknown, "{name}");
+        }
     }
 }

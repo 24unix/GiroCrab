@@ -1,12 +1,42 @@
 //! SEPA credit transfer helpers: IBAN / BIC validation (ISO 13616 Mod-97,
-//! ISO 9362) and a `pain.001.001.03` generator for single transfers.
+//! ISO 9362) and a `pain.001` generator (`.001.03` / `.001.09`) for single
+//! transfers, optionally flagged as SEPA Instant (`LclInstrm` = `INST`).
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
 
 pub const PAIN_DESCRIPTOR: &str = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03";
-/// SEPA Instant Payments (HKIPZ) use `pain.001.001.09`.
-pub const PAIN_DESCRIPTOR_INSTANT: &str = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09";
+pub const PAIN_09_DESCRIPTOR: &str = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09";
+
+/// pain.001 schema version. `.09` is what most banks expect for SEPA Instant
+/// (HKIPZ); `.03` is the long-standing format for regular transfers (HKCCS).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PainVersion {
+    V03,
+    V09,
+}
+
+impl PainVersion {
+    pub fn descriptor(self) -> &'static str {
+        match self {
+            PainVersion::V03 => PAIN_DESCRIPTOR,
+            PainVersion::V09 => PAIN_09_DESCRIPTOR,
+        }
+    }
+
+    /// Picks the version for a list of descriptors a bank advertises in its
+    /// BPD (e.g. HIIPZS). Prefers `.09`; an empty list (unknown) also means `.09`.
+    pub fn pick(advertised: &[String]) -> Option<Self> {
+        let has = |d: &str| advertised.iter().any(|a| a == d);
+        if advertised.is_empty() || has(PAIN_09_DESCRIPTOR) {
+            Some(PainVersion::V09)
+        } else if has(PAIN_DESCRIPTOR) {
+            Some(PainVersion::V03)
+        } else {
+            None
+        }
+    }
+}
 
 /// IBAN length per country (SEPA area + common neighbours).
 const IBAN_LENGTHS: &[(&str, usize)] = &[
@@ -186,13 +216,14 @@ pub struct Pain001<'a> {
     pub creditor_bic: Option<&'a str>,
     pub amount_cents: i64,
     pub purpose: &'a str,
-    /// SEPA Instant Payment (`pain.001.001.09` with `LclInstrm` INST).
+    pub version: PainVersion,
+    /// EndToEndId (stable per transfer; `NOTPROVIDED` when empty).
+    pub end_to_end_id: &'a str,
+    /// SEPA Instant Credit Transfer (`<LclInstrm><Cd>INST</Cd></LclInstrm>`).
     pub instant: bool,
-    /// Use the `pain.001.001.09` schema even for a non-instant transfer (BPD says so).
-    pub pain09: bool,
 }
 
-/// Builds a single-transfer `pain.001.001.03` document (UTF-8).
+/// Builds a single-transfer `pain.001` document (UTF-8).
 pub fn build_pain001(p: &Pain001) -> CoreResult<String> {
     if p.amount_cents <= 0 {
         return Err(CoreError::InvalidInput {
@@ -216,30 +247,10 @@ pub fn build_pain001(p: &Pain001) -> CoreResult<String> {
     let purpose = xml_escape(&clip(p.purpose, 140));
     let d_iban = normalize_iban(p.debtor_iban);
     let c_iban = normalize_iban(p.creditor_iban);
-    let v09 = p.instant || p.pain09;
-    let bic_tag = if v09 { "BICFI" } else { "BIC" };
-    let (descriptor, pmt_tp, exec_xml) = if v09 {
-        (
-            PAIN_DESCRIPTOR_INSTANT,
-            if p.instant {
-                "<PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl><LclInstrm><Cd>INST</Cd></LclInstrm></PmtTpInf>"
-            } else {
-                "<PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>"
-            },
-            format!(
-                "<ReqdExctnDt><Dt>{}</Dt></ReqdExctnDt>",
-                xml_escape(p.execution_date)
-            ),
-        )
-    } else {
-        (
-            PAIN_DESCRIPTOR,
-            "<PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl></PmtTpInf>",
-            format!(
-                "<ReqdExctnDt>{}</ReqdExctnDt>",
-                xml_escape(p.execution_date)
-            ),
-        )
+    // pain.001.001.09 renamed <BIC> to <BICFI> and wraps the execution date.
+    let bic_tag = match p.version {
+        PainVersion::V03 => "BIC",
+        PainVersion::V09 => "BICFI",
     };
     let d_agent = if validate_bic(p.debtor_bic) {
         format!("<{bic_tag}>{}</{bic_tag}>", normalize_iban(p.debtor_bic))
@@ -258,21 +269,37 @@ pub fn build_pain001(p: &Pain001) -> CoreResult<String> {
     } else {
         format!("<RmtInf><Ustrd>{purpose}</Ustrd></RmtInf>")
     };
+    let exec = xml_escape(p.execution_date);
+    let exec = match p.version {
+        PainVersion::V03 => exec,
+        PainVersion::V09 => format!("<Dt>{exec}</Dt>"),
+    };
+    let local_instrument = if p.instant {
+        "<LclInstrm><Cd>INST</Cd></LclInstrm>"
+    } else {
+        ""
+    };
+    let ns = p.version.descriptor();
     Ok(format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
-<Document xmlns=\"{descriptor}\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\
+<Document xmlns=\"{ns}\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\
 <CstmrCdtTrfInitn>\
 <GrpHdr><MsgId>{msg_id}</MsgId><CreDtTm>{created}</CreDtTm><NbOfTxs>1</NbOfTxs><CtrlSum>{amount}</CtrlSum>\
 <InitgPty><Nm>{debtor}</Nm></InitgPty></GrpHdr>\
 <PmtInf><PmtInfId>{msg_id}</PmtInfId><PmtMtd>TRF</PmtMtd><BtchBookg>false</BtchBookg><NbOfTxs>1</NbOfTxs><CtrlSum>{amount}</CtrlSum>\
-{pmt_tp}{exec_xml}\
+<PmtTpInf><SvcLvl><Cd>SEPA</Cd></SvcLvl>{local_instrument}</PmtTpInf><ReqdExctnDt>{exec}</ReqdExctnDt>\
 <Dbtr><Nm>{debtor}</Nm></Dbtr><DbtrAcct><Id><IBAN>{d_iban}</IBAN></Id></DbtrAcct>\
 <DbtrAgt><FinInstnId>{d_agent}</FinInstnId></DbtrAgt><ChrgBr>SLEV</ChrgBr>\
-<CdtTrfTxInf><PmtId><EndToEndId>NOTPROVIDED</EndToEndId></PmtId>\
+<CdtTrfTxInf><PmtId><EndToEndId>{e2e}</EndToEndId></PmtId>\
 <Amt><InstdAmt Ccy=\"EUR\">{amount}</InstdAmt></Amt>{c_agent}\
 <Cdtr><Nm>{creditor}</Nm></Cdtr><CdtrAcct><Id><IBAN>{c_iban}</IBAN></Id></CdtrAcct>{rmt}\
 </CdtTrfTxInf></PmtInf></CstmrCdtTrfInitn></Document>",
         created = xml_escape(p.created),
+        e2e = if p.end_to_end_id.trim().is_empty() {
+            "NOTPROVIDED".to_string()
+        } else {
+            xml_escape(&clip(p.end_to_end_id, 35))
+        },
     ))
 }
 
@@ -321,8 +348,9 @@ mod tests {
             creditor_bic: None,
             amount_cents: 12_345,
             purpose,
+            version: PainVersion::V03,
+            end_to_end_id: "",
             instant: false,
-            pain09: false,
         }
     }
 
@@ -333,6 +361,7 @@ mod tests {
         let xml = build_pain001(&p).unwrap();
         assert!(xml.contains("<ReqdExctnDt>2027-01-15</ReqdExctnDt>"));
         assert!(!xml.contains("INST"));
+        p.version = PainVersion::V09;
         p.instant = true;
         p.creditor_bic = Some("COBADEFFXXX");
         let xml = build_pain001(&p).unwrap();
@@ -341,6 +370,53 @@ mod tests {
         assert!(xml.contains("<ReqdExctnDt><Dt>2027-01-15</Dt></ReqdExctnDt>"));
         assert!(xml.contains("<BICFI>BYLADEM1001</BICFI>"));
         assert!(xml.contains("<CdtrAgt><FinInstnId><BICFI>COBADEFFXXX</BICFI>"));
+    }
+
+    #[test]
+    fn instant_pain_09_uses_inst_bicfi_and_wrapped_date() {
+        let mut p = sample("Max Muster", "Miete");
+        p.version = PainVersion::V09;
+        p.instant = true;
+        p.creditor_bic = Some("COBADEFFXXX");
+        let xml = build_pain001(&p).unwrap();
+        assert!(xml.contains("xmlns=\"urn:iso:std:iso:20022:tech:xsd:pain.001.001.09\""));
+        assert!(xml.contains("<SvcLvl><Cd>SEPA</Cd></SvcLvl><LclInstrm><Cd>INST</Cd></LclInstrm>"));
+        assert!(xml.contains("<ReqdExctnDt><Dt>2026-11-09</Dt></ReqdExctnDt>"));
+        assert!(xml.contains("<BICFI>BYLADEM1001</BICFI>"));
+        assert!(xml.contains("<BICFI>COBADEFFXXX</BICFI>"));
+        assert!(!xml.contains("<BIC>"));
+    }
+
+    #[test]
+    fn regular_pain_03_is_unchanged() {
+        let xml = build_pain001(&sample("Max Muster", "Miete")).unwrap();
+        assert!(xml.contains("<EndToEndId>NOTPROVIDED</EndToEndId>"));
+        let mut p = sample("Max Muster", "Miete");
+        p.end_to_end_id = "GC0123456789ABCDEF";
+        let xml2 = build_pain001(&p).unwrap();
+        assert!(xml2.contains("<EndToEndId>GC0123456789ABCDEF</EndToEndId>"));
+        assert!(xml.contains("pain.001.001.03"));
+        assert!(xml.contains("<ReqdExctnDt>2026-11-09</ReqdExctnDt>"));
+        assert!(xml.contains("<BIC>BYLADEM1001</BIC>"));
+        assert!(!xml.contains("INST"));
+    }
+
+    #[test]
+    fn picks_pain_version_from_bpd() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(PainVersion::pick(&[]), Some(PainVersion::V09));
+        assert_eq!(
+            PainVersion::pick(&s(&[PAIN_DESCRIPTOR, PAIN_09_DESCRIPTOR])),
+            Some(PainVersion::V09)
+        );
+        assert_eq!(
+            PainVersion::pick(&s(&[PAIN_DESCRIPTOR])),
+            Some(PainVersion::V03)
+        );
+        assert_eq!(
+            PainVersion::pick(&s(&["urn:iso:std:iso:20022:tech:xsd:pain.001.003.01"])),
+            None
+        );
     }
 
     #[test]

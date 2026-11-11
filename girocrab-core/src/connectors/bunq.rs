@@ -2019,6 +2019,7 @@ mod tests {
             purpose: "GiroCrab draft test".into(),
             instant: false,
             execution_date: None,
+            end_to_end_id: "GCTEST".into(),
         };
         let phase = c2.send_transfer(&ctx, &job).await.unwrap();
         assert!(

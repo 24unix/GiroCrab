@@ -251,6 +251,13 @@ struct MainSplitView: View {
                 .environment(model)
         }
         #endif
+        .alert("Status der Überweisung unklar", isPresented: Binding(get: { model.transferUnknown != nil }, set: { if !$0 { model.transferUnknown = nil } })) {
+            Button("Verstanden", role: .cancel) { model.transferUnknown = nil }
+        } message: {
+            if let u = model.transferUnknown {
+                Text(String(format: String(localized: "Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Die Überweisung wurde möglicherweise bereits ausgeführt.\n\nBitte prüfe zuerst dein Konto (Umsätze oder Online-Banking), bevor du sie erneut sendest. In GiroCrab ist sie als „Status unklar“ vorgemerkt.\n\nReferenz (EndToEnd-ID): %@\nBank: %@"), u.endToEndId, u.reason))
+            }
+        }
         .alert("Etwas ist schiefgelaufen", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK", role: .cancel) { model.errorMessage = nil }
         } message: {

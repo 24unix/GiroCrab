@@ -129,7 +129,9 @@ struct TransferDraft {
     var amountText = ""
     var purpose = ""
     var pin = ""
-    /// SEPA Instant ("Echtzeitüberweisung", FinTS only).
+    /// SEPA Instant (Echtzeitüberweisung). Off by default. If the bank does
+    /// not offer or rejects it, nothing is sent automatically: the sheet
+    /// offers to send it as a regular transfer (new approval).
     var instant = false
     /// Terminüberweisung: when on, `executionDate` is sent (FinTS only).
     var scheduled = false
@@ -144,6 +146,13 @@ struct TransferDraft {
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: executionDate)
     }
+}
+
+/// A transfer whose result is unclear: it may have been executed.
+struct TransferUnknownNotice: Identifiable {
+    let id = UUID()
+    let reason: String
+    let endToEndId: String
 }
 
 struct PendingLogin: Identifiable {
@@ -254,6 +263,11 @@ public final class AppModel {
     var showCSVExporter = false
     var transferDraft = TransferDraft()
     var transferError: String?
+    /// Instant was not possible and nothing was sent: why (shown in the
+    /// transfer sheet with a "send as regular transfer" button).
+    var transferInstantDeclined: String?
+    /// The order reached the bank but its result is unclear.
+    var transferUnknown: TransferUnknownNotice?
     var splitBooking: Booking?
     var transferBusy = false
     private var syncQueue: [BankConnection] = []
@@ -1572,7 +1586,17 @@ extension AppModel {
             transferDraft.accountID = selected
         }
         transferError = nil
+        transferInstantDeclined = nil
         showTransferSheet = true
+    }
+
+    /// After an instant transfer was declined (nothing sent): send the same
+    /// draft as a regular SEPA transfer. A new order with its own approval,
+    /// only ever started by the user.
+    func sendAsRegularTransfer() {
+        transferInstantDeclined = nil
+        transferDraft.instant = false
+        startTransfer()
     }
 
     /// Context menu: new transfer pre-filled from a booking.
@@ -1597,6 +1621,8 @@ extension AppModel {
         do {
             let cents = try parseAmountToCents(text: transferDraft.amountText)
             let bic = transferDraft.bic.trimmingCharacters(in: .whitespaces)
+            // Instant and scheduled transfers are FinTS-only.
+            let offersInstant = account.connector?.offersInstantChoice ?? false
             let request = SepaTransferRequest(
                 accountId: accID,
                 recipientName: transferDraft.name,
@@ -1604,8 +1630,8 @@ extension AppModel {
                 recipientBic: bic.isEmpty ? nil : bic,
                 amountCents: cents,
                 purpose: transferDraft.purpose,
-                instant: transferDraft.instant,
-                executionDate: transferDraft.executionDateISO)
+                instant: transferDraft.instant && offersInstant,
+                executionDate: offersInstant ? transferDraft.executionDateISO : nil)
             let stored = connectionStatus(connection.id)?.hasPin ?? false
             if !isDemo && !stored && transferDraft.pin.isEmpty {
                 transferError = String(localized: "Bitte die Banking-PIN eingeben.")
@@ -1613,6 +1639,7 @@ extension AppModel {
             }
             let session = try vault.beginTransfer(request: request, secret: isDemo ? "demo" : transferDraft.pin, demo: isDemo)
             transferError = nil
+            transferInstantDeclined = nil
             transferBusy = true
             showTransferSheet = false
             activeTransfer = session
@@ -1641,13 +1668,36 @@ extension AppModel {
                 activeChallenge?.busy = false
             }
             schedulePoll(connection: connection, interval: c.pollIntervalSeconds)
-        case .finished:
+        case .finished(let outcome):
             pollTask?.cancel()
             activeChallenge = nil
             activeTransfer = nil
             transferBusy = false
-            transferDraft = TransferDraft(accountID: transferDraft.accountID)
-            toast = String(localized: "Überweisung freigegeben und vorgemerkt")
+            transferDraft = TransferDraft(accountID: transferDraft.accountID, instant: false)
+            if outcome.instant {
+                toast = String(localized: "Echtzeitüberweisung freigegeben und vorgemerkt")
+            } else {
+                toast = String(localized: "Überweisung freigegeben und vorgemerkt")
+            }
+            reloadAll()
+        case .instantDeclined(let reason):
+            // Nothing was sent. Keep the draft and let the user decide.
+            pollTask?.cancel()
+            activeChallenge = nil
+            activeTransfer = nil
+            transferBusy = false
+            transferError = nil
+            transferInstantDeclined = reason
+            showTransferSheet = true
+        case .outcomeUnknown(let reason, let endToEndId):
+            // May have been executed: no retry button, clear the draft so it
+            // cannot be resent with one click, and say so clearly.
+            pollTask?.cancel()
+            activeChallenge = nil
+            activeTransfer = nil
+            transferBusy = false
+            transferDraft = TransferDraft(accountID: transferDraft.accountID, instant: false)
+            transferUnknown = TransferUnknownNotice(reason: reason, endToEndId: endToEndId)
             reloadAll()
         }
     }
