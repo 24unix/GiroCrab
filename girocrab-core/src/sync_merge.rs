@@ -260,6 +260,50 @@ fn not_found(what: &str, id: i64) -> CoreError {
 }
 
 /// `connector|normalized login|bank_code`
+/// Soft-deletes a category with all its descendants and their rules, and
+/// uncategorises their bookings and splits (what the foreign-key cascades did
+/// before deletions became soft). The uncategorising is a derived change: no
+/// `category_ms` stamp.
+pub(crate) fn soft_delete_categories(conn: &Connection, root: i64) -> CoreResult<()> {
+    let now = crate::user_groups::now_ms();
+    conn.execute_batch(
+        "CREATE TEMP TABLE IF NOT EXISTS doomed_categories(id INTEGER PRIMARY KEY);
+         DELETE FROM doomed_categories;",
+    )?;
+    conn.execute(
+        "WITH RECURSIVE sub(id) AS (
+             SELECT id FROM categories WHERE id = ?1 AND deleted_ms IS NULL
+             UNION SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id WHERE c.deleted_ms IS NULL)
+         INSERT INTO doomed_categories SELECT id FROM sub",
+        [root],
+    )?;
+    let r = (|| -> CoreResult<()> {
+        conn.execute(
+            "UPDATE transactions SET category_id = NULL, rule_id = NULL, category_source = 'none'
+             WHERE category_id IN (SELECT id FROM doomed_categories)
+                OR rule_id IN (SELECT id FROM rules WHERE category_id IN (SELECT id FROM doomed_categories))",
+            [],
+        )?;
+        conn.execute(
+            "UPDATE transaction_splits SET category_id = NULL
+             WHERE category_id IN (SELECT id FROM doomed_categories)",
+            [],
+        )?;
+        conn.execute(
+            "UPDATE rules SET deleted_ms = ?1
+             WHERE deleted_ms IS NULL AND category_id IN (SELECT id FROM doomed_categories)",
+            [now],
+        )?;
+        conn.execute(
+            "UPDATE categories SET deleted_ms = ?1 WHERE id IN (SELECT id FROM doomed_categories)",
+            [now],
+        )?;
+        Ok(())
+    })();
+    conn.execute("DELETE FROM doomed_categories", [])?;
+    r
+}
+
 pub(crate) fn connection_key(conn: &Connection, id: i64) -> CoreResult<String> {
     let (connector, login, bank): (String, String, String) = conn
         .query_row(

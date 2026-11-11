@@ -495,7 +495,7 @@ pub(crate) fn find_or_create_category(
         }
         let found: Option<i64> = conn
             .query_row(
-                "SELECT id FROM categories WHERE parent_id IS ?1 AND name = ?2 COLLATE NOCASE",
+                "SELECT id FROM categories WHERE parent_id IS ?1 AND name = ?2 COLLATE NOCASE AND deleted_ms IS NULL",
                 params![parent, part],
                 |r| r.get(0),
             )
@@ -509,8 +509,9 @@ pub(crate) fn find_or_create_category(
                     |r| r.get(0),
                 )?;
                 conn.execute(
-                    "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order) VALUES (?1, ?2, 'tag', '#8E8E93', ?3)",
-                    params![parent, part, order],
+                    "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order, name_ms, parent_ms, symbol_ms, color_ms, order_ms)
+                     VALUES (?1, ?2, 'tag', '#8E8E93', ?3, ?4, ?4, ?4, ?4, ?4)",
+                    params![parent, part, order, crate::user_groups::now_ms()],
                 )?;
                 *created += 1;
                 let id = conn.last_insert_rowid();
@@ -695,15 +696,15 @@ pub(crate) fn merge_rows(
             let mut changed = false;
             if let Some(c) = cat_id.filter(|_| e.category_source != "manual") {
                 conn.execute(
-                    "UPDATE transactions SET category_id = ?1, rule_id = NULL, category_source = 'manual' WHERE id = ?2",
-                    params![c, e.id],
+                    "UPDATE transactions SET category_id = ?1, rule_id = NULL, category_source = 'manual', category_ms = ?3 WHERE id = ?2",
+                    params![c, e.id, crate::user_groups::now_ms()],
                 )?;
                 changed = true;
             }
             if !note.is_empty() && e.note.trim().is_empty() {
                 conn.execute(
-                    "UPDATE transactions SET note = ?1 WHERE id = ?2",
-                    params![note, e.id],
+                    "UPDATE transactions SET note = ?1, note_ms = ?3 WHERE id = ?2",
+                    params![note, e.id, crate::user_groups::now_ms()],
                 )?;
                 st.notes += 1;
                 changed = true;
@@ -715,8 +716,8 @@ pub(crate) fn merge_rows(
         }
         conn.execute(
             "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency,
-                    counterparty, counterparty_iban, purpose, booking_text, category_id, category_source, checked, note, import_fp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 1, ?13, ?14)",
+                    counterparty, counterparty_iban, purpose, booking_text, category_id, category_source, checked, note, import_fp, category_ms, note_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 1, ?13, ?14, ?15, ?16)",
             params![
                 st.account_id,
                 format!("mm-{fp}-{k}"),
@@ -731,7 +732,9 @@ pub(crate) fn merge_rows(
                 cat_id,
                 if cat_id.is_some() { "manual" } else { "none" },
                 note,
-                fp
+                fp,
+                if cat_id.is_some() { crate::user_groups::now_ms() } else { 0 },
+                if note.is_empty() { 0 } else { crate::user_groups::now_ms() }
             ],
         )?;
         st.new += 1;

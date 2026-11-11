@@ -463,7 +463,7 @@ impl Vault {
             "SELECT r.id, r.name, r.category_id, r.field, r.match_kind, r.pattern, r.case_sensitive,
                     r.min_amount_cents, r.max_amount_cents, r.account_id, r.priority, r.enabled,
                     (SELECT count(*) FROM transactions t WHERE t.rule_id = r.id)
-             FROM rules r ORDER BY r.priority, r.id",
+             FROM rules r WHERE r.deleted_ms IS NULL ORDER BY r.priority, r.id",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok(Rule {
@@ -599,7 +599,7 @@ impl Vault {
     fn category_rows(
         conn: &Connection,
     ) -> CoreResult<Vec<(i64, Option<i64>, String, String, String, i32, Option<i64>)>> {
-        let mut stmt = conn.prepare("SELECT id, parent_id, name, sf_symbol, color_hex, sort_order, budget_cents FROM categories")?;
+        let mut stmt = conn.prepare("SELECT id, parent_id, name, sf_symbol, color_hex, sort_order, budget_cents FROM categories WHERE deleted_ms IS NULL")?;
         let rows = stmt
             .query_map([], |r| {
                 Ok((
@@ -1877,8 +1877,21 @@ impl Vault {
             |r| r.get(0),
         )?;
         db.execute(
-            "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![parent_id, name, if sf_symbol.is_empty() { "tag".to_string() } else { sf_symbol }, color_hex, order],
+            "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order,
+                    name_ms, parent_ms, symbol_ms, color_ms, order_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?6, ?6)",
+            params![
+                parent_id,
+                name,
+                if sf_symbol.is_empty() {
+                    "tag".to_string()
+                } else {
+                    sf_symbol
+                },
+                color_hex,
+                order,
+                crate::user_groups::now_ms()
+            ],
         )?;
         let id = db.last_insert_rowid();
         crate::sync_merge::fill_missing_uuids(&db)?;
@@ -1918,29 +1931,51 @@ impl Vault {
         }
         // The UI shows built-in names translated; saving that unchanged
         // display name keeps the stored German default (and its logic).
-        let stored: Option<String> = db
-            .query_row("SELECT name FROM categories WHERE id = ?1", [id], |r| {
-                r.get(0)
-            })
+        let stored: Option<(String, Option<i64>, String, String)> = db
+            .query_row(
+                "SELECT name, parent_id, sf_symbol, color_hex FROM categories WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
             .optional()?;
-        let name = match stored {
-            Some(stored) if stored != name && display_name(&stored) == name => stored,
+        let name = match &stored {
+            Some((stored, ..)) if *stored != name && display_name(stored) == name => stored.clone(),
             _ => name,
         };
+        // only fields that really change get a stamp (newest edit wins per field)
+        let now = crate::user_groups::now_ms();
+        let (old_name, old_parent, old_symbol, old_color) = stored.unwrap_or_default();
         db.execute(
-            "UPDATE categories SET name = ?1, parent_id = ?2, sf_symbol = ?3, color_hex = ?4 WHERE id = ?5",
-            params![name, parent_id, sf_symbol, color_hex, id],
+            "UPDATE categories SET name = ?1, parent_id = ?2, sf_symbol = ?3, color_hex = ?4,
+                    name_ms = CASE WHEN ?6 THEN ?10 ELSE name_ms END,
+                    parent_ms = CASE WHEN ?7 THEN ?10 ELSE parent_ms END,
+                    symbol_ms = CASE WHEN ?8 THEN ?10 ELSE symbol_ms END,
+                    color_ms = CASE WHEN ?9 THEN ?10 ELSE color_ms END
+             WHERE id = ?5",
+            params![
+                name,
+                parent_id,
+                sf_symbol,
+                color_hex,
+                id,
+                name != old_name,
+                parent_id != old_parent,
+                sf_symbol != old_symbol,
+                color_hex != old_color,
+                now
+            ],
         )?;
         Ok(())
     }
 
-    /// Deletes a category and its sub-categories; their transactions become
-    /// uncategorised.
+    /// Deletes a category and its sub-categories (soft: the rows stay with a
+    /// deletion stamp, so a sync does not bring them back); their rules go
+    /// too and their transactions and splits become uncategorised. The
+    /// uncategorising is derived, so it carries no `category_ms` stamp.
     pub fn delete_category(&self, id: i64) -> Result<(), CoreError> {
-        let db = self.db()?;
-        let tx = db.unchecked_transaction()?;
-        tx.execute("DELETE FROM categories WHERE id = ?1", [id])?;
-        tx.execute("UPDATE transactions SET category_source = 'none', rule_id = NULL WHERE category_id IS NULL AND category_source != 'none'", [])?;
+        let mut db = self.db()?;
+        let tx = db.transaction()?;
+        crate::sync_merge::soft_delete_categories(&tx, id)?;
         tx.commit()?;
         Ok(())
     }
@@ -2345,10 +2380,11 @@ impl Vault {
         };
         if rule.id == 0 {
             db.execute(
-                "INSERT INTO rules(name, category_id, field, match_kind, pattern, case_sensitive, min_amount_cents, max_amount_cents, account_id, priority, enabled)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                "INSERT INTO rules(name, category_id, field, match_kind, pattern, case_sensitive, min_amount_cents, max_amount_cents, account_id, priority, enabled, updated_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![rule.name, rule.category_id, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
-                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64],
+                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64,
+                        crate::user_groups::now_ms()],
             )?;
             let id = db.last_insert_rowid();
             crate::sync_merge::fill_missing_uuids(&db)?;
@@ -2356,9 +2392,10 @@ impl Vault {
         } else {
             db.execute(
                 "UPDATE rules SET name=?1, category_id=?2, field=?3, match_kind=?4, pattern=?5, case_sensitive=?6, min_amount_cents=?7,
-                        max_amount_cents=?8, account_id=?9, priority=?10, enabled=?11 WHERE id=?12",
+                        max_amount_cents=?8, account_id=?9, priority=?10, enabled=?11, updated_ms=?13 WHERE id=?12",
                 params![rule.name, rule.category_id, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
-                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64, rule.id],
+                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64, rule.id,
+                        crate::user_groups::now_ms()],
             )?;
             Ok(rule.id)
         }
@@ -2368,7 +2405,10 @@ impl Vault {
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
         tx.execute("UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL WHERE rule_id = ?1", [rule_id])?;
-        tx.execute("DELETE FROM rules WHERE id = ?1", [rule_id])?;
+        tx.execute(
+            "UPDATE rules SET deleted_ms = ?2 WHERE id = ?1 AND deleted_ms IS NULL",
+            params![rule_id, crate::user_groups::now_ms()],
+        )?;
         tx.commit()?;
         Ok(())
     }

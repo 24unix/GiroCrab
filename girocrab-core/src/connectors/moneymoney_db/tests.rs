@@ -1781,3 +1781,71 @@ fn fallback_balance_counts_account_currency_from_the_initial_balance_date_on() {
     assert_eq!(r.rows.len(), 3, "all bookings are still imported");
     assert_eq!(r.balance_cents, 10_000 - 2_000);
 }
+
+#[test]
+fn starter_wipe_on_import_soft_deletes_starter_categories() {
+    let v = vault();
+    let starter = v.seed_starter_categories().unwrap() as i64;
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    let db = v.db().unwrap();
+    let n = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+    assert_eq!(
+        n("SELECT count(*) FROM categories WHERE deleted_ms IS NOT NULL"),
+        starter
+    );
+    assert_eq!(n("SELECT count(*) FROM rules WHERE deleted_ms IS NULL"), 0);
+    assert!(n("SELECT count(*) FROM rules WHERE deleted_ms IS NOT NULL") > 0);
+    // the imported tree is live and stamped, with unique uuids
+    assert_eq!(
+        n("SELECT count(*) FROM categories WHERE deleted_ms IS NULL"),
+        7
+    );
+    assert_eq!(
+        n("SELECT count(*) FROM categories WHERE deleted_ms IS NULL AND name_ms > 0 AND uuid IS NOT NULL"),
+        7
+    );
+    assert_eq!(
+        n("SELECT count(DISTINCT uuid) FROM categories"),
+        starter + 7
+    );
+}
+
+#[test]
+fn import_stamps_manual_category_and_note() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    {
+        let db = v.db().unwrap();
+        let n = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        assert!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms > 0") > 0);
+        assert_eq!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms = 0"), 0);
+        assert_eq!(
+            n("SELECT count(*) FROM transactions WHERE note != '' AND note_ms = 0"),
+            0
+        );
+        assert!(n("SELECT count(*) FROM transactions WHERE note != '' AND note_ms > 0") > 0);
+        // pretend the bookings existed without category and note: the re-import enriches them
+        db.execute("UPDATE transactions SET category_id = NULL, category_source = 'none', note = '', category_ms = 0, note_ms = 0", []).unwrap();
+    }
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    let db = v.db().unwrap();
+    let n = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+    assert!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms > 0") > 0);
+    assert_eq!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms = 0"), 0);
+    assert!(n("SELECT count(*) FROM transactions WHERE note != '' AND note_ms > 0") > 0);
+    assert_eq!(
+        n("SELECT count(*) FROM transactions WHERE note != '' AND note_ms = 0"),
+        0
+    );
+}

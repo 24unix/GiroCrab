@@ -70,8 +70,8 @@ impl Vault {
         }
         let db = self.db()?;
         let n = db.execute(
-            "UPDATE categories SET budget_cents = ?1 WHERE id = ?2",
-            params![budget_cents, category_id],
+            "UPDATE categories SET budget_cents = ?1, budget_ms = ?3 WHERE id = ?2",
+            params![budget_cents, category_id, crate::user_groups::now_ms()],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
@@ -105,7 +105,7 @@ impl Vault {
             }
         }
         let mut stmt = db.prepare(
-            "SELECT id, parent_id, name, sf_symbol, color_hex, budget_cents FROM categories ORDER BY sort_order, name",
+            "SELECT id, parent_id, name, sf_symbol, color_hex, budget_cents FROM categories WHERE deleted_ms IS NULL ORDER BY sort_order, name",
         )?;
         let rows = stmt
             .query_map([], |r| {

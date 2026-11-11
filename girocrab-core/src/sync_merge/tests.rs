@@ -440,3 +440,207 @@ fn manual_clear_stamps_and_lets_rules_refill() {
     assert_eq!(row(&v), (Some(cat), "rule".to_string()));
     assert_eq!(stamps(&v)[0], ms);
 }
+
+fn cat_stamps(v: &Vault, id: i64) -> Vec<i64> {
+    let db = v.db().unwrap();
+    db.query_row(
+        "SELECT name_ms, parent_ms, symbol_ms, color_ms, budget_ms, order_ms FROM categories WHERE id = ?1",
+        [id],
+        |r| (0..6).map(|i| r.get(i)).collect::<Result<Vec<i64>, _>>(),
+    )
+    .unwrap()
+}
+
+fn plain_rule(category_id: i64, pattern: &str) -> crate::models::Rule {
+    crate::models::Rule {
+        id: 0,
+        name: "r".into(),
+        category_id,
+        field: crate::models::RuleField::Any,
+        match_kind: crate::models::MatchKind::Keyword,
+        pattern: pattern.into(),
+        case_sensitive: false,
+        min_amount_cents: None,
+        max_amount_cents: None,
+        account_id: None,
+        priority: 10,
+        enabled: true,
+        match_count: 0,
+    }
+}
+
+#[test]
+fn rename_stamps_name_only() {
+    let v = open(&temp_dir("rename"), "a.db");
+    let id = v
+        .create_category("Food".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    // seeded stamps are 0 for a category without user edits
+    v.db().unwrap().execute("UPDATE categories SET name_ms=0, parent_ms=0, symbol_ms=0, color_ms=0, budget_ms=0, order_ms=0", []).unwrap();
+    v.update_category(id, "Essen".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    let s = cat_stamps(&v, id);
+    assert!(s[0] > 0, "{s:?}");
+    assert_eq!(&s[1..], &[0, 0, 0, 0, 0]);
+    // unchanged save stamps nothing more
+    let before = s[0];
+    v.update_category(id, "Essen".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    assert_eq!(cat_stamps(&v, id)[0], before);
+    // colour change stamps colour only
+    v.update_category(id, "Essen".into(), None, "tag".into(), "#222222".into())
+        .unwrap();
+    let s = cat_stamps(&v, id);
+    assert!(s[3] > 0);
+    assert_eq!((s[1], s[2], s[4], s[5]), (0, 0, 0, 0));
+}
+
+#[test]
+fn budget_stamps_budget_only() {
+    let v = open(&temp_dir("budget"), "a.db");
+    let id = v
+        .create_category("Food".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    v.db().unwrap().execute("UPDATE categories SET name_ms=0, parent_ms=0, symbol_ms=0, color_ms=0, budget_ms=0, order_ms=0", []).unwrap();
+    v.set_category_budget(id, Some(5000)).unwrap();
+    let s = cat_stamps(&v, id);
+    assert!(s[4] > 0, "{s:?}");
+    assert_eq!((s[0], s[1], s[2], s[3], s[5]), (0, 0, 0, 0, 0));
+    // clearing is an edit too
+    v.db()
+        .unwrap()
+        .execute("UPDATE categories SET budget_ms = 1", [])
+        .unwrap();
+    v.set_category_budget(id, None).unwrap();
+    assert!(cat_stamps(&v, id)[4] > 1);
+}
+
+#[test]
+fn deleting_a_category_soft_deletes_it_its_children_and_rules() {
+    let v = open(&temp_dir("catdel"), "a.db");
+    let parent = v
+        .create_category("Home".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    let child = v
+        .create_category("Power".into(), Some(parent), "tag".into(), "#111111".into())
+        .unwrap();
+    let other = v
+        .create_category("Other".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    let rule = v.save_rule(plain_rule(child, "stadtwerke")).unwrap();
+    let keep_rule = v.save_rule(plain_rule(other, "lidl")).unwrap();
+    {
+        let db = v.db().unwrap();
+        db.execute_batch(
+            "INSERT INTO account_groups(id, name) VALUES (1, 'G');
+             INSERT INTO accounts(id, group_id, external_ref, name) VALUES (1, 1, 'DE1', 'A');",
+        )
+        .unwrap();
+        for (i, c) in [("e1", child), ("e2", other)] {
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, category_id, category_source, category_ms)
+                 VALUES (1, ?1, '2026-01-01', -5, ?2, 'manual', 77)",
+                params![i, c],
+            )
+            .unwrap();
+        }
+        db.execute("INSERT INTO transaction_splits(transaction_id, category_id, amount_cents) VALUES (2, ?1, -5)", [child]).ok();
+    }
+    v.delete_category(parent).unwrap();
+    let db = v.db().unwrap();
+    let del = |t: &str, id: i64| -> Option<i64> {
+        db.query_row(
+            &format!("SELECT deleted_ms FROM {t} WHERE id = ?1"),
+            [id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert!(del("categories", parent).unwrap() > 0);
+    assert!(del("categories", child).unwrap() > 0);
+    assert!(del("categories", other).is_none());
+    assert!(del("rules", rule).unwrap() > 0);
+    assert!(del("rules", keep_rule).is_none());
+    let (cat, src, ms): (Option<i64>, String, i64) = db
+        .query_row("SELECT category_id, category_source, category_ms FROM transactions WHERE external_id='e1'", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .unwrap();
+    assert_eq!((cat, src.as_str(), ms), (None, "none", 77));
+    let (cat, src): (Option<i64>, String) = db
+        .query_row(
+            "SELECT category_id, category_source FROM transactions WHERE external_id='e2'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((cat, src.as_str()), (Some(other), "manual"));
+    let splits: i64 = db
+        .query_row(
+            "SELECT count(*) FROM transaction_splits WHERE category_id = ?1",
+            [child],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(splits, 0);
+    drop(db);
+    let ids: Vec<i64> = v
+        .list_categories(None, None)
+        .unwrap()
+        .iter()
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(ids, vec![other]);
+    let rules: Vec<i64> = v.list_rules().unwrap().iter().map(|r| r.id).collect();
+    assert_eq!(rules, vec![keep_rule]);
+}
+
+#[test]
+fn save_rule_stamps_and_keeps_uuid_on_edit() {
+    let v = open(&temp_dir("rule"), "a.db");
+    let cat = v
+        .create_category("Food".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    let id = v.save_rule(plain_rule(cat, "lidl")).unwrap();
+    let get = |v: &Vault| -> (String, i64) {
+        v.db()
+            .unwrap()
+            .query_row(
+                "SELECT uuid, updated_ms FROM rules WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+    };
+    let (uuid, ms) = get(&v);
+    assert!(ms > 0);
+    v.db()
+        .unwrap()
+        .execute("UPDATE rules SET updated_ms = 1", [])
+        .unwrap();
+    let mut r = plain_rule(cat, "lidl");
+    r.id = id;
+    r.pattern = "edeka".into();
+    v.save_rule(r).unwrap();
+    let (uuid2, ms2) = get(&v);
+    assert_eq!(uuid, uuid2);
+    assert!(ms2 > 1);
+    // same content as a deleted rule: random uuid, content uuid stays taken
+    v.delete_rule(id).unwrap();
+    let (_, del_ms): (String, i64) = v
+        .db()
+        .unwrap()
+        .query_row(
+            "SELECT uuid, deleted_ms FROM rules WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert!(del_ms > 0);
+    assert!(v.list_rules().unwrap().is_empty());
+    let id2 = v.save_rule(plain_rule(cat, "lidl")).unwrap();
+    let u2: String = v
+        .db()
+        .unwrap()
+        .query_row("SELECT uuid FROM rules WHERE id = ?1", [id2], |r| r.get(0))
+        .unwrap();
+    assert_ne!(u2, uuid);
+}

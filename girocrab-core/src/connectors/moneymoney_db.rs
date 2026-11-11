@@ -1927,7 +1927,7 @@ fn import_category_rules(
         let category_id =
             find_or_create_category(conn, path, cat_cache, &mut res.categories_created)?;
         let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM rules WHERE category_id = ?1 AND pattern = ?2)",
+            "SELECT EXISTS(SELECT 1 FROM rules WHERE category_id = ?1 AND pattern = ?2 AND deleted_ms IS NULL)",
             params![category_id, expr],
             |r| r.get(0),
         )?;
@@ -1946,14 +1946,15 @@ fn import_category_rules(
             leaf
         };
         conn.execute(
-            "INSERT INTO rules(name, category_id, field, match_kind, pattern, priority, enabled)
-             VALUES (?1, ?2, 'any', 'expression', ?3, ?4, ?5)",
+            "INSERT INTO rules(name, category_id, field, match_kind, pattern, priority, enabled, updated_ms)
+             VALUES (?1, ?2, 'any', 'expression', ?3, ?4, ?5, ?6)",
             params![
                 name,
                 category_id,
                 expr,
                 IMPORTED_RULE_PRIORITY + i as i32,
-                enabled
+                enabled,
+                crate::user_groups::now_ms()
             ],
         )?;
         res.rules_created += 1;
@@ -2005,8 +2006,14 @@ fn import(
     report.emit()?;
     let mut cat_cache = HashMap::new();
     if options.import_categories && replaces_starter_categories(conn, src)? {
-        // rules and assignments go with them (ON DELETE CASCADE / SET NULL)
-        conn.execute("DELETE FROM categories", [])?;
+        // soft: rules and assignments go with them
+        let roots: Vec<i64> = conn
+            .prepare("SELECT id FROM categories WHERE parent_id IS NULL AND deleted_ms IS NULL")?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        for id in roots {
+            crate::sync_merge::soft_delete_categories(conn, id)?;
+        }
     }
     if options.import_categories {
         // the whole tree, also categories without bookings
