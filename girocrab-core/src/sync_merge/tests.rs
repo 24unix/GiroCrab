@@ -656,3 +656,315 @@ fn save_rule_stamps_and_keeps_uuid_on_edit() {
         .unwrap();
     assert_ne!(u2, uuid);
 }
+
+fn n(v: &Vault, sql: &str) -> i64 {
+    v.db()
+        .unwrap()
+        .query_row(sql, [], |r| r.get::<_, i64>(0))
+        .unwrap()
+}
+
+/// One connection `c` with two accounts and one booking each, plus an unrelated
+/// loose account with a booking. Returns (connection, account 1, account 2, loose).
+fn bank_fixture(v: &Vault) -> (i64, i64, i64, i64) {
+    let db = v.db().unwrap();
+    db.execute_batch("INSERT INTO account_groups(id, name) VALUES (1, 'G');")
+        .unwrap();
+    db.execute(
+        "INSERT INTO bank_connections(connector, display_name, login_name, bank_code)
+         VALUES ('fints:12345678', 'Bank', 'me', '12345678')",
+        [],
+    )
+    .unwrap();
+    let c = db.last_insert_rowid();
+    let mut ids = Vec::new();
+    for (conn, ext) in [(Some(c), "A1"), (Some(c), "A2"), (None, "loose")] {
+        db.execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name) VALUES (?1, 1, ?2, ?2)",
+            params![conn, ext],
+        )
+        .unwrap();
+        let a = db.last_insert_rowid();
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents)
+             VALUES (?1, 'e1', '2026-01-01', -5)",
+            [a],
+        )
+        .unwrap();
+        ids.push(a);
+    }
+    (c, ids[0], ids[1], ids[2])
+}
+
+#[test]
+fn deleting_connection_soft_deletes_it_accounts_and_bookings() {
+    let v = open(&temp_dir("conndel"), "a.db");
+    let (c, a1, _, loose) = bank_fixture(&v);
+    v.delete_bank_connection(c).unwrap();
+    assert_eq!(n(&v, "SELECT count(*) FROM bank_connections"), 1);
+    assert_eq!(
+        n(
+            &v,
+            "SELECT count(*) FROM bank_connections WHERE deleted_ms > 0"
+        ),
+        1
+    );
+    assert_eq!(n(&v, "SELECT count(*) FROM accounts"), 3);
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms > 0"),
+        2
+    );
+    assert_eq!(n(&v, "SELECT count(*) FROM transactions"), 3);
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM transactions WHERE deleted_ms > 0"),
+        2
+    );
+    assert_eq!(
+        n(
+            &v,
+            &format!("SELECT count(*) FROM transactions WHERE account_id = {loose} AND deleted_ms IS NULL")
+        ),
+        1
+    );
+    // the accounts keep their connection, so their sync keys stay stable
+    assert_eq!(
+        n(
+            &v,
+            &format!("SELECT connection_id FROM accounts WHERE id = {a1}")
+        ),
+        c
+    );
+}
+
+#[test]
+fn deleting_account_soft_deletes_it_and_its_bookings() {
+    let v = open(&temp_dir("accdel"), "a.db");
+    let (c, a1, a2, _) = bank_fixture(&v);
+    v.set_account_archived(a1, true).unwrap();
+    v.delete_account(a1).unwrap();
+    assert_eq!(n(&v, "SELECT count(*) FROM accounts"), 3);
+    assert_eq!(
+        n(
+            &v,
+            &format!(
+                "SELECT count(*) FROM transactions WHERE account_id = {a1} AND deleted_ms > 0"
+            )
+        ),
+        1
+    );
+    assert_eq!(
+        n(
+            &v,
+            "SELECT count(*) FROM bank_connections WHERE deleted_ms IS NULL"
+        ),
+        1
+    );
+    // the last account of a connection takes the connection along
+    v.set_account_archived(a2, true).unwrap();
+    v.delete_account(a2).unwrap();
+    assert_eq!(
+        n(
+            &v,
+            &format!("SELECT deleted_ms > 0 FROM bank_connections WHERE id = {c}")
+        ),
+        1
+    );
+}
+
+#[test]
+fn readding_connection_revives_it_with_new_created_ms() {
+    let v = open(&temp_dir("revive"), "a.db");
+    let id = v
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "Login".into())
+        .unwrap();
+    assert!(n(&v, "SELECT created_ms FROM bank_connections") > 1);
+    v.db()
+        .unwrap()
+        .execute("UPDATE bank_connections SET created_ms = 1", [])
+        .unwrap();
+    v.delete_bank_connection(id).unwrap();
+    let again = v
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    assert_eq!(again, id);
+    assert_eq!(n(&v, "SELECT count(*) FROM bank_connections"), 1);
+    assert_eq!(
+        n(
+            &v,
+            "SELECT count(*) FROM bank_connections WHERE deleted_ms IS NULL"
+        ),
+        1
+    );
+    assert!(n(&v, "SELECT created_ms FROM bank_connections") > 1);
+}
+
+fn remote_account(ext: &str) -> crate::connectors::RemoteAccount {
+    crate::connectors::RemoteAccount {
+        external_ref: ext.into(),
+        name: "Giro".into(),
+        owner: String::new(),
+        iban: String::new(),
+        account_number: String::new(),
+        currency: "EUR".into(),
+        kind: crate::models::AccountKind::Checking,
+        balance_cents: 0,
+        balance_date: "2026-11-10".into(),
+    }
+}
+
+fn remote_tx(ext: &str, id: &str) -> crate::connectors::RemoteTransaction {
+    crate::connectors::RemoteTransaction {
+        account_ref: ext.into(),
+        external_id: id.into(),
+        booking_date: "2026-11-10".into(),
+        value_date: "2026-11-10".into(),
+        amount_cents: -500,
+        currency: "EUR".into(),
+        counterparty: "Shop".into(),
+        purpose: "Kauf".into(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn fetch_does_not_resurrect_deleted_booking() {
+    let v = open(&temp_dir("noresurrect"), "a.db");
+    let c = v
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    let fetch = |ids: &[&str]| crate::connectors::FetchResult {
+        accounts: vec![remote_account("DE1")],
+        transactions: ids.iter().map(|i| remote_tx("DE1", i)).collect(),
+        adjust_balances: true,
+        ..Default::default()
+    };
+    crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch(&["b1", "b2"])).unwrap();
+    assert_eq!(n(&v, "SELECT created_ms > 1 FROM accounts"), 1);
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE transactions SET deleted_ms = 5 WHERE external_id = 'b1'",
+            [],
+        )
+        .unwrap();
+    let before = n(&v, "SELECT balance_cents FROM accounts");
+    let s = crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch(&["b1", "b2"]))
+        .unwrap();
+    assert_eq!(s.transactions_imported, 0);
+    assert_eq!(n(&v, "SELECT count(*) FROM transactions"), 2);
+    assert_eq!(
+        n(
+            &v,
+            "SELECT deleted_ms FROM transactions WHERE external_id = 'b1'"
+        ),
+        5
+    );
+    assert_eq!(n(&v, "SELECT balance_cents FROM accounts"), before);
+}
+
+#[test]
+fn fetch_revives_a_deleted_account_it_delivers() {
+    let v = open(&temp_dir("accrevive"), "a.db");
+    let c = v
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    let fetch = || crate::connectors::FetchResult {
+        accounts: vec![remote_account("DE1")],
+        ..Default::default()
+    };
+    crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch()).unwrap();
+    v.db()
+        .unwrap()
+        .execute("UPDATE accounts SET created_ms = 1, deleted_ms = 2", [])
+        .unwrap();
+    crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch()).unwrap();
+    assert_eq!(n(&v, "SELECT count(*) FROM accounts"), 1);
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+        1
+    );
+    assert!(n(&v, "SELECT created_ms FROM accounts") > 2);
+}
+
+#[test]
+fn pending_booking_removed_by_fetch_is_soft_deleted() {
+    let v = open(&temp_dir("pending"), "a.db");
+    let c = v
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    let fetch = |txs: Vec<crate::connectors::RemoteTransaction>| crate::connectors::FetchResult {
+        accounts: vec![remote_account("DE1")],
+        transactions: txs,
+        hold_prefix: Some("hold-".into()),
+        ..Default::default()
+    };
+    crate::connectors::store_fetch(
+        &v,
+        ConnectorKind::Comdirect,
+        c,
+        fetch(vec![remote_tx("DE1", "hold-1")]),
+    )
+    .unwrap();
+    // an optimistic transfer booking older than 14 days
+    v.db()
+        .unwrap()
+        .execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, imported_unix)
+             VALUES ((SELECT id FROM accounts), 'pending-e2e', '2026-01-01', -9, 1)",
+            [],
+        )
+        .unwrap();
+    crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch(vec![])).unwrap();
+    assert_eq!(n(&v, "SELECT count(*) FROM transactions"), 2);
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM transactions WHERE deleted_ms > 0"),
+        2
+    );
+}
+
+#[test]
+fn twin_merge_soft_deletes_the_bank_copy() {
+    let v = open(&temp_dir("twin"), "a.db");
+    let csv = "Datum;Name;Verwendungszweck;Betrag;Kategorie;Notiz\n10.05.2026;REWE Markt;Einkauf;-12,50;;\n";
+    let acc = v
+        .import_moneymoney_data(csv.as_bytes().to_vec(), "t.csv".into(), None, true, true)
+        .unwrap()
+        .account_id;
+    let db = v.db().unwrap();
+    db.execute(
+        "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+         VALUES (?1, 'f1', '2026-05-10', -1250, 'REWE', 'Einkauf')",
+        [acc],
+    )
+    .unwrap();
+    let bank_id = db.last_insert_rowid();
+    assert!(crate::connectors::moneymoney_import::merge_synced_twin(
+        &db,
+        acc,
+        "f1",
+        "2026-05-10",
+        -1250,
+        "",
+        "REWE",
+        "Einkauf"
+    )
+    .unwrap());
+    let deleted: Option<i64> = db
+        .query_row(
+            "SELECT deleted_ms FROM transactions WHERE id = ?1",
+            [bank_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(deleted.unwrap() > 0);
+    // the import row carries the bank's id and stays live
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM transactions WHERE external_id = 'f1' AND deleted_ms IS NULL",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        1
+    );
+}

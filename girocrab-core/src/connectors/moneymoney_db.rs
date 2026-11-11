@@ -1648,7 +1648,7 @@ fn find_connection(
 ) -> CoreResult<Option<i64>> {
     let login = crate::connections::normalize_login(kind, login);
     let mut st = conn
-        .prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1 ORDER BY id")?;
+        .prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1 AND deleted_ms IS NULL ORDER BY id")?;
     let rows: Vec<(i64, String)> = st
         .query_map([key], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<Result<_, _>>()?;
@@ -2044,6 +2044,7 @@ fn import(
         };
         let (account_id, currency) = match target {
             Some(id) => {
+                crate::sync_merge::revive_account_if_deleted(conn, id)?;
                 let cur: String = conn
                     .query_row("SELECT currency FROM accounts WHERE id = ?1", [id], |r| {
                         r.get(0)
@@ -2065,9 +2066,9 @@ fn import(
                     .unwrap_or_else(|| "MoneyMoney-Import".into());
                 conn.execute(
                     "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban, account_number,
-                                          currency, kind, balance_cents, balance_date, sf_symbol, sort_order)
+                                          currency, kind, balance_cents, balance_date, sf_symbol, sort_order, created_ms)
                      VALUES (NULL, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, '', ?10,
-                             (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts))",
+                             (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?11)",
                     params![
                         gid,
                         ext,
@@ -2078,7 +2079,8 @@ fn import(
                         a.account,
                         a.currency,
                         kind.as_str(),
-                        kind.sf_symbol()
+                        kind.sf_symbol(),
+                        crate::user_groups::now_ms()
                     ],
                 )?;
                 res.accounts_created += 1;

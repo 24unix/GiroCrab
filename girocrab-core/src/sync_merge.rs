@@ -304,6 +304,88 @@ pub(crate) fn soft_delete_categories(conn: &Connection, root: i64) -> CoreResult
     r
 }
 
+/// Soft-deletes one booking (bank-side removal, twin merge).
+pub(crate) fn soft_delete_booking(conn: &Connection, id: i64) -> CoreResult<()> {
+    conn.execute("DELETE FROM loan_links WHERE transaction_id = ?1", [id])?;
+    conn.execute(
+        "UPDATE transactions SET deleted_ms = ?1 WHERE id = ?2 AND deleted_ms IS NULL",
+        params![crate::user_groups::now_ms(), id],
+    )?;
+    Ok(())
+}
+
+/// Soft-deletes an account and its bookings (what the FK cascade did).
+pub(crate) fn soft_delete_account(conn: &Connection, id: i64) -> CoreResult<()> {
+    let now = crate::user_groups::now_ms();
+    // derived loan links went with the rows (FK cascade) before
+    conn.execute(
+        "DELETE FROM loan_links WHERE loan_account_id = ?1
+            OR transaction_id IN (SELECT id FROM transactions WHERE account_id = ?1)",
+        [id],
+    )?;
+    conn.execute(
+        "UPDATE transactions SET deleted_ms = ?1 WHERE account_id = ?2 AND deleted_ms IS NULL",
+        params![now, id],
+    )?;
+    conn.execute(
+        "UPDATE accounts SET deleted_ms = ?1 WHERE id = ?2 AND deleted_ms IS NULL",
+        params![now, id],
+    )?;
+    Ok(())
+}
+
+/// Soft-deletes a connection, its accounts and their bookings.
+pub(crate) fn soft_delete_connection(conn: &Connection, id: i64) -> CoreResult<()> {
+    let accounts: Vec<i64> = {
+        let mut q = conn.prepare("SELECT id FROM accounts WHERE connection_id = ?1")?;
+        let rows = q.query_map([id], |r| r.get(0))?;
+        rows.collect::<Result<_, _>>()?
+    };
+    for a in accounts {
+        soft_delete_account(conn, a)?;
+    }
+    conn.execute(
+        "UPDATE bank_connections SET deleted_ms = ?1 WHERE id = ?2 AND deleted_ms IS NULL",
+        params![crate::user_groups::now_ms(), id],
+    )?;
+    Ok(())
+}
+
+/// A deleted connection added again comes back as a new row in time.
+pub(crate) fn revive_connection(conn: &Connection, id: i64) -> CoreResult<()> {
+    conn.execute(
+        "UPDATE bank_connections SET deleted_ms = NULL, created_ms = ?1 WHERE id = ?2",
+        params![crate::user_groups::now_ms(), id],
+    )?;
+    Ok(())
+}
+
+/// A deleted account the bank (or an import) delivers again comes back with a
+/// new `created_ms`; its deleted bookings stay deleted.
+pub(crate) fn revive_account_if_deleted(conn: &Connection, id: i64) -> CoreResult<()> {
+    conn.execute(
+        "UPDATE accounts SET deleted_ms = NULL, archived_unix = NULL, created_ms = ?1
+         WHERE id = ?2 AND deleted_ms IS NOT NULL",
+        params![crate::user_groups::now_ms(), id],
+    )?;
+    Ok(())
+}
+
+/// Whether the booking `(account, external_id)` exists as a soft-deleted row:
+/// fetch and import must not insert or update it.
+pub(crate) fn booking_is_deleted(
+    conn: &Connection,
+    account_id: i64,
+    external_id: &str,
+) -> CoreResult<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM transactions
+          WHERE account_id = ?1 AND external_id = ?2 AND deleted_ms IS NOT NULL)",
+        params![account_id, external_id],
+        |r| r.get(0),
+    )?)
+}
+
 pub(crate) fn connection_key(conn: &Connection, id: i64) -> CoreResult<String> {
     let (connector, login, bank): (String, String, String) = conn
         .query_row(

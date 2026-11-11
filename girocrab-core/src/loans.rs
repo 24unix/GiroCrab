@@ -294,7 +294,7 @@ fn candidates(conn: &Connection, unlinked_only: bool) -> CoreResult<Vec<(Candida
                 CASE WHEN l.source = 'excluded' THEN l.loan_account_id END
            FROM transactions t JOIN accounts a ON a.id = t.account_id
            LEFT JOIN loan_links l ON l.transaction_id = t.id
-          WHERE a.kind != 'loan' {}",
+          WHERE a.kind != 'loan' AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL {}",
         if unlinked_only {
             "AND (l.transaction_id IS NULL OR l.source = 'excluded')"
         } else {
@@ -369,7 +369,10 @@ fn refresh(conn: &Connection, loan_id: i64) -> CoreResult<LoanStatus> {
 }
 
 fn manual_loan_ids(conn: &Connection) -> CoreResult<Vec<i64>> {
-    let mut st = conn.prepare("SELECT account_id FROM loan_terms ORDER BY account_id")?;
+    let mut st = conn.prepare(
+        "SELECT account_id FROM loan_terms
+          WHERE account_id IN (SELECT id FROM accounts WHERE deleted_ms IS NULL) ORDER BY account_id",
+    )?;
     let rows = st.query_map([], |r| r.get(0))?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
@@ -528,13 +531,14 @@ pub(crate) fn create_in(conn: &Connection, setup: &LoanSetup) -> CoreResult<i64>
     let (group, sym, order) = crate::connectors::group_for(AccountKind::Loan);
     let gid = Vault::ensure_group(conn, group, sym, order)?;
     conn.execute(
-        "INSERT INTO accounts(connection_id, group_id, external_ref, name, kind, sf_symbol, sort_order)
-         VALUES (NULL, ?1, ?2, ?3, 'loan', ?4, (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts))",
+        "INSERT INTO accounts(connection_id, group_id, external_ref, name, kind, sf_symbol, sort_order, created_ms)
+         VALUES (NULL, ?1, ?2, ?3, 'loan', ?4, (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?5)",
         params![
             gid,
             format!("manual-loan-{}", uuid::Uuid::new_v4()),
             s.name,
-            AccountKind::Loan.sf_symbol()
+            AccountKind::Loan.sf_symbol(),
+            crate::user_groups::now_ms()
         ],
     )?;
     let id = conn.last_insert_rowid();

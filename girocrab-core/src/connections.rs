@@ -642,7 +642,11 @@ mod tests {
         let left: i64 = v
             .db()
             .unwrap()
-            .query_row("SELECT count(*) FROM transactions", [], |r| r.get(0))
+            .query_row(
+                "SELECT count(*) FROM transactions WHERE deleted_ms IS NULL",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(left, 0);
         let _ = std::fs::remove_file(p);

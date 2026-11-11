@@ -703,15 +703,18 @@ impl Vault {
         let info = crate::connectors::descriptor(connector);
         let login_name = crate::connections::normalize_login(connector, &login_name);
         // Same provider + same login: update instead of creating a duplicate.
-        let existing: Vec<(i64, String)> = {
-            let mut st =
-                conn.prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1")?;
+        // A live match wins over a deleted one; a deleted one is revived.
+        let existing: Vec<(i64, String, bool)> = {
+            let mut st = conn.prepare(
+                "SELECT id, login_name, deleted_ms IS NOT NULL FROM bank_connections
+                 WHERE connector = ?1 ORDER BY deleted_ms IS NOT NULL, id",
+            )?;
             let r = st
-                .query_map([key], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .query_map([key], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
                 .collect::<Result<Vec<_>, _>>()?;
             r
         };
-        if let Some((id, _)) = existing.iter().find(|(_, l)| {
+        if let Some((id, _, deleted)) = existing.iter().find(|(_, l, _)| {
             !login_name.is_empty()
                 && crate::connections::normalize_login(connector, l)
                     .eq_ignore_ascii_case(&login_name)
@@ -722,16 +725,21 @@ impl Vault {
                     params![display_name.trim(), id],
                 )?;
             }
+            if *deleted {
+                crate::sync_merge::revive_connection(conn, *id)?;
+                return Ok((*id, true));
+            }
             return Ok((*id, false));
         }
         conn.execute(
-            "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol, created_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 key,
                 if display_name.trim().is_empty() { info.name.clone() } else { display_name },
                 login_name,
                 bank_code.map(str::to_string).unwrap_or(info.bank_code),
-                info.sf_symbol
+                info.sf_symbol,
+                crate::user_groups::now_ms()
             ],
         )?;
         Ok((conn.last_insert_rowid(), true))
@@ -1301,9 +1309,9 @@ impl Vault {
         let db = self.db()?;
         let mut stmt = db.prepare(
             "SELECT id, connector, display_name, login_name, bank_code, sf_symbol, last_sync_unix,
-                    EXISTS (SELECT 1 FROM accounts a WHERE a.connection_id = bank_connections.id)
-                      AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.connection_id = bank_connections.id AND a.archived_unix IS NULL)
-             FROM bank_connections ORDER BY id",
+                    EXISTS (SELECT 1 FROM accounts a WHERE a.connection_id = bank_connections.id AND a.deleted_ms IS NULL)
+                      AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.connection_id = bank_connections.id AND a.deleted_ms IS NULL AND a.archived_unix IS NULL)
+             FROM bank_connections WHERE deleted_ms IS NULL ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
             let kind: String = r.get(1)?;
@@ -1471,7 +1479,7 @@ impl Vault {
         crate::loans::refresh_all(&tx)?;
         if let Some(c) = conn {
             let left: i64 = tx.query_row(
-                "SELECT count(*) FROM accounts WHERE connection_id = ?1",
+                "SELECT count(*) FROM accounts WHERE connection_id = ?1 AND deleted_ms IS NULL",
                 [c],
                 |r| r.get(0),
             )?;
@@ -1525,6 +1533,7 @@ impl Vault {
                     a.archived_unix, a.access_revoked
              FROM accounts a LEFT JOIN bank_connections c ON c.id = a.connection_id
              LEFT JOIN user_groups g ON g.uuid = a.user_group_uuid AND g.deleted_ms IS NULL
+             WHERE a.deleted_ms IS NULL
              ORDER BY a.sort_order, a.id",
         )?;
         let mut color_hashes: HashMap<i64, u64> = HashMap::new();
@@ -2518,30 +2527,11 @@ impl Vault {
 
 impl Vault {
     fn delete_account_rows(db: &Connection, account_id: i64) -> Result<(), CoreError> {
-        for sql in [
-            "DELETE FROM holdings WHERE account_id = ?1",
-            "DELETE FROM booking_documents WHERE account_id = ?1",
-            "DELETE FROM transactions WHERE account_id = ?1",
-            "DELETE FROM accounts WHERE id = ?1",
-        ] {
-            db.execute(sql, [account_id])?;
-        }
-        Ok(())
+        crate::sync_merge::soft_delete_account(db, account_id)
     }
 
     fn purge_connection(db: &Connection, connection_id: i64) -> Result<(), CoreError> {
-        let ids: Vec<i64> = {
-            let mut q = db.prepare("SELECT id FROM accounts WHERE connection_id = ?1")?;
-            let rows = q.query_map([connection_id], |r| r.get(0))?;
-            rows.collect::<Result<_, _>>()?
-        };
-        for id in ids {
-            Self::delete_account_rows(db, id)?;
-        }
-        db.execute(
-            "DELETE FROM bank_connections WHERE id = ?1",
-            [connection_id],
-        )?;
+        crate::sync_merge::soft_delete_connection(db, connection_id)?;
         // stored secrets of this connection (PIN); the session lives in state_json
         db.execute(
             "DELETE FROM settings WHERE key = ?1",

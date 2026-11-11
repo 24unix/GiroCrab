@@ -966,6 +966,7 @@ pub(crate) fn store_fetch(
                 None => adopt_unlinked(&tx, connection_id, &bank_name, acc)?,
             };
             if let Some(id) = existing {
+                crate::sync_merge::revive_account_if_deleted(&tx, id)?;
                 let archived: bool = tx.query_row(
                     "SELECT archived_unix IS NOT NULL FROM accounts WHERE id = ?1",
                     [id],
@@ -1049,10 +1050,11 @@ pub(crate) fn store_fetch(
                     let gid = Vault::ensure_group(&tx, group, sym, order)?;
                     tx.execute(
                         "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban, account_number, currency, kind,
-                                              balance_cents, balance_date, sf_symbol, sort_order)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts))",
+                                              balance_cents, balance_date, sf_symbol, sort_order, created_ms)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?14)",
                         params![connection_id, gid, acc.external_ref, acc.name, bank_name, acc.owner, acc.iban, acc.account_number,
-                                acc.currency, acc.kind.as_str(), acc.balance_cents, acc.balance_date, acc.kind.sf_symbol()],
+                                acc.currency, acc.kind.as_str(), acc.balance_cents, acc.balance_date, acc.kind.sf_symbol(),
+                                crate::user_groups::now_ms()],
                     )?;
                     let id = tx.last_insert_rowid();
                     crate::user_groups::place_new_account(&tx, id)?;
@@ -1226,6 +1228,10 @@ pub(crate) fn store_fetch(
                     continue;
                 };
                 adopt_legacy_content_id(&tx, *acc_id, t)?;
+                // Deleted bookings stay deleted: neither inserted nor updated again.
+                if crate::sync_merge::booking_is_deleted(&tx, *acc_id, &t.external_id)? {
+                    continue;
+                }
                 // Already imported from MoneyMoney? Adopt that row (keeps category + note).
                 if moneymoney_import::adopt_import(
                     &tx,
@@ -1313,13 +1319,15 @@ pub(crate) fn store_fetch(
         // Drop optimistic transfer bookings once the bank's real booking arrived
         // (same account, amount and recipient IBAN) or after 14 days.
         tx.execute(
-            "DELETE FROM transactions WHERE external_id LIKE 'pending-%' AND (
+            "UPDATE transactions SET deleted_ms = ?1
+              WHERE external_id LIKE 'pending-%' AND deleted_ms IS NULL AND (
                 imported_unix < strftime('%s','now') - 14*86400 OR EXISTS (
                     SELECT 1 FROM transactions r WHERE r.account_id = transactions.account_id
+                      AND r.deleted_ms IS NULL
                       AND r.external_id NOT LIKE 'pending-%' AND r.amount_cents = transactions.amount_cents
                       AND r.counterparty_iban = transactions.counterparty_iban
                       AND r.booking_date >= transactions.booking_date))",
-            [],
+            [crate::user_groups::now_ms()],
         )?;
         // Card holds: keep exactly the ones the bank still reports as open.
         if let Some(prefix) = data.hold_prefix.as_deref().filter(|p| !p.is_empty()) {
@@ -1334,7 +1342,7 @@ pub(crate) fn store_fetch(
                 let stale: Vec<(i64, String)> = {
                     let mut q = tx.prepare(
                         "SELECT id, external_id FROM transactions
-                         WHERE account_id = ?1 AND external_id LIKE ?2 ESCAPE '\\'",
+                         WHERE account_id = ?1 AND external_id LIKE ?2 ESCAPE '\\' AND deleted_ms IS NULL",
                     )?;
                     let rows =
                         q.query_map(params![acc_id, like], |r| Ok((r.get(0)?, r.get(1)?)))?;
@@ -1342,7 +1350,7 @@ pub(crate) fn store_fetch(
                 };
                 for (row_id, ext) in stale {
                     if !current.contains(ext.as_str()) {
-                        tx.execute("DELETE FROM transactions WHERE id = ?1", [row_id])?;
+                        crate::sync_merge::soft_delete_booking(&tx, row_id)?;
                     }
                 }
             }
@@ -2555,7 +2563,7 @@ mod tests {
         let holds = || -> Vec<String> {
             let db = v.db().unwrap();
             let mut q = db
-                .prepare("SELECT external_id FROM transactions WHERE external_id LIKE 'pending-hold-%' ORDER BY 1")
+                .prepare("SELECT external_id FROM transactions WHERE external_id LIKE 'pending-hold-%' AND deleted_ms IS NULL ORDER BY 1")
                 .unwrap();
             q.query_map([], |r| r.get(0))
                 .unwrap()

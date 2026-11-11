@@ -476,6 +476,8 @@ struct Existing {
     id: i64,
     category_source: String,
     note: String,
+    /// Soft-deleted: counts as present, but is never updated.
+    deleted: bool,
 }
 
 pub(crate) fn find_or_create_category(
@@ -576,14 +578,15 @@ fn run(
             let gid = Vault::ensure_group(conn, ARCHIVE_GROUP, "archivebox", 90)?;
             conn.execute(
                 "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, currency, kind,
-                                      balance_cents, balance_date, sf_symbol, sort_order)
+                                      balance_cents, balance_date, sf_symbol, sort_order, created_ms)
                  VALUES (NULL, ?1, ?2, ?3, 'MoneyMoney-Import', ?4, 'checking', 0, '', 'archivebox',
-                         (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts))",
+                         (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?5)",
                 params![
                     gid,
                     format!("moneymoney-{}", uuid::Uuid::new_v4()),
                     account_name_from_file(file_name),
-                    account_currency
+                    account_currency,
+                    crate::user_groups::now_ms()
                 ],
             )?;
             st.account_id = conn.last_insert_rowid();
@@ -635,7 +638,7 @@ pub(crate) fn merge_rows(
     {
         let mut q = conn.prepare(
             "SELECT id, booking_date, amount_cents, counterparty_iban, counterparty, purpose,
-                    import_fp, category_source, note
+                    import_fp, category_source, note, deleted_ms IS NOT NULL
              FROM transactions WHERE account_id = ?1 ORDER BY id",
         )?;
         let it = q.query_map([st.account_id], |r| {
@@ -657,6 +660,7 @@ pub(crate) fn merge_rows(
                     id: r.get(0)?,
                     category_source: r.get(7)?,
                     note: r.get(8)?,
+                    deleted: r.get(9)?,
                 },
             ))
         })?;
@@ -693,6 +697,9 @@ pub(crate) fn merge_rows(
         let note = if preserve_notes { r.note.as_str() } else { "" };
         if let Some(e) = existing.get(&fp).and_then(|v| v.get(k)) {
             st.duplicates += 1;
+            if e.deleted {
+                continue;
+            }
             let mut changed = false;
             if let Some(c) = cat_id.filter(|_| e.category_source != "manual") {
                 conn.execute(
@@ -763,7 +770,7 @@ fn find_twin(
     let mut stmt = conn.prepare(
         "SELECT id, counterparty, counterparty_iban FROM transactions
           WHERE account_id = ?1 AND external_id LIKE 'mm-%' AND amount_cents = ?2
-            AND id != ?3 AND abs(julianday(booking_date) - julianday(?4)) <= 2",
+            AND deleted_ms IS NULL AND id != ?3 AND abs(julianday(booking_date) - julianday(?4)) <= 2",
     )?;
     let rows = stmt.query_map(
         params![account_id, cents, exclude_id.unwrap_or(-1), date],
@@ -812,7 +819,7 @@ pub(crate) fn adopt_import(
     let fp = fingerprint(date, cents, iban, name, purpose);
     let mut row: Option<i64> = conn
         .query_row(
-            "SELECT id FROM transactions WHERE account_id = ?1 AND import_fp = ?2 AND external_id LIKE 'mm-%' LIMIT 1",
+            "SELECT id FROM transactions WHERE account_id = ?1 AND import_fp = ?2 AND external_id LIKE 'mm-%' AND deleted_ms IS NULL LIMIT 1",
             params![account_id, fp],
             |r| r.get(0),
         )
@@ -873,7 +880,7 @@ pub(crate) fn merge_synced_twin(
         .query_row(
             "SELECT id, counterparty_iban, booking_text FROM transactions
               WHERE account_id = ?1 AND external_id = ?2
-                AND category_source != 'manual' AND checked = 0 AND trim(note) = ''
+                AND deleted_ms IS NULL AND category_source != 'manual' AND checked = 0 AND trim(note) = ''
                 AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = transactions.id)
                 AND NOT EXISTS (SELECT 1 FROM booking_documents d WHERE d.booking_id = transactions.id)",
             params![account_id, external_id],
@@ -896,7 +903,13 @@ pub(crate) fn merge_synced_twin(
     else {
         return Ok(false);
     };
-    conn.execute("DELETE FROM transactions WHERE id = ?1", [bank_id])?;
+    // The twin takes over the bank's external id, which the unique index also
+    // holds for the deleted copy: move the copy's id aside.
+    conn.execute(
+        "UPDATE transactions SET external_id = external_id || '#merged-' || id WHERE id = ?1",
+        [bank_id],
+    )?;
+    crate::sync_merge::soft_delete_booking(conn, bank_id)?;
     take_over(conn, mm_id, external_id, &bank_iban, &bank_text)?;
     Ok(true)
 }
@@ -1349,7 +1362,7 @@ mod tests {
 
         let n: i64 = db
             .query_row(
-                "SELECT count(*) FROM transactions WHERE account_id = ?1",
+                "SELECT count(*) FROM transactions WHERE account_id = ?1 AND deleted_ms IS NULL",
                 [acc],
                 |r| r.get(0),
             )
