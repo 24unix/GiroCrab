@@ -14,11 +14,15 @@ public final class CloudSyncManager {
         static let bookmark = "girocrab.sync.bookmark"
         static let last = "girocrab.sync.last"
         static let stats = "girocrab.sync.stats"
+        static let seen = "girocrab.sync.seen"
     }
-    private let fileName = "tresor.girocrab"
     /// Legacy plaintext key file of v0.4.0. Never written anymore; removed on sync.
     private let legacyKeyFileName = "tresor.key"
     private let defaults = UserDefaults.standard
+    /// Modification date of each peer snapshot when it was last merged.
+    @ObservationIgnored private var seen: [String: Double]
+    @ObservationIgnored private var cachedDeviceID: String?
+    @ObservationIgnored private var folderOverride: URL?
 
     public var isEnabled: Bool {
         didSet {
@@ -43,6 +47,7 @@ public final class CloudSyncManager {
         location = .folder
         lastSync = defaults.object(forKey: K.last) as? Date
         lastStats = defaults.string(forKey: K.stats)
+        seen = defaults.dictionary(forKey: K.seen) as? [String: Double] ?? [:]
         if let url = try? resolveBookmark() {
             folderName = url.lastPathComponent
         } else if isEnabled {
@@ -61,7 +66,7 @@ public final class CloudSyncManager {
         let cloudDocs = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
         guard FileManager.default.fileExists(atPath: cloudDocs.path) else { return nil }
         let mm = cloudDocs.appendingPathComponent("moneymoney", isDirectory: true)
-        if FileManager.default.fileExists(atPath: mm.appendingPathComponent("tresor.girocrab").path) { return mm }
+        if SyncFolder.containsVault(mm) { return mm }
         let dir = cloudDocs.appendingPathComponent("GiroCrab", isDirectory: true)
         // Only reached once sync is enabled (init / isEnabled / sync call it gated).
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -87,37 +92,71 @@ public final class CloudSyncManager {
         lastError = nil
     }
 
+    /// Merges the other devices' snapshots into `vault`, then writes this
+    /// device's own snapshot. Uses the open vault's key: no keychain prompt.
     /// - Parameters:
-    ///   - remoteKey: key of the iCloud snapshot if it differs from `key`
-    ///     (pasted by the user from the other device).
-    ///   - mergeOnly: merge the snapshot into the local vault but don't write
-    ///     it back (used while adopting a pasted key).
-    public func sync(vault: Vault, localPath: String, key: Data, remoteKey: Data? = nil, mergeOnly: Bool = false) async {
+    ///   - remoteKey: key pasted from another device, for snapshots this
+    ///     vault's key doesn't open.
+    ///   - mergeOnly: merge but don't write (used while adopting a pasted key).
+    public func sync(vault: Vault, remoteKey: Data? = nil, mergeOnly: Bool = false) async {
         guard !isSyncing else { return }
         isSyncing = true; lastError = nil; keyMismatch = false
         defer { isSyncing = false }
         do {
             let (dir, release) = try syncDirectory()
             defer { release() }
-            let local = URL(fileURLWithPath: localPath)
-            let remote = dir.appendingPathComponent(fileName)
+            let folder = SyncFolder(dir: dir, deviceID: deviceID)
             let legacyKeyFile = dir.appendingPathComponent(legacyKeyFileName)
-            let stats = try await Task.detached { [fileName] () throws -> MergeStats? in
+            let result = try await Task.detached { () throws -> SyncMergeResult in
                 // Security: never leave the raw vault key next to the vault in iCloud Drive.
                 Self.removeLegacyKeyFile(legacyKeyFile)
-                let res = try Self.merge(vault: vault, local: local, remote: remote, key: key, remoteKey: remoteKey, mergeOnly: mergeOnly, tmpName: fileName)
-                return res
+                // Someone is waiting for this sync: give iCloud time to download.
+                folder.waitForDownloads(timeout: 30)
+                let r = folder.merge(vault: vault, peers: folder.peers(), remoteKey: remoteKey)
+                if !mergeOnly { try folder.write(vault: vault) }
+                return r
             }.value
-            lastSync = Date()
-            defaults.set(lastSync, forKey: K.last)
-            lastStats = stats.map {
-                String(localized: "\($0.bookingsAdded) neue / \($0.bookingsUpdated) aktualisierte Buchungen, \($0.accountsAdded) Konten")
-            } ?? String(localized: "Tresor in iCloud Drive aktualisiert")
-            defaults.set(lastStats, forKey: K.stats)
+            record(result)
         } catch {
-            if (error as NSError).domain == "CloudSync", (error as NSError).code == 3 { keyMismatch = true }
             lastError = error.localizedDescription
         }
+    }
+
+    /// Stores what a merge did: last sync time and summary, the peers'
+    /// modification dates, a key mismatch or per-file errors.
+    private func record(_ result: SyncMergeResult) {
+        seen.merge(result.seen) { $1 }
+        defaults.set(seen, forKey: K.seen)
+        lastSync = Date()
+        defaults.set(lastSync, forKey: K.last)
+        if result.stats.isEmpty {
+            lastStats = String(localized: "Tresor in iCloud Drive aktualisiert")
+        } else {
+            let added = result.stats.reduce(UInt32(0)) { $0 + $1.bookingsAdded }
+            let updated = result.stats.reduce(UInt32(0)) { $0 + $1.bookingsUpdated }
+            let accounts = result.stats.reduce(UInt32(0)) { $0 + $1.accountsAdded }
+            lastStats = String(localized: "\(added) neue / \(updated) aktualisierte Buchungen, \(accounts) Konten")
+        }
+        defaults.set(lastStats, forKey: K.stats)
+        if result.keyMismatch {
+            keyMismatch = true
+            lastError = Self.keyMismatchError.localizedDescription
+        } else if !result.errors.isEmpty {
+            lastError = result.errors.joined(separator: "\n")
+        }
+    }
+
+    /// This installation's id in the sync folder's file names.
+    private var deviceID: String {
+        if let cachedDeviceID { return cachedDeviceID }
+        let id = SyncDeviceID.current(defaults: defaults, hardwareID: SyncDeviceID.hardwareID())
+        cachedDeviceID = id
+        return id
+    }
+
+    /// Tests point the manager at a temporary folder; nil restores the user's.
+    func setFolderForTesting(_ url: URL?) {
+        folderOverride = url
     }
 
     /// Deletes `tresor.key` (and its iCloud placeholder) from the sync folder.
@@ -130,69 +169,8 @@ public final class CloudSyncManager {
         }
     }
 
-    nonisolated private static func merge(vault: Vault, local: URL, remote: URL, key: Data, remoteKey: Data?, mergeOnly: Bool, tmpName: String) throws -> MergeStats? {
-        let fm = FileManager.default
-        var stats: MergeStats?
-
-        if ensureDownloaded(remote) {
-            let tmp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-" + tmpName)
-            defer { try? fm.removeItem(at: tmp) }
-            try fm.copyItem(at: remote, to: tmp)
-            do {
-                stats = try vault.mergeOtherVault(otherPath: tmp.path, key: key)
-            } catch {
-                // Local key doesn't open the snapshot: only a key the user pasted can.
-                if let remoteKey, remoteKey != key {
-                    do {
-                        stats = try vault.mergeOtherVault(otherPath: tmp.path, key: remoteKey)
-                    } catch {
-                        throw Self.keyMismatchError
-                    }
-                } else {
-                    throw Self.keyMismatchError
-                }
-            }
-        }
-
-        try vault.checkpoint()
-        if mergeOnly { return stats }
-
-        // Nie einen leeren (frischen) Tresor über den befüllten in iCloud Drive schreiben.
-        guard ((try? vault.accountCount()) ?? 0) > 0 else { return stats }
-        let tmpOut = copyToTemp(local, fm)
-        if fm.fileExists(atPath: remote.path) {
-            _ = try fm.replaceItemAt(remote, withItemAt: tmpOut)
-        } else {
-            try fm.copyItem(at: tmpOut, to: remote)
-            try? fm.removeItem(at: tmpOut)
-        }
-        return stats
-    }
-
     nonisolated private static var keyMismatchError: NSError {
         NSError(domain: "CloudSync", code: 3, userInfo: [NSLocalizedDescriptionKey: String(localized: "Der Tresor in iCloud nutzt einen anderen Schlüssel. Aktivieren Sie den iCloud-Schlüsselbund oder fügen Sie den Tresor-Schlüssel von Ihrem anderen Gerät ein (Einstellungen › iCloud Sync).")])
-    }
-
-    nonisolated private static func ensureDownloaded(_ remote: URL) -> Bool {
-        let fm = FileManager.default
-        if fm.fileExists(atPath: remote.path) {
-            try? fm.startDownloadingUbiquitousItem(at: remote)
-            return true
-        }
-        let placeholder = remote.deletingLastPathComponent().appendingPathComponent("." + remote.lastPathComponent + ".icloud")
-        guard fm.fileExists(atPath: placeholder.path) else { return false }
-        try? fm.startDownloadingUbiquitousItem(at: remote)
-        for _ in 0..<120 {
-            if fm.fileExists(atPath: remote.path) { return true }
-            Thread.sleep(forTimeInterval: 0.25)
-        }
-        return false
-    }
-
-    nonisolated private static func copyToTemp(_ src: URL, _ fm: FileManager) -> URL {
-        let tmp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try? fm.copyItem(at: src, to: tmp)
-        return tmp
     }
 
     private func resolveBookmark() throws -> URL? {
@@ -206,6 +184,7 @@ public final class CloudSyncManager {
     }
 
     private func syncDirectory() throws -> (URL, () -> Void) {
+        if let folderOverride { return (folderOverride, {}) }
         if let url = try resolveBookmark() {
             let ok = url.startAccessingSecurityScopedResource()
             #if os(macOS)

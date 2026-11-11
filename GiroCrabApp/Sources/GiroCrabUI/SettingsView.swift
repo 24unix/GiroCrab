@@ -584,7 +584,7 @@ struct ICloudSyncSection: View {
             .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
         let mm = cloudDocs.appendingPathComponent("moneymoney", isDirectory: true)
         let gc = cloudDocs.appendingPathComponent("GiroCrab", isDirectory: true)
-        let url = FileManager.default.fileExists(atPath: mm.appendingPathComponent("tresor.girocrab").path) ? mm : gc
+        let url = SyncFolder.containsVault(mm) ? mm : gc
         if FileManager.default.fileExists(atPath: url.path) {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } else {

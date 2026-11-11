@@ -183,6 +183,23 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path), [])
     }
 
+    // MARK: manager
+
+    @MainActor
+    func test_manager_sync_writes_own_and_legacy_file() async throws {
+        let folder = try tempDir()
+        let (v, _) = try device(folder, seeded: true)
+        let sync = CloudSyncManager.shared
+        sync.setFolderForTesting(folder)
+        defer { sync.setFolderForTesting(nil) }
+        await sync.sync(vault: v)
+        XCTAssertNil(sync.lastError)
+        let names = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
+        XCTAssertEqual(names.count, 2)
+        XCTAssertTrue(names.contains(SyncFolder.legacyName))
+        XCTAssertTrue(names.contains { $0.hasPrefix("tresor-") })
+    }
+
     func test_contains_vault_detects_new_names() throws {
         let folder = try tempDir()
         XCTAssertFalse(SyncFolder.containsVault(folder))

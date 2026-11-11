@@ -52,6 +52,24 @@ struct SyncFolder: Sendable {
         return out.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
+    /// Waits up to `timeout` for peer snapshots iCloud is still downloading,
+    /// for a sync someone is waiting for (e.g. the first one on a new device).
+    func waitForDownloads(timeout: TimeInterval) {
+        let fm = FileManager.default
+        let own = ownURL.lastPathComponent
+        let deadline = Date().addingTimeInterval(timeout)
+        _ = peers() // starts the downloads
+        while Date() < deadline {
+            let names = (try? fm.contentsOfDirectory(atPath: dir.path)) ?? []
+            let pending = names.contains { name in
+                guard let target = Self.placeholderTarget(name), Self.isSnapshotName(target), target != own else { return false }
+                return !fm.fileExists(atPath: dir.appendingPathComponent(target).path)
+            }
+            if !pending { return }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+    }
+
     /// Peers whose modification date differs from the one last merged.
     func changedPeers(seen: [String: Double]) -> [URL] {
         peers().filter { Self.modified($0) != seen[$0.lastPathComponent] }
