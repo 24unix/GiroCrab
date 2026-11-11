@@ -1,0 +1,151 @@
+import Foundation
+import GiroCrabCore
+
+/// The files in the sync folder, one snapshot per device:
+/// `tresor-<device-id>.girocrab`. A device writes only its own file and
+/// merges everyone else's, so two devices never overwrite each other.
+/// The single `tresor.girocrab` of older versions is still read, and written
+/// too during the transition, so a device on an older version keeps syncing.
+struct SyncFolder: Sendable {
+    static let legacyName = "tresor.girocrab"
+    private static let devicePattern = #"^tresor-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.girocrab$"#
+
+    let dir: URL
+    let deviceID: String
+
+    var ownURL: URL { dir.appendingPathComponent("tresor-\(deviceID).girocrab") }
+    private var legacyURL: URL { dir.appendingPathComponent(Self.legacyName) }
+
+    /// Exact names only: iCloud's conflict copies ("tresor-… 2.girocrab")
+    /// and anything else in the folder are left alone.
+    private static func isSnapshotName(_ name: String) -> Bool {
+        name == legacyName || name.range(of: devicePattern, options: .regularExpression) != nil
+    }
+
+    /// Name of the file an iCloud placeholder (`.name.icloud`) stands for.
+    private static func placeholderTarget(_ name: String) -> String? {
+        guard name.hasPrefix("."), name.hasSuffix(".icloud") else { return nil }
+        return String(name.dropFirst().dropLast(".icloud".count))
+    }
+
+    /// Whether the folder already holds a vault (downloaded or not).
+    static func containsVault(_ dir: URL) -> Bool {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        return names.contains { isSnapshotName(placeholderTarget($0) ?? $0) }
+    }
+
+    /// Snapshot files of the other devices that are on disk. Files iCloud
+    /// hasn't downloaded yet are requested and left for the next round.
+    func peers() -> [URL] {
+        let fm = FileManager.default
+        let own = ownURL.lastPathComponent
+        var out: [URL] = []
+        for name in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] {
+            if let target = Self.placeholderTarget(name) {
+                if Self.isSnapshotName(target), target != own {
+                    try? fm.startDownloadingUbiquitousItem(at: dir.appendingPathComponent(target))
+                }
+            } else if Self.isSnapshotName(name), name != own {
+                out.append(dir.appendingPathComponent(name))
+            }
+        }
+        return out.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    /// Peers whose modification date differs from the one last merged.
+    func changedPeers(seen: [String: Double]) -> [URL] {
+        peers().filter { Self.modified($0) != seen[$0.lastPathComponent] }
+    }
+
+    private static func modified(_ url: URL) -> Double? {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+            .contentModificationDate?.timeIntervalSince1970
+    }
+
+    /// Merges each peer into `vault`. A peer that this vault's key doesn't
+    /// open is tried with `remoteKey` (pasted from the other device), else
+    /// reported as `keyMismatch`; the other peers are merged either way.
+    func merge(vault: Vault, peers: [URL], remoteKey: Data?) -> SyncMergeResult {
+        var result = SyncMergeResult()
+        let fm = FileManager.default
+        for url in peers {
+            let name = url.lastPathComponent
+            let modified = Self.modified(url)
+            let tmp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-" + name)
+            defer {
+                for suffix in ["", "-wal", "-shm"] {
+                    try? fm.removeItem(atPath: tmp.path + suffix)
+                }
+            }
+            do {
+                // Merge a private copy: opening the vault migrates it in place.
+                try Self.coordinate(reading: url) { try fm.copyItem(at: $0, to: tmp) }
+                do {
+                    result.stats.append(try vault.mergePeerSnapshot(otherPath: tmp.path))
+                } catch CoreError.WrongKey {
+                    guard let remoteKey else { throw CoreError.WrongKey }
+                    result.stats.append(try vault.mergeOtherVault(otherPath: tmp.path, key: remoteKey))
+                }
+            } catch CoreError.WrongKey {
+                result.keyMismatch = true
+            } catch {
+                result.errors.append("\(name): \(error.localizedDescription)")
+                continue
+            }
+            // Also for a key mismatch: retried when the file changes, not every round.
+            if let modified { result.seen[name] = modified }
+        }
+        return result
+    }
+
+    /// Writes this device's snapshot (and the legacy file). Returns false
+    /// without touching the folder when the vault has no accounts, so a
+    /// fresh vault never replaces a filled one.
+    @discardableResult
+    func write(vault: Vault) throws -> Bool {
+        guard try vault.accountCount() > 0 else { return false }
+        let fm = FileManager.default
+        let tmp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".girocrab")
+        defer { try? fm.removeItem(at: tmp) }
+        try vault.writeSnapshot(destPath: tmp.path)
+        for target in [ownURL, legacyURL] {
+            let copy = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".girocrab")
+            try fm.copyItem(at: tmp, to: copy)
+            defer { try? fm.removeItem(at: copy) }
+            try Self.coordinate(writing: target) { url in
+                if fm.fileExists(atPath: url.path) {
+                    _ = try fm.replaceItemAt(url, withItemAt: copy)
+                } else {
+                    try fm.moveItem(at: copy, to: url)
+                }
+            }
+        }
+        return true
+    }
+
+    private static func coordinate(reading url: URL, _ body: (URL) throws -> Void) throws {
+        var coordError: NSError?
+        var bodyError: Error?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordError) { u in
+            do { try body(u) } catch { bodyError = error }
+        }
+        if let e = coordError ?? bodyError { throw e }
+    }
+
+    private static func coordinate(writing url: URL, _ body: (URL) throws -> Void) throws {
+        var coordError: NSError?
+        var bodyError: Error?
+        NSFileCoordinator().coordinate(writingItemAt: url, options: .forReplacing, error: &coordError) { u in
+            do { try body(u) } catch { bodyError = error }
+        }
+        if let e = coordError ?? bodyError { throw e }
+    }
+}
+
+struct SyncMergeResult: Sendable {
+    var stats: [MergeStats] = []
+    /// File name → modification date (seconds since 1970) of each peer handled.
+    var seen: [String: Double] = [:]
+    var keyMismatch = false
+    var errors: [String] = []
+}
