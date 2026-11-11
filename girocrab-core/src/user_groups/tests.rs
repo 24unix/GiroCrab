@@ -671,7 +671,7 @@ fn v6_vault_is_migrated_by_this_build() {
 
     for round in 0..2 {
         let v = open(&dir, "vault.db");
-        assert_eq!(user_version(&v), 7, "round {round}");
+        assert_eq!(user_version(&v), 8, "round {round}");
         let cols = columns(&v, "accounts");
         for (col, _) in super::ACCOUNT_COLUMNS {
             assert!(cols.contains(&col.to_string()), "accounts.{col}");
@@ -740,7 +740,7 @@ fn v7_vault_survives_a_round_trip_through_a_v6_build() {
 
     // --- back in this build ---
     let v = open(&dir, "vault.db");
-    assert_eq!(user_version(&v), 7);
+    assert_eq!(user_version(&v), 8);
     let gs = v.list_user_groups().unwrap();
     assert_eq!(gs[0].uuid, firma);
     assert!(!gs[0].include_in_total);

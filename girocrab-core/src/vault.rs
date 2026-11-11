@@ -103,9 +103,9 @@ CREATE INDEX IF NOT EXISTS tx_account_checked ON transactions(account_id, checke
 CREATE INDEX IF NOT EXISTS tx_salary_marked ON transactions(counterparty_iban) WHERE salary_flag = 1;
 ";
 
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
 
-const SCHEMA: &str = r#"
+pub(crate) const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS bank_connections (
     id              INTEGER PRIMARY KEY,
     connector       TEXT    NOT NULL,              -- ConnectorKind::as_str()
@@ -258,7 +258,7 @@ impl Vault {
         })
     }
 
-    fn apply_key(conn: &Connection, key: &[u8]) -> CoreResult<()> {
+    pub(crate) fn apply_key(conn: &Connection, key: &[u8]) -> CoreResult<()> {
         if key.len() < 16 {
             return Err(CoreError::InvalidInput {
                 message: "master key must be at least 16 bytes".into(),
@@ -404,6 +404,8 @@ impl Vault {
         conn.execute_batch(crate::recurring::RECURRING_SCHEMA)?;
         // v7: user-defined account groups – idempotent
         crate::user_groups::migrate(conn)?;
+        // v8: sync keys, per-field edit stamps and soft deletes – idempotent
+        crate::sync_merge::migrate(conn)?;
         // manual loans (#36) – idempotent
         conn.execute_batch(crate::loans::LOAN_SCHEMA)?;
         // after all column migrations: the indexes need the newest columns
@@ -1878,7 +1880,9 @@ impl Vault {
             "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![parent_id, name, if sf_symbol.is_empty() { "tag".to_string() } else { sf_symbol }, color_hex, order],
         )?;
-        Ok(db.last_insert_rowid())
+        let id = db.last_insert_rowid();
+        crate::sync_merge::fill_missing_uuids(&db)?;
+        Ok(id)
     }
 
     pub fn update_category(
@@ -2341,7 +2345,9 @@ impl Vault {
                 params![rule.name, rule.category_id, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
                         rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64],
             )?;
-            Ok(db.last_insert_rowid())
+            let id = db.last_insert_rowid();
+            crate::sync_merge::fill_missing_uuids(&db)?;
+            Ok(id)
         } else {
             db.execute(
                 "UPDATE rules SET name=?1, category_id=?2, field=?3, match_kind=?4, pattern=?5, case_sensitive=?6, min_amount_cents=?7,

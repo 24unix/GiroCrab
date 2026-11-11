@@ -1961,6 +1961,7 @@ fn import_category_rules(
             res.rules_disabled += 1;
         }
     }
+    crate::sync_merge::fill_missing_uuids(conn)?;
     Ok(())
 }
 

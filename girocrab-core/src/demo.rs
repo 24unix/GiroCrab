@@ -1088,6 +1088,7 @@ impl Vault {
         let tx = db.unchecked_transaction()?;
         let cats = categories(&tx)?;
         rules(&tx, &cats)?;
+        crate::sync_merge::fill_missing_uuids(&tx)?;
         tx.commit()?;
         Ok(cats.len() as u32)
     }
@@ -1109,6 +1110,7 @@ impl Vault {
         let tx = db.unchecked_transaction()?;
         let cats = categories(&tx)?;
         rules(&tx, &cats)?;
+        crate::sync_merge::fill_missing_uuids(&tx)?;
         let mut conn_ids = std::collections::HashMap::new();
         let logins = [
             (ConnectorKind::VolksbankKasselGoettingen, "demo-musterbank"),

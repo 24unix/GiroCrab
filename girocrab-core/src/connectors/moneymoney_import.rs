@@ -513,7 +513,9 @@ pub(crate) fn find_or_create_category(
                     params![parent, part, order],
                 )?;
                 *created += 1;
-                conn.last_insert_rowid()
+                let id = conn.last_insert_rowid();
+                crate::sync_merge::fill_missing_uuids(conn)?;
+                id
             }
         };
         cache.insert(key.clone(), id);
