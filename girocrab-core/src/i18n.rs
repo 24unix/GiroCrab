@@ -418,6 +418,8 @@ fn english(de: &str) -> Option<&'static str> {
         "Anfangssaldo laut MoneyMoney-Saldenverlauf ({0}) + Umsätze" => {
             "Opening balance from MoneyMoney balance history ({0}) + transactions"
         }
+        "Saldo laut MoneyMoney" => "Balance as shown in MoneyMoney",
+        "Saldo laut MoneyMoney ({0})" => "Balance as shown in MoneyMoney ({0})",
         "Anfangssaldo des Kontos + Umsätze" => "Account opening balance + transactions",
         "Summe der Umsätze" => "Sum of transactions",
         // ------------------------------------------------------------ connections.rs

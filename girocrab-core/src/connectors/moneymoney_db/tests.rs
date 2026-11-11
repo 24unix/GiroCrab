@@ -18,6 +18,7 @@ CREATE TABLE categories (rowid INTEGER PRIMARY KEY, name TEXT, type INTEGER, per
 CREATE TABLE category_groups (rowid INTEGER PRIMARY KEY, name TEXT, perspective TEXT, group_key INTEGER, sort INTEGER, color TEXT, expanded INTEGER, currency TEXT, userdata BLOB);
 CREATE TABLE pins (bank_key INTEGER PRIMARY KEY, pin TEXT);
 CREATE TABLE recipients (local_account_key INTEGER, name TEXT, owner TEXT, account TEXT, subaccount TEXT, bankcode TEXT, iban TEXT, bic TEXT, type INTEGER);
+CREATE TABLE securities (rowid INTEGER PRIMARY KEY, account_key INTEGER, ident TEXT, isin TEXT, wpn TEXT, symbol TEXT, quantity REAL, quantity_cur TEXT, amount REAL, amount_cur TEXT, ocmt REAL, ocmt_cur TEXT, purchase REAL, purchase_cur TEXT, price REAL, price_cur TEXT, exch REAL, trade_date INTEGER, trade_tsp INTEGER, purchase_tsp INTEGER, market TEXT, comment TEXT, userdata BLOB, visited INTEGER, deleted INTEGER, asset_class INTEGER);
 CREATE TABLE transactions (rowid INTEGER PRIMARY KEY, local_account_key INTEGER, account TEXT, bankcode TEXT, amount REAL, currency TEXT, timestamp INTEGER, value_timestamp INTEGER, pn TEXT, eref TEXT, mref TEXT, kref TEXT, cred TEXT, dept TEXT, rtcd TEXT, rtrn TEXT, ocmt REAL, ocmt_cur TEXT, chgs REAL, chgs_cur TEXT, coam REAL, coam_cur TEXT, oamt REAL, oamt_cur TEXT, exch REAL, abwe TEXT, abwa TEXT, seq TEXT, comment TEXT, attachment TEXT, booked INTEGER, nopretty INTEGER, unformatted_type TEXT, unformatted_name TEXT, unformatted_purpose TEXT, identifier TEXT, name TEXT, a1490107618 TEXT, visited INTEGER, checkmark INTEGER, splitted INTEGER, split_key INTEGER, reverse_key INTEGER, category_key INTEGER);
 "#;
 
@@ -56,6 +57,12 @@ INSERT INTO transactions (rowid, local_account_key, account, bankcode, amount, c
   (8, 2, '', '', -19.99, 'EUR', 1709208000, 0, '', '', '', '', 'Abo kündigen', 1, 'KARTENZAHLUNG', 'Monatsabo', 'Streaming AG', 0, 0, 8, 5),
   (9, 4, '', '', 25.255, 'USD', 1772712000, 0, '', '', '', '', '', 1, 'GUTSCHRIFT', 'Dividende', 'Muster Inc', 0, 0, 9, 1);
 INSERT INTO recipients (local_account_key, name, iban) VALUES (1, 'Erika Mustermann', 'DE02120300000000202051');
+-- Depot: balance only in the displayed-balance blob, positions in securities (one sold)
+UPDATE accounts SET balances = CAST('12:12345.670000,3:EUR,' AS BLOB), balance_tsp = 1772884800 WHERE rowid = 3;
+INSERT INTO securities (rowid, account_key, ident, isin, wpn, quantity, amount, amount_cur, purchase, price, trade_date, deleted) VALUES
+  (1, 3, 'Muster World ETF', 'IE00B4L5Y983', 'A0RPWH', 12.5, 1000.0, 'EUR', 70.0, 80.0, 1772884800, 0),
+  (2, 3, 'Liquidität', '', '', NULL, 345.67, 'EUR', NULL, NULL, 1772884800, 0),
+  (3, 3, 'Verkauft AG', 'DE0000000001', '', 1, 1, 'EUR', 1, 1, 1772884800, 1);
 "#;
 
 fn temp(name: &str) -> PathBuf {
@@ -937,4 +944,146 @@ fn brand_banks_with_pseudo_bank_code_map_to_their_connector() {
         connector_for("20041111", "comdirect"),
         Some(ConnectorKind::Comdirect)
     );
+}
+
+#[test]
+fn depot_balance_from_shown_balance_and_holdings() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    let depot = p.accounts.iter().find(|a| a.name == "Depot").unwrap();
+    assert!(depot.is_portfolio);
+    assert_eq!(depot.computed_balance_cents, 1_234_567);
+    assert!(
+        depot.balance_source.contains("MoneyMoney"),
+        "{}",
+        depot.balance_source
+    );
+    assert_eq!(depot.holding_count, 2, "sold position skipped");
+    // accounts without the blob keep the derived balance
+    let giro = p.accounts.iter().find(|a| a.name == "Girokonto").unwrap();
+    assert!(giro.balance_source.contains("Saldenverlauf"));
+
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!(r.holdings_imported, 2);
+    let acc = account_by_name(&v, "Depot");
+    assert_eq!(acc.balance_cents, 1_234_567);
+    assert_eq!(acc.balance_date, "2026-03-07");
+    let h = v.list_holdings(acc.id).unwrap();
+    assert_eq!(h.len(), 2);
+    let etf = h.iter().find(|x| x.isin == "IE00B4L5Y983").unwrap();
+    assert_eq!(
+        (
+            etf.name.as_str(),
+            etf.wkn.as_str(),
+            etf.quantity,
+            etf.current_price_cents,
+            etf.purchase_price_cents,
+            etf.value_cents
+        ),
+        ("Muster World ETF", "A0RPWH", 12.5, 8000, 7000, 100_000)
+    );
+    let cash = h.iter().find(|x| x.name == "Liquidität").unwrap();
+    assert_eq!((cash.quantity, cash.value_cents), (0.0, 34_567));
+
+    // second run replaces instead of duplicating
+    let p2 = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    let r2 = v
+        .import_moneymoney_database(path, PW.into(), options_from(&p2, false, false))
+        .unwrap();
+    assert_eq!(r2.holdings_imported, 2);
+    assert_eq!(v.list_holdings(acc.id).unwrap().len(), 2);
+}
+
+#[test]
+fn balances_blob_parsing() {
+    assert_eq!(
+        parse_balances_blob(Value::Text("11:4094.320000,3:EUR,".into())),
+        Some((409_432, "EUR".into()))
+    );
+    assert_eq!(
+        parse_balances_blob(Value::Blob(b"11:-671.230000,3:EUR,".to_vec())),
+        Some((-67_123, "EUR".into()))
+    );
+    assert_eq!(parse_balances_blob(Value::Text(String::new())), None);
+    assert_eq!(parse_balances_blob(Value::Null), None);
+}
+
+#[test]
+fn reimport_of_emptied_depot_removes_stale_holdings() {
+    let v = vault();
+    let p = v.preview_moneymoney_database(fake_db(), PW.into()).unwrap();
+    v.import_moneymoney_database(fake_db(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    let depot = account_by_name(&v, "Depot");
+    assert_eq!(v.list_holdings(depot.id).unwrap().len(), 2);
+
+    // MoneyMoney later: all positions sold, balance down to the cash remainder
+    let sold = fake_db_with(
+        false,
+        "UPDATE securities SET deleted = 1 WHERE account_key = 3;
+         UPDATE accounts SET balances = CAST('6:0.010000,3:EUR,' AS BLOB) WHERE rowid = 3;",
+    );
+    let p2 = v
+        .preview_moneymoney_database(sold.clone(), PW.into())
+        .unwrap();
+    let d2 = p2.accounts.iter().find(|a| a.name == "Depot").unwrap();
+    assert_eq!(d2.holding_count, 0);
+    assert_eq!(
+        d2.existing_account_id,
+        Some(depot.id),
+        "recognised by external ref"
+    );
+    let r = v
+        .import_moneymoney_database(sold, PW.into(), options_from(&p2, false, false))
+        .unwrap();
+    assert_eq!(r.holdings_imported, 0);
+    assert!(
+        v.list_holdings(depot.id).unwrap().is_empty(),
+        "stale positions removed"
+    );
+    assert_eq!(account_by_name(&v, "Depot").balance_cents, 1);
+}
+
+#[test]
+fn shown_balance_also_wins_for_checking_accounts() {
+    // MoneyMoney's displayed balance is authoritative for every account type:
+    // it is what the user sees in MoneyMoney, independent of how far back the
+    // booking history goes. The derived balance (initial balance + bookings)
+    // remains the fallback for databases without the blob.
+    let v = vault();
+    let path = fake_db_with(
+        false,
+        "UPDATE accounts SET balances = CAST('10:1234.560000,3:EUR,' AS BLOB), balance_tsp = 1772971200 WHERE rowid = 1;",
+    );
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into())
+        .unwrap();
+    let giro = p.accounts.iter().find(|a| a.name == "Girokonto").unwrap();
+    assert_eq!(giro.computed_balance_cents, 123_456);
+    assert!(
+        giro.balance_source.contains("Saldo laut MoneyMoney"),
+        "{}",
+        giro.balance_source
+    );
+    // other accounts (no blob) keep the derived value and its source text
+    let visa = p.accounts.iter().find(|a| a.name == "Visa-Karte").unwrap();
+    assert!(
+        visa.balance_source.contains("Umsätze"),
+        "{}",
+        visa.balance_source
+    );
+
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    let acc = account_by_name(&v, "Girokonto");
+    assert_eq!(acc.balance_cents, 123_456);
+    // balance date = max(newest booking, balance timestamp)
+    assert_eq!(acc.balance_date, "2026-03-08");
 }

@@ -6889,6 +6889,28 @@
           }
         }
       }
+    },
+    "%lld Depotpositionen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld portfolio positions"
+          }
+        }
+      }
+    },
+    "%lld Depotpositionen übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld portfolio positions imported."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

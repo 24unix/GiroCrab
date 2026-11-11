@@ -232,6 +232,9 @@ struct MoneyMoneyDatabaseImportView: View {
                 if r.documentsImported > 0 {
                     Text("\(r.documentsImported) Kontoauszüge (PDF) übernommen.")
                 }
+                if r.holdingsImported > 0 {
+                    Text("\(r.holdingsImported) Depotpositionen übernommen.")
+                }
                 if r.categoriesCreated > 0 || r.notesImported > 0 {
                     Text("\(r.categoriesCreated) Kategorien angelegt, \(r.notesImported) Notizen übernommen.")
                 }
@@ -298,6 +301,7 @@ struct MoneyMoneyDatabaseImportView: View {
         var s = String(localized: "\(n) Buchungen")
         if let f = a.firstDate, let l = a.lastDate { s += " · \(DateText.medium(f)) – \(DateText.medium(l))" }
         if a.pendingCount > 0 { s += " · " + String(localized: "\(a.pendingCount) vorgemerkt") }
+        if a.holdingCount > 0 { s += " · " + String(localized: "\(a.holdingCount) Depotpositionen") }
         return s
     }
 
@@ -363,7 +367,7 @@ struct MoneyMoneyDatabaseImportView: View {
         guard let vault = model.vault, let url = fileURL, let preview else { return }
         if model.demoDbPreview != nil {
             // demo: nothing to read – show what the summary looks like
-            result = MoneyMoneyDbImportResult(accountsCreated: 5, accountsMerged: 1, bookingsNew: preview.totalBookings, bookingsDuplicates: 0, bookingsEnriched: 0, pendingSkipped: preview.pendingBookings, notesImported: preview.notesCount, categoriesCreated: UInt32(preview.categoryPaths.count), connectionsCreated: 3, connectionsExisting: 0, pinsStored: 0, banksSkippedUnsupported: 1, documentsImported: 0)
+            result = MoneyMoneyDbImportResult(accountsCreated: 5, accountsMerged: 1, bookingsNew: preview.totalBookings, bookingsDuplicates: 0, bookingsEnriched: 0, pendingSkipped: preview.pendingBookings, notesImported: preview.notesCount, categoriesCreated: UInt32(preview.categoryPaths.count), connectionsCreated: 3, connectionsExisting: 0, pinsStored: 0, banksSkippedUnsupported: 1, documentsImported: 0, holdingsImported: 0)
             password = ""
             return
         }
@@ -430,7 +434,7 @@ extension AppModel {
                  from: String?, to: String?, balance: Int64, group: String = "Privat") -> MoneyMoneyDbAccount {
             MoneyMoneyDbAccount(mmId: id, name: name, iban: iban, accountNumber: number, currency: currency, bankCode: code, bankName: bank,
                                 owner: "Max Mustermann", groupName: group, mmBankId: nil, isPortfolio: portfolio, suggestedKind: kind,
-                                existingAccountId: existing?.id, existingAccountName: existing?.name, bookingCount: count, pendingCount: pending,
+                                existingAccountId: existing?.id, existingAccountName: existing?.name, bookingCount: count, pendingCount: pending, holdingCount: portfolio ? 3 : 0,
                                 notesCount: 0, firstDate: from, lastDate: to, computedBalanceCents: balance,
                                 balanceSource: "Anfangssaldo laut MoneyMoney-Saldenverlauf + Umsätze")
         }

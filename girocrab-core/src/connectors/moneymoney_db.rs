@@ -11,12 +11,18 @@
 //! tree, notes. Accounts are recognised again by IBAN or by the stored
 //! MoneyMoney account id, so a second run changes nothing.
 //!
-//! Balance assumption (to be verified against a real database in the preview):
-//! `balance = initial balance + Σ booked bookings`, where the initial balance is
-//! the newest `balances.initial_balance` row of the account/currency, falling
-//! back to `accounts.initial_balance`. Pending bookings (`booked = 0`) are
-//! neither imported nor counted – GiroCrab has no "vorgemerkt" state and the
-//! bank delivers them again once they are booked.
+//! Balance: MoneyMoney keeps the balance it displays in `accounts.balances`
+//! (a length-prefixed text blob such as `11:4094.320000,3:EUR,`); that value is
+//! used whenever present (it is the only source for depots, which have no
+//! bookings). Without it: `balance = initial balance + Σ booked bookings`,
+//! where the initial balance is the newest `balances.initial_balance` row of
+//! the account/currency, falling back to `accounts.initial_balance`. Pending
+//! bookings (`booked = 0`) are neither imported nor counted – GiroCrab has no
+//! "vorgemerkt" state and the bank delivers them again once they are booked.
+//!
+//! Depots: the positions in `securities` (ISIN, quantity, price, cost basis,
+//! value) are copied into `holdings`, replacing earlier positions of the same
+//! account on every run.
 
 use std::collections::{HashMap, HashSet};
 
@@ -29,7 +35,7 @@ use crate::connectors::group_for;
 use crate::connectors::moneymoney_import::{find_or_create_category, merge_rows, MmRow, Stats};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
-use crate::models::{AccountKind, ConnectorKind};
+use crate::models::{AccountKind, ConnectorKind, Holding};
 use crate::secret::SecretString;
 use crate::vault::Vault;
 
@@ -63,6 +69,8 @@ pub struct MoneyMoneyDbAccount {
     pub booking_count: u32,
     /// Pending (vorgemerkte) bookings – not imported.
     pub pending_count: u32,
+    /// Securities positions (depots) that would be imported.
+    pub holding_count: u32,
     pub notes_count: u32,
     pub first_date: Option<String>,
     pub last_date: Option<String>,
@@ -142,6 +150,8 @@ pub struct MoneyMoneyDbImportResult {
     pub banks_skipped_unsupported: u32,
     /// PDF statements / documents newly stored in the document archive.
     pub documents_imported: u32,
+    /// Securities positions stored for depot accounts (replaced per account).
+    pub holdings_imported: u32,
 }
 
 // ------------------------------------------------------------------ source model
@@ -159,6 +169,9 @@ struct SrcAccount {
     owner: String,
     initial_balance: Option<f64>,
     group_key: Option<i64>,
+    /// Balance MoneyMoney displays (`accounts.balances` blob): (cents, currency).
+    shown_balance: Option<(i64, String)>,
+    balance_ts: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -220,6 +233,8 @@ struct Source {
     pin_banks: HashSet<i64>,
     /// the PINs themselves – only filled when the user opted in
     pins: HashMap<i64, SecretString>,
+    /// securities positions per MoneyMoney account id (depots)
+    holdings: HashMap<i64, Vec<Holding>>,
 }
 
 // ------------------------------------------------------------------ helpers
@@ -283,6 +298,22 @@ pub(crate) fn real_to_cents(x: f64) -> Option<i64> {
 /// MoneyMoney dates are Unix seconds at 12:00 UTC → `YYYY-MM-DD` (UTC).
 pub(crate) fn unix_to_date(ts: i64) -> Option<String> {
     chrono::DateTime::from_timestamp(ts, 0).map(|d| d.date_naive().format("%Y-%m-%d").to_string())
+}
+
+/// `11:4094.320000,3:EUR,` (length-prefixed fields) → (cents, currency).
+fn parse_balances_blob(v: Value) -> Option<(i64, String)> {
+    let text = match v {
+        Value::Text(t) => t,
+        Value::Blob(b) => String::from_utf8_lossy(&b).into_owned(),
+        _ => return None,
+    };
+    let mut fields = text
+        .split(',')
+        .filter(|f| !f.is_empty())
+        .map(|f| f.split_once(':').map(|x| x.1).unwrap_or(f).trim());
+    let amount: f64 = fields.next()?.parse().ok()?;
+    let currency = fields.next().unwrap_or("").to_uppercase();
+    Some((real_to_cents(amount)?, currency))
 }
 
 fn looks_like_bic(s: &str) -> bool {
@@ -556,6 +587,8 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
                 "owner",
                 "initial_balance",
                 "group_key",
+                "balances",
+                "balance_tsp",
             ],
             "ORDER BY sort, rowid",
         )?;
@@ -580,9 +613,64 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
                 owner: vtext(get(r, 8)?),
                 initial_balance: vreal(get(r, 9)?),
                 group_key: vint(get(r, 10)?).filter(|k| *k > 0),
+                shown_balance: parse_balances_blob(get(r, 11)?),
+                balance_ts: vint(get(r, 12)?).filter(|t| *t > 0),
             })
         })?;
         src.accounts = rows.collect::<Result<_, _>>()?;
+    }
+
+    // securities positions of depots (no secrets in this table)
+    if have.contains("securities") {
+        let sql = select(
+            &conn,
+            "securities",
+            &[
+                "account_key",
+                "ident",
+                "isin",
+                "wpn",
+                "quantity",
+                "amount",
+                "purchase",
+                "price",
+                "deleted",
+            ],
+            "ORDER BY amount DESC, rowid",
+        )?;
+        let mut st = conn.prepare(&sql)?;
+        let rows = st.query_map([], |r| {
+            Ok((
+                vint(get(r, 0)?),
+                vtext(get(r, 1)?),
+                vtext(get(r, 2)?),
+                vtext(get(r, 3)?),
+                vreal(get(r, 4)?),
+                vreal(get(r, 5)?),
+                vreal(get(r, 6)?),
+                vreal(get(r, 7)?),
+                vint(get(r, 8)?).unwrap_or(0) != 0,
+            ))
+        })?;
+        for row in rows {
+            let (acc, ident, isin, wpn, quantity, amount, purchase, price, deleted) = row?;
+            let (Some(acc), false) = (acc, deleted) else {
+                continue;
+            };
+            let name = crate::text::clean_bank_text(ident.trim());
+            if name.is_empty() && isin.trim().is_empty() {
+                continue;
+            }
+            src.holdings.entry(acc).or_default().push(Holding {
+                isin: isin.trim().to_uppercase(),
+                wkn: wpn.trim().to_uppercase(),
+                name,
+                quantity: quantity.unwrap_or(0.0),
+                current_price_cents: price.and_then(real_to_cents).unwrap_or(0),
+                purchase_price_cents: purchase.and_then(real_to_cents).unwrap_or(0),
+                value_cents: amount.and_then(real_to_cents).unwrap_or(0),
+            });
+        }
     }
 
     // banks – never credential / keys / systemid / bpd / upd / local_storage / userdata
@@ -967,6 +1055,19 @@ impl Source {
             .map(|r| r.booking_date.clone())
             .max()
             .unwrap_or_default();
+        if let Some((cents, cur)) = &a.shown_balance {
+            if cur.is_empty() || *cur == a.currency {
+                let d = a.balance_ts.and_then(unix_to_date).unwrap_or_default();
+                out.balance_cents = *cents;
+                out.balance_source = if d.is_empty() {
+                    tr("Saldo laut MoneyMoney").into()
+                } else {
+                    trf("Saldo laut MoneyMoney ({0})", &[&d])
+                };
+                out.balance_date = last.max(d);
+                return out;
+            }
+        }
         let (base, source, base_date) = match self.balances.get(&(a.id, a.currency.clone())) {
             Some((ts, v)) => {
                 let d = unix_to_date(*ts).unwrap_or_default();
@@ -1140,6 +1241,7 @@ fn preview(conn: &Connection, src: &Source) -> CoreResult<MoneyMoneyDbPreview> {
             existing_account_name: existing.map(|e| e.1),
             booking_count: r.rows.len() as u32,
             pending_count: r.pending,
+            holding_count: src.holdings.get(&a.id).map_or(0, |h| h.len() as u32),
             notes_count: n,
             first_date: f,
             last_date: l,
@@ -1300,6 +1402,19 @@ fn import(
             )?;
             if kind == AccountKind::Loan {
                 Vault::derive_initial_balance(conn, account_id)?;
+            }
+            // Positions are a snapshot: always replace, so a depot whose positions
+            // were all sold in MoneyMoney ends up empty here too.
+            conn.execute("DELETE FROM holdings WHERE account_id = ?1", [account_id])?;
+            if let Some(list) = src.holdings.get(&a.id) {
+                for h in list {
+                    conn.execute(
+                        "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                        params![account_id, h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents],
+                    )?;
+                }
+                res.holdings_imported += list.len() as u32;
             }
         }
         res.bookings_new += st.new;
