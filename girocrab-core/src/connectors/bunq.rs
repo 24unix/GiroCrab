@@ -31,7 +31,7 @@ use sha2::{Digest, Sha256};
 
 use super::{
     http_client, BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
-    FetchResult, Phase, RemoteAccount, RemoteTransaction, TransferJob,
+    FetchResult, Phase, RemoteAccount, RemoteTransaction, TransferJob, TransferResult,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -95,6 +95,14 @@ pub struct BunqConnector {
     last_request: Option<Instant>,
     /// Transfer waiting for approval in the bunq app.
     draft: Option<PendingDraft>,
+    /// A draft may exist that the user can still approve in the app: set
+    /// when the draft-payment POST is sent (a dropped connection may still
+    /// have created it), cleared once nothing can be paid any more (bunq
+    /// refused the POST, or the draft was rejected/expired). While true, the
+    /// session reports errors as "Status unklar", never as "failed".
+    order_submitted: bool,
+    /// Result once the transfer reached `Phase::Ready`.
+    result: TransferResult,
     /// Account id -> local creation date (statements start there).
     account_created: BTreeMap<i64, String>,
 }
@@ -105,6 +113,35 @@ struct PendingDraft {
     account_id: i64,
     draft_id: i64,
     challenge: Challenge,
+    /// Status polls that failed in a row (tolerated up to
+    /// `MAX_DRAFT_POLL_FAILURES`, then the outcome is unknown).
+    poll_failures: u8,
+}
+
+/// Failed status polls in a row before the outcome is reported as unknown
+/// (the user may have approved the draft meanwhile; never "failed").
+const MAX_DRAFT_POLL_FAILURES: u8 = 3;
+
+/// What a draft-payment status means for the transfer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DraftState {
+    /// Approved in the bunq app: the payment was made.
+    Accepted,
+    /// Still waiting for the approval (an empty status counts as pending).
+    Pending,
+    /// Definitely not executed (rejected, cancelled, expired).
+    Refused,
+    /// Any other status: may or may not have been executed.
+    Unclear,
+}
+
+fn classify_draft_status(status: &str) -> DraftState {
+    match status {
+        "ACCEPTED" | "DEPRECATED_ACCEPTED_PENDING_PAYMENT" => DraftState::Accepted,
+        "PENDING" | "" => DraftState::Pending,
+        "REJECTED" | "CANCELLED" | "EXPIRED" => DraftState::Refused,
+        _ => DraftState::Unclear,
+    }
 }
 
 impl Default for BunqConnector {
@@ -157,6 +194,8 @@ impl BunqConnector {
             state: BunqState::default(),
             last_request: None,
             draft: None,
+            order_submitted: false,
+            result: TransferResult::default(),
             account_created: BTreeMap::new(),
         }
     }
@@ -1416,27 +1455,65 @@ impl BankConnector for BunqConnector {
     }
 
     /// Polls the draft payment until it is accepted in the bunq app.
+    ///
+    /// Once the draft exists the user can approve it in the app at any time,
+    /// so only a clear REJECTED/CANCELLED/EXPIRED counts as "not executed".
+    /// An unknown status, or polls that keep failing, end as
+    /// `TransferResult::Unknown`; `finish` then still tries to withdraw the
+    /// draft. Nothing is ever resent.
     async fn respond(
         &mut self,
         _ctx: &ConnectContext,
         _response: ChallengeResponse,
     ) -> CoreResult<Phase> {
-        let Some(d) = self.draft.clone() else {
+        let Some(mut d) = self.draft.clone() else {
             return Ok(Phase::Ready);
         };
-        match self.draft_status(&d).await?.as_str() {
-            "ACCEPTED" | "DEPRECATED_ACCEPTED_PENDING_PAYMENT" => {
+        let status = match self.draft_status(&d).await {
+            Ok(s) => s,
+            Err(e) => {
+                d.poll_failures += 1;
+                if d.poll_failures < MAX_DRAFT_POLL_FAILURES {
+                    let challenge = d.challenge.clone();
+                    self.draft = Some(d);
+                    return Ok(Phase::Pending(challenge));
+                }
+                self.result = TransferResult::Unknown {
+                    reason: e.to_string(),
+                };
+                return Ok(Phase::Ready);
+            }
+        };
+        d.poll_failures = 0;
+        match classify_draft_status(&status) {
+            DraftState::Accepted => {
                 self.draft = None;
+                // bunq sends SEPA payments as instant on its own where
+                // possible; the API does not say which, so report regular.
+                self.result = TransferResult::Executed { instant: false };
                 Ok(Phase::Ready)
             }
-            "PENDING" | "" => Ok(Phase::Pending(d.challenge)),
-            _ => {
+            DraftState::Pending => {
+                let challenge = d.challenge.clone();
+                self.draft = Some(d);
+                Ok(Phase::Pending(challenge))
+            }
+            DraftState::Refused => {
                 self.draft = None;
+                // Definitely not executed: a plain error, not "Status unklar".
+                self.order_submitted = false;
                 Err(CoreError::Bank {
                     code: "draft".into(),
                     message: tr("bunq hat die Überweisung abgelehnt oder sie wurde abgebrochen.")
                         .into(),
                 })
+            }
+            DraftState::Unclear => {
+                // Keep the draft: `finish` tries to withdraw it.
+                self.result = TransferResult::Unknown {
+                    reason: trf("bunq meldet den Status „{0}“.", &[&status]),
+                };
+                Ok(Phase::Ready)
             }
         }
     }
@@ -1472,10 +1549,23 @@ impl BankConnector for BunqConnector {
         });
         let token = self.state.session_token.clone();
         let path = self.draft_path(account_id, None);
-        let v = self
+        self.result = TransferResult::default();
+        // From here on a dropped connection may have left a draft at bunq.
+        self.order_submitted = true;
+        let v = match self
             .call(reqwest::Method::POST, &path, Some(&body), Some(&token))
             .await
-            .map_err(ApiError::into_core)?;
+        {
+            Ok(v) => v,
+            Err(e) => {
+                // An HTTP error from bunq means no draft was created; only a
+                // request without an answer (status 0) leaves it open.
+                if e.status != 0 {
+                    self.order_submitted = false;
+                }
+                return Err(e.into_core());
+            }
+        };
         let draft_id = find(&v, "Id")["id"]
             .as_i64()
             .ok_or_else(|| CoreError::Protocol {
@@ -1501,8 +1591,17 @@ impl BankConnector for BunqConnector {
             account_id,
             draft_id,
             challenge: challenge.clone(),
+            poll_failures: 0,
         });
         Ok(Phase::Challenge(challenge))
+    }
+
+    fn transfer_result(&self) -> TransferResult {
+        self.result.clone()
+    }
+
+    fn order_submitted(&self) -> bool {
+        self.order_submitted
     }
 
     /// Cancelled in GiroCrab while still pending: withdraw the draft at bunq
@@ -1730,6 +1829,64 @@ mod tests {
         assert_eq!(draft_of_payment(2996727906, &other), Some(9));
         assert_eq!(draft_of_payment(7, &drafts), None); // the draft's own id is no link
         assert_eq!(draft_of_payment(1, &drafts), None);
+    }
+
+    #[test]
+    fn draft_statuses_never_report_failed_when_unclear() {
+        assert_eq!(classify_draft_status("ACCEPTED"), DraftState::Accepted);
+        assert_eq!(
+            classify_draft_status("DEPRECATED_ACCEPTED_PENDING_PAYMENT"),
+            DraftState::Accepted
+        );
+        assert_eq!(classify_draft_status("PENDING"), DraftState::Pending);
+        assert_eq!(classify_draft_status(""), DraftState::Pending);
+        for s in ["REJECTED", "CANCELLED", "EXPIRED"] {
+            assert_eq!(classify_draft_status(s), DraftState::Refused, "{s}");
+        }
+        assert_eq!(classify_draft_status("PROCESSING"), DraftState::Unclear);
+    }
+
+    #[tokio::test]
+    async fn failing_draft_polls_end_as_unknown() {
+        // No HTTP client: every status poll fails.
+        let mut c = BunqConnector::new();
+        assert!(!c.order_submitted());
+        let challenge = Challenge {
+            kind: ChallengeKind::DecoupledPush,
+            title: "t".into(),
+            message: "m".into(),
+            method_name: "bunq".into(),
+            redirect_url: None,
+            image: None,
+            expires_in_seconds: None,
+            poll_interval_seconds: 3,
+        };
+        c.draft = Some(PendingDraft {
+            account_id: 1,
+            draft_id: 2,
+            challenge,
+            poll_failures: 0,
+        });
+        let ctx = ConnectContext {
+            connection_id: 1,
+            login_name: String::new(),
+            secret: crate::secret::SecretString::new(String::new()),
+            settings: Default::default(),
+            state: Value::Null,
+            since: "2020-01-01".into(),
+        };
+        for _ in 1..MAX_DRAFT_POLL_FAILURES {
+            let p = c.respond(&ctx, ChallengeResponse::Poll).await.unwrap();
+            assert!(matches!(p, Phase::Pending(_)), "{p:?}");
+        }
+        let p = c.respond(&ctx, ChallengeResponse::Poll).await.unwrap();
+        assert!(matches!(p, Phase::Ready), "{p:?}");
+        assert!(matches!(
+            c.transfer_result(),
+            TransferResult::Unknown { .. }
+        ));
+        // The draft is kept so `finish` can still try to withdraw it.
+        assert!(c.draft.is_some());
     }
 
     #[test]
@@ -2032,6 +2189,62 @@ mod tests {
         assert!(c2.draft.is_none());
         let status = c2.draft_status(&d).await.unwrap();
         println!("draft status after cancel: {status}");
+        assert_eq!(status, "REJECTED");
+        assert!(c2.order_submitted());
+
+        // bunq refuses to create the draft (invalid IBAN): nothing exists
+        // that could be approved, so it is a plain error, not "Status unklar".
+        let mut bad = job.clone();
+        bad.recipient_iban = "XX00INVALID".into();
+        let refused = c2.send_transfer(&ctx, &bad).await;
+        println!("draft with invalid IBAN: {refused:?}");
+        assert!(refused.is_err());
+        assert!(!c2.order_submitted(), "refused POST must not be unclear");
+
+        // Rejected outside GiroCrab (as if in the app): the next poll is a
+        // clear error, nothing executed, not "Status unklar".
+        c2.send_transfer(&ctx, &job).await.unwrap();
+        let d = c2.draft.clone().unwrap();
+        let token = c2.state.session_token.clone();
+        let path = c2.draft_path(d.account_id, Some(d.draft_id));
+        c2.call(
+            reqwest::Method::PUT,
+            &path,
+            Some(&json!({"status": "REJECTED"})),
+            Some(&token),
+        )
+        .await
+        .map_err(ApiError::into_core)
+        .unwrap();
+        let polled = c2.respond(&ctx, ChallengeResponse::Poll).await;
+        println!("poll after reject: {polled:?}");
+        assert!(
+            matches!(polled, Err(CoreError::Bank { ref code, .. }) if code == "draft"),
+            "{polled:?}"
+        );
+        assert!(c2.draft.is_none());
+        assert!(!c2.order_submitted(), "rejected draft must not be unclear");
+
+        // Status checks keep failing (broken session token): pending twice,
+        // then "unknown", never "failed". The draft is kept, and once the
+        // token works again `finish` still withdraws it.
+        c2.send_transfer(&ctx, &job).await.unwrap();
+        let d = c2.draft.clone().unwrap();
+        c2.state.session_token = "invalid".into();
+        for _ in 1..MAX_DRAFT_POLL_FAILURES {
+            let p = c2.respond(&ctx, ChallengeResponse::Poll).await.unwrap();
+            assert!(matches!(p, Phase::Pending(_)), "{p:?}");
+        }
+        let p = c2.respond(&ctx, ChallengeResponse::Poll).await.unwrap();
+        assert!(matches!(p, Phase::Ready), "{p:?}");
+        let result = c2.transfer_result();
+        println!("result after failing polls: {result:?}");
+        assert!(matches!(result, TransferResult::Unknown { .. }));
+        assert!(c2.draft.is_some());
+        c2.state.session_token = token;
+        c2.finish(&ctx).await;
+        let status = c2.draft_status(&d).await.unwrap();
+        println!("draft status after unclear + finish: {status}");
         assert_eq!(status, "REJECTED");
     }
 
@@ -2636,6 +2849,100 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Real account, real money (0.01 EUR): creates one draft payment to
+    /// `BUNQ_TO_IBAN` and waits up to 3 minutes for you to approve or reject
+    /// it in the bunq app, then checks how GiroCrab classifies the outcome.
+    /// Approve -> executed; reject -> plain error (not "Status unklar");
+    /// no decision -> the draft is withdrawn again. Never sends a second one.
+    /// `BUNQ_API_KEY=… BUNQ_TO_IBAN=… BUNQ_TO_NAME=… [BUNQ_FROM_IBAN=…] cargo test -q -p girocrab-core bunq_live_transfer -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore]
+    async fn bunq_live_transfer() {
+        use crate::secret::SecretString;
+        let key = std::env::var("BUNQ_API_KEY").expect("BUNQ_API_KEY");
+        let to_iban = std::env::var("BUNQ_TO_IBAN").expect("BUNQ_TO_IBAN");
+        let to_name = std::env::var("BUNQ_TO_NAME").expect("BUNQ_TO_NAME");
+        let ctx = ConnectContext {
+            connection_id: 1,
+            login_name: String::new(),
+            secret: SecretString::new(key),
+            settings: Default::default(),
+            state: Value::Null,
+            since: "2020-01-01".into(),
+        };
+        let mut c = BunqConnector::new();
+        assert!(matches!(c.begin(&ctx).await.unwrap(), Phase::Ready));
+        let accounts = c.accounts().await.unwrap();
+        let from = match std::env::var("BUNQ_FROM_IBAN") {
+            Ok(iban) => iban.replace(' ', "").to_uppercase(),
+            Err(_) => accounts[0].1.iban.clone(),
+        };
+        let from_acc = accounts
+            .iter()
+            .find(|(_, a)| a.iban.replace(' ', "").to_uppercase() == from)
+            .map(|(_, a)| a.name.clone())
+            .expect("BUNQ_FROM_IBAN is not one of your bunq accounts");
+        let job = TransferJob {
+            source_iban: from.clone(),
+            source_owner: String::new(),
+            recipient_name: to_name,
+            recipient_iban: to_iban.replace(' ', "").to_uppercase(),
+            recipient_bic: None,
+            amount_cents: 1,
+            purpose: "GiroCrab live test".into(),
+            instant: false,
+            execution_date: None,
+            end_to_end_id: "GCLIVETEST".into(),
+        };
+        println!(
+            "from {from_acc} ({from}) to {} ({}): 0.01 EUR",
+            job.recipient_name, job.recipient_iban
+        );
+        let phase = c.send_transfer(&ctx, &job).await.unwrap();
+        assert!(matches!(phase, Phase::Challenge(_)), "{phase:?}");
+        assert!(c.order_submitted());
+        println!(">>> Approve or reject the draft in the bunq app now (3 minutes) …");
+
+        let mut outcome = None;
+        for _ in 0..60 {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            match c.respond(&ctx, ChallengeResponse::Poll).await {
+                Ok(Phase::Pending(_)) => continue,
+                other => {
+                    outcome = Some(other);
+                    break;
+                }
+            }
+        }
+        match outcome {
+            Some(Ok(Phase::Ready)) => {
+                let r = c.transfer_result();
+                println!("RESULT: {r:?}");
+                assert_eq!(r, TransferResult::Executed { instant: false });
+                assert!(c.draft.is_none());
+            }
+            Some(Err(e)) => {
+                println!(
+                    "RESULT: error {e:?}, order_submitted={}",
+                    c.order_submitted()
+                );
+                assert!(
+                    matches!(e, CoreError::Bank { ref code, .. } if code == "draft"),
+                    "{e:?}"
+                );
+                assert!(!c.order_submitted(), "rejected must not be unclear");
+            }
+            Some(other) => panic!("unexpected: {other:?}"),
+            None => {
+                let d = c.draft.clone().unwrap();
+                c.finish(&ctx).await;
+                let status = c.draft_status(&d).await.unwrap();
+                println!("RESULT: no decision, draft withdrawn, status {status}");
+            }
+        }
+        c.finish(&ctx).await;
     }
 
     /// Lists PENDING drafts; with `BUNQ_DRAFT_ID` set, withdraws exactly that

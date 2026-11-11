@@ -593,6 +593,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Überweisung in der bunq-App freigeben" => "Approve the transfer in the bunq app",
         "Freigabe in der bunq-App" => "Approval in the bunq app",
         "bunq hat die Überweisung abgelehnt oder sie wurde abgebrochen." => "bunq rejected the transfer or it was cancelled.",
+        "bunq meldet den Status „{0}“." => "bunq reports the status \"{0}\".",
         "Das Quellkonto wurde bei bunq nicht gefunden." => "The source account was not found at bunq.",
         "{0} an {1}: Bitte öffnen Sie die bunq-App und bestätigen Sie die Zahlung." => "{0} to {1}: please open the bunq app and confirm the payment.",
         "bunq" => "bunq",
