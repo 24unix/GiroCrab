@@ -15,9 +15,14 @@ public struct GiroCrabScenes: Scene {
         WindowGroup("GiroCrab", id: "main") {
             GiroCrabRootView()
                 .environment(model)
+                #if os(macOS)
+                // Keep the minimum independent of the split columns' ideal heights.
+                .frame(minHeight: 480, maxHeight: .infinity)
+                #endif
         }
         #if os(macOS)
         .defaultSize(width: 1500, height: 900)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Neue Überweisung …") { model.openTransfer() }
@@ -177,6 +182,7 @@ struct MainSplitView: View {
         @Bindable var model = model
         NavigationSplitView(columnVisibility: $columns) {
             SidebarView()
+                .frame(minHeight: 0, maxHeight: .infinity)
                 .macColumnWidth(min: 240, ideal: 260, max: 320)
         } content: {
             Group {
@@ -186,10 +192,12 @@ struct MainSplitView: View {
                     BookingStreamView()
                 }
             }
+            .frame(minHeight: 0, maxHeight: .infinity)
             // min widths still sum to 1080 pt (240 + 560 + 280) so the minimum window size stays as before
             .macColumnWidth(min: 560, ideal: 900)
         } detail: {
             InspectorView()
+                .frame(minHeight: 0, maxHeight: .infinity)
                 .macColumnWidth(min: 280, ideal: 320, max: 380)
         }
         .navigationSplitViewStyle(.balanced)

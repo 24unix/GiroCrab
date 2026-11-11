@@ -90,6 +90,7 @@ struct BookingStreamView: View {
                     .frame(maxWidth: 720)
                     .frame(maxWidth: .infinity)
                 }
+                .frame(minHeight: 0, maxHeight: .infinity)
                 #if os(iOS)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     // keeps the last booking clear of the floating search bar
