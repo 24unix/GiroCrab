@@ -246,10 +246,24 @@ impl Vault {
     }
 
     pub fn online_logos_enabled(&self) -> Result<bool, CoreError> {
+        Ok(self.online_logo_provider()? != "off")
+    }
+
+    /// Selected favicon provider: "off" (default), "duckduckgo" or "google".
+    /// Legacy values from the former on/off toggle ("1"/"true") map to
+    /// "google" (what they used first); anything else means "off".
+    pub fn online_logo_provider(&self) -> Result<String, CoreError> {
         let db = self.db()?;
-        Ok(Vault::setting_inner(&db, "merchants.online_logos")?
-            .map(|v| v == "1" || v == "true")
-            .unwrap_or(false))
+        let raw = Vault::setting_inner(&db, "merchants.online_logos")?;
+        Ok(normalize_logo_provider(raw.as_deref()).to_string())
+    }
+}
+
+fn normalize_logo_provider(raw: Option<&str>) -> &'static str {
+    match raw.map(|v| v.trim().to_lowercase()).as_deref() {
+        Some("duckduckgo") => "duckduckgo",
+        Some("google") | Some("1") | Some("true") => "google",
+        _ => "off",
     }
 }
 
@@ -398,6 +412,13 @@ mod logo_tests {
         v.set_setting("merchants.online_logos".into(), "1".into())
             .unwrap();
         assert!(v.online_logos_enabled().unwrap());
+        assert_eq!(v.online_logo_provider().unwrap(), "google");
+        v.set_setting("merchants.online_logos".into(), "duckduckgo".into())
+            .unwrap();
+        assert_eq!(v.online_logo_provider().unwrap(), "duckduckgo");
+        v.set_setting("merchants.online_logos".into(), "0".into())
+            .unwrap();
+        assert_eq!(v.online_logo_provider().unwrap(), "off");
     }
 
     #[test]
@@ -461,8 +482,8 @@ fn looks_like_image(b: &[u8]) -> bool {
 #[uniffi::export(async_runtime = "tokio")]
 impl Vault {
     /// Tier 2 (opt-in): returns a cached favicon or, if "Händler-Logos online
-    /// laden" is enabled, fetches it once from Google's or DuckDuckGo's
-    /// favicon service and caches it in the encrypted vault. Only the domain
+    /// laden" is enabled, fetches it once from the selected provider's
+    /// (Google or DuckDuckGo) favicon service and caches it in the encrypted vault. Only the domain
     /// is sent. Failures are cached for 7 days.
     pub async fn fetch_logo(&self, domain: String) -> Result<Option<Vec<u8>>, CoreError> {
         let domain = domain.trim().to_lowercase();
@@ -473,6 +494,7 @@ impl Vault {
         {
             return Ok(None);
         }
+        let provider: &str;
         {
             let db = self.db()?;
             let row: Option<(Option<Vec<u8>>, i64)> = db
@@ -490,10 +512,9 @@ impl Vault {
                     _ => {}
                 }
             }
-            let enabled = Vault::setting_inner(&db, "merchants.online_logos")?
-                .map(|v| v == "1" || v == "true")
-                .unwrap_or(false);
-            if !enabled {
+            let raw = Vault::setting_inner(&db, "merchants.online_logos")?;
+            provider = normalize_logo_provider(raw.as_deref());
+            if provider == "off" {
                 return Ok(None);
             }
         }
@@ -501,16 +522,18 @@ impl Vault {
             .timeout(std::time::Duration::from_secs(8))
             .user_agent(concat!("GiroCrab/", env!("CARGO_PKG_VERSION")))
             .build()?;
-        let sources = [
-            (
-                "google",
-                format!("https://www.google.com/s2/favicons?domain={domain}&sz=128"),
-            ),
+        // Only the provider the user picked is contacted – no silent fallback.
+        let sources = [if provider == "duckduckgo" {
             (
                 "duckduckgo",
                 format!("https://icons.duckduckgo.com/ip3/{domain}.ico"),
-            ),
-        ];
+            )
+        } else {
+            (
+                "google",
+                format!("https://www.google.com/s2/favicons?domain={domain}&sz=128"),
+            )
+        }];
         let mut found: Option<(Vec<u8>, &str)> = None;
         for (name, url) in sources.iter() {
             if let Ok(resp) = client.get(url).send().await {

@@ -197,11 +197,15 @@ struct LogoSettings: View {
             Section("Händler-Logos") {
                 LabeledContent("Stufe 1 – offline", value: String(localized: "Mitgelieferte Händlertabelle (Monogramm + Markenfarbe)"))
                 LabeledContent("Stufe 1b – simple-icons", value: String(localized: "Vektor-Markenzeichen (CC0-Datensatz) für bekannte Marken"))
-                Toggle("Stufe 2 – Logos online laden (Google-Favicon, Ersatz DuckDuckGo; Standard: aus)", isOn: Binding(
-                    get: { model.onlineLogos },
-                    set: { model.saveSetting("merchants.online_logos", $0 ? "1" : "0") }
-                ))
-                Text("Lädt Favicons über google.com/s2/favicons bzw. icons.duckduckgo.com und speichert sie verschlüsselt in der Tabelle merchant_logo_cache. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten.")
+                Picker("Händler-Logos laden", selection: Binding(
+                    get: { model.logoProvider },
+                    set: { model.saveSetting("merchants.online_logos", $0) }
+                )) {
+                    Text("Aus").tag("off")
+                    Text("DuckDuckGo").tag("duckduckgo")
+                    Text("Google").tag("google")
+                }
+                Text("Stufe 2: Lädt Favicons vom gewählten Anbieter (icons.duckduckgo.com bzw. google.com/s2/favicons) und speichert sie verschlüsselt in der Tabelle merchant_logo_cache. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten. Standard: aus.")
                     .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Stufe 3 – Rückfall", value: String(localized: "SF Symbol der Kategorie"))
                 Button("Logo-Cache leeren", role: .destructive) { model.clearLogoCache() }

@@ -4416,17 +4416,6 @@
         }
       }
     },
-    "Lädt Favicons über google.com/s2/favicons bzw. icons.duckduckgo.com und speichert sie verschlüsselt in der Tabelle merchant_logo_cache. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Loads favicons via google.com/s2/favicons or icons.duckduckgo.com and stores them encrypted in the merchant_logo_cache table. Only the merchant domain (e.g. lidl.de) is transmitted – no amounts, no account data."
-          }
-        }
-      }
-    },
     "Löschen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6016,17 +6005,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tier 1b – simple-icons"
-          }
-        }
-      }
-    },
-    "Stufe 2 – Logos online laden (Google-Favicon, Ersatz DuckDuckGo; Standard: aus)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tier 2 – Load Logos Online (Google favicon, fallback DuckDuckGo; default: off)"
           }
         }
       }
@@ -8283,6 +8261,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transfer cancelled – nothing was sent."
+          }
+        }
+      }
+    },
+    "Händler-Logos laden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load merchant logos"
+          }
+        }
+      }
+    },
+    "Aus" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off"
+          }
+        }
+      }
+    },
+    "Stufe 2: Lädt Favicons vom gewählten Anbieter (icons.duckduckgo.com bzw. google.com/s2/favicons) und speichert sie verschlüsselt in der Tabelle merchant_logo_cache. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten. Standard: aus." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tier 2: Loads favicons from the selected provider (icons.duckduckgo.com or google.com/s2/favicons) and stores them encrypted in the merchant_logo_cache table. Only the merchant domain (e.g. lidl.de) is sent – no amounts, no account data. Default: off."
           }
         }
       }

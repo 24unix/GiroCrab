@@ -207,7 +207,10 @@ public final class AppModel {
     var history: [DailyBalance] = []
     var connections: [BankConnection] = []
     var settings: [SettingEntry] = []
-    var onlineLogos = false
+    /// "off" (default), "duckduckgo" or "google" – normalised by the core
+    /// (legacy "1"/"true" from the old toggle count as "google").
+    var logoProvider = "off"
+    var onlineLogos: Bool { logoProvider != "off" }
     private var logoCache: [String: (image: Image, pixels: Int)] = [:]
 
     // UI state
@@ -728,7 +731,7 @@ public final class AppModel {
         guard let vault else { return }
         run {
             settings = try vault.listSettings()
-            onlineLogos = try vault.onlineLogosEnabled()
+            logoProvider = try vault.onlineLogoProvider()
         }
     }
 

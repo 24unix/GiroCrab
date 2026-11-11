@@ -63,7 +63,7 @@ struct MerchantSignet: View {
                     .offset(x: 2, y: -2)
             }
         }
-        .task(id: merchant.domainCandidates.joined(separator: "|") + merchant.domain + (model.onlineLogos ? "1" : "0") + "\(model.logoVersion)") {
+        .task(id: merchant.domainCandidates.joined(separator: "|") + merchant.domain + model.logoProvider + "\(model.logoVersion)") {
             logo = await model.logo(for: merchant)
         }
         .accessibilityLabel(merchant.name)
