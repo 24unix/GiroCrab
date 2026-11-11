@@ -4592,17 +4592,6 @@
         }
       }
     },
-    "MoneyMoney-Datenbank auswählen (MoneyMoney.sqlite)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose the MoneyMoney database (MoneyMoney.sqlite)"
-          }
-        }
-      }
-    },
     "MoneyMoney-Import" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4621,17 +4610,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "MoneyMoney password"
-          }
-        }
-      }
-    },
-    "MoneyMoney.sqlite auswählen …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose MoneyMoney.sqlite …"
           }
         }
       }
@@ -7638,17 +7616,6 @@
         }
       }
     },
-    "%u Kontoauszüge (PDF) übernommen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%u statements (PDF) imported."
-          }
-        }
-      }
-    },
     "Als Vorlage speichern …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9406,6 +9373,205 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Invalid key (expected 32 bytes, Base64 or hex)."
+          }
+        }
+      }
+    },
+    "%u Dateien stimmen nicht mit der Prüfsumme aus MoneyMoney überein und wurden nicht übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u files don’t match MoneyMoney’s checksum and were not imported."
+          }
+        }
+      }
+    },
+    "%u Dokumente" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u documents"
+          }
+        }
+      }
+    },
+    "%u Dokumente sind größer als 25 MB und wurden nicht übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u documents are larger than 25 MB and were not imported."
+          }
+        }
+      }
+    },
+    "%u Dokumente waren bereits vorhanden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u documents were already there."
+          }
+        }
+      }
+    },
+    "%u Dokumente wurden nicht gefunden – sie lassen sich später mit dem Ordner der PDF-Dateien nachholen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u documents were not found – you can add them later with the folder containing the PDF files."
+          }
+        }
+      }
+    },
+    "%u Kontoauszüge und Dokumente (PDF) übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u statements and documents (PDF) imported."
+          }
+        }
+      }
+    },
+    "%u PDF-Dateien im Ordner kennt MoneyMoney nicht – sie gehören zu keinem Konto und wurden nicht übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u PDF files in the folder are unknown to MoneyMoney – they belong to no account and were not imported."
+          }
+        }
+      }
+    },
+    "%u PDF-Dokumente (%@) kommen verschlüsselt in den GiroCrab-Tresor." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$u PDF-Dokumente (%2$@) kommen verschlüsselt in den GiroCrab-Tresor."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$u PDF documents (%2$@) will be stored encrypted in the GiroCrab vault."
+          }
+        }
+      }
+    },
+    "%u von %u PDF-Dokumenten gefunden (%@). Die übrigen werden ausgelassen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$u von %2$u PDF-Dokumenten gefunden (%3$@). Die übrigen werden ausgelassen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$u of %2$u PDF documents found (%3$@). The others are left out."
+          }
+        }
+      }
+    },
+    "Andere Quelle …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other Source…"
+          }
+        }
+      }
+    },
+    "Kontoauszüge & Dokumente übernehmen (%u)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import statements & documents (%u)"
+          }
+        }
+      }
+    },
+    "MoneyMoney verzeichnet %u PDF-Dokumente, die Dateien liegen aber nicht bei dieser Datenbank. Wenn Sie sie gesichert haben, wählen Sie den Ordner aus – sonst werden sie ausgelassen und lassen sich später nachholen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MoneyMoney lists %u PDF documents, but the files are not next to this database. If you saved them, choose the folder – otherwise they are left out and can be added later."
+          }
+        }
+      }
+    },
+    "MoneyMoney-Ordner auswählen (mit Kontoauszügen) – oder eine einzelne Datenbank, z. B. ein Backup (MoneyMoney.sqlite)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the MoneyMoney folder (with statements) – or a single database, e.g. a backup (MoneyMoney.sqlite)"
+          }
+        }
+      }
+    },
+    "MoneyMoney-Ordner oder MoneyMoney.sqlite auswählen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the MoneyMoney folder or MoneyMoney.sqlite…"
+          }
+        }
+      }
+    },
+    "Ordner mit Auszügen wählen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose Folder with Statements…"
+          }
+        }
+      }
+    },
+    "Ordner mit den gesicherten Kontoauszügen (PDF) auswählen – Unterordner werden mit durchsucht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the folder with the saved statements (PDF) – subfolders are searched too"
+          }
+        }
+      }
+    },
+    "Anderen Ordner wählen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose Another Folder…"
           }
         }
       }
