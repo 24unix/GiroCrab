@@ -336,6 +336,10 @@ struct SidebarView: View {
 }
 
 struct SectionHeader: View {
+    @Environment(AppModel.self) private var model
+    /// Selected header: hierarchical styles so macOS can draw them light on the
+    /// accent-coloured selection (fixed theme colours stay dark there).
+    private var selected: Bool { model.sidebarSelection == SidebarItem.group(group.id) }
     let group: AccountGroup
     var open: Bool = true
     var toggle: () -> Void = {}
@@ -350,17 +354,17 @@ struct SectionHeader: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Theme.tertiary)
+            .foregroundStyle(.secondary)
             .accessibilityLabel(open ? "„\(group.name)“ einklappen" : "„\(group.name)“ ausklappen")
             .accessibilityValue(open ? "Ausgeklappt" : "Eingeklappt")
             Text(group.name)
             Spacer()
             Text(Money.format(group.balanceCents))
                 .monospacedDigit()
-                .foregroundStyle(group.balanceCents < 0 && isLoanGroup ? Theme.loan : (group.balanceCents < 0 ? Theme.negative : Theme.secondary))
+                .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(group.balanceCents < 0 && isLoanGroup ? Theme.loan : (group.balanceCents < 0 ? Theme.negative : Theme.secondary)))
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(Theme.secondary)
+        .foregroundStyle(.secondary)
     }
 }
 
@@ -371,6 +375,10 @@ extension SectionHeader {
 
 struct AccountRow: View {
     @Environment(AppModel.self) private var model
+    /// Selected row: the amount uses the hierarchical `.primary` style, which
+    /// macOS turns white on the accent-coloured selection (fixed theme colours
+    /// stay dark there). `backgroundProminence` is not set in a macOS sidebar.
+    private var onSelection: Bool { model.sidebarSelection == .account(account.id) }
     let account: Account
     var syncing: Bool = false
 
@@ -412,10 +420,10 @@ struct AccountRow: View {
                         .help("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
                 } else if let date = account.archivedDate {
                     Text("Archiviert \(date.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)))")
-                        .font(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
+                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                         .help("Archiviert – wird nicht mehr abgerufen")
                 } else {
-                    Text(account.bankName).font(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
+                    Text(account.bankName).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer(minLength: 4)
@@ -425,9 +433,9 @@ struct AccountRow: View {
             VStack(alignment: .trailing, spacing: 1) {
                 Text(Money.format(account.balanceCents, currency: account.currency))
                     .font(.callout.monospacedDigit())
-                    .foregroundStyle(account.kind == .loan ? Theme.loan : (account.balanceCents < 0 ? Theme.negative : Theme.text))
+                    .foregroundStyle(onSelection ? AnyShapeStyle(.primary) : AnyShapeStyle(account.kind == .loan ? Theme.loan : (account.balanceCents < 0 ? Theme.negative : Theme.text)))
                 if let repaid {
-                    Text("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt").font(.caption2).foregroundStyle(Theme.tertiary)
+                    Text("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt").font(.caption2).foregroundStyle(.secondary)
                 }
             }
         }
@@ -449,7 +457,7 @@ struct CategoryRow: View {
             if category.totalCents != 0 {
                 Text(Money.format(category.totalCents))
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(Theme.secondary)
+                    .foregroundStyle(.secondary) // follows selection, Dark Mode, Increase Contrast
             }
         }
     }

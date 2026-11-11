@@ -11123,24 +11123,24 @@
         }
       }
     },
-    "✓ Schlüssel und Application-ID übernommen" : {
+    "Schlüssel und Application-ID übernommen" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "✓ Key and application ID added"
+            "value" : "Key and application ID added"
           }
         }
       }
     },
-    "✓ Schlüssel übernommen – Application-ID bitte eintragen" : {
+    "Schlüssel übernommen – Application-ID bitte eintragen" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "✓ Key added – please enter the application ID"
+            "value" : "Key added – please enter the application ID"
           }
         }
       }

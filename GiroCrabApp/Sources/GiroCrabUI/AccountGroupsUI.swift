@@ -74,6 +74,10 @@ struct AccountsSectionHeader: View {
 
 /// Header of a user group: chevron, symbol, name, sum.
 struct UserGroupHeader: View {
+    @Environment(AppModel.self) private var model
+    /// Selected header: hierarchical styles so macOS can draw them light on the
+    /// accent-coloured selection (fixed theme colours stay dark there).
+    private var selected: Bool { model.sidebarSelection == SidebarItem.userGroup(group.uuid) }
     let group: UserGroup
     var open: Bool = true
     var toggle: () -> Void = {}
@@ -88,28 +92,28 @@ struct UserGroupHeader: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Theme.tertiary)
+            .foregroundStyle(.secondary)
             .accessibilityLabel(open ? "Gruppe einklappen" : "Gruppe ausklappen")
             Image(systemName: group.sfSymbol)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.tertiary)
+                .foregroundStyle(.secondary)
                 .frame(width: 14)
             Text(group.name).lineLimit(1)
             if !group.inTotal {
                 Image(systemName: "eye.slash")
                     .font(.caption2)
-                    .foregroundStyle(Theme.tertiary)
+                    .foregroundStyle(.secondary)
                     .help("Nicht in der Gesamtsumme")
                     .accessibilityLabel("Nicht in der Gesamtsumme")
             }
             Spacer()
             Text(Money.format(group.balanceCents))
                 .monospacedDigit()
-                .foregroundStyle(group.balanceCents < 0 ? Theme.negative : Theme.secondary)
+                .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(group.balanceCents < 0 ? Theme.negative : Theme.secondary))
                 .opacity(group.inTotal ? 1 : 0.6)
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(Theme.secondary)
+        .foregroundStyle(.secondary)
     }
 }
 

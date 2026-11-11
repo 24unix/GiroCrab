@@ -48,7 +48,8 @@ struct EnableBankingSetupSection: View {
     @Environment(AppModel.self) private var model
     @Binding var values: [String: String]
     @State private var importing = false
-    @State private var keyNote: String?
+    /// Result of reading the key file: success, or what went wrong.
+    @State private var keyNote: (ok: Bool, text: String)?
     @State private var checking = false
     @State private var check: EnableBankingAppCheck?
     @State private var checkError: String?
@@ -70,7 +71,8 @@ struct EnableBankingSetupSection: View {
             HStack(spacing: 10) {
                 Button { importing = true } label: { Label("Schlüsseldatei (.pem) wählen …", systemImage: "key") }
                 if let keyNote {
-                    Text(keyNote).font(.caption).foregroundStyle(keyNote.hasPrefix("✓") ? Color.green : Color.red)
+                    Label(keyNote.text, systemImage: keyNote.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(keyNote.ok ? Theme.inflow : Theme.negative)
                         .fixedSize(horizontal: false, vertical: true)
                 } else if hasKey {
                     Text("Schlüssel ist gespeichert").font(.caption).foregroundStyle(Theme.secondary)
@@ -97,14 +99,14 @@ struct EnableBankingSetupSection: View {
                 let key = try EnableBankingKeyFile.read(url)
                 values[pemKey] = key.pem
                 if let id = key.applicationID { values[idKey] = id }
-                keyNote = key.applicationID != nil
-                    ? String(localized: "✓ Schlüssel und Application-ID übernommen")
-                    : String(localized: "✓ Schlüssel übernommen – Application-ID bitte eintragen")
+                keyNote = (true, key.applicationID != nil
+                    ? String(localized: "Schlüssel und Application-ID übernommen")
+                    : String(localized: "Schlüssel übernommen – Application-ID bitte eintragen"))
                 check = nil
                 checkError = nil
                 if key.applicationID != nil { Task { await runCheck() } }
             } catch {
-                keyNote = error.localizedDescription
+                keyNote = (false, error.localizedDescription)
             }
         }
         .fileDialogDefaultDirectory(EnableBankingKeyFile.downloadsFolder)

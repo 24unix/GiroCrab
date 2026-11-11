@@ -268,7 +268,7 @@ struct CashflowCard: View {
             .chartYAxis {
                 AxisMarks(position: .leading) {
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
-                        .foregroundStyle(Color.white.opacity(0.07))
+                        .foregroundStyle(Theme.border)
                     AxisValueLabel()
                 }
             }

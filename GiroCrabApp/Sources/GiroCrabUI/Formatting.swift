@@ -17,10 +17,12 @@ enum Theme {
     static let canvas = Color(light: "#F8FAFC", dark: "#0F172A")
     static let sidebar = Color(light: "#F3F4F6", dark: "#0B1220")
     static let card = Color(light: "#FFFFFF", dark: "#1E293B")
-    static let border = Color(light: "#E2E8F0", dark: "#334155")
-    static let text = Color(light: "#0F172A", dark: "#F1F5F9")
-    static let secondary = Color(light: "#64748B", dark: "#94A3B8")
-    static let tertiary = Color(light: "#94A3B8", dark: "#64748B")
+    // Text colours meet 4.5:1 on canvas and card (HIG / WCAG AA); "Kontrast
+    // erhöhen" gets stronger variants.
+    static let border = Color(light: "#E2E8F0", dark: "#334155", lightHighContrast: "#94A3B8", darkHighContrast: "#64748B")
+    static let text = Color(light: "#0F172A", dark: "#F1F5F9", lightHighContrast: "#000000", darkHighContrast: "#FFFFFF")
+    static let secondary = Color(light: "#4B5A70", dark: "#A3B1C4", lightHighContrast: "#1E293B", darkHighContrast: "#E2E8F0")
+    static let tertiary = Color(light: "#64748B", dark: "#8494AA", lightHighContrast: "#334155", darkHighContrast: "#CBD5E1")
     static let outflow = Color(light: "#0F172A", dark: "#F1F5F9")
     static let inflow = Color(light: "#059669", dark: "#34D399")
     static let inflowBadge = Color(light: "#ECFDF5", dark: "#064E3B")
@@ -180,15 +182,29 @@ extension Color {
     }
 
     /// Light/dark pair that follows the system appearance.
-    init(light: String, dark: String) {
+    /// Light/dark pair; the optional high-contrast pair is used when
+    /// "Kontrast erhöhen" (Increase Contrast) is on.
+    init(light: String, dark: String, lightHighContrast: String? = nil, darkHighContrast: String? = nil) {
         #if os(macOS)
         let l = NSColor(Color(hex: light)), d = NSColor(Color(hex: dark))
+        let lh = lightHighContrast.map { NSColor(Color(hex: $0)) } ?? l
+        let dh = darkHighContrast.map { NSColor(Color(hex: $0)) } ?? d
         self.init(nsColor: NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? d : l
+            switch appearance.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua]) {
+            case .darkAqua: d
+            case .accessibilityHighContrastAqua: lh
+            case .accessibilityHighContrastDarkAqua: dh
+            default: l
+            }
         })
         #else
         let l = UIColor(Color(hex: light)), d = UIColor(Color(hex: dark))
-        self.init(uiColor: UIColor { $0.userInterfaceStyle == .dark ? d : l })
+        let lh = lightHighContrast.map { UIColor(Color(hex: $0)) } ?? l
+        let dh = darkHighContrast.map { UIColor(Color(hex: $0)) } ?? d
+        self.init(uiColor: UIColor { t in
+            let high = t.accessibilityContrast == .high
+            return t.userInterfaceStyle == .dark ? (high ? dh : d) : (high ? lh : l)
+        })
         #endif
     }
 
