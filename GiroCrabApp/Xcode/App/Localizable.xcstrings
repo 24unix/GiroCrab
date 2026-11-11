@@ -11695,6 +11695,116 @@
           }
         }
       }
+    },
+    "Letzte 12 Monate" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last 12 Months"
+          }
+        }
+      }
+    },
+    "Letztes Jahr" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last Year"
+          }
+        }
+      }
+    },
+    "Benutzerdefiniert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom"
+          }
+        }
+      }
+    },
+    "Benutzerdefiniert …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom…"
+          }
+        }
+      }
+    },
+    "Benutzerdefiniert: %@ …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom: %@…"
+          }
+        }
+      }
+    },
+    "Eigener Zeitraum" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom Period"
+          }
+        }
+      }
+    },
+    "Bis" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To"
+          }
+        }
+      }
+    },
+    "Zeitraum: Letzte 12 Monate" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Period: Last 12 Months"
+          }
+        }
+      }
+    },
+    "Zeitraum: Letztes Jahr" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Period: Last Year"
+          }
+        }
+      }
+    },
+    "Zeitraum: Benutzerdefiniert …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Period: Custom…"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

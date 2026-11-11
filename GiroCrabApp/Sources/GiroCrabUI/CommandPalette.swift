@@ -33,6 +33,15 @@ struct CommandPaletteView: View {
         out.append(Item(title: String(localized: "Regeln bearbeiten"), subtitle: action, symbol: "wand.and.stars") { model.openRuleEditor() })
         out.append(Item(title: String(localized: "Wiederkehrende Buchungen"), subtitle: "\(action) · ⇧⌘F", symbol: "repeat") { model.showRecurringSheet = true })
         out.append(Item(title: String(localized: "Zeitraum: Seit letztem Gehalt"), subtitle: String(localized: "Ansicht"), symbol: "banknote") { model.period = .sinceSalary })
+        out.append(Item(title: String(localized: "Zeitraum: Letzte 12 Monate"), subtitle: String(localized: "Ansicht"), symbol: "calendar") { model.period = .last12Months })
+        out.append(Item(title: String(localized: "Zeitraum: Letztes Jahr"), subtitle: String(localized: "Ansicht"), symbol: "calendar") { model.period = .lastYear })
+        out.append(Item(title: String(localized: "Zeitraum: Benutzerdefiniert …"), subtitle: String(localized: "Ansicht"), symbol: "calendar.badge.clock") {
+            // after the palette has closed, so the popover can anchor
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                model.showCustomPeriod = true
+            }
+        })
         if let b = model.selectedBooking {
             out.append(Item(title: String(localized: "„\(b.merchant.name)“ kategorisieren"), subtitle: "\(action) · C", symbol: "tag") { model.showCategorizer = true })
             out.append(Item(title: String(localized: "Regel für „\(b.merchant.name)“ erstellen"), subtitle: "\(action) · R", symbol: "wand.and.stars") { model.openRuleEditor(from: b) })

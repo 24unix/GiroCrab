@@ -304,6 +304,52 @@ struct PeriodQuickPicker: View {
     }
 }
 
+// MARK: - Custom period (GitHub #53)
+
+/// Start and end date of the user-defined period.
+struct CustomPeriodForm: View {
+    @Environment(AppModel.self) private var model
+    @State private var from = Date()
+    @State private var to = Date()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Eigener Zeitraum").font(.headline)
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                GridRow {
+                    Text("Von")
+                    // HIG: prevent invalid input instead of correcting it afterwards.
+                    DatePicker("Von", selection: $from, in: ...to, displayedComponents: .date).labelsHidden()
+                }
+                GridRow {
+                    Text("Bis")
+                    DatePicker("Bis", selection: $to, in: from..., displayedComponents: .date).labelsHidden()
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Abbrechen", role: .cancel) { model.showCustomPeriod = false }
+                    .keyboardShortcut(.cancelAction)
+                Button("Übernehmen") {
+                    model.applyCustomPeriod(from: from, to: to)
+                    model.showCustomPeriod = false
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 280)
+        #if os(iOS)
+        .presentationDetents([.medium])
+        #endif
+        .onAppear {
+            let a = DateText.date(model.customPeriodFrom) ?? Date()
+            let b = DateText.date(model.customPeriodTo) ?? Date()
+            (from, to) = a <= b ? (a, b) : (b, a)
+        }
+    }
+}
+
 // MARK: - Split booking
 
 struct SplitSheet: View {

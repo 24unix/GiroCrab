@@ -21,11 +21,18 @@ enum Period: String, CaseIterable, Identifiable {
     case thisMonth = "Dieser Monat"
     case lastMonth = "Letzter Monat"
     case last3Months = "Letzte 3 Monate"
+    case last12Months = "Letzte 12 Monate"
     case thisQuarter = "Dieses Quartal"
     case thisYear = "Dieses Jahr"
+    case lastYear = "Letztes Jahr"
     /// Pay cycle: from the latest detected salary inflow (GitHub #37).
     case sinceSalary = "Seit letztem Gehalt"
+    /// User-defined start and end date (GitHub #53); the dates live in `AppModel`.
+    case custom = "Benutzerdefiniert"
     var id: String { rawValue }
+
+    /// Fixed periods for the picker; `.custom` is chosen through the date dialog.
+    static var presets: [Period] { allCases.filter { $0 != .custom } }
 
     var title: String {
         switch self {
@@ -33,18 +40,25 @@ enum Period: String, CaseIterable, Identifiable {
         case .thisMonth: return String(localized: "Dieser Monat")
         case .lastMonth: return String(localized: "Letzter Monat")
         case .last3Months: return String(localized: "Letzte 3 Monate")
+        case .last12Months: return String(localized: "Letzte 12 Monate")
         case .thisQuarter: return String(localized: "Dieses Quartal")
         case .thisYear: return String(localized: "Dieses Jahr")
+        case .lastYear: return String(localized: "Letztes Jahr")
         case .sinceSalary: return String(localized: "Seit letztem Gehalt")
+        case .custom: return String(localized: "Benutzerdefiniert")
         }
     }
 
-    var range: (String?, String?) {
+    var range: (String?, String?) { range(now: Date()) }
+
+    /// ISO start/end (inclusive, `nil` = open) relative to `now`.
+    func range(now: Date) -> (String?, String?) {
         let cal = Calendar(identifier: .gregorian)
-        let now = Date()
         let startOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: now))!
+        let startOfYear = cal.date(from: cal.dateComponents([.year], from: now))!
         switch self {
-        case .all: return (nil, nil)
+        // `.custom` dates live in `AppModel.periodRange`.
+        case .all, .custom: return (nil, nil)
         // The salary start date lives in `AppModel.periodRange`; calendar month as fallback.
         case .thisMonth, .sinceSalary: return (DateText.iso(startOfMonth), nil)
         case .lastMonth:
@@ -52,11 +66,16 @@ enum Period: String, CaseIterable, Identifiable {
             let end = cal.date(byAdding: .day, value: -1, to: startOfMonth)!
             return (DateText.iso(start), DateText.iso(end))
         case .last3Months: return (DateText.iso(cal.date(byAdding: .month, value: -2, to: startOfMonth)!), nil)
+        case .last12Months: return (DateText.iso(cal.date(byAdding: .month, value: -11, to: startOfMonth)!), nil)
         case .thisQuarter:
             let c = cal.dateComponents([.year, .month], from: now)
             let qStart = cal.date(from: DateComponents(year: c.year, month: ((c.month ?? 1) - 1) / 3 * 3 + 1, day: 1))!
             return (DateText.iso(qStart), nil)
-        case .thisYear: return (DateText.iso(cal.date(from: cal.dateComponents([.year], from: now))!), nil)
+        case .thisYear: return (DateText.iso(startOfYear), nil)
+        case .lastYear:
+            let start = cal.date(byAdding: .year, value: -1, to: startOfYear)!
+            let end = cal.date(byAdding: .day, value: -1, to: startOfYear)!
+            return (DateText.iso(start), DateText.iso(end))
         }
     }
 }
@@ -238,7 +257,12 @@ public final class AppModel {
             reloadScopeBookings()
         }
     }
-    var period: Period = .all { didSet { listLimit = Self.defaultListLimit; refreshSalaryCycle(); reloadCategories(); reloadBookings(); reloadHistory() } }
+    var period: Period = .all { didSet { periodDidChange() } }
+    /// Start/end of the `.custom` period (ISO, inclusive); remembered across launches.
+    private(set) var customPeriodFrom: String = UserDefaults.standard.string(forKey: "period.customFrom") ?? AppModel.defaultCustomPeriod.from
+    private(set) var customPeriodTo: String = UserDefaults.standard.string(forKey: "period.customTo") ?? AppModel.defaultCustomPeriod.to
+    /// Shows the start/end date dialog of the period filter.
+    var showCustomPeriod = false
     /// Latest salary of the selected accounts; start of the `.sinceSalary` period.
     var salaryCycle: SalaryCycle?
     /// Recurring series of the selected accounts (GitHub #35).
@@ -993,12 +1017,43 @@ public final class AppModel {
     /// Date range of the selected period; `.sinceSalary` starts at the latest salary.
     var periodRange: (String?, String?) {
         if period == .sinceSalary, let c = salaryCycle { return (c.lastDate, nil) }
+        if period == .custom { return (customPeriodFrom, customPeriodTo) }
         return period.range
+    }
+
+    /// Label of the period menu: the preset name or "15.03.2025 – 30.06.2025".
+    var periodTitle: String {
+        guard period == .custom else { return period.title }
+        return "\(DateText.medium(customPeriodFrom)) – \(DateText.medium(customPeriodTo))"
+    }
+
+    /// Default of the date dialog before the user ever picked a range: last month.
+    static var defaultCustomPeriod: (from: String, to: String) {
+        let (from, to) = Period.lastMonth.range
+        return (from ?? DateText.iso(Date()), to ?? DateText.iso(Date()))
+    }
+
+    /// Switches to the user-defined period (GitHub #53); swaps the dates if needed.
+    func applyCustomPeriod(from: Date, to: Date) {
+        let (a, b) = from <= to ? (from, to) : (to, from)
+        customPeriodFrom = DateText.iso(a)
+        customPeriodTo = DateText.iso(b)
+        UserDefaults.standard.set(customPeriodFrom, forKey: "period.customFrom")
+        UserDefaults.standard.set(customPeriodTo, forKey: "period.customTo")
+        if period == .custom { periodDidChange() } else { period = .custom }
+    }
+
+    private func periodDidChange() {
+        listLimit = Self.defaultListLimit
+        refreshSalaryCycle()
+        reloadCategories()
+        reloadBookings()
+        reloadHistory()
     }
 
     /// Subtitle of the period-based KPI tiles.
     var periodSubtitle: String {
-        guard period == .sinceSalary else { return period.title }
+        guard period == .sinceSalary else { return periodTitle }
         guard let c = salaryCycle else { return String(localized: "Monat (kein Gehalt)") }
         return String(localized: "Seit Gehalt am \(DateText.medium(c.lastDate))")
     }
