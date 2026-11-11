@@ -9,6 +9,8 @@ import Foundation
 ///  --view alltag|sparplaene|belege  start in "Alltag & Konsum" / "Sparpläne & Perks" / "Belege & PostBox"
 ///  --fresh-vault          (developer) empty personal vault in a temp folder,
 ///                         fixed key, no Keychain – to try onboarding/setup
+///  --developer            (developer) show developer tools in the UI, e.g.
+///                         "Portal-Struktur prüfen"; also GIROCRAB_DEVELOPER=1
 ///  --try-add-bank <name>  (developer, with --fresh-vault) add a bank on start,
 ///                         e.g. 1822direkt, to see the setup form
 ///  --select <text>        (demo) preselect the account whose name contains <text>
@@ -43,6 +45,8 @@ public struct LaunchOptions: Sendable {
     /// "alle" (default), "alltag" or "sparplaene"
     public var initialView: String
     public var freshVault: Bool
+    /// (developer) show developer-only buttons
+    public var developer: Bool
     public var tryAddBank: String?
     /// (demo) preselect the account whose name contains this text
     public var selectAccount: String?
@@ -102,6 +106,7 @@ public struct LaunchOptions: Sendable {
         }
         let sync = arguments.contains("--demo-sync")
         freshVault = arguments.contains("--fresh-vault")
+        developer = arguments.contains("--developer") || environment["GIROCRAB_DEVELOPER"] == "1"
         if let i = arguments.firstIndex(of: "--try-add-bank"), i + 1 < arguments.count {
             tryAddBank = arguments[i + 1].lowercased()
         } else {

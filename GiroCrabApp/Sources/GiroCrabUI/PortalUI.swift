@@ -270,7 +270,8 @@ struct PortalWebSheet: View {
                 Button("Abbrechen", role: .cancel) { close() }
                     .keyboardShortcut(.cancelAction)
                 Button { importing = true } label: { Label("CSV- oder PDF-Kontoauszug importieren …", systemImage: "doc.badge.plus") }
-                if recognized == 0 && !browser.onLoginPage {
+                // Developer tool, hidden from everyday use (--developer).
+                if model.options.developer && recognized == 0 && !browser.onLoginPage {
                     Button("Portal-Struktur prüfen") { Task { await dumpSchema() } }
                         .help("Speichert nur Feldnamen und Typen (keine Werte) nach /tmp/girocrab-portal-schema.json")
                 }
