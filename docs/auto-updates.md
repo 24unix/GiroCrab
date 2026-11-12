@@ -145,8 +145,10 @@ $SPARKLE_BIN/generate_keys -x sparkle-private-key.txt
 ```
 
 > Geht der private Schlüssel verloren, können Updates nur noch über einen
-> Schlüsselwechsel mit gleicher Developer-ID-Signatur ausgeliefert werden.
-> Nie in GitHub Secrets oder ins Repo legen.
+> Schlüsselwechsel mit gleicher Developer-ID-Signatur ausgeliefert werden
+> (siehe [Schlüsselwechsel](#schlüsselwechsel)). Nie in GitHub Secrets oder ins
+> Repo legen. Developer-ID-Zertifikat, Sparkle-Schlüssel und weitere Schlüssel
+> getrennt sichern, nicht in einem gemeinsamen Export.
 >
 > Das ist der Schlüssel **für die Updates**. Die geplante Sperre für
 > Bankverbindungen (separates Issue, `banking-policy.json`) bekommt einen
@@ -172,6 +174,87 @@ vorhandene Feed nicht verifiziert.
 **Wichtig:** Erst Versionen *mit* eingebautem Updater können Updates empfangen.
 Wer eine ältere Version nutzt, muss einmal manuell aktualisieren.
 
+## Schlüsselwechsel
+
+Installierte Apps kennen nur den öffentlichen Schlüssel, mit dem sie gebaut
+wurden (`SUPublicEDKey`). Ein neuer Schlüssel kommt deshalb über ein
+**Übergangs-Release**: Es bringt den neuen öffentlichen Schlüssel mit, ist aber
+noch mit dem **alten** signiert.
+
+| Datei (im Repo, nicht geheim) | Inhalt |
+|---|---|
+| `scripts/sparkle-public-ed-key.txt` | öffentlicher Schlüssel, der in die App kommt |
+| `scripts/sparkle-key-account.txt` | Schlüsselbund-Konto, das signiert (fehlt: Sparkles Standard `ed25519`) |
+| `scripts/sparkle-previous-key-account.txt` | nur während eines Wechsels: altes Konto, mit dem der aktuelle Feed noch signiert sein darf |
+| `scripts/sparkle-previous-public-ed-key.txt` | nur während eines Wechsels: alter öffentlicher Schlüssel (für die Überwachung der Releases) |
+
+### Vorsorglich oder bei Verdacht (alter Schlüssel noch vorhanden)
+
+```bash
+./scripts/notarize.sh --upload vX.Y.Z --rotate-key girocrab-2   # Übergangs-Release
+git add scripts/sparkle-*.txt && git commit -m "chore(updates): Sparkle-Schlüssel gewechselt"
+```
+
+Alle geänderten `scripts/sparkle-*.txt` **gemeinsam** committen: Steht nur der
+neue öffentliche Schlüssel im Repo, nicht aber der alte als Vorgänger, meldet eine
+Überwachung der Releases den noch alt signierten Feed als Abweichung.
+
+`--rotate-key` (nur stabile Tags – ein stabiles Release erreicht auch Beta- und
+Nightly-Nutzer):
+
+1. erzeugt den neuen Schlüssel im Schlüsselbund (Konto `girocrab-2`) und setzt
+   `scripts/sparkle-public-ed-key.txt` auf den **neuen** öffentlichen Schlüssel,
+2. baut das Release und signiert Disk-Image und Appcast mit dem **alten**
+   Schlüssel (der Abgleich „Schlüssel = Repo“ prüft dabei gegen den alten),
+3. prüft vor dem Hochladen, dass das Bundle den neuen Schlüssel enthält und Image
+   und Feed mit dem alten verifizieren (`scripts/sparkle-key.sh verify-transition`),
+4. trägt nach dem Upload das neue Konto als Signierer und das alte als Vorgänger
+   ein. Das nächste Release signiert mit dem neuen Schlüssel und übernimmt den
+   noch alt signierten Feed.
+
+Wer das Übergangs-Release überspringt, bekommt danach kein Update mehr über
+Sparkle. Deshalb das Übergangs-Release eine Weile das neueste in allen Kanälen
+sein lassen. Danach:
+
+```bash
+scripts/sparkle-key.sh retire-previous   # Vorgänger vergessen, dann alten Schlüssel + Sicherung löschen
+```
+
+Bei **Verdacht auf Diebstahl** zusätzlich eine Sicherheitsmeldung (GitHub
+Advisory) veröffentlichen: was möglich war, welcher Zeitraum, was Nutzer tun
+müssen (in der Regel nur das Update).
+
+### Schlüssel verloren
+
+Ein Übergangs-Release ist dann unmöglich. Sparkle nimmt ein Update mit neuem
+Schlüssel trotzdem an, wenn die Developer ID gleich bleibt – geprüft im Quellcode
+von Sparkle 2.10.1 für unsere Einstellungen, **nicht praktisch getestet**:
+
+| Stufe | Was Sparkle prüft | Folge bei neuem Schlüssel |
+|---|---|---|
+| Feed | Signatur gegen den alten Schlüssel | schlägt fehl; Sparkle meldet **20 Tage** „The update feed is improperly signed“ und arbeitet danach im „sicheren Modus“ (Einträge ohne Changelog) |
+| Archiv vor dem Entpacken | EdDSA, sonst: Archiv selbst mit Developer ID derselben Team-ID signiert | besteht, weil das Release-Artefakt ein signiertes, notarisiertes Disk-Image ist (ein ZIP würde abgelehnt) |
+| App nach dem Entpacken | EdDSA **oder** gleiche Code-Signatur | besteht über die Code-Signatur |
+
+```bash
+./scripts/notarize.sh --upload vX.Y.Z --lost-key girocrab-2
+git add scripts/sparkle-*.txt && git commit -m "chore(updates): neuer Sparkle-Schlüssel (alter verloren)"
+```
+
+`--lost-key` erzeugt den neuen Schlüssel, trägt ihn ein und beginnt einen
+**neuen Feed** (`GIROCRAB_DISCARD_EXISTING_APPCAST=1`; Beta-/Nightly-Einträge
+fallen bis zum nächsten Lauf weg). Nutzer erhalten das Update frühestens 20 Tage
+nach ihrer ersten fehlgeschlagenen Feed-Prüfung und ohne Changelog. Deshalb einen
+Hinweis zum manuellen Download auf die Release-Seite setzen. Die 20-Tage-Frist
+**nicht** verkürzen: In dieser Zeit schützt sie vor einem untergeschobenen Feed,
+und gegen fremden Code schützt weiterhin die Developer-ID-Prüfung.
+
+### Developer ID kompromittiert
+
+Zertifikat bei Apple widerrufen lassen: Alle damit signierten Builds starten
+nicht mehr. Ein neues Zertifikat hat für Sparkle eine andere Code-Signatur;
+Developer-ID-Nutzer müssen einmal von Hand neu installieren.
+
 ## Lokaler Test (ohne echten Schlüssel)
 
 ```bash
@@ -196,7 +279,15 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory feed
 ```
 
 Für Tests die Bundle-ID der Test-Apps ändern (z. B. `app.girocrab.mac.updatetest`),
-damit die Einstellungen der echten App unberührt bleiben.
+damit die Einstellungen der echten App unberührt bleiben, und in die Info.plist
+der Test-Apps `LSEnvironment` = `{GIROCRAB_DEMO_SEED = 1}` eintragen (vor dem
+Signieren): Dann startet auch die von Sparkle neu gestartete App mit Demo-Daten.
+
+Schlüsselwechsel testen: zwei Wegwerf-Schlüssel (`old`, `new`), Version 1 mit
+`old`, Übergangs-Release 2 mit `SUPublicEDKey` = `new`, aber mit `old` signiert
+(`SPARKLE_KEY_DIR=<dir>` mit `old.key`/`old.pub`, `new.key`/`new.pub`,
+`SPARKLE_KEY_ACCOUNT=old`), Version 3 mit `new` signiert. Erwartet: 1 → 2 → 3
+klappt; 1 → 3 direkt wird abgelehnt.
 
 > **Achtung:** Der Tresorpfad (`~/Library/Application Support/GiroCrab/tresor.girocrab`)
 > hängt *nicht* von der Bundle-ID ab. Nach „Installieren und neu starten“ startet
