@@ -1,6 +1,127 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "%@ – FNZ Bank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ – FNZ Bank"
+          }
+        }
+      }
+    },
+    "%lld PDFs nicht abrufbar. Erfolgreiche Downloads bleiben gespeichert; ein erneuter Abruf lädt nur fehlende Dokumente." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld PDFs could not be fetched. Successful downloads are saved; retrying fetches only missing documents."
+          }
+        }
+      }
+    },
+    "Angemeldet – Kontosalden, Depotwerte und Postkorb können abgerufen werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signed in — account balances, depot values and mailbox are ready to fetch."
+          }
+        }
+      }
+    },
+    "FNZ: %lld Konten/Depots aktualisiert, %lld neue PDFs." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FNZ: %1$lld accounts/depots updated, %2$lld new PDFs."
+          }
+        }
+      }
+    },
+    "FNZ: Die Portalantwort konnte nicht gelesen werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FNZ: The portal response could not be read."
+          }
+        }
+      }
+    },
+    "Kontosalden und Depotwerte abrufen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetching account balances and depot values…"
+          }
+        }
+      }
+    },
+    "Melden Sie sich bei FNZ an und bestätigen Sie in FNZsecure." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to FNZ and approve with FNZsecure."
+          }
+        }
+      }
+    },
+    "PDF %lld von %lld …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF %1$lld of %2$lld…"
+          }
+        }
+      }
+    },
+    "PDF-Postkorb inkl. Archiv" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF mailbox including archive"
+          }
+        }
+      }
+    },
+    "Postkorb und Archiv auflisten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listing mailbox and archive…"
+          }
+        }
+      }
+    },
+    "Salden und Dokumente abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch balances and documents"
+          }
+        }
+      }
+    },
     "%@ (gleiche IBAN)" : {
       "extractionState" : "manual",
       "localizations" : {

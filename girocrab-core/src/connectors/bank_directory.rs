@@ -134,6 +134,7 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
             "trade republic depot broker",
         ),
         (ConnectorKind::PayPal, "PayPal", "paypal"),
+        (ConnectorKind::Fnz, "FNZ Bank", "fnz bank ebase finvesto"),
         (
             ConnectorKind::ScalableCapital,
             "Scalable Capital",
@@ -231,12 +232,14 @@ pub fn search(
         return out;
     }
 
-    // BLZ / IBAN: exactly one answer.
+    // BLZ / IBAN: route directly to the appropriate access mode.
     if let Some(blz) = fints_directory::blz_from_input(query) {
         if COMDIRECT_BLZ.contains(&blz.as_str()) {
             out.push(own_result(ConnectorKind::Comdirect, "comdirect"));
         } else if let Some(b) = fints_directory::lookup(&blz) {
             out.push(fints_result(b));
+        } else if blz == "70013000" {
+            out.push(own_result(ConnectorKind::Fnz, "FNZ Bank"));
         }
         return out;
     }
@@ -466,6 +469,25 @@ mod tests {
         let r = search("20041111", vec![], 10);
         assert_eq!(ids(&r), vec!["api:comdirect"]);
         assert_eq!(r[0].mode, BankAccessMode::OwnApi);
+    }
+
+    #[test]
+    fn fnz_routes_names_blz_and_iban_to_its_direct_portal() {
+        for query in [
+            "FNZ",
+            "FNZ Bank",
+            "ebase",
+            "finvesto",
+            "70013000",
+            "700 130 00",
+            "DE19 7001 3000 0123 4567 89",
+        ] {
+            let r = search(query, vec![], 10);
+            assert_eq!(ids(&r), vec!["api:fnz"], "{query}");
+            assert_eq!(r[0].mode, BankAccessMode::OwnApi);
+            assert_eq!(r[0].connector, Some(ConnectorKind::Fnz));
+        }
+        assert!(search("70013000", vec![], 0).is_empty());
     }
 
     #[test]

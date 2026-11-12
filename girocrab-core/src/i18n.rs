@@ -231,6 +231,23 @@ fn default_name_en(de: &str) -> Option<&'static str> {
 /// English text for a German source string; `None` = no translation.
 fn english(de: &str) -> Option<&'static str> {
     Some(match de {
+        "Zugangsbezeichnung" => "Connection label",
+        "FNZ Bank / ebase / finvesto: Kontosalden, Depotwerte und PDF-Postkorb einschließlich Archiv. Anmeldung im Browserfenster mit FNZsecure-Freigabe. Die PIN wird nicht gespeichert." => "FNZ Bank / ebase / finvesto: account balances, depot values and PDF mailbox including the archive. Sign in in the browser window and approve with FNZsecure. Your PIN is not stored.",
+        "Bitte bei FNZ anmelden und in FNZsecure freigeben." => "Please sign in to FNZ and approve with FNZsecure.",
+        "Bitte im FNZ-Browserfenster abrufen." => "Please fetch data in the FNZ browser window.",
+        "FNZ: Unvollständige Portalantwort. Bitte erneut anmelden." => "FNZ: Incomplete portal response. Please sign in again.",
+        "FNZ: Ungültige Kontoübersicht." => "FNZ: Invalid account overview.",
+        "FNZ: Keine Kontoübersicht erkannt. Bitte erneut anmelden." => "FNZ: No account overview found. Please sign in again.",
+        "FNZ: Unvollständige Kontoübersicht." => "FNZ: Incomplete account overview.",
+        "FNZ: Bestände sind ausgeblendet oder veraltet. Es wurden keine Salden aktualisiert." => "FNZ: Values are hidden or outdated. No balances have been updated.",
+        "FNZ: Unbekannte Kontowährung." => "FNZ: Unknown account currency.",
+        "FNZ: Ungültiger Saldo in der Kontoübersicht." => "FNZ: Invalid balance in the account overview.",
+        "FNZ: Keine aktuellen Konten oder Depotwerte erkannt." => "FNZ: No current accounts or depot values found.",
+        "Keine FNZ-Bankverbindung." => "Not an FNZ connection.",
+        "FNZ: Ungültige Dokumentenliste." => "FNZ: Invalid document list.",
+        "FNZ: Ungültige Dokumentdaten." => "FNZ: Invalid document metadata.",
+        "FNZ: Der Download ist kein PDF." => "FNZ: The download is not a PDF.",
+        "FNZ: Zum Dokument gehört ein unbekanntes Konto oder Depot. Bitte zuerst die Salden abrufen." => "FNZ: The document belongs to an unknown account or depot. Please fetch balances first.",
         // ------------------------------------------------------------ error.rs
         "Datenbankfehler: {0}" => "Database error: {0}",
         "Der Tresor konnte nicht entsperrt werden (falscher Schlüssel oder beschädigte Datei)" => {

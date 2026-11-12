@@ -313,6 +313,7 @@ struct MainSplitView: View {
             Group {
                 if c.connector == .tradeRepublic { WebLoginSheet(connection: c) }
                 else if c.connector == .amazonOrders { AmazonWebSheet(connection: c) }
+                else if c.connector == .fnz { FnzWebSheet(connection: c) }
                 else { PortalWebSheet(connection: c) }
             }
             .environment(model)

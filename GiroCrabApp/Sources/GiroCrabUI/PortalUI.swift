@@ -12,7 +12,7 @@ extension AppModel {
     /// credentials. The credentials alone don't count: they are shared with
     /// PSD2 banks such as C24 and must not move the cards off the web login.
     func usesPortal(_ c: BankConnection) -> Bool {
-        if !isDemo, c.connector == .amazonOrders { return true }
+        if !isDemo, (c.connector == .amazonOrders || c.connector == .fnz) { return true }
         guard !isDemo, c.connector == .americanExpress || c.connector == .amazonVisa else { return false }
         return !Self.cardUsesEnableBanking(
             optIn: settingEntry(Self.enableBankingOptInKey(c.connector))?.value,
@@ -78,6 +78,7 @@ extension ConnectorKind {
         switch self {
         case .americanExpress: return URL(string: "https://global.americanexpress.com/activity/recent")
         case .amazonVisa: return URL(string: "https://www.openbank.de")
+        case .fnz: return URL(string: "https://portal.fnz.de/")
         case .amazonOrders: return URL(string: "https://www.amazon.de/gp/css/order-history")
         default: return nil
         }
@@ -87,6 +88,7 @@ extension ConnectorKind {
         case .americanExpress: return ["americanexpress.com", "aexp.com"]
         case .amazonVisa: return ["openbank.de", "openbank.com", "zinia.de", "zinia.com"]
         case .amazonOrders: return ["amazon.de", "amazon.com"]
+        case .fnz: return ["portal.fnz.de"]
         default: return []
         }
     }

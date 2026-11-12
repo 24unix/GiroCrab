@@ -33,6 +33,8 @@ pub enum ConnectorKind {
     ScalableCapital,
     /// Amazon customer account (order history) via embedded web login
     AmazonOrders,
+    /// FNZ / ebase / finvesto portal: account/depot values and mailbox PDFs.
+    Fnz,
 }
 
 impl ConnectorKind {
@@ -50,6 +52,7 @@ impl ConnectorKind {
             ConnectorKind::EnableBanking => "enablebanking",
             ConnectorKind::ScalableCapital => "scalable",
             ConnectorKind::AmazonOrders => "amazon-orders",
+            ConnectorKind::Fnz => "fnz",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -95,6 +98,7 @@ impl ConnectorKind {
             ConnectorKind::EnableBanking,
             ConnectorKind::ScalableCapital,
             ConnectorKind::AmazonOrders,
+            ConnectorKind::Fnz,
         ]
     }
 }

@@ -101,6 +101,7 @@ impl BankConnector for DemoConnector {
             ConnectorKind::AmericanExpress
             | ConnectorKind::AmazonVisa
             | ConnectorKind::AmazonOrders
+            | ConnectorKind::Fnz
             | ConnectorKind::EnableBanking => Challenge {
                 kind: ChallengeKind::Redirect,
                 title: tr("Zustimmung beim Kartenherausgeber erteilen").into(),

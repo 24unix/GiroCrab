@@ -36,6 +36,7 @@ pub mod fints;
 pub mod fints_directory;
 mod fints_directory_data;
 pub mod fints_presets;
+pub mod fnz;
 pub mod moneymoney_db;
 pub mod moneymoney_import;
 pub mod paypal;
@@ -307,6 +308,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             secret_label: tr("(Anmeldung im Browser-Fenster)").into(),
             required_settings: vec![],
             note: tr("Herausgeber: Open Bank S.A. (Zinia). Anmeldung im eingebetteten Browser – keine API-Schlüssel nötig. Optional: eigene PSD2-/Enable-Banking-API unter „Erweitert“.").into(),
+        },
+        ConnectorKind::Fnz => BankDescriptor {
+            kind,
+            name: "FNZ Bank".into(),
+            protocol: tr("Direkt-Login (Web-Session)").into(),
+            bank_code: "70013000".into(),
+            sf_symbol: "building.columns".into(),
+            login_label: tr("Zugangsbezeichnung").into(),
+            secret_label: tr("(Anmeldung im Browser-Fenster)").into(),
+            required_settings: vec![],
+            note: tr("FNZ Bank / ebase / finvesto: Kontosalden, Depotwerte und PDF-Postkorb einschließlich Archiv. Anmeldung im Browserfenster mit FNZsecure-Freigabe. Die PIN wird nicht gespeichert.").into(),
         },
         ConnectorKind::AmazonOrders => BankDescriptor {
             kind,
@@ -596,6 +608,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
             "enablebanking.country.amazonvisa",
         )),
         ConnectorKind::AmazonOrders => Box::new(amazon_orders::WebOnlyConnector),
+        ConnectorKind::Fnz => Box::new(fnz::WebOnlyConnector),
         ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {

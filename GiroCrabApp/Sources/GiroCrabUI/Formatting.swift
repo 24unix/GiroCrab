@@ -231,6 +231,7 @@ extension ConnectorKind {
         case .enableBanking: return "Enable Banking (PSD2)"
         case .scalableCapital: return "Scalable Capital"
         case .amazonOrders: return "Amazon Bestellungen"
+        case .fnz: return "FNZ Bank"
         }
     }
 
@@ -249,6 +250,7 @@ extension ConnectorKind {
         case .enableBanking: return "#5B5BD6"
         case .scalableCapital: return "#0E2A47"
         case .amazonOrders: return "#B45F06"
+        case .fnz: return "#265B55"
         }
     }
 
@@ -274,6 +276,7 @@ extension ConnectorKind {
         case .enableBanking: return "PS"
         case .scalableCapital: return "SC"
         case .amazonOrders: return "AZ"
+        case .fnz: return "FNZ"
         }
     }
 }
