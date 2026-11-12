@@ -2376,6 +2376,8 @@ public final class AppModel {
         if !syncBatchSkipped.isEmpty {
             let note = String(localized: "Übersprungen: \(syncBatchSkipped.formatted(.list(type: .and)))")
             toast = toast.map { $0 + " · " + note } ?? note
+            // the notice disappears after a few seconds: VoiceOver reads it out
+            AccessibilityNotification.Announcement(note).post()
         }
         resetSyncBatch()
     }

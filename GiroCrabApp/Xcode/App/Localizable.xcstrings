@@ -67,6 +67,17 @@
         }
       }
     },
+    "Den Abruf für alle restlichen Bankzugänge beenden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop fetching for all remaining bank logins."
+          }
+        }
+      }
+    },
     "FNZ: %lld Konten/Depots aktualisiert, %lld neue PDFs." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2790,13 +2801,13 @@
         }
       }
     },
-    "Code per SMS" : {
+    "Code per SMS anfordern" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Code via SMS"
+            "value" : "Request Code via SMS"
           }
         }
       }

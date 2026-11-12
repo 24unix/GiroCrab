@@ -65,6 +65,14 @@ struct TwoFactorSheet: View {
                         .textContentType(.oneTimeCode)
                         #endif
                         .onSubmit(submit)
+                    if active.connection.connector == .tradeRepublic && c.kind == .code {
+                        // HIG: belongs to the code field, not to the dialog's
+                        // button row (which keeps at most three buttons)
+                        Button("Code per SMS anfordern") { model.submitCode("SMS") }
+                            .buttonStyle(.link)
+                            .font(.callout)
+                            .help("Kein Code in der App? Code per SMS anfordern.")
+                    }
                 case .redirect:
                     if let consent {
                         // Bank login inside GiroCrab; closes itself on the redirect.
@@ -122,15 +130,11 @@ struct TwoFactorSheet: View {
                             .help("Diesen Bankzugang auslassen und mit dem nächsten weitermachen.")
                             .fixedSize()
                         Button("Alle abbrechen") { model.cancelSync() }
+                            .help("Den Abruf für alle restlichen Bankzugänge beenden.")
                             .fixedSize()
                     } else {
                         Button("Abbrechen", role: .cancel) { model.skipCurrentSync() }
                             .keyboardShortcut(.cancelAction)
-                    }
-                    if active.connection.connector == .tradeRepublic && c.kind == .code {
-                        Button("Code per SMS") { model.submitCode("SMS") }
-                            .help("Kein Code in der App? Code per SMS anfordern.")
-                            .fixedSize()
                     }
                     Spacer()
                     if c.kind == .code || c.kind == .imageCode || (c.kind == .redirect && showManualRedirect) {
@@ -185,7 +189,7 @@ struct SyncBatchProgressLabel: View {
             Text("Bankzugang \(p.current) von \(p.total)")
                 .font(.caption)
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondary)
         }
     }
 }

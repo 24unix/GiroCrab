@@ -80,6 +80,7 @@ struct PinSheet: View {
                         .help("Diesen Bankzugang auslassen und mit dem nächsten weitermachen.")
                         .fixedSize()
                     Button("Alle abbrechen") { model.cancelSync() }
+                        .help("Den Abruf für alle restlichen Bankzugänge beenden.")
                         .fixedSize()
                 } else {
                     Button("Abbrechen", role: .cancel) { model.cancelPendingLogin() }
