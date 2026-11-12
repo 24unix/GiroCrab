@@ -444,6 +444,8 @@ if [ "$BUILD_IOS" -eq 1 ]; then
   IOS_PLIST="build/ExportOptions-upload.plist"
   rm -rf "$IOS_ARCHIVE" "$IOS_EXPORT"
 
+  ./build-xcframework.sh
+
   xcodebuild archive \
     -project GiroCrabApp/Xcode/GiroCrab.xcodeproj \
     -scheme GiroCrab \
