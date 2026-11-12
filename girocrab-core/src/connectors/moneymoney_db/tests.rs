@@ -6,7 +6,7 @@ use crate::models::{BookingFilter, CategorySource, MatchKind};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-const PW: &str = "Test-Passwort 'mit' Anführungszeichen";
+pub(crate) const PW: &str = "Test-Passwort 'mit' Anführungszeichen";
 
 /// The relevant MoneyMoney tables with their real columns.
 const SCHEMA: &str = r#"
@@ -92,7 +92,7 @@ fn fake_db_unencrypted() -> String {
     path.to_string_lossy().to_string()
 }
 
-fn fake_db() -> String {
+pub(crate) fn fake_db() -> String {
     fake_db_with(false, "")
 }
 
@@ -105,7 +105,7 @@ fn vault() -> Arc<Vault> {
 }
 
 /// Options as the UI would send them: every account, suggested kind and target.
-fn options_from(
+pub(crate) fn options_from(
     p: &MoneyMoneyDbPreview,
     connections: bool,
     pins: bool,

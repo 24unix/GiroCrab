@@ -2377,4 +2377,4 @@ fn statement_files(explicit: Option<String>, found: Option<PathBuf>) -> Option<S
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

@@ -3262,6 +3262,65 @@ fn every_mutating_api_stamps_or_soft_deletes() {
                     .unwrap();
             }),
         ),
+        (
+            "import_moneymoney_data",
+            Box::new(|v| {
+                let csv = "Datum;Name;Verwendungszweck;Betrag;Kategorie;Notiz\n10.05.2026;REWE;Einkauf;-12,50;Essen;wichtig\n";
+                v.import_moneymoney_data(csv.as_bytes().to_vec(), "t.csv".into(), None, true, true)
+                    .unwrap();
+            }),
+        ),
+        (
+            "import_moneymoney_database",
+            Box::new(|v| {
+                use crate::connectors::moneymoney_db::tests::{fake_db, options_from, PW};
+                let path = fake_db();
+                let p = v
+                    .preview_moneymoney_database(path.clone(), PW.into(), None)
+                    .unwrap();
+                v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+                    .unwrap();
+            }),
+        ),
+        (
+            "create_manual_loan",
+            Box::new(|v| {
+                v.create_manual_loan(crate::loans::LoanSetup {
+                    name: "Kredit".into(),
+                    original_cents: None,
+                    anchor_date: "2026-01-01".into(),
+                    anchor_balance_cents: 100_000,
+                    interest_rate_ppm: None,
+                    match_expr: String::new(),
+                })
+                .unwrap();
+            }),
+        ),
+        (
+            "add_fints_connection",
+            Box::new(|v| {
+                v.add_fints_connection(
+                    "87654321".into(),
+                    "https://fints.example.com/x".into(),
+                    "Bank".into(),
+                    "me".into(),
+                    String::new(),
+                )
+                .unwrap();
+            }),
+        ),
+        (
+            "add_enable_banking_connection",
+            Box::new(|v| {
+                v.add_enable_banking_connection(
+                    "N26".into(),
+                    "DE".into(),
+                    "N26".into(),
+                    "me".into(),
+                )
+                .unwrap();
+            }),
+        ),
     ];
     for (name, op) in ops {
         // older stamps, so that an edit in the same millisecond still counts
@@ -3364,5 +3423,50 @@ fn loan_links_skip_deleted_bookings_and_match_by_key() {
             ),
             "mm-F-1"
         );
+    }
+}
+
+/// A archived and deleted account A1; B took that over and then got A1 again
+/// from the bank (revive). Both end with A1 live, unarchived and in totals.
+#[test]
+fn revived_account_is_unarchived_on_both_vaults() {
+    for a_first in [true, false] {
+        let (a, b) = bank_pair("acc-unarchive");
+        let a1 = n(&a, "SELECT id FROM accounts WHERE external_ref = 'A1'");
+        a.set_account_archived(a1, true).unwrap();
+        a.delete_account(a1).unwrap();
+        exec(
+            &a,
+            "UPDATE accounts SET archived_ms = 5 WHERE external_ref = 'A1';
+             UPDATE transactions SET deleted_ms = 20 WHERE deleted_ms IS NOT NULL;
+             UPDATE accounts SET deleted_ms = 20 WHERE deleted_ms IS NOT NULL;",
+        );
+        merge(&b, &a);
+        let b1 = n(&b, "SELECT id FROM accounts WHERE external_ref = 'A1'");
+        revive_account_if_deleted(&b.db().unwrap(), b1).unwrap();
+        if a_first {
+            both_ways(&a, &b);
+        } else {
+            both_ways(&b, &a);
+        }
+        for v in [&a, &b] {
+            assert_eq!(
+                n(
+                    v,
+                    "SELECT count(*) FROM accounts
+                     WHERE external_ref = 'A1' AND deleted_ms IS NULL AND archived_unix IS NULL"
+                ),
+                1
+            );
+            let acc = v
+                .list_accounts()
+                .unwrap()
+                .into_iter()
+                .find(|x| x.name == "A1")
+                .expect("A1 listed");
+            assert!(acc.in_total);
+        }
+        assert_zero(&merge(&a, &b));
+        assert_zero(&merge(&b, &a));
     }
 }

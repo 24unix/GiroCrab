@@ -380,8 +380,13 @@ pub(crate) fn revive_account_if_deleted(conn: &Connection, id: i64) -> CoreResul
         .optional()?
         .flatten();
     let Some(stamp) = stamp else { return Ok(()) };
+    // unarchiving is stamped, so the merge carries it to the other devices
+    // (otherwise they keep the revived account archived and out of totals)
     conn.execute(
-        "UPDATE accounts SET deleted_ms = NULL, archived_unix = NULL, created_ms = ?1 WHERE id = ?2",
+        "UPDATE accounts SET deleted_ms = NULL, created_ms = ?1,
+                archived_ms = CASE WHEN archived_unix IS NULL THEN archived_ms ELSE ?1 END,
+                archived_unix = NULL
+          WHERE id = ?2",
         params![crate::user_groups::now_ms(), id],
     )?;
     conn.execute(
