@@ -1,0 +1,81 @@
+name: AI Transparency
+
+# Living-Lab "AI-enabled Transparency of AI Use in Software Creation Processes".
+# Builds the 🦀 AI Provenance & Transparency Card for every PR – no external API key
+# needed, so it works for fork PRs out of the box. See docs/ai-transparency.md.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  # PR comments go through the issues API but need pull-requests: write.
+  # Fork PRs get a read-only token anyway -> the comment step fails softly.
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ai-transparency-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  card:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number }}
+      # Optional LLM enrichment (see bottom): "true" only if the secret exists.
+      HAS_AI_SUMMARY_KEY: ${{ secrets.AI_SUMMARY_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Only the classifier is needed; the PR data comes from the GitHub API.
+          sparse-checkout: tools
+          persist-credentials: false
+
+      # Trusted Verifier from main: the card is computed by the classifier on main,
+      # so a PR cannot change how its own provenance is assessed. The PR's copy is
+      # used only while main has no classifier yet (bootstrap, i.e. PR #130).
+      - name: Select trusted verifier
+        run: |
+          VERIFIER=/tmp/export-ai-provenance.py
+          if ! git fetch --quiet --depth=1 origin main; then
+            echo "::warning::could not fetch origin/main – no card without trusted verifier"
+            exit 0
+          fi
+          if git cat-file -e origin/main:tools/export-ai-provenance.py 2>/dev/null; then
+            git show origin/main:tools/export-ai-provenance.py > "$VERIFIER"
+            echo "VERIFIER_SOURCE=origin/main@$(git rev-parse --short origin/main)" >> "$GITHUB_ENV"
+          else
+            cp tools/export-ai-provenance.py "$VERIFIER"
+            echo "VERIFIER_SOURCE=PR branch (bootstrap: not yet on main)" >> "$GITHUB_ENV"
+          fi
+          echo "VERIFIER=$VERIFIER" >> "$GITHUB_ENV"
+
+      - name: Build provenance card
+        if: ${{ env.VERIFIER != '' }}
+        run: |
+          if python3 "$VERIFIER" card --pr "$PR" --out card.md; then
+            cat card.md >> "$GITHUB_STEP_SUMMARY"
+            echo "<sub>Verifier: \`$VERIFIER_SOURCE\`</sub>" >> "$GITHUB_STEP_SUMMARY"
+          else
+            # informational check: never block a PR on a GitHub API hiccup
+            echo "::warning::AI provenance card could not be built"
+            echo "⚠️ AI provenance card could not be built (see log)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Update PR comment
+        if: ${{ hashFiles('card.md') != '' }}
+        continue-on-error: true # fork PRs get a read-only token – never fail the run
+        run: python3 "$VERIFIER" comment --pr "$PR" --file card.md
+
+      # Optional (prepared, disabled): LLM-written narrative for the card.
+      # Add a repo secret, then uncomment. Fork PRs never receive secrets, so the step
+      # must stay optional and must only ever send derived features (card.md), never
+      # diffs or PR bodies.
+      # - name: Optional LLM narrative
+      #   if: ${{ env.HAS_AI_SUMMARY_KEY == 'true' }}
+      #   env:
+      #     AI_SUMMARY_API_KEY: ${{ secrets.AI_SUMMARY_API_KEY }}
+      #   run: echo "plug your summariser here; input = card.md"
