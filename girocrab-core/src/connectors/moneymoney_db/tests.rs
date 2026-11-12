@@ -1109,7 +1109,79 @@ fn brand_banks_with_pseudo_bank_code_map_to_their_connector() {
     // API key, never a stored PIN, so no PIN is carried over.
     assert_eq!(connector_for("37019000", "bunq"), Some(ConnectorKind::Bunq));
     assert_eq!(connector_for("", "bunq"), Some(ConnectorKind::Bunq));
+    assert_eq!(connector_for("BUNQNL2A", ""), Some(ConnectorKind::Bunq));
     assert!(!pin_usable(ConnectorKind::Bunq));
+}
+
+#[test]
+fn bunq_accounts_are_recognised_in_every_country() {
+    // BIC of any bunq branch
+    for bic in [
+        "BUNQNL2A",
+        "BUNQDE82",
+        "BUNQFRP2",
+        "BUNQESM2",
+        "bunqitm2",
+        "BUNQNL2AXXX",
+    ] {
+        assert!(is_bunq_account(bic, "", ""), "{bic}");
+    }
+    // bank code: German branch, or a BIC MoneyMoney put in the bank code field
+    assert!(is_bunq_account("", "", "370 190 00"));
+    assert!(is_bunq_account("", "", "BUNQFRP2"));
+    // IBAN alone: Dutch (bank id BUNQ) and German (bank code 37019000)
+    assert!(is_bunq_account("", "NL12 BUNQ 0123 4567 89", ""));
+    assert!(is_bunq_account("", "DE12 3701 9000 1234 5678 90", ""));
+    // not bunq
+    assert!(!is_bunq_account("INGBNL2A", "NL12 INGB 0123 4567 89", ""));
+    assert!(!is_bunq_account(
+        "",
+        "DE89 3704 0044 0532 0130 00",
+        "37040044"
+    ));
+    assert!(!is_bunq_account("BUNQ", "", "")); // too short for a BIC
+    assert!(!is_bunq_account("", "", ""));
+}
+
+#[test]
+fn bunq_logins_under_foreign_codes_get_a_bunq_connection_without_pin() {
+    // Two bunq logins MoneyMoney filed without the German bank code: one
+    // recognised by a Dutch IBAN, one by a French branch BIC only.
+    let extra = "
+INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, systemid, local_storage) VALUES
+  (10, 'NL', '', 'me@example.com', '', 'GEHEIM-10', 'Mein Bankkonto', 'SYS', 'LS'),
+  (11, 'FR', '', 'other@example.com', '', 'GEHEIM-11', 'Compte', 'SYS', 'LS');
+INSERT INTO pins (bank_key, pin) VALUES (10, '1010');
+INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, bic, currency, name, owner, kind, type, sort, initial_balance, group_key, cred) VALUES
+  (10, 10, '', '', 0, 'NL12 BUNQ 0123 4567 89', '', 'EUR', 'Alltag', 'Max Mustermann', 0, 0, 10, 0, 1, 'GEHEIM'),
+  (11, 11, '', '', 0, 'FR76 1234 5123 4512 3456 7890 123', 'BUNQFRP2', 'EUR', 'Courant', 'Max Mustermann', 0, 0, 11, 0, 1, 'GEHEIM');
+";
+    let v = vault();
+    let path = fake_db_with(false, extra);
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    for id in [10, 11] {
+        let b = p.banks.iter().find(|b| b.mm_id == id).unwrap();
+        assert_eq!(b.connector, Some(ConnectorKind::Bunq), "bank {id}");
+    }
+    let r = v
+        .import_moneymoney_database(path, PW.into(), options_from(&p, true, true))
+        .unwrap();
+    let bunq: Vec<_> = v
+        .list_bank_connections()
+        .unwrap()
+        .into_iter()
+        .filter(|c| c.connector == ConnectorKind::Bunq)
+        .collect();
+    let mut logins: Vec<_> = bunq.iter().map(|c| c.login_name.as_str()).collect();
+    logins.sort();
+    assert_eq!(logins, ["me@example.com", "other@example.com"]);
+    // bunq signs in with an API key: no MoneyMoney PIN is carried over
+    for c in &bunq {
+        assert!(!v.connection_status(c.id).unwrap().has_pin);
+    }
+    assert_eq!(r.banks_skipped_unsupported, 1); // only the Sparkasse
 }
 
 #[test]
