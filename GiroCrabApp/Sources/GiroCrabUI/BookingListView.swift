@@ -1,9 +1,16 @@
 import SwiftUI
 import GiroCrabCore
 
-/// Column 2: calm booking stream. Readable max width (~720 pt), bookings
-/// grouped into white day cards with the daily sum in the card header.
+/// Column 2: calm booking stream. Fills the space between sidebar and
+/// inspector up to `maxColumnWidth`, bookings grouped into white day cards
+/// with the daily sum in the card header.
 struct BookingStreamView: View {
+    /// Cap for the booking column (header + list). Wide enough that the column
+    /// uses the space between sidebar and inspector on large displays
+    /// (issue #27), narrow enough that payee and amount of a row stay within
+    /// one glance on a 5K/6K monitor with a maximised window.
+    static let maxColumnWidth: CGFloat = 1100
+
     @Environment(AppModel.self) private var model
     @FocusState private var focused: Bool
     @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
@@ -95,7 +102,7 @@ struct BookingStreamView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 4)
                     .padding(.bottom, 18)
-                    .frame(maxWidth: 720)
+                    .frame(maxWidth: Self.maxColumnWidth)
                     .frame(maxWidth: .infinity)
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
                 }
@@ -248,7 +255,7 @@ struct BookingStreamView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 10)
                 #endif
-                .frame(maxWidth: 720)
+                .frame(maxWidth: Self.maxColumnWidth)
                 .frame(maxWidth: .infinity)
                 .padding(.trailing, scrollerInset)
     }
