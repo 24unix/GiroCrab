@@ -219,6 +219,7 @@ struct SettingField: View {
     let entry: SettingEntry
     @State private var text = ""
     @State private var editing = false
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -226,15 +227,23 @@ struct SettingField: View {
                 Text(entry.label)
                 Spacer()
                 if entry.isSecret {
+                    // Secrets are set on purpose (never half-typed): explicit
+                    // „Festlegen“, Esc or „Abbrechen“ discards.
                     if editing {
                         SecureField(entry.label, text: $text)
                             .labelsHidden()
                             .frame(maxWidth: 280)
+                            .focused($focused)
                             .onSubmit(save)
-                        Button("Speichern", action: save)
+                            #if os(macOS)
+                            .onExitCommand(perform: cancelSecret)
+                            #endif
+                        Button("Abbrechen", action: cancelSecret)
+                        Button("Festlegen", action: save)
+                            .disabled(text.isEmpty)
                     } else {
                         Text(entry.hasValue ? "••••••••" : "nicht gesetzt").foregroundStyle(entry.hasValue ? .primary : .secondary)
-                        Button(entry.hasValue ? "Ändern" : "Festlegen") { text = ""; editing = true }
+                        Button(entry.hasValue ? "Ändern …" : "Festlegen …") { text = ""; editing = true; focused = true }
                     }
                 } else {
                     TextField(entry.label, text: $text, prompt: Text("nicht gesetzt"))
@@ -242,20 +251,32 @@ struct SettingField: View {
                         .frame(maxWidth: 340)
                         .multilineTextAlignment(.trailing)
                         .autocorrectionDisabled()
+                        .focused($focused)
                         .onSubmit(save)
                 }
             }
             Text(entry.help).font(.caption).foregroundStyle(.secondary)
         }
         .onAppear { if !entry.isSecret { text = entry.value } }
+        // HIG: settings apply without a Save button – a plain field is saved
+        // when it loses focus (Tab, click elsewhere), on Return and on leaving.
+        .onChange(of: focused) { _, isFocused in
+            if !isFocused && !entry.isSecret && text != entry.value { save() }
+        }
         #if os(macOS)
         .onDisappear { if !entry.isSecret && text != entry.value { save() } }
         #endif
     }
 
     private func save() {
+        if !entry.isSecret && text == entry.value { return }
         model.saveSetting(entry.key, text)
         if entry.isSecret { text = ""; editing = false }
+    }
+
+    private func cancelSecret() {
+        text = ""
+        editing = false
     }
 }
 
