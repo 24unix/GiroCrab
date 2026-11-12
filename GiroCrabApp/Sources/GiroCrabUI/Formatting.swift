@@ -1,3 +1,4 @@
+import os
 import SwiftUI
 import GiroCrabCore
 
@@ -158,7 +159,26 @@ enum DateText {
     private static let monthShort = make(template: "MMMyy")
     private static let monthOnly = make(template: "MMM")
 
-    static func date(_ s: String) -> Date? { iso.date(from: s) }
+    /// Parsed ISO days. `DateFormatter` needs ~50 µs per string, and the balance
+    /// chart parses every day of up to 15 years on each render.
+    private static let parsed: OSAllocatedUnfairLock<[String: Date]> = {
+        let cache = OSAllocatedUnfairLock<[String: Date]>(initialState: [:])
+        // A day's midnight depends on the time zone.
+        NotificationCenter.default.addObserver(forName: .NSSystemTimeZoneDidChange, object: nil, queue: nil) { _ in
+            cache.withLock { $0 = [:] }
+        }
+        return cache
+    }()
+
+    static func date(_ s: String) -> Date? {
+        if let hit = parsed.withLock({ $0[s] }) { return hit }
+        guard let d = iso.date(from: s) else { return nil }
+        parsed.withLock { cache in
+            if cache.count >= 50_000 { cache = [:] }
+            cache[s] = d
+        }
+        return d
+    }
     static func iso(_ d: Date) -> String { iso.string(from: d) }
     static func medium(_ s: String) -> String { date(s).map { medium.string(from: $0) } ?? s }
     static func long(_ s: String) -> String { date(s).map { full.string(from: $0) } ?? s }
