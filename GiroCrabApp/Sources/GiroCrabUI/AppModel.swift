@@ -500,6 +500,8 @@ public final class AppModel {
     /// Bumped by every sync start, cancel, skip and lock: a deferred step of
     /// an older one (e.g. the end of "Überspringen") checks it before acting.
     @ObservationIgnored private var syncGeneration = 0
+    /// Security lock for bank connections; tests swap in their own instance.
+    @ObservationIgnored var bankingPolicy: BankingPolicy = .shared
     /// Scheduled PSD2 sync loop (see PSD2Consent.swift).
     @ObservationIgnored var autoSyncTask: Task<Void, Never>?
     /// The running sync was started by the schedule: no login prompts, no error dialogs.
@@ -2451,9 +2453,16 @@ public final class AppModel {
     func requestSync(_ connection: BankConnection) {
         withFreshBankingPolicy { [self] in
             if let gate = bankingGate(for: connection) {
-                syncQueue = []
                 statementsAccountID = nil
-                showError(gate.title, gate.detail)
+                if syncBatchTotal > 1, !gate.all {
+                    // A lock published while "Alle abrufen" runs: skip this
+                    // login, go on with the rest, name it in the closing notice.
+                    syncBatchSkipped.append(String(localized: "\(connection.displayName) (Sicherheitssperre)"))
+                    syncNextInQueue()
+                } else {
+                    resetSyncBatch()
+                    showError(gate.title, gate.detail)
+                }
                 return
             }
             requestSyncChecked(connection)

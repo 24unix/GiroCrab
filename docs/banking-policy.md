@@ -176,6 +176,7 @@ Schlüsselbund-Eintrag:
 | `GIROCRAB_BANKING_POLICY_URL` | Policy-Adresse, z. B. `http://127.0.0.1:8765/banking-policy.json` |
 | `GIROCRAB_BANKING_POLICY_VERSION` | vorgetäuschte `CFBundleVersion`, z. B. `0.7.1` |
 | `GIROCRAB_BANKING_POLICY_STORE` | Datei statt Speicher für den gespeicherten Stand (Neustart testen) |
+| `GIROCRAB_BANKING_POLICY_BUILD_DATE` | vorgetäuschtes `GiroCrabBuildDate` (ISO 8601, z. B. `2026-08-01T00:00:00Z`), um die 90-Tage-Frist zu testen; eine gebündelte Policy legt man dafür neben die Debug-Binärdatei (`banking-policy.json` + `.sig`) |
 
 ```sh
 swiftc -O -o /tmp/bpt scripts/banking-policy-tool/main.swift GiroCrabApp/Sources/GiroCrabUI/BankingVersion.swift

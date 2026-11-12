@@ -366,6 +366,104 @@ final class BankingPolicyTests: XCTestCase {
         XCTAssertTrue(isBankingBlocked(key: "comdirect"))
     }
 
+    func testGracePeriodBoundaryAndClockSkew() async {
+        let clock = Clock()
+        let build = clock.now
+        let p = makePolicy(
+            fetcher: FakeFetcher(result: .failure(URLError(.timedOut))),
+            bundled: signed(policyJSON(sequence: 1)), version: "9.9.9", buildDate: build, clock: clock
+        )
+        // Build date in the future (device clock behind): allowed.
+        clock.now = build.addingTimeInterval(-5 * day)
+        await p.refresh(force: true)
+        XCTAssertNil(p.gate)
+        // One second before the end: allowed; exactly at the end: no longer.
+        clock.now = build.addingTimeInterval(BankingPolicy.bundledGracePeriod - 1)
+        await p.refresh(force: true)
+        XCTAssertNil(p.gate)
+        XCTAssertFalse(isBankingBlocked(key: "comdirect"))
+        clock.now = build.addingTimeInterval(BankingPolicy.bundledGracePeriod)
+        await p.refresh(force: true)
+        XCTAssertEqual(p.gate?.reason, .checkUnavailable)
+        XCTAssertTrue(isBankingBlocked(key: "comdirect"))
+    }
+
+    func testRestartAfterGracePeriodStartsClosed() async {
+        // Bundled policy stored from a run inside the period (never online).
+        let store = MemoryStore()
+        let clock = Clock()
+        let build = clock.now
+        let bundled = signed(policyJSON(sequence: 1))
+        _ = makePolicy(store: store, fetcher: nil, bundled: bundled, version: "9.9.9", buildDate: build, clock: clock)
+        XCTAssertEqual(store.value?.verifiedOnline, false)
+        // App started again on day 100, GitHub still blocked.
+        clock.now = build.addingTimeInterval(100 * day)
+        let fetcher = FakeFetcher(result: .failure(URLError(.cannotConnectToHost)))
+        let p = makePolicy(store: store, fetcher: fetcher, bundled: bundled, version: "9.9.9", buildDate: build, clock: clock)
+        XCTAssertNil(p.gate)                              // no banner before the first try …
+        XCTAssertTrue(isBankingBlocked(key: "comdirect"))  // … but the core stays closed
+        await p.refresh()
+        XCTAssertEqual(p.gate?.reason, .checkUnavailable)
+        // An update (new build date) opens it again without GitHub.
+        let updated = makePolicy(store: store, fetcher: fetcher, bundled: signed(policyJSON(sequence: 2)),
+                                 version: "9.9.10", buildDate: clock.now, clock: clock)
+        await updated.refresh()
+        XCTAssertNil(updated.gate)
+        XCTAssertFalse(isBankingBlocked(key: "comdirect"))
+    }
+
+    func testOnceVerifiedOnlineTheBuildDateNoLongerMatters() async {
+        let store = MemoryStore()
+        let clock = Clock()
+        let build = clock.now.addingTimeInterval(-400 * day)
+        let ok = FakeFetcher(result: .success(signed(policyJSON(sequence: 3))))
+        await makePolicy(store: store, fetcher: ok, version: "9.9.9", buildDate: build, clock: clock).refresh(force: true)
+        let down = FakeFetcher(result: .failure(URLError(.timedOut)))
+        let p = makePolicy(store: store, fetcher: down, bundled: signed(policyJSON(sequence: 1)),
+                           version: "9.9.9", buildDate: build, clock: clock)
+        await p.refresh(force: true)
+        XCTAssertNil(p.gate)
+        XCTAssertFalse(p.reliesOnBundledPolicy)
+        XCTAssertFalse(isBankingBlocked(key: "comdirect"))
+    }
+
+    func testNewerStoredLockOutranksTheGraceOfAnOlderBuild() async {
+        // Downgrade: the keychain holds a newer (bundled) policy that locks
+        // this old build; its own fresh build date must not unlock it.
+        let store = MemoryStore()
+        let clock = Clock()
+        let newer = signed(policyJSON(sequence: 7, rules: blockAll))
+        store.value = StoredBankingPolicy(json: newer.json, signature: newer.signature, verifiedOnline: false)
+        let p = makePolicy(store: store, fetcher: FakeFetcher(result: .failure(URLError(.timedOut))),
+                           bundled: signed(policyJSON(sequence: 2)), version: "0.7.1",
+                           buildDate: clock.now, clock: clock)
+        XCTAssertEqual(p.document?.sequence, 7)
+        XCTAssertEqual(p.gate?.reason, .outdated)
+        XCTAssertTrue(isBankingBlocked(key: "comdirect"))
+    }
+
+    func testOnlineLockReplacesTheGraceImmediately() async {
+        let clock = Clock()
+        let fetcher = FakeFetcher(result: .failure(URLError(.timedOut)))
+        let p = makePolicy(fetcher: fetcher, bundled: signed(policyJSON(sequence: 1)),
+                           version: "0.7.1", buildDate: clock.now, clock: clock)
+        XCTAssertNil(p.gate)
+        fetcher.result = .success(signed(policyJSON(sequence: 2, rules: blockFinTS)))
+        await p.refresh(force: true)
+        XCTAssertEqual(p.gate?.reason, .outdated)
+        XCTAssertTrue(isBankingBlocked(key: "fints:12030000"))
+        XCTAssertFalse(isBankingBlocked(key: "comdirect"))
+    }
+
+    func testPlaceholderKeyIgnoresBuildDate() {
+        let clock = Clock()
+        let p = makePolicy(keys: ["PLACEHOLDER-BANKING-POLICY-PUBLIC-KEY"], bundled: signed(policyJSON(sequence: 1)),
+                           buildDate: clock.now.addingTimeInterval(-1000 * day), clock: clock)
+        XCTAssertNil(p.bundledPolicyValidUntil)
+        XCTAssertNil(p.gate)
+        XCTAssertFalse(isBankingBlocked(key: "comdirect"))
+    }
+
     func testStoredStateKeepsWorkingWhenGitHubIsDown() async {
         let store = MemoryStore()
         let fetcher = FakeFetcher(result: .success(signed(policyJSON(sequence: 1))))

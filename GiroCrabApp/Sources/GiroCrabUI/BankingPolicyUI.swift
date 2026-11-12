@@ -8,7 +8,7 @@ extension AppModel {
     /// per 15 minutes). With the feature off (placeholder key) `action` runs
     /// right away, so nothing changes for builds without a policy key.
     func withFreshBankingPolicy(_ action: @escaping @MainActor () -> Void) {
-        let policy = BankingPolicy.shared
+        let policy = bankingPolicy
         guard policy.isEnabled else { action(); return }
         Task { @MainActor in
             await policy.refresh()
@@ -23,7 +23,7 @@ extension AppModel {
 
     /// Why this login may not contact its bank (nil = allowed).
     func bankingGate(for connection: BankConnection) -> BankingGate? {
-        BankingPolicy.shared.gate(for: connectionKey(connection))
+        bankingPolicy.gate(for: connectionKey(connection))
     }
 
     /// Block for the login of an account (transfers).
@@ -35,11 +35,11 @@ extension AppModel {
 
     /// Block for a login that is about to be added.
     func bankingGate(forNew kind: ConnectorKind) -> BankingGate? {
-        BankingPolicy.shared.gate(for: connectorKindKey(kind: kind))
+        bankingPolicy.gate(for: connectorKindKey(kind: kind))
     }
 
     func bankingGate(forNewFinTS blz: String) -> BankingGate? {
-        BankingPolicy.shared.gate(for: "fints:" + blz.trimmingCharacters(in: .whitespaces))
+        bankingPolicy.gate(for: "fints:" + blz.trimmingCharacters(in: .whitespaces))
     }
 
     /// Shows the reason and returns false if adding is blocked.
@@ -50,7 +50,7 @@ extension AppModel {
     }
 
     /// Every bank contact is blocked (e.g. "Alle abrufen" makes no sense).
-    var bankingBlocksAll: Bool { BankingPolicy.shared.gate?.all ?? false }
+    var bankingBlocksAll: Bool { bankingPolicy.gate?.all ?? false }
 }
 
 // MARK: - "Jetzt aktualisieren"
@@ -195,7 +195,7 @@ struct BankingPolicySection: View {
                 }
             }
             if BankingPolicy.usesDebugOverrides {
-                Label("Debug-Build: Adresse, Schlüssel oder Version sind per Umgebungsvariable überschrieben.", systemImage: "hammer")
+                Label("Debug-Build: Adresse, Schlüssel, Version oder Build-Datum sind per Umgebungsvariable überschrieben.", systemImage: "hammer")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }

@@ -13259,13 +13259,13 @@
         }
       }
     },
-    "Debug-Build: Adresse, Schlüssel oder Version sind per Umgebungsvariable überschrieben." : {
+    "Debug-Build: Adresse, Schlüssel, Version oder Build-Datum sind per Umgebungsvariable überschrieben." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Debug build: address, key or version are overridden by environment variables."
+            "value" : "Debug build: address, key, version or build date are overridden by environment variables."
           }
         }
       }
