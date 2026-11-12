@@ -1619,6 +1619,11 @@ fn take_ranked<T: Clone, K: Ord>(
     }
 }
 
+/// No replacement character and no UTF-8/Latin-1 mojibake.
+fn text_is_clean(s: &str) -> bool {
+    !s.contains('\u{FFFD}') && !crate::text::has_mojibake(s)
+}
+
 impl BookingFields {
     /// Joins `o` into `self`; the same result in either order.
     fn merge(&mut self, o: &BookingFields) {
@@ -1642,13 +1647,11 @@ impl BookingFields {
             o.checked_ms,
             |c| *c,
         );
-        take_ranked(
-            &mut self.text,
-            &mut self.text_ms,
-            &o.text,
-            o.text_ms,
-            Clone::clone,
-        );
+        // clean text beats text with U+FFFD or mojibake (unstamped text after
+        // the migration: one device may hold the healed copy), then by value
+        take_ranked(&mut self.text, &mut self.text_ms, &o.text, o.text_ms, |t| {
+            (text_is_clean(&t.0) && text_is_clean(&t.1), t.clone())
+        });
         take_ranked(
             &mut self.splits,
             &mut self.splits_ms,

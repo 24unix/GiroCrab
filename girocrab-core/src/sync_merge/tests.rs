@@ -2544,6 +2544,41 @@ fn checked_syncs_both_ways() {
 }
 
 #[test]
+fn unstamped_text_prefers_clean_over_broken_text() {
+    each_order(
+        "bk-text-clean",
+        |a, b| {
+            exec(
+                a,
+                "UPDATE transactions SET counterparty = 'Müller', purpose = 'Miete' WHERE id = 1",
+            );
+            exec(
+                b,
+                "UPDATE transactions SET counterparty = 'M\u{FFFD}ller', purpose = 'Miete' WHERE id = 1",
+            );
+            exec(
+                a,
+                "UPDATE transactions SET purpose = 'Geb\u{FFFD}hr' WHERE id = 2",
+            );
+            exec(b, "UPDATE transactions SET purpose = 'Gebühr' WHERE id = 2");
+            for v in [a, b] {
+                assert_eq!(n(v, "SELECT sum(text_ms) FROM transactions"), 0);
+            }
+        },
+        |v| {
+            assert_eq!(
+                text(v, "SELECT counterparty FROM transactions WHERE id = 1"),
+                "Müller"
+            );
+            assert_eq!(
+                text(v, "SELECT purpose FROM transactions WHERE id = 2"),
+                "Gebühr"
+            );
+        },
+    );
+}
+
+#[test]
 fn edited_text_syncs() {
     each_order(
         "bk-text",
