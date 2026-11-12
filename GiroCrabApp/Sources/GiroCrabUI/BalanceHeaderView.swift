@@ -230,7 +230,6 @@ struct StreamHeaderCard: View {
         @Bindable var model = model
         let account = self.account
         HStack(spacing: 12) {
-                PeriodQuickPicker()
                 Menu {
                     Picker("Zeitraum", selection: $model.period) {
                         ForEach(Period.presets) { Text($0.title).tag($0) }
@@ -247,15 +246,10 @@ struct StreamHeaderCard: View {
                         }
                     }
                 } label: {
-                    #if os(iOS)
-                    if sizeClass == .compact {
-                        Image(systemName: "calendar").accessibilityLabel(model.periodTitle)
-                    } else {
-                        Label(model.periodTitle, systemImage: "calendar")
-                    }
-                    #else
+                    // Single period control (GitHub #102): the menu is the only selector,
+                    // so it always shows the active range.
                     Label(model.periodTitle, systemImage: "calendar")
-                    #endif
+                        .lineLimit(1)
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -272,7 +266,7 @@ struct StreamHeaderCard: View {
                 } label: {
                     #if os(iOS)
                     if sizeClass == .compact {
-                        // icon only: the segmented period picker already takes most of the width
+                        // icon only: the period menu label takes most of the width
                         Image(systemName: model.filterSymbol)
                             .accessibilityLabel(model.filterTitle)
                     } else {

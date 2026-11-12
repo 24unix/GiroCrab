@@ -286,24 +286,6 @@ struct CashflowCard: View {
     }
 }
 
-// MARK: - Quick period filter
-
-struct PeriodQuickPicker: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        @Bindable var model = model
-        Picker("Zeitraum", selection: $model.period) {
-            Text("Monat").tag(Period.thisMonth)
-            Text("Gehalt").tag(Period.sinceSalary)
-            Text("Quartal").tag(Period.thisQuarter)
-            Text("Jahr").tag(Period.thisYear)
-            Text("Alle").tag(Period.all)
-        }
-        .pickerStyle(.segmented).labelsHidden().fixedSize()
-    }
-}
-
 // MARK: - Custom period (GitHub #53)
 
 /// Start and end date of the user-defined period.
