@@ -410,6 +410,26 @@ public final class AppModel {
             }
             // Cached per merchant; reloadMerchantStats() would drop the cache on every click.
             loadMerchantStats()
+            if selectedBookingID != oldValue { scheduleAutoReview() }
+        }
+    }
+    var autoReviewDelay: AutoReviewDelay = .stored {
+        didSet { UserDefaults.standard.set(autoReviewDelay.rawValue, forKey: AutoReviewDelay.defaultsKey) }
+    }
+    @ObservationIgnored private(set) var autoReviewTask: Task<Void, Never>?
+
+    /// Marks the selected booking as checked after `autoReviewDelay`, unless
+    /// the selection moved on (or became a multiple one) in the meantime.
+    private func scheduleAutoReview() {
+        autoReviewTask?.cancel()
+        autoReviewTask = nil
+        guard let seconds = autoReviewDelay.seconds, let id = selectedBookingID, !isMultiSelection,
+              let booking = selectedBooking, !booking.checked else { return }
+        autoReviewTask = Task { @MainActor [weak self] in
+            if seconds > 0 { try? await Task.sleep(for: .seconds(seconds)) }
+            guard let self, !Task.isCancelled, self.selectedBookingID == id, !self.isMultiSelection,
+                  let booking = self.selectedBooking, !booking.checked else { return }
+            self.setChecked(true, for: booking)
         }
     }
     /// All selected bookings (⌘-click adds/removes, ⇧-click selects a range,

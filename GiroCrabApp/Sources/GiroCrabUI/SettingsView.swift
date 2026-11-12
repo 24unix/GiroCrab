@@ -13,7 +13,7 @@ struct SettingsView: View {
         @Bindable var model = model
         TabView(selection: $model.settingsTab) {
             GeneralSettings()
-                .settingsPane(height: 280)   // "Sprache" + "Demo"
+                .settingsPane(height: 340)   // "Sprache" + "Buchungen" + "Demo"
                 .tabItem { Label("Allgemein", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
             BankConnectionsSettings()
@@ -71,8 +71,16 @@ struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        @Bindable var model = model
         Form {
             LanguageSettingsSection()
+            Section("Buchungen") {
+                Picker("Als geprüft markieren", selection: $model.autoReviewDelay) {
+                    ForEach(AutoReviewDelay.allCases) { Text($0.title).tag($0) }
+                }
+                Text("Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Demo") {
                 Button {
                     model.loadDemoData()
