@@ -159,8 +159,8 @@ struct BookingStreamView: View {
         .merchantLogoTipEligibility()
         .onKeyPress(.space) {
             guard model.options.screenshotPath == nil, let b = model.selectedBooking else { return .ignored }
-            // No receipt attached: Space toggles "checked" instead of QuickLook.
-            guard let d = model.documents(for: b).first else { model.setChecked(!b.checked, for: b); return .handled }
+            // Space is Quick Look only (as in the Finder); "Geprüft" is ⇧⌘U.
+            guard let d = model.documents(for: b).first else { return .ignored }
             if model.quickLookURL != nil { model.quickLookURL = nil } else { model.quickLook(d) }
             return .handled
         }
