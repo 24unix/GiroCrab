@@ -198,7 +198,7 @@ struct SyncPromptButtons<Default: View>: View {
     var body: some View {
         HStack {
             if model.canSkipInSyncBatch {
-                Button("Alle abbrechen") { model.cancelSync() }
+                Button("Alle abbrechen") { model.cancelAllSync() }
                     .help("Den Abruf für alle restlichen Bankzugänge beenden.")
                     .fixedSize()
             } else {

@@ -2337,13 +2337,23 @@ public final class AppModel {
         let s = activeSession
         activeSession = nil
         activeChallenge = nil
-        syncingConnectionID = nil
         statementsAccountID = nil
         Task {
-            // end the bank dialog first: the next login may be the same bank
+            // end the bank dialog first: the next login may be the same bank.
+            // syncingConnectionID stays set until then, so neither a scheduled
+            // sync nor a new "Alle abrufen" can start in between.
             await s?.cancel()
+            self.syncingConnectionID = nil
             self.syncNextInQueue()
         }
+    }
+
+    /// "Alle abbrechen": ends the running sync and closes whichever prompt of
+    /// the batch is open (PIN, setup, browser login, TAN).
+    func cancelAllSync() {
+        setupRequest = nil
+        webLoginConnection = nil   // in a batch only the Trade Republic login
+        cancelSync()
     }
 
     /// "Abbrechen" / "Überspringen" in the PIN sheet.
@@ -2387,6 +2397,13 @@ public final class AppModel {
         s.transactionsSkippedArchived == 0 ? "" : " · " + String(localized: "\(s.transactionsSkippedArchived) Buchungen archivierter Konten übersprungen")
     }
 
+    /// Locale of the UI language (Settings › Allgemein › Sprache), which can
+    /// differ from the system's – e.g. "und" vs. "and" in a list. Builds
+    /// without the translations (`swift run`) fall back to the system locale.
+    private static var uiLocale: Locale {
+        LanguagePreference.isAvailable ? Locale(identifier: LanguagePreference.runningLanguage) : .current
+    }
+
     private func syncNextInQueue() {
         guard syncQueue.isEmpty else {
             requestSync(syncQueue.removeFirst())
@@ -2394,7 +2411,7 @@ public final class AppModel {
         }
         // batch done: name what was skipped, after the last login's own notice
         if !syncBatchSkipped.isEmpty {
-            let note = String(localized: "Übersprungen: \(syncBatchSkipped.formatted(.list(type: .and)))")
+            let note = String(localized: "Übersprungen: \(syncBatchSkipped.formatted(.list(type: .and).locale(Self.uiLocale)))")
             toast = toast.map { $0 + " · " + note } ?? note
             // the notice disappears after a few seconds: VoiceOver reads it out
             AccessibilityNotification.Announcement(note).post()
