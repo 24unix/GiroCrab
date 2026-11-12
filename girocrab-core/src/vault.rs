@@ -222,7 +222,7 @@ pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
     ("fints.product_version", "FinTS-Produktversion", "Versionsangabe, die mit HKVVB gesendet wird.", "FinTS 3.0", false, "0.1"),
     ("fints.url.52090000", "Server Volksbank Kassel Göttingen (BLZ 52090000)", "FinTS-PIN/TAN-Adresse laut öffentlicher DK-Institutsliste.", "FinTS 3.0", false, "https://fints1.atruvia.de/cgi-bin/hbciservlet"),
     ("fints.url.50050201", "Server 1822direkt (BLZ 50050201)", "FinTS-PIN/TAN-Adresse laut öffentlicher DK-Institutsliste.", "FinTS 3.0", false, "https://banking-hs5.s-fints-pt-hs.de/fints30"),
-    ("comdirect.client_id", "comdirect Client-ID", "Aus dem comdirect-Entwicklerportal (Persönlicher Bereich › Einstellungen › API).", "comdirect REST-API", false, ""),
+    ("comdirect.client_id", "comdirect Client-ID", "Aus dem comdirect-Entwicklerportal (Persönlicher Bereich › Verwaltung › Entwicklerzugang).", "comdirect REST-API", false, ""),
     ("comdirect.client_secret", "comdirect Client-Secret", "Wird beim Freischalten des API-Zugangs einmalig angezeigt.", "comdirect REST-API", true, ""),
     ("paypal.client_id", "PayPal Client-ID", "REST-App auf developer.paypal.com mit aktivierter „Transaction Search“ anlegen.", "PayPal", false, ""),
     ("paypal.client_secret", "PayPal Secret", "Secret derselben REST-App.", "PayPal", true, ""),
