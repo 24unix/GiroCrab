@@ -73,12 +73,10 @@ struct PinSheet: View {
             }
             HStack {
                 if model.canSkipInSyncBatch {
-                    // "Alle abrufen": skip this login, go on with the next one
-                    // fixedSize: the sheet widens instead of truncating titles
-                    Button("Überspringen", role: .cancel) { model.cancelPendingLogin() }
-                        .keyboardShortcut(.cancelAction)
-                        .help("Diesen Bankzugang auslassen und mit dem nächsten weitermachen.")
-                        .fixedSize()
+                    // "Alle abrufen": skip this login, go on with the next one.
+                    // HIG: the farther-reaching alternative stands apart on the
+                    // left; Cancel (Esc = skip) sits next to the default button.
+                    // fixedSize: the sheet widens instead of truncating titles.
                     Button("Alle abbrechen") { model.cancelSync() }
                         .help("Den Abruf für alle restlichen Bankzugänge beenden.")
                         .fixedSize()
@@ -87,10 +85,23 @@ struct PinSheet: View {
                         .keyboardShortcut(.cancelAction)
                 }
                 Spacer()
-                Button("Abrufen", action: start)
+                // HIG: Cancel and the default button side by side share one
+                // width (the widest title), see EqualWidthHStack.
+                EqualWidthHStack {
+                    if model.canSkipInSyncBatch {
+                        Button(role: .cancel) { model.cancelPendingLogin() } label: {
+                            Text("Überspringen").frame(maxWidth: .infinity)
+                        }
+                        .keyboardShortcut(.cancelAction)
+                        .help("Diesen Bankzugang auslassen und mit dem nächsten weitermachen.")
+                    }
+                    Button(action: start) {
+                        Text("Abrufen").frame(maxWidth: .infinity)
+                    }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .disabled(secret.isEmpty || login.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             }
         }
         .padding(24)

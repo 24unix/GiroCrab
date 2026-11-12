@@ -122,13 +122,10 @@ struct TwoFactorSheet: View {
 
                 HStack {
                     if model.canSkipInSyncBatch {
-                        // "Alle abrufen": no TAN device at hand only skips this login
-                        // fixedSize: with up to four buttons the sheet widens
-                        // instead of truncating titles
-                        Button("Überspringen", role: .cancel) { model.skipCurrentSync() }
-                            .keyboardShortcut(.cancelAction)
-                            .help("Diesen Bankzugang auslassen und mit dem nächsten weitermachen.")
-                            .fixedSize()
+                        // "Alle abrufen": no TAN device at hand only skips this login.
+                        // HIG: the farther-reaching alternative stands apart on the
+                        // left; Cancel (Esc = skip) sits next to the default button.
+                        // fixedSize: the sheet widens instead of truncating titles.
                         Button("Alle abbrechen") { model.cancelSync() }
                             .help("Den Abruf für alle restlichen Bankzugänge beenden.")
                             .fixedSize()
@@ -137,12 +134,24 @@ struct TwoFactorSheet: View {
                             .keyboardShortcut(.cancelAction)
                     }
                     Spacer()
-                    if c.kind == .code || c.kind == .imageCode || (c.kind == .redirect && showManualRedirect) {
-                        Button("Weiter", action: submit)
+                    // HIG: Cancel and the default button side by side share one
+                    // width (the widest title), see EqualWidthHStack.
+                    EqualWidthHStack {
+                        if model.canSkipInSyncBatch {
+                            Button(role: .cancel) { model.skipCurrentSync() } label: {
+                                Text("Überspringen").frame(maxWidth: .infinity)
+                            }
+                            .keyboardShortcut(.cancelAction)
+                            .help("Diesen Bankzugang auslassen und mit dem nächsten weitermachen.")
+                        }
+                        if c.kind == .code || c.kind == .imageCode || (c.kind == .redirect && showManualRedirect) {
+                            Button(action: submit) {
+                                Text("Weiter").frame(maxWidth: .infinity)
+                            }
                             .keyboardShortcut(.defaultAction)
                             .buttonStyle(.borderedProminent)
                             .disabled(code.trimmingCharacters(in: .whitespaces).isEmpty || active.busy)
-                            .fixedSize()
+                        }
                     }
                 }
             }
@@ -190,6 +199,35 @@ struct SyncBatchProgressLabel: View {
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(Theme.secondary)
+        }
+    }
+}
+
+/// HIG: buttons side by side in a dialog (Cancel + default) share one width,
+/// that of the widest title. Labels use `.frame(maxWidth: .infinity)` to fill it.
+struct EqualWidthHStack: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard !subviews.isEmpty else { return .zero }
+        let m = widest(subviews)
+        let n = CGFloat(subviews.count)
+        return CGSize(width: m.width * n + spacing * (n - 1), height: m.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let m = widest(subviews)
+        var x = bounds.minX
+        for s in subviews {
+            s.place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading,
+                    proposal: ProposedViewSize(width: m.width, height: m.height))
+            x += m.width + spacing
+        }
+    }
+
+    private func widest(_ subviews: Subviews) -> CGSize {
+        subviews.map { $0.sizeThatFits(.unspecified) }.reduce(.zero) {
+            CGSize(width: max($0.width, $1.width), height: max($0.height, $1.height))
         }
     }
 }
