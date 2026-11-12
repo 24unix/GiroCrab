@@ -32,7 +32,10 @@ static BLOCK: RwLock<Option<BlockState>> = RwLock::new(None);
 pub fn connector_id_matches(id: &str, key: &str) -> bool {
     let id = id.trim();
     !id.is_empty()
-        && (key == id || key.strip_prefix(id).is_some_and(|rest| rest.starts_with(':')))
+        && (key == id
+            || key
+                .strip_prefix(id)
+                .is_some_and(|rest| rest.starts_with(':')))
 }
 
 /// Sets the banking block. `all = true` blocks every connector, otherwise
@@ -79,7 +82,11 @@ pub fn is_banking_blocked(key: String) -> bool {
 
 impl BlockState {
     fn blocks(&self, key: &str) -> bool {
-        self.all || self.connector_ids.iter().any(|id| connector_id_matches(id, key))
+        self.all
+            || self
+                .connector_ids
+                .iter()
+                .any(|id| connector_id_matches(id, key))
     }
 }
 
