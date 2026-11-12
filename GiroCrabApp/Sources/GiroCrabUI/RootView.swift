@@ -46,6 +46,13 @@ public struct GiroCrabScenes: Scene {
                     .keyboardShortcut("k", modifiers: [.command, .option])
                     .disabled(model.vault == nil)
             }
+            CommandGroup(replacing: .printItem) {
+                Button("Papierformat …") { PageSetup.run() }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+                Button("Drucken …") { model.showPrintSheet = true }
+                    .keyboardShortcut("p", modifiers: .command)
+                    .disabled(model.vault == nil)
+            }
             CommandMenu("Buchung") {
                 Button("Kategorisieren …") { if model.selectedBooking != nil { model.showCategorizer = true } }
                     .disabled(model.selectedBooking == nil)

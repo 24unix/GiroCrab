@@ -31,6 +31,13 @@ struct CommandPaletteView: View {
         }
         out.append(Item(title: String(localized: "Alle Konten abrufen"), subtitle: "\(action) · ⇧⌘R", symbol: "arrow.triangle.2.circlepath") { model.requestSyncAll() })
         out.append(Item(title: String(localized: "Regeln bearbeiten"), subtitle: action, symbol: "wand.and.stars") { model.openRuleEditor() })
+        out.append(Item(title: String(localized: "Buchungen drucken"), subtitle: "\(action) · ⌘P", symbol: "printer") {
+            // after the palette has closed: one sheet at a time
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                model.showPrintSheet = true
+            }
+        })
         out.append(Item(title: String(localized: "Wiederkehrende Buchungen"), subtitle: "\(action) · ⇧⌘F", symbol: "repeat") { model.showRecurringSheet = true })
         out.append(Item(title: String(localized: "Zeitraum: Seit letztem Gehalt"), subtitle: String(localized: "Ansicht"), symbol: "banknote") { model.period = .sinceSalary })
         out.append(Item(title: String(localized: "Zeitraum: Letzte 12 Monate"), subtitle: String(localized: "Ansicht"), symbol: "calendar") { model.period = .last12Months })

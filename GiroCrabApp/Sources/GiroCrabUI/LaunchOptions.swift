@@ -32,7 +32,7 @@ public struct LaunchOptions: Sendable {
     public var selectAccount: String?
     /// (demo) preselect the booking whose merchant/counterparty contains this text
     public var pickBooking: String?
-    /// (demo) "transfer", "moneymoney" or "moneymoney-db": open that sheet with fictional data
+    /// (demo) "transfer", "moneymoney", "moneymoney-db" or "print": open that sheet with fictional data
     public var demoSheet: String?
 
     public init(arguments: [String] = CommandLine.arguments, environment: [String: String] = ProcessInfo.processInfo.environment) {
