@@ -64,6 +64,31 @@ fn bookings_are_indexed_by_rule() {
     assert_eq!(idx, ["tx_rule"]);
 }
 
+/// A vault that ever had categories is never reseeded: the app seeds on
+/// every unlock, and new starter categories would spread to the other devices.
+#[test]
+fn deleting_all_categories_does_not_reseed() {
+    let v = open(&temp_dir("noreseed"), "a.db");
+    assert!(v.seed_starter_categories().unwrap() > 0);
+    let tops: Vec<i64> = {
+        let db = v.db().unwrap();
+        let mut st = db
+            .prepare("SELECT id FROM categories WHERE parent_id IS NULL")
+            .unwrap();
+        let r = st.query_map([], |r| r.get(0)).unwrap();
+        r.map(|r| r.unwrap()).collect()
+    };
+    for id in tops {
+        v.delete_category(id).unwrap();
+    }
+    let live = "SELECT count(*) FROM categories WHERE deleted_ms IS NULL";
+    assert_eq!(n(&v, live), 0);
+    let all = n(&v, "SELECT count(*) FROM categories");
+    assert_eq!(v.seed_starter_categories().unwrap(), 0);
+    assert_eq!(n(&v, live), 0);
+    assert_eq!(n(&v, "SELECT count(*) FROM categories"), all);
+}
+
 #[test]
 fn same_category_path_gets_same_uuid_on_two_vaults() {
     let dir = temp_dir("path");

@@ -1078,14 +1078,12 @@ fn generate(today: NaiveDate) -> Vec<Tx> {
 impl Vault {
     /// For a brand-new personal vault: the German category tree and the
     /// starter rules (no accounts, no bookings). Returns the number of
-    /// categories created; no-op if categories exist.
+    /// categories created; no-op if categories exist or ever existed (deleted
+    /// starter categories must not come back and spread to other devices).
     pub fn seed_starter_categories(&self) -> Result<u32, crate::error::CoreError> {
         let db = self.db()?;
-        let n: i64 = db.query_row(
-            "SELECT count(*) FROM categories WHERE deleted_ms IS NULL",
-            [],
-            |r| r.get(0),
-        )?;
+        // includes soft-deleted rows
+        let n: i64 = db.query_row("SELECT count(*) FROM categories", [], |r| r.get(0))?;
         if n > 0 {
             return Ok(0);
         }
