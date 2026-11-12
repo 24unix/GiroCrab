@@ -283,7 +283,14 @@ public final class AppModel {
     var vaultState: VaultState = .locked
 
     // Data
-    var groups: [AccountGroup] = []
+    var groups: [AccountGroup] = [] {
+        // Dock badge: unchecked bookings of the own vault; locking (ownVault
+        // is gone before the lists are emptied) keeps the last known count.
+        didSet {
+            if dockBadge.record(newCount, ownVaultOpen: holdsRealData) { dockBadge.show() }
+        }
+    }
+    @ObservationIgnored private let dockBadge = DockBadge()
     /// "Nach Gruppe" sidebar view (user groups, then "Ohne Gruppe").
     var userGroups: [UserGroup] = []
     /// Lookups for booking rows (see `rebuildAccountIndex`).
@@ -733,6 +740,8 @@ public final class AppModel {
         bootstrapped = true
         _ = Self.quickLookCleanupObserver
         StartupClock.mark("first frame (RootView.onAppear)")
+        // last known count, before the vault is unlocked
+        dockBadge.show()
         Task { @MainActor [weak self] in
             let mayHoldRealData = await Task.detached(priority: .userInitiated) { () -> Bool in
                 // Core texts follow the language the app bundle resolved (German without a bundle).
