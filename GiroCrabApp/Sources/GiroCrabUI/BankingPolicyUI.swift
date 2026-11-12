@@ -23,7 +23,8 @@ extension AppModel {
 
     /// Why this login may not contact its bank (nil = allowed).
     func bankingGate(for connection: BankConnection) -> BankingGate? {
-        bankingPolicy.gate(for: connectionKey(connection))
+        if Self.isMagicDemoLogin(connection.loginName) { return nil }
+        return bankingPolicy.gate(for: connectionKey(connection))
     }
 
     /// Block for the login of an account (transfers).

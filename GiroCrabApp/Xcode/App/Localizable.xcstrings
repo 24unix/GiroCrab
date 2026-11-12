@@ -13500,6 +13500,127 @@
           }
         }
       }
+    },
+    "Test- & Demo-Zugang (ohne echtes Bankkonto): Kennung demo · PIN 12345" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test & demo access (no real bank account needed): login demo · PIN 12345"
+          }
+        }
+      }
+    },
+    "Demo-Modus: PIN 12345 · TAN 123456" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Demo mode: PIN 12345 · TAN 123456"
+          }
+        }
+      }
+    },
+    "Demo-Zugangsdaten ausfüllen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fill in demo credentials"
+          }
+        }
+      }
+    },
+    "Demo-Werte einfügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Insert demo values"
+          }
+        }
+      }
+    },
+    "TAN 123456 einfügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Insert TAN 123456"
+          }
+        }
+      }
+    },
+    "PIN 12345 einfügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Insert PIN 12345"
+          }
+        }
+      }
+    },
+    "Demo-Bank hinzufügen (Test & Vorschau)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add demo bank (test & preview)"
+          }
+        }
+      }
+    },
+    "Kennung: demo, PIN: 12345, beliebige TAN – ohne echte Bank und ohne Netzwerk." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Login: demo, PIN: 12345, any TAN – no real bank, no network."
+          }
+        }
+      }
+    },
+    "Demo-Tresor / Demo-Daten laden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load demo vault / demo data"
+          }
+        }
+      }
+    },
+    "Lädt einen Wegwerf-Tresor mit fiktiven Konten bei sieben Banken. „Alle abrufen“, TAN-Dialoge und Überweisungen laufen simuliert, ohne Netzwerk. Ihre eigenen Daten bleiben unberührt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loads a throw-away vault with fictitious accounts at seven banks. “Sync all”, TAN dialogs and transfers are simulated without network access. Your own data stays untouched."
+          }
+        }
+      }
+    },
+    "Demo-Daten & Demo-Banken laden (Kennung: demo / PIN: 12345)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load demo data & demo banks (login: demo / PIN: 12345)"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

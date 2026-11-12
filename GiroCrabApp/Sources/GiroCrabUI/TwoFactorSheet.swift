@@ -26,6 +26,12 @@ struct TwoFactorSheet: View {
                     SyncBatchProgressLabel()
                 }
 
+                if model.isDemo || AppModel.isMagicDemoLogin(active.connection.loginName) {
+                    DemoHintBanner(style: .pinAndTan, buttonTitle: c.kind == .decoupledPush ? nil : "TAN 123456 einfügen") {
+                        code = "123456"
+                    }
+                }
+
                 switch c.kind {
                 case .decoupledPush:
                     Image(systemName: "iphone.radiowaves.left.and.right")

@@ -143,7 +143,7 @@ impl BankConnector for DemoConnector {
             }
             ChallengeResponse::Code(code) => {
                 if self.kind == ConnectorKind::TradeRepublic
-                    && !(code.expose().len() == 4
+                    && !(matches!(code.expose().len(), 4 | 6)
                         && code.expose().chars().all(|c| c.is_ascii_digit()))
                 {
                     return Err(CoreError::Authentication {
@@ -241,7 +241,14 @@ impl BankConnector for DemoConnector {
         let today = super::today();
         let stamp = chrono::Local::now().timestamp();
         let mut out = FetchResult::default();
-        for spec in DEMO_ACCOUNTS.iter().filter(|s| s.connector == self.kind) {
+        // A magic-login connection at a bank without own demo accounts (generic
+        // FinTS, comdirect, …) shows the demo giro bank's accounts.
+        let kind = if DEMO_ACCOUNTS.iter().any(|s| s.connector == self.kind) {
+            self.kind
+        } else {
+            ConnectorKind::VolksbankKasselGoettingen
+        };
+        for spec in DEMO_ACCOUNTS.iter().filter(|s| s.connector == kind) {
             out.accounts.push(RemoteAccount {
                 external_ref: spec.external_ref.into(),
                 name: spec.name.into(),
@@ -256,7 +263,7 @@ impl BankConnector for DemoConnector {
         }
         if let Some(first) = DEMO_ACCOUNTS
             .iter()
-            .find(|s| s.connector == self.kind && s.kind != crate::models::AccountKind::Brokerage)
+            .find(|s| s.connector == kind && s.kind != crate::models::AccountKind::Brokerage)
         {
             let (cp, purpose, cents) = match self.kind {
                 ConnectorKind::PayPal => ("Lieferando.de", "Bestellung Lieferando", -23_40),

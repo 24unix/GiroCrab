@@ -1667,7 +1667,7 @@ impl Vault {
             secret
         };
         let secret = SecretString::new(secret);
-        let (kind, key_str, login, state_json, ctx_settings, since) = {
+        let (kind, key_str, login, state_json, ctx_settings, since, demo) = {
             let db = self.db()?;
             let (kind, login, state): (String, String, String) = db
                 .query_row(
@@ -1680,7 +1680,12 @@ impl Vault {
                     what: trf("Bankverbindung {0}", &[&connection_id]),
                 })?;
             let key_str = kind.clone();
-            crate::banking_gate::check_connector(&key_str)?;
+            // Magic demo login ("demo"): simulated bank, no network, no FinTS product ID.
+            let magic = crate::demo::is_magic_demo_login(&login);
+            let demo = demo || magic;
+            if !magic {
+                crate::banking_gate::check_connector(&key_str)?;
+            }
             let kind = ConnectorKind::from_str(&kind).ok_or_else(|| CoreError::InvalidInput {
                 message: format!("unknown connector {kind}"),
             })?;
@@ -1735,7 +1740,7 @@ impl Vault {
                 .and_then(|d| d.parse().ok())
                 .unwrap_or(90);
             let since = since_window(chrono::Local::now().date_naive(), days, &newest);
-            (kind, key_str, login, state, settings, since)
+            (kind, key_str, login, state, settings, since, demo)
         };
         let (since, since_by_account) = since;
         let mut ctx_settings = ctx_settings;
@@ -1998,15 +2003,19 @@ impl Vault {
             })?;
             (cid, row.1, row.2)
         };
-        let key_str: String = {
+        let (key_str, login_name): (String, String) = {
             let db = self.db()?;
             db.query_row(
-                "SELECT connector FROM bank_connections WHERE id = ?1",
+                "SELECT connector, login_name FROM bank_connections WHERE id = ?1",
                 [connection_id],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )?
         };
-        crate::banking_gate::check_connector(&key_str)?;
+        let magic = crate::demo::is_magic_demo_login(&login_name);
+        let demo = demo || magic;
+        if !magic {
+            crate::banking_gate::check_connector(&key_str)?;
+        }
         let kind = ConnectorKind::from_str(&key_str).ok_or_else(|| CoreError::InvalidInput {
             message: format!("unknown connector {key_str}"),
         })?;
@@ -3004,6 +3013,54 @@ mod tests {
         );
         assert_eq!(count(), 1);
         std::fs::remove_file(path).ok();
+    }
+
+    #[tokio::test]
+    async fn magic_demo_login_syncs_without_network_or_product_id() {
+        let dir = std::env::temp_dir().join(format!("gc-magic-demo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("v.girocrab");
+        let v = Vault::open(path.to_str().unwrap().into(), vec![9u8; 32]).unwrap();
+        // Real (non-demo) flag, no FinTS product ID set: only the login "Demo" makes it work.
+        let id = v
+            .add_fints_connection(
+                "99999999".into(),
+                "https://demo.invalid/fints".into(),
+                "Demo-Bank".into(),
+                " Demo ".into(),
+                String::new(),
+            )
+            .unwrap();
+        let s = v.clone().begin_sync(id, "12345".into(), false).unwrap();
+        assert!(matches!(
+            s.start().await.unwrap(),
+            SyncStep::NeedsChallenge { .. }
+        ));
+        let _ = s.poll().await.unwrap();
+        match s.poll().await.unwrap() {
+            SyncStep::Finished { .. } => {}
+            other => panic!("expected finish, got {other:?}"),
+        }
+        assert!(v
+            .list_accounts()
+            .unwrap()
+            .iter()
+            .any(|a| a.connection_id == Some(id)));
+        // Any other login still needs the product ID.
+        let other = v
+            .add_fints_connection(
+                "88888888".into(),
+                "https://x.example/fints".into(),
+                "X".into(),
+                "someone".into(),
+                String::new(),
+            )
+            .unwrap();
+        assert!(matches!(
+            v.clone().begin_sync(other, "1".into(), false),
+            Err(CoreError::MissingSetting { .. })
+        ));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[tokio::test]

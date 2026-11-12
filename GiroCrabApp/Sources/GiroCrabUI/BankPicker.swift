@@ -51,6 +51,7 @@ struct BankAddView: View {
             if let sel = selected {
                 selectedRow(sel)
             } else {
+                demoBankButton
                 searchField
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
                     suggestionRow
@@ -101,6 +102,21 @@ struct BankAddView: View {
             }
             manualFinTsButton
         }
+    }
+
+    /// "Demo-Bank (Test & Vorschau)": simulated bank, login `demo`, PIN 12345, any TAN.
+    private var demoBankButton: some View {
+        Button {
+            model.addDemoBank()
+            onAdded()
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Demo-Bank hinzufügen (Test & Vorschau)", systemImage: "play.circle")
+                Text("Kennung: demo, PIN: 12345, beliebige TAN – ohne echte Bank und ohne Netzwerk.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.borderedProminent)
     }
 
     private var manualFinTsButton: some View {
@@ -253,6 +269,7 @@ struct KindAddForm: View {
 
     var body: some View {
         if let d = bankCatalog().first(where: { $0.kind == kind }) {
+            DemoHintBanner(style: .credentials) { login = "demo" }
             TextField(d.loginLabel, text: $login)
                 .autocorrectionDisabled()
             LabeledContent("Verfahren", value: d.protocol)
@@ -293,6 +310,7 @@ struct Psd2AddForm: View {
         LabeledContent("Bank", value: bank.name)
         LabeledContent("Land", value: bank.country)
         LabeledContent("Verfahren", value: String(localized: "PSD2 über Enable Banking"))
+        DemoHintBanner(style: .credentials) { label = "demo" }
         TextField("Bezeichnung (optional)", text: $label)
             .autocorrectionDisabled()
         if !bank.tested.isEmpty {

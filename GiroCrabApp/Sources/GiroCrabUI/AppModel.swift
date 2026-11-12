@@ -698,6 +698,23 @@ public final class AppModel {
     }
 
     var isDemo: Bool { demoActive }
+
+    /// Login `demo` (case-insensitive, PIN 12345) at any bank: the core simulates the
+    /// bank without network access or FinTS product ID (Apple App Review).
+    nonisolated static func isMagicDemoLogin(_ login: String) -> Bool {
+        login.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("demo") == .orderedSame
+    }
+
+    /// Fixed catalog entry "Demo-Bank (Test & Vorschau)" in the bank search.
+    func addDemoBank() {
+        addFinTsConnection(name: "Demo-Bank", blz: "99999999", url: "https://demo.invalid/fints", login: "demo")
+    }
+
+    /// Loads (or reloads) the throw-away demo vault with fictitious data for all banks,
+    /// including the simulated sync / TAN / transfer flows. Own data stays untouched.
+    func loadDemoData() {
+        openDemoVault()
+    }
     var hasOwnVault: Bool { ownVault != nil }
 
     // MARK: - Vault lifecycle
@@ -2216,7 +2233,7 @@ public final class AppModel {
     /// personal vault (switching to it), then setup / PIN entry starts.
     func addConnection(_ kind: ConnectorKind, login: String) {
         withFreshBankingPolicy { [self] in
-            guard bankingAllowsAdding(bankingGate(forNew: kind)) else { return }
+            guard Self.isMagicDemoLogin(login) || bankingAllowsAdding(bankingGate(forNew: kind)) else { return }
             addConnectionChecked(kind, login: login)
         }
     }
@@ -2238,7 +2255,7 @@ public final class AppModel {
     /// Adds a login at any FinTS 3.0 bank (BLZ + https URL), then starts setup / PIN entry.
     func addFinTsConnection(name: String, blz: String, url: String, login: String, tanMedium: String = "") {
         withFreshBankingPolicy { [self] in
-            guard bankingAllowsAdding(bankingGate(forNewFinTS: blz)) else { return }
+            guard Self.isMagicDemoLogin(login) || bankingAllowsAdding(bankingGate(forNewFinTS: blz)) else { return }
             addFinTsConnectionChecked(name: name, blz: blz, url: url, login: login, tanMedium: tanMedium)
         }
     }
@@ -2262,7 +2279,7 @@ public final class AppModel {
     /// setup (Enable Banking credentials, if missing) and the consent redirect.
     func addEnableBankingConnection(aspsp: String, country: String, name: String, label: String) {
         withFreshBankingPolicy { [self] in
-            guard bankingAllowsAdding(bankingGate(forNew: .enableBanking)) else { return }
+            guard Self.isMagicDemoLogin(label) || bankingAllowsAdding(bankingGate(forNew: .enableBanking)) else { return }
             addEnableBankingConnectionChecked(aspsp: aspsp, country: country, name: name, label: label)
         }
     }
@@ -2297,6 +2314,7 @@ public final class AppModel {
 
     /// Setting keys a bank still needs (FinTS product ID, API keys …).
     func missingSettings(for connection: BankConnection) -> [String] {
+        if Self.isMagicDemoLogin(connection.loginName) { return [] }
         guard let d = bankCatalog().first(where: { $0.kind == connection.connector }) else { return [] }
         return d.requiredSettings.filter { key in !(settings.first { $0.key == key }?.hasValue ?? false) }
     }
@@ -2607,7 +2625,8 @@ public final class AppModel {
         }
         // Trade Republic: AWS WAF blocks raw logins – without a stored
         // session the in-app browser login is the default flow.
-        if !isDemo, connection.connector == .tradeRepublic, !(connectionStatus(connection.id)?.hasSession ?? false) {
+        let magicDemo = Self.isMagicDemoLogin(connection.loginName)
+        if !isDemo, !magicDemo, connection.connector == .tradeRepublic, !(connectionStatus(connection.id)?.hasSession ?? false) {
             webLoginConnection = connection
             return
         }

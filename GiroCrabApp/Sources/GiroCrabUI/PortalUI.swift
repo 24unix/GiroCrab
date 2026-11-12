@@ -12,6 +12,7 @@ extension AppModel {
     /// credentials. The credentials alone don't count: they are shared with
     /// PSD2 banks such as C24 and must not move the cards off the web login.
     func usesPortal(_ c: BankConnection) -> Bool {
+        if Self.isMagicDemoLogin(c.loginName) { return false }
         if !isDemo, (c.connector == .amazonOrders || c.connector == .fnz) { return true }
         guard !isDemo, c.connector == .americanExpress || c.connector == .amazonVisa else { return false }
         return !Self.cardUsesEnableBanking(

@@ -40,6 +40,11 @@ struct TransferSheetView: View {
     private var sendsInstant: Bool {
         model.transferDraft.instant && account?.connector?.offersInstantChoice == true
     }
+    private var isMagicDemoAccount: Bool {
+        guard let id = account?.connectionId,
+              let c = model.connections.first(where: { $0.id == id }) else { return false }
+        return AppModel.isMagicDemoLogin(c.loginName)
+    }
     private var pinStored: Bool {
         guard let id = account?.connectionId else { return false }
         return model.isDemo || (model.connectionStatus(id)?.hasPin ?? false)
@@ -247,6 +252,9 @@ struct TransferSheetView: View {
                         }
                     }
                 }
+            }
+            if canSend && (model.isDemo || isMagicDemoAccount) {
+                DemoHintBanner(style: .pinAndTan, buttonTitle: "PIN 12345 einfügen") { draft.pin.wrappedValue = "12345" }
             }
             if canSend && !pinStored {
                 field(isBunq ? "bunq-API-Schlüssel" : "Banking-PIN") {
