@@ -25,9 +25,11 @@
 # In-app updates: every run merges its item into the one signed appcast.xml on
 # the latest stable release (channels: stable, beta, nightly), see
 # scripts/make-appcast.sh and docs/auto-updates.md.
-# Banking policy (docs/banking-policy.md): the current signed policy is checked,
-# bundled as floor and re-attached to every stable release; an invalid
-# signature aborts the release. Skipped while the policy key is a placeholder.
+# Banking policy (docs/banking-policy.md): the current signed policy from
+# policy/ on main is checked and bundled as floor (fresh installs that never
+# reach GitHub trust it for 90 days from GiroCrabBuildDate); an invalid
+# signature or nothing published aborts the release. Skipped while the policy
+# key is a placeholder.
 #   --ios           also bump iOS build number, archive for iOS, and upload to TestFlight
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
