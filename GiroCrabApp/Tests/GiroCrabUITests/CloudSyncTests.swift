@@ -65,7 +65,7 @@ final class CloudSyncTests: XCTestCase {
         try v.listTransactions(filter: BookingFilter(
             accountIds: [], categoryId: nil, includeSubcategories: true, uncategorizedOnly: false,
             search: nil, dateFrom: nil, dateTo: nil, limit: 100_000, offset: 0,
-            scope: .all, merchantKey: nil
+            scope: .all, merchantKey: nil, direction: .all
         )).transactions
     }
 
