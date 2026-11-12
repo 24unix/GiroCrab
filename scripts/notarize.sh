@@ -267,7 +267,7 @@ xcrun stapler staple "$DMG"
 echo "==> Verify final disk image"
 xcrun stapler validate "$DMG"
 spctl -a -vvv -t open --context context:primary-signature "$DMG"
-codesign -dvvv "$DMG" 2>&1 | grep -q "^Authority=Developer ID Application" \
+codesign -dvvv "$DMG" 2>&1 | grep "^Authority=Developer ID Application" >/dev/null \
   || { echo "error: disk image is not signed with 'Developer ID Application'" >&2; exit 1; }
 
 VERIFY_DIR="$(mktemp -d)"
@@ -284,7 +284,7 @@ hdiutil detach -quiet "$MOUNT_DIR"
 VAPP="$VERIFY_DIR/GiroCrab.app"
 
 CS_OUT="$(codesign -dvvv "$VAPP" 2>&1)"
-echo "$CS_OUT" | grep -q "^Authority=Developer ID Application" \
+echo "$CS_OUT" | grep "^Authority=Developer ID Application" >/dev/null \
   || { echo "error: signature is not 'Developer ID Application'" >&2; exit 1; }
 xcrun stapler validate "$VAPP"
 spctl -a -vvv -t exec "$VAPP"

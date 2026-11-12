@@ -30,7 +30,7 @@ fi
 
 # 2. Any other nested Mach-O outside Sparkle and the main executable.
 while IFS= read -r f; do
-  if file -b "$f" | grep -q "Mach-O"; then
+  if file -b "$f" | grep "Mach-O" >/dev/null; then
     codesign "${FLAGS[@]}" "$f"
   fi
 done < <(find "$APP/Contents" -type f \( -name '*.dylib' -o -name '*.so' -o -perm -u+x \) \
