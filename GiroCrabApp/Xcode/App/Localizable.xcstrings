@@ -12735,6 +12735,72 @@
           }
         }
       }
+    },
+    "Festlegen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set…"
+          }
+        }
+      }
+    },
+    "Saldoverlauf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance History"
+          }
+        }
+      }
+    },
+    "Keine Daten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No data"
+          }
+        }
+      }
+    },
+    "Von %@ am %@ auf %@ am %@. Tiefststand %@ am %@, Höchststand %@ am %@." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From %1$@ on %2$@ to %3$@ on %4$@. Low %5$@ on %6$@, high %7$@ on %8$@."
+          }
+        }
+      }
+    },
+    "Pfeiltasten wählen einen Tag, Eingabe zeigt seine Buchungen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrow keys choose a day, Return shows its transactions."
+          }
+        }
+      }
+    },
+    "Buchungen dieses Tages zeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show This Day’s Transactions"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
