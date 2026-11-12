@@ -798,6 +798,55 @@ fn readding_connection_revives_it_with_new_created_ms() {
     assert!(n(&v, "SELECT created_ms FROM bank_connections") > 1);
 }
 
+#[test]
+fn deleted_connection_keeps_no_session_here_or_on_the_other_vault() {
+    let dir = temp_dir("connsession");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let id = a
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    exec(
+        &a,
+        r#"UPDATE bank_connections SET state_json = '{"token":"secret"}'"#,
+    );
+    both_ways(&a, &b);
+    assert_eq!(
+        text(&b, "SELECT state_json FROM bank_connections"),
+        r#"{"token":"secret"}"#
+    );
+    a.delete_bank_connection(id).unwrap();
+    assert_eq!(text(&a, "SELECT state_json FROM bank_connections"), "{}");
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(
+            n(
+                v,
+                "SELECT count(*) FROM bank_connections WHERE deleted_ms > 0"
+            ),
+            1
+        );
+        assert_eq!(text(v, "SELECT state_json FROM bank_connections"), "{}");
+    }
+    // a vault that never saw the connection gets a tombstone without session,
+    // even from a tombstone that still carries one (older build)
+    let c = open(&dir, "c.db");
+    exec(
+        &a,
+        r#"UPDATE bank_connections SET state_json = '{"token":"secret"}'"#,
+    );
+    merge(&c, &a);
+    assert_eq!(text(&c, "SELECT state_json FROM bank_connections"), "{}");
+    exec(&a, "UPDATE bank_connections SET state_json = '{}'");
+    // re-added, the connection starts without the old session
+    let again = a
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    assert_eq!(again, id);
+    assert_eq!(text(&a, "SELECT state_json FROM bank_connections"), "{}");
+    both_ways(&a, &b);
+    both_ways(&a, &c);
+}
+
 fn remote_account(ext: &str) -> crate::connectors::RemoteAccount {
     crate::connectors::RemoteAccount {
         external_ref: ext.into(),

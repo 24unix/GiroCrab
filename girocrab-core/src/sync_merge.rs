@@ -356,6 +356,11 @@ pub(crate) fn soft_delete_connection(conn: &Connection, id: i64) -> CoreResult<(
         "UPDATE bank_connections SET deleted_ms = ?1 WHERE id = ?2 AND deleted_ms IS NULL",
         params![now, id],
     )?;
+    // the bank session and tokens go with the connection
+    conn.execute(
+        "UPDATE bank_connections SET state_json = '{}' WHERE id = ?1 AND state_json <> '{}'",
+        [id],
+    )?;
     Ok(())
 }
 
@@ -1396,6 +1401,13 @@ pub(crate) fn merge_connections(conn: &Connection) -> CoreResult<HashMap<i64, i6
                     )?;
                     by_key.insert(key, (id, joined.0, joined.1));
                 }
+                if joined.1.is_some() {
+                    // a deleted connection keeps no bank session
+                    conn.execute(
+                        "UPDATE bank_connections SET state_json = '{}' WHERE id = ?1 AND state_json <> '{}'",
+                        [id],
+                    )?;
+                }
                 id
             }
             None => {
@@ -1403,7 +1415,18 @@ pub(crate) fn merge_connections(conn: &Connection) -> CoreResult<HashMap<i64, i6
                     "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol,
                          state_json, last_sync_unix, created_ms, deleted_ms)
                      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-                    params![connector, name, login, bank, sym, state, last, created, deleted],
+                    params![
+                        connector,
+                        name,
+                        login,
+                        bank,
+                        sym,
+                        // a deleted connection keeps no bank session
+                        if deleted.is_some() { "{}".to_string() } else { state },
+                        last,
+                        created,
+                        deleted
+                    ],
                 )?;
                 let id = conn.last_insert_rowid();
                 by_key.insert(key, (id, created, deleted));
