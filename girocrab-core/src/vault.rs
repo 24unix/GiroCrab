@@ -20,6 +20,19 @@ use crate::models::*;
 use crate::money::parse_cents;
 use crate::rules::{RuleInput, RuleSet};
 
+/// Booking between two own accounts: counterparty IBAN is one of ours, or a
+/// category segment marks it as transfer (MoneyMoney "Umbuchung", "Geldtransit" …).
+fn is_own_transfer(t: &Booking, own_ibans: &std::collections::HashSet<String>) -> bool {
+    let iban = crate::connectors::fints::sepa::normalize_iban(&t.counterparty_iban);
+    (!iban.is_empty() && own_ibans.contains(&iban))
+        || t.category_path.split(" › ").any(|s| {
+            matches!(
+                s.trim().to_lowercase().as_str(),
+                "umbuchung" | "umbuchungen" | "geldtransit" | "transfer" | "transfers"
+            )
+        })
+}
+
 /// Adds merchant, flow kind, payment method and clean purpose to a booking.
 pub(crate) fn enrich(t: &mut Booking) {
     t.merchant = MerchantResolver::resolve(&t.counterparty, &t.purpose);
@@ -2070,6 +2083,17 @@ impl Vault {
         let mut txs = Vec::new();
         let salary_ibans = crate::salary::marked_salary_ibans(&db)?;
         let overrides = crate::insights::load_overrides(&db).unwrap_or_default();
+        // Own IBANs: bookings to / from them are transfers (Issue #94).
+        let own_ibans: std::collections::HashSet<String> = {
+            let mut st =
+                db.prepare("SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != ''")?;
+            let ibans = st
+                .query_map([], |r| r.get::<_, String>(0))?
+                .filter_map(Result::ok)
+                .map(|i| crate::connectors::fints::sepa::normalize_iban(&i))
+                .collect();
+            ibans
+        };
         let (mut income, mut expense, mut consumption, mut investment, mut perk) =
             (0i64, 0i64, 0i64, 0i64, 0i64);
         for row in rows {
@@ -2082,6 +2106,9 @@ impl Vault {
             }
             enrich(&mut t);
             t.is_salary = crate::salary::is_salary(&t, &salary_ibans);
+            if is_own_transfer(&t, &own_ibans) {
+                t.flow = FlowKind::Transfer;
+            }
             // Localise after `enrich`: flow classification needs the stored names.
             t.category_name = display_name(&t.category_name);
             t.category_path = display_path(&t.category_path);
@@ -2108,10 +2135,13 @@ impl Vault {
             if !keep {
                 continue;
             }
-            if t.amount_cents > 0 {
-                income += t.amount_cents;
-            } else {
-                expense += t.amount_cents;
+            // Transfers between own accounts are neutral (else counted on both sides).
+            if t.flow != FlowKind::Transfer {
+                if t.amount_cents > 0 {
+                    income += t.amount_cents;
+                } else {
+                    expense += t.amount_cents;
+                }
             }
             match t.flow {
                 FlowKind::Consumption => consumption += t.amount_cents,

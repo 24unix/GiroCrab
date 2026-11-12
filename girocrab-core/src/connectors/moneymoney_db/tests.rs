@@ -1511,3 +1511,34 @@ fn document_lookup_uses_the_source_index() {
     assert!(plan.contains("booking_documents_source"), "{plan}");
     assert!(!plan.contains("SCAN booking_documents"), "{plan}");
 }
+
+/// Issue #94: transfers between own imported accounts (matched by IBAN or a
+/// MoneyMoney "Umbuchung" category) must not inflate income / expenses.
+#[test]
+fn transfers_between_own_accounts_are_neutral_in_kpis() {
+    let kpis = |path: String| {
+        let v = vault();
+        let p = v
+            .preview_moneymoney_database(path.clone(), PW.into(), None)
+            .unwrap();
+        v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+            .unwrap();
+        let page = v.list_transactions(BookingFilter::default()).unwrap();
+        (page.income_cents, page.expense_cents, page.total_count)
+    };
+    let base = kpis(fake_db());
+    let extra = r#"
+INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, currency, name, owner, kind, type, sort, initial_balance, group_key, cred) VALUES
+  (5, 1, '0648489890', '20041111', 0, 'DE12 5001 0517 0648 4898 90', 'EUR', 'Tagesgeld', 'Max Mustermann', 0, 1, 5, 0, 1, '');
+INSERT INTO categories (rowid, name, type, group_key, sort) VALUES (6, 'Umbuchung', 1, 7, 1);
+INSERT INTO category_groups (rowid, name, group_key, sort) VALUES (7, 'Finanzen', 0, 3);
+INSERT INTO transactions (rowid, local_account_key, account, bankcode, amount, currency, timestamp, value_timestamp, comment, booked, unformatted_type, unformatted_purpose, name, checkmark, splitted, split_key, category_key) VALUES
+  (10, 1, 'DE12500105170648489890', 'COBADEFFXXX', -500.0, 'EUR', 1772712000, 0, '', 1, 'UEBERWEISUNG', 'Sparen', 'Max Mustermann', 0, 0, 10, 1),
+  (11, 5, 'DE89370400440532013000', 'COBADEFFXXX', 500.0, 'EUR', 1772712000, 0, '', 1, 'GUTSCHRIFT', 'Sparen', 'Max Mustermann', 0, 0, 11, 1),
+  (12, 1, '', '', -200.0, 'EUR', 1772798400, 0, '', 1, 'UEBERWEISUNG', 'Ausgleich Karte', 'comdirect', 0, 0, 12, 6),
+  (13, 2, '', '', 200.0, 'EUR', 1772798400, 0, '', 1, 'GUTSCHRIFT', 'Ausgleich Karte', 'comdirect', 0, 0, 13, 6);
+"#;
+    let with = kpis(fake_db_with(false, extra));
+    assert_eq!(with.2, base.2 + 4, "transfers are still listed");
+    assert_eq!((with.0, with.1), (base.0, base.1), "but don't count as income / expense");
+}
