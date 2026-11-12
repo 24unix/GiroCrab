@@ -1081,7 +1081,11 @@ impl Vault {
     /// categories created; no-op if categories exist.
     pub fn seed_starter_categories(&self) -> Result<u32, crate::error::CoreError> {
         let db = self.db()?;
-        let n: i64 = db.query_row("SELECT count(*) FROM categories", [], |r| r.get(0))?;
+        let n: i64 = db.query_row(
+            "SELECT count(*) FROM categories WHERE deleted_ms IS NULL",
+            [],
+            |r| r.get(0),
+        )?;
         if n > 0 {
             return Ok(0);
         }
@@ -1096,7 +1100,11 @@ impl Vault {
     /// Number of accounts (0 = nothing synced yet).
     pub fn account_count(&self) -> Result<u32, crate::error::CoreError> {
         let db = self.db()?;
-        Ok(db.query_row("SELECT count(*) FROM accounts", [], |r| r.get::<_, i64>(0))? as u32)
+        Ok(db.query_row(
+            "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL",
+            [],
+            |r| r.get::<_, i64>(0),
+        )? as u32)
     }
 
     /// Fills an empty vault with fictitious demo data for all 7 banks

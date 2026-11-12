@@ -194,6 +194,7 @@ fn deduplicate_inner(conn: &Connection) -> CoreResult<u32> {
             // move accounts; merge accounts with the same external_ref
             let accs: Vec<(i64, String)> = {
                 let mut st =
+                    // includes soft-deleted rows
                     conn.prepare("SELECT id, external_ref FROM accounts WHERE connection_id = ?1")?;
                 let r = st
                     .query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?
@@ -203,6 +204,7 @@ fn deduplicate_inner(conn: &Connection) -> CoreResult<u32> {
             for (acc_id, ext) in accs {
                 let target: Option<i64> = conn
                     .query_row(
+                        // includes soft-deleted rows
                         "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref = ?2",
                         params![keep, ext],
                         |r| r.get(0),
@@ -281,7 +283,7 @@ impl Vault {
         let db = self.db()?;
         let kind: String = db
             .query_row(
-                "SELECT connector FROM bank_connections WHERE id = ?1",
+                "SELECT connector FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
                 [connection_id],
                 |r| r.get(0),
             )
@@ -332,7 +334,7 @@ impl Vault {
         let db = self.db()?;
         let state: String = db
             .query_row(
-                "SELECT state_json FROM bank_connections WHERE id = ?1",
+                "SELECT state_json FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
                 [connection_id],
                 |r| r.get(0),
             )
@@ -388,7 +390,7 @@ impl Vault {
         let db = self.db()?;
         let state: String = db
             .query_row(
-                "SELECT state_json FROM bank_connections WHERE id = ?1",
+                "SELECT state_json FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
                 [connection_id],
                 |r| r.get(0),
             )
@@ -411,9 +413,10 @@ impl Vault {
                 .map(|s| !s.is_empty())
                 .unwrap_or(false);
         let (accounts, bookings, revoked): (i64, i64, i64) = db.query_row(
-            "SELECT (SELECT count(*) FROM accounts WHERE connection_id = ?1),
-                    (SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE a.connection_id = ?1),
-                    (SELECT count(*) FROM accounts WHERE connection_id = ?1 AND access_revoked != 0)",
+            "SELECT (SELECT count(*) FROM accounts WHERE connection_id = ?1 AND deleted_ms IS NULL),
+                    (SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id
+                      WHERE a.connection_id = ?1 AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL),
+                    (SELECT count(*) FROM accounts WHERE connection_id = ?1 AND access_revoked != 0 AND deleted_ms IS NULL)",
             [connection_id],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;

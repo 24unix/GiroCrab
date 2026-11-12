@@ -78,7 +78,7 @@ fn normalize_iban(iban: &str) -> String {
 pub(crate) fn marked_salary_ibans(conn: &Connection) -> CoreResult<HashSet<String>> {
     let mut stmt = conn.prepare(
         "SELECT DISTINCT counterparty_iban FROM transactions
-         WHERE salary_flag = 1 AND counterparty_iban != '' AND amount_cents > 0",
+         WHERE salary_flag = 1 AND counterparty_iban != '' AND amount_cents > 0 AND deleted_ms IS NULL",
     )?;
     let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
     let mut out = HashSet::new();

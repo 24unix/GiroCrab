@@ -428,7 +428,7 @@ impl Vault {
         if existing.is_some() {
             return Ok(());
         }
-        let mut stmt = conn.prepare("SELECT amount_cents FROM transactions WHERE account_id = ?1 ORDER BY booking_date DESC, id DESC")?;
+        let mut stmt = conn.prepare("SELECT amount_cents FROM transactions WHERE account_id = ?1 AND deleted_ms IS NULL ORDER BY booking_date DESC, id DESC")?;
         let amounts: Vec<i64> = stmt
             .query_map([account_id], |r| r.get(0))?
             .collect::<Result<_, _>>()?;
@@ -462,8 +462,10 @@ impl Vault {
         let mut stmt = conn.prepare(
             "SELECT r.id, r.name, r.category_id, r.field, r.match_kind, r.pattern, r.case_sensitive,
                     r.min_amount_cents, r.max_amount_cents, r.account_id, r.priority, r.enabled,
-                    (SELECT count(*) FROM transactions t WHERE t.rule_id = r.id)
-             FROM rules r WHERE r.deleted_ms IS NULL ORDER BY r.priority, r.id",
+                    (SELECT count(*) FROM transactions t WHERE t.rule_id = r.id AND t.deleted_ms IS NULL)
+             FROM rules r WHERE r.deleted_ms IS NULL
+               AND (r.account_id IS NULL OR EXISTS (SELECT 1 FROM accounts a WHERE a.id = r.account_id AND a.deleted_ms IS NULL))
+             ORDER BY r.priority, r.id",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok(Rule {
@@ -500,11 +502,11 @@ impl Vault {
         let sql = if only_uncategorised {
             "SELECT t.id, t.account_id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.rule_id,
                     t.note, t.currency, IFNULL(a.iban, '')
-             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND t.category_source = 'none'"
+             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL AND t.category_source = 'none'"
         } else {
             "SELECT t.id, t.account_id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.rule_id,
                     t.note, t.currency, IFNULL(a.iban, '')
-             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND t.category_source != 'manual'"
+             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL AND t.category_source != 'manual'"
         };
         let mut stmt = conn.prepare(sql)?;
         // (note, currency, own account IBAN) ride along for search expressions
@@ -706,6 +708,7 @@ impl Vault {
         // A live match wins over a deleted one; a deleted one is revived.
         let existing: Vec<(i64, String, bool)> = {
             let mut st = conn.prepare(
+                // includes soft-deleted rows
                 "SELECT id, login_name, deleted_ms IS NOT NULL FROM bank_connections
                  WHERE connector = ?1 ORDER BY deleted_ms IS NOT NULL, id",
             )?;
@@ -751,6 +754,8 @@ impl Vault {
 }
 
 impl Vault {
+    // includes soft-deleted rows: the merge reads and matches every row of
+    // both vaults, deleted ones too
     fn merge_attached(conn: &Connection) -> CoreResult<MergeStats> {
         let mut st = MergeStats::default();
         let tx = conn.unchecked_transaction()?;
@@ -794,6 +799,7 @@ impl Vault {
             for (oid, connector, name, login, bank, sym, state, last) in rows {
                 let existing: Option<i64> = tx
                     .query_row(
+                        // includes soft-deleted rows
                         "SELECT id FROM bank_connections WHERE connector=?1 AND login_name=?2 AND bank_code=?3",
                         params![connector, login, bank],
                         |r| r.get(0),
@@ -855,6 +861,7 @@ impl Vault {
                 let con = ocon.and_then(|c| conn_map.get(&c).copied());
                 let existing: Option<i64> = tx
                     .query_row(
+                        // includes soft-deleted rows
                         "SELECT id FROM accounts WHERE connection_id IS ?1 AND external_ref = ?2",
                         params![con, ext],
                         |r| r.get(0),
@@ -925,6 +932,7 @@ impl Vault {
                     };
                     let existing: Option<i64> = tx
                         .query_row(
+                            // includes soft-deleted rows
                             "SELECT id FROM categories WHERE IFNULL(parent_id,0) = IFNULL(?1,0) AND name = ?2",
                             params![par, name],
                             |r| r.get(0),
@@ -1004,6 +1012,7 @@ impl Vault {
                 }
                 let existing: Option<i64> = tx
                     .query_row(
+                        // includes soft-deleted rows
                         "SELECT id FROM rules WHERE name=?1 AND field=?2 AND match_kind=?3 AND pattern=?4
                          AND category_id=?5 AND account_id IS ?6",
                         params![name, field, kind, pat, cat, acc],
@@ -1103,6 +1112,7 @@ impl Vault {
             let rule = orule.and_then(|c| rule_map.get(&c).copied());
             let existing: Option<i64> = tx
                 .query_row(
+                    // includes soft-deleted rows
                     "SELECT id FROM transactions WHERE account_id = ?1
                        AND (external_id = ?2 OR (?3 != '' AND import_fp = ?3)) LIMIT 1",
                     params![acc, ext, fp],
@@ -1296,7 +1306,8 @@ impl Vault {
     pub fn is_empty(&self) -> Result<bool, CoreError> {
         let db = self.db()?;
         let n: i64 = db.query_row(
-            "SELECT (SELECT count(*) FROM accounts) + (SELECT count(*) FROM categories)",
+            "SELECT (SELECT count(*) FROM accounts WHERE deleted_ms IS NULL)
+                  + (SELECT count(*) FROM categories WHERE deleted_ms IS NULL)",
             [],
             |r| r.get(0),
         )?;
@@ -1458,7 +1469,7 @@ impl Vault {
         let tx = db.unchecked_transaction()?;
         let Some((conn, archived)) = tx
             .query_row(
-                "SELECT connection_id, archived_unix IS NOT NULL FROM accounts WHERE id = ?1",
+                "SELECT connection_id, archived_unix IS NOT NULL FROM accounts WHERE id = ?1 AND deleted_ms IS NULL",
                 [account_id],
                 |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, bool>(1)?)),
             )
@@ -1497,7 +1508,9 @@ impl Vault {
         let db = self.db()?;
         let mut q = db.prepare(
             "SELECT isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents
-             FROM holdings WHERE account_id = ?1 ORDER BY value_cents DESC, name",
+             FROM holdings h WHERE account_id = ?1
+               AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = h.account_id AND a.deleted_ms IS NULL)
+             ORDER BY value_cents DESC, name",
         )?;
         let rows = q.query_map([account_id], |r| {
             Ok(Holding {
@@ -1520,14 +1533,14 @@ impl Vault {
         let mut stmt = db.prepare(
             "SELECT a.id, a.connection_id, c.connector, a.group_id, a.name, a.bank_name, a.owner, a.iban, a.account_number,
                     a.currency, a.kind, a.balance_cents, a.balance_date, a.sf_symbol, a.sort_order,
-                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id),
+                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.deleted_ms IS NULL),
                     -- uncategorised, split-aware like `category_match_sql(\"IS NULL\")`
-                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.category_id IS NULL
+                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.category_id IS NULL AND t.deleted_ms IS NULL
                         AND NOT EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id))
                     + (SELECT count(DISTINCT sp.transaction_id) FROM transaction_splits sp
                         JOIN transactions t ON t.id = sp.transaction_id
-                        WHERE t.account_id = a.id AND sp.category_id IS NULL),
-                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0),
+                        WHERE t.account_id = a.id AND sp.category_id IS NULL AND t.deleted_ms IS NULL),
+                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0 AND t.deleted_ms IS NULL),
                     a.initial_balance_cents, g.uuid, IFNULL(g.include_in_total, 1) AND a.archived_unix IS NULL,
                     a.color_hex, IFNULL(c.connector, ''), IFNULL(c.bank_code, ''), IFNULL(c.login_name, ''), a.external_ref,
                     a.archived_unix, a.access_revoked
@@ -1605,7 +1618,7 @@ impl Vault {
         }) {
             let mut st = db.prepare(
                 "SELECT booking_date, amount_cents, counterparty || ' ' || purpose || ' ' || booking_text
-                 FROM transactions WHERE account_id = ?1 ORDER BY booking_date, id",
+                 FROM transactions WHERE account_id = ?1 AND deleted_ms IS NULL ORDER BY booking_date, id",
             )?;
             let tx_rows: Vec<(String, i64, String)> = st
                 .query_map([a.id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
@@ -1692,7 +1705,7 @@ impl Vault {
                 .collect::<Vec<_>>()
                 .join(",");
             let mut stmt = db.prepare(&format!(
-                "SELECT booking_date, SUM(amount_cents) FROM transactions WHERE account_id IN ({list}) AND booking_date > ?1 GROUP BY booking_date"
+                "SELECT booking_date, SUM(amount_cents) FROM transactions WHERE account_id IN ({list}) AND booking_date > ?1 AND deleted_ms IS NULL GROUP BY booking_date"
             ))?;
             let date = start.format("%Y-%m-%d").to_string();
             let args: Vec<rusqlite::types::Value> = std::iter::once(date.into())
@@ -1994,7 +2007,7 @@ impl Vault {
     pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
         let db = self.db()?;
         let paths = Self::category_paths(&db)?;
-        let mut wh: Vec<String> = vec!["1=1".into()];
+        let mut wh: Vec<String> = vec!["t.deleted_ms IS NULL AND a.deleted_ms IS NULL".into()];
         let mut args: Vec<Box<dyn ToSql>> = vec![];
         let mut cte = String::new();
         if !filter.account_ids.is_empty() {
@@ -2011,7 +2024,7 @@ impl Vault {
             // monthly "Zins / Tilgung" debits) that reference the loan's IBAN / account number.
             let loans: Vec<(i64, String, String)> = {
                 let mut q = db
-                    .prepare("SELECT id, iban, account_number FROM accounts WHERE kind = 'loan'")?;
+                    .prepare("SELECT id, iban, account_number FROM accounts WHERE kind = 'loan' AND deleted_ms IS NULL")?;
                 let rows = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
                 rows.collect::<Result<Vec<_>, _>>()?
             };
@@ -2060,7 +2073,7 @@ impl Vault {
             let n = args.len();
             if filter.include_subcategories {
                 cte = format!(
-                    "WITH RECURSIVE sub(id) AS (SELECT ?{n} UNION ALL SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id) "
+                    "WITH RECURSIVE sub(id) AS (SELECT ?{n} UNION ALL SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id WHERE c.deleted_ms IS NULL) "
                 );
                 Some("IN (SELECT id FROM sub)".into())
             } else {
@@ -2124,10 +2137,13 @@ impl Vault {
         }
         let loan_links = crate::loans::link_map(&db)?;
         let where_sql = wh.join(" AND ");
-        let from_sql = "FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN categories cat ON cat.id = t.category_id";
+        // a deleted category or rule reads as none (what the old SET NULL did)
+        let from_sql = "FROM transactions t JOIN accounts a ON a.id = t.account_id
+             LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL
+             LEFT JOIN rules r ON r.id = t.rule_id AND r.deleted_ms IS NULL";
         let sql = format!(
             "{cte}SELECT t.id, t.account_id, a.name, t.booking_date, t.value_date, t.amount_cents, t.currency, t.counterparty,
-                    t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.category_source, t.rule_id, t.checked, a.kind,
+                    t.counterparty_iban, t.purpose, t.booking_text, cat.id, t.category_source, r.id, t.checked, a.kind,
                     (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note,
                     t.purpose_code, t.gvc, t.salary_flag, {share_sql}
              {from_sql} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC"
@@ -2435,7 +2451,7 @@ impl Vault {
         })?;
         let ibans: HashMap<i64, String> = {
             let db = self.db()?;
-            let mut st = db.prepare("SELECT id, iban FROM accounts")?;
+            let mut st = db.prepare("SELECT id, iban FROM accounts WHERE deleted_ms IS NULL")?;
             let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
             rows.collect::<Result<_, _>>()?
         };

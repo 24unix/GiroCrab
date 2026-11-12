@@ -1024,3 +1024,581 @@ fn revive_brings_back_cascade_bookings_but_not_individually_deleted_ones() {
         5
     );
 }
+
+/// The demo vault plus what the demo lacks (bookings on the Tagesgeld,
+/// a holding, splits, documents, budgets, an IBAN for transfer suggestions),
+/// before anything is deleted.
+fn soft_delete_world(v: &Vault) {
+    v.seed_demo_data().unwrap();
+    let db = v.db().unwrap();
+    let id = |sql: &str| -> i64 { db.query_row(sql, [], |r| r.get(0)).unwrap() };
+    let tagesgeld = id("SELECT id FROM accounts WHERE external_ref = 'demo-tagesgeld'");
+    let depot = id("SELECT id FROM accounts WHERE external_ref = 'demo-depot'");
+    let today = chrono::Local::now().date_naive();
+    for (i, (ago, cents, cp, iban, purpose)) in [
+        (70, 1250, "Musterbank", "", "Zinsgutschrift"),
+        (40, 1250, "Musterbank", "", "Zinsgutschrift"),
+        (10, 1250, "Musterbank", "", "Zinsgutschrift"),
+        (
+            15,
+            -20000,
+            "Max Muster",
+            "DE02120300000000202051",
+            "Umbuchung",
+        ),
+        (
+            5,
+            380000,
+            "TechNova GmbH",
+            "DE75512108001245126199",
+            "Gehalt Bonus",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let date = (today - chrono::Duration::days(ago))
+            .format("%Y-%m-%d")
+            .to_string();
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents,
+                                      counterparty, counterparty_iban, purpose, booking_text)
+             VALUES (?1, ?2, ?3, ?3, ?4, ?5, ?6, ?7, 'GUTSCHRIFT')",
+            params![tagesgeld, format!("tg-{i}"), date, cents, cp, iban, purpose],
+        )
+        .unwrap();
+    }
+    for acc in [tagesgeld, depot] {
+        db.execute(
+            "INSERT INTO holdings(account_id, isin, name, quantity, current_price_cents, value_cents)
+             VALUES (?1, 'IE00B4L5Y983', 'MSCI World', 10, 9000, 90000)",
+            [acc],
+        )
+        .unwrap();
+    }
+    db.execute(
+        "UPDATE transactions SET counterparty_iban = 'DE89370400440532013000'
+         WHERE counterparty = 'Autobank AG'",
+        [],
+    )
+    .unwrap();
+    // the tax refund on the giro counts as salary only through the Tagesgeld
+    // booking marked as salary (same payer IBAN)
+    db.execute(
+        "UPDATE transactions SET counterparty_iban = 'DE75512108001245126199'
+         WHERE counterparty = 'Finanzamt Musterstadt'",
+        [],
+    )
+    .unwrap();
+    let bonus = id("SELECT id FROM transactions WHERE external_id = 'tg-4'");
+    let autobank = id("SELECT max(id) FROM transactions WHERE counterparty = 'Autobank AG'");
+    let rewe = id("SELECT min(id) FROM transactions WHERE counterparty = 'REWE Markt GmbH'");
+    let interest = id("SELECT min(id) FROM transactions WHERE external_id = 'tg-0'");
+    let lebensmittel = id("SELECT id FROM categories WHERE name = 'Lebensmittel'");
+    let supermarkt = id("SELECT id FROM categories WHERE name = 'Supermarkt'");
+    let wohnen = id("SELECT id FROM categories WHERE name = 'Wohnen & Energie'");
+    drop(db);
+    v.set_booking_salary_flag(bonus, Some(true)).unwrap();
+    v.set_category_budget(lebensmittel, Some(400_00)).unwrap();
+    v.set_category_budget(supermarkt, Some(250_00)).unwrap();
+    v.set_category_budget(wohnen, Some(1500_00)).unwrap();
+    let split = |cat: Option<i64>, cents: i64| crate::models::TransactionSplitInput {
+        category_id: cat,
+        amount_cents: cents,
+        note: "Teil".into(),
+    };
+    v.set_transaction_splits(
+        autobank,
+        vec![split(Some(wohnen), -20000), split(None, -8900)],
+    )
+    .unwrap();
+    v.set_transaction_splits(
+        rewe,
+        vec![split(Some(supermarkt), -3000), split(Some(wohnen), -1782)],
+    )
+    .unwrap();
+    v.set_transaction_splits(interest, vec![split(Some(wohnen), 1000), split(None, 250)])
+        .unwrap();
+    let pdf = |s: &str| crate::documents::simple_pdf(&[s.to_string()]);
+    v.attach_document_to_booking(autobank, "autobank.pdf".into(), pdf("Autobank Rate"))
+        .unwrap();
+    v.attach_document_to_booking(interest, "zinsen.pdf".into(), pdf("Zinsen"))
+        .unwrap();
+    v.attach_document_to_account(
+        tagesgeld,
+        "Kontoauszug".into(),
+        "auszug.pdf".into(),
+        pdf("Kontoauszug Tagesgeld"),
+        "kontoauszug".into(),
+    )
+    .unwrap();
+}
+
+/// Deletes one booking (the newer Autobank rate), one connection (the Amex
+/// with the Visa account and its bookings), two accounts (the Tagesgeld with
+/// bookings, a holding, splits and documents; the manual car loan), one
+/// category tree (Lebensmittel with its subcategories and rules) and one rule.
+fn soft_delete_items(v: &Vault) {
+    let id = |sql: &str| -> i64 { v.db().unwrap().query_row(sql, [], |r| r.get(0)).unwrap() };
+    let autobank = id("SELECT max(id) FROM transactions WHERE counterparty = 'Autobank AG'");
+    soft_delete_booking(&v.db().unwrap(), autobank).unwrap();
+    v.delete_bank_connection(id(&format!(
+        "SELECT id FROM bank_connections WHERE connector = '{}'",
+        ConnectorKind::AmericanExpress.as_str()
+    )))
+    .unwrap();
+    for r in ["demo-tagesgeld", "demo-autokredit"] {
+        let a = id(&format!(
+            "SELECT id FROM accounts WHERE external_ref = '{r}' OR (name = 'Autokredit' AND '{r}' = 'demo-autokredit')"
+        ));
+        v.set_account_archived(a, true).unwrap();
+        v.delete_account(a).unwrap();
+    }
+    v.delete_category(id("SELECT id FROM categories WHERE name = 'Lebensmittel'"))
+        .unwrap();
+    v.delete_rule(id(
+        "SELECT r.id FROM rules r JOIN categories c ON c.id = r.category_id
+         WHERE c.name = 'Internet & Telefon' ORDER BY r.id LIMIT 1",
+    ))
+    .unwrap();
+}
+
+/// Collects differences between the vault with soft-deleted rows and the one
+/// where those rows never existed.
+struct Mismatches(Vec<String>);
+
+impl Mismatches {
+    fn cmp<T: std::fmt::Debug>(&mut self, api: &str, a: T, b: T) {
+        let (a, b) = (format!("{a:?}"), format!("{b:?}"));
+        if a != b {
+            // show the neighbourhood of the first difference
+            let at = a.bytes().zip(b.bytes()).take_while(|(x, y)| x == y).count();
+            let cut = |s: &str| {
+                let start = s.floor_char_boundary(at.saturating_sub(200));
+                let end = s.floor_char_boundary((at + 200).min(s.len()));
+                s[start..end].to_string()
+            };
+            self.0
+                .push(format!("{api}:\n  soft: {}\n  gone: {}", cut(&a), cut(&b)));
+        }
+    }
+}
+
+fn files_under(dir: &std::path::Path) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                stack.push(p);
+            } else {
+                out.push(p.strip_prefix(dir).unwrap().to_string_lossy().into_owned());
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// A vault with soft-deleted rows (`soft_delete_items`) answers every public
+/// read API exactly like a copy where those rows were removed for good (the
+/// old hard delete with its foreign-key cascades). APIs covered, each called
+/// with every account / booking / connection / category / document id that
+/// existed before the deletions where it takes one:
+///
+/// - vault: `list_bank_connections`, `list_accounts`, `list_account_groups`,
+///   `list_holdings`, `balance_history`, `list_categories` (all time and a
+///   date range), `list_transactions` (all, per account, per category with and
+///   without subcategories, uncategorised, search, everyday/investment scope,
+///   merchant), `list_rules`, `preview_rule`, `apply_rules` (count and the
+///   bookings afterwards), `list_settings`, `export_bookings_csv`, `is_empty`
+///   and `account_count` (also on a vault whose only rows are deleted)
+/// - connections: `connection_status`
+/// - planning: `list_category_budget_progress` (this and last month),
+///   `list_transaction_splits`, `cashflow_by_period` (month, quarter, year),
+///   `list_transfer_templates`
+/// - recurring / salary: `list_recurring`, `recurring_month`,
+///   `list_ignored_recurring`, `salary_cycle`
+/// - loans: `list_manual_loans`, `preview_manual_loan`, `list_loan_links`
+/// - insights: `merchant_stats` (every merchant key), `investment_dashboard`
+/// - user groups: `list_user_groups`
+/// - documents: `list_documents_for_booking`, `list_all_documents` (all, per
+///   account, unlinked, search), `get_document_bytes`, `export_all_documents`,
+///   `mirror_new_documents`, `auto_match_document` (text that fits the deleted
+///   booking best)
+/// - transfers / statements: `suggest_recipients`, `auto_statements_enabled`
+/// - imports: `preview_moneymoney_import` (rows unrelated to the deleted
+///   bookings; rows that hit a deleted booking are kept from resurrecting it on
+///   purpose, see Task 4)
+///
+/// Not compared: `preview_moneymoney_database` (its read of "no bookings yet"
+/// is covered by `moneymoney_db::tests::deleted_bookings_do_not_count_as_existing`),
+/// `preview_portal_capture` (only dedup by key, which must see deleted rows),
+/// the placement written by `move_account_to_group` (see
+/// `moving_an_account_ignores_deleted_neighbours`), and the APIs that only
+/// write or return no stored data (setters, imports, settings getters,
+/// catalogues, parsers, connector sessions, logos).
+#[test]
+fn soft_deleted_rows_appear_in_no_public_api() {
+    use crate::models::{BookingFilter, BookingScope, PeriodGranularity};
+    use chrono::Datelike;
+    let dir = temp_dir("invisible");
+    let a = open(&dir, "soft.db");
+    soft_delete_world(&a);
+    a.checkpoint().unwrap();
+    std::fs::copy(dir.join("soft.db"), dir.join("gone.db")).unwrap();
+    let b = open(&dir, "gone.db");
+
+    // every id that existed before the deletions
+    let all = |sql: &str| -> Vec<i64> {
+        let db = a.db().unwrap();
+        let mut st = db.prepare(sql).unwrap();
+        st.query_map([], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
+    };
+    let accounts = all("SELECT id FROM accounts ORDER BY id");
+    let bookings = all("SELECT id FROM transactions ORDER BY id");
+    let connections = all("SELECT id FROM bank_connections ORDER BY id");
+    let categories = all("SELECT id FROM categories ORDER BY id");
+    let documents = all("SELECT id FROM booking_documents ORDER BY id");
+    let merchant_keys: Vec<String> = {
+        let mut k: Vec<String> = a
+            .list_transactions(BookingFilter::default())
+            .unwrap()
+            .transactions
+            .into_iter()
+            .map(|t| t.merchant.key)
+            .collect();
+        k.sort();
+        k.dedup();
+        k
+    };
+
+    soft_delete_items(&a);
+    soft_delete_items(&b);
+    b.db()
+        .unwrap()
+        .execute_batch(
+            "DELETE FROM transactions WHERE deleted_ms IS NOT NULL;
+             DELETE FROM rules WHERE deleted_ms IS NOT NULL;
+             DELETE FROM accounts WHERE deleted_ms IS NOT NULL;
+             DELETE FROM bank_connections WHERE deleted_ms IS NOT NULL;
+             DELETE FROM categories WHERE deleted_ms IS NOT NULL;",
+        )
+        .unwrap();
+    assert!(n(&a, "SELECT count(*) FROM transactions WHERE deleted_ms > 0") > 10);
+
+    let mut m = Mismatches(Vec::new());
+    macro_rules! both {
+        ($label:expr, |$v:ident| $call:expr) => {{
+            let r_a = {
+                let $v = &a;
+                $call
+            };
+            let r_b = {
+                let $v = &b;
+                $call
+            };
+            m.cmp(&$label, r_a, r_b);
+        }};
+    }
+
+    both!("list_bank_connections", |v| v.list_bank_connections());
+    both!("list_accounts", |v| v.list_accounts());
+    both!("list_account_groups", |v| v.list_account_groups());
+    both!("list_user_groups", |v| v.list_user_groups());
+    both!("account_count", |v| v.account_count());
+    both!("is_empty", |v| v.is_empty());
+    both!("list_rules", |v| v.list_rules());
+    both!("list_settings", |v| v.list_settings());
+    both!("list_categories", |v| v.list_categories(None, None));
+    let today = chrono::Local::now().date_naive();
+    let ago = |d: i64| {
+        (today - chrono::Duration::days(d))
+            .format("%Y-%m-%d")
+            .to_string()
+    };
+    both!("list_categories(range)", |v| v
+        .list_categories(Some(ago(40)), Some(ago(0))));
+    both!("balance_history(all)", |v| v.balance_history(vec![], 120));
+    both!("list_manual_loans", |v| v.list_manual_loans());
+    both!("list_loan_links", |v| v.list_loan_links());
+    both!("list_transfer_templates", |v| v.list_transfer_templates());
+    both!("investment_dashboard", |v| v.investment_dashboard(6));
+    both!("list_recurring(all)", |v| v.list_recurring(vec![]));
+    both!("list_ignored_recurring", |v| v
+        .list_ignored_recurring(vec![]));
+    both!("salary_cycle(all)", |v| v.salary_cycle(vec![]));
+    for (y, mo) in [
+        (today.year(), today.month()),
+        if today.month() == 1 {
+            (today.year() - 1, 12)
+        } else {
+            (today.year(), today.month() - 1)
+        },
+    ] {
+        both!(format!("list_category_budget_progress({y}-{mo})"), |v| v
+            .list_category_budget_progress(y, mo));
+        both!(format!("recurring_month({y}-{mo})"), |v| v.recurring_month(
+            vec![],
+            y,
+            mo
+        ));
+    }
+    for g in [
+        PeriodGranularity::Month,
+        PeriodGranularity::Quarter,
+        PeriodGranularity::Year,
+    ] {
+        both!(format!("cashflow_by_period({g:?})"), |v| v
+            .cashflow_by_period(g, 6));
+    }
+    both!("suggest_recipients", |v| v
+        .suggest_recipients(String::new(), 20));
+    both!("suggest_recipients(query)", |v| v
+        .suggest_recipients("Autobank".into(), 20));
+
+    for &id in &accounts {
+        both!(format!("list_holdings({id})"), |v| v.list_holdings(id));
+        both!(format!("balance_history({id})"), |v| v
+            .balance_history(vec![id], 120));
+        both!(format!("list_recurring({id})"), |v| v
+            .list_recurring(vec![id]));
+        both!(format!("salary_cycle({id})"), |v| v.salary_cycle(vec![id]));
+        both!(format!("auto_statements_enabled({id})"), |v| v
+            .auto_statements_enabled(id));
+        both!(format!("list_transactions(account {id})"), |v| v
+            .list_transactions(BookingFilter {
+                account_ids: vec![id],
+                ..Default::default()
+            }));
+        both!(format!("list_all_documents(account {id})"), |v| v
+            .list_all_documents(crate::documents::DocumentFilter {
+                account_id: Some(id),
+                doc_type: None,
+                search: None,
+                unlinked_only: false,
+            }));
+        both!(format!("preview_manual_loan({id})"), |v| v
+            .preview_manual_loan(
+                Some(id),
+                crate::loans::LoanSetup {
+                    name: "Autokredit".into(),
+                    original_cents: Some(15_000_00),
+                    anchor_date: ago(60),
+                    anchor_balance_cents: 9_400_00,
+                    interest_rate_ppm: Some(49_900),
+                    match_expr: "Autobank".into(),
+                },
+                12
+            ));
+    }
+    for &id in &bookings {
+        both!(format!("list_transaction_splits({id})"), |v| v
+            .list_transaction_splits(id));
+        both!(format!("list_documents_for_booking({id})"), |v| v
+            .list_documents_for_booking(id));
+    }
+    for &id in &connections {
+        both!(format!("connection_status({id})"), |v| v
+            .connection_status(id));
+    }
+    for &id in &categories {
+        for sub in [false, true] {
+            both!(
+                format!("list_transactions(category {id}, sub {sub})"),
+                |v| v.list_transactions(BookingFilter {
+                    category_id: Some(id),
+                    include_subcategories: sub,
+                    ..Default::default()
+                })
+            );
+        }
+    }
+    for &id in &documents {
+        both!(format!("get_document_bytes({id})"), |v| v
+            .get_document_bytes(id));
+    }
+    for key in &merchant_keys {
+        both!(format!("merchant_stats({key})"), |v| v
+            .merchant_stats(key.clone()));
+        both!(format!("list_transactions(merchant {key})"), |v| v
+            .list_transactions(BookingFilter {
+                merchant_key: Some(key.clone()),
+                ..Default::default()
+            }));
+    }
+    let filters = [
+        BookingFilter::default(),
+        BookingFilter {
+            uncategorized_only: true,
+            ..Default::default()
+        },
+        BookingFilter {
+            search: Some("Autobank".into()),
+            ..Default::default()
+        },
+        BookingFilter {
+            search: Some("Musterbank".into()),
+            ..Default::default()
+        },
+        BookingFilter {
+            scope: BookingScope::Everyday,
+            date_from: Some(ago(30)),
+            ..Default::default()
+        },
+        BookingFilter {
+            scope: BookingScope::Investments,
+            ..Default::default()
+        },
+    ];
+    for (i, f) in filters.iter().enumerate() {
+        both!(format!("list_transactions(filter {i})"), |v| v
+            .list_transactions(f.clone()));
+        both!(format!("export_bookings_csv(filter {i})"), |v| v
+            .export_bookings_csv(f.clone()));
+    }
+    for (i, f) in [
+        crate::documents::DocumentFilter {
+            account_id: None,
+            doc_type: None,
+            search: None,
+            unlinked_only: false,
+        },
+        crate::documents::DocumentFilter {
+            account_id: None,
+            doc_type: None,
+            search: None,
+            unlinked_only: true,
+        },
+        crate::documents::DocumentFilter {
+            account_id: None,
+            doc_type: None,
+            search: Some("Tagesgeld".into()),
+            unlinked_only: false,
+        },
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        both!(format!("list_all_documents(filter {i})"), |v| v
+            .list_all_documents(f.clone()));
+    }
+    let any_rule = |pattern: &str| crate::models::Rule {
+        id: 0,
+        name: "x".into(),
+        category_id: n(&b, "SELECT min(id) FROM categories"),
+        field: crate::models::RuleField::Any,
+        match_kind: crate::models::MatchKind::Keyword,
+        pattern: pattern.into(),
+        case_sensitive: false,
+        min_amount_cents: None,
+        max_amount_cents: None,
+        account_id: None,
+        priority: 100,
+        enabled: true,
+        match_count: 0,
+    };
+    for p in ["Autobank", "Musterbank", "a"] {
+        both!(format!("preview_rule({p})"), |v| v
+            .preview_rule(any_rule(p), 500));
+    }
+    let mm = "\"Datum\";\"Wertstellung\";\"Kategorie\";\"Name\";\"Verwendungszweck\";\"Konto\";\"Bank\";\"Betrag\";\"Währung\";\"Notiz\"\n\
+\"15.03.2012\";\"15.03.2012\";\"Haushalt\\Supermarkt\";\"REWE Markt\";\"Einkauf\";\"\";\"\";\"-12,34\";\"EUR\";\"\"\n";
+    let giro = n(
+        &b,
+        "SELECT id FROM accounts WHERE external_ref = 'demo-giro'",
+    );
+    for target in [None, Some(giro)] {
+        both!(format!("preview_moneymoney_import({target:?})"), |v| v
+            .preview_moneymoney_import(
+                mm.as_bytes().to_vec(),
+                "x.csv".into(),
+                target
+            ));
+    }
+    both!("auto_match_document", |v| v.auto_match_document(
+        "autobank.pdf".into(),
+        Vec::new(),
+        Some(format!(
+            "Autobank AG Rate Kreditvertrag 289,00 EUR {}",
+            ago(24)
+        ))
+    ));
+    for (api, run) in [("export_all_documents", 0), ("mirror_new_documents", 1)] {
+        let out = |tag: &str| {
+            let d = dir.join(format!("{api}-{tag}"));
+            std::fs::create_dir_all(&d).unwrap();
+            d
+        };
+        let (da, db) = (out("soft"), out("gone"));
+        let call = |v: &Vault, d: &std::path::Path| {
+            let d = d.to_string_lossy().into_owned();
+            if run == 0 {
+                v.export_all_documents(d)
+            } else {
+                v.mirror_new_documents(d)
+            }
+        };
+        m.cmp(api, call(&a, &da), call(&b, &db));
+        m.cmp(&format!("{api} files"), files_under(&da), files_under(&db));
+    }
+    // apply last: it writes
+    both!("apply_rules", |v| v.apply_rules(false));
+    both!("list_transactions after apply_rules", |v| v
+        .list_transactions(BookingFilter::default()));
+
+    // a vault whose only rows are deleted is empty
+    let e = open(&dir, "empty.db");
+    let cat = e
+        .create_category("X".into(), None, String::new(), String::new())
+        .unwrap();
+    let conn = e
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    e.db()
+        .unwrap()
+        .execute_batch(&format!(
+            "INSERT INTO account_groups(id, name) VALUES (1, 'G');
+             INSERT INTO accounts(connection_id, group_id, external_ref, name) VALUES ({conn}, 1, 'A', 'A');"
+        ))
+        .unwrap();
+    e.delete_category(cat).unwrap();
+    e.delete_bank_connection(conn).unwrap();
+    m.cmp("is_empty(only deleted rows)", e.is_empty(), Ok(true));
+    m.cmp("account_count(only deleted rows)", e.account_count(), Ok(0));
+
+    assert!(
+        m.0.is_empty(),
+        "{} APIs show soft-deleted rows:\n{}",
+        m.0.len(),
+        m.0.join("\n")
+    );
+}
+
+/// The drop index of a move counts the accounts the user sees, so a deleted
+/// account in the target group must not shift it.
+#[test]
+fn moving_an_account_ignores_deleted_neighbours() {
+    let v = open(&temp_dir("moveidx"), "a.db");
+    let (_, a1, a2, loose) = bank_fixture(&v);
+    let g = v.create_user_group("G".into(), "folder".into()).unwrap();
+    v.move_account_to_group(a1, Some(g.clone()), None).unwrap();
+    v.move_account_to_group(a2, Some(g.clone()), None).unwrap();
+    v.set_account_archived(a1, true).unwrap();
+    v.delete_account(a1).unwrap();
+    // visible group: [a2]; index 1 = after a2
+    v.move_account_to_group(loose, Some(g.clone()), Some(1))
+        .unwrap();
+    let group = v
+        .list_user_groups()
+        .unwrap()
+        .into_iter()
+        .find(|x| x.uuid == g)
+        .unwrap();
+    let ids: Vec<i64> = group.accounts.iter().map(|a| a.id).collect();
+    assert_eq!(ids, [a2, loose]);
+}

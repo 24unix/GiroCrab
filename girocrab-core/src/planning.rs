@@ -35,10 +35,12 @@ CREATE TABLE IF NOT EXISTS transfer_templates (
 pub(crate) const EFFECTIVE_SQL: &str = "(
     SELECT t.category_id AS category_id, t.amount_cents AS amount_cents, t.booking_date AS booking_date
       FROM transactions t
-     WHERE NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)
+     WHERE t.deleted_ms IS NULL
+       AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)
     UNION ALL
     SELECT s.category_id, s.amount_cents, t.booking_date
       FROM transaction_splits s JOIN transactions t ON t.id = s.transaction_id
+     WHERE t.deleted_ms IS NULL
 )";
 
 fn month_range(year: i32, month: u32) -> Result<(String, String), CoreError> {
@@ -193,7 +195,7 @@ impl Vault {
         let mut db = self.db()?;
         let amount: i64 = db
             .query_row(
-                "SELECT amount_cents FROM transactions WHERE id = ?1",
+                "SELECT amount_cents FROM transactions WHERE id = ?1 AND deleted_ms IS NULL",
                 [transaction_id],
                 |r| r.get(0),
             )
@@ -250,8 +252,9 @@ impl Vault {
     ) -> Result<Vec<TransactionSplit>, CoreError> {
         let db = self.db()?;
         let mut stmt = db.prepare(
-            "SELECT id, transaction_id, category_id, amount_cents, note FROM transaction_splits
-             WHERE transaction_id = ?1 ORDER BY id",
+            "SELECT s.id, s.transaction_id, s.category_id, s.amount_cents, s.note FROM transaction_splits s
+             JOIN transactions t ON t.id = s.transaction_id AND t.deleted_ms IS NULL
+             WHERE s.transaction_id = ?1 ORDER BY s.id",
         )?;
         let rows = stmt
             .query_map([transaction_id], |r| {

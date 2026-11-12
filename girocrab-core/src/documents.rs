@@ -373,12 +373,15 @@ fn row_to_info(r: &rusqlite::Row) -> rusqlite::Result<DocumentInfo> {
     })
 }
 
-const SELECT_INFO: &str = "SELECT d.id, d.booking_id, COALESCE(d.account_id, t.account_id), d.title, d.doc_type, d.mime_type, d.file_name,
+/// A link to a deleted booking or account reads as none (what the old
+/// `ON DELETE SET NULL` did): `t` and `da` only join live rows.
+const SELECT_INFO: &str = "SELECT d.id, t.id, COALESCE(da.id, t.account_id), d.title, d.doc_type, d.mime_type, d.file_name,
         length(d.pdf_bytes), d.source_url, COALESCE(NULLIF(d.doc_date,''), t.booking_date, ''), d.created_at, a.name,
         t.counterparty, t.amount_cents, t.booking_date
    FROM booking_documents d
-   LEFT JOIN transactions t ON t.id = d.booking_id
-   LEFT JOIN accounts a ON a.id = COALESCE(d.account_id, t.account_id)";
+   LEFT JOIN transactions t ON t.id = d.booking_id AND t.deleted_ms IS NULL
+   LEFT JOIN accounts da ON da.id = d.account_id AND da.deleted_ms IS NULL
+   LEFT JOIN accounts a ON a.id = COALESCE(da.id, t.account_id)";
 
 fn safe_name(s: &str) -> String {
     let name = s
@@ -428,10 +431,10 @@ fn list_all_documents_sql() -> String {
         "FROM booking_documents d INDEXED BY booking_documents_info",
     );
     format!(
-        "{select} WHERE (?1 IS NULL OR COALESCE(d.account_id, t.account_id) = ?1)
+        "{select} WHERE (?1 IS NULL OR COALESCE(da.id, t.account_id) = ?1)
             AND (?2 IS NULL OR d.doc_type = ?2)
             AND (?3 IS NULL OR d.title LIKE ?3 OR d.file_name LIKE ?3 OR t.counterparty LIKE ?3)
-            AND (?4 = 0 OR d.booking_id IS NULL)
+            AND (?4 = 0 OR t.id IS NULL)
          ORDER BY COALESCE(NULLIF(d.doc_date,''), t.booking_date) DESC, d.id DESC"
     )
 }
@@ -444,7 +447,7 @@ impl Vault {
     ) -> Result<Vec<DocumentInfo>, CoreError> {
         let db = self.db()?;
         let mut st = db.prepare(&format!(
-            "{SELECT_INFO} WHERE d.booking_id = ?1 ORDER BY d.doc_date DESC, d.id DESC"
+            "{SELECT_INFO} WHERE d.booking_id = ?1 AND t.id IS NOT NULL ORDER BY d.doc_date DESC, d.id DESC"
         ))?;
         let rows = st
             .query_map([booking_id], row_to_info)?
@@ -499,7 +502,7 @@ impl Vault {
         let db = self.db()?;
         let (account_id, date): (i64, String) = db
             .query_row(
-                "SELECT account_id, booking_date FROM transactions WHERE id = ?1",
+                "SELECT account_id, booking_date FROM transactions WHERE id = ?1 AND deleted_ms IS NULL",
                 [booking_id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )

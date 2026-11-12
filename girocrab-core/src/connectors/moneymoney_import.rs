@@ -561,9 +561,11 @@ fn run(
     match target {
         Some(id) => {
             account_currency = conn
-                .query_row("SELECT currency FROM accounts WHERE id = ?1", [id], |r| {
-                    r.get::<_, String>(0)
-                })
+                .query_row(
+                    "SELECT currency FROM accounts WHERE id = ?1 AND deleted_ms IS NULL",
+                    [id],
+                    |r| r.get::<_, String>(0),
+                )
                 .optional()?
                 .ok_or_else(|| CoreError::NotFound {
                     what: trf("Konto {0}", &[&id]),
@@ -637,6 +639,7 @@ pub(crate) fn merge_rows(
     let mut existing: HashMap<String, Vec<Existing>> = HashMap::new();
     {
         let mut q = conn.prepare(
+            // includes soft-deleted rows: a deleted booking is matched, never re-imported
             "SELECT id, booking_date, amount_cents, counterparty_iban, counterparty, purpose,
                     import_fp, category_source, note, deleted_ms IS NOT NULL
              FROM transactions WHERE account_id = ?1 ORDER BY id",
@@ -830,6 +833,7 @@ pub(crate) fn adopt_import(
     let Some(id) = row else { return Ok(false) };
     let taken: bool = conn
         .query_row(
+            // includes soft-deleted rows: (account, external_id) is unique
             "SELECT 1 FROM transactions WHERE account_id = ?1 AND external_id = ?2",
             params![account_id, external_id],
             |_| Ok(true),

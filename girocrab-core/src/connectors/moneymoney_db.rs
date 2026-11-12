@@ -1622,6 +1622,7 @@ fn find_existing_account(
 ) -> CoreResult<Option<(i64, String)>> {
     let by_ref: Option<(i64, String)> = conn
         .query_row(
+            // includes soft-deleted rows: the import revives a deleted account
             "SELECT id, name FROM accounts WHERE external_ref = ?1 ORDER BY id LIMIT 1",
             [ext],
             |r| Ok((r.get(0)?, r.get(1)?)),
@@ -1632,6 +1633,7 @@ fn find_existing_account(
     }
     Ok(conn
         .query_row(
+            // includes soft-deleted rows
             "SELECT id, name FROM accounts WHERE upper(replace(iban, ' ', '')) = ?1
              ORDER BY (connection_id IS NULL), id LIMIT 1",
             [iban],
@@ -1674,6 +1676,7 @@ pub(crate) fn adopt_account(
         // Prefer imported accounts without an IBAN; a connector that reports
         // none (Amazon Visa web login) may still find the card with the IBAN
         // MoneyMoney stored for it – if it is the only one of its kind here.
+        // includes soft-deleted rows: `store_fetch` revives what it adopts
         let single = |iban_filter: &str| -> CoreResult<Option<i64>> {
             let mut st = conn.prepare(&format!(
                 "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref LIKE 'moneymoney-db:%'
@@ -1693,6 +1696,7 @@ pub(crate) fn adopt_account(
         }
     } else {
         conn.query_row(
+            // includes soft-deleted rows
             "SELECT id FROM accounts WHERE (connection_id IS NULL OR connection_id = ?1)
                AND external_ref LIKE 'moneymoney-db:%' AND upper(replace(iban, ' ', '')) = ?2
              ORDER BY (connection_id IS NULL), id LIMIT 1",
@@ -1716,7 +1720,11 @@ fn replaces_starter_categories(conn: &Connection, src: &Source) -> CoreResult<bo
     if src.category_order.is_empty() {
         return Ok(false);
     }
-    let bookings: i64 = conn.query_row("SELECT count(*) FROM transactions", [], |r| r.get(0))?;
+    let bookings: i64 = conn.query_row(
+        "SELECT count(*) FROM transactions WHERE deleted_ms IS NULL",
+        [],
+        |r| r.get(0),
+    )?;
     Ok(bookings == 0)
 }
 
@@ -2036,6 +2044,7 @@ fn import(
             Some(id) => Some(id),
             None => conn
                 .query_row(
+                    // includes soft-deleted rows: revived below
                     "SELECT id FROM accounts WHERE external_ref = ?1 ORDER BY id LIMIT 1",
                     [&ext],
                     |r| r.get::<_, i64>(0),

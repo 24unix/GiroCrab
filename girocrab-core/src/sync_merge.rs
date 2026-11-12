@@ -152,6 +152,7 @@ type RuleRow = (
 /// Gives every category and rule without a uuid one: the deterministic uuid if
 /// no row (live or deleted) has it yet, else a random one.
 pub(crate) fn fill_missing_uuids(conn: &Connection) -> CoreResult<()> {
+    // includes soft-deleted rows
     let missing: i64 = conn.query_row(
         "SELECT (SELECT count(*) FROM categories WHERE uuid IS NULL)
               + (SELECT count(*) FROM rules WHERE uuid IS NULL)",
@@ -342,6 +343,7 @@ fn soft_delete_account_at(conn: &Connection, id: i64, now: i64) -> CoreResult<()
 /// Soft-deletes a connection, its accounts and their bookings.
 pub(crate) fn soft_delete_connection(conn: &Connection, id: i64) -> CoreResult<()> {
     let accounts: Vec<i64> = {
+        // includes soft-deleted rows
         let mut q = conn.prepare("SELECT id FROM accounts WHERE connection_id = ?1")?;
         let rows = q.query_map([id], |r| r.get(0))?;
         rows.collect::<Result<_, _>>()?
@@ -371,6 +373,7 @@ pub(crate) fn revive_connection(conn: &Connection, id: i64) -> CoreResult<()> {
 /// individually deleted bookings stay deleted.
 pub(crate) fn revive_account_if_deleted(conn: &Connection, id: i64) -> CoreResult<()> {
     let stamp: Option<i64> = conn
+        // includes soft-deleted rows
         .query_row("SELECT deleted_ms FROM accounts WHERE id = ?1", [id], |r| {
             r.get(0)
         })
@@ -396,6 +399,7 @@ pub(crate) fn booking_is_deleted(
     external_id: &str,
 ) -> CoreResult<bool> {
     Ok(conn.query_row(
+        // includes soft-deleted rows
         "SELECT EXISTS (SELECT 1 FROM transactions
           WHERE account_id = ?1 AND external_id = ?2 AND deleted_ms IS NOT NULL)",
         params![account_id, external_id],
@@ -406,6 +410,7 @@ pub(crate) fn booking_is_deleted(
 pub(crate) fn connection_key(conn: &Connection, id: i64) -> CoreResult<String> {
     let (connector, login, bank): (String, String, String) = conn
         .query_row(
+            // includes soft-deleted rows
             "SELECT connector, login_name, bank_code FROM bank_connections WHERE id = ?1",
             [id],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
@@ -423,6 +428,7 @@ pub(crate) fn connection_key(conn: &Connection, id: i64) -> CoreResult<String> {
 pub(crate) fn account_key(conn: &Connection, id: i64) -> CoreResult<String> {
     let (connection, external_ref): (Option<i64>, String) = conn
         .query_row(
+            // includes soft-deleted rows
             "SELECT connection_id, external_ref FROM accounts WHERE id = ?1",
             [id],
             |r| Ok((r.get(0)?, r.get(1)?)),
@@ -441,6 +447,7 @@ pub(crate) fn account_key(conn: &Connection, id: i64) -> CoreResult<String> {
 pub(crate) fn booking_key(conn: &Connection, id: i64) -> CoreResult<String> {
     let (account, external_id): (i64, String) = conn
         .query_row(
+            // includes soft-deleted rows
             "SELECT account_id, external_id FROM transactions WHERE id = ?1",
             [id],
             |r| Ok((r.get(0)?, r.get(1)?)),
@@ -456,6 +463,7 @@ pub(crate) fn booking_key(conn: &Connection, id: i64) -> CoreResult<String> {
 fn synced_state(v: &crate::vault::Vault) -> Vec<String> {
     use rusqlite::types::Value;
     let db = v.db().unwrap();
+    // includes soft-deleted rows
     let rows = |sql: &str| -> Vec<Vec<Value>> {
         let mut st = db.prepare(sql).unwrap();
         let n = st.column_count();

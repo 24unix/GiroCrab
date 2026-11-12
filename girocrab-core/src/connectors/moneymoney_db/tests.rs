@@ -890,6 +890,29 @@ fn starter_categories_stay_when_the_vault_has_bookings() {
     assert_eq!(v.list_categories(None, None).unwrap().len(), starter);
 }
 
+/// Soft-deleted bookings are no bookings: the vault counts as empty.
+#[test]
+fn deleted_bookings_do_not_count_as_existing() {
+    let v = vault();
+    v.seed_starter_categories().unwrap();
+    {
+        let db = v.db().unwrap();
+        db.execute_batch(
+            "INSERT INTO account_groups(id, name) VALUES (1, 'G');
+             INSERT INTO accounts(id, group_id, external_ref, name) VALUES (1, 1, 'x', 'X');
+             INSERT INTO transactions(account_id, external_id, booking_date, amount_cents)
+             VALUES (1, 'e1', '2026-01-01', -5);",
+        )
+        .unwrap();
+    }
+    v.set_account_archived(1, true).unwrap();
+    v.delete_account(1).unwrap();
+    let p = v
+        .preview_moneymoney_database(fake_db(), PW.into(), None)
+        .unwrap();
+    assert!(p.replaces_starter_categories);
+}
+
 #[test]
 fn directory_banks_map_to_fints_keys() {
     // (bank code, name) -> stored connector key
