@@ -131,8 +131,11 @@ struct BankingPolicyBanner: View {
                         .disabled(checking)
                         if checking { ProgressView().controlSize(.small) }
                     } else {
-                        Button("Jetzt aktualisieren") { BankingUpdateAction.perform(openURL: openURL) }
-                            .buttonStyle(.borderedProminent)
+                        // "Ein Update ist in Vorbereitung": no action that cannot succeed yet.
+                        if gate.updateAvailable {
+                            Button("Jetzt aktualisieren") { BankingUpdateAction.perform(openURL: openURL) }
+                                .buttonStyle(.borderedProminent)
+                        }
                         if let advisory = gate.advisory {
                             Button("Details") { openURL(advisory) }
                                 .help(advisory.absoluteString)
@@ -162,7 +165,6 @@ struct BankingPolicyBanner: View {
 /// functions). Shown in every build; "Sicherheit" exists everywhere, the
 /// update pane does not (App Store).
 struct BankingPolicySection: View {
-    @Environment(\.openURL) private var openURL
     private let docsURL = URL(string: "https://github.com/GiroCrab/GiroCrab/blob/main/docs/banking-policy.md")!
 
     var body: some View {
@@ -202,8 +204,7 @@ struct BankingPolicySection: View {
                     Button("Jetzt prüfen") { Task { await policy.refresh(force: true) } }
                 }
                 Spacer()
-                Button("Mehr erfahren") { openURL(docsURL) }
-                    .buttonStyle(.link)
+                Link("Mehr erfahren", destination: docsURL)
             }
         } header: {
             Text("Sicherheitssperre für Bankverbindungen")

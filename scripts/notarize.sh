@@ -25,6 +25,9 @@
 # In-app updates: every run merges its item into the one signed appcast.xml on
 # the latest stable release (channels: stable, beta, nightly), see
 # scripts/make-appcast.sh and docs/auto-updates.md.
+# Banking policy (docs/banking-policy.md): the current signed policy is checked,
+# bundled as floor and re-attached to every stable release; an invalid
+# signature aborts the release. Skipped while the policy key is a placeholder.
 #   --ios           also bump iOS build number, archive for iOS, and upload to TestFlight
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -208,6 +211,16 @@ if [ "$NIGHTLY" -eq 1 ]; then
   export GIROCRAB_VERSION="${LAST_TAG#v}-nightly.${STAMP}"
 fi
 
+# Outside build/ and dist/: both are wiped while packaging.
+POLICY_DIR="$(mktemp -d)"
+echo "==> Banking policy: fetch + verify (aborts on an invalid signature)"
+scripts/banking-policy.sh fetch "$POLICY_DIR"
+export GIROCRAB_BANKING_POLICY_DIR="$POLICY_DIR"
+POLICY_FILES=()
+if [ -f "$POLICY_DIR/banking-policy.json" ]; then
+  POLICY_FILES=("$POLICY_DIR/banking-policy.json" "$POLICY_DIR/banking-policy.json.sig")
+fi
+
 # Sparkle key rotation / lost key: decide the keys BEFORE packaging – the
 # bundle gets the (new) public key from scripts/sparkle-public-ed-key.txt.
 if [ -n "$ROTATE_TO" ]; then
@@ -284,6 +297,13 @@ if [ -n "$CHANNEL" ]; then
   echo "app version as expected: $got_short ($got_build, $CHANNEL)"
 fi
 
+echo "--- banking policy in the build"
+scripts/banking-policy.sh check-app "$VAPP"
+if [ ${#POLICY_FILES[@]} -gt 0 ]; then
+  cmp -s "$VAPP/Contents/Resources/banking-policy.json" "$POLICY_DIR/banking-policy.json" \
+    || { echo "error: bundled banking-policy.json missing or not the verified one" >&2; exit 1; }
+fi
+
 echo "--- launch smoke test"
 "$VAPP/Contents/MacOS/GiroCrabMac" >/dev/null 2>&1 &
 APP_PID=$!
@@ -357,13 +377,18 @@ ${NOTES}"
     git tag -a "$UPLOAD_TAG" -m "Release $UPLOAD_TAG"
     git push origin "$UPLOAD_TAG"
   fi
+  # A stable release becomes ".../releases/latest": it must carry the current
+  # banking policy from the first moment on, so the files go up together with
+  # the disk image (disk image, policy, then the appcast below).
+  STABLE_POLICY=()
+  [ "$CHANNEL" = "stable" ] && STABLE_POLICY=(${POLICY_FILES[@]+"${POLICY_FILES[@]}"})
   if gh release view "$UPLOAD_TAG" >/dev/null 2>&1; then
     echo "==> Updating existing release $UPLOAD_TAG"
-    gh release upload "$UPLOAD_TAG" "$ARTIFACT" --clobber
+    gh release upload "$UPLOAD_TAG" "$ARTIFACT" ${STABLE_POLICY[@]+"${STABLE_POLICY[@]}"} --clobber
     gh release edit "$UPLOAD_TAG" --notes "$NOTES" ${RELEASE_FLAGS[@]+"${RELEASE_FLAGS[@]}"}
   else
     echo "==> Creating GitHub release $UPLOAD_TAG"
-    gh release create "$UPLOAD_TAG" "$ARTIFACT" \
+    gh release create "$UPLOAD_TAG" "$ARTIFACT" ${STABLE_POLICY[@]+"${STABLE_POLICY[@]}"} \
       --title "GiroCrab $UPLOAD_TAG" \
       --notes "$NOTES" ${RELEASE_FLAGS[@]+"${RELEASE_FLAGS[@]}"}
   fi
