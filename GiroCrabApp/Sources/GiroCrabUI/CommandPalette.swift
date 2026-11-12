@@ -29,7 +29,9 @@ struct CommandPaletteView: View {
         if model.canTransfer {
             out.append(Item(title: String(localized: "Überweisung senden"), subtitle: "\(action) · ⌘N", symbol: "paperplane") { model.openTransfer() })
         }
-        out.append(Item(title: String(localized: "Alle Konten abrufen"), subtitle: "\(action) · ⌘R", symbol: "arrow.triangle.2.circlepath") { model.requestSyncAll() })
+        if !model.bankingBlocksAll {
+            out.append(Item(title: String(localized: "Alle Konten abrufen"), subtitle: "\(action) · ⌘R", symbol: "arrow.triangle.2.circlepath") { model.requestSyncAll() })
+        }
         out.append(Item(title: String(localized: "Regeln bearbeiten"), subtitle: action, symbol: "wand.and.stars") { model.openRuleEditor() })
         out.append(Item(title: String(localized: "Buchungen drucken"), subtitle: "\(action) · ⌘P", symbol: "printer") {
             // once the palette sheet is gone: one sheet at a time

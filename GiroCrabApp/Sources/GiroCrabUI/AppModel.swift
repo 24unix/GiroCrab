@@ -446,7 +446,7 @@ public final class AppModel {
         didSet {
             if let c = webLoginConnection, let gate = bankingGate(for: c) {
                 webLoginConnection = nil
-                errorMessage = gate.message
+                showError(gate.title, gate.detail)
             }
         }
     }
@@ -2453,7 +2453,7 @@ public final class AppModel {
             if let gate = bankingGate(for: connection) {
                 syncQueue = []
                 statementsAccountID = nil
-                errorMessage = gate.message
+                showError(gate.title, gate.detail)
                 return
             }
             requestSyncChecked(connection)
@@ -2504,7 +2504,7 @@ public final class AppModel {
             let allowed = batch.filter { bankingGate(for: $0) == nil }
             guard let head = allowed.first else {
                 if let gate = blocked.first.flatMap({ bankingGate(for: $0) }) {
-                    showError(gate.title, gate.message)
+                    showError(gate.title, gate.detail)
                 }
                 return
             }

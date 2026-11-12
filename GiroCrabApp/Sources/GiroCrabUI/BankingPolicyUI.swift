@@ -45,7 +45,7 @@ extension AppModel {
     /// Shows the reason and returns false if adding is blocked.
     func bankingAllowsAdding(_ gate: BankingGate?) -> Bool {
         guard let gate else { return true }
-        errorMessage = gate.message
+        showError(gate.title, gate.detail)
         return false
     }
 
