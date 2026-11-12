@@ -4,7 +4,8 @@
 #
 #   scripts/banking-policy.sh keygen [--account NAME]
 #       first policy key: private key into the keychain, public key into
-#       BankingPolicy.publicKeys (replaces the placeholder) – activates the feature
+#       BankingPolicy.publicKeys (replaces the placeholder), first (empty)
+#       policy into policy/ – activates the feature once committed and released
 #   scripts/banking-policy.sh set --minimum X.Y.Z [--distribution d,…] [--channels c,…]
 #       [--connectors id,…] [--advisory URL] [--update-not-available]
 #       [--store-version X.Y.Z] [--add] [--bump N] [--dry-run DIR]
@@ -14,8 +15,8 @@
 #   scripts/banking-policy.sh verify [DIR]
 #       check the published files (or DIR/banking-policy.json + .sig)
 #   scripts/banking-policy.sh fetch DIR
-#       (notarize.sh) current verified policy into DIR; creates and signs an
-#       empty one if none is published yet. Exit 0 without files if inactive.
+#       (notarize.sh) current published, verified policy into DIR (bundled as
+#       floor). Fails if nothing is published. Exit 0 without files if inactive.
 #   scripts/banking-policy.sh rotate-key [--retire-old]
 #       new key pair, public key ADDED to BankingPolicy.publicKeys; with
 #       --retire-old: remove every key except the current signing key
@@ -23,14 +24,20 @@
 #       every compiled-in key is really in the built binary
 #   scripts/banking-policy.sh status
 #
+# Published = policy/banking-policy.json + .sig on the main branch, served by
+# raw.githubusercontent.com (fixed address, independent of releases). set and
+# clear sign the new file, commit it and push it to main; they need a checkout
+# of main that equals origin/main. Without push rights (branch protection) the
+# commit stays local – push it as a pull request.
+#
 # The private key never leaves the release Mac's keychain (service "GiroCrab
 # Banking Policy"). Test hooks (never needed for a real release):
 #   BANKING_POLICY_KEY_DIR       throwaway private keys in <dir>/<account>.key instead of the keychain
 #   BANKING_POLICY_ACCOUNT_FILE  other file for the signing account name
-#   BANKING_POLICY_SOURCE_DIR    read the "published" policy from a directory instead of GitHub
+#   BANKING_POLICY_SOURCE_DIR    directory used instead of policy/ in the repo and instead of GitHub
 #   BANKING_POLICY_APPCAST       local appcast.xml instead of the published one
 #   BANKING_POLICY_SWIFT_FILE    other BankingPolicy.swift (keys)
-#   BANKING_POLICY_NO_UPLOAD=1   never call gh (same as --dry-run)
+#   BANKING_POLICY_NO_PUSH=1     never commit or push (files stay in the policy directory)
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -38,7 +45,10 @@ cd "$ROOT"
 SWIFT_FILE="${BANKING_POLICY_SWIFT_FILE:-GiroCrabApp/Sources/GiroCrabUI/BankingPolicy.swift}"
 ACCOUNT_FILE="${BANKING_POLICY_ACCOUNT_FILE:-scripts/banking-policy-signing-account.txt}"
 REPO="${BANKING_POLICY_REPO:-GiroCrab/GiroCrab}"
-BASE_URL="https://github.com/${REPO}/releases/latest/download"
+BRANCH="main"
+POLICY_PATH="policy"
+BASE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}/${POLICY_PATH}"
+APPCAST_URL="https://github.com/${REPO}/releases/latest/download/appcast.xml"
 KEY_MARKER="// banking-policy-public-key"
 
 die() { echo "banking-policy: $*" >&2; exit 1; }
@@ -111,23 +121,32 @@ verify_pair() {  # <dir>
   [ "$schema" = "1" ] || die "unknown schema $schema"
 }
 
-upload() {  # <dir>
-  if [ -n "${DRY_RUN:-}" ] || [ "${BANKING_POLICY_NO_UPLOAD:-0}" = "1" ]; then
-    echo "==> dry run: not uploading ($1)"
-    return 0
+# Where the policy lives in the repo (or the test directory).
+policy_dir() { echo "${BANKING_POLICY_SOURCE_DIR:-$ROOT/$POLICY_PATH}"; }
+pushing() { [ -z "${DRY_RUN:-}" ] && [ "${BANKING_POLICY_NO_PUSH:-0}" != "1" ] && [ -z "${BANKING_POLICY_SOURCE_DIR:-}" ]; }
+
+# The checkout must be main and equal origin/main, so the sequence read from
+# policy/ is the published one and the push is a fast-forward.
+require_main() {
+  pushing || return 0
+  git fetch -q origin "$BRANCH" || die "git fetch origin $BRANCH failed"
+  [ "$(git rev-parse --abbrev-ref HEAD)" = "$BRANCH" ] || die "check out $BRANCH first"
+  [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$BRANCH")" ] || die "$BRANCH is not equal to origin/$BRANCH – pull (or push) first"
+  [ -z "$(git status --porcelain -- "$POLICY_PATH")" ] || die "$POLICY_PATH/ has local changes"
+}
+
+commit_and_push() {  # <dir with the new files> <sequence>
+  if [ -n "${DRY_RUN:-}" ]; then echo "==> dry run: not committed ($1)"; return 0; fi
+  local dir; dir="$(policy_dir)"
+  mkdir -p "$dir"
+  if [ "$1" != "$dir" ]; then cp "$1/banking-policy.json" "$1/banking-policy.json.sig" "$dir/"; fi
+  if ! pushing; then echo "==> written to $dir (not committed)"; return 0; fi
+  git add -- "$POLICY_PATH/banking-policy.json" "$POLICY_PATH/banking-policy.json.sig"
+  git commit -q -m "chore(banking-policy): sequence $2" -- "$POLICY_PATH" || die "git commit failed"
+  if ! git push -q origin "HEAD:$BRANCH"; then
+    die "push to $BRANCH refused (branch protection?) – the commit is local; push it to a branch and merge it as a pull request"
   fi
-  local latest
-  latest="$(gh release view -R "$REPO" --json tagName -q .tagName)" || die "no published stable release"
-  echo "==> Uploading to release $latest"
-  # A client that fetches between the two uploads sees a mismatching pair,
-  # rejects it and keeps its stored state (fails safe).
-  gh release upload -R "$REPO" "$latest" "$1/banking-policy.json" "$1/banking-policy.json.sig" --clobber
-  local check; check="$(mktemp -d)"
-  sleep 2
-  download_current "$check" || die "uploaded, but $BASE_URL/banking-policy.json is not reachable"
-  cmp -s "$check/banking-policy.json" "$1/banking-policy.json" \
-    || echo "warning: the CDN still serves the previous file – check again in a minute" >&2
-  rm -rf "$check"
+  echo "==> Pushed to $BRANCH. raw.githubusercontent.com may serve the previous file for up to 5 minutes."
 }
 
 # Newest version a client of <channel> can update to (Sparkle appcast).
@@ -155,7 +174,7 @@ check_lockout() {  # <minimum> <distributions csv> <channels csv|""> <store vers
     local appcast="${BANKING_POLICY_APPCAST:-}"
     if [ -z "$appcast" ]; then
       appcast="$(mktemp)"
-      curl -fsSL -o "$appcast" "$BASE_URL/appcast.xml" || die "no published appcast – cannot check for self-lockout (use --update-not-available)"
+      curl -fsSL -o "$appcast" "$APPCAST_URL" || die "no published appcast – cannot check for self-lockout (use --update-not-available)"
     fi
     local ch newest v
     for ch in ${chans//,/ }; do
@@ -201,9 +220,10 @@ warn_unknown_connectors() {
 
 publish() {  # <rules json> <bump>
   is_active || die "no policy key in $SWIFT_FILE yet – run keygen first"
-  local cur; cur="$(mktemp -d)"
+  require_main
+  local cur; cur="$(policy_dir)"
   local seq=0
-  if download_current "$cur"; then
+  if [ -f "$cur/banking-policy.json" ]; then
     verify_pair "$cur"
     seq="$(json_get "$cur/banking-policy.json" 'd["sequence"]')"
     if [ -n "${ADD:-}" ]; then
@@ -215,8 +235,7 @@ publish() {  # <rules json> <bump>
   write_policy "$out" "$((seq + $2))" "$1"
   echo "==> Signed policy, sequence $((seq + $2)):"
   cat "$out/banking-policy.json"
-  upload "$out"
-  rm -rf "$cur"
+  commit_and_push "$out" "$((seq + $2))"
 }
 
 # Inserts/removes key lines in the publicKeys array.
@@ -277,11 +296,18 @@ case "$cmd" in
     pub="$(tool keygen "$account")"
     add_key_line "$pub" 1
     echo "$account" > "$ACCOUNT_FILE"
+    first="$(policy_dir)"
+    if [ -f "$first/banking-policy.json" ]; then
+      echo "==> $first/banking-policy.json exists – kept"
+    else
+      write_policy "$first" 1 "[]"
+    fi
     echo "==> New policy key '$account' (private key in the keychain, service \"GiroCrab Banking Policy\")."
     echo "    Public key added to $SWIFT_FILE: $pub"
+    echo "    First (empty) policy, sequence 1: $first/"
     echo "    Back up the private key offline (password manager), separately from Sparkle and Developer ID."
-    echo "    Next: commit $SWIFT_FILE and $ACCOUNT_FILE and release; notarize.sh then signs and attaches"
-    echo "    the first (empty) policy by itself."
+    echo "    Next: commit $SWIFT_FILE, $ACCOUNT_FILE and $POLICY_PATH/ to $BRANCH, then release."
+    echo "    The policy must be on $BRANCH before the release: notarize.sh refuses to build without it."
     ;;
   set)
     is_active || die "no policy key in $SWIFT_FILE yet – run keygen first"
@@ -337,16 +363,13 @@ PY
   fetch)
     dir="${1:-}"; [ -n "$dir" ] || die "fetch: target directory missing"
     if ! is_active; then
-      echo "==> Banking policy inactive (placeholder key) – nothing to bundle or upload"
+      echo "==> Banking policy inactive (placeholder key) – nothing to bundle"
       exit 0
     fi
-    if download_current "$dir"; then
-      verify_pair "$dir"
-      echo "==> Banking policy: sequence $(json_get "$dir/banking-policy.json" 'd["sequence"]') verified"
-    else
-      echo "==> No banking policy published yet – creating an empty one (sequence 1)"
-      write_policy "$dir" 1 "[]"
-    fi
+    download_current "$dir" \
+      || die "nothing published at $BASE_URL – commit $POLICY_PATH/ (created by keygen) to $BRANCH first"
+    verify_pair "$dir"
+    echo "==> Banking policy: sequence $(json_get "$dir/banking-policy.json" 'd["sequence"]') verified"
     ;;
   rotate-key)
     is_active || die "no active key yet – use keygen"
@@ -363,6 +386,7 @@ PY
     echo "$account" > "$ACCOUNT_FILE"
     echo "==> New signing key '$account'; its public key was ADDED to $SWIFT_FILE."
     echo "    1. Commit, release over all distributions (scripts/banking-policy.sh check-app <app> verifies the build)."
+    echo "       The published file stays valid: it is signed with the old key, which is still listed."
     echo "    2. Right away: scripts/banking-policy.sh clear --bump 1000   (or set …, signed with the new key)"
     echo "    3. Once most users updated: scripts/banking-policy.sh rotate-key --retire-old, release again."
     echo "    Stolen key: also publish a GitHub security advisory."
@@ -381,12 +405,13 @@ PY
     if is_active; then
       echo "active keys:"; active_keys | sed 's/^/  /'
       echo "signing account: $(signing_account 2>/dev/null || echo '<none>')"
+      echo "published at:    $BASE_URL/banking-policy.json"
     else
       echo "inactive (placeholder key) – the app never fetches a policy"
     fi
     ;;
   *)
-    sed -n '2,31p' "$0"
+    sed -n '2,40p' "$0"
     exit 2
     ;;
 esac

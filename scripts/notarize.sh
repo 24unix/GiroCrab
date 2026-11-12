@@ -200,6 +200,7 @@ echo "==> Identity: $IDENTITY"
 
 # Outside build/ and dist/: both are wiped while packaging.
 POLICY_DIR="$(mktemp -d)"
+# Bundled as the floor for a fresh install; published in policy/ on main.
 echo "==> Banking policy: fetch + verify (aborts on an invalid signature)"
 scripts/banking-policy.sh fetch "$POLICY_DIR"
 export GIROCRAB_BANKING_POLICY_DIR="$POLICY_DIR"
@@ -377,18 +378,13 @@ ${NOTES}"
     git tag -a "$UPLOAD_TAG" -m "Release $UPLOAD_TAG"
     git push origin "$UPLOAD_TAG"
   fi
-  # A stable release becomes ".../releases/latest": it must carry the current
-  # banking policy from the first moment on, so the files go up together with
-  # the disk image (disk image, policy, then the appcast below).
-  STABLE_POLICY=()
-  [ "$CHANNEL" = "stable" ] && STABLE_POLICY=(${POLICY_FILES[@]+"${POLICY_FILES[@]}"})
   if gh release view "$UPLOAD_TAG" >/dev/null 2>&1; then
     echo "==> Updating existing release $UPLOAD_TAG"
-    gh release upload "$UPLOAD_TAG" "$ARTIFACT" ${STABLE_POLICY[@]+"${STABLE_POLICY[@]}"} --clobber
+    gh release upload "$UPLOAD_TAG" "$ARTIFACT" --clobber
     gh release edit "$UPLOAD_TAG" --notes "$NOTES" ${RELEASE_FLAGS[@]+"${RELEASE_FLAGS[@]}"}
   else
     echo "==> Creating GitHub release $UPLOAD_TAG"
-    gh release create "$UPLOAD_TAG" "$ARTIFACT" ${STABLE_POLICY[@]+"${STABLE_POLICY[@]}"} \
+    gh release create "$UPLOAD_TAG" "$ARTIFACT" \
       --title "GiroCrab $UPLOAD_TAG" \
       --notes "$NOTES" ${RELEASE_FLAGS[@]+"${RELEASE_FLAGS[@]}"}
   fi

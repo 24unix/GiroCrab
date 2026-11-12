@@ -29,12 +29,13 @@ GitHub, keine Sperre, in Einstellungen › Sicherheit steht „Nicht aktiv“.
 Aktivieren (einmalig, Maintainer, auf dem Release-Mac):
 
 ```sh
-scripts/banking-policy.sh keygen          # Schlüssel in den Schlüsselbund, öffentlichen Schlüssel eintragen
+scripts/banking-policy.sh keygen          # Schlüssel in den Schlüsselbund, öffentlichen Schlüssel eintragen,
+                                          # erste leere Policy (sequence 1) nach policy/
 ```
 
-Danach `BankingPolicy.swift` und `scripts/banking-policy-signing-account.txt`
-committen und ein stabiles Release bauen: `notarize.sh` legt die erste, leere
-Policy (`sequence` 1) selbst an, signiert sie und hängt sie an.
+Danach `BankingPolicy.swift`, `scripts/banking-policy-signing-account.txt` und
+`policy/` nach `main` committen, **dann** ein Release bauen. `notarize.sh`
+bricht ab, solange unter der festen Adresse noch keine Policy liegt.
 
 Der private Schlüssel liegt nur im Schlüsselbund des Release-Macs (Dienst
 „GiroCrab Banking Policy“), nie im Repo, in der CI oder in GitHub Secrets. Eine
@@ -77,8 +78,8 @@ Greifen mehrere Regeln, gilt die strengste. Leere `rules` = keine Sperre.
 
 ## Verhalten der App
 
-* **Abruf** von `https://github.com/GiroCrab/GiroCrab/releases/latest/download/banking-policy.json`
-  (+ `.sig`) beim Start, vor jedem Bankkontakt (höchstens alle 15 Minuten).
+* **Abruf** von `https://raw.githubusercontent.com/GiroCrab/GiroCrab/main/policy/banking-policy.json`
+  (+ `.sig`), also einer festen Adresse unabhängig von Releases, beim Start, vor jedem Bankkontakt (höchstens alle 15 Minuten).
   Ohne Cookies, ohne Cache, ohne Nutzerdaten; max. 64 KB, 10 s Zeitlimit.
   GitHub sieht dabei IP-Adresse und Zeitpunkt.
 * **Prüfung:** Signatur (einer der einkompilierten Schlüssel) → `schema` →
@@ -115,8 +116,12 @@ scripts/banking-policy.sh set --distribution developer-id --minimum 0.7.2 \
 scripts/banking-policy.sh clear
 ```
 
-`set` erhöht `sequence`, signiert, prüft die Signatur und lädt beides an das
-neueste stabile Release (ein neues Release ist nicht nötig). Es verweigert eine
+`set` erhöht `sequence`, signiert, prüft die Signatur, committet beide Dateien
+in `policy/` und pusht nach `main` (ein Release ist nicht nötig). Voraussetzung:
+ausgecheckt ist `main`, gleich `origin/main`. Ist `main` geschützt, bleibt der
+Commit lokal; dann als Pull Request einreichen. GitHub liefert die neue Datei
+nach spätestens etwa 5 Minuten aus. Jede Sperre ist so ein nachvollziehbarer
+Commit. Es verweigert eine
 `minimumVersion` über der neuesten veröffentlichten Version des Kanals (Schutz
 vor Selbstaussperrung), außer mit `--update-not-available`.
 
@@ -126,15 +131,15 @@ auf die neue Version.
 
 ## Releases
 
-`notarize.sh` übernimmt die aktuelle Policy automatisch:
+Releases veröffentlichen die Policy nicht; sie liegt allein in `policy/` auf
+`main`. `notarize.sh` nimmt nur den aktuellen Stand mit:
 
-* vor dem Bauen: lädt `banking-policy.json` + `.sig` vom neuesten stabilen
-  Release, prüft die Signatur und legt sie als Untergrenze ins Bundle;
-* bei `--upload` eines stabilen Tags: hängt dieselben Dateien an das neue
-  Release (Reihenfolge: Disk-Image, Policy, Appcast), damit
-  `releases/latest/download/banking-policy.json` nie 404 liefert.
-* Ist die Signatur ungültig, **bricht das Release ab**. Ohne aktiven Schlüssel
-  (Platzhalter) wird der Schritt übersprungen.
+* vor dem Bauen: lädt `banking-policy.json` + `.sig` von der festen Adresse,
+  prüft die Signatur und legt sie als Untergrenze ins Bundle;
+* nach dem Bauen: prüft, dass Schlüssel und Datei wirklich im Build stecken.
+* Ist die Signatur ungültig oder noch nichts veröffentlicht, **bricht das
+  Release ab**. Ohne aktiven Schlüssel (Platzhalter) wird der Schritt
+  übersprungen.
 
 ## Schlüsselwechsel
 
@@ -147,8 +152,8 @@ scripts/banking-policy.sh rotate-key --retire-old   # Folge-Release: alten Schl�
 
 Bei **gestohlenem** Schlüssel zusätzlich eine Sicherheitsmeldung (GitHub
 Advisory) veröffentlichen. Bekannte Lücke: Ältere Apps kennen den neuen
-Schlüssel noch nicht; wer zusätzlich Schreibzugriff auf die GitHub-Releases hat,
-könnte bei ihnen bis zum Update Sperren setzen oder aufheben.
+Schlüssel noch nicht; wer zusätzlich Schreibzugriff auf `main` hat, könnte bei
+ihnen bis zum Update Sperren setzen oder aufheben.
 
 ## Testen
 
@@ -177,8 +182,8 @@ GIROCRAB_BANKING_POLICY_VERSION=0.7.1 swift run GiroCrabMac --demo-seed
 `scripts/banking-policy.sh` lässt sich ohne GitHub und Schlüsselbund trocken
 ausprobieren: `BANKING_POLICY_KEY_DIR`, `BANKING_POLICY_ACCOUNT_FILE`,
 `BANKING_POLICY_SWIFT_FILE` (Kopie der Swift-Datei), `BANKING_POLICY_SOURCE_DIR`
-(lokaler Ordner als „veröffentlichtes“ Release), `BANKING_POLICY_APPCAST` und
-`BANKING_POLICY_NO_UPLOAD=1` (siehe Kopf des Skripts).
+(lokaler Ordner statt `policy/` und GitHub; dann wird nie committet),
+`BANKING_POLICY_APPCAST` und `BANKING_POLICY_NO_PUSH=1` (siehe Kopf des Skripts).
 
 Nur in einem separaten macOS-Benutzer testen, wenn ein echter Tresor im Spiel
 sein könnte.

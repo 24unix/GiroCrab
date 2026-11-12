@@ -368,7 +368,10 @@ public final class BankingPolicy {
         "PLACEHOLDER-BANKING-POLICY-PUBLIC-KEY", // banking-policy-public-key
     ]
 
-    nonisolated public static let defaultURL = URL(string: "https://github.com/GiroCrab/GiroCrab/releases/latest/download/banking-policy.json")!
+    /// Fixed address in the repository (`policy/` on `main`), independent of
+    /// releases: a release without the file can never make it disappear, and
+    /// every change is a reviewable commit. The signature is what protects it.
+    nonisolated public static let defaultURL = URL(string: "https://raw.githubusercontent.com/GiroCrab/GiroCrab/main/policy/banking-policy.json")!
 
     /// A successful check is "fresh" for this long (also the minimum interval between downloads).
     nonisolated public static let freshness: TimeInterval = 15 * 60
