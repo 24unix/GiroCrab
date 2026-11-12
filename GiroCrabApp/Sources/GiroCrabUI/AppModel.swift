@@ -219,6 +219,17 @@ struct CategoryNode: Identifiable, Hashable {
     var id: Int64 { category.id }
 }
 
+extension Array where Element == CategoryNode {
+    /// Depth-first lookup of a node anywhere in the tree.
+    func node(_ id: Int64) -> CategoryNode? {
+        for n in self {
+            if n.id == id { return n }
+            if let hit = n.children?.node(id) { return hit }
+        }
+        return nil
+    }
+}
+
 @MainActor
 @Observable
 public final class AppModel {

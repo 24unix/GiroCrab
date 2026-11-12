@@ -336,20 +336,40 @@ struct MerchantHistoryCard: View {
     }
 }
 
-/// 1-click category grid: top-level categories, then the sub-categories of
-/// the chosen one; plus "Regel für diesen Händler erstellen".
+/// 1-click category grid: top-level categories, then one grid of
+/// sub-categories per opened level (any depth, #101); plus
+/// "Regel für diesen Händler erstellen".
 struct CategoryGridCard: View {
     @Environment(AppModel.self) private var model
     let booking: Booking
-    @State private var openRoot: Int64?
+    /// Opened categories from the top level down; nil = the booking's branch.
+    @State private var openPath: [Int64]?
 
-    private var currentRoot: Int64? {
-        guard let cid = booking.categoryId, let c = model.categories.first(where: { $0.id == cid }) else { return nil }
-        return c.parentId ?? c.id
+    /// The booking's category's ancestors, plus the category itself when it
+    /// has sub-categories.
+    private var currentPath: [Int64] {
+        guard let cid = booking.categoryId else { return [] }
+        var path: [Int64] = []
+        var next: Int64? = cid
+        while let id = next, path.count < 32, let c = model.categories.first(where: { $0.id == id }) {
+            path.insert(id, at: 0)
+            next = c.parentId
+        }
+        if path.last == cid, model.categoryTree.node(cid)?.children == nil { path.removeLast() }
+        return path
+    }
+
+    /// A category with sub-categories opens the next level, a leaf is assigned.
+    private func pick(_ node: CategoryNode, level: Int, in path: [Int64]) {
+        if node.children == nil {
+            model.setCategory(node.id, for: booking)
+        } else {
+            openPath = Array(path.prefix(level)) + [node.id]
+        }
     }
 
     var body: some View {
-        let root = openRoot ?? currentRoot
+        let path = openPath ?? currentPath
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Kategorie").font(.subheadline.weight(.semibold))
@@ -359,17 +379,20 @@ struct CategoryGridCard: View {
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 6)], spacing: 6) {
                 ForEach(model.categoryTree) { node in
-                    CategoryChip(category: node.category, selected: node.id == root) {
-                        if node.children == nil { model.setCategory(node.id, for: booking) } else { openRoot = node.id }
+                    CategoryChip(category: node.category, selected: node.id == path.first) {
+                        pick(node, level: 0, in: path)
                     }
                 }
             }
-            if let root, let node = model.categoryTree.first(where: { $0.id == root }), let kids = node.children {
-                Divider()
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 6)], spacing: 6) {
-                    ForEach(kids) { kid in
-                        CategoryChip(category: kid.category, selected: kid.id == booking.categoryId, filled: true) {
-                            model.setCategory(kid.id, for: booking)
+            ForEach(Array(path.enumerated()), id: \.element) { level, id in
+                if let kids = model.categoryTree.node(id)?.children {
+                    let selected = level + 1 < path.count ? path[level + 1] : booking.categoryId
+                    Divider()
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 6)], spacing: 6) {
+                        ForEach(kids) { kid in
+                            CategoryChip(category: kid.category, selected: kid.id == selected, filled: true) {
+                                pick(kid, level: level + 1, in: path)
+                            }
                         }
                     }
                 }
@@ -391,7 +414,7 @@ struct CategoryGridCard: View {
                 .font(.caption2).foregroundStyle(Theme.tertiary)
         }
         .card()
-        .onChange(of: booking.id) { _, _ in openRoot = nil }
+        .onChange(of: booking.id) { _, _ in openPath = nil }
     }
 }
 

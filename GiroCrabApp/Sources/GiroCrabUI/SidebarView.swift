@@ -87,27 +87,7 @@ struct SidebarView: View {
                     }
                 }
                 .tag(SidebarItem.uncategorized)
-                ForEach(model.categoryTree) { root in
-                    if let kids = root.children {
-                        DisclosureGroup(isExpanded: Binding(
-                            get: { model.expandedCategories.contains(root.id) },
-                            set: { if $0 { model.expandedCategories.insert(root.id) } else { model.expandedCategories.remove(root.id) } }
-                        )) {
-                            ForEach(kids) { node in
-                                CategoryRow(category: node.category)
-                                    .tag(SidebarItem.category(node.id))
-                                    .contextMenu { categoryMenu(node.category) }
-                            }
-                        } label: {
-                            CategoryRow(category: root.category)
-                                .contextMenu { categoryMenu(root.category) }
-                        }
-                        .tag(SidebarItem.category(root.id))
-                    } else {
-                        CategoryRow(category: root.category)
-                            .tag(SidebarItem.category(root.id))
-                    }
-                }
+                categoryRows(model.categoryTree)
             } header: {
                 Text("Kategorien").font(.caption.weight(.semibold))
             }
@@ -319,6 +299,29 @@ struct SidebarView: View {
         } else {
             Button("Konto archivieren …", systemImage: "archivebox") { dialog = .archiveAccount(account) }
         }
+    }
+
+    /// The category tree at any depth (#101): a node with sub-categories is a
+    /// disclosure group whose content recurses into its children.
+    private func categoryRows(_ nodes: [CategoryNode]) -> AnyView {
+        AnyView(ForEach(nodes) { node in
+            if let kids = node.children {
+                DisclosureGroup(isExpanded: Binding(
+                    get: { model.expandedCategories.contains(node.id) },
+                    set: { if $0 { model.expandedCategories.insert(node.id) } else { model.expandedCategories.remove(node.id) } }
+                )) {
+                    categoryRows(kids)
+                } label: {
+                    CategoryRow(category: node.category)
+                        .contextMenu { categoryMenu(node.category) }
+                }
+                .tag(SidebarItem.category(node.id))
+            } else {
+                CategoryRow(category: node.category)
+                    .tag(SidebarItem.category(node.id))
+                    .contextMenu { categoryMenu(node.category) }
+            }
+        })
     }
 
     @ViewBuilder
