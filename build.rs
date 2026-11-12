@@ -127,6 +127,7 @@ fn make_bundle(app_dir: &Path, exe: &Path) {
     let macos = app_dir.join("Contents/MacOS");
     std::fs::create_dir_all(&macos).unwrap();
     std::fs::copy(exe, macos.join("GiroCrab")).expect("copy app binary");
+    embed_sparkle(app_dir, exe);
     make_icns(app_dir);
     let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -163,6 +164,51 @@ fn make_bundle(app_dir: &Path, exe: &Path) {
         .arg("-f")
         .arg(app_dir)
         .status();
+}
+
+/// GiroCrabMac links Sparkle.framework dynamically (in-app updates): copy it into
+/// Contents/Frameworks and let the binary find it there, like
+/// package-macos-app.sh does for release builds. Without it dyld aborts at launch.
+fn embed_sparkle(app_dir: &Path, exe: &Path) {
+    let bin_dir = exe.parent().unwrap();
+    let pkg = bin_dir.parent().unwrap().parent().unwrap(); // GiroCrabApp/.build/release -> GiroCrabApp
+    let src = [
+        bin_dir.join("Sparkle.framework"),
+        bin_dir.join("PackageFrameworks/Sparkle.framework"),
+        pkg.join(".build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"),
+    ]
+    .into_iter()
+    .find(|p| p.is_dir())
+    .unwrap_or_else(|| panic!("Sparkle.framework not found next to {}", bin_dir.display()));
+
+    let frameworks = app_dir.join("Contents/Frameworks");
+    let dst = frameworks.join("Sparkle.framework");
+    let _ = std::fs::remove_dir_all(&dst);
+    std::fs::create_dir_all(&frameworks).unwrap();
+    // ditto keeps the framework's symlinks (Versions/Current etc.) intact.
+    run(
+        Command::new("ditto").arg(&src).arg(&dst),
+        "ditto Sparkle.framework",
+    );
+    // XPC services are only for sandboxed apps; GiroCrab is not sandboxed.
+    let _ = std::fs::remove_dir_all(dst.join("Versions/B/XPCServices"));
+    let _ = std::fs::remove_file(dst.join("XPCServices"));
+    // Removing them breaks Sparkle's own signature: re-sign ad hoc, so the
+    // bundle's ad-hoc signature below can seal it.
+    run(
+        Command::new("codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(&dst),
+        "codesign Sparkle.framework",
+    );
+
+    // A fresh copy of the binary each build, so the rpath is never present twice.
+    run(
+        Command::new("install_name_tool")
+            .args(["-add_rpath", "@executable_path/../Frameworks"])
+            .arg(app_dir.join("Contents/MacOS/GiroCrab")),
+        "install_name_tool -add_rpath",
+    );
 }
 
 /// String Catalogs -> Contents/Resources/<lang>.lproj/{Localizable,InfoPlist}.strings(dict).
