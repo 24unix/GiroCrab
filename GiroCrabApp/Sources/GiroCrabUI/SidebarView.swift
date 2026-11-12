@@ -106,14 +106,21 @@ struct SidebarView: View {
                 } else {
                     Image(systemName: "lock.fill")
                     Text("Verschlüsselt · \(model.lastSyncText)")
-                    Button("Demo") { model.showDemo() }
-                        .buttonStyle(.borderless)
                 }
+                Spacer(minLength: 0)
+                Button { model.showAddBank = true } label: {
+                    Image(systemName: "plus").frame(width: 24, height: 18).contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .help("Bank hinzufügen …")
+                .accessibilityLabel("Bank hinzufügen")
+                .disabled(model.vault == nil)
             }
             .font(.caption)
             .foregroundStyle(Theme.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
-            .padding(8)
             .background(.bar)
         }
         .confirmationDialog(

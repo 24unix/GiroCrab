@@ -354,6 +354,7 @@ public final class AppModel {
     /// Recurring bookings of the current month: booked vs. still due.
     var recurringMonth: RecurringMonthOverview?
     var showRecurringSheet = false
+    var showAddBank = false
     /// Series hidden with "Nicht wiederkehrend" (can be shown again).
     var recurringHidden: [IgnoredRecurring] = []
     /// Booking whose custom recurrence dates are being edited.

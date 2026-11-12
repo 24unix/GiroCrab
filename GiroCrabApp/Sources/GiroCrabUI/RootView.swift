@@ -53,6 +53,8 @@ public struct GiroCrabScenes: Scene {
                 Button("Neue Kontogruppe …") { model.groupDialog = .create() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                     .disabled(model.vault == nil)
+                Button("Bank hinzufügen …") { model.showAddBank = true }
+                    .disabled(model.vault == nil)
                 Button("Neues Darlehen …") { model.openLoanEditor(.create) }
                     .disabled(model.vault == nil)
                 Button("Neue Hauptkategorie …") { model.newCategoryRequest = NewCategoryRequest(parent: nil) }
@@ -73,6 +75,8 @@ public struct GiroCrabScenes: Scene {
                     .disabled(model.vault == nil)
             }
             CommandMenu("Konten") {
+                Button("Bank hinzufügen …") { model.showAddBank = true }
+                    .disabled(model.vault == nil)
                 Button("Alle Konten abrufen") { model.requestSyncAll() }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(model.vault == nil || model.bankingBlocksAll)
@@ -383,6 +387,10 @@ struct MainSplitView: View {
             next?()
         }) {
             CommandPaletteView()
+                .environment(model)
+        }
+        .sheet(isPresented: $model.showAddBank) {
+            AddBankSheet()
                 .environment(model)
         }
         .sheet(isPresented: $model.showMoneyMoneyImport) {
