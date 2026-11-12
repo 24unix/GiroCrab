@@ -80,6 +80,20 @@ enum Period: String, CaseIterable, Identifiable {
     }
 }
 
+extension BookingDirection: @retroactive Identifiable {
+    public var id: Self { self }
+
+    static let ordered: [BookingDirection] = [.all, .income, .expense]
+
+    var title: String {
+        switch self {
+        case .all: return String(localized: "Einnahmen und Ausgaben")
+        case .income: return String(localized: "Nur Einnahmen")
+        case .expense: return String(localized: "Nur Ausgaben")
+        }
+    }
+}
+
 enum StatusFilter: String, CaseIterable, Identifiable {
     case all = "Alle"
     case new = "Neu"
@@ -275,6 +289,27 @@ public final class AppModel {
     /// Booking whose custom recurrence dates are being edited.
     var customRecurringBooking: Booking?
     var statusFilter: StatusFilter = .all
+
+    /// Label of the header filter menu: "Status: Alle" or the active filters.
+    var filterTitle: String {
+        guard directionFilter != .all else { return String(localized: "Status: \(statusFilter.title)") }
+        let kind = directionFilter == .income ? String(localized: "Einnahmen") : String(localized: "Ausgaben")
+        return statusFilter == .all ? kind : "\(statusFilter.title) · \(kind)"
+    }
+
+    /// Filled icon while any filter is active.
+    var filterSymbol: String {
+        statusFilter == .all && directionFilter == .all
+            ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill"
+    }
+    /// Income / expenses only (GitHub #53); filtered in the core, so totals and CSV follow.
+    var directionFilter: BookingDirection = .all {
+        didSet {
+            guard directionFilter != oldValue else { return }
+            listLimit = Self.defaultListLimit
+            reloadBookings()
+        }
+    }
     var searchText: String = "" { didSet { scheduleSearch() } }
     var selectedBookingID: Booking.ID? {
         didSet {
@@ -392,6 +427,11 @@ public final class AppModel {
             if let q = options.selectAccount, let a = allAccounts.first(where: { $0.name.lowercased().contains(q) }) {
                 sidebarSelection = .account(a.id)
                 selectedBookingID = bookings.first?.id
+            }
+            switch options.demoFilter {
+            case "income": directionFilter = .income
+            case "expense", "expenses": directionFilter = .expense
+            default: break
             }
             reloadBookings()
             if let q = options.pickBooking, let b = bookings.first(where: { $0.merchantName.lowercased().contains(q) || $0.counterparty.lowercased().contains(q) }) {
@@ -866,7 +906,8 @@ public final class AppModel {
             limit: listLimit,
             offset: 0,
             scope: scope,
-            merchantKey: nil
+            merchantKey: nil,
+            direction: directionFilter
         )
     }
 
@@ -902,7 +943,14 @@ public final class AppModel {
                 PrintAccount(id: $0.id, name: $0.name, iban: $0.iban, balanceCents: $0.balanceCents,
                              balanceDate: $0.balanceDate, currency: $0.currency)
             }
-            return PrintReport(title: title, periodLabel: periodTitle, rows: rows, accounts: accounts)
+            var report = PrintReport(title: title, periodLabel: periodTitle, rows: rows, accounts: accounts)
+            // The list's own income/expense filter is named in the printout header.
+            switch directionFilter {
+            case .all: break
+            case .income: report.filterNotes = [PrintDirection.income.title]
+            case .expense: report.filterNotes = [PrintDirection.expenses.title]
+            }
+            return report
         } catch {
             errorMessage = error.localizedDescription
             return nil
@@ -982,7 +1030,7 @@ public final class AppModel {
         let filter = BookingFilter(
             accountIds: currentFilter.accountIds, categoryId: nil, includeSubcategories: true, uncategorizedOnly: false,
             search: nil, dateFrom: from, dateTo: to, limit: 0, offset: 0,
-            scope: .all, merchantKey: nil
+            scope: .all, merchantKey: nil, direction: .all
         )
         run {
             let p = try vault.listTransactions(filter: filter)
@@ -1128,7 +1176,7 @@ public final class AppModel {
         guard let vault else { return nil }
         let f = BookingFilter(accountIds: [b.accountId], categoryId: nil, includeSubcategories: true, uncategorizedOnly: false,
                               search: nil, dateFrom: b.bookingDate, dateTo: b.bookingDate, limit: 0, offset: 0,
-                              scope: .all, merchantKey: nil)
+                              scope: .all, merchantKey: nil, direction: .all)
         return (try? vault.listTransactions(filter: f))?.transactions.first { $0.id == b.id }
     }
 
@@ -1249,6 +1297,7 @@ public final class AppModel {
         if !bookings.contains(where: { $0.id == id }) {
             sidebarSelection = .allAccounts
             period = .all
+            directionFilter = .all
             searchText = ""
         }
         // After a closing sheet / list reload, so the list can scroll to the row.

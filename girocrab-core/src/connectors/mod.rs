@@ -2945,6 +2945,7 @@ mod tests {
                 offset: 0,
                 scope: BookingScope::All,
                 merchant_key: None,
+                ..Default::default()
             })
             .unwrap();
         assert_eq!(page.transactions.len(), 1);
@@ -2983,6 +2984,7 @@ mod tests {
                 offset: 0,
                 scope: BookingScope::All,
                 merchant_key: None,
+                ..Default::default()
             })
             .unwrap()
             .transactions

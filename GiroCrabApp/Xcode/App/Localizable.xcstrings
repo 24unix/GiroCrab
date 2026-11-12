@@ -12340,6 +12340,17 @@
           }
         }
       }
+    },
+    "Nach Status oder nach Einnahmen und Ausgaben filtern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter by status or by income and expenses"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

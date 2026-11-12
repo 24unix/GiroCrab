@@ -15,6 +15,9 @@ import Foundation
 ///  --demo-sheet transfer|moneymoney|moneymoney-db|recurring
 ///                         (demo) open that sheet pre-filled with fictional data,
 ///                         for README screenshots
+///  --demo-filter income|expense
+///                         (demo) start with the booking list filtered to
+///                         income or expenses (PR screenshots, #53)
 ///  --dark                 (macOS) force the Dark Aqua appearance (README screenshots)
 ///  --light                (macOS, `swift run`) force the light Aqua appearance
 ///  --screenshot <file>    (macOS) render the main window, save a PNG, quit.
@@ -34,6 +37,8 @@ public struct LaunchOptions: Sendable {
     public var pickBooking: String?
     /// (demo) "transfer", "moneymoney", "moneymoney-db" or "print": open that sheet with fictional data
     public var demoSheet: String?
+    /// (demo) "income" or "expense": start with that booking list filter
+    public var demoFilter: String?
 
     public init(arguments: [String] = CommandLine.arguments, environment: [String: String] = ProcessInfo.processInfo.environment) {
         var demo = arguments.contains("--demo-seed")
@@ -58,6 +63,11 @@ public struct LaunchOptions: Sendable {
             demoSheet = arguments[i + 1].lowercased()
         } else {
             demoSheet = nil
+        }
+        if let i = arguments.firstIndex(of: "--demo-filter"), i + 1 < arguments.count {
+            demoFilter = arguments[i + 1].lowercased()
+        } else {
+            demoFilter = nil
         }
         let sync = arguments.contains("--demo-sync")
         freshVault = arguments.contains("--fresh-vault")

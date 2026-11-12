@@ -1975,6 +1975,11 @@ impl Vault {
             args.push(Box::new(to.clone()));
             wh.push(format!("t.booking_date <= ?{}", args.len()));
         }
+        match filter.direction {
+            BookingDirection::All => {}
+            BookingDirection::Income => wh.push("t.amount_cents > 0".into()),
+            BookingDirection::Expense => wh.push("t.amount_cents < 0".into()),
+        }
         if let Some(q) = filter
             .search
             .as_ref()

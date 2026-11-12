@@ -259,28 +259,34 @@ struct StreamHeaderCard: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                // One filter menu (status + income/expenses) keeps the row narrow.
                 Menu {
                     Picker("Status", selection: $model.statusFilter) {
                         ForEach(StatusFilter.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                    Picker("Art", selection: $model.directionFilter) {
+                        ForEach(BookingDirection.ordered) { Text($0.title).tag($0) }
                     }
                     .pickerStyle(.inline)
                 } label: {
                     #if os(iOS)
                     if sizeClass == .compact {
                         // icon only: the segmented period picker already takes most of the width
-                        Image(systemName: "line.3.horizontal.decrease")
-                            .accessibilityLabel("Status: \(model.statusFilter.title)")
+                        Image(systemName: model.filterSymbol)
+                            .accessibilityLabel(model.filterTitle)
                     } else {
-                        Label("Status: \(model.statusFilter.title)", systemImage: "line.3.horizontal.decrease")
+                        Label(model.filterTitle, systemImage: model.filterSymbol)
                             .lineLimit(1).fixedSize(horizontal: true, vertical: false)
                     }
                     #else
-                    Label("Status: \(model.statusFilter.title)", systemImage: "line.3.horizontal.decrease")
+                    Label(model.filterTitle, systemImage: model.filterSymbol)
                         .lineLimit(1).fixedSize(horizontal: true, vertical: false)
                     #endif
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                .help("Nach Status oder nach Einnahmen und Ausgaben filtern")
                 if let a = account {
                     Button { showDocuments = true } label: {
                         Label("Dokumente", systemImage: "doc.text")

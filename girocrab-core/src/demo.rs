@@ -1247,6 +1247,52 @@ mod tests {
     use crate::models::BookingFilter;
 
     #[test]
+    fn direction_filter_splits_income_and_expenses() {
+        use crate::models::BookingDirection;
+        let dir = std::env::temp_dir().join(format!("girocrab-test-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let page = |direction| {
+            v.list_transactions(BookingFilter {
+                direction,
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        let (all, income, expense) = (
+            page(BookingDirection::All),
+            page(BookingDirection::Income),
+            page(BookingDirection::Expense),
+        );
+        assert!(income.total_count > 0 && expense.total_count > 0);
+        assert!(income.transactions.iter().all(|t| t.amount_cents > 0));
+        assert!(expense.transactions.iter().all(|t| t.amount_cents < 0));
+        // zero-amount bookings belong to neither side
+        let zero = all
+            .transactions
+            .iter()
+            .filter(|t| t.amount_cents == 0)
+            .count() as u32;
+        assert_eq!(
+            income.total_count + expense.total_count + zero,
+            all.total_count
+        );
+        // page totals follow the filter
+        assert_eq!(income.income_cents, all.income_cents);
+        assert_eq!(income.expense_cents, 0);
+        assert_eq!(expense.expense_cents, all.expense_cents);
+        assert_eq!(expense.income_cents, 0);
+        // the CSV export uses the same filter
+        let csv = v
+            .export_bookings_csv(BookingFilter {
+                direction: BookingDirection::Income,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(csv.lines().count() as u32, income.total_count + 1);
+    }
+
+    #[test]
     fn demo_seed_has_six_accounts_and_exactly_fifty_two_bookings() {
         let dir = std::env::temp_dir().join(format!("girocrab-test-{}.db", uuid::Uuid::new_v4()));
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
