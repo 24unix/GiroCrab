@@ -960,6 +960,7 @@ pub(crate) fn store_fetch(
                     connection_id,
                     &acc.external_ref,
                     &acc.iban,
+                    &acc.currency,
                     acc.kind,
                 )?,
             };

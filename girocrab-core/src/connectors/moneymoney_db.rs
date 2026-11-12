@@ -1669,6 +1669,7 @@ pub(crate) fn adopt_account(
     connection_id: i64,
     external_ref: &str,
     iban: &str,
+    currency: &str,
     kind: AccountKind,
 ) -> CoreResult<Option<i64>> {
     let iban = sepa::normalize_iban(iban);
@@ -1695,12 +1696,16 @@ pub(crate) fn adopt_account(
             None => None,
         }
     } else {
+        // Wallets in several currencies can share one IBAN (Finom EUR/USD):
+        // never take over one in another currency, prefer the exact currency.
+        let currency = currency.trim().to_uppercase();
         conn.query_row(
             // includes soft-deleted rows
             "SELECT id FROM accounts WHERE (connection_id IS NULL OR connection_id = ?1)
                AND external_ref LIKE 'moneymoney-db:%' AND upper(replace(iban, ' ', '')) = ?2
-             ORDER BY (connection_id IS NULL), id LIMIT 1",
-            params![connection_id, iban],
+               AND (?3 = '' OR upper(IFNULL(currency, '')) IN ('', ?3))
+             ORDER BY (connection_id IS NULL), (upper(IFNULL(currency, '')) <> ?3), id LIMIT 1",
+            params![connection_id, iban, currency],
             |r| r.get(0),
         )
         .optional()?

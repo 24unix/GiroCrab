@@ -561,7 +561,9 @@ mod tests {
             {"name": "No Types", "country": "AT"}
         ]});
         let b = live_banks(&v);
-        assert_eq!(b.len(), 2);
+        // business-only banks (e.g. Finom) are listed too
+        assert_eq!(b.len(), 3);
+        assert!(b.iter().any(|x| x.name == "Only Business"));
         assert_eq!(b[0].country, "DE");
         assert!(b.iter().all(|x| x.live));
         assert!(live_banks(&json!({})).is_empty());

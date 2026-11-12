@@ -525,7 +525,7 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
     let conn_id = v.list_bank_connections().unwrap()[0].id;
     let db = v.db().unwrap();
     assert_eq!(
-        adopt_account(&db, conn_id, "remote-1", "", AccountKind::Checking).unwrap(),
+        adopt_account(&db, conn_id, "remote-1", "", "", AccountKind::Checking).unwrap(),
         None
     );
     let adopted = adopt_account(
@@ -533,6 +533,7 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
         conn_id,
         "remote-1",
         "DE89 3704 0044 0532 0130 00",
+        "",
         AccountKind::Checking,
     )
     .unwrap();
@@ -552,9 +553,49 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
             conn_id,
             "remote-2",
             "DE89370400440532013000",
+            "",
             AccountKind::Checking
         )
         .unwrap(),
+        None
+    );
+}
+
+#[test]
+fn adopting_wallets_sharing_an_iban_follows_the_currency() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+        .unwrap();
+    let conn_id = v.list_bank_connections().unwrap()[0].id;
+    let db = v.db().unwrap();
+    // two imported wallets under one IBAN, the USD one imported first
+    let mut ids = Vec::new();
+    for (n, cur) in [("1", "USD"), ("2", "EUR")] {
+        db.execute(
+            "INSERT INTO accounts(group_id, external_ref, name, iban, currency)
+             VALUES ((SELECT id FROM account_groups LIMIT 1), ?1, 'Wallet', 'GB51TCCL00000000000001', ?2)",
+            params![format!("moneymoney-db:w{n}"), cur],
+        )
+        .unwrap();
+        ids.push(db.last_insert_rowid());
+    }
+    let (usd, eur) = (ids[0], ids[1]);
+    let iban = "GB51 TCCL 0000 0000 0000 01";
+    assert_eq!(
+        adopt_account(&db, conn_id, "w:EUR", iban, "EUR", AccountKind::Checking).unwrap(),
+        Some(eur)
+    );
+    assert_eq!(
+        adopt_account(&db, conn_id, "w:USD", iban, "USD", AccountKind::Checking).unwrap(),
+        Some(usd)
+    );
+    // a third currency finds no wallet to take over
+    assert_eq!(
+        adopt_account(&db, conn_id, "w:GBP", iban, "GBP", AccountKind::Checking).unwrap(),
         None
     );
 }
@@ -755,22 +796,23 @@ fn first_bank_sync_adopts_imported_card_without_iban_by_kind() {
             conn_id,
             "card-x",
             "DE02120300000000202051",
+            "",
             AccountKind::CreditCard
         )
         .unwrap(),
         None
     );
     assert_eq!(
-        adopt_account(&db, conn_id, "card-1", "", AccountKind::CreditCard).unwrap(),
+        adopt_account(&db, conn_id, "card-1", "", "", AccountKind::CreditCard).unwrap(),
         Some(visa.id)
     );
     // only once, and never for another login
     assert_eq!(
-        adopt_account(&db, conn_id, "card-2", "", AccountKind::CreditCard).unwrap(),
+        adopt_account(&db, conn_id, "card-2", "", "", AccountKind::CreditCard).unwrap(),
         None
     );
     assert_eq!(
-        adopt_account(&db, conn_id + 1, "dep-1", "", AccountKind::Brokerage).unwrap(),
+        adopt_account(&db, conn_id + 1, "dep-1", "", "", AccountKind::Brokerage).unwrap(),
         None
     );
 }
@@ -809,7 +851,7 @@ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, curre
     // the web login reports the card without an IBAN: still taken over, once
     let db = v.db().unwrap();
     assert_eq!(
-        adopt_account(&db, conn.id, "amazon-1", "", AccountKind::CreditCard).unwrap(),
+        adopt_account(&db, conn.id, "amazon-1", "", "", AccountKind::CreditCard).unwrap(),
         Some(card.id)
     );
     db.execute(
@@ -818,7 +860,7 @@ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, curre
     )
     .unwrap();
     assert_eq!(
-        adopt_account(&db, conn.id, "amazon-2", "", AccountKind::CreditCard).unwrap(),
+        adopt_account(&db, conn.id, "amazon-2", "", "", AccountKind::CreditCard).unwrap(),
         None
     );
 }

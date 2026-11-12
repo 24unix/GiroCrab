@@ -167,16 +167,38 @@ pub struct EnableBankingConnector {
 
 /// Vault key of an account: card mode keeps the session uid (unchanged
 /// behaviour); generic mode uses IBAN, else `identification_hash`, else uid.
-fn stable_ref(a: &EbAccount, card_mode: bool) -> String {
+/// Currency wallets sharing one IBAN (Finom EUR/USD) get ":<currency>"
+/// appended, so `all` (the consent's accounts) is needed to spot them.
+fn stable_ref(a: &EbAccount, all: &[EbAccount], card_mode: bool) -> String {
     if card_mode {
         return a.uid.clone();
     }
-    [&a.iban, &a.identification_hash, &a.uid]
+    let key = [&a.iban, &a.identification_hash, &a.uid]
         .into_iter()
         .map(|s| s.trim())
         .find(|s| !s.is_empty())
         .unwrap_or_default()
-        .replace(' ', "")
+        .replace(' ', "");
+    let shared_iban = !a.iban.trim().is_empty()
+        && all
+            .iter()
+            .any(|o| o.uid != a.uid && same_iban(o, a) && o.currency != a.currency);
+    if shared_iban {
+        format!("{key}:{}", a.currency)
+    } else {
+        key
+    }
+}
+
+/// Same IBAN (spaces ignored).
+fn same_iban(p: &EbAccount, n: &EbAccount) -> bool {
+    !p.iban.is_empty() && p.iban.replace(' ', "") == n.iban.replace(' ', "")
+}
+
+/// Same currency when both are known: wallets in other currencies under one
+/// IBAN are different accounts.
+fn same_currency(p: &EbAccount, n: &EbAccount) -> bool {
+    p.currency.is_empty() || n.currency.is_empty() || p.currency == n.currency
 }
 
 /// GiroCrab account kind from the PSD2 `cash_account_type`.
@@ -224,11 +246,7 @@ fn carry_over(prev: &[EbAccount], new: &mut [EbAccount]) -> Vec<(String, String)
     let mut renames = Vec::new();
     let single = prev.len() == 1 && new.len() == 1;
     for n in new.iter_mut() {
-        let p = prev.iter().find(|p| {
-            (!p.iban.is_empty() && p.iban.replace(' ', "") == n.iban.replace(' ', ""))
-                || (!p.identification_hash.is_empty()
-                    && p.identification_hash == n.identification_hash)
-        });
+        let p = prev.iter().find(|p| same_account(p, n));
         let p = p.or(if single { prev.first() } else { None });
         if let Some(p) = p {
             n.history_done |= p.history_done;
@@ -252,10 +270,13 @@ fn display_name(a: &EbAccount) -> String {
         .to_string()
 }
 
-/// Same account in two sessions: by IBAN or identification hash.
+/// Same account in two sessions: by IBAN or identification hash, in the
+/// same currency.
 fn same_account(p: &EbAccount, n: &EbAccount) -> bool {
-    (!p.iban.is_empty() && p.iban.replace(' ', "") == n.iban.replace(' ', ""))
-        || (!p.identification_hash.is_empty() && p.identification_hash == n.identification_hash)
+    same_currency(p, n)
+        && (same_iban(p, n)
+            || (!p.identification_hash.is_empty()
+                && p.identification_hash == n.identification_hash))
 }
 
 /// Accounts of the previous consent that the new one no longer includes
@@ -378,6 +399,30 @@ fn max_consent_secs(list: &Value, name: &str) -> Option<i64> {
     })?["maximum_consent_validity"]
         .as_i64()
         .filter(|s| *s > 0)
+}
+
+/// `psu_type` for the consent of `name` in a `GET /aspsps` answer: "business"
+/// only for banks without personal accounts (e.g. Finom), else "personal".
+fn psu_type_for(list: &Value, name: &str) -> &'static str {
+    let business_only = list["aspsps"]
+        .as_array()
+        .and_then(|a| {
+            a.iter().find(|b| {
+                b["name"]
+                    .as_str()
+                    .is_some_and(|n| n.eq_ignore_ascii_case(name))
+            })
+        })
+        .and_then(|b| b["psu_types"].as_array())
+        .is_some_and(|t| {
+            t.iter().any(|x| x.as_str() == Some("business"))
+                && !t.iter().any(|x| x.as_str() == Some("personal"))
+        });
+    if business_only {
+        "business"
+    } else {
+        "personal"
+    }
 }
 
 /// Consent end to request: the bank's maximum (≤ 180 days) minus an hour of
@@ -633,7 +678,10 @@ impl EnableBankingConnector {
             if a.currency.is_empty() {
                 a.currency = "EUR".into();
             }
-            a.ext_ref = stable_ref(a, card_mode);
+        }
+        let refs: Vec<String> = out.iter().map(|a| stable_ref(a, &out, card_mode)).collect();
+        for (a, r) in out.iter_mut().zip(refs) {
+            a.ext_ref = r;
         }
         out
     }
@@ -842,9 +890,10 @@ impl EnableBankingConnector {
                     )),
                 }
             }
+            let r = stable_ref(&self.st.accounts[i], &self.st.accounts, false);
             let a = &mut self.st.accounts[i];
             let old = a.ext_ref.clone();
-            a.ext_ref = stable_ref(a, false);
+            a.ext_ref = r;
             if !old.is_empty() && old != a.ext_ref {
                 self.st.renames.push((old, a.ext_ref.clone()));
             }
@@ -853,19 +902,13 @@ impl EnableBankingConnector {
     }
 }
 
-/// A bank as listed by `GET /aspsps` (only what the picker needs).
+/// A bank as listed by `GET /aspsps` (only what the picker needs). Banks with
+/// only business accounts are kept; `psu_type_for` picks the consent type.
 pub(crate) fn parse_aspsps(v: &Value) -> Vec<(String, String)> {
     v["aspsps"]
         .as_array()
         .map(|a| {
             a.iter()
-                .filter(|b| {
-                    // keep banks that offer personal accounts (field absent = keep)
-                    b["psu_types"]
-                        .as_array()
-                        .map(|t| t.iter().any(|x| x.as_str() == Some("personal")))
-                        .unwrap_or(true)
-                })
                 .filter_map(|b| {
                     Some((
                         b["name"].as_str()?.to_string(),
@@ -1031,7 +1074,7 @@ impl BankConnector for EnableBankingConnector {
                     "aspsp": {"name": name, "country": country},
                     "state": self.expected_state,
                     "redirect_url": ctx.setting("enablebanking.redirect_url")?,
-                    "psu_type": "personal",
+                    "psu_type": psu_type_for(&aspsp_list, name),
                     "language": language,
                 })
             };
@@ -1712,19 +1755,63 @@ mod tests {
             cash_account_type: "CACC".into(),
             ..Default::default()
         };
-        assert_eq!(stable_ref(&a, true), "u");
+        assert_eq!(stable_ref(&a, &[], true), "u");
         assert_eq!(account_kind("CACC", true), AccountKind::CreditCard);
-        assert_eq!(stable_ref(&a, false), "DE02120300000000202051");
+        assert_eq!(stable_ref(&a, &[], false), "DE02120300000000202051");
         let no_iban = EbAccount {
             iban: String::new(),
             ..a.clone()
         };
-        assert_eq!(stable_ref(&no_iban, false), "h");
+        assert_eq!(stable_ref(&no_iban, &[], false), "h");
         let bare = EbAccount {
             uid: "u".into(),
             ..Default::default()
         };
-        assert_eq!(stable_ref(&bare, false), "u");
+        assert_eq!(stable_ref(&bare, &[], false), "u");
+    }
+
+    #[test]
+    fn currency_wallets_sharing_an_iban_stay_apart() {
+        // Finom: EUR and USD wallets share one IBAN, the main account has its own
+        let acc = |uid: &str, iban: &str, cur: &str| EbAccount {
+            uid: uid.into(),
+            iban: iban.into(),
+            currency: cur.into(),
+            ..Default::default()
+        };
+        let all = vec![
+            acc("m", "DE69 1001 8000 0000 0000 01", "EUR"),
+            acc("e", "GB51TCCL00000000000001", "EUR"),
+            acc("u", "GB51TCCL00000000000001", "USD"),
+        ];
+        let refs: Vec<String> = all.iter().map(|a| stable_ref(a, &all, false)).collect();
+        assert_eq!(
+            refs,
+            [
+                "DE69100180000000000001",
+                "GB51TCCL00000000000001:EUR",
+                "GB51TCCL00000000000001:USD"
+            ]
+        );
+        // a new consent maps each wallet onto its own previous account
+        assert!(same_account(&all[1], &all[1]));
+        assert!(!same_account(&all[1], &all[2]));
+        let prev: Vec<EbAccount> = all
+            .iter()
+            .map(|a| EbAccount {
+                ext_ref: stable_ref(a, &all, false),
+                ..a.clone()
+            })
+            .collect();
+        let mut new: Vec<EbAccount> = prev
+            .iter()
+            .map(|a| EbAccount {
+                uid: format!("{}2", a.uid),
+                ..a.clone()
+            })
+            .collect();
+        assert!(carry_over(&prev, &mut new).is_empty());
+        assert!(dropped_refs(&prev, &new).is_empty());
     }
 
     #[test]
@@ -2077,6 +2164,20 @@ mod tests {
             HOLD_PREFIX.starts_with("pending-"),
             "store_fetch cleans up pending-*"
         );
+    }
+
+    #[test]
+    fn psu_type_follows_the_bank() {
+        let list = json!({"aspsps": [
+            {"name": "N26", "country": "DE", "psu_types": ["personal", "business"]},
+            {"name": "Finom", "country": "DE", "psu_types": ["business"]},
+            {"name": "No Types", "country": "DE"}
+        ]});
+        assert_eq!(psu_type_for(&list, "N26"), "personal");
+        assert_eq!(psu_type_for(&list, "finom"), "business");
+        assert_eq!(psu_type_for(&list, "No Types"), "personal");
+        assert_eq!(psu_type_for(&list, "Nope"), "personal");
+        assert_eq!(psu_type_for(&Value::Null, "Finom"), "personal");
     }
 
     #[test]
