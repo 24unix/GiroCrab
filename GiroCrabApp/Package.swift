@@ -7,6 +7,8 @@
 //  * GiroCrabUI  – all views, the app model and VaultKeyManager (shared by
 //                  macOS and iOS; used by the Xcode project in Xcode/).
 //  * GiroCrabMac – a plain macOS executable for `swift run` / `cargo run`
+//                  and the release bundle (package-macos-app.sh; hosts the
+//                  Sparkle updater, see GiroCrabMac/Updater.swift)
 //                  (supports --demo-seed and --screenshot <file.png>).
 //  * GiroCrabUITests – AppModel tests on the demo vault (macOS + iOS).
 import PackageDescription
@@ -20,6 +22,9 @@ let package = Package(
     ],
     dependencies: [
         .package(name: "GiroCrabCorePackage", path: "../generated/GiroCrabCorePackage"),
+        // Auto-update of the macOS release bundle (EdDSA-signed appcast,
+        // stable GitHub releases only). Linked into GiroCrabMac only.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.1"),
     ],
     targets: [
         .target(
@@ -29,7 +34,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "GiroCrabMac",
-            dependencies: ["GiroCrabUI"],
+            dependencies: [
+                "GiroCrabUI",
+                .product(name: "Sparkle", package: "Sparkle", condition: .when(platforms: [.macOS])),
+            ],
             path: "Sources/GiroCrabMac"
         ),
         // App-model tests on the demo vault; run on macOS (`swift test`) and

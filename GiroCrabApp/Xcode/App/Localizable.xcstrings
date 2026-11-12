@@ -11394,6 +11394,215 @@
         }
       }
     },
+    "Nach Updates suchen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check for Updates…"
+          }
+        }
+      }
+    },
+    "Automatisch nach Updates suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatically check for updates"
+          }
+        }
+      }
+    },
+    "Updates automatisch laden und installieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatically download and install updates"
+          }
+        }
+      }
+    },
+    "Zuletzt gesucht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last checked"
+          }
+        }
+      }
+    },
+    "Noch nie" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Never"
+          }
+        }
+      }
+    },
+    "Beta-Versionen erhalten?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receive Beta Versions?"
+          }
+        }
+      }
+    },
+    "Beta-Versionen aktivieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Beta Versions"
+          }
+        }
+      }
+    },
+    "Update-Kanal" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update Channel"
+          }
+        }
+      }
+    },
+    "Stabil" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stable"
+          }
+        }
+      }
+    },
+    "Beta" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beta"
+          }
+        }
+      }
+    },
+    "Nightly" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nightly"
+          }
+        }
+      }
+    },
+    "Nightly-Builds erhalten?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receive Nightly Builds?"
+          }
+        }
+      }
+    },
+    "Nightly-Builds aktivieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Nightly Builds"
+          }
+        }
+      }
+    },
+    "Updates" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Updates"
+          }
+        }
+      }
+    },
+    "Updates werden nur installiert, wenn sie mit dem GiroCrab-Schlüssel signiert und von Apple notarisiert sind." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Updates are only installed if they are signed with the GiroCrab key and notarized by Apple."
+          }
+        }
+      }
+    },
+    "Beta-Versionen sind Vorabversionen zum Testen. Neuere stabile Versionen erhalten Sie weiterhin. Ein Wechsel zurück installiert keine ältere Version." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beta versions are pre-release versions for testing. You still get newer stable versions. Switching back does not install an older version."
+          }
+        }
+      }
+    },
+    "Nightly-Builds sind ungetestete Entwicklungsstände. Neuere Beta- und stabile Versionen erhalten Sie weiterhin. Ein Wechsel zurück installiert keine ältere Version." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nightly builds are untested development snapshots. You still get newer beta and stable versions. Switching back does not install an older version."
+          }
+        }
+      }
+    },
+    "Beta-Versionen sind Vorabversionen zum Testen. Sie können Fehler enthalten oder Ihre Daten so verändern, dass ältere Versionen sie nicht mehr lesen können. Legen Sie vorher eine Sicherung Ihres Tresors an." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beta versions are pre-release versions for testing. They may contain bugs or change your data so that older versions can no longer read it. Back up your vault first."
+          }
+        }
+      }
+    },
+    "Nightly-Builds entstehen aus dem aktuellen Entwicklungsstand und sind nicht getestet. Sie können Fehler enthalten oder Ihre Daten so verändern, dass ältere Versionen sie nicht mehr lesen können. Legen Sie vorher eine Sicherung Ihres Tresors an." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nightly builds are made from the current development state and are untested. They may contain bugs or change your data so that older versions can no longer read it. Back up your vault first."
+          }
+        }
+      }
+    },
     "Allgemein" : {
       "extractionState" : "manual",
       "localizations" : {

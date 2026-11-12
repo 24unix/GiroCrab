@@ -91,6 +91,12 @@ public struct GiroCrabScenes: Scene {
                 LoanAssignMenu(model: model, booking: model.selectedBooking)
             }
             CommandGroup(after: .appInfo) {
+                if AppUpdates.shared.isAvailable {
+                    // Standard place: right below "About", own group (HIG).
+                    Button("Nach Updates suchen …") { AppUpdates.shared.checkForUpdates() }
+                        .disabled(!AppUpdates.shared.canCheckForUpdates)
+                    Divider()
+                }
                 Button("Tresor sperren") { model.lock() }
                     .keyboardShortcut("l", modifiers: [.command, .control])
                     .disabled(!model.hasOwnVault)

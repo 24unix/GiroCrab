@@ -2,36 +2,71 @@
 # Build, Developer-ID sign, notarize, staple and verify GiroCrab.app (macOS),
 # and optionally archive & upload the iOS build to TestFlight / App Store Connect.
 #
-# Usage: scripts/notarize.sh [--upload <TAG> | --nightly] [--ios]
+# Usage: scripts/notarize.sh [--upload <TAG> [--critical | --critical-below X.Y.Z] | --nightly] [--ios]
 #   --upload <TAG>  create/update GitHub release <TAG> with structured changelog and upload macOS zip
+#                   vX.Y.Z          stable release
+#                   vX.Y.Z-beta.N   beta (GitHub pre-release; bundle version X.Y.ZbN)
+#   --critical      mark this stable release as a critical (security) update in the
+#                   appcast: users can't skip/postpone it, but still confirm the install
+#   --critical-below X.Y.Z
+#                   critical only for installs older than X.Y.Z, normal update otherwise
 #   --nightly       move 'nightly' tag to HEAD, create/update rolling GitHub pre-release and upload macOS zip
+#                   (bundle version <last v* tag's version>.<UTC timestamp>)
+# In-app updates: every run merges its item into the one signed appcast.xml on
+# the latest stable release (channels: stable, beta, nightly), see
+# scripts/make-appcast.sh and docs/auto-updates.md.
 #   --ios           also bump iOS build number, archive for iOS, and upload to TestFlight
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 UPLOAD_TAG=""
+CRITICAL=0
+CRITICAL_BELOW=""
 NIGHTLY=0
 BUILD_IOS=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --upload)
       UPLOAD_TAG="${2:-}"
-      [ -n "$UPLOAD_TAG" ] || { echo "error: --upload needs a tag (e.g. v0.5.5)" >&2; exit 2; }
+      [ -n "$UPLOAD_TAG" ] || { echo "error: --upload needs a tag (e.g. v0.5.5 or v0.6.0-beta.1)" >&2; exit 2; }
       shift 2 ;;
     --nightly)
       NIGHTLY=1
       shift ;;
+    --critical)
+      CRITICAL=1
+      shift ;;
+    --critical-below)
+      CRITICAL=1
+      CRITICAL_BELOW="${2:-}"
+      [[ "$CRITICAL_BELOW" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+        || { echo "error: --critical-below needs a version X.Y.Z" >&2; exit 2; }
+      shift 2 ;;
     --ios)
       BUILD_IOS=1
       shift ;;
-    *) echo "usage: $0 [--upload <TAG> | --nightly] [--ios]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--upload <TAG> [--critical | --critical-below X.Y.Z] | --nightly] [--ios]" >&2; exit 2 ;;
   esac
 done
 
 if [ -n "$UPLOAD_TAG" ] && [ "$NIGHTLY" -eq 1 ]; then
   echo "error: --upload and --nightly cannot be combined" >&2
   exit 2
+fi
+if [ "$CRITICAL" -eq 1 ]; then
+  if [[ ! "$UPLOAD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "error: --critical only with --upload of a stable tag vX.Y.Z" >&2
+    exit 2
+  fi
+  [ -f scripts/sparkle-public-ed-key.txt ] \
+    || { echo "error: --critical needs in-app updates (scripts/sparkle-public-ed-key.txt)" >&2; exit 2; }
+  # Users who already skipped this exact version are NOT re-prompted, even if
+  # it is critical now (verified with Sparkle 2.10.1). Ship fixes as a new version.
+  if gh release view "$UPLOAD_TAG" --json assets -q '.assets[].name' 2>/dev/null | grep -qx appcast.xml; then
+    echo "warning: $UPLOAD_TAG was already published with an appcast. Users who skipped it" >&2
+    echo "         will not see it again. Prefer releasing the fix as a new version." >&2
+  fi
 fi
 
 # Helper: Generate structured Markdown release notes between previous v* tag and target ref
@@ -87,23 +122,38 @@ generate_release_notes() {
   }
 }
 
+# Sparkle bundle version for a v* tag: vX.Y.Z -> X.Y.Z, vX.Y.Z-beta.N -> X.Y.ZbN.
+# ("X.Y.Z-beta.N" itself would compare EQUAL to X.Y.Z in Sparkle.)
+bundle_version_for_tag() {
+  if [[ "$1" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+  elif [[ "$1" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-beta\.([0-9]+)$ ]]; then
+    echo "${BASH_REMATCH[1]}b${BASH_REMATCH[2]}"
+  else
+    return 1
+  fi
+}
+
 # If releasing a version tag (e.g. v0.5.5), the tag is the single source of truth for the
 # app version: package-macos-app.sh would otherwise fall back to Cargo.toml, which can
 # already be ahead of the tag (v0.5.5 shipped with CFBundleShortVersionString 0.6.0).
+CHANNEL=""
 if [ -n "$UPLOAD_TAG" ]; then
-  if ! [[ "$UPLOAD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "error: release tag must look like vX.Y.Z (got '$UPLOAD_TAG')" >&2
+  BUILD_VER="$(bundle_version_for_tag "$UPLOAD_TAG")" || {
+    echo "error: release tag must look like vX.Y.Z or vX.Y.Z-beta.N (got '$UPLOAD_TAG')" >&2
     exit 2
-  fi
-  CLEAN_VER="${UPLOAD_TAG#v}"
-  export GIROCRAB_VERSION="$CLEAN_VER"
+  }
+  CLEAN_VER="${UPLOAD_TAG#v}"          # display version, e.g. 0.6.0 or 0.6.0-beta.1
+  BASE_VER="${CLEAN_VER%%-*}"
+  if [ "$BUILD_VER" = "$BASE_VER" ]; then CHANNEL="stable"; else CHANNEL="beta"; fi
+  export GIROCRAB_VERSION="$CLEAN_VER" GIROCRAB_BUILD_VERSION="$BUILD_VER"
   CARGO_VER="$(sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1)"
-  if [ "$CARGO_VER" != "$CLEAN_VER" ]; then
+  if [ "$CARGO_VER" != "$BASE_VER" ]; then
     echo "warning: Cargo.toml version is ${CARGO_VER:-<none>}, release tag is $UPLOAD_TAG;" \
-      "the app is built as $CLEAN_VER" >&2
+      "the app is built as $CLEAN_VER ($BUILD_VER)" >&2
   fi
   PBXPROJ="GiroCrabApp/Xcode/GiroCrab.xcodeproj/project.pbxproj"
-  if [ -f "$PBXPROJ" ]; then
+  if [ "$CHANNEL" = "stable" ] && [ -f "$PBXPROJ" ]; then
     echo "==> Setting MARKETING_VERSION = ${CLEAN_VER} in project.pbxproj"
     sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = ${CLEAN_VER};/g" "$PBXPROJ"
   fi
@@ -118,6 +168,19 @@ if [ -z "$IDENTITY" ]; then
 fi
 echo "==> Identity: $IDENTITY"
 
+if [ "$NIGHTLY" -eq 1 ]; then
+  CHANNEL="nightly"
+  # <last v* tag's bundle version>.<UTC timestamp>: sorts after that tag and
+  # before the next beta/stable, so nightly testers also get those.
+  LAST_TAG="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD 2>/dev/null)" \
+    || { echo "error: --nightly needs a previous v* tag" >&2; exit 2; }
+  LAST_BUILD="$(bundle_version_for_tag "$LAST_TAG")" \
+    || { echo "error: last tag $LAST_TAG is neither vX.Y.Z nor vX.Y.Z-beta.N" >&2; exit 2; }
+  STAMP="$(date -u +%Y%m%d%H%M)"
+  export GIROCRAB_BUILD_VERSION="${LAST_BUILD}.${STAMP}"
+  export GIROCRAB_VERSION="${LAST_TAG#v}-nightly.${STAMP}"
+fi
+
 echo "==> Build (xcframework + swift release + bundle) via package-macos-app.sh"
 ./package-macos-app.sh
 
@@ -125,12 +188,8 @@ rm -rf build; mkdir -p build
 cp -R dist/GiroCrab.app build/GiroCrab.app
 APP="build/GiroCrab.app"; ZIP="build/GiroCrab-macOS.zip"
 
-echo "==> Signing nested code (hardened runtime)"
-while IFS= read -r f; do
-  codesign --force --options runtime --timestamp --sign "$IDENTITY" "$f"
-done < <(find "$APP" -type f \( -name '*.dylib' -o -name '*.so' -o -perm -u+x \) ! -path "$APP/Contents/MacOS/*" 2>/dev/null)
-codesign --force --options runtime --timestamp --deep --sign "$IDENTITY" "$APP"
-codesign --verify --deep --strict -vv "$APP"
+echo "==> Signing (hardened runtime, inside-out incl. Sparkle)"
+scripts/sign-app.sh "$IDENTITY" "$APP"
 
 echo "==> Zip + notarize"
 ditto -c -k --keepParent "$APP" "$ZIP"
@@ -153,15 +212,15 @@ echo "$CS_OUT" | grep -q "^Authority=Developer ID Application" \
 xcrun stapler validate "$VAPP"
 spctl -a -vvv -t exec "$VAPP"
 
-if [ -n "$UPLOAD_TAG" ]; then
-  for key in CFBundleShortVersionString CFBundleVersion; do
-    got="$(/usr/libexec/PlistBuddy -c "Print :$key" "$VAPP/Contents/Info.plist")"
-    if [ "$got" != "$CLEAN_VER" ]; then
-      echo "error: $key is '$got' but release tag is $UPLOAD_TAG; not uploading" >&2
-      exit 1
-    fi
-  done
-  echo "app version matches tag: $CLEAN_VER"
+if [ -n "$CHANNEL" ]; then
+  got_short="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$VAPP/Contents/Info.plist")"
+  got_build="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$VAPP/Contents/Info.plist")"
+  if [ "$got_short" != "$GIROCRAB_VERSION" ] || [ "$got_build" != "$GIROCRAB_BUILD_VERSION" ]; then
+    echo "error: app version is '$got_short' ($got_build), expected '$GIROCRAB_VERSION'" \
+      "($GIROCRAB_BUILD_VERSION); not uploading" >&2
+    exit 1
+  fi
+  echo "app version as expected: $got_short ($got_build, $CHANNEL)"
 fi
 
 echo "--- launch smoke test"
@@ -181,8 +240,52 @@ mkdir -p dist
 cp "$ZIP" dist/GiroCrab-macOS-arm64.zip
 echo "==> Verified: dist/GiroCrab-macOS-arm64.zip"
 
+# --- In-app updates: merge this build into the ONE signed appcast -----------
+# Stable: the new feed goes onto the new release (live once it is published as
+# "latest"). Beta/nightly: it replaces appcast.xml on the current latest stable
+# release. Always strictly after the zip it points to. No-op until the Sparkle
+# public key exists (scripts/sparkle-public-ed-key.txt).
+make_feed() {  # <tag hosting the zip> <notes file>
+  [ -f scripts/sparkle-public-ed-key.txt ] || return 1
+  local repo
+  repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
+  curl -fsSL -o build/appcast-current.xml \
+    "https://github.com/${repo}/releases/latest/download/appcast.xml" \
+    || rm -f build/appcast-current.xml
+  GIROCRAB_TAG="$1" GIROCRAB_EXISTING_APPCAST="build/appcast-current.xml" \
+  GIROCRAB_CRITICAL="$CRITICAL" GIROCRAB_CRITICAL_BELOW="$CRITICAL_BELOW" \
+    scripts/make-appcast.sh "$CHANNEL" dist/GiroCrab-macOS-arm64.zip "$2" dist/appcast.xml
+}
+upload_feed_to_latest_stable() {
+  local latest
+  latest="$(gh release view --json tagName -q .tagName 2>/dev/null || true)"
+  if [ -z "$latest" ]; then
+    echo "warning: no published stable release yet – appcast not uploaded" >&2
+    return 0
+  fi
+  echo "==> Updating appcast.xml on latest stable release $latest"
+  gh release upload "$latest" dist/appcast.xml --clobber
+}
+
 if [ -n "$UPLOAD_TAG" ]; then
   NOTES="$(generate_release_notes "$UPLOAD_TAG")"
+  if [ "$CRITICAL" -eq 1 ]; then
+    NOTES="> ⚠️ **Sicherheitsupdate** – bitte zeitnah installieren.
+
+${NOTES}"
+  elif [ "$CHANNEL" = "beta" ]; then
+    NOTES="> 🧪 **Beta-Version** – Vorabversion zum Testen.
+
+${NOTES}"
+  fi
+  RELEASE_FLAGS=()
+  [ "$CHANNEL" = "beta" ] && RELEASE_FLAGS=(--prerelease --latest=false)
+
+  printf '%s\n' "$NOTES" > build/release-notes.md
+  HAVE_FEED=0
+  if make_feed "$UPLOAD_TAG" build/release-notes.md; then HAVE_FEED=1
+  else echo "==> No appcast (no scripts/sparkle-public-ed-key.txt yet – in-app updates off)"; fi
+
   if ! git rev-parse "$UPLOAD_TAG" >/dev/null 2>&1; then
     echo "==> Creating and pushing git tag $UPLOAD_TAG"
     git tag -a "$UPLOAD_TAG" -m "Release $UPLOAD_TAG"
@@ -191,18 +294,26 @@ if [ -n "$UPLOAD_TAG" ]; then
   if gh release view "$UPLOAD_TAG" >/dev/null 2>&1; then
     echo "==> Updating existing release $UPLOAD_TAG"
     gh release upload "$UPLOAD_TAG" dist/GiroCrab-macOS-arm64.zip --clobber
-    gh release edit "$UPLOAD_TAG" --notes "$NOTES"
+    gh release edit "$UPLOAD_TAG" --notes "$NOTES" ${RELEASE_FLAGS[@]+"${RELEASE_FLAGS[@]}"}
   else
     echo "==> Creating GitHub release $UPLOAD_TAG"
     gh release create "$UPLOAD_TAG" dist/GiroCrab-macOS-arm64.zip \
       --title "GiroCrab $UPLOAD_TAG" \
-      --notes "$NOTES"
+      --notes "$NOTES" ${RELEASE_FLAGS[@]+"${RELEASE_FLAGS[@]}"}
+  fi
+  if [ "$HAVE_FEED" -eq 1 ]; then
+    if [ "$CHANNEL" = "stable" ]; then
+      gh release upload "$UPLOAD_TAG" dist/appcast.xml --clobber
+    else
+      upload_feed_to_latest_stable
+    fi
   fi
 elif [ "$NIGHTLY" -eq 1 ]; then
   SHORT_SHA="$(git rev-parse --short HEAD)"
   BUILD_DATE="$(date -u +%Y-%m-%d)"
   NOTES="$(generate_release_notes "nightly")"
   TITLE="Nightly Build (${BUILD_DATE}, ${SHORT_SHA})"
+  printf '%s\n' "$NOTES" > build/release-notes.md
 
   git tag -f nightly HEAD
   git push origin refs/tags/nightly --force
@@ -213,6 +324,13 @@ elif [ "$NIGHTLY" -eq 1 ]; then
   else
     gh release create nightly dist/GiroCrab-macOS-arm64.zip \
       --prerelease --latest=false --title "$TITLE" --notes "$NOTES"
+  fi
+  # The rolling zip was just replaced; until the feed below is uploaded, the
+  # old nightly item's signature no longer matches and clients reject the
+  # download (fails safe).
+  export GIROCRAB_SHORT_VERSION="Nightly ${BUILD_DATE} (${SHORT_SHA})"
+  if make_feed nightly build/release-notes.md; then
+    upload_feed_to_latest_stable
   fi
 fi
 

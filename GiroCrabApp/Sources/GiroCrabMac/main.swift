@@ -12,6 +12,12 @@ import SwiftUI
 import GiroCrabUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    #if canImport(Sparkle)
+    /// Kept alive for the app's lifetime; nil unless this is a configured
+    /// release bundle (see Updater.swift).
+    private var updater: SparkleUpdateBackend?
+    #endif
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         if LaunchOptions.current.dark {
@@ -28,6 +34,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         MainActor.assumeIsolated {
             WindowScreenshot.scheduleIfRequested()
+            #if canImport(Sparkle)
+            // Not in screenshot / demo-seed automation runs.
+            if LaunchOptions.current.screenshotPath == nil {
+                updater = SparkleUpdateBackend.startIfConfigured()
+            }
+            #endif
         }
     }
 
