@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Observation
 import UniformTypeIdentifiers
+import ImageIO
 import GiroCrabCore
 
 enum SidebarItem: Hashable {
@@ -274,7 +275,9 @@ public final class AppModel {
     /// (legacy "1"/"true" from the old toggle count as "google").
     var logoProvider = "off"
     var onlineLogos: Bool { logoProvider != "off" }
-    private var logoCache: [String: (image: Image, pixels: Int)] = [:]
+    /// Not observed: signets read it in their body (`cachedLogo`), and filling it
+    /// must not re-render every signet on screen.
+    @ObservationIgnored private var logoCache: [String: (image: Image, pixels: Int)] = [:]
 
     // UI state
     var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; reloadSelection(periodChanged: false) } }
@@ -307,7 +310,12 @@ public final class AppModel {
     /// Latest salary of the selected accounts; start of the `.sinceSalary` period.
     var salaryCycle: SalaryCycle?
     /// Recurring series of the selected accounts (GitHub #35).
-    var recurring: [RecurringSeries] = []
+    var recurring: [RecurringSeries] = [] {
+        didSet { recurringByKey = Dictionary(grouping: recurring, by: \.baseKey) }
+    }
+    /// `recurring` by `baseKey`: every booking row asks `recurringSeries(for:)`,
+    /// a lookup instead of a scan over all series.
+    private var recurringByKey: [String: [RecurringSeries]] = [:]
     /// Recurring bookings of the current month: booked vs. still due.
     var recurringMonth: RecurringMonthOverview?
     var showRecurringSheet = false
@@ -1631,9 +1639,8 @@ public final class AppModel {
     /// The recurring series a booking belongs to, if any.
     func recurringSeries(for b: Booking) -> RecurringSeries? {
         guard !b.recurrenceKey.isEmpty else { return nil }
-        return recurring.first { s in
-            s.baseKey == b.recurrenceKey
-                && (!s.amountSpecific || abs(b.amountCents - s.amountCents) * 100 <= abs(s.amountCents) * 15)
+        return recurringByKey[b.recurrenceKey]?.first { s in
+            (!s.amountSpecific || abs(b.amountCents - s.amountCents) * 100 <= abs(s.amountCents) * 15)
         }
     }
 
@@ -1691,29 +1698,65 @@ public final class AppModel {
     /// yields a real logo (default globe rejected in Rust). Requests for the
     /// same merchant are shared; results pop into every row automatically.
     func logo(for merchant: MerchantInfo) async -> (image: Image, pixels: Int)? {
-        var candidates = merchant.domainCandidates
-        if candidates.isEmpty && !merchant.domain.isEmpty { candidates = [merchant.domain] }
+        let candidates = Self.logoCandidates(merchant)
         guard !candidates.isEmpty, let vault else { return nil }
         let key = candidates.joined(separator: "|")
         if let hit = logoCache[key] { return hit }
         if let running = logoInflight[key] { return await running.value }
         let online = onlineLogos
-        let task = Task<(image: Image, pixels: Int)?, Never> { @MainActor in
-            var data: Data?
-            for d in candidates {
-                if let cached = try? vault.getMerchantLogoPng(domain: d) { data = cached; break }
+        let task = Task<(image: Image, pixels: Int)?, Never> {
+            // Vault read (decryption) and PNG decoding off the main thread: a
+            // signet scrolling into view must not cost a frame.
+            let cached = try? await Self.offMain { () -> (image: Image, pixels: Int)? in
+                for d in candidates {
+                    if let data = try? vault.getMerchantLogoPng(domain: d) { return Self.decodeLogo(data) }
+                }
+                return nil
             }
-            if data == nil, online {
-                data = (try? await vault.fetchMerchantLogo(candidates: candidates))??.bytes
-            }
-            guard let data, let img = AppModel.image(from: data) else { return nil }
-            return (image: img, pixels: AppModel.pixelWidth(of: data))
+            if let cached { return cached }
+            guard online, let data = (try? await vault.fetchMerchantLogo(candidates: candidates))??.bytes else { return nil }
+            return try? await Self.offMain { Self.decodeLogo(data) }
         }
         logoInflight[key] = task
         let result = await task.value
         logoInflight[key] = nil
         if let result { logoCache[key] = result }
         return result
+    }
+
+    /// The logo of `merchant` if it is already loaded – for a signet's first frame,
+    /// so a row built while scrolling shows its logo at once instead of one
+    /// frame later.
+    func cachedLogo(for merchant: MerchantInfo) -> (image: Image, pixels: Int)? {
+        let candidates = Self.logoCandidates(merchant)
+        return candidates.isEmpty ? nil : logoCache[candidates.joined(separator: "|")]
+    }
+
+    private nonisolated static func logoCandidates(_ merchant: MerchantInfo) -> [String] {
+        if merchant.domainCandidates.isEmpty && !merchant.domain.isEmpty { return [merchant.domain] }
+        return merchant.domainCandidates
+    }
+
+    /// Decodes a favicon (PNG/ICO) into a ready-to-draw bitmap once: `NSImage`
+    /// would decode lazily at first draw, i.e. on the main thread mid-scroll.
+    /// `pixels` is the largest representation (the "sharp logo" threshold).
+    nonisolated static func decodeLogo(_ data: Data) -> (image: Image, pixels: Int)? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        var best = -1, bestWidth = 0
+        for i in 0..<CGImageSourceGetCount(src) {
+            let props = CGImageSourceCopyPropertiesAtIndex(src, i, nil) as? [CFString: Any]
+            let w = props?[kCGImagePropertyPixelWidth] as? Int ?? 0
+            if w > bestWidth || best < 0 { best = i; bestWidth = w }
+        }
+        guard best >= 0 else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: 128,
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, best, opts as CFDictionary) else { return nil }
+        return (image: Image(decorative: cg, scale: 1), pixels: bestWidth)
     }
 
     /// Kept for callers that only know a domain.

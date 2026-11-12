@@ -12,9 +12,13 @@ struct MerchantSignet: View {
     var size: CGFloat = 36
     var showNewDot = false
 
-    @State private var logo: (image: Image, pixels: Int)?
+    /// Only for logos that arrive after the first frame; a logo already in the
+    /// model's cache is drawn right away (a row built while scrolling would
+    /// otherwise show its monogram for one frame and lay out twice).
+    @State private var loadedLogo: (image: Image, pixels: Int)?
 
     var body: some View {
+        let logo = model.cachedLogo(for: merchant) ?? loadedLogo
         let shape = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
         let brand = Color(hex: merchant.colorHex)
         let sharpLogo = logo.flatMap { $0.pixels >= 48 ? $0.image : nil }
@@ -64,7 +68,9 @@ struct MerchantSignet: View {
             }
         }
         .task(id: merchant.domainCandidates.joined(separator: "|") + merchant.domain + model.logoProvider + "\(model.logoVersion)") {
-            logo = await model.logo(for: merchant)
+            // cached: drawn above already – no second render
+            guard model.cachedLogo(for: merchant) == nil else { return }
+            loadedLogo = await model.logo(for: merchant)
         }
         // The blue dot is the only "new" signal on screen: say it, too.
         .accessibilityLabel(showNewDot ? Text("\(merchant.name), neu") : Text(merchant.name))
