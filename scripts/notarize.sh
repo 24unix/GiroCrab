@@ -3,14 +3,15 @@
 # and optionally archive & upload the iOS build to TestFlight / App Store Connect.
 #
 # Usage: scripts/notarize.sh [--upload <TAG> [--critical | --critical-below X.Y.Z] | --nightly] [--ios]
-#   --upload <TAG>  create/update GitHub release <TAG> with structured changelog and upload macOS zip
+#   --upload <TAG>  create/update GitHub release <TAG> with structured changelog and upload the
+#                   signed + notarized macOS disk image (GiroCrab-macOS-arm64.dmg)
 #                   vX.Y.Z          stable release
 #                   vX.Y.Z-beta.N   beta (GitHub pre-release; bundle version X.Y.ZbN)
 #   --critical      mark this stable release as a critical (security) update in the
 #                   appcast: users can't skip/postpone it, but still confirm the install
 #   --critical-below X.Y.Z
 #                   critical only for installs older than X.Y.Z, normal update otherwise
-#   --nightly       move 'nightly' tag to HEAD, create/update rolling GitHub pre-release and upload macOS zip
+#   --nightly       move 'nightly' tag to HEAD, create/update rolling GitHub pre-release and upload the disk image
 #                   (bundle version <last v* tag's version>.<UTC timestamp>)
 # In-app updates: every run merges its item into the one signed appcast.xml on
 # the latest stable release (channels: stable, beta, nightly), see
@@ -118,7 +119,7 @@ generate_release_notes() {
     if [ -n "$fixes" ]; then
       echo -e "\n#### 🐛 Fehlerbehebungen\n$fixes"
     fi
-    echo -e "\n---\n**macOS (Apple Silicon):** Signiert mit Developer ID & von Apple notarisiert (\`GiroCrab-macOS-arm64.zip\`)."
+    echo -e "\n---\n**macOS (Apple Silicon):** Signiert mit Developer ID & von Apple notarisiert (\`GiroCrab-macOS-arm64.dmg\`)."
   }
 }
 
@@ -191,19 +192,41 @@ APP="build/GiroCrab.app"; ZIP="build/GiroCrab-macOS.zip"
 echo "==> Signing (hardened runtime, inside-out incl. Sparkle)"
 scripts/sign-app.sh "$IDENTITY" "$APP"
 
-echo "==> Zip + notarize"
+echo "==> Zip + notarize (app)"
 ditto -c -k --keepParent "$APP" "$ZIP"
 xcrun notarytool submit "$ZIP" --keychain-profile "$PROFILE" --wait
 
-echo "==> Staple + Gatekeeper"
+echo "==> Staple + Gatekeeper (app)"
 xcrun stapler staple "$APP"
 spctl --assess -vv --type execute "$APP"
-ditto -c -k --keepParent "$APP" "$ZIP"
 
-echo "==> Verify final archive"
+# The release artifact is a Developer-ID-signed, notarized and stapled disk
+# image (one artifact for Sparkle, Homebrew and manual download). The app inside
+# carries its own stapled ticket, so it also passes Gatekeeper offline after
+# being dragged to /Applications.
+DMG="build/GiroCrab-macOS-arm64.dmg"
+echo "==> Disk image: build, sign, notarize, staple"
+scripts/make-dmg.sh "$APP" "$DMG" "$IDENTITY"
+xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --wait
+xcrun stapler staple "$DMG"
+
+echo "==> Verify final disk image"
+xcrun stapler validate "$DMG"
+spctl -a -vvv -t open --context context:primary-signature "$DMG"
+codesign -dvvv "$DMG" 2>&1 | grep -q "^Authority=Developer ID Application" \
+  || { echo "error: disk image is not signed with 'Developer ID Application'" >&2; exit 1; }
+
 VERIFY_DIR="$(mktemp -d)"
-trap 'rm -rf "$VERIFY_DIR"' EXIT
-ditto -x -k "$ZIP" "$VERIFY_DIR"
+MOUNT_DIR="$(mktemp -d)"
+cleanup_verify() {
+  hdiutil detach -quiet "$MOUNT_DIR" 2>/dev/null || true
+  rm -rf "$VERIFY_DIR" "$MOUNT_DIR"
+}
+trap cleanup_verify EXIT
+hdiutil attach -quiet -nobrowse -readonly -mountpoint "$MOUNT_DIR" "$DMG"
+[ -L "$MOUNT_DIR/Applications" ] || { echo "error: disk image lacks the /Applications link" >&2; exit 1; }
+ditto "$MOUNT_DIR/GiroCrab.app" "$VERIFY_DIR/GiroCrab.app"
+hdiutil detach -quiet "$MOUNT_DIR"
 VAPP="$VERIFY_DIR/GiroCrab.app"
 
 CS_OUT="$(codesign -dvvv "$VAPP" 2>&1)"
@@ -237,15 +260,16 @@ else
 fi
 
 mkdir -p dist
-cp "$ZIP" dist/GiroCrab-macOS-arm64.zip
-echo "==> Verified: dist/GiroCrab-macOS-arm64.zip"
+cp "$DMG" dist/GiroCrab-macOS-arm64.dmg
+ARTIFACT="dist/GiroCrab-macOS-arm64.dmg"
+echo "==> Verified: $ARTIFACT"
 
 # --- In-app updates: merge this build into the ONE signed appcast -----------
 # Stable: the new feed goes onto the new release (live once it is published as
 # "latest"). Beta/nightly: it replaces appcast.xml on the current latest stable
-# release. Always strictly after the zip it points to. No-op until the Sparkle
+# release. Always strictly after the disk image it points to. No-op until the Sparkle
 # public key exists (scripts/sparkle-public-ed-key.txt).
-make_feed() {  # <tag hosting the zip> <notes file>
+make_feed() {  # <tag hosting the disk image> <notes file>
   [ -f scripts/sparkle-public-ed-key.txt ] || return 1
   local repo
   repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"
@@ -254,7 +278,7 @@ make_feed() {  # <tag hosting the zip> <notes file>
     || rm -f build/appcast-current.xml
   GIROCRAB_TAG="$1" GIROCRAB_EXISTING_APPCAST="build/appcast-current.xml" \
   GIROCRAB_CRITICAL="$CRITICAL" GIROCRAB_CRITICAL_BELOW="$CRITICAL_BELOW" \
-    scripts/make-appcast.sh "$CHANNEL" dist/GiroCrab-macOS-arm64.zip "$2" dist/appcast.xml
+    scripts/make-appcast.sh "$CHANNEL" "$ARTIFACT" "$2" dist/appcast.xml
 }
 upload_feed_to_latest_stable() {
   local latest
@@ -293,11 +317,11 @@ ${NOTES}"
   fi
   if gh release view "$UPLOAD_TAG" >/dev/null 2>&1; then
     echo "==> Updating existing release $UPLOAD_TAG"
-    gh release upload "$UPLOAD_TAG" dist/GiroCrab-macOS-arm64.zip --clobber
+    gh release upload "$UPLOAD_TAG" "$ARTIFACT" --clobber
     gh release edit "$UPLOAD_TAG" --notes "$NOTES" ${RELEASE_FLAGS[@]+"${RELEASE_FLAGS[@]}"}
   else
     echo "==> Creating GitHub release $UPLOAD_TAG"
-    gh release create "$UPLOAD_TAG" dist/GiroCrab-macOS-arm64.zip \
+    gh release create "$UPLOAD_TAG" "$ARTIFACT" \
       --title "GiroCrab $UPLOAD_TAG" \
       --notes "$NOTES" ${RELEASE_FLAGS[@]+"${RELEASE_FLAGS[@]}"}
   fi
@@ -320,12 +344,12 @@ elif [ "$NIGHTLY" -eq 1 ]; then
 
   if gh release view nightly >/dev/null 2>&1; then
     gh release edit nightly --prerelease --latest=false --title "$TITLE" --notes "$NOTES"
-    gh release upload nightly dist/GiroCrab-macOS-arm64.zip --clobber
+    gh release upload nightly "$ARTIFACT" --clobber
   else
-    gh release create nightly dist/GiroCrab-macOS-arm64.zip \
+    gh release create nightly "$ARTIFACT" \
       --prerelease --latest=false --title "$TITLE" --notes "$NOTES"
   fi
-  # The rolling zip was just replaced; until the feed below is uploaded, the
+  # The rolling disk image was just replaced; until the feed below is uploaded, the
   # old nightly item's signature no longer matches and clients reject the
   # download (fails safe).
   export GIROCRAB_SHORT_VERSION="Nightly ${BUILD_DATE} (${SHORT_SHA})"

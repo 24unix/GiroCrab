@@ -14,6 +14,7 @@ Changelog. Tester können versteckt auf **Beta** oder **Nightly** wechseln.
 | Einstellungen › Updates (eigener Tab, auch ohne Tresor bedienbar) | `SettingsView.swift` (`UpdateSettings`) |
 | Framework einbetten, Info.plist-Schlüssel | `package-macos-app.sh` |
 | Signieren (inside-out, ohne `--deep`) | `scripts/sign-app.sh` |
+| Disk-Image bauen und signieren | `scripts/make-dmg.sh` |
 | Appcast erzeugen, zusammenführen, signieren | `scripts/make-appcast.sh` (aufgerufen von `notarize.sh`) |
 
 * **Ein Feed für alle Kanäle:** Die App liest
@@ -22,8 +23,8 @@ Changelog. Tester können versteckt auf **Beta** oder **Nightly** wechseln.
   Pre-Releases oder Entwürfe). Der Feed enthält höchstens einen Eintrag pro
   Kanal; Sparkle filtert per `<sparkle:channel>` (siehe unten).
 * **Signatur, dreifach geprüft – in jedem Kanal gleich:**
-  1. EdDSA-Signatur des ZIP (`SUPublicEDKey`), geprüft **vor** dem Entpacken
-     (`SUVerifyUpdateBeforeExtraction`).
+  1. EdDSA-Signatur des Disk-Images (`SUPublicEDKey`), geprüft **vor** dem
+     Einhängen (`SUVerifyUpdateBeforeExtraction`).
   2. EdDSA-Signatur des Appcasts selbst (`SURequireSignedFeed`) – ein
      manipulierter Feed wird verworfen, bevor überhaupt ein Changelog erscheint.
   3. Sparkle verlangt, dass die neue App mit derselben Developer-ID (Team-ID)
@@ -73,9 +74,30 @@ Release. Ein Feed, der nicht mit unserem Schlüssel verifiziert, wird nie
   Zurück zu „Stabil“ geht ohne Warnung. Es gibt kein Downgrade: Die installierte
   Version bleibt, bis eine neuere stabile erscheint.
 * **Signatur:** identisch zu stabilen Releases (Developer ID, Notarisierung,
-  EdDSA für ZIP und Feed, gleicher Schlüssel). Anders geht es nicht: Sparkle prüft
+  EdDSA für Disk-Image und Feed, gleicher Schlüssel). Anders geht es nicht: Sparkle prüft
   pro App, nicht pro Kanal, und kennt nur einen öffentlichen Schlüssel. Die nur
   ad-hoc signierten CI-Builds aus `nightly.yml` werden deshalb **nie** angeboten.
+
+## Release-Artefakt: signiertes Disk-Image
+
+Ein einziges Artefakt für Sparkle, Homebrew und den manuellen Download:
+`GiroCrab-macOS-arm64.dmg` (`scripts/make-dmg.sh`), mit Developer ID signiert,
+notarisiert und gestapelt; die App darin ist ebenfalls gestapelt.
+
+* **Warum kein ZIP:** Ein ZIP lässt sich nicht codesignieren. Mit dem signierten
+  Image besteht ein Update Sparkles Ersatzprüfung vor dem Entpacken („Archiv mit
+  Developer ID derselben Team-ID signiert“). Das braucht man, falls der
+  EdDSA-Schlüssel je **verloren** geht – ohne Umbau im Ernstfall. Geprüft im
+  Quellcode von Sparkle 2.10.1 (`AppInstaller.m`, `SUUpdateValidator.m`,
+  `SUCodeSigningVerifier.m`); Sparkle meldet dann allerdings bis zu 20 Tage lang
+  einen ungültig signierten Feed (`SUSignedFeedFailureExpirationInterval`),
+  bevor es das Update annimmt.
+* **Automatische Updates** funktionieren mit dem Image genauso: Sparkle hängt
+  es unsichtbar ein, kopiert die App und wirft es wieder aus.
+* **Manuelle Installation:** Fenster mit „GiroCrab → Programme ziehen“; Gatekeeper
+  prüft schon das heruntergeladene Image.
+* Die CI-Nightlies aus `nightly.yml` bleiben ad-hoc signierte ZIP-Artefakte und
+  werden nie über Sparkle angeboten.
 
 ## Kritische Updates (Sicherheitslücken)
 
@@ -138,8 +160,10 @@ $SPARKLE_BIN/generate_keys -x sparkle-private-key.txt
 ./scripts/notarize.sh --nightly                 # Nightly (rollender Pre-Release)
 ```
 
-Das Skript baut, signiert, notarisiert, prüft die Version im Bundle, lädt das ZIP
-hoch und danach den zusammengeführten, signierten `appcast.xml`. Bleibt ein
+Das Skript baut, signiert und notarisiert die App, packt sie in ein
+**Disk-Image** (`GiroCrab-macOS-arm64.dmg`, mit Verknüpfung zu „Programme“),
+signiert und notarisiert auch das Image, prüft die Version im Bundle, lädt das
+Image hoch und danach den zusammengeführten, signierten `appcast.xml`. Bleibt ein
 stabiles Release ein Entwurf, ist sein Feed noch nicht live – erst beim
 Veröffentlichen. `make-appcast.sh` bricht ab, wenn der Schlüssel im
 Schlüsselbund nicht zu `scripts/sparkle-public-ed-key.txt` passt oder der
@@ -161,12 +185,13 @@ GIROCRAB_VERSION=0.0.1 GIROCRAB_SPARKLE_PUBLIC_KEY="$(cat pub.txt)" \
 GIROCRAB_SPARKLE_FEED_URL=http://127.0.0.1:8765/appcast.xml ./package-macos-app.sh
 
 # neue Versionen: Kopien mit passender CFBundleVersion, scripts/sign-app.sh - <app>,
-# zippen, dann je Kanal einen Eintrag in denselben Feed mischen:
+# als (unsigniertes) Image packen, dann je Kanal einen Eintrag in denselben Feed mischen:
+scripts/make-dmg.sh new/GiroCrab.app feed/stable.dmg -
 export SPARKLE_ED_KEY_FILE=priv.txt
-GIROCRAB_BUILD_VERSION=0.0.2 GIROCRAB_DOWNLOAD_URL=http://127.0.0.1:8765/stable.zip \
-  scripts/make-appcast.sh stable feed/stable.zip notes.md feed/a1.xml
-GIROCRAB_BUILD_VERSION=0.0.3b1 GIROCRAB_DOWNLOAD_URL=http://127.0.0.1:8765/beta.zip \
-GIROCRAB_EXISTING_APPCAST=feed/a1.xml scripts/make-appcast.sh beta feed/beta.zip notes.md feed/appcast.xml
+GIROCRAB_BUILD_VERSION=0.0.2 GIROCRAB_DOWNLOAD_URL=http://127.0.0.1:8765/stable.dmg \
+  scripts/make-appcast.sh stable feed/stable.dmg notes.md feed/a1.xml
+GIROCRAB_BUILD_VERSION=0.0.3b1 GIROCRAB_DOWNLOAD_URL=http://127.0.0.1:8765/beta.dmg \
+GIROCRAB_EXISTING_APPCAST=feed/a1.xml scripts/make-appcast.sh beta feed/beta.dmg notes.md feed/appcast.xml
 python3 -m http.server 8765 --bind 127.0.0.1 --directory feed
 ```
 
@@ -179,7 +204,7 @@ damit die Einstellungen der echten App unberührt bleiben.
 > Tresor. Tests daher in einem separaten macOS-Benutzer durchführen oder die App
 > nach dem Neustart sofort beenden.
 
-Erwartet: Update 0.0.1 → 0.0.2 mit Changelog; manipuliertes ZIP →
+Erwartet: Update 0.0.1 → 0.0.2 mit Changelog; manipuliertes Image →
 „Update ist nicht ordnungsgemäß signiert“; Appcast mit fremdem Schlüssel →
 „update feed is improperly signed“; Stabil sieht nur 0.0.2, Beta „0.0.3 Beta 1“,
 Nightly den Nightly-Eintrag.

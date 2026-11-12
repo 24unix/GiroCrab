@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Write and EdDSA-sign the Sparkle appcast – ONE feed for all channels.
 #
-# Usage: scripts/make-appcast.sh <stable|beta|nightly> <zip> <notes.md> <out.xml>
+# Usage: scripts/make-appcast.sh <stable|beta|nightly> <archive> <notes.md> <out.xml>
+#   <archive>  the release disk image (.dmg, as produced by notarize.sh) or a .zip
+#              (local tests)
 #
 # The feed lives as `appcast.xml` on the latest stable GitHub release; apps
 # read .../releases/latest/download/appcast.xml. It holds at most one item per
@@ -16,7 +18,7 @@
 #                              stable  X.Y.Z
 #                              beta    X.Y.ZbN               (tag vX.Y.Z-beta.N)
 #                              nightly <last tag's version>.YYYYMMDDhhmm
-#   GIROCRAB_TAG             release that hosts the zip (vX.Y.Z, vX.Y.Z-beta.N,
+#   GIROCRAB_TAG             release that hosts the archive (vX.Y.Z, vX.Y.Z-beta.N,
 #                            nightly) – or GIROCRAB_DOWNLOAD_URL instead
 # Optional env:
 #   GIROCRAB_SHORT_VERSION   display version (default derived from the above)
@@ -32,7 +34,12 @@
 #   GIROCRAB_CRITICAL_BELOW=X.Y.Z critical only for installs older than X.Y.Z
 set -euo pipefail
 
-CHANNEL="$1"; ZIP="$2"; NOTES="$3"; OUT="$4"
+CHANNEL="$1"; ARCHIVE="$2"; NOTES="$3"; OUT="$4"
+case "$ARCHIVE" in
+  *.dmg) MIME="application/x-apple-diskimage" ;;
+  *.zip) MIME="application/zip" ;;
+  *) echo "error: archive must be a .dmg or .zip (got '$ARCHIVE')" >&2; exit 2 ;;
+esac
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="${GIROCRAB_REPO:-GiroCrab/GiroCrab}"
 BUILD_VERSION="${GIROCRAB_BUILD_VERSION:?GIROCRAB_BUILD_VERSION is required}"
@@ -60,7 +67,7 @@ if [ -n "${GIROCRAB_DOWNLOAD_URL:-}" ]; then
   URL="$GIROCRAB_DOWNLOAD_URL"
 else
   TAG="${GIROCRAB_TAG:?GIROCRAB_TAG (or GIROCRAB_DOWNLOAD_URL) is required}"
-  URL="https://github.com/${REPO}/releases/download/${TAG}/$(basename "$ZIP")"
+  URL="https://github.com/${REPO}/releases/download/${TAG}/$(basename "$ARCHIVE")"
 fi
 
 CRITICAL_XML=""
@@ -105,8 +112,8 @@ if [ -n "${GIROCRAB_EXISTING_APPCAST:-}" ] && [ -s "$GIROCRAB_EXISTING_APPCAST" 
   fi
 fi
 
-# EdDSA signature of the archive -> 'sparkle:edSignature="…" length="…"'
-ENCLOSURE_SIG="$("$SPARKLE_BIN/sign_update" ${KEY_ARGS[@]+"${KEY_ARGS[@]}"} "$ZIP")"
+# EdDSA signature of the archive (disk image or zip) -> 'sparkle:edSignature="…" length="…"'
+ENCLOSURE_SIG="$("$SPARKLE_BIN/sign_update" ${KEY_ARGS[@]+"${KEY_ARGS[@]}"} "$ARCHIVE")"
 echo "$ENCLOSURE_SIG" | grep -q 'sparkle:edSignature=' \
   || { echo "error: sign_update produced no signature" >&2; exit 1; }
 
@@ -126,7 +133,7 @@ ${CRITICAL_XML}
       <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
       <sparkle:fullReleaseNotesLink>https://github.com/${REPO}/releases</sparkle:fullReleaseNotesLink>
       <description sparkle:format="markdown"><![CDATA[${NOTES_MD}]]></description>
-      <enclosure url="${URL}" type="application/octet-stream" ${ENCLOSURE_SIG} />
+      <enclosure url="${URL}" type="${MIME}" ${ENCLOSURE_SIG} />
     </item>
 XML
 
