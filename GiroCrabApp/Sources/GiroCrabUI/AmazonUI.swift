@@ -118,6 +118,45 @@ final class AmazonUIDelegate: NSObject, WKUIDelegate {
     }
 }
 
+/// Shows the alerts/confirms of a web page (via `AmazonUIDelegate.onDialog`) as
+/// system alerts, e.g. "portal.fnz.de meldet: …". Used by every sheet with a web
+/// login (Amazon, FNZ). A dialog still open when the sheet closes is cancelled.
+private struct WebPageDialogs: ViewModifier {
+    let delegate: AmazonUIDelegate
+    @State private var dialog: WebPageDialog?
+
+    func body(content: Content) -> some View {
+        content
+            .alert(dialog.map { $0.host.isEmpty ? String(localized: "Die Webseite meldet:") : String(localized: "\($0.host) meldet:") } ?? "",
+                   isPresented: Binding(get: { dialog != nil }, set: { if !$0 { answer(false) } }),
+                   presenting: dialog) { d in
+                if d.isConfirm {
+                    Button("Abbrechen", role: .cancel) { answer(false) }
+                    Button("OK") { answer(true) }
+                } else {
+                    Button("OK") { answer(true) }
+                }
+            } message: { d in
+                Text(d.message)
+            }
+            .onAppear { delegate.onDialog = { dialog = $0 } }
+            .onDisappear { answer(false); delegate.onDialog = nil }
+    }
+
+    /// Answers the page's dialog once and closes it.
+    private func answer(_ ok: Bool) {
+        guard let d = dialog else { return }
+        dialog = nil
+        d.complete(ok)
+    }
+}
+
+extension View {
+    func webPageDialogs(_ delegate: AmazonUIDelegate) -> some View {
+        modifier(WebPageDialogs(delegate: delegate))
+    }
+}
+
 // MARK: - Sheet
 
 struct AmazonWebSheet: View {
@@ -131,7 +170,6 @@ struct AmazonWebSheet: View {
     /// Order details read so far / to read (determinate progress bar).
     @State private var done = 0
     @State private var total = 0
-    @State private var webDialog: WebPageDialog?
     @State private var task: Task<Void, Never>?
 
     @State private var pageIsOrders = false
@@ -202,20 +240,8 @@ struct AmazonWebSheet: View {
             }
             .padding(12)
         }
-        .alert(webDialog.map { $0.host.isEmpty ? String(localized: "Die Webseite meldet:") : String(localized: "\($0.host) meldet:") } ?? "",
-               isPresented: Binding(get: { webDialog != nil }, set: { if !$0 { answerDialog(false) } }),
-               presenting: webDialog) { d in
-            if d.isConfirm {
-                Button("Abbrechen", role: .cancel) { answerDialog(false) }
-                Button("OK") { answerDialog(true) }
-            } else {
-                Button("OK") { answerDialog(true) }
-            }
-        } message: { d in
-            Text(d.message)
-        }
+        .webPageDialogs(uiDelegate)
         .task {
-            uiDelegate.onDialog = { webDialog = $0 }
             browser.webView.uiDelegate = uiDelegate
             while !Task.isCancelled {
                 let host = browser.currentURL?.host ?? ""
@@ -226,14 +252,7 @@ struct AmazonWebSheet: View {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
-        .onDisappear { task?.cancel(); answerDialog(false); browser.teardown() }
-    }
-
-    /// Answers the page's dialog once and closes it.
-    private func answerDialog(_ ok: Bool) {
-        guard let d = webDialog else { return }
-        webDialog = nil
-        d.complete(ok)
+        .onDisappear { task?.cancel(); browser.teardown() }
     }
 
     private func close() {

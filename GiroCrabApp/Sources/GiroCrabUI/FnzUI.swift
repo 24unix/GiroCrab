@@ -114,6 +114,7 @@ struct FnzWebSheet: View {
                     .buttonStyle(.borderedProminent).disabled(!ready || running)
             }.padding(12)
         }
+        .webPageDialogs(uiDelegate)
         .task {
             browser.webView.uiDelegate = uiDelegate
             while !Task.isCancelled {
