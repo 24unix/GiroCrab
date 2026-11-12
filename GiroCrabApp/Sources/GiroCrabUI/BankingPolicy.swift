@@ -136,7 +136,7 @@ public struct BankingGate: Equatable, Sendable {
     public var detail: String {
         switch reason {
         case .checkUnavailable:
-            return String(localized: "GiroCrab konnte nicht prüfen, ob diese Version noch sicher mit Banken kommunizieren darf. Bitte später erneut versuchen.")
+            return String(localized: "GiroCrab konnte nicht prüfen, ob diese Version noch sicher mit Banken kommunizieren darf. Bitte später erneut versuchen oder in Firewall bzw. Little Snitch Verbindungen zu raw.githubusercontent.com erlauben.")
         case .outdated:
             var text: String
             if all {
@@ -376,6 +376,16 @@ public final class BankingPolicy {
     /// A successful check is "fresh" for this long (also the minimum interval between downloads).
     nonisolated public static let freshness: TimeInterval = 15 * 60
 
+    /// How long a release build may talk to banks on the strength of the policy
+    /// bundled at build time alone, i.e. without any successful online check
+    /// on this device (firewalls such as Little Snitch that only allow the bank
+    /// servers). Counted from `GiroCrabBuildDate` in Info.plist.
+    nonisolated public static let bundledGracePeriod: TimeInterval = 90 * 24 * 60 * 60
+
+    /// Info.plist key with the build time (ISO 8601, UTC), written by
+    /// package-macos-app.sh. Part of the signed bundle.
+    nonisolated public static let buildDateInfoKey = "GiroCrabBuildDate"
+
     public static let shared = BankingPolicy.makeDefault()
 
     // Inputs
@@ -385,6 +395,9 @@ public final class BankingPolicy {
     @ObservationIgnored let bundled: (json: Data, signature: Data)?
     @ObservationIgnored let distribution: BankingDistribution
     @ObservationIgnored let bundleVersion: String
+    @ObservationIgnored let buildDate: Date?
+    /// The policy bundled with this build, if its signature is valid.
+    @ObservationIgnored private var bundledDocument: BankingPolicyDocument?
     @ObservationIgnored let now: () -> Date
     @ObservationIgnored private var inFlight: Task<Void, Never>?
 
@@ -405,6 +418,7 @@ public final class BankingPolicy {
         bundled: (json: Data, signature: Data)?,
         distribution: BankingDistribution,
         bundleVersion: String,
+        buildDate: Date? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         let keys = publicKeys.compactMap { Data(base64Encoded: $0) }
@@ -416,6 +430,7 @@ public final class BankingPolicy {
         self.bundled = bundled
         self.distribution = distribution
         self.bundleVersion = bundleVersion
+        self.buildDate = buildDate
         self.now = now
         loadLocal()
     }
@@ -425,6 +440,8 @@ public final class BankingPolicy {
         var url = defaultURL
         var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
         var store: BankingPolicyStore = KeychainBankingPolicyStore()
+        var buildDate = (Bundle.main.object(forInfoDictionaryKey: buildDateInfoKey) as? String)
+            .flatMap { ISO8601DateFormatter().date(from: $0) }
         #if DEBUG
         // Test hooks for throwaway keys and a local server. Not compiled into
         // release builds, so nobody can redirect or disable the check there.
@@ -441,6 +458,7 @@ public final class BankingPolicy {
         }
         if let u = env["GIROCRAB_BANKING_POLICY_URL"].flatMap(URL.init(string:)) { url = u }
         if let v = env["GIROCRAB_BANKING_POLICY_VERSION"], !v.isEmpty { version = v }
+        if let d = env["GIROCRAB_BANKING_POLICY_BUILD_DATE"] { buildDate = ISO8601DateFormatter().date(from: d) }
         #endif
         let bundledJSON = Bundle.main.url(forResource: "banking-policy", withExtension: "json")
             .flatMap { try? Data(contentsOf: $0) }
@@ -453,7 +471,8 @@ public final class BankingPolicy {
             fetcher: URLSessionBankingPolicyFetcher(url: url),
             bundled: bundled,
             distribution: .current,
-            bundleVersion: version
+            bundleVersion: version,
+            buildDate: buildDate
         )
     }
 
@@ -462,7 +481,7 @@ public final class BankingPolicy {
         #if DEBUG
         let env = ProcessInfo.processInfo.environment
         return env["GIROCRAB_BANKING_POLICY_KEY"] != nil || env["GIROCRAB_BANKING_POLICY_URL"] != nil
-            || env["GIROCRAB_BANKING_POLICY_VERSION"] != nil
+            || env["GIROCRAB_BANKING_POLICY_VERSION"] != nil || env["GIROCRAB_BANKING_POLICY_BUILD_DATE"] != nil
         #else
         return false
         #endif
@@ -478,6 +497,21 @@ public final class BankingPolicy {
     /// Any block at all (for the banner).
     public var isBlocking: Bool { gate != nil }
 
+    /// Until when this build may contact banks without any successful online
+    /// check on this device: build date + `bundledGracePeriod`, provided the
+    /// bundle carries a validly signed policy (notarize.sh always adds one).
+    /// nil = no such allowance (no build date, no bundled policy, feature off).
+    public var bundledPolicyValidUntil: Date? {
+        guard isEnabled, bundledDocument != nil, let buildDate else { return nil }
+        return buildDate.addingTimeInterval(Self.bundledGracePeriod)
+    }
+
+    /// Banking runs on the bundled policy alone right now (never verified online).
+    public var reliesOnBundledPolicy: Bool {
+        guard !verifiedOnline, let until = bundledPolicyValidUntil else { return false }
+        return now() < until
+    }
+
     // MARK: Loading
 
     private func verifiedDocument(json: Data, signature: Data) -> BankingPolicyDocument? {
@@ -492,7 +526,8 @@ public final class BankingPolicy {
         var storedDoc = stored.flatMap { verifiedDocument(json: $0.json, signature: $0.signature) }
         if storedDoc == nil { stored = stored.map { StoredBankingPolicy(json: Data(), signature: Data(), verifiedOnline: $0.verifiedOnline) } }
         let wasOnline = stored?.verifiedOnline ?? false
-        if let bundled, let bundledDoc = verifiedDocument(json: bundled.json, signature: bundled.signature),
+        bundledDocument = bundled.flatMap { verifiedDocument(json: $0.json, signature: $0.signature) }
+        if let bundledDoc = bundledDocument, let bundled,
            bundledDoc.sequence > (storedDoc?.sequence ?? 0) || storedDoc == nil {
             storedDoc = bundledDoc
             stored = StoredBankingPolicy(json: bundled.json, signature: bundled.signature, verifiedOnline: wasOnline)
@@ -558,9 +593,11 @@ public final class BankingPolicy {
         if !isEnabled {
             newGate = nil
         } else if !verifiedOnline {
-            // Never verified online on this device (fresh install, or the
-            // keychain item was lost): only the bundled floor is known. An
-            // older build must not talk to a bank unchecked.
+            // Never verified online on this device (fresh install, GitHub
+            // blocked by a firewall, or the keychain item was lost): only the
+            // bundled floor is known. It is trusted for `bundledGracePeriod`
+            // after the build date – at release time it was current. Older
+            // builds must not talk to a bank unchecked.
             let bundledGate = document.flatMap {
                 BankingPolicyEvaluation.gate(for: $0, distribution: distribution, bundleVersion: bundleVersion)
             }
@@ -570,6 +607,8 @@ public final class BankingPolicy {
             )
             if let bundledGate {
                 newGate = bundledGate
+            } else if reliesOnBundledPolicy {
+                newGate = nil
             } else if lastFailure == nil {
                 // Not tried yet: no banner, but the core stays closed until the
                 // first check (every bank entry point awaits `refresh()` first).

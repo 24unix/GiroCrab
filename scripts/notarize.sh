@@ -303,6 +303,9 @@ scripts/banking-policy.sh check-app "$VAPP"
 if [ ${#POLICY_FILES[@]} -gt 0 ]; then
   cmp -s "$VAPP/Contents/Resources/banking-policy.json" "$POLICY_DIR/banking-policy.json" \
     || { echo "error: bundled banking-policy.json missing or not the verified one" >&2; exit 1; }
+  # without it the app gets no 90-day allowance for the bundled policy
+  /usr/libexec/PlistBuddy -c "Print :GiroCrabBuildDate" "$VAPP/Contents/Info.plist" >/dev/null 2>&1 \
+    || { echo "error: GiroCrabBuildDate missing in Info.plist" >&2; exit 1; }
 fi
 
 echo "--- launch smoke test"

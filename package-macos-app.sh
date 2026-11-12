@@ -81,6 +81,9 @@ else
   echo "==> In-app updates disabled (no Sparkle public key configured)"
 fi
 
+# Build time (UTC). The banking policy bundled below counts for 90 days
+# from here on devices that never reached GitHub (docs/banking-policy.md).
+BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -101,6 +104,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>NSFaceIDUsageDescription</key><string>GiroCrab nutzt Face ID / Touch ID, um Ihren verschlüsselten Tresor zu entsperren.</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>GiroCrabDistribution</key><string>developer-id</string>
+    <key>GiroCrabBuildDate</key><string>${BUILD_DATE}</string>
 ${ICON_KEY}
 ${SPARKLE_KEYS}
 </dict>

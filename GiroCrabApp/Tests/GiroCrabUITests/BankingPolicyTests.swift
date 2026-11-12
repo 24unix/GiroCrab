@@ -38,6 +38,7 @@ final class BankingPolicyTests: XCTestCase {
         fetcher: FakeFetcher? = FakeFetcher(),
         bundled: (json: Data, signature: Data)? = nil,
         version: String = "0.7.1",
+        buildDate: Date? = nil,
         clock: Clock = Clock()
     ) -> BankingPolicy {
         BankingPolicy(
@@ -47,6 +48,7 @@ final class BankingPolicyTests: XCTestCase {
             bundled: bundled,
             distribution: .developerID,
             bundleVersion: version,
+            buildDate: buildDate,
             now: { clock.now }
         )
     }
@@ -296,6 +298,72 @@ final class BankingPolicyTests: XCTestCase {
         await p.refresh(force: true)
         XCTAssertNil(p.gate)
         XCTAssertFalse(isBankingBlocked(key: "comdirect"))
+    }
+
+    private let day: TimeInterval = 24 * 60 * 60
+
+    func testFreshBuildWorksWithoutGitHubFor90Days() async {
+        // Little Snitch: GitHub never reachable, only the bank servers.
+        let clock = Clock()
+        let fetcher = FakeFetcher(result: .failure(URLError(.cannotConnectToHost)))
+        let p = makePolicy(
+            fetcher: fetcher, bundled: signed(policyJSON(sequence: 1)), version: "9.9.9",
+            buildDate: clock.now.addingTimeInterval(-30 * day), clock: clock
+        )
+        XCTAssertTrue(p.reliesOnBundledPolicy)
+        XCTAssertEqual(p.bundledPolicyValidUntil, clock.now.addingTimeInterval(60 * day))
+        XCTAssertNil(p.gate)
+        XCTAssertFalse(isBankingBlocked(key: "comdirect"))
+        await p.refresh()
+        XCTAssertNil(p.gate)
+        XCTAssertFalse(isBankingBlocked(key: "comdirect"))
+        // Day 89 after the build: still allowed.
+        clock.now = clock.now.addingTimeInterval(59 * day)
+        await p.refresh(force: true)
+        XCTAssertNil(p.gate)
+        // Day 91: the bundled policy is too old to vouch for this build.
+        clock.now = clock.now.addingTimeInterval(2 * day)
+        await p.refresh(force: true)
+        XCTAssertFalse(p.reliesOnBundledPolicy)
+        XCTAssertEqual(p.gate?.reason, .checkUnavailable)
+        XCTAssertTrue(isBankingBlocked(key: "comdirect"))
+        // GitHub reachable once → normal operation, the grace no longer matters.
+        fetcher.result = .success(signed(policyJSON(sequence: 1)))
+        await p.refresh(force: true)
+        XCTAssertNil(p.gate)
+        XCTAssertFalse(p.reliesOnBundledPolicy)
+        XCTAssertFalse(isBankingBlocked(key: "comdirect"))
+    }
+
+    func testBundledBlockAppliesDuringGracePeriod() async {
+        let clock = Clock()
+        let p = makePolicy(
+            fetcher: FakeFetcher(result: .failure(URLError(.timedOut))),
+            bundled: signed(policyJSON(sequence: 1, rules: blockFinTS)), version: "0.7.1",
+            buildDate: clock.now, clock: clock
+        )
+        XCTAssertEqual(p.gate?.reason, .outdated)
+        XCTAssertTrue(isBankingBlocked(key: "fints:50050201"))
+        XCTAssertFalse(isBankingBlocked(key: "comdirect"))
+    }
+
+    func testNoGraceWithoutBuildDateOrValidBundledPolicy() async {
+        let clock = Clock()
+        // Xcode / swift run: no GiroCrabBuildDate.
+        let noDate = makePolicy(bundled: signed(policyJSON(sequence: 1)), version: "9.9.9", clock: clock)
+        XCTAssertNil(noDate.bundledPolicyValidUntil)
+        XCTAssertTrue(isBankingBlocked(key: "comdirect"))
+        // No bundled policy at all.
+        let noPolicy = makePolicy(version: "9.9.9", buildDate: clock.now, clock: clock)
+        XCTAssertNil(noPolicy.bundledPolicyValidUntil)
+        XCTAssertTrue(isBankingBlocked(key: "comdirect"))
+        // Bundled policy signed by a foreign key.
+        let forged = makePolicy(
+            bundled: signed(policyJSON(sequence: 1), by: otherKey), version: "9.9.9",
+            buildDate: clock.now, clock: clock
+        )
+        XCTAssertNil(forged.bundledPolicyValidUntil)
+        XCTAssertTrue(isBankingBlocked(key: "comdirect"))
     }
 
     func testStoredStateKeepsWorkingWhenGitHubIsDown() async {

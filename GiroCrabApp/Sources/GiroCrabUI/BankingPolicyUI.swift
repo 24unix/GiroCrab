@@ -216,6 +216,10 @@ struct BankingPolicySection: View {
             return String(localized: "Nicht aktiv (kein Prüfschlüssel in diesem Build)")
         }
         guard let gate = policy.gate else {
+            if policy.reliesOnBundledPolicy, let until = policy.bundledPolicyValidUntil {
+                // GitHub not reachable yet: the policy shipped with this version counts
+                return String(localized: "Keine Sperre (Stand dieser Version, bis \(until.formatted(date: .abbreviated, time: .omitted)))")
+            }
             return policy.lastSuccessfulCheck == nil && !policy.verifiedOnline
                 ? String(localized: "Wird geprüft …")
                 : String(localized: "Keine Sperre")

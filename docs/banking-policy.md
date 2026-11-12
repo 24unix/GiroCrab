@@ -91,11 +91,20 @@ Greifen mehrere Regeln, gilt die strengste. Leere `rules` = keine Sperre.
 * **Untergrenze:** Die beim Build aktuelle Policy liegt im Bundle
   (`Contents/Resources/banking-policy.json`); eine höhere `sequence` ersetzt
   den gespeicherten Stand.
-* **Ohne Prüfung kein Bankkontakt:** Wurde auf diesem Gerät noch nie eine Policy
-  online geprüft (frische Installation) und ist GitHub nicht erreichbar, hält
-  die App den Bankkontakt an („Sicherheitsprüfung nicht möglich“). Bestehende
-  Installationen arbeiten bei einer GitHub-Störung mit dem gespeicherten Stand
-  weiter.
+* **Ohne Online-Prüfung: 90 Tage ab Build.** Wurde auf diesem Gerät noch nie
+  eine Policy online geprüft (frische Installation, GitHub per Firewall oder
+  Little Snitch blockiert), gilt die im Bundle mitgelieferte Policy – sie war
+  beim Release aktuell – für **90 Tage ab Build-Datum**
+  (`GiroCrabBuildDate` in der Info.plist, gesetzt von `package-macos-app.sh`).
+  Sperrt sie diesen Build selbst, gilt die Sperre sofort. Danach hält die App
+  den Bankkontakt an, bis eine Online-Prüfung gelingt („Sicherheitsprüfung
+  nicht möglich“, mit Hinweis auf `raw.githubusercontent.com`). Builds ohne
+  Build-Datum oder ohne gebündelte Policy (Xcode, `swift run`) bekommen diese
+  Frist nicht. Bestehende Installationen arbeiten bei einer GitHub-Störung mit
+  dem gespeicherten Stand weiter.
+  Folge: Ein Gerät, das GitHub nie erreicht, bemerkt eine *neue* Sperre
+  nicht; ab Tag 91 hält es den Bankkontakt aber ganz an, bis es aktualisiert
+  wird oder GitHub erreicht.
 * **Zweite Verteidigungslinie:** Die App gibt die Sperre an den Rust-Core
   weiter (`set_banking_block`). `begin_sync`, `begin_transfer` und das Anlegen
   von Verbindungen brechen dort mit `CoreError::BankingBlocked` ab – auch auf

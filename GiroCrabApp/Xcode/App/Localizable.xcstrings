@@ -13044,13 +13044,13 @@
         }
       }
     },
-    "GiroCrab konnte nicht prüfen, ob diese Version noch sicher mit Banken kommunizieren darf. Bitte später erneut versuchen." : {
+    "GiroCrab konnte nicht prüfen, ob diese Version noch sicher mit Banken kommunizieren darf. Bitte später erneut versuchen oder in Firewall bzw. Little Snitch Verbindungen zu raw.githubusercontent.com erlauben." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "GiroCrab could not verify whether this version may still communicate with banks safely. Please try again later."
+            "value" : "GiroCrab could not verify whether this version may still communicate with banks safely. Please try again later, or allow connections to raw.githubusercontent.com in your firewall or Little Snitch."
           }
         }
       }
@@ -13369,13 +13369,24 @@
         }
       }
     },
-    "Übersprungen (Sicherheitssperre): %@" : {
+    "%@ (Sicherheitssperre)" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Skipped (security lock): %@"
+            "value" : "%@ (security lock)"
+          }
+        }
+      }
+    },
+    "Keine Sperre (Stand dieser Version, bis %@)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No lock (as of this version, until %@)"
           }
         }
       }
