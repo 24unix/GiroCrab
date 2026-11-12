@@ -8,9 +8,27 @@ public struct GiroCrabScenes: Scene {
     @State private var model: AppModel
 
     public init(options: LaunchOptions = .current) {
-        _model = State(initialValue: AppModel(options: options))
-        GiroCrabTips.configure(options)
+        _model = State(initialValue: Self.prepare(options: options))
     }
+
+    /// Creates the app's one model. Call it from the `App`'s `init`, not from its
+    /// `body`: SwiftUI re-creates this struct on every evaluation of the app body,
+    /// and a model built there (a) is built again each time – `AppModel.init`
+    /// opens the vault and loads everything on the main thread – and (b) makes
+    /// every property the init reads a dependency of the app body, so the
+    /// model's own async loads re-evaluate the body and build the next model.
+    /// A trace showed 10–13 such throw-away models per second.
+    @discardableResult
+    public static func prepare(options: LaunchOptions = .current) -> AppModel {
+        if let model = sharedModel { return model }
+        let model = AppModel(options: options)
+        sharedModel = model
+        GiroCrabTips.configure(options)
+        return model
+    }
+
+    /// The one model of the app process; see `prepare`.
+    @MainActor private static var sharedModel: AppModel?
 
     public var body: some Scene {
         WindowGroup("GiroCrab", id: "main") {

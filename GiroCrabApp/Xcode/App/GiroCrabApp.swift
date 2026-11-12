@@ -7,6 +7,10 @@ import GiroCrabUI
 
 @main
 struct GiroCrabApp: App {
+    // The model is built here, once and outside the body's dependency tracking
+    // (see GiroCrabScenes.prepare).
+    init() { GiroCrabScenes.prepare() }
+
     var body: some Scene {
         GiroCrabScenes()
     }
