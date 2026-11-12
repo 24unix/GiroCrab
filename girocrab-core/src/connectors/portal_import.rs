@@ -213,6 +213,7 @@ const TEXT_KEYS: &[&str] = &[
     "reference",
 ];
 const AMOUNT_KEYS: &[&str] = &[
+    "signedamount",
     "amount",
     "amountvalue",
     "transactionamount",
@@ -222,6 +223,9 @@ const AMOUNT_KEYS: &[&str] = &[
     "billingamount",
     "billing_amount",
     "localamount",
+    // Open Bank card portal: `amounts: [{currency, totalAmount}]`
+    "amounts",
+    "totalamount",
 ];
 const ID_KEYS: &[&str] = &[
     "identifier",
@@ -279,10 +283,13 @@ fn value_cents(v: &Value) -> Option<i64> {
             Some((f * 100.0).round() as i64)
         }
         Value::String(s) => parse_amount(s),
+        // a single-currency list such as Open Bank's `amounts: [{…}]`
+        Value::Array(a) => a.first().and_then(value_cents),
         Value::Object(o) => get_ci(
             o,
             &[
                 "amount",
+                "totalamount",
                 "value",
                 "raw_amount",
                 "rawamount",
@@ -912,6 +919,19 @@ impl Vault {
                 keys.into_iter().collect::<Vec<_>>().join(", ")
             ));
         }
+        let mut hints = std::collections::BTreeMap::new();
+        for b in &json_bodies {
+            if let Ok(v) = serde_json::from_str::<Value>(b) {
+                value_hints(&v, &mut hints);
+            }
+        }
+        if !hints.is_empty() {
+            // code values, masked date shapes and amount signs only – never amounts or names
+            crate::depot_debug::log(&format!(
+                "portal value hints: {}",
+                serde_json::to_string(&hints).unwrap_or_default()
+            ));
+        }
         let from_json = parsed.len();
         if parsed.is_empty() {
             let rows: Vec<Vec<String>> = serde_json::from_str(&dom_rows_json).unwrap_or_default();
@@ -969,10 +989,136 @@ pub fn portal_schema_dump(json_bodies: Vec<String>, dom_rows_json: String) -> St
         .collect();
     let dom: Vec<Vec<String>> = serde_json::from_str(&dom_rows_json).unwrap_or_default();
     let dom_shape: Vec<usize> = dom.iter().map(|r| r.len()).collect();
-    serde_json::to_string_pretty(
-        &serde_json::json!({ "json_responses": bodies, "dom_row_cell_counts": dom_shape }),
-    )
+    let mut hints = std::collections::BTreeMap::new();
+    for b in &json_bodies {
+        if let Ok(v) = serde_json::from_str::<Value>(b) {
+            value_hints(&v, &mut hints);
+        }
+    }
+    serde_json::to_string_pretty(&serde_json::json!({
+        "json_responses": bodies,
+        "dom_row_cell_counts": dom_shape,
+        "value_hints": hints,
+    }))
     .unwrap_or_default()
+}
+
+/// Letters → `a`, digits → `9` (runs of letters collapsed): the shape of a value, not the value.
+fn mask_text(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        let m = if c.is_ascii_digit() {
+            '9'
+        } else if c.is_alphabetic() {
+            'a'
+        } else {
+            c
+        };
+        if !(m == 'a' && out.ends_with('a')) {
+            out.push(m);
+        }
+    }
+    out
+}
+
+/// Personal-data markers in key names: such fields are left out of the value hints.
+const HINT_SKIP: &[&str] = &[
+    "gender",
+    "marital",
+    "birth",
+    "document",
+    "aml",
+    "nationality",
+    "language",
+    "name",
+    "address",
+    "email",
+    "phone",
+    "mobile",
+    "tax",
+    "login",
+    "customer",
+    "person",
+    "occupation",
+    "income",
+    "residence",
+    "country",
+];
+/// Booking-related key parts whose code values may be logged verbatim.
+const HINT_VERBATIM: &[&str] = &[
+    "transaction",
+    "txn",
+    "denial",
+    "status",
+    "category",
+    "currency",
+    "payment",
+    "epp",
+    "indicator",
+    "creditdebit",
+    "debitcredit",
+];
+
+/// Value hints that are safe to share: the distinct values of code-like fields
+/// (`…Code`, `…Status`, `…Type`, `…Indicator`; only `[A-Z0-9_-]` values, anything else
+/// is masked), masked shapes of date/time fields and sign counts of amount/balance numbers.
+fn value_hints(
+    v: &Value,
+    out: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+) {
+    match v {
+        Value::Object(o) => {
+            for (k, x) in o {
+                let kl = norm_key(k);
+                // customer-profile fields never appear, not even masked
+                if HINT_SKIP.iter().any(|s| kl.contains(s)) {
+                    continue;
+                }
+                let codeish = ["code", "status", "type", "indicator"]
+                    .iter()
+                    .any(|s| kl.ends_with(s));
+                // only booking-related codes verbatim; any other code is masked
+                let booking_code = HINT_VERBATIM.iter().any(|s| kl.contains(s));
+                let dateish = kl.contains("date") || kl.contains("time");
+                let moneyish = ["amount", "balance", "limit", "debt"]
+                    .iter()
+                    .any(|s| kl.contains(s));
+                let hint = match x {
+                    Value::String(s) if codeish => Some(
+                        if booking_code
+                            && s.len() <= 24
+                            && s.chars().all(|c| {
+                                c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_' || c == '-'
+                            })
+                        {
+                            s.clone()
+                        } else {
+                            mask_text(s)
+                        },
+                    ),
+                    Value::String(s) if dateish => Some(mask_text(s)),
+                    Value::Number(n) if moneyish => Some(
+                        match n.as_f64().unwrap_or(0.0) {
+                            f if f < 0.0 => "negative",
+                            f if f > 0.0 => "positive",
+                            _ => "zero",
+                        }
+                        .to_string(),
+                    ),
+                    _ => None,
+                };
+                if let Some(h) = hint {
+                    let set = out.entry(k.clone()).or_default();
+                    if set.len() < 30 {
+                        set.insert(h);
+                    }
+                }
+                value_hints(x, out);
+            }
+        }
+        Value::Array(a) => a.iter().for_each(|x| value_hints(x, out)),
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -1076,6 +1222,58 @@ mod tests {
         assert_eq!(p.len(), 2);
         assert_eq!((p[0].cents, p[0].text.as_str()), (-1999, "AMAZON.DE"));
         assert_eq!(p[1].cents, 5000);
+    }
+
+    #[test]
+    fn openbank_card_transactions_shape() {
+        // shape of kunden.openbankpay.com …/cards/transactions (invented values)
+        let page1 = r#"{"elements":[{"id":"T1","date":"2025-04-03","dateTime":"2025-04-03T10:15:00Z","description":"BEISPIEL SHOP","amounts":[{"currency":"EUR","totalAmount":-19.99}],"merchantDetails":{"id":"M1","name":"Beispiel Shop"},"transactionStatusCode":"X"},{"id":"T2","date":"2025-04-04","description":"GUTSCHRIFT","amounts":[{"currency":"EUR","totalAmount":50}]}],"hasMultipleCards":false,"metadata":{"hasPendingRecords":false,"nextCursor":"c1"}}"#;
+        // next page overlaps by one booking
+        let page2 = r#"{"elements":[{"id":"T2","date":"2025-04-04","description":"GUTSCHRIFT","amounts":[{"currency":"EUR","totalAmount":50}]},{"id":"T3","date":"2025-03-30","description":"ANDERER SHOP","amounts":[{"currency":"EUR","totalAmount":-5.5}]}],"metadata":{"hasPendingRecords":false}}"#;
+        let position = r#"{"cards":[{"currentBalance":-123.45,"availableBalance":876.55}]}"#;
+        let (p, bal) = parse_json_bodies(
+            &[page1.into(), page2.into(), position.into()],
+            ConnectorKind::AmazonVisa,
+        );
+        assert_eq!(p.len(), 3, "overlapping page deduplicated by id");
+        assert_eq!(
+            (
+                p[0].date.as_str(),
+                p[0].cents,
+                p[0].text.as_str(),
+                p[0].id.as_deref()
+            ),
+            ("2025-04-03", -1999, "BEISPIEL SHOP", Some("T1"))
+        );
+        assert_eq!(p[1].cents, 5000);
+        assert_eq!(p[2].cents, -550);
+        assert_eq!(bal, Some(-12345));
+    }
+
+    #[test]
+    fn schema_dump_value_hints_hold_no_values() {
+        let d = portal_schema_dump(
+            vec![r#"{"elements":[{"date":"2025-04-03","transactionStatusCode":"SETTLED","denialCode":"Karte gesperrt 12","amounts":[{"totalAmount":-19.99}],"description":"SECRET SHOP"}]}"#.into()],
+            "[]".into(),
+        );
+        assert!(d.contains("SETTLED") && d.contains("9999-99-99") && d.contains("negative"));
+        assert!(
+            !d.contains("SECRET")
+                && !d.contains("19.99")
+                && !d.contains("gesperrt")
+                && !d.contains("2025")
+        );
+    }
+
+    #[test]
+    fn value_hints_leave_out_profile_fields() {
+        let d = portal_schema_dump(
+            vec![r#"{"genderTCode":"OTHER","maritalStatus":"SINGLE","documentType":"DA","productTypeCode":"ABC","transactionTypeCode":"D"}"#.into()],
+            "[]".into(),
+        );
+        assert!(!d.contains("OTHER") && !d.contains("SINGLE") && !d.contains("\"DA\""));
+        assert!(!d.contains("\"ABC\""), "non-booking codes are masked");
+        assert!(d.contains("\"D\""), "booking codes stay readable");
     }
 
     #[test]

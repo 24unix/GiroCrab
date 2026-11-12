@@ -85,6 +85,14 @@ extension ConnectorKind {
         default: return nil
         }
     }
+    /// Page with the booking list, opened once right after sign-in when the portal
+    /// lands elsewhere (Open Bank starts on its overview, which loads no bookings).
+    var portalTransactionsURL: URL? {
+        switch self {
+        case .amazonVisa: return URL(string: "https://kunden.openbankpay.com/amazon/transactions")
+        default: return nil
+        }
+    }
     var portalHosts: [String] {
         switch self {
         case .americanExpress: return ["americanexpress.com", "aexp.com"]
@@ -112,7 +120,8 @@ private final class WeakHandler: NSObject, WKScriptMessageHandler {
     init(_ t: PortalBrowser) { target = t }
     func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
         guard let d = m.body as? [String: Any], let body = d["body"] as? String else { return }
-        Task { @MainActor in self.target?.captured(body) }
+        let url = d["url"] as? String ?? ""
+        Task { @MainActor in self.target?.captured(body, url: url) }
     }
 }
 
@@ -145,7 +154,6 @@ final class PortalBrowser {
       var post = function(url, body) { try {
         if (!body || body.length > 3000000) return;
         var t = body.trim().charAt(0); if (t !== '{' && t !== '[') return;
-        if (!/transaction|activity|balance|account|statement|card|umsa|booking|posting/i.test(String(url))) return;
         window.webkit.messageHandlers.girocrab.postMessage({url: String(url), body: body});
       } catch (e) {} };
       var of = window.fetch;
@@ -194,10 +202,99 @@ final class PortalBrowser {
         webView.load(URLRequest(url: url))
     }
 
-    func captured(_ body: String) {
+    /// URL paths that may carry bookings/balances; other JSON (config, i18n, tracking)
+    /// is only kept as a path for the structure dump.
+    static let relevantURLWords = ["transaction", "activity", "balance", "account", "statement", "card", "umsa", "booking",
+                                   "posting", "movement", "movimiento", "operation", "history", "contract", "product", "position"]
+
+    /// Customer profile / login endpoints: never handed to the parser or the structure dump.
+    static let privateURLWords = ["customer", "profile", "personal", "authentication", "authorize", "login", "kyc"]
+
+    /// Paths (digits masked) of every JSON response seen, for "Portal-Struktur prüfen".
+    private(set) var seenPaths: [String] = []
+
+    func captured(_ body: String, url: String) {
+        let path = Self.maskedPath(url)
+        seenPaths.append(path)
+        if seenPaths.count > 200 { seenPaths.removeFirst(seenPaths.count - 200) }
+        let lower = url.lowercased()
+        guard Self.relevantURLWords.contains(where: lower.contains),
+              !Self.privateURLWords.contains(where: lower.contains) else { return }
         bodies.append(body)
-        if bodies.count > 60 { bodies.removeFirst(bodies.count - 60) }
+        // room for a long history paged in with "mehr anzeigen" (≈20 bookings per page)
+        if bodies.count > 300 { bodies.removeFirst(bodies.count - 300) }
         lastCapture = Date()
+    }
+
+    /// Host + path without query, digits masked – no ids or card numbers.
+    static func maskedPath(_ url: String) -> String {
+        let u = URL(string: url)
+        let s = u.map { ($0.host ?? "") + $0.path } ?? String(url.prefix(120))
+        return String(s.map { $0.isASCII && $0.isNumber ? "9" : $0 })
+    }
+
+    /// Keys-only DOM structure: smallest elements whose text holds a date and an amount,
+    /// described by tag/class and a masked text pattern (letters → a, digits → 9).
+    static let domShape = """
+    (function(){
+      var dre = /\\b\\d{1,2}[.\\/]\\d{1,2}[.\\/]\\d{2,4}\\b|\\b\\d{4}-\\d{2}-\\d{2}\\b|\\b\\d{1,2}\\.? ?(jan|feb|mär|mar|apr|mai|may|jun|jul|aug|sep|okt|oct|nov|dez|dec)/i;
+      var are = /-?\\d{1,3}([.,\\u00a0 ]\\d{3})*[.,]\\d{2}/;
+      var mask = function(t){ return t.replace(/[0-9]/g,'9').replace(/[^\\s9.,:\\/€+\\-]/g,'a').replace(/a+/g,'a'); };
+      var desc = function(e){ var c = (typeof e.className === 'string' ? e.className : '').trim().split(/\\s+/).slice(0,3).join('.');
+        return e.tagName.toLowerCase() + (c ? '.' + c : '') + (e.getAttribute('role') ? '[role=' + e.getAttribute('role') + ']' : ''); };
+      var out = [], amountOnly = 0;
+      document.querySelectorAll('body *').forEach(function(e){
+        var t = (e.innerText || ''); if (!t || t.length > 400) return;
+        if (!are.test(t)) return;
+        if (!dre.test(t)) { if (!Array.prototype.some.call(e.children, function(c){ return are.test(c.innerText||''); })) amountOnly++; return; }
+        if (Array.prototype.some.call(e.children, function(c){ var x = c.innerText||''; return are.test(x) && dre.test(x); })) return;
+        var p = e.parentElement, path = [];
+        for (var i = 0; i < 4 && p; i++, p = p.parentElement) path.push(desc(p));
+        out.push({el: desc(e), parents: path, siblings: e.parentElement ? e.parentElement.children.length : 0,
+                  lines: t.split('\\n').map(function(l){ return mask(l.trim()); }).filter(function(l){ return l; }).slice(0,8)});
+      });
+      var shadow = 0; document.querySelectorAll('*').forEach(function(e){ if (e.shadowRoot) shadow++; });
+      var frames = Array.prototype.map.call(document.querySelectorAll('iframe'), function(f){ try { return new URL(f.src, location.href).host; } catch (e) { return '?'; } });
+      return JSON.stringify({path: location.pathname.replace(/[0-9]/g,'9'), date_amount_elements: out.slice(0,40), date_amount_count: out.length,
+        amount_only_leaf_count: amountOnly, shadow_roots: shadow, iframes: frames,
+        tables: document.querySelectorAll('table').length, aria_rows: document.querySelectorAll('[role=row]').length});
+    })()
+    """
+
+    func domShapeJSON() async -> String {
+        (try? await webView.evaluateJavaScript(Self.domShape) as? String) ?? "{}"
+    }
+
+    /// Paging buttons of the Amazon Visa (Open Bank) transaction list: "mehr anzeigen"
+    /// loads the next page (clicked when `clickMore`), "Umsätze anzeigen" unlocks
+    /// history older than ~3 months behind an SMS code (left to the user).
+    static func pagerScript(clickMore: Bool) -> String {
+        """
+        (function(){
+          var vis = function(e){ var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+          var label = function(b){ return (b.innerText || b.getAttribute('aria-label') || '').trim().replace(/\\s+/g, ' '); };
+          var buttons = Array.prototype.filter.call(document.querySelectorAll('button,a,[role=button]'),
+            function(b){ var t = label(b); return vis(b) && !b.disabled && t && t.length <= 40; });
+          var more = buttons.find(function(b){ return /^(mehr|weitere) (anzeigen|laden)$/i.test(label(b)); });
+          var older = buttons.find(function(b){ return /umsätze anzeigen|ältere umsätze|alle umsätze/i.test(label(b)); });
+          if (more && \(clickMore)) more.click();
+          var labels = buttons.map(function(b){ return label(b).replace(/[0-9]/g, '9'); })
+            .filter(function(t, i, a){ return a.indexOf(t) === i; }).slice(0, 25);
+          return JSON.stringify({more: !!more, older: !!older, labels: labels});
+        })()
+        """
+    }
+
+    struct Pager: Decodable {
+        var more = false, older = false
+        /// Visible button labels (digits masked) – UI texts only, for the debug log.
+        var labels: [String] = []
+    }
+
+    func pager(clickMore: Bool) async -> Pager {
+        guard let s = try? await webView.evaluateJavaScript(Self.pagerScript(clickMore: clickMore)) as? String,
+              let p = try? JSONDecoder().decode(Pager.self, from: Data(s.utf8)) else { return Pager() }
+        return p
     }
 
     func domRowsJSON() async -> String {
@@ -237,6 +334,16 @@ struct PortalWebSheet: View {
     @State private var recognized = 0
     @State private var lastChange = Date()
     @State private var lastSeenCount = 0
+    /// Bookings stored so far while the sheet stays open for older history.
+    @State private var importedCount = 0
+    /// The portal offers older history ("Umsätze anzeigen" + SMS code).
+    @State private var olderOffered = false
+    /// The booking list was opened after sign-in (only once, so the user may browse freely).
+    @State private var openedTransactions = false
+    /// Labels logged once at the end of the list (to adapt to portal changes).
+    @State private var loggedLabels = false
+    /// The older history (SMS code) is offered once per connection; later syncs close on their own.
+    private var historyOfferedKey: String { "portal.historyOffered.\(connection.id)" }
 
     init(connection: BankConnection) {
         self.connection = connection
@@ -245,6 +352,10 @@ struct PortalWebSheet: View {
 
     private var info: String {
         if browser.onLoginPage { return String(localized: "Melden Sie sich wie gewohnt an (Benutzername, Passwort, 2FA) und öffnen Sie die Umsatzübersicht.") }
+        if importedCount > 0 && olderOffered {
+            return String(localized: "\(importedCount) Umsätze übernommen. Für ältere Umsätze im Portal „Umsätze anzeigen“ wählen und den SMS-Code bestätigen – die Übernahme läuft danach automatisch weiter.")
+        }
+        if importedCount > 0 { return String(localized: "\(importedCount) Umsätze übernommen – weitere werden geladen …") }
         if recognized == 0 { return String(localized: "Angemeldet – öffnen Sie die Umsatzübersicht, damit das Portal die Buchungen lädt.") }
         return String(localized: "\(recognized) Umsätze erkannt – Übernahme startet automatisch, sobald die Seite fertig geladen ist.")
     }
@@ -269,10 +380,10 @@ struct PortalWebSheet: View {
                 .macFrame(minWidth: 760, minHeight: 520)
             Divider()
             HStack {
-                Button("Abbrechen", role: .cancel) { close() }
+                Button(importedCount > 0 ? "Fertig" : "Abbrechen", role: .cancel) { close() }
                     .keyboardShortcut(.cancelAction)
                 Button { importing = true } label: { Label("CSV- oder PDF-Kontoauszug importieren …", systemImage: "doc.badge.plus") }
-                if recognized == 0 && !browser.onLoginPage {
+                if recognized == 0 {
                     Button("Portal-Struktur prüfen") { Task { await dumpSchema() } }
                         .help("Speichert nur Feldnamen und Typen (keine Werte) nach /tmp/girocrab-portal-schema.json")
                 }
@@ -300,8 +411,32 @@ struct PortalWebSheet: View {
                 let n = browser.onLoginPage ? 0 : model.previewPortalCapture(connection, bodies: browser.bodies, domRowsJSON: rows)
                 if n != lastSeenCount || n != recognized { lastSeenCount = n; lastChange = Date() }
                 recognized = n
-                if n > 0, !browser.onLoginPage, Date().timeIntervalSince(lastChange) > 4 {
-                    if await attempt() { return }
+                if !openedTransactions, !browser.onLoginPage, !browser.loading,
+                   let list = connection.connector.portalTransactionsURL, let here = browser.currentURL,
+                   here.host == list.host {
+                    openedTransactions = true
+                    if here.path != list.path { browser.webView.load(URLRequest(url: list)) }
+                }
+                // Amazon Visa lists ~20 bookings per page: keep paging until the end.
+                var pager = PortalBrowser.Pager()
+                if connection.connector == .amazonVisa, !browser.onLoginPage {
+                    pager = await browser.pager(clickMore: !browser.loading)
+                    olderOffered = pager.older
+                    if pager.more { lastChange = Date() }
+                    if !pager.more, n > 0, !loggedLabels {
+                        loggedLabels = true
+                        AppModel.debugLog("portal pager: older=\(pager.older) buttons=\(pager.labels.joined(separator: " | "))")
+                    }
+                }
+                if n > importedCount, !browser.onLoginPage, !pager.more, Date().timeIntervalSince(lastChange) > 4 {
+                    // First sync with older history on offer: store what is there, but keep
+                    // the sheet open so the user can unlock the rest (SMS code).
+                    let keepOpen = pager.older && importedCount == 0
+                        && !UserDefaults.standard.bool(forKey: historyOfferedKey)
+                    if await attempt(closing: !keepOpen) {
+                        if !keepOpen { return }
+                        importedCount = n
+                    }
                 }
             }
         }
@@ -309,19 +444,22 @@ struct PortalWebSheet: View {
     }
 
     @discardableResult
-    private func attempt() async -> Bool {
+    private func attempt(closing: Bool = true) async -> Bool {
         busy = true
         defer { busy = false }
         let rows = await browser.domRowsJSON()
         let ok = model.importPortalCapture(connection, bodies: browser.bodies, domRowsJSON: rows)
-        if ok { close() }
+        if ok, closing { close() }
         return ok
     }
 
     /// Keys-only structure dump (all strings/numbers masked) for debugging portal changes.
     private func dumpSchema() async {
         let rows = await browser.domRowsJSON()
-        let dump = portalSchemaDump(jsonBodies: browser.bodies, domRowsJson: rows)
+        let core = portalSchemaDump(jsonBodies: browser.bodies, domRowsJson: rows)
+        let shape = await browser.domShapeJSON()
+        let paths = (try? JSONSerialization.data(withJSONObject: browser.seenPaths)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        let dump = "{\n\"core\": \(core),\n\"json_paths\": \(paths),\n\"dom_shape\": \(shape),\n\"on_login_page\": \(browser.onLoginPage)\n}"
         do {
             try dump.write(toFile: "/tmp/girocrab-portal-schema.json", atomically: true, encoding: .utf8)
             model.toast = String(localized: "Struktur gespeichert: /tmp/girocrab-portal-schema.json (\(browser.bodies.count) Antworten, ohne Werte)")
@@ -331,6 +469,7 @@ struct PortalWebSheet: View {
     }
 
     private func close() {
+        if importedCount > 0 { UserDefaults.standard.set(true, forKey: historyOfferedKey) }
         model.webLoginConnection = nil
         dismiss()
     }
