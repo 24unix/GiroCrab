@@ -26,6 +26,8 @@ struct PinSheet: View {
                     Text("Anmeldung bei \(connection.displayName)").font(.headline)
                     Text(d?.protocol ?? "").font(.caption).foregroundStyle(Theme.secondary)
                 }
+                Spacer()
+                SyncBatchProgressLabel()
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(d?.loginLabel ?? String(localized: "Anmeldung")).font(.caption).foregroundStyle(Theme.secondary)
@@ -69,14 +71,13 @@ struct PinSheet: View {
                     }
                 }
             }
-            HStack {
-                Button("Abbrechen", role: .cancel) { model.pendingLogin = nil; dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Abrufen", action: start)
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(secret.isEmpty || login.trimmingCharacters(in: .whitespaces).isEmpty)
+            SyncPromptButtons(cancel: model.cancelPendingLogin) {
+                Button(action: start) {
+                    Text("Abrufen").frame(maxWidth: .infinity)
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(secret.isEmpty || login.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(24)
@@ -497,6 +498,7 @@ struct WebLoginSheet: View {
                     Text(info).font(.caption).foregroundStyle(Theme.secondary)
                 }
                 Spacer()
+                SyncBatchProgressLabel()
                 if found != nil {
                     Label("Sitzung gefunden", systemImage: "checkmark.seal.fill").foregroundStyle(Theme.inflow).font(.caption)
                 } else {
@@ -508,13 +510,13 @@ struct WebLoginSheet: View {
             TRWebView(url: URL(string: "https://app.traderepublic.com/login")!, phone: connection.loginName)
                 .macFrame(minWidth: 720, minHeight: 620)
             Divider()
-            HStack {
-                Button("Abbrechen", role: .cancel) { model.webLoginConnection = nil; dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Sitzung übernehmen") {
+            // "Alle abrufen": cancelling skips this login (see SyncPromptButtons)
+            SyncPromptButtons(cancel: { model.cancelWebLogin(); dismiss() }) {
+                Button {
                     if let c = found { model.applyBrowserSession(connection, cookies: c) }
                     dismiss()
+                } label: {
+                    Text("Sitzung übernehmen").frame(maxWidth: .infinity)
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)

@@ -23,6 +23,7 @@ struct TwoFactorSheet: View {
                         Text(c.methodName).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    SyncBatchProgressLabel()
                 }
 
                 switch c.kind {
@@ -64,6 +65,14 @@ struct TwoFactorSheet: View {
                         .textContentType(.oneTimeCode)
                         #endif
                         .onSubmit(submit)
+                    if active.connection.connector == .tradeRepublic && c.kind == .code {
+                        // HIG: belongs to the code field, not to the dialog's
+                        // button row (which keeps at most three buttons)
+                        Button("Code per SMS anfordern") { model.submitCode("SMS") }
+                            .buttonStyle(.link)
+                            .font(.callout)
+                            .help("Kein Code in der App? Code per SMS anfordern.")
+                    }
                 case .redirect:
                     if let consent {
                         // Bank login inside GiroCrab; closes itself on the redirect.
@@ -111,19 +120,14 @@ struct TwoFactorSheet: View {
                     Text("Gültig noch etwa \(s / 60) Min.").font(.caption).foregroundStyle(.tertiary)
                 }
 
-                HStack {
-                    Button("Abbrechen", role: .cancel) { model.cancelSync() }
-                        .keyboardShortcut(.cancelAction)
-                    if active.connection.connector == .tradeRepublic && c.kind == .code {
-                        Button("Code per SMS") { model.submitCode("SMS") }
-                            .help("Kein Code in der App? Code per SMS anfordern.")
-                    }
-                    Spacer()
+                SyncPromptButtons(cancel: model.skipCurrentSync) {
                     if c.kind == .code || c.kind == .imageCode || (c.kind == .redirect && showManualRedirect) {
-                        Button("Weiter", action: submit)
-                            .keyboardShortcut(.defaultAction)
-                            .buttonStyle(.borderedProminent)
-                            .disabled(code.trimmingCharacters(in: .whitespaces).isEmpty || active.busy)
+                        Button(action: submit) {
+                            Text("Weiter").frame(maxWidth: .infinity)
+                        }
+                        .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(code.trimmingCharacters(in: .whitespaces).isEmpty || active.busy)
                     }
                 }
             }
@@ -159,3 +163,102 @@ struct TwoFactorSheet: View {
     }
 }
 
+
+/// "Bankzugang 2 von 5" while "Alle abrufen" runs over several logins
+/// (PIN and TAN sheets), so skipping one is an informed choice.
+struct SyncBatchProgressLabel: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let p = model.syncBatchProgress {
+            Text("Bankzugang \(p.current) von \(p.total)")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(Theme.secondary)
+        }
+    }
+}
+
+/// Button row of a sync prompt (PIN, TAN, setup, browser login).
+///
+/// Single sync: `[Abbrechen] … [Default]`, as everywhere in GiroCrab.
+/// "Alle abrufen" with more logins waiting:
+/// `[Alle abbrechen] … [Überspringen] [Default]` – HIG: the farther-reaching
+/// alternative stands apart on the left (like "Don't Save"); Cancel
+/// (Esc = skip this login) sits next to the default button, both one width.
+struct SyncPromptButtons<Default: View>: View {
+    @Environment(AppModel.self) private var model
+    /// Cancel this prompt: skips the login in a batch, otherwise just cancels.
+    let cancel: () -> Void
+    /// Extra buttons after the leading one (e.g. "Demo-Daten ansehen").
+    var leading: AnyView? = nil
+    /// The default button; its label should use `.frame(maxWidth: .infinity)`.
+    @ViewBuilder let defaultButton: () -> Default
+
+    var body: some View {
+        HStack {
+            if model.canSkipInSyncBatch {
+                Button("Alle abbrechen") { model.cancelAllSync() }
+                    .help("Den Abruf für alle restlichen Bankzugänge beenden.")
+                    .fixedSize()
+            } else {
+                Button("Abbrechen", role: .cancel, action: cancel)
+                    .keyboardShortcut(.cancelAction)
+            }
+            if let leading { leading }
+            Spacer()
+            EqualWidthHStack {
+                if model.canSkipInSyncBatch {
+                    Button(role: .cancel, action: cancel) {
+                        Text("Überspringen").frame(maxWidth: .infinity)
+                    }
+                    .keyboardShortcut(.cancelAction)
+                    .help("Diesen Bankzugang auslassen und mit dem nächsten weitermachen.")
+                }
+                defaultButton()
+            }
+        }
+        // iOS: a swipe-down would bypass `cancel` and stall "Alle abrufen";
+        // the preference reaches the sheet from here (PIN, setup, browser login)
+        .interactiveDismissDisabled(model.syncBatchProgress != nil)
+    }
+}
+
+/// HIG: buttons side by side in a dialog (Cancel + default) share one width,
+/// that of the widest title, with the system spacing between them (pattern
+/// from Apple's "Compose custom layouts with SwiftUI", WWDC22). Labels use
+/// `.frame(maxWidth: .infinity)` to fill the width.
+struct EqualWidthHStack: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard !subviews.isEmpty else { return .zero }
+        let m = widest(subviews)
+        let gaps = spacing(subviews).reduce(0, +)
+        return CGSize(width: m.width * CGFloat(subviews.count) + gaps, height: m.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let m = widest(subviews)
+        let gaps = spacing(subviews)
+        var x = bounds.minX
+        for (i, s) in subviews.enumerated() {
+            s.place(at: CGPoint(x: x, y: bounds.midY), anchor: .leading,
+                    proposal: ProposedViewSize(width: m.width, height: m.height))
+            x += m.width + gaps[i]
+        }
+    }
+
+    private func widest(_ subviews: Subviews) -> CGSize {
+        subviews.map { $0.sizeThatFits(.unspecified) }.reduce(.zero) {
+            CGSize(width: max($0.width, $1.width), height: max($0.height, $1.height))
+        }
+    }
+
+    /// System spacing after each subview (0 after the last).
+    private func spacing(_ subviews: Subviews) -> [CGFloat] {
+        subviews.indices.map { i in
+            i < subviews.count - 1
+                ? subviews[i].spacing.distance(to: subviews[i + 1].spacing, along: .horizontal)
+                : 0
+        }
+    }
+}

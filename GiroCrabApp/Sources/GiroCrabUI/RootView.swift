@@ -443,8 +443,11 @@ struct MainSplitView: View {
                     .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
                     .padding(.bottom, 22)
                     .transition(Motion.slide(.bottom))
-                    .task {
+                    // id: a changed or extended notice gets its full time again
+                    .task(id: toast) {
                         try? await Task.sleep(nanoseconds: 3_500_000_000)
+                        // replaced meanwhile: the new notice's own task takes over
+                        guard !Task.isCancelled else { return }
                         withAnimation { model.toast = nil }
                     }
             }

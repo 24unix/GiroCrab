@@ -117,6 +117,8 @@ struct BankSetupSheet: View {
                     Text("Diese Angaben fehlen noch, bevor Buchungen abgerufen werden können.")
                         .font(.caption).foregroundStyle(Theme.secondary)
                 }
+                Spacer()
+                SyncBatchProgressLabel()
             }
             if request.keys.contains(where: { Self.enableBankingKeys.contains($0) }) {
                 EnableBankingSetupSection(values: $values)
@@ -150,18 +152,21 @@ struct BankSetupSheet: View {
                     }
                 }
             }
-            HStack {
-                Button("Abbrechen", role: .cancel) { model.setupRequest = nil; dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                if !model.demoActive {
-                    Button("Demo-Daten ansehen") { model.setupRequest = nil; dismiss(); model.showDemo() }
+            // "Alle abrufen": cancelling skips this login (see SyncPromptButtons)
+            SyncPromptButtons(
+                cancel: { model.cancelSetupRequest(); dismiss() },
+                leading: model.demoActive ? nil : AnyView(
+                    // switching to the demo vault ends a running "Alle abrufen"
+                    Button("Demo-Daten ansehen") { model.cancelSync(); model.setupRequest = nil; dismiss(); model.showDemo() }
+                )
+            ) {
+                Button { model.completeSetup(request, values: values) } label: {
+                    Text("Speichern & abrufen").frame(maxWidth: .infinity)
                 }
-                Spacer()
-                Button("Speichern & abrufen") { model.completeSetup(request, values: values) }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    // HIG: the default button stays off until every required field has a value.
-                    .disabled(request.keys.contains { (values[$0] ?? "").trimmingCharacters(in: .whitespaces).isEmpty })
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                // HIG: the default button stays off until every required field has a value.
+                .disabled(request.keys.contains { (values[$0] ?? "").trimmingCharacters(in: .whitespaces).isEmpty })
             }
         }
         .padding(24)
