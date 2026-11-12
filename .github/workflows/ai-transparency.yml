@@ -9,8 +9,10 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
-  issues: write # PR comment; read-only for fork PRs -> comment step is skipped softly
+  # PR comments go through the issues API but need pull-requests: write.
+  # Fork PRs get a read-only token anyway -> the comment step fails softly.
+  pull-requests: write
+  issues: write
 
 concurrency:
   group: ai-transparency-${{ github.event.pull_request.number }}
