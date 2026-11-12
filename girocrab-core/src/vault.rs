@@ -7,7 +7,7 @@
 //!   account_groups    sidebar grouping by account kind (Giro, Credit cards, ...)
 //!   user_groups       user-defined sidebar groups ("Privat", "Geschäft", ...), synced by uuid
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, ToSql};
@@ -498,6 +498,24 @@ impl Vault {
         conn: &Connection,
         only_uncategorised: bool,
     ) -> CoreResult<u32> {
+        let changed = Self::categorise_by_rules(conn, only_uncategorised, None)?;
+        // manual loans (#36): link new bookings by expression, refresh balances
+        crate::loans::apply_loan_rules(conn)?;
+        Ok(changed)
+    }
+
+    /// Runs the rules over the uncategorised bookings in `ids` (a merge lets
+    /// rules refill the bookings whose category it cleared).
+    pub(crate) fn apply_rules_to(conn: &Connection, ids: &HashSet<i64>) -> CoreResult<u32> {
+        Self::categorise_by_rules(conn, true, Some(ids))
+    }
+
+    /// `only`: restricts the run to these bookings.
+    fn categorise_by_rules(
+        conn: &Connection,
+        only_uncategorised: bool,
+        only: Option<&HashSet<i64>>,
+    ) -> CoreResult<u32> {
         let set = Self::rule_set(conn)?;
         let sql = if only_uncategorised {
             "SELECT t.id, t.account_id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.rule_id,
@@ -542,6 +560,9 @@ impl Vault {
                 ))
             })?
             .collect::<Result<_, _>>()?;
+        let rows = rows
+            .into_iter()
+            .filter(|r| only.is_none_or(|ids| ids.contains(&r.0 .0)));
         let mut changed = 0u32;
         let mut upd_rule = conn.prepare("UPDATE transactions SET category_id = ?1, rule_id = ?2, category_source = 'rule' WHERE id = ?3")?;
         let mut upd_none = conn.prepare("UPDATE transactions SET category_id = NULL, rule_id = NULL, category_source = 'none' WHERE id = ?1")?;
@@ -576,8 +597,6 @@ impl Vault {
                 }
             }
         }
-        // manual loans (#36): link new bookings by expression, refresh balances
-        crate::loans::apply_loan_rules(conn)?;
         Ok(changed)
     }
 
@@ -903,118 +922,8 @@ impl Vault {
         let cat_map = crate::sync_merge::live_targets(&tx, "categories", &cat_map)?;
         let rule_map = crate::sync_merge::live_targets(&tx, "rules", &rule_map)?;
 
-        // bookings
-        #[allow(clippy::type_complexity)]
-        let rows: Vec<(
-            i64,
-            String,
-            String,
-            String,
-            i64,
-            String,
-            String,
-            String,
-            String,
-            String,
-            Option<i64>,
-            String,
-            Option<i64>,
-            bool,
-            i64,
-            String,
-            String,
-        )> = tx
-            .prepare(
-                "SELECT account_id, external_id, booking_date, value_date, amount_cents, currency,
-                        counterparty, counterparty_iban, purpose, booking_text, category_id,
-                        category_source, rule_id, checked, imported_unix, note, import_fp
-                 FROM other.transactions",
-            )?
-            .query_map([], |r| {
-                Ok((
-                    r.get(0)?,
-                    r.get(1)?,
-                    r.get(2)?,
-                    r.get(3)?,
-                    r.get(4)?,
-                    r.get(5)?,
-                    r.get(6)?,
-                    r.get(7)?,
-                    r.get(8)?,
-                    r.get(9)?,
-                    r.get(10)?,
-                    r.get(11)?,
-                    r.get(12)?,
-                    r.get(13)?,
-                    r.get(14)?,
-                    r.get(15)?,
-                    r.get(16)?,
-                ))
-            })?
-            .collect::<Result<_, _>>()?;
-        for (
-            oacc,
-            ext,
-            bd,
-            vd,
-            amt,
-            cur,
-            cp,
-            cpi,
-            purpose,
-            text,
-            ocat,
-            csrc,
-            orule,
-            checked,
-            imp,
-            note,
-            fp,
-        ) in rows
-        {
-            let Some(&acc) = acc_map.get(&oacc) else {
-                continue;
-            };
-            let cat = ocat.and_then(|c| cat_map.get(&c).copied());
-            let rule = orule.and_then(|c| rule_map.get(&c).copied());
-            let existing: Option<i64> = tx
-                .query_row(
-                    // includes soft-deleted rows
-                    "SELECT id FROM transactions WHERE account_id = ?1
-                       AND (external_id = ?2 OR (?3 != '' AND import_fp = ?3)) LIMIT 1",
-                    params![acc, ext, fp],
-                    |r| r.get(0),
-                )
-                .optional()?;
-            match existing {
-                Some(id) => {
-                    let n = tx.execute(
-                        "UPDATE transactions SET
-                            checked = CASE WHEN ?2 THEN 1 ELSE checked END,
-                            category_id = CASE WHEN category_id IS NULL AND ?3 IS NOT NULL THEN ?3 ELSE category_id END,
-                            category_source = CASE WHEN category_id IS NULL AND ?3 IS NOT NULL THEN ?4 ELSE category_source END,
-                            rule_id = CASE WHEN category_id IS NULL AND ?3 IS NOT NULL THEN ?5 ELSE rule_id END,
-                            note = CASE WHEN note = '' AND ?6 != '' THEN ?6 ELSE note END
-                         WHERE id = ?1
-                           AND ((?2 AND checked = 0)
-                             OR (category_id IS NULL AND ?3 IS NOT NULL)
-                             OR (note = '' AND ?6 != ''))",
-                        params![id, checked, cat, csrc, rule, note],
-                    )?;
-                    st.bookings_updated += n as u32;
-                }
-                None => {
-                    tx.execute(
-                        "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents,
-                            currency, counterparty, counterparty_iban, purpose, booking_text, category_id,
-                            category_source, rule_id, checked, imported_unix, note, import_fp)
-                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
-                        params![acc, ext, bd, vd, amt, cur, cp, cpi, purpose, text, cat, csrc, rule, checked, imp, note, fp],
-                    )?;
-                    st.bookings_added += 1;
-                }
-            }
-        }
+        // bookings and splits (newest edit per field wins, deletions stay)
+        crate::sync_merge::merge_bookings(&tx, &acc_map, &cat_map, &rule_map, &mut st)?;
         crate::loans::merge_attached(&tx, &acc_map)?;
         tx.commit()?;
         Ok(st)
@@ -1124,10 +1033,9 @@ impl Vault {
     /// Merges another vault file (e.g. a copy synced via iCloud) into this one.
     /// Categories and rules: newest edit wins, deletions stay deleted, same
     /// ones created on both sides are combined. Missing connections, accounts
-    /// and bookings are added;
-    /// existing bookings are never duplicated (matched by account + external id
-    /// or import fingerprint) but gain `checked`, category and note if the
-    /// other side has them and this side does not.
+    /// and bookings are added; existing bookings (matched by account +
+    /// external id, else import fingerprint) take the newest edit per field
+    /// (category, note, checked, text, splits) and stay deleted once deleted.
     pub fn merge_other_vault(
         &self,
         other_path: String,

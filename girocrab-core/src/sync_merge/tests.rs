@@ -2128,3 +2128,541 @@ fn crossing_moves_do_not_create_a_cycle() {
         assert_newer_move_kept(v);
     }
 }
+
+// ------------------------------------------------------------ booking merge
+
+fn exec(v: &Vault, sql: &str) {
+    v.db().unwrap().execute_batch(sql).unwrap();
+}
+
+fn cat(v: &Vault, name: &str) -> i64 {
+    v.db()
+        .unwrap()
+        .query_row(
+            "SELECT id FROM categories WHERE name = ?1 AND deleted_ms IS NULL",
+            [name],
+            |r| r.get(0),
+        )
+        .unwrap()
+}
+
+/// `<category name>/<source>` of booking `id` ("-" for none).
+fn bk_cat(v: &Vault, id: i64) -> String {
+    text(
+        v,
+        &format!(
+            "SELECT IFNULL(c.name, '-') || '/' || t.category_source FROM transactions t
+             LEFT JOIN categories c ON c.id = t.category_id WHERE t.id = {id}"
+        ),
+    )
+}
+
+/// A and B share account 1 with bookings 1 ("e1", Shop) and 2 ("e2", Kiosk)
+/// and the categories Food and Fun (A created them, B got them by a merge).
+fn booking_pair(tag: &str) -> (Arc<Vault>, Arc<Vault>) {
+    let dir = temp_dir(tag);
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    for v in [&a, &b] {
+        shared_account(v);
+        exec(
+            v,
+            "INSERT INTO transactions(id, account_id, external_id, booking_date, amount_cents, counterparty)
+                 VALUES (1, 1, 'e1', '2026-01-01', -500, 'Shop'), (2, 1, 'e2', '2026-01-02', -300, 'Kiosk');",
+        );
+    }
+    a.create_category("Food".into(), None, String::new(), String::new())
+        .unwrap();
+    a.create_category("Fun".into(), None, String::new(), String::new())
+        .unwrap();
+    merge(&b, &a);
+    (a, b)
+}
+
+/// Runs `setup` on a fresh pair, merges both ways (in both orders) and hands
+/// both vaults to `check`.
+fn each_order(tag: &str, setup: impl Fn(&Vault, &Vault), check: impl Fn(&Vault)) {
+    for a_first in [true, false] {
+        let (a, b) = booking_pair(tag);
+        setup(&a, &b);
+        if a_first {
+            both_ways(&a, &b);
+        } else {
+            both_ways(&b, &a);
+        }
+        check(&a);
+        check(&b);
+    }
+}
+
+fn split(category_id: Option<i64>, amount_cents: i64) -> crate::models::TransactionSplitInput {
+    crate::models::TransactionSplitInput {
+        category_id,
+        amount_cents,
+        note: String::new(),
+    }
+}
+
+/// `<category name>:<amount>` of booking `id`'s splits, sorted.
+fn splits_of(v: &Vault, id: i64) -> Vec<String> {
+    let db = v.db().unwrap();
+    let mut st = db
+        .prepare(
+            "SELECT IFNULL(c.name, '-') || ':' || s.amount_cents FROM transaction_splits s
+             LEFT JOIN categories c ON c.id = s.category_id WHERE s.transaction_id = ?1",
+        )
+        .unwrap();
+    let mut out: Vec<String> = st
+        .query_map([id], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    out.sort();
+    out
+}
+
+#[test]
+fn newer_note_wins_including_empty() {
+    each_order(
+        "bk-note",
+        |a, b| {
+            a.update_transaction_note(1, "old".into()).unwrap();
+            exec(a, "UPDATE transactions SET note_ms = 100 WHERE id = 1");
+            // B clears the note later
+            exec(
+                b,
+                "UPDATE transactions SET note = '', note_ms = 200 WHERE id = 1",
+            );
+            // and writes a note A changed later again
+            exec(
+                b,
+                "UPDATE transactions SET note = 'bbbbbb', note_ms = 100 WHERE id = 2",
+            );
+            exec(
+                a,
+                "UPDATE transactions SET note = 'a', note_ms = 300 WHERE id = 2",
+            );
+        },
+        |v| {
+            assert_eq!(text(v, "SELECT note FROM transactions WHERE id = 1"), "");
+            assert_eq!(text(v, "SELECT note FROM transactions WHERE id = 2"), "a");
+        },
+    );
+    // the merge counts the bookings it changed
+    let (a, b) = booking_pair("bk-note-count");
+    exec(
+        a.as_ref(),
+        "UPDATE transactions SET note = 'x', note_ms = 5 WHERE id = 1",
+    );
+    assert_eq!(merge(&b, &a).bookings_updated, 1);
+    assert_eq!(merge(&b, &a).bookings_updated, 0);
+}
+
+#[test]
+fn newer_manual_category_beats_older_and_rule() {
+    each_order(
+        "bk-cat",
+        |a, b| {
+            a.set_transaction_category(1, Some(cat(a, "Food"))).unwrap();
+            exec(a, "UPDATE transactions SET category_ms = 100 WHERE id = 1");
+            b.set_transaction_category(1, Some(cat(b, "Fun"))).unwrap();
+            exec(b, "UPDATE transactions SET category_ms = 200 WHERE id = 1");
+            // booking 2: manual (stamped) on A, a rule result on B
+            a.set_transaction_category(2, Some(cat(a, "Food"))).unwrap();
+            exec(a, "UPDATE transactions SET category_ms = 100 WHERE id = 2");
+            b.save_rule(plain_rule(cat(b, "Fun"), "Kiosk")).unwrap();
+            b.apply_rules(false).unwrap();
+            assert_eq!(bk_cat(b, 2), "Fun/rule");
+        },
+        |v| {
+            assert_eq!(bk_cat(v, 1), "Fun/manual");
+            assert_eq!(bk_cat(v, 2), "Food/manual");
+        },
+    );
+}
+
+#[test]
+fn rule_category_never_overwrites_manual_in_either_direction() {
+    each_order(
+        "bk-rule",
+        |a, b| {
+            // unstamped manual values (imported before stamps existed)
+            exec(
+                a,
+                &format!(
+                    "UPDATE transactions SET category_id = {}, category_source = 'manual' WHERE id = 2",
+                    cat(a, "Food")
+                ),
+            );
+            exec(
+                b,
+                &format!(
+                    "UPDATE transactions SET category_id = {}, category_source = 'manual' WHERE id = 1",
+                    cat(b, "Food")
+                ),
+            );
+            for v in [a, b] {
+                v.save_rule(plain_rule(cat(v, "Fun"), "Shop")).unwrap();
+                v.save_rule(plain_rule(cat(v, "Fun"), "Kiosk")).unwrap();
+                v.apply_rules(true).unwrap();
+            }
+            assert_eq!(bk_cat(a, 1), "Fun/rule");
+            assert_eq!(bk_cat(b, 2), "Fun/rule");
+        },
+        |v| {
+            assert_eq!(bk_cat(v, 1), "Food/manual");
+            assert_eq!(bk_cat(v, 2), "Food/manual");
+        },
+    );
+}
+
+#[test]
+fn manual_clear_converges_with_rules_refilling() {
+    each_order(
+        "bk-clear",
+        |a, b| {
+            a.save_rule(plain_rule(cat(a, "Fun"), "Shop")).unwrap();
+            merge(b, a);
+            for v in [a, b] {
+                for id in [1, 2] {
+                    v.set_transaction_category(id, Some(cat(v, "Food")))
+                        .unwrap();
+                }
+                exec(v, "UPDATE transactions SET category_ms = 100");
+            }
+            // A clears both later; its rule refills booking 1 (Shop)
+            for id in [1, 2] {
+                a.set_transaction_category(id, None).unwrap();
+            }
+            exec(a, "UPDATE transactions SET category_ms = 200");
+            a.apply_rules(true).unwrap();
+            assert_eq!(bk_cat(a, 1), "Fun/rule");
+        },
+        |v| {
+            assert_eq!(bk_cat(v, 1), "Fun/rule");
+            assert_eq!(bk_cat(v, 2), "-/none");
+            assert_eq!(n(v, "SELECT min(category_ms) FROM transactions"), 200);
+        },
+    );
+}
+
+#[test]
+fn unstamped_conflict_keeps_longer_note() {
+    each_order(
+        "bk-longer",
+        |a, b| {
+            exec(a, "UPDATE transactions SET note = 'kurz' WHERE id = 1");
+            exec(
+                b,
+                "UPDATE transactions SET note = 'viel länger' WHERE id = 1",
+            );
+            // same length: the larger value
+            exec(a, "UPDATE transactions SET note = 'abc' WHERE id = 2");
+            exec(b, "UPDATE transactions SET note = 'abd' WHERE id = 2");
+        },
+        |v| {
+            assert_eq!(
+                text(v, "SELECT note FROM transactions WHERE id = 1"),
+                "viel länger"
+            );
+            assert_eq!(text(v, "SELECT note FROM transactions WHERE id = 2"), "abd");
+        },
+    );
+}
+
+#[test]
+fn checked_syncs_both_ways() {
+    each_order(
+        "bk-checked",
+        |a, b| {
+            a.set_transaction_checked(1, true).unwrap();
+            exec(a, "UPDATE transactions SET checked_ms = 100 WHERE id = 1");
+            for v in [a, b] {
+                exec(
+                    v,
+                    "UPDATE transactions SET checked = 1, checked_ms = 100 WHERE id = 2",
+                );
+            }
+            b.set_transaction_checked(2, false).unwrap();
+            exec(b, "UPDATE transactions SET checked_ms = 200 WHERE id = 2");
+        },
+        |v| {
+            assert_eq!(n(v, "SELECT checked FROM transactions WHERE id = 1"), 1);
+            assert_eq!(n(v, "SELECT checked FROM transactions WHERE id = 2"), 0);
+        },
+    );
+}
+
+#[test]
+fn edited_text_syncs() {
+    each_order(
+        "bk-text",
+        |a, b| {
+            a.update_transaction_text(1, "Alpha".into(), "newer".into())
+                .unwrap();
+            exec(a, "UPDATE transactions SET text_ms = 200 WHERE id = 1");
+            b.update_transaction_text(1, "Zulu".into(), "older".into())
+                .unwrap();
+            exec(b, "UPDATE transactions SET text_ms = 100 WHERE id = 1");
+            b.update_transaction_text(2, "Kiosk 2".into(), "x".into())
+                .unwrap();
+        },
+        |v| {
+            assert_eq!(
+                text(
+                    v,
+                    "SELECT counterparty || '/' || purpose FROM transactions WHERE id = 1"
+                ),
+                "Alpha/newer"
+            );
+            assert_eq!(
+                text(
+                    v,
+                    "SELECT counterparty || '/' || purpose FROM transactions WHERE id = 2"
+                ),
+                "Kiosk 2/x"
+            );
+        },
+    );
+}
+
+#[test]
+fn newer_split_set_replaces_older() {
+    each_order(
+        "bk-splits",
+        |a, b| {
+            a.set_transaction_splits(
+                1,
+                vec![split(Some(cat(a, "Food")), -300), split(None, -200)],
+            )
+            .unwrap();
+            exec(a, "UPDATE transactions SET splits_ms = 100 WHERE id = 1");
+            b.set_transaction_splits(
+                1,
+                vec![
+                    split(Some(cat(b, "Fun")), -250),
+                    split(Some(cat(b, "Food")), -250),
+                ],
+            )
+            .unwrap();
+            exec(b, "UPDATE transactions SET splits_ms = 200 WHERE id = 1");
+            // booking 2: only A splits it
+            a.set_transaction_splits(2, vec![split(Some(cat(a, "Fun")), -100), split(None, -200)])
+                .unwrap();
+        },
+        |v| {
+            assert_eq!(splits_of(v, 1), ["Food:-250", "Fun:-250"]);
+            assert_eq!(splits_of(v, 2), ["-:-200", "Fun:-100"]);
+        },
+    );
+    // a newer removal of the split wins too
+    each_order(
+        "bk-splits-rm",
+        |a, b| {
+            for v in [a, b] {
+                v.set_transaction_splits(1, vec![split(None, -300), split(None, -200)])
+                    .unwrap();
+                exec(v, "UPDATE transactions SET splits_ms = 100 WHERE id = 1");
+            }
+            b.set_transaction_splits(1, vec![]).unwrap();
+        },
+        |v| assert!(splits_of(v, 1).is_empty()),
+    );
+}
+
+#[test]
+fn deleted_booking_stays_deleted() {
+    each_order(
+        "bk-deleted",
+        |a, b| {
+            // A deletes booking 1, B edits it later
+            soft_delete_booking(&a.db().unwrap(), 1).unwrap();
+            exec(a, "UPDATE transactions SET deleted_ms = 100 WHERE id = 1");
+            b.update_transaction_note(1, "later".into()).unwrap();
+            // a booking A got and deleted before B ever saw it
+            exec(
+                a,
+                "INSERT INTO transactions(id, account_id, external_id, booking_date, amount_cents, deleted_ms)
+                     VALUES (3, 1, 'e3', '2026-01-03', -1, 50)",
+            );
+        },
+        |v| {
+            assert_eq!(
+                n(
+                    v,
+                    "SELECT count(*) FROM transactions WHERE deleted_ms IS NULL"
+                ),
+                1
+            );
+            let live: Vec<String> = v
+                .list_transactions(crate::models::BookingFilter {
+                    limit: 100,
+                    ..Default::default()
+                })
+                .unwrap()
+                .transactions
+                .into_iter()
+                .map(|t| t.counterparty)
+                .collect();
+            assert_eq!(live, ["Kiosk"]);
+        },
+    );
+}
+
+#[test]
+fn twin_tombstone_is_not_revived_by_merge() {
+    let dir = temp_dir("bk-twin");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    // A: MoneyMoney import, bank copy, twin merge (bank copy -> tombstone)
+    let csv = "Datum;Name;Verwendungszweck;Betrag;Kategorie;Notiz\n10.05.2026;REWE Markt;Einkauf;-12,50;;\n";
+    let acc = a
+        .import_moneymoney_data(csv.as_bytes().to_vec(), "t.csv".into(), None, true, true)
+        .unwrap()
+        .account_id;
+    {
+        let db = a.db().unwrap();
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+             VALUES (?1, 'f1', '2026-05-10', -1250, 'REWE', 'Einkauf')",
+            [acc],
+        )
+        .unwrap();
+        assert!(crate::connectors::moneymoney_import::merge_synced_twin(
+            &db,
+            acc,
+            "f1",
+            "2026-05-10",
+            -1250,
+            "",
+            "REWE",
+            "Einkauf"
+        )
+        .unwrap());
+    }
+    // B knows the same account and only the bank's booking
+    let ext = text(
+        &a,
+        &format!("SELECT external_ref FROM accounts WHERE id = {acc}"),
+    );
+    let created = n(
+        &a,
+        &format!("SELECT created_ms FROM accounts WHERE id = {acc}"),
+    );
+    {
+        let db = b.db().unwrap();
+        db.execute_batch("INSERT INTO account_groups(id, name) VALUES (1, 'G');")
+            .unwrap();
+        db.execute(
+            "INSERT INTO accounts(id, group_id, external_ref, name, created_ms) VALUES (1, 1, ?1, 'A', ?2)",
+            params![ext, created],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+             VALUES (1, 'f1', '2026-05-10', -1250, 'REWE', 'Einkauf')",
+            [],
+        )
+        .unwrap();
+    }
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(
+            n(
+                v,
+                "SELECT count(*) FROM transactions WHERE deleted_ms IS NULL"
+            ),
+            1
+        );
+        assert_eq!(
+            n(
+                v,
+                "SELECT count(*) FROM transactions WHERE external_id LIKE 'f1#merged-%' AND deleted_ms IS NOT NULL"
+            ),
+            1
+        );
+    }
+    assert_eq!(merge(&b, &a).bookings_added, 0);
+}
+
+#[test]
+fn booking_on_deleted_category_ends_uncategorised() {
+    each_order(
+        "bk-delcat",
+        |a, b| {
+            b.set_transaction_category(1, Some(cat(b, "Food"))).unwrap();
+            b.set_transaction_splits(
+                2,
+                vec![split(Some(cat(b, "Food")), -100), split(None, -200)],
+            )
+            .unwrap();
+            exec(
+                b,
+                "UPDATE transactions SET category_ms = 100, splits_ms = 100",
+            );
+            exec(
+                b,
+                "UPDATE categories SET name_ms = 1, parent_ms = 1, symbol_ms = 1, color_ms = 1, budget_ms = 1, order_ms = 1",
+            );
+            a.delete_category(cat(a, "Food")).unwrap();
+        },
+        |v| {
+            assert_eq!(bk_cat(v, 1), "-/none");
+            assert_eq!(splits_of(v, 2), ["-:-100", "-:-200"]);
+            assert_eq!(
+                n(
+                    v,
+                    "SELECT (SELECT count(*) FROM transactions t JOIN categories c ON c.id = t.category_id
+                              WHERE c.deleted_ms IS NOT NULL)
+                          + (SELECT count(*) FROM transaction_splits s JOIN categories c ON c.id = s.category_id
+                              WHERE c.deleted_ms IS NOT NULL)"
+                ),
+                0
+            );
+        },
+    );
+}
+
+#[test]
+fn v7_snapshot_does_not_override_stamped_note() {
+    let dir = temp_dir("bk-v7");
+    let a = open(&dir, "a.db");
+    shared_account(&a);
+    exec(
+        &a,
+        "INSERT INTO transactions(id, account_id, external_id, booking_date, amount_cents, note, note_ms)
+             VALUES (1, 1, 'e1', '2026-01-01', -500, 'mine', 100),
+                    (2, 1, 'e2', '2026-01-02', -300, '', 0);",
+    );
+    let path = dir.join("old.db").to_string_lossy().to_string();
+    {
+        let conn = Connection::open(&path).unwrap();
+        Vault::apply_key(&conn, &[7u8; 32]).unwrap();
+        conn.execute_batch(crate::vault::SCHEMA).unwrap();
+        crate::user_groups::migrate(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO account_groups(id, name) VALUES (1, 'G');
+             INSERT INTO accounts(id, group_id, external_ref, name) VALUES (1, 1, 'DE1', 'A');
+             INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, note)
+                 VALUES (1, 'e1', '2026-01-01', -500, 'a much longer old note'),
+                        (1, 'e2', '2026-01-02', -300, 'filled');
+             PRAGMA user_version = 7;",
+        )
+        .unwrap();
+    }
+    a.merge_other_vault(path.clone(), vec![7u8; 32]).unwrap();
+    assert_eq!(
+        text(&a, "SELECT note FROM transactions WHERE id = 1"),
+        "mine"
+    );
+    assert_eq!(
+        text(&a, "SELECT note FROM transactions WHERE id = 2"),
+        "filled"
+    );
+    let b = Vault::open(path, vec![7u8; 32]).unwrap();
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(
+            text(v, "SELECT note FROM transactions WHERE external_id = 'e1'"),
+            "mine"
+        );
+    }
+}

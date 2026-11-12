@@ -1265,6 +1265,406 @@ pub(crate) fn live_targets(
         .collect())
 }
 
+// ------------------------------------------------------------------ bookings
+
+/// One split line: (category uuid, amount, note).
+type SplitLine = (Option<String>, i64, String);
+
+/// The synced fields of a booking, categories as uuids of live local
+/// categories. `cat` is the manual category; a rule result counts as none.
+#[derive(Clone, PartialEq)]
+struct BookingFields {
+    cat: Option<String>,
+    category_ms: i64,
+    note: String,
+    note_ms: i64,
+    checked: bool,
+    checked_ms: i64,
+    text: (String, String),
+    text_ms: i64,
+    splits: Vec<SplitLine>,
+    splits_ms: i64,
+    deleted_ms: Option<i64>,
+}
+
+/// Newest stamp wins; equal stamps with different values: the larger `rank`.
+fn take_ranked<T: Clone, K: Ord>(
+    val: &mut T,
+    ms: &mut i64,
+    other: &T,
+    other_ms: i64,
+    rank: impl Fn(&T) -> K,
+) {
+    if other_ms > *ms || (other_ms == *ms && rank(other) > rank(val)) {
+        *val = other.clone();
+        *ms = other_ms;
+    }
+}
+
+impl BookingFields {
+    /// Joins `o` into `self`; the same result in either order.
+    fn merge(&mut self, o: &BookingFields) {
+        // manual beats none; two manual categories: the lower uuid
+        take_ranked(
+            &mut self.cat,
+            &mut self.category_ms,
+            &o.cat,
+            o.category_ms,
+            |c| c.clone().map(std::cmp::Reverse),
+        );
+        // the longer note, ties by value
+        take_ranked(&mut self.note, &mut self.note_ms, &o.note, o.note_ms, |n| {
+            (n.chars().count(), n.clone())
+        });
+        // checked beats unchecked
+        take_ranked(
+            &mut self.checked,
+            &mut self.checked_ms,
+            &o.checked,
+            o.checked_ms,
+            |c| *c,
+        );
+        take_ranked(
+            &mut self.text,
+            &mut self.text_ms,
+            &o.text,
+            o.text_ms,
+            Clone::clone,
+        );
+        take_ranked(
+            &mut self.splits,
+            &mut self.splits_ms,
+            &o.splits,
+            o.splits_ms,
+            Clone::clone,
+        );
+        self.deleted_ms = self.deleted_ms.max(o.deleted_ms);
+    }
+}
+
+/// transaction id -> its split lines (sorted), categories as uuids.
+fn load_splits(
+    conn: &Connection,
+    schema: &str,
+    uuid_of: impl Fn(Option<i64>) -> Option<String>,
+) -> CoreResult<HashMap<i64, Vec<SplitLine>>> {
+    let mut out: HashMap<i64, Vec<SplitLine>> = HashMap::new();
+    let rows: Vec<(i64, Option<i64>, i64, String)> = conn
+        .prepare(&format!(
+            "SELECT transaction_id, category_id, amount_cents, note FROM {schema}.transaction_splits"
+        ))?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+        .collect::<Result<_, _>>()?;
+    for (t, c, amount, note) in rows {
+        out.entry(t).or_default().push((uuid_of(c), amount, note));
+    }
+    for lines in out.values_mut() {
+        lines.sort();
+    }
+    Ok(out)
+}
+
+/// One row of `other.transactions`.
+struct OtherBooking {
+    id: i64,
+    account_id: i64,
+    external_id: String,
+    import_fp: String,
+    /// booking_date .. salary_flag, copied as they are into a new row
+    rest: Vec<rusqlite::types::Value>,
+    category_id: Option<i64>,
+    category_source: String,
+    rule_id: Option<i64>,
+    fields: BookingFields,
+}
+
+// includes soft-deleted rows: deleted bookings travel as tombstones
+const OTHER_BOOKINGS: &str = "SELECT id, account_id, external_id, import_fp,
+        booking_date, value_date, amount_cents, currency, counterparty_iban, booking_text,
+        imported_unix, purpose_code, gvc, salary_flag,
+        category_id, category_source, rule_id, category_ms, note, note_ms, checked, checked_ms,
+        counterparty, purpose, text_ms, splits_ms, deleted_ms
+     FROM other.transactions ORDER BY id";
+
+/// Merges `other.transactions` and their splits: bookings are matched by
+/// account + external id (else import fingerprint), new ones are inserted
+/// with their stamps and deletion, existing ones take the newest edit per
+/// field. A won manual clear makes the booking uncategorised and lets the
+/// rules refill it. Afterwards nothing points at a deleted category. Never
+/// stamps anything itself.
+pub(crate) fn merge_bookings(
+    conn: &Connection,
+    acc_map: &HashMap<i64, i64>,
+    cat_map: &HashMap<i64, i64>,
+    rule_map: &HashMap<i64, i64>,
+    stats: &mut crate::vault::MergeStats,
+) -> CoreResult<()> {
+    // live local categories: id <-> uuid
+    let live_cats: Vec<(i64, String)> = conn
+        .prepare("SELECT id, uuid FROM categories WHERE deleted_ms IS NULL AND uuid IS NOT NULL")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    let uuid_of_id: HashMap<i64, String> = live_cats.iter().cloned().collect();
+    let id_of_uuid: HashMap<String, i64> = live_cats.into_iter().map(|(i, u)| (u, i)).collect();
+    let local_uuid = |c: Option<i64>| c.and_then(|c| uuid_of_id.get(&c).cloned());
+    let other_uuid = |c: Option<i64>| c.and_then(|c| local_uuid(cat_map.get(&c).copied()));
+    let cat_id = |u: &Option<String>| u.as_ref().and_then(|u| id_of_uuid.get(u).copied());
+
+    // local bookings, deleted ones included
+    let mut local_splits = load_splits(conn, "main", local_uuid)?;
+    let mut by_key: HashMap<(i64, String), i64> = HashMap::new();
+    let mut by_fp: HashMap<(i64, String), i64> = HashMap::new();
+    let mut local: HashMap<i64, BookingFields> = HashMap::new();
+    {
+        let mut st = conn.prepare(
+            // includes soft-deleted rows
+            "SELECT id, account_id, external_id, import_fp, category_id, category_source,
+                    category_ms, note, note_ms, checked, checked_ms, counterparty, purpose,
+                    text_ms, splits_ms, deleted_ms
+             FROM main.transactions ORDER BY id",
+        )?;
+        let mut rows = st.query([])?;
+        while let Some(r) = rows.next()? {
+            let id: i64 = r.get(0)?;
+            let acc: i64 = r.get(1)?;
+            by_key.insert((acc, r.get(2)?), id);
+            let fp: String = r.get(3)?;
+            if !fp.is_empty() {
+                by_fp.entry((acc, fp)).or_insert(id);
+            }
+            let source: String = r.get(5)?;
+            let manual = if source == "manual" { r.get(4)? } else { None };
+            local.insert(
+                id,
+                BookingFields {
+                    cat: local_uuid(manual),
+                    category_ms: r.get(6)?,
+                    note: r.get(7)?,
+                    note_ms: r.get(8)?,
+                    checked: r.get(9)?,
+                    checked_ms: r.get(10)?,
+                    text: (r.get(11)?, r.get(12)?),
+                    text_ms: r.get(13)?,
+                    splits: local_splits.remove(&id).unwrap_or_default(),
+                    splits_ms: r.get(14)?,
+                    deleted_ms: r.get(15)?,
+                },
+            );
+        }
+    }
+
+    let mut other_splits = load_splits(conn, "other", other_uuid)?;
+    let others: Vec<OtherBooking> = conn
+        .prepare(OTHER_BOOKINGS)?
+        .query_map([], |r| {
+            let id: i64 = r.get(0)?;
+            let source: String = r.get(15)?;
+            let cat: Option<i64> = r.get(14)?;
+            Ok(OtherBooking {
+                id,
+                account_id: r.get(1)?,
+                external_id: r.get(2)?,
+                import_fp: r.get(3)?,
+                rest: (4..14).map(|i| r.get(i)).collect::<Result<_, _>>()?,
+                category_id: cat,
+                rule_id: r.get(16)?,
+                fields: BookingFields {
+                    cat: if source == "manual" {
+                        other_uuid(cat)
+                    } else {
+                        None
+                    },
+                    category_ms: r.get(17)?,
+                    note: r.get(18)?,
+                    note_ms: r.get(19)?,
+                    checked: r.get(20)?,
+                    checked_ms: r.get(21)?,
+                    text: (r.get(22)?, r.get(23)?),
+                    text_ms: r.get(24)?,
+                    splits: Vec::new(),
+                    splits_ms: r.get(25)?,
+                    deleted_ms: r.get(26)?,
+                },
+                category_source: source,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+
+    let mut cleared: HashSet<i64> = HashSet::new();
+    for mut o in others {
+        let Some(&acc) = acc_map.get(&o.account_id) else {
+            continue;
+        };
+        o.fields.splits = other_splits.remove(&o.id).unwrap_or_default();
+        let existing = by_key
+            .get(&(acc, o.external_id.clone()))
+            .or_else(|| {
+                (!o.import_fp.is_empty())
+                    .then(|| by_fp.get(&(acc, o.import_fp.clone())))
+                    .flatten()
+            })
+            .copied();
+        match existing {
+            Some(id) => {
+                let old = local[&id].clone();
+                let mut m = old.clone();
+                m.merge(&o.fields);
+                if m == old {
+                    continue;
+                }
+                write_booking(conn, id, &old, &m, &cat_id, &mut cleared)?;
+                local.insert(id, m);
+                stats.bookings_updated += 1;
+            }
+            None => {
+                let f = &o.fields;
+                let (cat, source, rule) = match (f.cat.is_some(), o.category_source.as_str()) {
+                    (true, _) => (cat_id(&f.cat), "manual", None),
+                    (false, "rule") => match (
+                        o.category_id.and_then(|c| cat_map.get(&c)),
+                        o.rule_id.and_then(|r| rule_map.get(&r)),
+                    ) {
+                        (Some(&c), Some(&r)) => (Some(c), "rule", Some(r)),
+                        _ => (None, "none", None),
+                    },
+                    _ => (None, "none", None),
+                };
+                let mut p: Vec<rusqlite::types::Value> = vec![
+                    acc.into(),
+                    o.external_id.clone().into(),
+                    o.import_fp.clone().into(),
+                ];
+                p.extend(o.rest.iter().cloned());
+                p.extend([
+                    cat.into(),
+                    source.to_string().into(),
+                    rule.into(),
+                    f.category_ms.into(),
+                    f.note.clone().into(),
+                    f.note_ms.into(),
+                    f.checked.into(),
+                    f.checked_ms.into(),
+                    f.text.0.clone().into(),
+                    f.text.1.clone().into(),
+                    f.text_ms.into(),
+                    f.splits_ms.into(),
+                    f.deleted_ms.into(),
+                ]);
+                conn.execute(
+                    "INSERT INTO transactions(account_id, external_id, import_fp,
+                        booking_date, value_date, amount_cents, currency, counterparty_iban, booking_text,
+                        imported_unix, purpose_code, gvc, salary_flag,
+                        category_id, category_source, rule_id, category_ms, note, note_ms, checked, checked_ms,
+                        counterparty, purpose, text_ms, splits_ms, deleted_ms)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26)",
+                    rusqlite::params_from_iter(p),
+                )?;
+                let id = conn.last_insert_rowid();
+                insert_splits(conn, id, &f.splits, &cat_id)?;
+                by_key.insert((acc, o.external_id), id);
+                if !o.import_fp.is_empty() {
+                    by_fp.entry((acc, o.import_fp)).or_insert(id);
+                }
+                local.insert(id, o.fields);
+                if local[&id].deleted_ms.is_none() {
+                    stats.bookings_added += 1;
+                }
+            }
+        }
+    }
+
+    // nothing points at a deleted category (derived, no stamps)
+    conn.execute(
+        "UPDATE transactions SET category_id = NULL, rule_id = NULL, category_source = 'none'
+         WHERE category_id IN (SELECT id FROM categories WHERE deleted_ms IS NOT NULL)",
+        [],
+    )?;
+    conn.execute(
+        "UPDATE transaction_splits SET category_id = NULL
+         WHERE category_id IN (SELECT id FROM categories WHERE deleted_ms IS NOT NULL)",
+        [],
+    )?;
+    // a won manual clear: the rules refill those bookings, as on the sender
+    if !cleared.is_empty() {
+        crate::vault::Vault::apply_rules_to(conn, &cleared)?;
+    }
+    Ok(())
+}
+
+fn insert_splits(
+    conn: &Connection,
+    id: i64,
+    lines: &[SplitLine],
+    cat_id: &impl Fn(&Option<String>) -> Option<i64>,
+) -> CoreResult<()> {
+    for (cat, amount, note) in lines {
+        conn.execute(
+            "INSERT INTO transaction_splits(transaction_id, category_id, amount_cents, note)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![id, cat_id(cat), amount, note],
+        )?;
+    }
+    Ok(())
+}
+
+/// Writes the merged fields `m` over the local booking `id` (was `old`).
+fn write_booking(
+    conn: &Connection,
+    id: i64,
+    old: &BookingFields,
+    m: &BookingFields,
+    cat_id: &impl Fn(&Option<String>) -> Option<i64>,
+    cleared: &mut HashSet<i64>,
+) -> CoreResult<()> {
+    if m.cat != old.cat {
+        if m.cat.is_some() {
+            conn.execute(
+                "UPDATE transactions SET category_id = ?2, category_source = 'manual', rule_id = NULL
+                 WHERE id = ?1",
+                params![id, cat_id(&m.cat)],
+            )?;
+        } else {
+            conn.execute(
+                "UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL
+                 WHERE id = ?1",
+                [id],
+            )?;
+            cleared.insert(id);
+        }
+    }
+    if m.splits != old.splits {
+        conn.execute(
+            "DELETE FROM transaction_splits WHERE transaction_id = ?1",
+            [id],
+        )?;
+        insert_splits(conn, id, &m.splits, cat_id)?;
+    }
+    if m.deleted_ms.is_some() && old.deleted_ms.is_none() {
+        // what a deletion does besides the stamp (see soft_delete_booking)
+        conn.execute("DELETE FROM loan_links WHERE transaction_id = ?1", [id])?;
+    }
+    conn.execute(
+        "UPDATE transactions SET category_ms = ?2, note = ?3, note_ms = ?4, checked = ?5,
+            checked_ms = ?6, counterparty = ?7, purpose = ?8, text_ms = ?9, splits_ms = ?10,
+            deleted_ms = ?11
+         WHERE id = ?1",
+        params![
+            id,
+            m.category_ms,
+            m.note,
+            m.note_ms,
+            m.checked,
+            m.checked_ms,
+            m.text.0,
+            m.text.1,
+            m.text_ms,
+            m.splits_ms,
+            m.deleted_ms
+        ],
+    )?;
+    Ok(())
+}
+
 /// The synced state of a vault, one line per row, ordered by sync key and
 /// including soft-deleted rows.
 #[cfg(test)]
