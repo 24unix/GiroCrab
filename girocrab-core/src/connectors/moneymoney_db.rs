@@ -574,6 +574,14 @@ fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
 /// bunq's German bank code (BUNQDE82).
 const BUNQ_DE_BLZ: &str = "37019000";
 
+/// Open Bank S.A. (Santander, issuer of the Amazon Visa via Zinia): German
+/// bank code 50034200 (OPENDEFF), or the login's name.
+fn is_openbank(bankcode: &str, name: &str) -> bool {
+    let code: String = bankcode.chars().filter(|c| c.is_ascii_digit()).collect();
+    let n = name.to_lowercase();
+    code == "50034200" || n.contains("openbank") || n.contains("open bank") || n.contains("zinia")
+}
+
 /// Every bunq branch BIC starts with `BUNQ` (BUNQNL2A, BUNQDE82, BUNQFRP2,
 /// BUNQESM2, BUNQITM2, …).
 fn is_bunq_bic(s: &str) -> bool {
@@ -1348,17 +1356,25 @@ impl Source {
     /// may file the login under any of their codes, so a login whose accounts
     /// carry a bunq BIC or IBAN is mapped to the bunq connector.
     fn connector_key(&self, b: &SrcBank) -> Option<(ConnectorKind, String)> {
+        let keyed = |k: ConnectorKind| (k, k.as_str().to_string());
         connector_key_for(&b.bankcode, &b.name).or_else(|| {
-            self.accounts
-                .iter()
-                .filter(|a| a.bank_key == Some(b.id))
+            let mut accounts = self.accounts.iter().filter(|a| a.bank_key == Some(b.id));
+            if accounts
+                .clone()
                 .any(|a| is_bunq_account(&a.bic, &a.iban, &a.bankcode))
-                .then(|| {
-                    (
-                        ConnectorKind::Bunq,
-                        ConnectorKind::Bunq.as_str().to_string(),
-                    )
-                })
+            {
+                return Some(keyed(ConnectorKind::Bunq));
+            }
+            // The Amazon Visa is issued by Open Bank (Zinia); MoneyMoney files
+            // the login as "Openbank" (bank code 50034200). Open Bank also has
+            // current accounts, so only a login holding the card maps to the
+            // Amazon Visa connector.
+            (is_openbank(&b.bankcode, &b.name)
+                && accounts.any(|a| {
+                    a.name.to_lowercase().contains("amazon")
+                        || suggest_kind(a, &b.name) == AccountKind::CreditCard
+                }))
+            .then(|| keyed(ConnectorKind::AmazonVisa))
         })
     }
 
@@ -1562,17 +1578,25 @@ pub(crate) fn adopt_account(
 ) -> CoreResult<Option<i64>> {
     let iban = sepa::normalize_iban(iban);
     let id: Option<i64> = if iban.is_empty() {
-        let mut st = conn.prepare(
-            "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref LIKE 'moneymoney-db:%'
-               AND kind = ?2 AND replace(IFNULL(iban, ''), ' ', '') = '' LIMIT 2",
-        )?;
-        let ids: Vec<i64> = st
-            .query_map(params![connection_id, kind.as_str()], |r| r.get(0))?
-            .collect::<Result<_, _>>()?;
-        if ids.len() == 1 {
-            Some(ids[0])
-        } else {
-            None
+        // Prefer imported accounts without an IBAN; a connector that reports
+        // none (Amazon Visa web login) may still find the card with the IBAN
+        // MoneyMoney stored for it – if it is the only one of its kind here.
+        let single = |iban_filter: &str| -> CoreResult<Option<i64>> {
+            let mut st = conn.prepare(&format!(
+                "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref LIKE 'moneymoney-db:%'
+                   AND kind = ?2 {iban_filter} LIMIT 2"
+            ))?;
+            let ids: Vec<i64> = st
+                .query_map(params![connection_id, kind.as_str()], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            Ok((ids.len() == 1).then(|| ids[0]))
+        };
+        match single("AND replace(IFNULL(iban, ''), ' ', '') = ''")? {
+            Some(id) => Some(id),
+            // cards only: an account with an IBAN of its own (checking,
+            // savings) is never taken over without matching that IBAN
+            None if kind == AccountKind::CreditCard => single("")?,
+            None => None,
         }
     } else {
         conn.query_row(
