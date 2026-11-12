@@ -82,8 +82,6 @@ struct PinSheet: View {
         }
         .padding(24)
         .macFrame(minWidth: 420)
-        // a swipe-down would bypass cancelPendingLogin and stall "Alle abrufen"
-        .interactiveDismissDisabled(model.syncBatchProgress != nil)
         .onAppear {
             login = connection.loginName
             savePin = model.connectionStatus(connection.id)?.hasPin ?? false

@@ -218,6 +218,9 @@ struct SyncPromptButtons<Default: View>: View {
                 defaultButton()
             }
         }
+        // iOS: a swipe-down would bypass `cancel` and stall "Alle abrufen";
+        // the preference reaches the sheet from here (PIN, setup, browser login)
+        .interactiveDismissDisabled(model.syncBatchProgress != nil)
     }
 }
 

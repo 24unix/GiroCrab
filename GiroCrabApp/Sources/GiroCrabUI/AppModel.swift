@@ -2267,6 +2267,7 @@ public final class AppModel {
             toast = String(localized: "Trade-Republic-Sitzung übernommen")
             startSync(connection, secret: "")
         } catch {
+            resetSyncBatch()   // like any sync error: ends "Alle abrufen" instead of stalling it
             showError(String(localized: "Anmeldung konnte nicht übernommen werden"), describe(error))
         }
     }
