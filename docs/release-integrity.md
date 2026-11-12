@@ -2,8 +2,9 @@
 
 Ein geplanter Workflow (`.github/workflows/release-integrity.yml`, alle 6 Stunden
 und manuell startbar) prüft, ob das, was unter
-`https://github.com/<repo>/releases/latest/download/` veröffentlicht ist, noch
-echt ist. Er braucht **keine Geheimnisse**, nur die öffentlichen Schlüssel aus dem
+`https://github.com/<repo>/releases/latest/download/` (Appcast, Disk-Images) und
+unter `https://raw.githubusercontent.com/<repo>/main/policy/` (Sicherheitssperre)
+veröffentlicht ist, noch echt ist. Er braucht **keine Geheimnisse**, nur die öffentlichen Schlüssel aus dem
 Repo, und läuft deshalb auch in Forks (gegen deren eigene Releases).
 
 ## Was geprüft wird
@@ -38,12 +39,12 @@ Typische Ursachen und was zu tun ist:
   wurden ersetzt. Audit-Log der Organisation prüfen (wer hat Assets geändert?).
   Bei Manipulation: Schlüsselwechsel und Sicherheitsmeldung, siehe
   `docs/auto-updates.md` („Schlüsselwechsel“) und `docs/banking-policy.md`.
-* **`banking-policy.json` nicht erreichbar:** Ein stabiles Release wurde ohne
-  die Policy veröffentlicht (nicht über `notarize.sh`). Dateien vom vorherigen
-  Release an das neue hängen (`scripts/banking-policy.sh fetch DIR`, dann
-  `gh release upload`).
+* **`banking-policy.json` nicht erreichbar:** `policy/` wurde auf `main`
+  gelöscht oder verschoben. Mit `git log -- policy/` den letzten Stand finden
+  und wiederherstellen.
 * **`sequence` gesunken:** Jemand hat eine ältere, korrekt signierte Datei
-  eingespielt. Apps nehmen sie nicht an, aber der Upload selbst ist verdächtig.
+  eingespielt. Apps nehmen sie nicht an, aber der Commit selbst ist verdächtig
+  (`git log -- policy/`).
 * **Direkt nach einem Sparkle-Schlüsselwechsel:** Bis
   `scripts/sparkle-public-ed-key.txt` und `scripts/sparkle-previous-public-ed-key.txt`
   committet sind, meldet die Prüfung den alt signierten Feed. Erst committen,
@@ -57,8 +58,8 @@ scripts/verify-release-integrity.sh --repo jacboy/GiroCrab  # gegen einen Fork
 scripts/verify-release-integrity.sh --base http://127.0.0.1:8766 --state /tmp/s.json   # Testdaten
 ```
 
-`--base` ersetzt `…/releases/latest/download` (und das erlaubte Präfix der
-Disk-Images) durch einen lokalen Server oder Ordner. Ausgabe: `ok: …`-Zeilen,
+`--base` ersetzt `…/releases/latest/download`, die Policy-Adresse und das
+erlaubte Präfix der Disk-Images durch einen lokalen Server oder Ordner. Ausgabe: `ok: …`-Zeilen,
 `FINDING: …` bei Abweichungen; Exit-Code 1 bei Funden.
 
 ## Grenzen

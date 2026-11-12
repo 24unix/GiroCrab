@@ -8,8 +8,9 @@
 //     scripts/sparkle-public-ed-key.txt (or, during a key rotation, the previous
 //     key in scripts/sparkle-previous-public-ed-key.txt); every item points to a
 //     release asset of this repository whose size and EdDSA signature match.
-//   * banking-policy.json (+ .sig): reachable, signature against
-//     BankingPolicy.publicKeys, `sequence` never lower than the last run's.
+//   * banking-policy.json (+ .sig), published at a fixed address
+//     (raw.githubusercontent.com/<repo>/main/policy): reachable, signature
+//     against BankingPolicy.publicKeys, `sequence` never lower than the last run's.
 // A part is skipped while its key is not configured (placeholder).
 // Exit 0 = all fine, 1 = findings (written to --report), 2 = usage.
 import CryptoKit
@@ -36,6 +37,7 @@ while let a = it.next() {
     }
 }
 let latestBase = base ?? "https://github.com/\(repo)/releases/latest/download"
+let policyBase = base ?? "https://raw.githubusercontent.com/\(repo)/main/policy"
 let assetPrefix = base.map { $0 + "/" } ?? "https://github.com/\(repo)/releases/download/"
 
 var findings: [String] = []
@@ -210,7 +212,7 @@ let pKeys = policyKeys()
 if pKeys.isEmpty {
     note("Banking policy: no public key in BankingPolicy.publicKeys (placeholder or not present) – check skipped")
 } else {
-    switch (fetch(latestBase + "/banking-policy.json"), fetch(latestBase + "/banking-policy.json.sig")) {
+    switch (fetch(policyBase + "/banking-policy.json"), fetch(policyBase + "/banking-policy.json.sig")) {
     case (.ok(let json), .ok(let sig)):
         state.policySeen = true
         if pKeys.contains(where: { $0.isValidSignature(sig, for: json) }) {
@@ -230,9 +232,9 @@ if pKeys.isEmpty {
             finding("banking-policy.json signature does NOT verify with BankingPolicy.publicKeys")
         }
     case (.notFound, .notFound) where state.policySeen != true:
-        note("banking-policy.json not published yet (first release with the policy key still to come)")
+        note("banking-policy.json not published yet (policy/ not committed to main yet)")
     case (.notFound, _), (_, .notFound):
-        finding("banking-policy.json or .sig is not reachable at \(latestBase) (404) – apps cannot update or lift a block")
+        finding("banking-policy.json or .sig is not reachable at \(policyBase) (404) – apps cannot update or lift a block")
     case (.failed(let why), _), (_, .failed(let why)):
         finding("banking-policy.json could not be downloaded: \(why)")
     }
