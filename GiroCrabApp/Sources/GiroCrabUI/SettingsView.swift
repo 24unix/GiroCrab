@@ -44,7 +44,7 @@ struct SettingsView: View {
                 .tag(SettingsTab.documents)
             #endif
             SecuritySettings()
-                .settingsPane(height: 420)
+                .settingsPane(height: 760)   // incl. "Sicherheitssperre für Bankverbindungen"
                 .disabled(model.vault == nil)
                 .tabItem { Label("Sicherheit", systemImage: "lock.shield") }
                 .tag(SettingsTab.security)

@@ -68,7 +68,7 @@ Daneben `banking-policy.json.sig`: Ed25519-Signatur über die **exakten Bytes**.
 | `distribution` | `developer-id`, `mac-app-store`, `ios`. Info.plist-Schlüssel `GiroCrabDistribution` des Builds. Unbekannte Werte werden ignoriert. |
 | `channels` | optional; `stable`, `beta`, `nightly`. Maßgeblich ist der Kanal des **laufenden Builds** (aus `CFBundleVersion`), nicht der gewählte Update-Kanal. Fehlt das Feld: alle Kanäle. |
 | `minimumVersion` | Ältere Builds (Vergleich wie Sparkle) sind gesperrt. Achtung: `0.7.2b1` < `0.7.2` – eine Mindestversion `0.7.2` sperrt auch die Betas von 0.7.2. |
-| `connectors` | optional; Connector-Schlüssel aus `ConnectorKind::as_str`. Eine ID trifft, wenn sie gleich ist oder der Schlüssel mit `<ID>:` beginnt: `fints` = alle FinTS-Banken, `fints:50050201` = nur 1822direkt, `enablebanking` = alle PSD2-Banken. Fehlt das Feld: alle Connectors. |
+| `connectors` | optional; Connector-Schlüssel aus `ConnectorKind::as_str`. Eine ID trifft, wenn sie gleich ist oder der Schlüssel mit `<ID>:` beginnt: `fints` = alle FinTS-Banken, `fints:50050201` = nur 1822direkt, `enablebanking` = alle PSD2-Banken; weitere: `comdirect`, `paypal`, `traderepublic`, `bunq`, `scalable`, `amazon-orders`, `fnz`. Fehlt das Feld: alle Connectors. |
 | `advisory` | optional; nur `https`. Ziel von „Details“. |
 | `updateAvailable` | optional, Standard `true`. `false`: „Ein Update ist in Vorbereitung.“, ohne „Jetzt aktualisieren“ (z. B. solange ein App-Store-Fix im Review ist). |
 | `sequence` | steigt bei jeder Veröffentlichung. Eine Datei mit kleinerer `sequence` als der zuletzt angenommenen wird ignoriert (Schutz vor dem Zurückspielen alter Dateien). |
@@ -98,7 +98,9 @@ Greifen mehrere Regeln, gilt die strengste. Leere `rules` = keine Sperre.
 * **Zweite Verteidigungslinie:** Die App gibt die Sperre an den Rust-Core
   weiter (`set_banking_block`). `begin_sync`, `begin_transfer` und das Anlegen
   von Verbindungen brechen dort mit `CoreError::BankingBlocked` ab – auch auf
-  einem UI-Pfad, der übersehen wurde.
+  einem UI-Pfad, der übersehen wurde. Portal-Logins (Amex, Amazon, FNZ) laufen
+  im eingebetteten Browser der App, nicht im Core; dort sperrt die App das
+  Öffnen des Login-Fensters.
 * Die Sperre gilt ohne zeitliche Begrenzung, bis ein Update sie aufhebt: eine
   Version, die die Mindestversion erfüllt, oder eine neuere Datei ohne Sperre.
 
