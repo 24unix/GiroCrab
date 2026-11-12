@@ -124,17 +124,7 @@ struct BookingStreamView: View {
                 model.dropAnywhere(urls)
                 return !urls.isEmpty
             }
-            .onChange(of: model.selectedBookingID) { _, id in
-                guard let id else { return }
-                // Rows live inside lazily built day cards: an off-screen day must be
-                // scrolled to first, otherwise the row's id is unknown to the proxy.
-                if let day = model.dayGroups.first(where: { $0.bookings.contains { $0.id == id } }) {
-                    proxy.scrollTo(day.id)
-                }
-                DispatchQueue.main.async {
-                    withAnimation(Motion.animation(.easeOut(duration: 0.15))) { proxy.scrollTo(id) }
-                }
-            }
+            .background(SelectionScroller(proxy: proxy))
             // another account, group, period or view: back to the newest day
             .onChange(of: model.sidebarSelection) { _, _ in scrollToTop(proxy) }
             .onChange(of: model.period) { _, _ in scrollToTop(proxy) }
@@ -373,7 +363,7 @@ struct DayCard: View {
             .padding(.vertical, 10)
             Rectangle().fill(Theme.border).frame(height: 1)
             ForEach(Array(day.bookings.enumerated()), id: \.element.id) { i, b in
-                BookingRow(booking: b, selected: model.selectedBookingID == b.id)
+                BookingRow(booking: b)
                     .id(b.id)
                     .dropDestination(for: URL.self) { urls, _ in
                         model.selectedBookingID = b.id
@@ -382,7 +372,7 @@ struct DayCard: View {
                     }
                     .contentShape(Rectangle())
                     .onTapGesture { model.selectedBookingID = b.id; model.showBookingSheet = true }
-                    .accessibilityAddTraits(model.selectedBookingID == b.id ? [.isButton, .isSelected] : .isButton)
+                    .modifier(RowSelectionTraits(id: b.id))
                     // simultaneous, so single clicks keep selecting without the double-click delay
                     .simultaneousGesture(TapGesture(count: 2).onEnded { model.editNote(for: b) })
                     .contextMenu { rowMenu(b) }
@@ -421,7 +411,6 @@ struct DayCard: View {
 struct BookingRow: View {
     @Environment(AppModel.self) private var model
     let booking: Booking
-    var selected = false
 
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -488,7 +477,52 @@ struct BookingRow: View {
         .frame(minHeight: 44)
         .padding(.horizontal, 14)
         .padding(.vertical, 5)
-        .background(selected ? Theme.selection : Color.clear)
+        .background(RowSelectionBackground(id: booking.id))
+    }
+}
+
+/// Selection highlight of one row. It reads the selection in its own body, so
+/// selecting a booking re-evaluates these backgrounds only and not every day
+/// card and row built so far.
+private struct RowSelectionBackground: View {
+    @Environment(AppModel.self) private var model
+    let id: Booking.ID
+
+    var body: some View {
+        model.selectedBookingID == id ? Theme.selection : Color.clear
+    }
+}
+
+/// "Selected" for assistive technologies; like `RowSelectionBackground`, it keeps
+/// the selection out of the day card's dependencies.
+private struct RowSelectionTraits: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let id: Booking.ID
+
+    func body(content: Content) -> some View {
+        content.accessibilityAddTraits(model.selectedBookingID == id ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+/// Scrolls the stream to the selected booking. A view of its own, so the
+/// selection is not a dependency of the whole list.
+private struct SelectionScroller: View {
+    @Environment(AppModel.self) private var model
+    let proxy: ScrollViewProxy
+
+    var body: some View {
+        Color.clear
+            .onChange(of: model.selectedBookingID) { _, id in
+                guard let id else { return }
+                // Rows live inside lazily built day cards: an off-screen day must be
+                // scrolled to first, otherwise the row's id is unknown to the proxy.
+                if let day = model.dayGroups.first(where: { $0.bookings.contains { $0.id == id } }) {
+                    proxy.scrollTo(day.id)
+                }
+                DispatchQueue.main.async {
+                    withAnimation(Motion.animation(.easeOut(duration: 0.15))) { proxy.scrollTo(id) }
+                }
+            }
     }
 }
 

@@ -341,6 +341,7 @@ public final class AppModel {
     var selectedBookingID: Booking.ID? {
         didSet {
             if stickyBooking?.id != selectedBookingID { stickyBooking = nil }
+            Perf.signposter.emitEvent("selectBooking")
             loadMerchantStats()
         }
     }
@@ -880,6 +881,8 @@ public final class AppModel {
     // MARK: - Loading
 
     func reloadAll() {
+        let all = Perf.signposter.beginInterval("reloadAll")
+        defer { Perf.signposter.endInterval("reloadAll", all) }
         reloadAccounts()
         refreshSalaryCycle()
         refreshRecurring()
@@ -939,7 +942,7 @@ public final class AppModel {
             try? await Task.sleep(for: .milliseconds(80))
             guard !Task.isCancelled else { return }
             let stats = await Task.detached(priority: .userInitiated) {
-                try? vault.merchantStats(merchantKey: key)
+                Perf.interval("merchantStats") { try? vault.merchantStats(merchantKey: key) }
             }.value
             // A vault switch or data change in the meantime cancels this task.
             guard !Task.isCancelled, let self, let stats else { return }
@@ -1082,9 +1085,12 @@ public final class AppModel {
         scopeLoadTask?.cancel()
         guard let vault else { return }
         run {
-            let p = try vault.listTransactions(filter: currentFilter)
-            page = p
-            bookings = p.transactions
+            let filter = currentFilter
+            let p = try Perf.interval("listTransactions") { try vault.listTransactions(filter: filter) }
+            Perf.interval("publishBookings") {
+                page = p
+                bookings = p.transactions
+            }
         }
         if let sel = selectedBookingID, booking(withID: sel) == nil, stickyBooking?.id != sel {
             selectedBookingID = bookings.first?.id
@@ -1241,6 +1247,8 @@ public final class AppModel {
         bookings = []
         history = []
         let task = Task { [weak self] in
+            let load = Perf.signposter.beginInterval("selectionLoad")
+            defer { Perf.signposter.endInterval("selectionLoad", load) }
             do {
                 // The pay cycle comes first: `.sinceSalary` derives the period from it.
                 let cycle = try await Self.offMain { try vault.salaryCycle(accountIds: ids) }
@@ -1251,7 +1259,7 @@ public final class AppModel {
                 let chart = self.historyRequest
                 let listHasFlow = filter.scope == .all && filter.direction == .all && filter.search == nil && filter.categoryId == nil && !filter.uncategorizedOnly
                 let loaded = try await Self.offMain {
-                    let page = try vault.listTransactions(filter: filter)
+                    let page = try Perf.interval("listTransactions") { try vault.listTransactions(filter: filter) }
                     try Task.checkCancellation()
                     let flow = listHasFlow ? page.flow : try vault.selectionFlow(accountIds: filter.accountIds, dateFrom: from, dateTo: to)
                     try Task.checkCancellation()
@@ -1265,6 +1273,7 @@ public final class AppModel {
                 guard !Task.isCancelled else { return }
                 self.selectionLoadTask = nil
                 self.isLoadingSelection = false
+                let publish = Perf.signposter.beginInterval("publishSelection")
                 self.page = loaded.page
                 self.bookings = loaded.page.transactions
                 if let sel = self.selectedBookingID, self.booking(withID: sel) == nil, self.stickyBooking?.id != sel {
@@ -1277,6 +1286,7 @@ public final class AppModel {
                 self.categories = loaded.categories
                 self.categoryTree = Self.buildTree(loaded.categories)
                 self.history = Self.trimmedHistory(loaded.history, from: from, to: to)
+                Perf.signposter.endInterval("publishSelection", publish)
             } catch {
                 guard !Task.isCancelled, let self else { return }
                 self.selectionLoadTask = nil
