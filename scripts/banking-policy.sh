@@ -280,7 +280,8 @@ case "$cmd" in
     echo "==> New policy key '$account' (private key in the keychain, service \"GiroCrab Banking Policy\")."
     echo "    Public key added to $SWIFT_FILE: $pub"
     echo "    Back up the private key offline (password manager), separately from Sparkle and Developer ID."
-    echo "    Next: commit $SWIFT_FILE and $ACCOUNT_FILE, release, then: scripts/banking-policy.sh clear"
+    echo "    Next: commit $SWIFT_FILE and $ACCOUNT_FILE and release; notarize.sh then signs and attaches"
+    echo "    the first (empty) policy by itself."
     ;;
   set)
     is_active || die "no policy key in $SWIFT_FILE yet – run keygen first"

@@ -30,8 +30,11 @@ Aktivieren (einmalig, Maintainer, auf dem Release-Mac):
 
 ```sh
 scripts/banking-policy.sh keygen          # Schlüssel in den Schlüsselbund, öffentlichen Schlüssel eintragen
-scripts/banking-policy.sh clear           # erste, leere Policy signieren und hochladen
 ```
+
+Danach `BankingPolicy.swift` und `scripts/banking-policy-signing-account.txt`
+committen und ein stabiles Release bauen: `notarize.sh` legt die erste, leere
+Policy (`sequence` 1) selbst an, signiert sie und hängt sie an.
 
 Der private Schlüssel liegt nur im Schlüsselbund des Release-Macs (Dienst
 „GiroCrab Banking Policy“), nie im Repo, in der CI oder in GitHub Secrets. Eine
