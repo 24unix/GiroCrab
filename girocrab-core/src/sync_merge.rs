@@ -90,7 +90,9 @@ pub(crate) fn migrate(conn: &Connection) -> CoreResult<()> {
     }
     conn.execute_batch(
         "CREATE UNIQUE INDEX IF NOT EXISTS categories_uuid ON categories(uuid);
-         CREATE UNIQUE INDEX IF NOT EXISTS rules_uuid ON rules(uuid);",
+         CREATE UNIQUE INDEX IF NOT EXISTS rules_uuid ON rules(uuid);
+         -- the rule merge clears rule_id per deleted rule on every merge
+         CREATE INDEX IF NOT EXISTS tx_rule ON transactions(rule_id);",
     )?;
     fill_missing_uuids(conn)
 }

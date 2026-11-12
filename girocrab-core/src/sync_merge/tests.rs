@@ -45,6 +45,25 @@ fn migration_is_idempotent() {
     assert_eq!(before, uuids(&v, "SELECT uuid FROM categories ORDER BY id"));
 }
 
+/// The rule merge clears `rule_id` per deleted rule on every merge.
+#[test]
+fn bookings_are_indexed_by_rule() {
+    let v = open(&temp_dir("ruleidx"), "a.db");
+    let db = v.db().unwrap();
+    migrate(&db).unwrap();
+    let idx: Vec<String> = {
+        let mut st = db
+            .prepare(
+                "SELECT il.name FROM pragma_index_list('transactions') il
+                       JOIN pragma_index_info(il.name) ii WHERE ii.name = 'rule_id'",
+            )
+            .unwrap();
+        let r = st.query_map([], |r| r.get(0)).unwrap();
+        r.map(|r| r.unwrap()).collect()
+    };
+    assert_eq!(idx, ["tx_rule"]);
+}
+
 #[test]
 fn same_category_path_gets_same_uuid_on_two_vaults() {
     let dir = temp_dir("path");
