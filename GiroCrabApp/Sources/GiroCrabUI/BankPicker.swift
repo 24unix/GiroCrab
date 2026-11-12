@@ -269,7 +269,7 @@ struct KindAddForm: View {
 
     var body: some View {
         if let d = bankCatalog().first(where: { $0.kind == kind }) {
-            DemoHintBanner(style: .credentials) { login = "demo" }
+            if model.demoActive { DemoHintBanner(style: .credentials) { login = "demo" } }
             TextField(d.loginLabel, text: $login)
                 .autocorrectionDisabled()
             LabeledContent("Verfahren", value: d.protocol)
@@ -310,7 +310,7 @@ struct Psd2AddForm: View {
         LabeledContent("Bank", value: bank.name)
         LabeledContent("Land", value: bank.country)
         LabeledContent("Verfahren", value: String(localized: "PSD2 über Enable Banking"))
-        DemoHintBanner(style: .credentials) { label = "demo" }
+        if model.demoActive { DemoHintBanner(style: .credentials) { label = "demo" } }
         TextField("Bezeichnung (optional)", text: $label)
             .autocorrectionDisabled()
         if !bank.tested.isEmpty {

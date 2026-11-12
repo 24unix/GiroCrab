@@ -185,10 +185,7 @@ struct BankSetupSheet: View {
             // "Alle abrufen": cancelling skips this login (see SyncPromptButtons)
             SyncPromptButtons(
                 cancel: { model.cancelSetupRequest(); dismiss() },
-                leading: model.demoActive ? nil : AnyView(
-                    // switching to the demo vault ends a running "Alle abrufen"
-                    Button("Demo-Daten ansehen") { model.cancelSync(); model.setupRequest = nil; dismiss(); model.showDemo() }
-                )
+                leading: nil
             ) {
                 Button { model.completeSetup(request, values: values) } label: {
                     Text("Speichern & abrufen").frame(maxWidth: .infinity)

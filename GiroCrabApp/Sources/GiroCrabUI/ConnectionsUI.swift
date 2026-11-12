@@ -29,7 +29,7 @@ struct PinSheet: View {
                 Spacer()
                 SyncBatchProgressLabel()
             }
-            DemoHintBanner(style: .credentials) { login = "demo"; secret = "12345" }
+            if model.demoActive || connection.bankCode == "99999999" { DemoHintBanner(style: .credentials) { login = "demo"; secret = "12345" } }
             VStack(alignment: .leading, spacing: 4) {
                 Text(d?.loginLabel ?? String(localized: "Anmeldung")).font(.caption).foregroundStyle(Theme.secondary)
                 TextField(d?.loginLabel ?? String(localized: "Anmeldung"), text: $login)
