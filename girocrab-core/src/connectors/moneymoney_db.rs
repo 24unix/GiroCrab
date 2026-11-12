@@ -280,6 +280,7 @@ struct SrcAccount {
     bankcode: String,
     portfolio: bool,
     iban: String,
+    bic: String,
     currency: String,
     name: String,
     owner: String,
@@ -520,6 +521,7 @@ fn suggest_kind(a: &SrcAccount, bank_name: &str) -> AccountKind {
 
 /// GiroCrab connector for a MoneyMoney bank login: bank code first, name for
 /// institutions without a German bank code.
+#[cfg(test)]
 fn connector_for(bankcode: &str, name: &str) -> Option<ConnectorKind> {
     connector_key_for(bankcode, name).map(|(k, _)| k)
 }
@@ -543,6 +545,8 @@ fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
         "52090000" => return Some(ConnectorKind::VolksbankKasselGoettingen),
         "50050201" => return Some(ConnectorKind::Direkt1822),
         "20041111" | "20041133" | "20041144" | "20041155" => return Some(ConnectorKind::Comdirect),
+        // bunq's German branch code; GiroCrab talks to the bunq Public API.
+        BUNQ_DE_BLZ => return Some(ConnectorKind::Bunq),
         c if c.len() == 8 && super::fints_presets::known_fints_blz(c) => {
             return Some(ConnectorKind::FinTsGeneric)
         }
@@ -560,8 +564,48 @@ fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
         Some(ConnectorKind::AmazonVisa)
     } else if n.contains("comdirect") {
         Some(ConnectorKind::Comdirect)
+    } else if n.contains("bunq") || is_bunq_bic(bankcode) {
+        Some(ConnectorKind::Bunq)
     } else {
         None // incl. any other German bank with an 8-digit code
+    }
+}
+
+/// bunq's German bank code (BUNQDE82).
+const BUNQ_DE_BLZ: &str = "37019000";
+
+/// Open Bank S.A. (Santander, issuer of the Amazon Visa via Zinia): German
+/// bank code 50034200 (OPENDEFF), or the login's name.
+fn is_openbank(bankcode: &str, name: &str) -> bool {
+    let code: String = bankcode.chars().filter(|c| c.is_ascii_digit()).collect();
+    let n = name.to_lowercase();
+    code == "50034200" || n.contains("openbank") || n.contains("open bank") || n.contains("zinia")
+}
+
+/// Every bunq branch BIC starts with `BUNQ` (BUNQNL2A, BUNQDE82, BUNQFRP2,
+/// BUNQESM2, BUNQITM2, …).
+fn is_bunq_bic(s: &str) -> bool {
+    let s = s.trim();
+    (s.len() == 8 || s.len() == 11) && s.get(..4).is_some_and(|p| p.eq_ignore_ascii_case("BUNQ"))
+}
+
+/// Whether a MoneyMoney account is held at bunq, from its BIC, its bank code
+/// or its IBAN: Dutch IBANs carry the bank's BIC prefix (`NLkk BUNQ …`),
+/// German ones the bank code (`DEkk 37019000 …`). For other countries the
+/// IBAN holds a numeric national code, so the BIC decides there.
+fn is_bunq_account(bic: &str, iban: &str, bankcode: &str) -> bool {
+    if is_bunq_bic(bic) || is_bunq_bic(bankcode) {
+        return true;
+    }
+    let code: String = bankcode.chars().filter(|c| c.is_ascii_digit()).collect();
+    if code == BUNQ_DE_BLZ {
+        return true;
+    }
+    let iban = sepa::normalize_iban(iban);
+    match iban.get(..2) {
+        Some("NL") => iban.get(4..8) == Some("BUNQ"),
+        Some("DE") => iban.get(4..12) == Some(BUNQ_DE_BLZ),
+        _ => false,
     }
 }
 
@@ -713,6 +757,7 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
                 "group_key",
                 "balances",
                 "balance_tsp",
+                "bic",
             ],
             "ORDER BY sort, rowid",
         )?;
@@ -739,6 +784,7 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
                 group_key: vint(get(r, 10)?).filter(|k| *k > 0),
                 shown_balance: parse_balances_blob(get(r, 11)?),
                 balance_ts: vint(get(r, 12)?).filter(|t| *t > 0),
+                bic: vtext(get(r, 13)?),
             })
         })?;
         src.accounts = rows.collect::<Result<_, _>>()?;
@@ -1005,9 +1051,7 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
             // Only for banks GiroCrab supports and whose connector uses a PIN.
             let mut st = conn.prepare("SELECT pin FROM pins WHERE bank_key = ?1")?;
             for b in &src.banks {
-                if !connector_for(&b.bankcode, &b.name).is_some_and(pin_usable)
-                    || !src.pin_banks.contains(&b.id)
-                {
+                if !src.connector(b).is_some_and(pin_usable) || !src.pin_banks.contains(&b.id) {
                     continue;
                 }
                 let pin: Option<Value> = st.query_row([b.id], |r| get(r, 0)).optional()?;
@@ -1306,6 +1350,38 @@ impl Source {
         key.and_then(|k| self.banks.iter().find(|b| b.id == k))
     }
 
+    /// GiroCrab connector (and stored key) for a MoneyMoney bank login. Like
+    /// `connector_key_for`, but also looks at the login's accounts: bunq has
+    /// branches in several countries (DE, NL, FR, ES, IT, …) and MoneyMoney
+    /// may file the login under any of their codes, so a login whose accounts
+    /// carry a bunq BIC or IBAN is mapped to the bunq connector.
+    fn connector_key(&self, b: &SrcBank) -> Option<(ConnectorKind, String)> {
+        let keyed = |k: ConnectorKind| (k, k.as_str().to_string());
+        connector_key_for(&b.bankcode, &b.name).or_else(|| {
+            let mut accounts = self.accounts.iter().filter(|a| a.bank_key == Some(b.id));
+            if accounts
+                .clone()
+                .any(|a| is_bunq_account(&a.bic, &a.iban, &a.bankcode))
+            {
+                return Some(keyed(ConnectorKind::Bunq));
+            }
+            // The Amazon Visa is issued by Open Bank (Zinia); MoneyMoney files
+            // the login as "Openbank" (bank code 50034200). Open Bank also has
+            // current accounts, so only a login holding the card maps to the
+            // Amazon Visa connector.
+            (is_openbank(&b.bankcode, &b.name)
+                && accounts.any(|a| {
+                    a.name.to_lowercase().contains("amazon")
+                        || suggest_kind(a, &b.name) == AccountKind::CreditCard
+                }))
+            .then(|| keyed(ConnectorKind::AmazonVisa))
+        })
+    }
+
+    fn connector(&self, b: &SrcBank) -> Option<ConnectorKind> {
+        self.connector_key(b).map(|(k, _)| k)
+    }
+
     fn account_name(&self, a: &SrcAccount) -> String {
         if !a.name.is_empty() {
             return a.name.clone();
@@ -1502,17 +1578,25 @@ pub(crate) fn adopt_account(
 ) -> CoreResult<Option<i64>> {
     let iban = sepa::normalize_iban(iban);
     let id: Option<i64> = if iban.is_empty() {
-        let mut st = conn.prepare(
-            "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref LIKE 'moneymoney-db:%'
-               AND kind = ?2 AND replace(IFNULL(iban, ''), ' ', '') = '' LIMIT 2",
-        )?;
-        let ids: Vec<i64> = st
-            .query_map(params![connection_id, kind.as_str()], |r| r.get(0))?
-            .collect::<Result<_, _>>()?;
-        if ids.len() == 1 {
-            Some(ids[0])
-        } else {
-            None
+        // Prefer imported accounts without an IBAN; a connector that reports
+        // none (Amazon Visa web login) may still find the card with the IBAN
+        // MoneyMoney stored for it – if it is the only one of its kind here.
+        let single = |iban_filter: &str| -> CoreResult<Option<i64>> {
+            let mut st = conn.prepare(&format!(
+                "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref LIKE 'moneymoney-db:%'
+                   AND kind = ?2 {iban_filter} LIMIT 2"
+            ))?;
+            let ids: Vec<i64> = st
+                .query_map(params![connection_id, kind.as_str()], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            Ok((ids.len() == 1).then(|| ids[0]))
+        };
+        match single("AND replace(IFNULL(iban, ''), ' ', '') = ''")? {
+            Some(id) => Some(id),
+            // cards only: an account with an IBAN of its own (checking,
+            // savings) is never taken over without matching that IBAN
+            None if kind == AccountKind::CreditCard => single("")?,
+            None => None,
         }
     } else {
         conn.query_row(
@@ -1606,7 +1690,7 @@ fn preview(
     }
     let mut banks = Vec::new();
     for b in &src.banks {
-        let connector = connector_for(&b.bankcode, &b.name);
+        let connector = src.connector(b);
         banks.push(MoneyMoneyDbBank {
             mm_id: b.id,
             bank_code: b.bankcode.clone(),
@@ -1617,7 +1701,8 @@ fn preview(
             has_saved_pin: src.pin_banks.contains(&b.id),
             existing_connection_id: match connector {
                 Some(k) => {
-                    let key = connector_key_for(&b.bankcode, &b.name)
+                    let key = src
+                        .connector_key(b)
                         .map(|(_, key)| key)
                         .unwrap_or_else(|| k.as_str().to_string());
                     find_connection(conn, k, &key, &b.username)?
@@ -2023,7 +2108,7 @@ fn import(
 
     let mut bank_connection: HashMap<i64, i64> = HashMap::new();
     for b in &src.banks {
-        let Some((kind, key)) = connector_key_for(&b.bankcode, &b.name) else {
+        let Some((kind, key)) = src.connector_key(b) else {
             res.banks_skipped_unsupported += 1;
             continue;
         };
