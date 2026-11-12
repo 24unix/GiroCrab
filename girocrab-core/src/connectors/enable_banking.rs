@@ -417,9 +417,10 @@ fn pick_account_balance(balances: &[Value]) -> (i64, Option<String>) {
 /// One Enable Banking transaction as a GiroCrab booking. `external_id` is the
 /// bank's `entry_reference` (stable across sessions), else empty – the caller
 /// fills in a content id. `transaction_id` is not used: it "may change".
-fn map_transaction(t: &Value, account_ref: &str) -> RemoteTransaction {
+/// `None` when the amount is missing or unreadable (never stored as 0 €).
+fn map_transaction(t: &Value, account_ref: &str) -> Option<RemoteTransaction> {
     let mut amount = json_number_to_cents(&t["transaction_amount"]["amount"])
-        .unwrap_or(0)
+        .ok()?
         .abs();
     if t["credit_debit_indicator"].as_str() == Some("DBIT") {
         amount = -amount;
@@ -473,14 +474,15 @@ fn map_transaction(t: &Value, account_ref: &str) -> RemoteTransaction {
             .collect::<Vec<_>>()
             .join(" ");
     }
-    rt
+    Some(rt)
 }
 
 /// Splits a transaction listing into booked and pending bookings (pending
 /// ones get the hold prefix) and fills in missing ids.
 fn split_transactions(items: &[Value], account_ref: &str) -> Vec<RemoteTransaction> {
     let mut out = Vec::new();
-    let mut n = 0u32;
+    let mut ids = super::ContentIds::default();
+    let mut unreadable = 0u32;
     for t in items {
         let status = t["status"].as_str().unwrap_or("BOOK");
         let pending = match status {
@@ -488,15 +490,22 @@ fn split_transactions(items: &[Value], account_ref: &str) -> Vec<RemoteTransacti
             "PDNG" | "HOLD" => true,
             _ => continue, // CNCL, RJCT, SCHD, OTHR
         };
-        let mut rt = map_transaction(t, account_ref);
+        let Some(mut rt) = map_transaction(t, account_ref) else {
+            unreadable += 1;
+            continue;
+        };
         if rt.external_id.is_empty() {
-            rt.external_id = rt.content_id(n);
+            rt.external_id = ids.next(&rt);
         }
-        n += 1;
         if pending {
             rt.external_id = format!("{HOLD_PREFIX}{}", rt.external_id);
         }
         out.push(rt);
+    }
+    if unreadable > 0 {
+        crate::depot_debug::log(&format!(
+            "enable_banking: skipped {unreadable} booking(s) without a readable amount"
+        ));
     }
     out
 }
@@ -681,7 +690,7 @@ impl EnableBankingConnector {
         }
         let resp = req.send().await?;
         let status = resp.status();
-        let v: Value = resp.json().await.unwrap_or(Value::Null);
+        let v: Value = super::read_json_or_null(resp).await;
         if !status.is_success() {
             return Err(api_error(status.as_u16(), &v));
         }
@@ -690,9 +699,11 @@ impl EnableBankingConnector {
 
     /// All pages of `/accounts/{uid}/transactions?{query}`. A failing first
     /// page is an error; a later failing page ends the listing (logged).
-    async fn list_transactions(&self, uid: &str, query: &str) -> CoreResult<Vec<Value>> {
+    /// The flag is `true` only when every page was read.
+    async fn list_transactions(&self, uid: &str, query: &str) -> CoreResult<(Vec<Value>, bool)> {
         let mut all = Vec::new();
         let mut continuation: Option<String> = None;
+        let mut complete = false;
         for page_no in 1..=100u32 {
             let mut path = format!("/accounts/{uid}/transactions?{query}");
             if let Some(c) = &continuation {
@@ -718,20 +729,23 @@ impl EnableBankingConnector {
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string());
             if continuation.is_none() {
+                complete = true;
                 break;
             }
         }
-        Ok(all)
+        Ok((all, complete))
     }
 
     /// Bank account (generic mode, not a card): balance, booked and pending
     /// bookings. Nothing is added to `out` unless the account succeeded.
+    /// Returns whether the history is complete (every page read), i.e. whether
+    /// later syncs may switch to incremental `date_from` listings.
     async fn fetch_bank_account(
         &self,
         ctx: &ConnectContext,
         acc: &EbAccount,
         out: &mut FetchResult,
-    ) -> CoreResult<()> {
+    ) -> CoreResult<bool> {
         let bal = self
             .call(
                 reqwest::Method::GET,
@@ -741,9 +755,10 @@ impl EnableBankingConnector {
             .await?;
         let balances = bal["balances"].as_array().cloned().unwrap_or_default();
         let (balance_cents, ref_date) = pick_account_balance(&balances);
-        let since_query = format!("date_from={}", ctx.since);
-        let items = if acc.history_done {
-            self.list_transactions(&acc.uid, &since_query).await?
+        let since_query = format!("date_from={}", ctx.since_for(&acc.ext_ref));
+        let (items, complete) = if acc.history_done {
+            let (items, _) = self.list_transactions(&acc.uid, &since_query).await?;
+            (items, true)
         } else {
             // First sync: as much history as the consent allows.
             match self.list_transactions(&acc.uid, "strategy=longest").await {
@@ -786,7 +801,7 @@ impl EnableBankingConnector {
             balance_date: ref_date.unwrap_or_else(super::today),
         });
         out.transactions.extend(txs);
-        Ok(())
+        Ok(complete)
     }
 
     /// Generic mode: read `/details` once for accounts whose full data is
@@ -1150,12 +1165,17 @@ impl BankConnector for EnableBankingConnector {
                     name: display_name(&a),
                     ..a.clone()
                 };
-                self.fetch_card(ctx, &mut out, &named).await
+                self.fetch_card(ctx, &mut out, &named).await.map(|()| true)
             } else {
                 self.fetch_bank_account(ctx, &a, &mut out).await
             };
             match res {
-                Ok(()) => done.push(a.uid.clone()),
+                Ok(true) => done.push(a.uid.clone()),
+                // Some page failed: keep what was read, but fetch the whole
+                // history again next time instead of only `date_from`.
+                Ok(false) => crate::depot_debug::log(
+                    "enable_banking: history incomplete (page error), retrying next sync",
+                ),
                 Err(e) if is_account_unavailable(&e) => {
                     crate::depot_debug::log(&format!(
                         "enable_banking: account not accessible, marked as revoked ({e})"
@@ -1261,6 +1281,8 @@ impl EnableBankingConnector {
             };
             let mut raw_items = 0usize;
             let mut skipped_non_book = 0u32;
+            let mut skipped_unreadable = 0u32;
+            let mut ids = super::ContentIds::default();
             for _ in 0..100 {
                 pages += 1;
                 let mut path = format!("/accounts/{uid}/transactions?date_from={since}");
@@ -1297,9 +1319,14 @@ impl EnableBankingConnector {
                         skipped_non_book += 1;
                         continue;
                     }
-                    let mut amount = json_number_to_cents(&t["transaction_amount"]["amount"])
-                        .unwrap_or(0)
-                        .abs();
+                    // Unreadable amount or no date: skip (counted, logged) instead
+                    // of storing a 0 € booking without a date.
+                    let Ok(amount) = json_number_to_cents(&t["transaction_amount"]["amount"])
+                    else {
+                        skipped_unreadable += 1;
+                        continue;
+                    };
+                    let mut amount = amount.abs();
                     if t["credit_debit_indicator"].as_str() == Some("DBIT") {
                         amount = -amount;
                     }
@@ -1313,11 +1340,16 @@ impl EnableBankingConnector {
                     } else {
                         &t["debtor_account"]
                     };
-                    let date = t["booking_date"]
+                    let Some(date) = t["booking_date"]
                         .as_str()
                         .or(t["transaction_date"].as_str())
-                        .unwrap_or_default()
-                        .to_string();
+                        .map(str::trim)
+                        .filter(|d| !d.is_empty())
+                        .map(str::to_string)
+                    else {
+                        skipped_unreadable += 1;
+                        continue;
+                    };
                     let mut rt = RemoteTransaction {
                         account_ref: external_ref.clone(),
                         external_id: t["entry_reference"]
@@ -1361,7 +1393,7 @@ impl EnableBankingConnector {
                             .join(" ");
                     }
                     if rt.external_id.is_empty() {
-                        rt.external_id = rt.content_id(n);
+                        rt.external_id = ids.next(&rt);
                     }
                     n += 1;
                     out.transactions.push(rt);
@@ -1427,7 +1459,7 @@ impl EnableBankingConnector {
             }
             out.accounts[acct_idx].balance_cents = balance_cents;
             crate::depot_debug::log(&format!(
-                "amex transactions: since={since} pages={pages} raw={raw_items} skipped_non_book={skipped_non_book} booked_kept={n} pending={pending_n} pending_sign={} final_balance_sign={}",
+                "amex transactions: since={since} pages={pages} raw={raw_items} skipped_non_book={skipped_non_book} skipped_unreadable={skipped_unreadable} booked_kept={n} pending={pending_n} pending_sign={} final_balance_sign={}",
                 pending_sum.signum(),
                 balance_cents.signum()
             ));
@@ -1586,7 +1618,7 @@ impl Vault {
             .send()
             .await?;
         let status = resp.status();
-        let v: Value = resp.json().await.unwrap_or(Value::Null);
+        let v: Value = super::read_json_or_null(resp).await;
         if matches!(status.as_u16(), 401 | 403) {
             return Err(CoreError::Authentication {
                 message: tr("Enable Banking kennt diese Kombination aus Application-ID und Schlüssel nicht. Bitte die .pem-Datei der Anwendung wählen.")
@@ -2125,5 +2157,45 @@ mod tests {
         ];
         assert_eq!(super::pick_balance(&single).0, -1000);
         assert_eq!(super::pick_balance(&[]), (0, None));
+    }
+}
+
+#[cfg(test)]
+mod content_id_tests {
+    use super::*;
+
+    fn item(date: &str, amount: &str, name: &str) -> Value {
+        json!({"status": "BOOK", "transaction_amount": {"amount": amount, "currency": "EUR"},
+               "credit_debit_indicator": "DBIT", "booking_date": date,
+               "creditor": {"name": name}})
+    }
+
+    #[test]
+    fn ids_without_entry_reference_survive_a_moving_window() {
+        let a = item("2026-11-05", "3.50", "Café");
+        let b = item("2026-11-01", "900.00", "Vermieter");
+        let first = split_transactions(&[a.clone(), a.clone(), b.clone()], "DE11");
+        assert_ne!(
+            first[0].external_id, first[1].external_id,
+            "two real coffees"
+        );
+        // newer booking in front, list order changed: same ids
+        let later = split_transactions(
+            &[item("2026-11-10", "1.00", "Kiosk"), b, a.clone(), a],
+            "DE11",
+        );
+        assert_eq!(later[2].external_id, first[0].external_id);
+        assert_eq!(later[3].external_id, first[1].external_id);
+        assert_eq!(later[1].external_id, first[2].external_id);
+    }
+
+    #[test]
+    fn unreadable_amount_is_skipped_not_zero() {
+        let bad = json!({"status": "BOOK", "transaction_amount": {"amount": "n/a"},
+                         "booking_date": "2026-11-05"});
+        let missing = json!({"status": "BOOK", "booking_date": "2026-11-05"});
+        let t = split_transactions(&[bad, missing, item("2026-11-05", "1.00", "X")], "DE11");
+        assert_eq!(t.len(), 1);
+        assert_eq!(t[0].amount_cents, -100);
     }
 }

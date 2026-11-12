@@ -344,7 +344,7 @@ impl Vault {
         }
         let resp = req.send().await?;
         let status = resp.status();
-        let v: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+        let v: serde_json::Value = super::read_json_or_null(resp).await;
         if !status.is_success() {
             let msg = v["message"]
                 .as_str()

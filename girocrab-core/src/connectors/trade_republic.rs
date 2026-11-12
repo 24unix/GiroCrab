@@ -197,7 +197,7 @@ impl TradeRepublicConnector {
             .iter()
             .filter_map(|v| v.to_str().ok().map(|s| s.to_string()))
             .collect();
-        let body = resp.text().await.unwrap_or_default();
+        let body = super::read_text_limited(resp).await.unwrap_or_default();
         (status, cookies, body)
     }
 
@@ -740,7 +740,8 @@ impl BankConnector for TradeRepublicConnector {
                     if !resp.status().is_success() {
                         continue;
                     }
-                    let Ok(bytes) = resp.bytes().await else {
+                    let Ok(bytes) = super::read_body_limited(resp, super::MAX_DOC_BYTES).await
+                    else {
                         continue;
                     };
                     if !bytes.starts_with(b"%PDF") {

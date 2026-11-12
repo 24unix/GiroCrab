@@ -131,6 +131,15 @@ fn kind_from_code(code: u32) -> AccountKind {
     }
 }
 
+/// FinTS date `YYYYMMDD` → `YYYY-MM-DD`; `None` unless exactly 8 ASCII digits
+/// (no byte slicing into a multi-byte character).
+fn fints_date(d: &str) -> Option<String> {
+    if d.len() != 8 || !d.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(format!("{}-{}-{}", &d[..4], &d[4..6], &d[6..]))
+}
+
 fn is_segment_code(s: &str) -> bool {
     s.len() == 5
         && (s.starts_with("HK") || s.starts_with("DK"))
@@ -154,7 +163,7 @@ fn parse_upd(upd: &Segment) -> UpdAccount {
     };
     // HIUPD v4/v5 have no IBAN element: shift if element 2 is the customer id
     if !a.iban.is_empty()
-        && !(a.iban.len() >= 15 && a.iban[..2].chars().all(|c| c.is_ascii_uppercase()))
+        && !(a.iban.len() >= 15 && a.iban.chars().take(2).all(|c| c.is_ascii_uppercase()))
     {
         a.iban.clear();
     }
@@ -524,7 +533,7 @@ impl FinTsConnector {
                 message: format!("FinTS server answered HTTP {}", resp.status()),
             });
         }
-        let text = resp.text().await?;
+        let text = super::read_text_limited(resp).await?;
         let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
         let raw = base64::engine::general_purpose::STANDARD
             .decode(cleaned.as_bytes())
@@ -997,11 +1006,7 @@ impl FinTsConnector {
                 s.get(4, 2).to_string()
             };
             let d = s.get(4, 3);
-            let date = if d.len() == 8 {
-                format!("{}-{}-{}", &d[..4], &d[4..6], &d[6..])
-            } else {
-                super::today()
-            };
+            let date = fints_date(d).unwrap_or_else(super::today);
             Some((sign * c, cur, date))
         }))
     }
@@ -1210,11 +1215,7 @@ impl FinTsConnector {
                         if let syntax::Value::Binary(pdf) = val {
                             if pdf.starts_with(b"%PDF") {
                                 let to = s.get(2, 1);
-                                let date = if to.len() == 8 {
-                                    format!("{}-{}-{}", &to[..4], &to[4..6], &to[6..])
-                                } else {
-                                    super::today()
-                                };
+                                let date = fints_date(to).unwrap_or_else(super::today);
                                 docs.push(crate::documents::RemoteDocument {
                                     account_ref: label.to_string(),
                                     booking_external_id: None,
@@ -2349,6 +2350,7 @@ mod tests {
             settings: Default::default(),
             state: serde_json::json!({}),
             since: "2025-01-01".into(),
+            since_by_account: Default::default(),
         };
         let payload = vec![c.hkidn(&ctx, 3), c.hkvvb(4), c.hktan_process4(5, "HKIDN")];
         let msg = c.build_message(&ctx, &payload, "946", None);
@@ -2748,5 +2750,16 @@ mod tests {
         };
         assert_ne!(account_label(&mk("01")), account_label(&mk("02")));
         assert_eq!(account_label(&mk("")), "0098765400");
+    }
+}
+
+#[cfg(test)]
+mod date_slice_tests {
+    #[test]
+    fn fints_date_needs_eight_ascii_digits() {
+        assert_eq!(super::fints_date("20261107").as_deref(), Some("2026-11-07"));
+        assert_eq!(super::fints_date("202ä1107"), None); // 8 bytes, not 8 digits
+        assert_eq!(super::fints_date("2026110"), None);
+        assert_eq!(super::fints_date(""), None);
     }
 }

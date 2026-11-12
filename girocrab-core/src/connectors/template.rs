@@ -95,6 +95,7 @@ mod tests {
             settings: Default::default(),
             state: serde_json::Value::Null,
             since: "2026-01-01".into(),
+            since_by_account: Default::default(),
         };
         let mut c = TemplateConnector::default();
         assert!(matches!(c.begin(&ctx).await.unwrap(), Phase::Ready));

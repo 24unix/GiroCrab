@@ -832,6 +832,7 @@ dependencies = [
  "futures-util",
  "hex",
  "jsonwebtoken",
+ "libc",
  "miniz_oxide",
  "p256",
  "rand 0.9.5",

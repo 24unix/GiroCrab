@@ -468,6 +468,9 @@ fn english(de: &str) -> Option<&'static str> {
         "Saldo laut MoneyMoney ({0})" => "Balance as shown in MoneyMoney ({0})",
         "Anfangssaldo des Kontos + Umsätze" => "Account opening balance + transactions",
         "Summe der Umsätze" => "Sum of transactions",
+        "Antwort der Bank zu groß (über {0} MB) – abgebrochen." => {
+            "Bank response too large (over {0} MB) – aborted."
+        }
         // ------------------------------------------------------------ connections.rs
         "Bankzugang {0}" => "bank connection {0}",
         "Keine Sitzungs-Cookies übergeben" => "No session cookies were passed",

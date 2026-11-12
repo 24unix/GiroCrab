@@ -277,7 +277,7 @@ impl BunqConnector {
             };
             let server_sig = header("X-Bunq-Server-Signature");
             let content_type = header("Content-Type").unwrap_or_default();
-            let raw = resp.bytes().await.map_err(CoreError::from)?.to_vec();
+            let raw = super::read_body_limited(resp, super::MAX_DOC_BYTES).await?;
 
             if status == 429 && attempt < 4 {
                 attempt += 1;
@@ -1876,6 +1876,7 @@ mod tests {
             settings: Default::default(),
             state: Value::Null,
             since: "2020-01-01".into(),
+            since_by_account: Default::default(),
         };
         for _ in 1..MAX_DRAFT_POLL_FAILURES {
             let p = c.respond(&ctx, ChallengeResponse::Poll).await.unwrap();
@@ -2050,6 +2051,7 @@ mod tests {
             settings,
             state: Value::Null,
             since: "2020-01-01".into(),
+            since_by_account: Default::default(),
         };
         let mut c = BunqConnector::new();
         assert!(matches!(c.begin(&ctx).await.unwrap(), Phase::Ready));
@@ -2265,6 +2267,7 @@ mod tests {
             settings: Default::default(),
             state: Value::Null,
             since: "2020-01-01".into(),
+            since_by_account: Default::default(),
         };
         let mut c = BunqConnector::new();
         c.begin(&ctx).await.unwrap();
@@ -2343,6 +2346,7 @@ mod tests {
             settings: Default::default(),
             state: Value::Null,
             since: "2020-01-01".into(),
+            since_by_account: Default::default(),
         };
         let mut c = BunqConnector::new();
         c.begin(&ctx).await.unwrap();
@@ -2510,6 +2514,7 @@ mod tests {
             settings: Default::default(),
             state: Value::Null,
             since: "2020-01-01".into(),
+            since_by_account: Default::default(),
         };
         let mut c = BunqConnector::new();
         c.begin(&ctx).await.unwrap();
@@ -2720,6 +2725,7 @@ mod tests {
             settings: Default::default(),
             state: Value::Null,
             since: "2020-01-01".into(),
+            since_by_account: Default::default(),
         };
         let mut c = BunqConnector::new();
         c.begin(&ctx).await.unwrap();
@@ -2873,6 +2879,7 @@ mod tests {
             settings: Default::default(),
             state: Value::Null,
             since: "2020-01-01".into(),
+            since_by_account: Default::default(),
         };
         let mut c = BunqConnector::new();
         assert!(matches!(c.begin(&ctx).await.unwrap(), Phase::Ready));
@@ -2965,6 +2972,7 @@ mod tests {
             settings: Default::default(),
             state: Value::Null,
             since: "2020-01-01".into(),
+            since_by_account: Default::default(),
         };
         let mut c = BunqConnector::new();
         c.begin(&ctx).await.unwrap();

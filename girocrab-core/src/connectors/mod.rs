@@ -403,11 +403,65 @@ pub struct ConnectContext {
     pub settings: HashMap<String, SecretString>,
     /// Opaque connector state persisted between syncs (FinTS system id, PSD2 session ...).
     pub state: serde_json::Value,
-    /// Fetch transactions booked on or after this date (YYYY-MM-DD).
+    /// Fetch transactions booked on or after this date (YYYY-MM-DD): the
+    /// earliest per-account start of [`since_by_account`](Self::since_by_account),
+    /// so connectors that fetch all accounts at once miss none of them.
     pub since: String,
+    /// Per-account start (account external ref → YYYY-MM-DD): the account's
+    /// own newest booking minus 10 days. Accounts not listed use `since`.
+    pub since_by_account: HashMap<String, String>,
+}
+
+/// Start dates of an incremental sync. `newest` = (account external ref,
+/// newest stored booking date) of the connection's active accounts.
+///
+/// Each account starts 10 days before its *own* newest booking – one account
+/// lagging behind (failed or rate-limited last time) must not be skipped
+/// because its siblings moved on. The lower bound is `days` back, or earlier
+/// when the whole connection has not been synced for longer. Accounts without
+/// bookings (new ones, depots) get that lower bound but do not pull the
+/// connection-wide `since` back.
+pub(crate) fn since_window(
+    today: chrono::NaiveDate,
+    days: i64,
+    newest: &[(String, Option<String>)],
+) -> (String, HashMap<String, String>) {
+    let parse = |d: &Option<String>| {
+        d.as_deref()
+            .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+    };
+    let back10 = |d: chrono::NaiveDate| d - chrono::Duration::days(10);
+    let fmt = |d: chrono::NaiveDate| d.format("%Y-%m-%d").to_string();
+    let default_start = today - chrono::Duration::days(days);
+    let floor = match newest.iter().filter_map(|(_, d)| parse(d)).max() {
+        Some(g) => default_start.min(back10(g)),
+        None => default_start,
+    };
+    let mut per = HashMap::new();
+    let mut earliest: Option<chrono::NaiveDate> = None;
+    for (r, d) in newest {
+        let start = match parse(d) {
+            Some(d) => {
+                let s = back10(d).max(floor);
+                earliest = Some(earliest.map_or(s, |e| e.min(s)));
+                s
+            }
+            None => floor,
+        };
+        per.insert(r.clone(), fmt(start));
+    }
+    (fmt(earliest.unwrap_or(floor)), per)
 }
 
 impl ConnectContext {
+    /// Start date for one account (see [`since_by_account`](Self::since_by_account)).
+    pub fn since_for(&self, account_ref: &str) -> &str {
+        self.since_by_account
+            .get(account_ref)
+            .map(String::as_str)
+            .unwrap_or(&self.since)
+    }
+
     pub fn setting(&self, key: &str) -> CoreResult<&str> {
         self.settings
             .get(key)
@@ -467,21 +521,94 @@ pub struct RemoteTransaction {
 }
 
 impl RemoteTransaction {
-    /// Content-based id for banks that don't deliver a transaction id.
-    pub fn content_id(&self, occurrence: u32) -> String {
-        use std::hash::{Hash, Hasher};
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (
-            &self.booking_date,
-            &self.value_date,
-            self.amount_cents,
-            &self.counterparty,
-            &self.purpose,
-            occurrence,
+    /// Booking content without the occurrence counter (dates, amount,
+    /// counterparty, purpose), fields separated by U+001F.
+    pub fn content_key(&self) -> String {
+        format!(
+            "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+            self.booking_date, self.value_date, self.amount_cents, self.counterparty, self.purpose
         )
-            .hash(&mut h);
-        format!("h{:016x}", h.finish())
     }
+
+    /// Content-based id for banks that don't deliver a transaction id.
+    /// `occurrence` numbers identical bookings (same [`content_key`](Self::content_key))
+    /// within one fetch, so two real, identical payments stay two rows.
+    /// FNV-1a 64: stable across Rust versions (unlike `DefaultHasher`).
+    pub fn content_id(&self, occurrence: u32) -> String {
+        format!(
+            "{CONTENT_ID_PREFIX}{:016x}",
+            fnv1a64(&format!("{}\u{1f}{occurrence}", self.content_key()))
+        )
+    }
+}
+
+/// Prefix of [`RemoteTransaction::content_id`] ids. Ids of older versions
+/// (`h` + 16 hex digits, `DefaultHasher`) are adopted on the next sync, see
+/// [`adopt_legacy_content_id`].
+pub(crate) const CONTENT_ID_PREFIX: char = 'c';
+
+/// FNV-1a 64-bit hash.
+pub(crate) fn fnv1a64(s: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in s.bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    h
+}
+
+/// Hands out content ids, counting occurrences per identical content (not
+/// per list position): the ids stay the same when the fetch window moves or
+/// other bookings appear in between.
+#[derive(Default)]
+pub(crate) struct ContentIds(HashMap<String, u32>);
+
+impl ContentIds {
+    pub(crate) fn next(&mut self, t: &RemoteTransaction) -> String {
+        let n = self.0.entry(t.content_key()).or_insert(0);
+        let id = t.content_id(*n);
+        *n += 1;
+        id
+    }
+}
+
+fn is_content_id(id: &str, prefix: char) -> bool {
+    let mut c = id.chars();
+    id.len() == 17 && c.next() == Some(prefix) && c.all(|c| c.is_ascii_hexdigit())
+}
+
+/// One-time migration of ids from older versions: a booking stored under a
+/// legacy content id (`h…`, `DefaultHasher` / list position) with exactly the
+/// same content gets the new id instead of being imported a second time.
+fn adopt_legacy_content_id(
+    tx: &rusqlite::Connection,
+    account_id: i64,
+    t: &RemoteTransaction,
+) -> CoreResult<()> {
+    if !is_content_id(&t.external_id, CONTENT_ID_PREFIX) {
+        return Ok(());
+    }
+    let pattern = format!("h{}", "[0-9a-f]".repeat(16));
+    tx.execute(
+        "UPDATE transactions SET external_id = ?1
+          WHERE id = (SELECT id FROM transactions
+                       WHERE account_id = ?2 AND external_id GLOB ?3
+                         AND booking_date = ?4 AND value_date = ?5 AND amount_cents = ?6
+                         AND counterparty = ?7 AND purpose = ?8
+                       ORDER BY id LIMIT 1)
+            AND NOT EXISTS (SELECT 1 FROM transactions WHERE account_id = ?2 AND external_id = ?1)",
+        params![
+            t.external_id,
+            account_id,
+            pattern,
+            t.booking_date,
+            t.value_date,
+            t.amount_cents,
+            t.counterparty,
+            t.purpose
+        ],
+    )?;
+    Ok(())
 }
 
 #[derive(Debug, Default)]
@@ -632,6 +759,54 @@ pub(crate) fn http_client() -> CoreResult<reqwest::Client> {
         .build()?)
 }
 
+/// Upper bound for JSON / text / FinTS responses.
+pub(crate) const MAX_TEXT_BYTES: usize = 10 * 1024 * 1024;
+/// Upper bound for downloaded documents (PDF statements, receipts, images).
+pub(crate) const MAX_DOC_BYTES: usize = 25 * 1024 * 1024;
+
+fn too_large(limit: usize) -> CoreError {
+    CoreError::Network {
+        message: trf(
+            "Antwort der Bank zu groß (über {0} MB) – abgebrochen.",
+            &[&(limit / (1024 * 1024))],
+        ),
+    }
+}
+
+/// Reads a response body, but never more than `limit` bytes (no OOM on a
+/// huge or endless body): larger bodies are an error.
+pub(crate) async fn read_body_limited(
+    mut resp: reqwest::Response,
+    limit: usize,
+) -> CoreResult<Vec<u8>> {
+    if resp.content_length().is_some_and(|n| n > limit as u64) {
+        return Err(too_large(limit));
+    }
+    let mut out = Vec::new();
+    while let Some(chunk) = resp.chunk().await? {
+        if out.len() + chunk.len() > limit {
+            return Err(too_large(limit));
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(out)
+}
+
+/// [`read_body_limited`] with [`MAX_TEXT_BYTES`], decoded as UTF-8 (lossy).
+pub(crate) async fn read_text_limited(resp: reqwest::Response) -> CoreResult<String> {
+    let b = read_body_limited(resp, MAX_TEXT_BYTES).await?;
+    Ok(String::from_utf8(b).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
+}
+
+/// [`read_body_limited`] with [`MAX_TEXT_BYTES`], parsed as JSON; an
+/// unreadable or oversized body yields `Value::Null`.
+pub(crate) async fn read_json_or_null(resp: reqwest::Response) -> serde_json::Value {
+    match read_body_limited(resp, MAX_TEXT_BYTES).await {
+        Ok(b) => serde_json::from_slice(&b).unwrap_or(serde_json::Value::Null),
+        Err(_) => serde_json::Value::Null,
+    }
+}
+
 pub(crate) fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
@@ -720,6 +895,17 @@ pub(crate) fn store_fetch(
             t.counterparty = crate::text::clean_bank_text(&t.counterparty);
             t.purpose = crate::text::clean_bank_text(&t.purpose);
             t.booking_text = crate::text::clean_bank_text(&t.booking_text);
+        }
+        // A connector without a bank id must not collapse bookings into one
+        // `(account, "")` row: give them a deterministic content id instead.
+        let mut missing_ids: HashMap<String, ContentIds> = HashMap::new();
+        for t in &mut data.transactions {
+            if t.external_id.trim().is_empty() {
+                t.external_id = missing_ids
+                    .entry(t.account_ref.clone())
+                    .or_default()
+                    .next(t);
+            }
         }
         for (old, new) in &data.renamed_refs {
             if old.is_empty() || new.is_empty() || old == new {
@@ -1039,6 +1225,7 @@ pub(crate) fn store_fetch(
                     }
                     continue;
                 };
+                adopt_legacy_content_id(&tx, *acc_id, t)?;
                 // Already imported from MoneyMoney? Adopt that row (keeps category + note).
                 if moneymoney_import::adopt_import(
                     &tx,
@@ -1504,29 +1691,27 @@ impl Vault {
                     }
                 }
             }
-            // Incremental: from the newest booking minus 10 days, else N days back.
-            let newest: Option<String> = db
-                .query_row(
-                    "SELECT MAX(t.booking_date) FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE a.connection_id = ?1",
-                    [connection_id],
-                    |r| r.get(0),
-                )
-                .optional()?
-                .flatten();
+            // Incremental, per account: from its newest booking minus 10 days.
+            let newest: Vec<(String, Option<String>)> = {
+                let mut st = db.prepare(
+                    "SELECT a.external_ref,
+                            (SELECT MAX(t.booking_date) FROM transactions t
+                              WHERE t.account_id = a.id AND t.external_id NOT LIKE 'pending-%')
+                       FROM accounts a
+                      WHERE a.connection_id = ?1 AND a.archived_unix IS NULL",
+                )?;
+                let rows = st
+                    .query_map([connection_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                rows
+            };
             let days: i64 = Vault::setting_inner(&db, "sync.days_back")?
                 .and_then(|d| d.parse().ok())
                 .unwrap_or(90);
-            let since =
-                match newest.and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok()) {
-                    Some(d) => (d - chrono::Duration::days(10))
-                        .format("%Y-%m-%d")
-                        .to_string(),
-                    None => (chrono::Local::now().date_naive() - chrono::Duration::days(days))
-                        .format("%Y-%m-%d")
-                        .to_string(),
-                };
+            let since = since_window(chrono::Local::now().date_naive(), days, &newest);
             (kind, key_str, login, state, settings, since)
         };
+        let (since, since_by_account) = since;
         let mut ctx_settings = ctx_settings;
         if let Some(ext) = statements_only {
             ctx_settings.insert(STATEMENTS_ONLY.into(), SecretString::new(ext));
@@ -1543,6 +1728,7 @@ impl Vault {
             settings: ctx_settings,
             state: serde_json::from_str(&state_json).unwrap_or(serde_json::json!({})),
             since,
+            since_by_account,
         };
         Ok(Arc::new(SyncSession {
             vault: self.clone(),
@@ -1856,6 +2042,7 @@ impl Vault {
                 settings: st.ctx.settings.clone(),
                 state: st.ctx.state.clone(),
                 since: st.ctx.since.clone(),
+                since_by_account: st.ctx.since_by_account.clone(),
             }
         };
         let job = TransferJob {
@@ -3158,5 +3345,159 @@ mod statements_auto_tests {
         assert!(v.statements_due(conn).unwrap().is_empty());
         drop(v);
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod content_id_tests {
+    use super::*;
+
+    fn tx(date: &str, cents: i64, who: &str) -> RemoteTransaction {
+        RemoteTransaction {
+            account_ref: "ACC".into(),
+            booking_date: date.into(),
+            value_date: date.into(),
+            amount_cents: cents,
+            currency: "EUR".into(),
+            counterparty: who.into(),
+            purpose: "Einkauf".into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn fnv_matches_reference_values() {
+        assert_eq!(fnv1a64(""), 0xcbf2_9ce4_8422_2325);
+        assert_eq!(fnv1a64("a"), 0xaf63_dc4c_8601_ec8c);
+        let id = tx("2026-11-01", -350, "Bäckerei").content_id(0);
+        assert!(is_content_id(&id, CONTENT_ID_PREFIX), "{id}");
+    }
+
+    #[test]
+    fn ids_count_per_content_not_per_position() {
+        let coffee = tx("2026-11-05", -350, "Café");
+        let rent = tx("2026-11-01", -90_000, "Vermieter");
+        let ids = |list: &[&RemoteTransaction]| {
+            let mut c = ContentIds::default();
+            list.iter().map(|t| c.next(t)).collect::<Vec<_>>()
+        };
+        // two identical coffees on one day stay two ids
+        let a = ids(&[&coffee, &coffee, &rent]);
+        assert_ne!(a[0], a[1]);
+        // a moved window / new booking in front changes nothing
+        let new = tx("2026-11-10", -1_000, "Kiosk");
+        let b = ids(&[&new, &rent, &coffee, &coffee]);
+        assert_eq!((&b[2], &b[3], &b[1]), (&a[0], &a[1], &a[2]));
+    }
+
+    #[test]
+    fn since_is_per_account_with_a_common_floor() {
+        let d = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let newest = vec![
+            ("A".to_string(), Some("2026-11-01".to_string())),
+            ("B".to_string(), Some("2026-10-01".to_string())), // lagging behind
+            ("C".to_string(), None),                           // no bookings (depot)
+        ];
+        let (since, per) = since_window(d("2026-11-12"), 90, &newest);
+        assert_eq!(per["A"], "2026-10-22");
+        assert_eq!(per["B"], "2026-09-21");
+        assert_eq!(per["C"], "2026-08-14");
+        // connectors fetching everything at once start at the earliest account
+        assert_eq!(since, "2026-09-21");
+        // whole connection not synced for long: older than `days` is kept
+        let (since, per) = since_window(
+            d("2026-11-12"),
+            90,
+            &[("A".to_string(), Some("2026-01-01".to_string()))],
+        );
+        assert_eq!(
+            (since.as_str(), per["A"].as_str()),
+            ("2025-12-22", "2025-12-22")
+        );
+        let (since, _) = since_window(d("2026-11-12"), 90, &[]);
+        assert_eq!(since, "2026-08-14");
+    }
+
+    fn setup() -> (Arc<Vault>, i64) {
+        let p = std::env::temp_dir().join(format!("girocrab-cid-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
+        let conn = v
+            .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+            .unwrap();
+        (v, conn)
+    }
+
+    fn fetch(txs: Vec<RemoteTransaction>) -> FetchResult {
+        FetchResult {
+            accounts: vec![RemoteAccount {
+                external_ref: "ACC".into(),
+                name: "Giro".into(),
+                owner: String::new(),
+                iban: String::new(),
+                account_number: String::new(),
+                currency: "EUR".into(),
+                kind: AccountKind::Checking,
+                balance_cents: 0,
+                balance_date: "2026-11-10".into(),
+            }],
+            transactions: txs,
+            ..Default::default()
+        }
+    }
+
+    fn ext_ids(v: &Vault) -> Vec<String> {
+        let db = v.db().unwrap();
+        let mut st = db
+            .prepare("SELECT external_id FROM transactions ORDER BY id")
+            .unwrap();
+        st.query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn legacy_content_ids_are_adopted_not_duplicated() {
+        let (v, conn) = setup();
+        let coffee = tx("2026-11-05", -350, "Café");
+        // stored by an older version: two identical coffees, DefaultHasher ids
+        let mut old = vec![coffee.clone(), coffee.clone()];
+        old[0].external_id = "h0123456789abcdef".into();
+        old[1].external_id = "hfedcba9876543210".into();
+        store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(old)).unwrap();
+        // same bookings with the new FNV ids
+        let mut ids = ContentIds::default();
+        let mut new = vec![coffee.clone(), coffee.clone()];
+        for t in &mut new {
+            t.external_id = ids.next(t);
+        }
+        let s = store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(new.clone())).unwrap();
+        assert_eq!(s.transactions_imported, 0);
+        let stored = ext_ids(&v);
+        assert_eq!(stored.len(), 2);
+        assert!(stored.contains(&new[0].external_id) && stored.contains(&new[1].external_id));
+        // and a third, genuinely new identical coffee is still imported
+        let mut ids = ContentIds::default();
+        let mut three = vec![coffee.clone(), coffee.clone(), coffee];
+        for t in &mut three {
+            t.external_id = ids.next(t);
+        }
+        let s = store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(three)).unwrap();
+        assert_eq!(s.transactions_imported, 1);
+        assert_eq!(ext_ids(&v).len(), 3);
+    }
+
+    #[test]
+    fn empty_external_ids_do_not_collapse() {
+        let (v, conn) = setup();
+        let coffee = tx("2026-11-05", -350, "Café");
+        let txs = vec![coffee.clone(), coffee, tx("2026-11-06", -500, "Kiosk")];
+        store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(txs.clone())).unwrap();
+        let ids = ext_ids(&v);
+        assert_eq!(ids.len(), 3);
+        assert!(ids.iter().all(|i| is_content_id(i, CONTENT_ID_PREFIX)));
+        // deterministic: the next sync adds nothing
+        let s = store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(txs)).unwrap();
+        assert_eq!(s.transactions_imported, 0);
     }
 }

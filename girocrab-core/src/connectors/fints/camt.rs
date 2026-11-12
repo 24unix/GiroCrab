@@ -91,10 +91,16 @@ fn tokenize(xml: &str) -> Vec<Tok> {
                 while let Some(eq) = a.find('=') {
                     let key = local(a[..eq].trim());
                     let after = a[eq + 1..].trim_start();
-                    let q = after.chars().next().unwrap_or('"');
-                    let val_end = after[1..].find(q).map(|p| p + 1).unwrap_or(after.len());
-                    attrs.push((key, unescape(&after[1..val_end])));
-                    a = &after[(val_end + 1).min(after.len())..];
+                    // `x=` at the end of the tag: no value left.
+                    let Some(q) = after.chars().next() else {
+                        attrs.push((key, String::new()));
+                        break;
+                    };
+                    // char-based: the opening character may be multi-byte
+                    let body = &after[q.len_utf8()..];
+                    let val_end = body.find(q).unwrap_or(body.len());
+                    attrs.push((key, unescape(&body[..val_end])));
+                    a = body.get(val_end + q.len_utf8()..).unwrap_or("");
                 }
                 out.push(Tok::Start(name.clone(), attrs));
                 if self_closing {
@@ -441,5 +447,23 @@ mod tests {
         let (txs, _) = parse(&xml, "acc");
         assert_eq!(txs[1].purpose_code, "SALA");
         assert_eq!(txs[1].gvc, "153");
+    }
+}
+
+#[cfg(test)]
+mod tokenizer_robustness_tests {
+    #[test]
+    fn broken_attributes_do_not_panic() {
+        for xml in [
+            "<Amt Ccy=>1</Amt>",
+            "<Amt Ccy=",
+            "<Amt Ccy=ä1ä>2</Amt>",
+            "<Amt Ccy=\"EUR>3",
+            "<Amt a=€x€ b='y'>4</Amt>",
+        ] {
+            let _ = super::tokenize(xml);
+        }
+        let toks = super::tokenize("<Amt Ccy=ä1ä>2</Amt>");
+        assert!(matches!(&toks[0], super::Tok::Start(n, a) if n == "Amt" && a[0].1 == "1"));
     }
 }
