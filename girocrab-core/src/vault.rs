@@ -1338,6 +1338,7 @@ impl Vault {
         display_name: String,
         login_name: String,
     ) -> Result<i64, CoreError> {
+        crate::banking_gate::check_connector(connector.as_str())?;
         let db = self.db()?;
         Ok(Self::add_bank_connection_inner(&db, connector, display_name, login_name)?.0)
     }
@@ -1365,8 +1366,9 @@ impl Vault {
                 message: tr("Die FinTS-URL muss mit https:// beginnen.").into(),
             });
         }
-        let db = self.db()?;
         let key = ConnectorKind::fints_key(&blz);
+        crate::banking_gate::check_connector(&key)?;
+        let db = self.db()?;
         let (id, _) = Self::add_bank_connection_keyed(
             &db,
             ConnectorKind::FinTsGeneric,

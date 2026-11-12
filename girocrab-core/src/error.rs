@@ -39,6 +39,11 @@ pub enum CoreError {
         message: String,
     },
     SessionClosed,
+    /// This app version may no longer contact the bank (signed banking
+    /// policy, see `banking_gate`). `message` is already localised by the app.
+    BankingBlocked {
+        message: String,
+    },
 }
 
 impl From<rusqlite::Error> for CoreError {
@@ -106,6 +111,7 @@ impl fmt::Display for CoreError {
                 trf("Browser-Anmeldung nötig: {0}", &[message])
             }
             CoreError::SessionClosed => tr("Dieser Abruf ist nicht mehr aktiv").to_string(),
+            CoreError::BankingBlocked { message } => message.clone(),
         };
         f.write_str(&text)
     }

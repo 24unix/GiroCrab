@@ -3011,6 +3011,7 @@ func describe(_ error: Error) -> String {
     case .Protocol(let m): return String(localized: "Protokollfehler: \(m)")
     case .SessionClosed: return String(localized: "Dieser Abruf ist nicht mehr aktiv.")
     case .BrowserLoginRequired(let m): return m
+    case .BankingBlocked(let m): return m
     }
 }
 
