@@ -156,7 +156,13 @@ struct CategorizerSheet: View {
         let q = query.lowercased()
         let shown = q.isEmpty ? leaves : leaves.filter { $0.path.lowercased().contains(q) }
         VStack(alignment: .leading, spacing: 12) {
-            if let b = model.selectedBooking {
+            if model.isMultiSelection {
+                let many = model.selectedBookings
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(many.count) Buchungen kategorisieren").font(.headline)
+                    Text(Money.format(many.reduce(0) { $0 + $1.amountCents })).font(.caption.monospacedDigit()).foregroundStyle(Theme.secondary)
+                }
+            } else if let b = model.selectedBooking {
                 HStack(spacing: 10) {
                     MerchantSignet(merchant: b.merchant, categorySymbol: b.categorySymbol)
                     VStack(alignment: .leading) {
@@ -173,7 +179,7 @@ struct CategorizerSheet: View {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 6)], spacing: 6) {
                     ForEach(shown) { c in
-                        CategoryChip(category: c, selected: c.id == model.selectedBooking?.categoryId) { pick(c.id) }
+                        CategoryChip(category: c, selected: currentCategory == c.id) { pick(c.id) }
                             .help(c.path)
                     }
                 }
@@ -190,8 +196,18 @@ struct CategorizerSheet: View {
         .onAppear { focused = true }
     }
 
+    /// The category all selected bookings share (marked), else none.
+    private var currentCategory: Int64? {
+        let ids = Set((model.isMultiSelection ? model.selectedBookings : model.selectedBooking.map { [$0] } ?? []).map(\.categoryId))
+        return ids.count == 1 ? ids.first! : nil
+    }
+
     private func pick(_ id: Int64?) {
-        if let b = model.selectedBooking { model.setCategory(id, for: b) }
+        if model.isMultiSelection {
+            model.setCategory(id, for: model.selectedBookings)
+        } else if let b = model.selectedBooking {
+            model.setCategory(id, for: b)
+        }
         dismiss()
     }
 }

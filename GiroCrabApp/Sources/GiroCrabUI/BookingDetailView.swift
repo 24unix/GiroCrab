@@ -11,7 +11,9 @@ struct InspectorView: View {
                 if case .account(let id) = model.sidebarSelection, let a = model.account(for: id), a.kind == .loan {
                     LoanProgressCard(account: a)
                 }
-                if let b = model.selectedBooking {
+                if model.isMultiSelection {
+                    MultiSelectionCard()
+                } else if let b = model.selectedBooking {
                     ReceiptCard(booking: b)
                     NoteCard(booking: b).id(b.id)
                     if b.amountCents > 0 { SalaryCard(booking: b) }
@@ -488,3 +490,38 @@ struct RawDataCard: View {
     }
 }
 
+/// Inspector for several selected bookings: count, sums and the bulk actions.
+struct MultiSelectionCard: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let many = model.selectedBookings
+        let income = many.filter { $0.amountCents > 0 }.reduce(Int64(0)) { $0 + $1.amountCents }
+        let expense = many.filter { $0.amountCents < 0 }.reduce(Int64(0)) { $0 + $1.amountCents }
+        VStack(alignment: .leading, spacing: 12) {
+            Label("\(many.count) Buchungen ausgewählt", systemImage: "checkmark.circle")
+                .font(.headline)
+            VStack(alignment: .leading, spacing: 4) {
+                LabeledContent("Summe", value: Money.format(income + expense))
+                if income != 0 { LabeledContent("Einnahmen", value: Money.format(income)) }
+                if expense != 0 { LabeledContent("Ausgaben", value: Money.format(expense)) }
+            }
+            .font(.callout.monospacedDigit())
+            Button {
+                model.showCategorizer = true
+            } label: {
+                Label("Kategorisieren …", systemImage: "tag").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            Button("Auswahl aufheben") {
+                if let id = model.selectedBookingID { model.selectBooking(id) }
+            }
+            Text("⌘-Klick fügt eine Buchung hinzu oder entfernt sie, ⇧-Klick wählt einen Bereich, ⌘A alle.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+}

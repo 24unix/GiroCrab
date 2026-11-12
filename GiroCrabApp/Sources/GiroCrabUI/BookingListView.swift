@@ -147,7 +147,12 @@ struct BookingStreamView: View {
         .focusable()
         .focusEffectDisabled()
         .focused($focused)
-        .onAppear { focused = model.options.screenshotPath == nil }
+        .onAppear {
+            focused = model.options.screenshotPath == nil
+            #if os(macOS)
+            ClickModifiers.install()
+            #endif
+        }
         .onKeyPress(.downArrow) { model.moveSelection(1); return .handled }
         .onKeyPress(.upArrow) { model.moveSelection(-1); return .handled }
         .onKeyPress(.return) {
@@ -168,6 +173,8 @@ struct BookingStreamView: View {
             return .handled
         }
         #if os(macOS)
+        // Bearbeiten › Alles auswählen (⌘A) selects all listed bookings
+        .onCommand(#selector(NSResponder.selectAll(_:))) { model.selectAllBookings() }
         // ⌘C copies the selected booking (Edit ▸ Copy)
         .onCopyCommand {
             guard let b = model.selectedBooking else { return [] }
@@ -311,7 +318,7 @@ struct DayCard: View {
             .padding(.vertical, 10)
             Rectangle().fill(Theme.border).frame(height: 1)
             ForEach(Array(day.bookings.enumerated()), id: \.element.id) { i, b in
-                BookingRow(booking: b, selected: model.selectedBookingID == b.id)
+                BookingRow(booking: b, selected: model.selectedBookingIDs.contains(b.id))
                     .id(b.id)
                     .dropDestination(for: URL.self) { urls, _ in
                         model.selectedBookingID = b.id
@@ -319,8 +326,17 @@ struct DayCard: View {
                         return !urls.isEmpty
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture { model.selectedBookingID = b.id; model.showBookingSheet = true }
-                    .accessibilityAddTraits(model.selectedBookingID == b.id ? [.isButton, .isSelected] : .isButton)
+                    .onTapGesture {
+                        #if os(macOS)
+                        // Finder-style: ⌘-click adds/removes, ⇧-click selects a range.
+                        let flags = ClickModifiers.atLastMouseDown
+                        model.selectBooking(b.id, toggle: flags.contains(.command), extend: flags.contains(.shift))
+                        #else
+                        model.selectBooking(b.id)
+                        #endif
+                        model.showBookingSheet = true
+                    }
+                    .accessibilityAddTraits(model.selectedBookingIDs.contains(b.id) ? [.isButton, .isSelected] : .isButton)
                     // simultaneous, so single clicks keep selecting without the double-click delay
                     .simultaneousGesture(TapGesture(count: 2).onEnded { model.editNote(for: b) })
                     .contextMenu { rowMenu(b) }
@@ -337,7 +353,11 @@ struct DayCard: View {
 
     @ViewBuilder
     private func rowMenu(_ b: Booking) -> some View {
-        Button("Kategorisieren …", systemImage: "tag") { model.selectedBookingID = b.id; model.showCategorizer = true }
+        Button(model.isMultiSelection && model.selectedBookingIDs.contains(b.id)
+               ? "\(model.selectedBookingIDs.count) Buchungen kategorisieren …" : "Kategorisieren …", systemImage: "tag") {
+            if !model.selectedBookingIDs.contains(b.id) { model.selectedBookingID = b.id }
+            model.showCategorizer = true
+        }
         Button("Regel für diesen Händler erstellen …", systemImage: "wand.and.stars") { model.openRuleEditor(from: b) }
         Button("Notiz bearbeiten …", systemImage: "note.text") { model.editNote(for: b) }
         Button("Umsatz aufteilen (Splitbuchung) …", systemImage: "arrow.triangle.branch") { model.splitBooking = b }
@@ -598,3 +618,22 @@ struct MainToolbar: ViewModifier {
         #endif
     }
 }
+
+#if os(macOS)
+/// Modifier keys held at the last mouse-down in the app. SwiftUI runs a tap
+/// gesture after the event has passed, so `NSApp.currentEvent` no longer
+/// carries them; a local monitor records them as the click arrives.
+@MainActor
+enum ClickModifiers {
+    private(set) static var atLastMouseDown: NSEvent.ModifierFlags = []
+    private static var monitor: Any?
+
+    static func install() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { event in
+            atLastMouseDown = event.modifierFlags.intersection([.command, .shift, .option, .control])
+            return event
+        }
+    }
+}
+#endif

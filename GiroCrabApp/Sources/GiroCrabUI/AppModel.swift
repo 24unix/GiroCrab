@@ -325,8 +325,51 @@ public final class AppModel {
     var selectedBookingID: Booking.ID? {
         didSet {
             if stickyBooking?.id != selectedBookingID { stickyBooking = nil }
+            // A plain selection (click, arrow keys, jumps) replaces a multiple one.
+            if let id = selectedBookingID {
+                if !selectedBookingIDs.contains(id) { selectedBookingIDs = [id] }
+            } else if !selectedBookingIDs.isEmpty {
+                selectedBookingIDs = []
+            }
             reloadMerchantStats()
         }
+    }
+    /// All selected bookings (⌘-click adds/removes, ⇧-click selects a range,
+    /// ⌘A all visible). `selectedBookingID` is the one shown in the inspector.
+    var selectedBookingIDs: Set<Booking.ID> = []
+    var isMultiSelection: Bool { selectedBookingIDs.count > 1 }
+    /// The selected bookings in list order.
+    var selectedBookings: [Booking] { visibleBookings.filter { selectedBookingIDs.contains($0.id) } }
+
+    /// Click on a booking row: plain = only this one, `toggle` (⌘) adds or
+    /// removes it, `extend` (⇧) selects the range from the current booking.
+    func selectBooking(_ id: Booking.ID, toggle: Bool = false, extend: Bool = false) {
+        let list = visibleBookings.map(\.id)
+        if extend, let anchor = selectedBookingID, let a = list.firstIndex(of: anchor), let b = list.firstIndex(of: id) {
+            selectedBookingIDs = Set(list[min(a, b)...max(a, b)])
+            selectedBookingID = id
+        } else if toggle {
+            if selectedBookingIDs.contains(id) {
+                selectedBookingIDs.remove(id)
+                if selectedBookingID == id {
+                    selectedBookingID = list.first { selectedBookingIDs.contains($0) }
+                }
+            } else {
+                selectedBookingIDs.insert(id)
+                selectedBookingID = id
+            }
+        } else {
+            selectedBookingIDs = [id]
+            selectedBookingID = id
+        }
+    }
+
+    /// Bearbeiten › Alles auswählen (⌘A) in the booking list.
+    func selectAllBookings() {
+        let ids = visibleBookings.map(\.id)
+        guard !ids.isEmpty else { return }
+        selectedBookingIDs = Set(ids)
+        if selectedBookingID.map({ !selectedBookingIDs.contains($0) }) ?? true { selectedBookingID = ids.first }
     }
     /// A booking that left the filtered list because the user just edited it
     /// (e.g. "kein Gehalt" in the salary period). It stays selected and visible
@@ -1634,14 +1677,22 @@ public final class AppModel {
         guard !list.isEmpty else { return }
         let idx = selectedBookingID.flatMap { id in list.firstIndex { $0.id == id } } ?? -1
         let next = max(0, min(list.count - 1, idx + delta))
+        selectedBookingIDs = []
         selectedBookingID = list[next].id
     }
 
     // MARK: - Editing
 
     func setCategory(_ categoryID: Int64?, for booking: Booking) {
-        guard let vault else { return }
-        run { try vault.setTransactionCategory(transactionId: booking.id, categoryId: categoryID) }
+        setCategory(categoryID, for: [booking])
+    }
+
+    /// One category for several bookings (multiple selection); reloads once.
+    func setCategory(_ categoryID: Int64?, for bookings: [Booking]) {
+        guard let vault, !bookings.isEmpty else { return }
+        run {
+            for b in bookings { try vault.setTransactionCategory(transactionId: b.id, categoryId: categoryID) }
+        }
         reloadBookings(); reloadCategories(); reloadAccounts(); reloadRules(); reloadDashboard(); reloadMerchantStats()
     }
 
