@@ -198,6 +198,16 @@ if [ -z "$IDENTITY" ]; then
 fi
 echo "==> Identity: $IDENTITY"
 
+# Outside build/ and dist/: both are wiped while packaging.
+POLICY_DIR="$(mktemp -d)"
+echo "==> Banking policy: fetch + verify (aborts on an invalid signature)"
+scripts/banking-policy.sh fetch "$POLICY_DIR"
+export GIROCRAB_BANKING_POLICY_DIR="$POLICY_DIR"
+POLICY_FILES=()
+if [ -f "$POLICY_DIR/banking-policy.json" ]; then
+  POLICY_FILES=("$POLICY_DIR/banking-policy.json" "$POLICY_DIR/banking-policy.json.sig")
+fi
+
 if [ "$NIGHTLY" -eq 1 ]; then
   CHANNEL="nightly"
   # <last v* tag's bundle version>.<UTC timestamp>: sorts after that tag and
@@ -209,16 +219,6 @@ if [ "$NIGHTLY" -eq 1 ]; then
   STAMP="$(date -u +%Y%m%d%H%M)"
   export GIROCRAB_BUILD_VERSION="${LAST_BUILD}.${STAMP}"
   export GIROCRAB_VERSION="${LAST_TAG#v}-nightly.${STAMP}"
-fi
-
-# Outside build/ and dist/: both are wiped while packaging.
-POLICY_DIR="$(mktemp -d)"
-echo "==> Banking policy: fetch + verify (aborts on an invalid signature)"
-scripts/banking-policy.sh fetch "$POLICY_DIR"
-export GIROCRAB_BANKING_POLICY_DIR="$POLICY_DIR"
-POLICY_FILES=()
-if [ -f "$POLICY_DIR/banking-policy.json" ]; then
-  POLICY_FILES=("$POLICY_DIR/banking-policy.json" "$POLICY_DIR/banking-policy.json.sig")
 fi
 
 # Sparkle key rotation / lost key: decide the keys BEFORE packaging – the
