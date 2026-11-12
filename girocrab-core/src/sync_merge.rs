@@ -609,8 +609,9 @@ fn cat_survivor<'a>(state: &'a BTreeMap<String, Cat>, uuid: &'a str) -> Option<&
 
 /// A parent that was combined into another moves its children to the
 /// survivor; a live child of a deleted parent moves to the top level (a
-/// deleted child keeps it). Cycles from crossing moves are cut at their
-/// lowest uuid. Derived: no stamps.
+/// deleted child keeps it). A cycle from crossing moves is cut at its oldest
+/// move (smallest `parent_ms`, then uuid): that child goes to the top level.
+/// Derived: no stamps.
 fn resolve_parents(state: &mut BTreeMap<String, Cat>) {
     let all: Vec<String> = state.keys().cloned().collect();
     for u in &all {
@@ -653,8 +654,13 @@ fn resolve_parents(state: &mut BTreeMap<String, Cat>) {
             }
         }
         let Some(cycle) = cycle else { break };
-        let lowest = cycle.iter().min().unwrap().clone();
-        state.get_mut(&lowest).unwrap().parent = None;
+        // the older move loses (ties: lower uuid); its stamp stays
+        let oldest = cycle
+            .iter()
+            .min_by_key(|u| (state[*u].parent_ms, (*u).clone()))
+            .unwrap()
+            .clone();
+        state.get_mut(&oldest).unwrap().parent = None;
     }
 }
 

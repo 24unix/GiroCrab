@@ -2018,3 +2018,113 @@ fn v7_snapshot_cannot_revive_deleted_category() {
         assert!(v.list_rules().unwrap().is_empty());
     }
 }
+
+/// X and Y at the top level on A, B and a third vault C (pre-move state);
+/// Y has the lower uuid, so cutting the cycle by uuid alone would drop the
+/// newer move.
+fn crossing_setup(tag: &str) -> (Arc<Vault>, Arc<Vault>, Arc<Vault>) {
+    let dir = temp_dir(tag);
+    let (a, b, c) = (open(&dir, "a.db"), open(&dir, "b.db"), open(&dir, "c.db"));
+    for (name, uuid) in [("X", "bbbb"), ("Y", "aaaa")] {
+        let id = a
+            .create_category(name.into(), None, "tag".into(), "#111111".into())
+            .unwrap();
+        a.db()
+            .unwrap()
+            .execute(
+                "UPDATE categories SET uuid = ?1, name_ms=1, parent_ms=1, symbol_ms=1, color_ms=1,
+                        budget_ms=1, order_ms=1 WHERE id = ?2",
+                params![uuid, id],
+            )
+            .unwrap();
+    }
+    merge(&b, &a);
+    merge(&c, &a);
+    let id = |v: &Vault, name: &str| {
+        n(
+            v,
+            &format!("SELECT id FROM categories WHERE name = '{name}'"),
+        )
+    };
+    // A moves X under Y (older), B moves Y under X (newer)
+    a.update_category(
+        id(&a, "X"),
+        "X".into(),
+        Some(id(&a, "Y")),
+        "tag".into(),
+        "#111111".into(),
+    )
+    .unwrap();
+    a.db()
+        .unwrap()
+        .execute("UPDATE categories SET parent_ms = 100 WHERE name = 'X'", [])
+        .unwrap();
+    b.update_category(
+        id(&b, "Y"),
+        "Y".into(),
+        Some(id(&b, "X")),
+        "tag".into(),
+        "#111111".into(),
+    )
+    .unwrap();
+    b.db()
+        .unwrap()
+        .execute("UPDATE categories SET parent_ms = 200 WHERE name = 'Y'", [])
+        .unwrap();
+    (a, b, c)
+}
+
+fn assert_newer_move_kept(v: &Vault) {
+    assert_eq!(
+        text(
+            v,
+            "SELECT c.name || '>' || IFNULL(p.name, '-') FROM categories c
+             LEFT JOIN categories p ON p.id = c.parent_id ORDER BY c.name LIMIT 1"
+        ),
+        "X>-"
+    );
+    assert_eq!(
+        text(
+            v,
+            "SELECT c.name || '>' || IFNULL(p.name, '-') FROM categories c
+             LEFT JOIN categories p ON p.id = c.parent_id WHERE c.name = 'Y'"
+        ),
+        "Y>X"
+    );
+}
+
+#[test]
+fn crossing_moves_do_not_create_a_cycle() {
+    for a_first in [true, false] {
+        let (a, b, _) = crossing_setup("cycle");
+        if a_first {
+            both_ways(&a, &b);
+        } else {
+            both_ways(&b, &a);
+        }
+        assert_newer_move_kept(&a);
+        assert_newer_move_kept(&b);
+    }
+    // a stale third copy with the pre-move state does not bring the cycle back
+    let (a, b, c) = crossing_setup("cycle3");
+    both_ways(&a, &b);
+    merge(&c, &a);
+    merge(&a, &c);
+    merge(&b, &c);
+    assert_converged(&a, &c);
+    assert_converged(&b, &c);
+    for v in [&a, &b, &c] {
+        assert_newer_move_kept(v);
+    }
+    // and the other way round: the stale copy merges each mover first
+    let (a, b, c) = crossing_setup("cycle3b");
+    merge(&c, &a);
+    merge(&c, &b);
+    merge(&a, &c);
+    merge(&b, &c);
+    assert_converged(&a, &c);
+    assert_converged(&b, &c);
+    for v in [&a, &b, &c] {
+        assert_newer_move_kept(v);
+    }
+}
