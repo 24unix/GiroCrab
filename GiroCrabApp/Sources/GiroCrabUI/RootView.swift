@@ -55,6 +55,8 @@ public struct GiroCrabScenes: Scene {
                     .disabled(model.vault == nil)
                 Button("Neues Darlehen …") { model.openLoanEditor(.create) }
                     .disabled(model.vault == nil)
+                Button("Neue Hauptkategorie …") { model.newCategoryRequest = NewCategoryRequest(parent: nil) }
+                    .disabled(model.vault == nil)
             }
             // Ablage › Import/Export (every toolbar command is also in the menu bar).
             CommandGroup(replacing: .importExport) {
@@ -359,6 +361,7 @@ struct MainSplitView: View {
         .navigationSplitViewStyle(.balanced)
         .quickLookPreview($model.quickLookURL)
         .accountGroupDialogs($model.groupDialog)
+        .newCategoryDialog()
         .manualLoanSheets(model)
         #if os(macOS)
         // AppModel.openSettings(_:), e.g. "Gruppen bearbeiten …" → Settings › Kontogruppen

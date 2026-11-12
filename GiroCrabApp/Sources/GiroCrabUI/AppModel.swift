@@ -468,6 +468,8 @@ public final class AppModel {
     var demoSettingsSheet: String?
     /// The one group dialog on screen (new / rename / delete / move account).
     var groupDialog: GroupDialog?
+    /// The "new category" name prompt on screen (sidebar, menu bar, ⌘K).
+    var newCategoryRequest: NewCategoryRequest?
     var expandedCategories: Set<Int64> = []
     var showRuleEditor = false
     var ruleDraft: Rule?
@@ -2133,6 +2135,11 @@ public final class AppModel {
         guard let vault else { return }
         run { _ = try vault.createCategory(name: name, parentId: parent, sfSymbol: symbol, colorHex: color) }
         reloadCategories()
+    }
+
+    /// "Hauptkategorie › Unterkategorie" for a category id (nil = top level).
+    func categoryPath(_ id: Int64?) -> String? {
+        id.flatMap { id in categories.first { $0.id == id }?.path }
     }
 
     func deleteCategory(_ id: Int64) {
