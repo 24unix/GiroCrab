@@ -12889,6 +12889,50 @@
           }
         }
       }
+    },
+    "%lld Buchungen ausgewählt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld transactions selected"
+          }
+        }
+      }
+    },
+    "%lld Buchungen kategorisieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Categorize %lld Transactions"
+          }
+        }
+      }
+    },
+    "%lld Buchungen kategorisieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Categorize %lld Transactions…"
+          }
+        }
+      }
+    },
+    "⌘-Klick fügt eine Buchung hinzu oder entfernt sie, ⇧-Klick wählt einen Bereich, ⌘A alle." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⌘-click adds or removes a transaction, ⇧-click selects a range, ⌘A all."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
