@@ -1,0 +1,66 @@
+name: Release integrity
+
+# Checks the published update feed and banking policy with the PUBLIC keys in
+# the repository: signatures, release assets behind every appcast item, and a
+# banking-policy `sequence` that never goes down. No secrets needed – also runs
+# in forks (against their own releases, when enabled there).
+# Findings go to ONE open issue labelled `release-integrity`. See
+# docs/release-integrity.md.
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: release-integrity
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  verify:
+    runs-on: macos-latest   # CryptoKit for Ed25519 – no extra dependencies
+    steps:
+      - uses: actions/checkout@v4
+
+      # Last seen banking-policy sequence (rollback detection across runs).
+      - uses: actions/cache/restore@v4
+        with:
+          path: .integrity-state
+          key: integrity-state-${{ github.run_id }}
+          restore-keys: integrity-state-
+
+      - name: Verify releases
+        id: verify
+        continue-on-error: true
+        run: |
+          scripts/verify-release-integrity.sh \
+            --repo "${{ github.repository }}" \
+            --state .integrity-state/state.json \
+            --report "$RUNNER_TEMP/integrity-report.md"
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .integrity-state
+          key: integrity-state-${{ github.run_id }}
+
+      - name: Report findings
+        if: steps.verify.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          {
+            cat "$RUNNER_TEMP/integrity-report.md"
+            echo
+            echo "Lauf: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > "$RUNNER_TEMP/issue.md"
+          scripts/verify-release-integrity.sh --report-issue "$RUNNER_TEMP/issue.md"
+          exit 1
