@@ -73,7 +73,7 @@ public struct GiroCrabScenes: Scene {
             CommandMenu("Konten") {
                 Button("Alle Konten abrufen") { model.requestSyncAll() }
                     .keyboardShortcut("r", modifiers: .command)
-                    .disabled(model.vault == nil)
+                    .disabled(model.vault == nil || model.bankingBlocksAll)
                 Divider()
                 Button("Regeln …") { model.openRuleEditor() }
                     .keyboardShortcut("k", modifiers: [.command, .option])

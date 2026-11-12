@@ -128,10 +128,18 @@ struct TransferSheetView: View {
                 .labelsHidden()
             }
             if account != nil && !canSend {
-                Label("Von diesem Konto kann GiroCrab nicht direkt überweisen. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank.", systemImage: "qrcode")
-                    .font(.caption).foregroundStyle(Theme.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 152)
+                if model.bankingGate(forAccount: account?.id) != nil {
+                    // Security lock: no direct transfer, the GiroCode needs no bank contact.
+                    Label("Die Sicherheitssperre verhindert direkte Überweisungen von diesem Konto. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank.", systemImage: "exclamationmark.shield")
+                        .font(.caption).foregroundStyle(Theme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 152)
+                } else {
+                    Label("Von diesem Konto kann GiroCrab nicht direkt überweisen. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank.", systemImage: "qrcode")
+                        .font(.caption).foregroundStyle(Theme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 152)
+                }
             }
             field("Empfänger") {
                 VStack(alignment: .leading, spacing: 6) {

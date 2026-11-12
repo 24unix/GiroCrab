@@ -81,6 +81,9 @@ else
   echo "==> In-app updates disabled (no Sparkle public key configured)"
 fi
 
+# Build time (UTC). The banking policy bundled below counts for 90 days
+# from here on devices that never reached GitHub (docs/banking-policy.md).
+BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -100,11 +103,22 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>NSHighResolutionCapable</key><true/>
     <key>NSFaceIDUsageDescription</key><string>GiroCrab nutzt Face ID / Touch ID, um Ihren verschlüsselten Tresor zu entsperren.</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>GiroCrabDistribution</key><string>developer-id</string>
+    <key>GiroCrabBuildDate</key><string>${BUILD_DATE}</string>
 ${ICON_KEY}
 ${SPARKLE_KEYS}
 </dict>
 </plist>
 PLIST
+
+# Banking policy floor (docs/banking-policy.md): notarize.sh downloads the
+# current signed policy into build/banking-policy before packaging. It is
+# only a lower bound for fresh installs; the app still checks online.
+POLICY_DIR="${GIROCRAB_BANKING_POLICY_DIR:-build/banking-policy}"
+if [[ -f "$POLICY_DIR/banking-policy.json" && -f "$POLICY_DIR/banking-policy.json.sig" ]]; then
+  echo "==> Bundling banking policy (floor)"
+  cp "$POLICY_DIR/banking-policy.json" "$POLICY_DIR/banking-policy.json.sig" "$APP/Contents/Resources/"
+fi
 
 # UI translations: the SwiftUI code looks strings up in Bundle.main (this bundle).
 echo "==> Compiling localisations"

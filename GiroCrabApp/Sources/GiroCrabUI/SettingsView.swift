@@ -44,7 +44,7 @@ struct SettingsView: View {
                 .tag(SettingsTab.documents)
             #endif
             SecuritySettings()
-                .settingsPane(height: 420)
+                .settingsPane(height: 760)   // incl. "Sicherheitssperre für Bankverbindungen"
                 .disabled(model.vault == nil)
                 .tabItem { Label("Sicherheit", systemImage: "lock.shield") }
                 .tag(SettingsTab.security)
@@ -142,7 +142,8 @@ struct BankConnectionsSettings: View {
                             .help("Bearbeiten / Details")
                         Button { model.requestSync(c) } label: { Image(systemName: "arrow.triangle.2.circlepath") }
                             .buttonStyle(.borderless)
-                            .help("Jetzt abrufen")
+                            .help(model.bankingGate(for: c)?.message ?? String(localized: "Jetzt abrufen"))
+                            .disabled(model.bankingGate(for: c) != nil)
                         Button(role: .destructive) { confirmRemove = c } label: { Label("Bankzugang entfernen …", systemImage: "trash") }
                             .labelStyle(.iconOnly)
                             .buttonStyle(.borderless)
@@ -384,6 +385,7 @@ struct SecuritySettings: View {
                 LabeledContent("Core-Version", value: coreVersion())
             }
             ICloudSyncSection()
+            BankingPolicySection()
             Section("Datenschutz") {
                 Text("GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server, kein Tracking und keine Cloud-Synchronisation. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht.")
                     .font(.callout).foregroundStyle(.secondary)

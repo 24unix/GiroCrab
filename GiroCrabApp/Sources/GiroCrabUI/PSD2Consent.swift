@@ -107,11 +107,15 @@ extension AppModel {
         let hours = autoSyncHours
         guard hours > 0 else { return }
         guard let due = connections.first(where: {
-            $0.connector == .enableBanking
+            $0.connector == .enableBanking && bankingGate(for: $0) == nil
                 && PSD2Consent.autoSyncDue(lastSyncUnix: $0.lastSyncUnix, consentEnd: consentEnd($0), hours: hours, now: now)
         }) else { return }
-        quietSyncConnectionID = due.id
-        startSync(due, secret: "")
+        // Quiet as well: a blocked login is simply not synced (the banner explains why).
+        withFreshBankingPolicy { [self] in
+            guard bankingGate(for: due) == nil, syncingConnectionID == nil else { return }
+            quietSyncConnectionID = due.id
+            startSync(due, secret: "")
+        }
     }
 
     // MARK: expiry notification

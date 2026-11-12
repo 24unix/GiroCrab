@@ -25,6 +25,11 @@
 # In-app updates: every run merges its item into the one signed appcast.xml on
 # the latest stable release (channels: stable, beta, nightly), see
 # scripts/make-appcast.sh and docs/auto-updates.md.
+# Banking policy (docs/banking-policy.md): the current signed policy from
+# policy/ on main is checked and bundled as floor (fresh installs that never
+# reach GitHub trust it for 90 days from GiroCrabBuildDate); an invalid
+# signature or nothing published aborts the release. Skipped while the policy
+# key is a placeholder.
 #   --ios           also bump iOS build number, archive for iOS, and upload to TestFlight
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -195,6 +200,17 @@ if [ -z "$IDENTITY" ]; then
 fi
 echo "==> Identity: $IDENTITY"
 
+# Outside build/ and dist/: both are wiped while packaging.
+POLICY_DIR="$(mktemp -d)"
+# Bundled as the floor for a fresh install; published in policy/ on main.
+echo "==> Banking policy: fetch + verify (aborts on an invalid signature)"
+scripts/banking-policy.sh fetch "$POLICY_DIR"
+export GIROCRAB_BANKING_POLICY_DIR="$POLICY_DIR"
+POLICY_FILES=()
+if [ -f "$POLICY_DIR/banking-policy.json" ]; then
+  POLICY_FILES=("$POLICY_DIR/banking-policy.json" "$POLICY_DIR/banking-policy.json.sig")
+fi
+
 if [ "$NIGHTLY" -eq 1 ]; then
   CHANNEL="nightly"
   # <last v* tag's bundle version>.<UTC timestamp>: sorts after that tag and
@@ -282,6 +298,16 @@ if [ -n "$CHANNEL" ]; then
     exit 1
   fi
   echo "app version as expected: $got_short ($got_build, $CHANNEL)"
+fi
+
+echo "--- banking policy in the build"
+scripts/banking-policy.sh check-app "$VAPP"
+if [ ${#POLICY_FILES[@]} -gt 0 ]; then
+  cmp -s "$VAPP/Contents/Resources/banking-policy.json" "$POLICY_DIR/banking-policy.json" \
+    || { echo "error: bundled banking-policy.json missing or not the verified one" >&2; exit 1; }
+  # without it the app gets no 90-day allowance for the bundled policy
+  /usr/libexec/PlistBuddy -c "Print :GiroCrabBuildDate" "$VAPP/Contents/Info.plist" >/dev/null 2>&1 \
+    || { echo "error: GiroCrabBuildDate missing in Info.plist" >&2; exit 1; }
 fi
 
 echo "--- launch smoke test"

@@ -181,6 +181,9 @@
 				ENABLE_PREVIEWS = YES;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
+				"GIROCRAB_DISTRIBUTION[sdk=iphoneos*]" = ios;
+				"GIROCRAB_DISTRIBUTION[sdk=iphonesimulator*]" = ios;
+				"GIROCRAB_DISTRIBUTION[sdk=macosx*]" = "mac-app-store";
 				INFOPLIST_KEY_CFBundleDisplayName = GiroCrab;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
@@ -221,6 +224,9 @@
 				STRIP_INSTALLED_PRODUCT = YES;
 				STRIP_STYLE = all;
 				GENERATE_INFOPLIST_FILE = YES;
+				"GIROCRAB_DISTRIBUTION[sdk=iphoneos*]" = ios;
+				"GIROCRAB_DISTRIBUTION[sdk=iphonesimulator*]" = ios;
+				"GIROCRAB_DISTRIBUTION[sdk=macosx*]" = "mac-app-store";
 				INFOPLIST_KEY_CFBundleDisplayName = GiroCrab;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";

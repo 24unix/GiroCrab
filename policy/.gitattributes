@@ -1,0 +1,2 @@
+# Signed files: byte-exact, never normalised by git (diffs stay readable).
+banking-policy.json* -text merge=binary

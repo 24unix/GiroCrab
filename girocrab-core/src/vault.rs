@@ -1330,6 +1330,22 @@ impl Vault {
         Ok(out)
     }
 
+    /// Connector key of a bank login (`fints:<BLZ>`,
+    /// `enablebanking:<country>:<bank>`, `comdirect`, …) – what the banking
+    /// policy's connector IDs are matched against.
+    pub fn connection_key(&self, connection_id: i64) -> Result<String, CoreError> {
+        let db = self.db()?;
+        db.query_row(
+            "SELECT connector FROM bank_connections WHERE id = ?1",
+            [connection_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| CoreError::NotFound {
+            what: trf("Bankverbindung {0}", &[&connection_id]),
+        })
+    }
+
     /// Adds a bank login. Credentials (PIN/password) are *not* stored here;
     /// they are passed to `begin_sync` each time.
     pub fn add_bank_connection(
@@ -1338,6 +1354,7 @@ impl Vault {
         display_name: String,
         login_name: String,
     ) -> Result<i64, CoreError> {
+        crate::banking_gate::check_connector(connector.as_str())?;
         let db = self.db()?;
         Ok(Self::add_bank_connection_inner(&db, connector, display_name, login_name)?.0)
     }
@@ -1365,8 +1382,9 @@ impl Vault {
                 message: tr("Die FinTS-URL muss mit https:// beginnen.").into(),
             });
         }
-        let db = self.db()?;
         let key = ConnectorKind::fints_key(&blz);
+        crate::banking_gate::check_connector(&key)?;
+        let db = self.db()?;
         let (id, _) = Self::add_bank_connection_keyed(
             &db,
             ConnectorKind::FinTsGeneric,
@@ -1410,6 +1428,7 @@ impl Vault {
                 message: tr("Bank oder Ländercode ungültig.").into(),
             });
         }
+        crate::banking_gate::check_connector(&key)?;
         let login = if login_name.trim().is_empty() {
             aspsp.clone()
         } else {

@@ -346,6 +346,13 @@ request is made for logos and everything stays 100 % local. **Never attach real 
 
 DE: Händler-Logos sind **standardmäßig deaktiviert** (Opt-in in den Einstellungen) – ohne Zustimmung werden keine Logos aus dem Netz geladen, alles bleibt zu 100 % lokal.
 
+**Security lock for bank connections:** if a version turns out to endanger bank access (e.g. a vulnerability in a
+connector), the publisher can publish a signed `banking-policy.json`; older versions then stop contacting banks until
+they are updated – reading and exporting keep working. Once activated, the app downloads this small signed file from
+GitHub at most every 15 minutes (no personal data). Details: [docs/banking-policy.md](docs/banking-policy.md).
+
+DE: **Sicherheitssperre für Bankverbindungen:** Enthält eine Version eine Sicherheitslücke oder einen schweren Fehler im Bankzugang, kann der Herausgeber eine signierte `banking-policy.json` veröffentlichen. Ältere Versionen kontaktieren dann keine Bank mehr, bis sie aktualisiert sind; Lesen und Exportieren bleiben möglich. Sobald aktiviert, lädt die App diese kleine Datei höchstens alle 15 Minuten von GitHub (ohne persönliche Daten). Details: [docs/banking-policy.md](docs/banking-policy.md).
+
 ## 🤖 KI-Transparenz / AI Transparency
 
 DE: GiroCrab entsteht in hybrider Mensch-KI-Entwicklung und ist Living Lab des Forschungsprojekts *„AI-enabled Transparency of AI Use in Software Creation Processes“*. Jeder PR bekommt automatisch eine **AI Provenance & Transparency Card**. Echte Finanzdaten kommen nie in Prompts.
