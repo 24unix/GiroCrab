@@ -1676,7 +1676,7 @@ pub(crate) fn adopt_account(
         // Prefer imported accounts without an IBAN; a connector that reports
         // none (Amazon Visa web login) may still find the card with the IBAN
         // MoneyMoney stored for it – if it is the only one of its kind here.
-        // includes soft-deleted rows: `store_fetch` revives what it adopts
+        // includes soft-deleted rows: `store_fetch` revives or skips them
         let single = |iban_filter: &str| -> CoreResult<Option<i64>> {
             let mut st = conn.prepare(&format!(
                 "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref LIKE 'moneymoney-db:%'
@@ -1706,6 +1706,10 @@ pub(crate) fn adopt_account(
         .optional()?
     };
     if let Some(id) = id {
+        // a deleted account that stays deleted keeps its sync key
+        if crate::sync_merge::fetch_keeps_account_deleted(conn, connection_id, id)? {
+            return Ok(Some(id));
+        }
         conn.execute(
             "UPDATE accounts SET connection_id = ?1, external_ref = ?2 WHERE id = ?3",
             params![connection_id, external_ref, id],

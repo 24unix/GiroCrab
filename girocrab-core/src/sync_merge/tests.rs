@@ -913,6 +913,7 @@ fn fetch_does_not_resurrect_deleted_booking() {
 
 #[test]
 fn fetch_revives_a_deleted_account_it_delivers() {
+    // deleted before the connection was added (again): the fetch revives it
     let v = open(&temp_dir("accrevive"), "a.db");
     let c = v
         .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
@@ -933,6 +934,102 @@ fn fetch_revives_a_deleted_account_it_delivers() {
         1
     );
     assert!(n(&v, "SELECT created_ms FROM accounts") > 2);
+}
+
+#[test]
+fn deleted_account_stays_deleted_when_another_device_fetches_it() {
+    let dir = temp_dir("accfetch");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let c_a = a
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    let fetch = || crate::connectors::FetchResult {
+        accounts: vec![remote_account("DE1"), remote_account("DE2")],
+        transactions: vec![remote_tx("DE1", "b1"), remote_tx("DE2", "b2")],
+        adjust_balances: true,
+        ..Default::default()
+    };
+    crate::connectors::store_fetch(&a, ConnectorKind::Comdirect, c_a, fetch()).unwrap();
+    exec(&a, "UPDATE bank_connections SET created_ms = 1");
+    exec(&a, "UPDATE accounts SET created_ms = 1");
+    both_ways(&a, &b);
+    let de1 = "SELECT id FROM accounts WHERE external_ref = 'DE1'";
+    a.set_account_archived(n(&a, de1), true).unwrap();
+    a.delete_account(n(&a, de1)).unwrap();
+    both_ways(&a, &b);
+    let c_b = n(&b, "SELECT id FROM bank_connections");
+    // B's next fetch (and A's) still delivers DE1: it stays deleted
+    crate::connectors::store_fetch(&b, ConnectorKind::Comdirect, c_b, fetch()).unwrap();
+    crate::connectors::store_fetch(&a, ConnectorKind::Comdirect, c_a, fetch()).unwrap();
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(n(v, "SELECT count(*) FROM accounts"), 2);
+        assert_eq!(
+            n(
+                v,
+                "SELECT deleted_ms > 0 FROM accounts WHERE external_ref = 'DE1'"
+            ),
+            1
+        );
+        assert_eq!(
+            n(
+                v,
+                "SELECT count(*) FROM transactions WHERE deleted_ms IS NULL"
+            ),
+            1
+        );
+    }
+    // the connection deleted and added again on B: the fetch revives DE1
+    // together with the bookings deleted with it
+    b.delete_bank_connection(c_b).unwrap();
+    let again = b
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    assert_eq!(again, c_b);
+    crate::connectors::store_fetch(&b, ConnectorKind::Comdirect, c_b, fetch()).unwrap();
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(
+            n(v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+            2
+        );
+        assert_eq!(
+            n(
+                v,
+                "SELECT count(*) FROM transactions WHERE deleted_ms IS NULL"
+            ),
+            2
+        );
+    }
+}
+
+/// An unconnected account (e.g. from an import) the user deleted: a fetch
+/// over a connection that already existed then neither adopts nor recreates it.
+#[test]
+fn fetch_does_not_adopt_a_deleted_unlinked_account() {
+    let v = open(&temp_dir("adoptdel"), "a.db");
+    let c = v
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    exec(&v, "UPDATE bank_connections SET created_ms = 1");
+    exec(&v, "INSERT INTO account_groups(id, name) VALUES (1, 'G')");
+    exec(
+        &v,
+        "INSERT INTO accounts(group_id, external_ref, name, iban, created_ms, deleted_ms)
+         VALUES (1, 'imported', 'Giro', 'DE02120300000000202051', 1, 5)",
+    );
+    let mut acc = remote_account("DE1");
+    acc.iban = "DE02120300000000202051".into();
+    let fetch = crate::connectors::FetchResult {
+        accounts: vec![acc],
+        transactions: vec![remote_tx("DE1", "b1")],
+        ..Default::default()
+    };
+    crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch).unwrap();
+    assert_eq!(n(&v, "SELECT count(*) FROM accounts"), 1);
+    assert_eq!(text(&v, "SELECT external_ref FROM accounts"), "imported");
+    assert_eq!(n(&v, "SELECT deleted_ms FROM accounts"), 5);
+    assert_eq!(n(&v, "SELECT count(*) FROM transactions"), 0);
 }
 
 #[test]
@@ -1058,11 +1155,16 @@ fn revive_brings_back_cascade_bookings_but_not_individually_deleted_ones() {
     assert!(live(&v).is_empty(), "bookings wait for the account");
     crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch()).unwrap();
     assert_eq!(live(&v), vec!["b2", "b3"]);
-    // account delete + fetch
+    // account delete (takes the connection along) + fetch: stays deleted
     let acc = n(&v, "SELECT id FROM accounts");
     v.set_account_archived(acc, true).unwrap();
     v.delete_account(acc).unwrap();
     assert!(live(&v).is_empty());
+    crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch()).unwrap();
+    assert!(live(&v).is_empty());
+    // connection re-added + fetch: the cascade bookings come back
+    v.add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
     crate::connectors::store_fetch(&v, ConnectorKind::Comdirect, c, fetch()).unwrap();
     assert_eq!(live(&v), vec!["b2", "b3"]);
     assert_eq!(

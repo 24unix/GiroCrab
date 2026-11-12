@@ -373,6 +373,30 @@ pub(crate) fn revive_connection(conn: &Connection, id: i64) -> CoreResult<()> {
     Ok(())
 }
 
+/// Whether a fetch over `connection_id` must leave the soft-deleted account
+/// `account_id` alone: it was deleted while the connection existed, so the
+/// bank still delivering it changes nothing (on any device). Only a connection
+/// added (again) after the deletion revives it (the same millisecond counts as
+/// after: on one device the re-add can only follow the delete). False for a
+/// live account.
+pub(crate) fn fetch_keeps_account_deleted(
+    conn: &Connection,
+    connection_id: i64,
+    account_id: i64,
+) -> CoreResult<bool> {
+    Ok(conn
+        .query_row(
+            // includes soft-deleted rows
+            "SELECT a.deleted_ms IS NOT NULL AND IFNULL(c.created_ms, 0) < a.deleted_ms
+               FROM accounts a LEFT JOIN bank_connections c ON c.id = ?1
+              WHERE a.id = ?2",
+            params![connection_id, account_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .unwrap_or(false))
+}
+
 /// A deleted account the bank (or an import) delivers again comes back with a
 /// new `created_ms`, together with the bookings deleted in the same cascade;
 /// individually deleted bookings stay deleted.

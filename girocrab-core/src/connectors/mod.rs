@@ -11,7 +11,7 @@
 //! Once ready, `fetch()` downloads accounts and transactions, which the
 //! `SyncSession` merges into the vault and runs the categorisation rules over.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -932,6 +932,8 @@ pub(crate) fn store_fetch(
         // Archived accounts the bank still delivers: nothing is stored for
         // them (no balance, bookings, positions or documents).
         let mut archived_ids: HashMap<String, i64> = HashMap::new();
+        // the deleted ones among them (their bookings are not "skipped")
+        let mut deleted_refs: HashSet<String> = HashSet::new();
         let mut accounts_updated = 0u32;
         let had_accounts: i64 = tx.query_row(
             "SELECT count(*) FROM accounts WHERE connection_id = ?1 AND deleted_ms IS NULL",
@@ -968,6 +970,13 @@ pub(crate) fn store_fetch(
                 None => adopt_unlinked(&tx, connection_id, &bank_name, acc)?,
             };
             if let Some(id) = existing {
+                // Deleted accounts stay deleted (like archived ones, nothing is
+                // stored), unless the connection was added again since.
+                if crate::sync_merge::fetch_keeps_account_deleted(&tx, connection_id, id)? {
+                    deleted_refs.insert(acc.external_ref.clone());
+                    archived_ids.insert(acc.external_ref.clone(), id);
+                    continue;
+                }
                 crate::sync_merge::revive_account_if_deleted(&tx, id)?;
                 let archived: bool = tx.query_row(
                     "SELECT archived_unix IS NOT NULL FROM accounts WHERE id = ?1",
@@ -1226,7 +1235,9 @@ pub(crate) fn store_fetch(
                             params![id, t.external_id],
                             |r| r.get(0),
                         )?;
-                        skipped_archived += u32::from(!known);
+                        if !deleted_refs.contains(&t.account_ref) {
+                            skipped_archived += u32::from(!known);
+                        }
                     }
                     continue;
                 };
@@ -2223,6 +2234,10 @@ fn adopt_unlinked(
         }
     }
     if let Some(id) = found {
+        // a deleted account that stays deleted keeps its sync key
+        if crate::sync_merge::fetch_keeps_account_deleted(tx, connection_id, id)? {
+            return Ok(found);
+        }
         tx.execute(
             "UPDATE accounts SET connection_id = ?1, external_ref = ?2, kind = ?3 WHERE id = ?4",
             params![connection_id, acc.external_ref, acc.kind.as_str(), id],
