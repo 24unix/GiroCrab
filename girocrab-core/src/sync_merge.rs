@@ -90,12 +90,33 @@ pub(crate) fn migrate(conn: &Connection) -> CoreResult<()> {
     }
     conn.execute_batch(
         "CREATE UNIQUE INDEX IF NOT EXISTS categories_uuid ON categories(uuid);
-         CREATE UNIQUE INDEX IF NOT EXISTS rules_uuid ON rules(uuid);
-         -- the rule merge clears rule_id per deleted rule on every merge
-         CREATE INDEX IF NOT EXISTS tx_rule ON transactions(rule_id);",
+         CREATE UNIQUE INDEX IF NOT EXISTS rules_uuid ON rules(uuid);",
     )?;
+    // Every count over bookings filters `deleted_ms IS NULL` now. Without the
+    // column in the index SQLite reads (and decrypts) each matching row: rule
+    // match counts and the per-account counts took ~40–85 ms each on 30k bookings.
+    for (name, cols) in COVERING_INDEXES {
+        let covers: i64 = conn.query_row(
+            "SELECT count(*) FROM pragma_index_info(?1) WHERE name = 'deleted_ms'",
+            [name],
+            |r| r.get(0),
+        )?;
+        if covers == 0 {
+            conn.execute_batch(&format!(
+                "DROP INDEX IF EXISTS {name}; CREATE INDEX {name} ON transactions({cols});"
+            ))?;
+        }
+    }
     fill_missing_uuids(conn)
 }
+
+/// Booking indexes widened by `deleted_ms` (vaults from before schema v8 have them without).
+/// `tx_rule` also serves the rule merge, which clears rule_id per deleted rule.
+const COVERING_INDEXES: &[(&str, &str)] = &[
+    ("tx_rule", "rule_id, deleted_ms"),
+    ("tx_account_category", "account_id, category_id, deleted_ms"),
+    ("tx_account_checked", "account_id, checked, deleted_ms"),
+];
 
 fn fold(name: &str) -> String {
     name.trim().to_lowercase()

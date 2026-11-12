@@ -90,16 +90,14 @@ CREATE INDEX IF NOT EXISTS holdings_account ON holdings(account_id);
 /// vaults; measured on a vault with ~19 000 bookings):
 /// - `tx_date_id`: the booking list is ordered by date, then id – with the
 ///   old `tx_date` (date only) SQLite sorted every result again.
-/// - `tx_account_category` / `tx_account_checked`: the sidebar counters
-///   ("ohne Kategorie", "neu") per account are answered from the index
-///   instead of reading every booking of the account.
+/// - The sidebar counters ("ohne Kategorie", "neu") per account use
+///   `tx_account_category` / `tx_account_checked`; they also cover
+///   `deleted_ms` and are defined in `sync_merge::COVERING_INDEXES`.
 /// - `tx_salary_marked`: the user-marked salary bookings, looked up on every
 ///   booking list, without scanning all bookings.
 const PERF_INDEXES: &str = "
 DROP INDEX IF EXISTS tx_date;
 CREATE INDEX IF NOT EXISTS tx_date_id ON transactions(booking_date DESC, id DESC);
-CREATE INDEX IF NOT EXISTS tx_account_category ON transactions(account_id, category_id);
-CREATE INDEX IF NOT EXISTS tx_account_checked ON transactions(account_id, checked);
 CREATE INDEX IF NOT EXISTS tx_salary_marked ON transactions(counterparty_iban) WHERE salary_flag = 1;
 ";
 

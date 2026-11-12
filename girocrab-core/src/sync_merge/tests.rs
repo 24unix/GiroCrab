@@ -64,6 +64,36 @@ fn bookings_are_indexed_by_rule() {
     assert_eq!(idx, ["tx_rule"]);
 }
 
+/// Counts filter `deleted_ms IS NULL`: the booking indexes they use cover it,
+/// also in vaults whose indexes predate the column (upgraded once, then kept).
+#[test]
+fn booking_count_indexes_cover_deleted_ms() {
+    let v = open(&temp_dir("coveridx"), "a.db");
+    let db = v.db().unwrap();
+    let cols = |name: &str| -> Vec<String> {
+        let mut st = db
+            .prepare("SELECT name FROM pragma_index_info(?1) ORDER BY seqno")
+            .unwrap();
+        let r = st.query_map([name], |r| r.get(0)).unwrap();
+        r.map(|r| r.unwrap()).collect()
+    };
+    db.execute_batch(
+        "DROP INDEX tx_account_checked; CREATE INDEX tx_account_checked ON transactions(account_id, checked);",
+    )
+    .unwrap();
+    migrate(&db).unwrap();
+    migrate(&db).unwrap();
+    assert_eq!(cols("tx_rule"), ["rule_id", "deleted_ms"]);
+    assert_eq!(
+        cols("tx_account_category"),
+        ["account_id", "category_id", "deleted_ms"]
+    );
+    assert_eq!(
+        cols("tx_account_checked"),
+        ["account_id", "checked", "deleted_ms"]
+    );
+}
+
 /// A vault that ever had categories is never reseeded: the app seeds on
 /// every unlock, and new starter categories would spread to the other devices.
 #[test]
