@@ -26,8 +26,25 @@ enum Theme {
     static let outflow = Color(light: "#0F172A", dark: "#F1F5F9")
     static let inflow = Color(light: "#059669", dark: "#34D399")
     static let inflowBadge = Color(light: "#ECFDF5", dark: "#064E3B")
-    static let accent = Color(light: "#2563EB", dark: "#3B82F6")
-    static let selection = Color(light: "#EEF2FF", dark: "#1E3A5F")
+    /// The app accent colour (HIG › Color › App accent colors): GiroCrab blue,
+    /// defined as `AccentColor` in the asset catalog, so buttons, toggles and
+    /// focus rings use it too. With the system default "Multicolour" everyone
+    /// sees the brand blue; if someone picks another accent in System Settings ›
+    /// Appearance, macOS applies that one app-wide instead.
+    static let accent = Color.accentColor
+    /// Soft selection/highlight fill in the current accent colour – brand blue by
+    /// default, and it follows a user-chosen system accent.
+    static let selection: Color = {
+        #if os(macOS)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let dark = appearance.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua])
+                .map { $0 == .darkAqua || $0 == .accessibilityHighContrastDarkAqua } ?? false
+            return NSColor.controlAccentColor.withAlphaComponent(dark ? 0.28 : 0.13)
+        })
+        #else
+        Color.accentColor.opacity(0.15)
+        #endif
+    }()
     static let loan = Color(light: "#64748B", dark: "#94A3B8")
     static let warning = Color(light: "#B45309", dark: "#F59E0B")
     static let invest = Color(light: "#1F7A5C", dark: "#5EC79F")
