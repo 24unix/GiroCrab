@@ -69,7 +69,11 @@ struct TwoFactorSheet: View {
                         // HIG: belongs to the code field, not to the dialog's
                         // button row (which keeps at most three buttons)
                         Button("Code per SMS anfordern") { model.submitCode("SMS") }
+                            #if os(macOS)
                             .buttonStyle(.link)
+                            #else
+                            .buttonStyle(.plain)
+                            #endif
                             .font(.callout)
                             .help("Kein Code in der App? Code per SMS anfordern.")
                     }
