@@ -907,14 +907,25 @@ pub(crate) fn merge_synced_twin(
     else {
         return Ok(false);
     };
-    // The twin takes over the bank's external id, which the unique index also
-    // holds for the deleted copy: move the copy's id aside.
+    // The twin continues under the bank's external id; the deleted copy
+    // keeps the twin's old MoneyMoney id as a tombstone, so another device
+    // still holding that row deletes it on merge. (account, external_id) is
+    // unique: the copy's id is moved aside while the two swap.
+    let mm_ext: String = conn.query_row(
+        "SELECT external_id FROM transactions WHERE id = ?1",
+        [mm_id],
+        |r| r.get(0),
+    )?;
     conn.execute(
         "UPDATE transactions SET external_id = external_id || '#merged-' || id WHERE id = ?1",
         [bank_id],
     )?;
-    crate::sync_merge::soft_delete_booking(conn, bank_id)?;
     take_over(conn, mm_id, external_id, &bank_iban, &bank_text)?;
+    conn.execute(
+        "UPDATE transactions SET external_id = ?2 WHERE id = ?1",
+        params![bank_id, mm_ext],
+    )?;
+    crate::sync_merge::soft_delete_booking(conn, bank_id)?;
     Ok(true)
 }
 

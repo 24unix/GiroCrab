@@ -2575,7 +2575,7 @@ fn twin_tombstone_is_not_revived_by_merge() {
         assert_eq!(
             n(
                 v,
-                "SELECT count(*) FROM transactions WHERE external_id LIKE 'f1#merged-%' AND deleted_ms IS NOT NULL"
+                "SELECT count(*) FROM transactions WHERE external_id LIKE 'mm-%' AND deleted_ms IS NOT NULL"
             ),
             1
         );
@@ -2793,4 +2793,576 @@ fn identical_rows_with_a_deletion_pair_the_same_in_both_orders() {
         1,
         "{bookings:?}"
     );
+}
+
+// ------------------------------------------------------------ accounts, connections, convergence
+
+/// The `bank_fixture` on both vaults with the same creation stamps (1).
+fn bank_pair(tag: &str) -> (Arc<Vault>, Arc<Vault>) {
+    let dir = temp_dir(tag);
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    for v in [&a, &b] {
+        bank_fixture(v);
+        exec(
+            v,
+            "UPDATE accounts SET created_ms = 1; UPDATE bank_connections SET created_ms = 1;",
+        );
+    }
+    (a, b)
+}
+
+fn assert_zero(st: &crate::vault::MergeStats) {
+    assert_eq!(
+        format!("{st:?}"),
+        format!("{:?}", crate::vault::MergeStats::default()),
+        "a repeated merge changed something"
+    );
+}
+
+/// `deleted_ms` of the account (and its bookings) with this external ref.
+fn acc_deleted(v: &Vault, ext: &str) -> (Option<i64>, Vec<Option<i64>>) {
+    let db = v.db().unwrap();
+    let acc: Option<i64> = db
+        .query_row(
+            "SELECT deleted_ms FROM accounts WHERE external_ref = ?1",
+            [ext],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let mut st = db
+        .prepare(
+            "SELECT t.deleted_ms FROM transactions t JOIN accounts a ON a.id = t.account_id
+             WHERE a.external_ref = ?1 ORDER BY t.external_id",
+        )
+        .unwrap();
+    let bk = st
+        .query_map([ext], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    (acc, bk)
+}
+
+#[test]
+fn deleted_account_is_soft_deleted_on_the_other_vault() {
+    for a_first in [true, false] {
+        let (a, b) = bank_pair("acc-del");
+        // B fetched one more booking the deleting side never saw
+        exec(
+            &b,
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents)
+             SELECT id, 'e2', '2026-01-02', -7 FROM accounts WHERE external_ref = 'A1';",
+        );
+        let a1 = n(&a, "SELECT id FROM accounts WHERE external_ref = 'A1'");
+        a.set_account_archived(a1, true).unwrap();
+        a.delete_account(a1).unwrap();
+        let stamp = n(
+            &a,
+            &format!("SELECT deleted_ms FROM accounts WHERE id = {a1}"),
+        );
+        if a_first {
+            both_ways(&a, &b);
+        } else {
+            both_ways(&b, &a);
+        }
+        for v in [&a, &b] {
+            assert_eq!(
+                acc_deleted(v, "A1"),
+                (Some(stamp), vec![Some(stamp), Some(stamp)])
+            );
+            assert_eq!(acc_deleted(v, "A2"), (None, vec![None]));
+        }
+        assert_zero(&merge(&a, &b));
+        assert_zero(&merge(&b, &a));
+    }
+}
+
+/// A deleted the connection at 20 (cascade); B took the deletion over and
+/// then added the connection again and fetched account A1 (revive).
+fn readded_pair(tag: &str, revive_ms: i64) -> (Arc<Vault>, Arc<Vault>) {
+    let (a, b) = bank_pair(tag);
+    // both know a booking A deleted on its own before the connection went
+    for v in [&a, &b] {
+        exec(
+            v,
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents)
+             SELECT id, 'e0', '2026-01-03', -9 FROM accounts WHERE external_ref = 'A1';",
+        );
+    }
+    exec(
+        &a,
+        "UPDATE transactions SET deleted_ms = 10 WHERE external_id = 'e0';",
+    );
+    let c = n(&a, "SELECT id FROM bank_connections");
+    a.delete_bank_connection(c).unwrap();
+    exec(
+        &a,
+        "UPDATE transactions SET deleted_ms = 20 WHERE deleted_ms > 10;
+         UPDATE accounts SET deleted_ms = 20 WHERE deleted_ms IS NOT NULL;
+         UPDATE bank_connections SET deleted_ms = 20;",
+    );
+    merge(&b, &a);
+    let c = n(&b, "SELECT id FROM bank_connections");
+    let a1 = n(&b, "SELECT id FROM accounts WHERE external_ref = 'A1'");
+    {
+        let db = b.db().unwrap();
+        revive_connection(&db, c).unwrap();
+        revive_account_if_deleted(&db, a1).unwrap();
+    }
+    exec(
+        &b,
+        &format!(
+            "UPDATE bank_connections SET created_ms = {revive_ms};
+             UPDATE accounts SET created_ms = {revive_ms} WHERE deleted_ms IS NULL AND external_ref = 'A1';"
+        ),
+    );
+    (a, b)
+}
+
+#[test]
+fn readded_connection_beats_older_deletion() {
+    for a_first in [true, false] {
+        let (a, b) = readded_pair("conn-readd", 30);
+        if a_first {
+            both_ways(&a, &b);
+        } else {
+            both_ways(&b, &a);
+        }
+        for v in [&a, &b] {
+            assert_eq!(
+                n(v, "SELECT count(*) FROM bank_connections WHERE deleted_ms IS NULL AND created_ms = 30"),
+                1
+            );
+            // the revived account keeps its cascade-deleted bookings back,
+            // the one deleted on its own stays deleted
+            assert_eq!(acc_deleted(v, "A1"), (None, vec![Some(10), None]));
+            assert_eq!(acc_deleted(v, "A2"), (Some(20), vec![Some(20)]));
+            assert_eq!(acc_deleted(v, "loose"), (None, vec![None]));
+        }
+        assert_zero(&merge(&a, &b));
+        assert_zero(&merge(&b, &a));
+    }
+}
+
+#[test]
+fn deletion_newer_than_readd_wins() {
+    for a_first in [true, false] {
+        let (a, b) = readded_pair("conn-readd-old", 15);
+        if a_first {
+            both_ways(&a, &b);
+        } else {
+            both_ways(&b, &a);
+        }
+        for v in [&a, &b] {
+            assert_eq!(
+                n(
+                    v,
+                    "SELECT count(*) FROM bank_connections WHERE deleted_ms = 20"
+                ),
+                1
+            );
+            assert_eq!(acc_deleted(v, "A1"), (Some(20), vec![Some(10), Some(20)]));
+        }
+    }
+}
+
+#[test]
+fn deleted_category_never_returns_via_third_vault() {
+    let dir = temp_dir("cat-third");
+    let (a, b, c) = (open(&dir, "a.db"), open(&dir, "b.db"), open(&dir, "c.db"));
+    a.create_category("Food".into(), None, String::new(), "#111111".into())
+        .unwrap();
+    exec(
+        &a,
+        "UPDATE categories SET name_ms=1, parent_ms=1, symbol_ms=1, color_ms=1, order_ms=1;",
+    );
+    merge(&b, &a);
+    merge(&c, &a);
+    a.delete_category(cat(&a, "Food")).unwrap();
+    merge(&b, &a);
+    // C still holds the old live copy and edits it
+    let food_c = cat(&c, "Food");
+    c.update_category(food_c, "Food".into(), None, String::new(), "#222222".into())
+        .unwrap();
+    merge(&a, &c);
+    merge(&c, &b);
+    merge(&b, &c);
+    merge(&a, &b);
+    for v in [&a, &b, &c] {
+        assert_eq!(
+            n(
+                v,
+                "SELECT count(*) FROM categories WHERE deleted_ms IS NULL"
+            ),
+            0
+        );
+    }
+    assert_converged(&a, &b);
+    assert_converged(&b, &c);
+}
+
+/// A, B and C start from A's base, then each edits and deletes something.
+fn three_vaults(tag: &str) -> [Arc<Vault>; 3] {
+    let dir = temp_dir(tag);
+    let (a, b, c) = (open(&dir, "a.db"), open(&dir, "b.db"), open(&dir, "c.db"));
+    bank_fixture(&a);
+    let food = a
+        .create_category("Food".into(), None, String::new(), "#111111".into())
+        .unwrap();
+    a.create_category("Fun".into(), None, String::new(), "#333333".into())
+        .unwrap();
+    a.save_rule(plain_rule(food, "rewe")).unwrap();
+    exec(
+        &a,
+        "UPDATE categories SET name_ms=1, parent_ms=1, symbol_ms=1, color_ms=1, order_ms=1;
+         UPDATE rules SET updated_ms = 1;
+         UPDATE accounts SET created_ms = 1; UPDATE bank_connections SET created_ms = 1;",
+    );
+    merge(&b, &a);
+    merge(&c, &a);
+    let bk = |v: &Vault, acc: &str| {
+        n(
+            v,
+            &format!(
+                "SELECT t.id FROM transactions t JOIN accounts a ON a.id = t.account_id
+                 WHERE a.external_ref = '{acc}' AND t.external_id = 'e1'"
+            ),
+        )
+    };
+    // A: rename, note, deletes account A2
+    a.update_category(
+        cat(&a, "Food"),
+        "Essen".into(),
+        None,
+        String::new(),
+        "#111111".into(),
+    )
+    .unwrap();
+    a.update_transaction_note(bk(&a, "A1"), "lunch".into())
+        .unwrap();
+    let a2 = n(&a, "SELECT id FROM accounts WHERE external_ref = 'A2'");
+    a.set_account_archived(a2, true).unwrap();
+    a.delete_account(a2).unwrap();
+    // B: recolour, category, deletes the rule, fetches a booking on A2
+    b.update_category(
+        cat(&b, "Food"),
+        "Food".into(),
+        None,
+        String::new(),
+        "#222222".into(),
+    )
+    .unwrap();
+    b.set_transaction_category(bk(&b, "A1"), Some(cat(&b, "Fun")))
+        .unwrap();
+    b.delete_rule(n(&b, "SELECT id FROM rules")).unwrap();
+    exec(
+        &b,
+        "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents)
+         SELECT id, 'e9', '2026-02-01', -9 FROM accounts WHERE external_ref = 'A2';",
+    );
+    // C: deletes Fun, checks a booking, adds Travel, deletes a booking
+    c.delete_category(cat(&c, "Fun")).unwrap();
+    c.set_transaction_checked(bk(&c, "A1"), true).unwrap();
+    c.create_category("Travel".into(), None, String::new(), String::new())
+        .unwrap();
+    let loose = bk(&c, "loose");
+    soft_delete_booking(&c.db().unwrap(), loose).unwrap();
+    [a, b, c]
+}
+
+#[test]
+fn three_vaults_converge_in_any_merge_order() {
+    let orders: [&[(usize, usize)]; 3] = [
+        &[(0, 1), (0, 2), (1, 0), (2, 0)],
+        &[(2, 1), (2, 0), (0, 2), (1, 2)],
+        &[(1, 2), (0, 1), (2, 0), (1, 2)],
+    ];
+    for order in orders {
+        let v = three_vaults("three");
+        for &(into, from) in order {
+            merge(&v[into], &v[from]);
+        }
+        assert_converged(&v[0], &v[1]);
+        assert_converged(&v[1], &v[2]);
+        for x in &v {
+            let x: &Vault = x;
+            assert_eq!(
+                text(x, "SELECT name || color_hex FROM categories WHERE deleted_ms IS NULL AND name != 'Travel'"),
+                "Essen#222222"
+            );
+            assert_eq!(
+                n(
+                    x,
+                    "SELECT count(*) FROM categories WHERE deleted_ms IS NULL"
+                ),
+                2
+            );
+            assert_eq!(
+                n(x, "SELECT count(*) FROM rules WHERE deleted_ms IS NULL"),
+                0
+            );
+            let (acc, bks) = acc_deleted(x, "A2");
+            assert!(acc.is_some());
+            assert_eq!(bks, vec![acc, acc]);
+            assert_eq!(acc_deleted(x, "loose").1.iter().flatten().count(), 1);
+            assert_eq!(
+                text(
+                    x,
+                    "SELECT t.note || t.checked || t.category_source FROM transactions t
+                     JOIN accounts a ON a.id = t.account_id WHERE a.external_ref = 'A1'"
+                ),
+                "lunch1none"
+            );
+        }
+        // a second round changes nothing
+        for into in 0..3 {
+            for from in 0..3 {
+                if into != from {
+                    assert_zero(&merge(&v[into], &v[from]));
+                }
+            }
+        }
+        assert_converged(&v[0], &v[1]);
+        assert_converged(&v[1], &v[2]);
+    }
+}
+
+/// Sum of every sync stamp and deletion in the vault.
+fn stamp_sum(v: &Vault) -> i64 {
+    n(
+        v,
+        "SELECT (SELECT IFNULL(sum(category_ms + note_ms + checked_ms + text_ms + splits_ms
+                                   + IFNULL(deleted_ms, 0)), 0) FROM transactions)
+              + (SELECT IFNULL(sum(name_ms + parent_ms + symbol_ms + color_ms + budget_ms + order_ms
+                                   + IFNULL(deleted_ms, 0)), 0) FROM categories)
+              + (SELECT IFNULL(sum(updated_ms + IFNULL(deleted_ms, 0)), 0) FROM rules)
+              + (SELECT IFNULL(sum(created_ms + IFNULL(deleted_ms, 0)), 0) FROM accounts)
+              + (SELECT IFNULL(sum(created_ms + IFNULL(deleted_ms, 0)), 0) FROM bank_connections)",
+    )
+}
+
+/// Every public function from Tasks 2-4 that changes synced state raises a
+/// stamp or sets a deletion; otherwise the change would never reach another
+/// device. A new mutating function missing from this list is a review finding.
+#[test]
+fn every_mutating_api_stamps_or_soft_deletes() {
+    let v = open(&temp_dir("coverage"), "a.db");
+    let (c, a1, a2, _) = bank_fixture(&v);
+    let food = v
+        .create_category("Food".into(), None, String::new(), String::new())
+        .unwrap();
+    let fun = v
+        .create_category("Fun".into(), None, String::new(), String::new())
+        .unwrap();
+    let rule = v.save_rule(plain_rule(food, "rewe")).unwrap();
+    let t = n(
+        &v,
+        &format!("SELECT id FROM transactions WHERE account_id = {a1}"),
+    );
+    type Op = Box<dyn Fn(&Vault)>;
+    let ops: Vec<(&str, Op)> = vec![
+        (
+            "set_transaction_category",
+            Box::new(move |v| v.set_transaction_category(t, Some(food)).unwrap()),
+        ),
+        (
+            "set_transaction_category(None)",
+            Box::new(move |v| v.set_transaction_category(t, None).unwrap()),
+        ),
+        (
+            "set_transaction_checked",
+            Box::new(move |v| v.set_transaction_checked(t, true).unwrap()),
+        ),
+        (
+            "update_transaction_text",
+            Box::new(move |v| {
+                v.update_transaction_text(t, "X".into(), "Y".into())
+                    .unwrap()
+            }),
+        ),
+        (
+            "update_transaction_note",
+            Box::new(move |v| v.update_transaction_note(t, "n".into()).unwrap()),
+        ),
+        (
+            "set_transaction_splits",
+            Box::new(move |v| {
+                v.set_transaction_splits(t, vec![split(Some(food), -2), split(None, -3)])
+                    .unwrap()
+            }),
+        ),
+        (
+            "create_category",
+            Box::new(|v| {
+                v.create_category("New".into(), None, String::new(), String::new())
+                    .unwrap();
+            }),
+        ),
+        (
+            "update_category",
+            Box::new(move |v| {
+                v.update_category(fun, "Fun2".into(), None, String::new(), String::new())
+                    .unwrap()
+            }),
+        ),
+        (
+            "set_category_budget",
+            Box::new(move |v| v.set_category_budget(fun, Some(500)).unwrap()),
+        ),
+        (
+            "save_rule (new)",
+            Box::new(move |v| {
+                v.save_rule(plain_rule(fun, "kino")).unwrap();
+            }),
+        ),
+        (
+            "save_rule (edit)",
+            Box::new(move |v| {
+                let mut r = plain_rule(food, "lidl");
+                r.id = rule;
+                v.save_rule(r).unwrap();
+            }),
+        ),
+        (
+            "delete_rule",
+            Box::new(move |v| v.delete_rule(rule).unwrap()),
+        ),
+        (
+            "delete_category",
+            Box::new(move |v| v.delete_category(fun).unwrap()),
+        ),
+        (
+            "add_bank_connection",
+            Box::new(|v| {
+                v.add_bank_connection(ConnectorKind::Comdirect, String::new(), "me".into())
+                    .unwrap();
+            }),
+        ),
+        (
+            "delete_account",
+            Box::new(move |v| {
+                v.set_account_archived(a2, true).unwrap();
+                v.delete_account(a2).unwrap();
+            }),
+        ),
+        (
+            "delete_bank_connection",
+            Box::new(move |v| v.delete_bank_connection(c).unwrap()),
+        ),
+        (
+            "add_bank_connection (revive)",
+            Box::new(|v| {
+                let id = n(
+                    v,
+                    "SELECT id FROM bank_connections WHERE connector = 'comdirect'",
+                );
+                v.delete_bank_connection(id).unwrap();
+                exec(v, "UPDATE bank_connections SET deleted_ms = 1, created_ms = 1 WHERE connector = 'comdirect'");
+                v.add_bank_connection(ConnectorKind::Comdirect, String::new(), "me".into())
+                    .unwrap();
+            }),
+        ),
+    ];
+    for (name, op) in ops {
+        // older stamps, so that an edit in the same millisecond still counts
+        exec(
+            &v,
+            "UPDATE transactions SET category_ms = min(category_ms, 1), note_ms = min(note_ms, 1),
+                 checked_ms = min(checked_ms, 1), text_ms = min(text_ms, 1), splits_ms = min(splits_ms, 1);
+             UPDATE categories SET name_ms = min(name_ms, 1), parent_ms = min(parent_ms, 1),
+                 symbol_ms = min(symbol_ms, 1), color_ms = min(color_ms, 1),
+                 budget_ms = min(budget_ms, 1), order_ms = min(order_ms, 1);
+             UPDATE rules SET updated_ms = min(updated_ms, 1);
+             UPDATE accounts SET created_ms = min(created_ms, 1);
+             UPDATE bank_connections SET created_ms = min(created_ms, 1);",
+        );
+        let before = stamp_sum(&v);
+        op(&v);
+        assert!(
+            stamp_sum(&v) > before,
+            "{name} changed nothing a merge would see"
+        );
+    }
+}
+
+#[test]
+fn twin_merge_leaves_a_tombstone_for_the_moneymoney_key() {
+    for a_first in [true, false] {
+        let dir = temp_dir("twin-key");
+        let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+        let csv = "Datum;Name;Verwendungszweck;Betrag;Kategorie;Notiz\n10.05.2026;REWE Markt;Einkauf;-12,50;;wichtig\n";
+        let acc = a
+            .import_moneymoney_data(csv.as_bytes().to_vec(), "t.csv".into(), None, true, true)
+            .unwrap()
+            .account_id;
+        // B holds the import row, then fetches the bank's copy itself
+        merge(&b, &a);
+        for v in [&a, &b] {
+            exec(
+                v,
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+                 SELECT id, 'f1', '2026-05-10', -1250, 'REWE', 'Einkauf' FROM accounts;",
+            );
+        }
+        // A repairs the duplicate
+        assert!(crate::connectors::moneymoney_import::merge_synced_twin(
+            &a.db().unwrap(),
+            acc,
+            "f1",
+            "2026-05-10",
+            -1250,
+            "",
+            "REWE",
+            "Einkauf"
+        )
+        .unwrap());
+        if a_first {
+            both_ways(&a, &b);
+        } else {
+            both_ways(&b, &a);
+        }
+        for v in [&a, &b] {
+            assert_eq!(
+                text(
+                    v,
+                    "SELECT external_id || ':' || note FROM transactions WHERE deleted_ms IS NULL"
+                ),
+                "f1:wichtig"
+            );
+        }
+    }
+}
+
+#[test]
+fn loan_links_skip_deleted_bookings_and_match_by_key() {
+    let dir = temp_dir("loan-links");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    for v in [&a, &b] {
+        shared_account(v);
+        exec(
+            v,
+            "INSERT INTO accounts(id, group_id, external_ref, name) VALUES (2, 1, 'L1', 'Loan');
+             INSERT INTO transactions(id, account_id, external_id, booking_date, amount_cents, import_fp)
+                 VALUES (1, 1, 'mm-F-0', '2026-01-01', -300, 'F'),
+                        (2, 1, 'mm-F-1', '2026-01-01', -300, 'F'),
+                        (3, 1, 'e3', '2026-01-02', -100, '');",
+        );
+    }
+    exec(
+        &a,
+        "INSERT INTO loan_links(transaction_id, loan_account_id, source)
+             VALUES (2, 2, 'manual'), (3, 2, 'manual');",
+    );
+    exec(&b, "UPDATE transactions SET deleted_ms = 5 WHERE id = 3;");
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(
+            text(
+                v,
+                "SELECT group_concat(t.external_id) FROM loan_links l
+                 JOIN transactions t ON t.id = l.transaction_id"
+            ),
+            "mm-F-1"
+        );
+    }
 }

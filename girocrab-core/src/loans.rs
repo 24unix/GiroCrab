@@ -457,11 +457,11 @@ pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> 
             }
         }
     }
-    // includes soft-deleted rows (vault merge)
+    // links of live bookings only; a deleted booking has none
     let mut st = conn.prepare(
         "SELECT t.account_id, t.external_id, t.import_fp, l.loan_account_id, l.source
            FROM other.loan_links l JOIN other.transactions t ON t.id = l.transaction_id
-          WHERE l.source != 'rule'",
+          WHERE l.source != 'rule' AND t.deleted_ms IS NULL",
     )?;
     let rows: Vec<(i64, String, String, i64, String)> = st
         .query_map([], |r| {
@@ -472,16 +472,41 @@ pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> 
         let (Some(acc), Some(loan)) = (acc_map.get(&oacc), acc_map.get(&oloan)) else {
             continue;
         };
-        let tx: Option<i64> = conn
+        // the booking's key first; the fingerprint only when exactly one
+        // booking carries it (a pair the merge has not renamed yet)
+        let by_key: Option<(i64, bool)> = conn
             .query_row(
-                // includes soft-deleted rows (vault merge)
-                "SELECT id FROM transactions WHERE account_id = ?1
-                   AND (external_id = ?2 OR (?3 != '' AND import_fp = ?3)) LIMIT 1",
-                params![acc, ext, fp],
-                |r| r.get(0),
+                // includes soft-deleted rows: a deleted match stays unlinked
+                "SELECT id, deleted_ms IS NULL FROM transactions WHERE account_id = ?1 AND external_id = ?2",
+                params![acc, ext],
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
-        if let Some(tx) = tx {
+        let tx: Option<i64> = match by_key {
+            Some((id, live)) => live.then_some(id),
+            None if fp.is_empty() => None,
+            None => {
+                // includes soft-deleted rows: an ambiguous or deleted match links nothing
+                let ids: Vec<(i64, bool)> = conn
+                    .prepare(
+                        "SELECT id, deleted_ms IS NULL FROM transactions
+                          WHERE account_id = ?1 AND import_fp = ?2 LIMIT 2",
+                    )?
+                    .query_map(params![acc, fp], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<Result<_, _>>()?;
+                match ids[..] {
+                    [(id, true)] => Some(id),
+                    _ => None,
+                }
+            }
+        };
+        let loan_live: bool = conn.query_row(
+            // includes soft-deleted rows
+            "SELECT deleted_ms IS NULL FROM accounts WHERE id = ?1",
+            [loan],
+            |r| r.get(0),
+        )?;
+        if let (Some(tx), true) = (tx, loan_live) {
             conn.execute(
                 "INSERT OR IGNORE INTO loan_links(transaction_id, loan_account_id, source) VALUES (?1, ?2, ?3)",
                 params![tx, loan, source],

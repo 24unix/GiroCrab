@@ -417,11 +417,15 @@ pub(crate) fn connection_key(conn: &Connection, id: i64) -> CoreResult<String> {
         )
         .optional()?
         .ok_or_else(|| not_found("connection", id))?;
-    let login = match ConnectorKind::from_str(&connector) {
-        Some(kind) => crate::connections::normalize_login(kind, &login),
+    Ok(key_of_connection(&connector, &login, &bank))
+}
+
+fn key_of_connection(connector: &str, login: &str, bank: &str) -> String {
+    let login = match ConnectorKind::from_str(connector) {
+        Some(kind) => crate::connections::normalize_login(kind, login),
         None => login.trim().to_string(),
     };
-    Ok(format!("{connector}|{login}|{bank}"))
+    format!("{connector}|{login}|{bank}")
 }
 
 /// `<connection key>|external_ref`, or `|external_ref` without a connection.
@@ -1265,6 +1269,268 @@ pub(crate) fn live_targets(
         .collect())
 }
 
+// ------------------------------------------------------- connections, accounts
+
+/// Joins the life of a connection or account: the newest `created_ms` and
+/// the newest deletion (`extra`: the deletion of its connection) count, and
+/// it is deleted when that deletion is not older than the creation (a row
+/// added again after a deletion stays live). The same in any merge order: a
+/// deletion dropped here is older than `created_ms`, which only grows.
+fn join_life(
+    local: (i64, Option<i64>),
+    other: (i64, Option<i64>),
+    extra: Option<i64>,
+) -> (i64, Option<i64>) {
+    let created = local.0.max(other.0);
+    let deleted = local.1.max(other.1).max(extra);
+    (created, deleted.filter(|&d| d >= created))
+}
+
+/// Applies an account's changed deletion to its bookings, as
+/// `soft_delete_account` / `revive_account_if_deleted` do (derived, no
+/// stamps): its cascade tombstones (`deleted_ms` = the old deletion) and live
+/// bookings take the new deletion; on a revive the cascade tombstones come
+/// back. Individually deleted bookings keep their own stamp.
+fn recascade_account(
+    conn: &Connection,
+    id: i64,
+    old: Option<i64>,
+    new: Option<i64>,
+) -> CoreResult<()> {
+    if old == new {
+        return Ok(());
+    }
+    if let Some(new) = new {
+        conn.execute(
+            "DELETE FROM loan_links WHERE loan_account_id = ?1
+                OR transaction_id IN (SELECT id FROM transactions WHERE account_id = ?1
+                                      AND (deleted_ms IS NULL OR deleted_ms IS ?2))",
+            params![id, old],
+        )?;
+        conn.execute(
+            "UPDATE transactions SET deleted_ms = ?3
+              WHERE account_id = ?1 AND (deleted_ms IS NULL OR deleted_ms IS ?2)",
+            params![id, old, new],
+        )?;
+    } else {
+        conn.execute(
+            "UPDATE transactions SET deleted_ms = NULL WHERE account_id = ?1 AND deleted_ms = ?2",
+            params![id, old],
+        )?;
+    }
+    Ok(())
+}
+
+/// Merges `other.bank_connections` by sync key: missing ones are inserted
+/// with their `created_ms` / `deleted_ms`, existing ones take the joined
+/// life (`join_life`). Returns other id -> local id.
+pub(crate) fn merge_connections(conn: &Connection) -> CoreResult<HashMap<i64, i64>> {
+    // local key -> id; a live row wins over a deleted one, then the lowest id
+    // (rows read in reverse order of preference, the last one stays)
+    let mut by_key: HashMap<String, (i64, i64, Option<i64>)> = HashMap::new();
+    {
+        // includes soft-deleted rows
+        let mut st = conn.prepare(
+            "SELECT id, connector, login_name, bank_code, created_ms, deleted_ms
+               FROM main.bank_connections ORDER BY deleted_ms IS NULL, id DESC",
+        )?;
+        let mut rows = st.query([])?;
+        while let Some(r) = rows.next()? {
+            let key = key_of_connection(
+                &r.get::<_, String>(1)?,
+                &r.get::<_, String>(2)?,
+                &r.get::<_, String>(3)?,
+            );
+            by_key.insert(key, (r.get(0)?, r.get(4)?, r.get(5)?));
+        }
+    }
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(
+        i64,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        Option<i64>,
+        i64,
+        Option<i64>,
+    )> = conn
+        .prepare(
+            // includes soft-deleted rows: deleted connections travel as tombstones
+            "SELECT id, connector, display_name, login_name, bank_code, sf_symbol, state_json,
+                    last_sync_unix, created_ms, deleted_ms
+               FROM other.bank_connections ORDER BY id",
+        )?
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
+                r.get(8)?,
+                r.get(9)?,
+            ))
+        })?
+        .collect::<Result<_, _>>()?;
+    let mut map = HashMap::new();
+    for (oid, connector, name, login, bank, sym, state, last, created, deleted) in rows {
+        let key = key_of_connection(&connector, &login, &bank);
+        let id = match by_key.get(&key).copied() {
+            Some((id, lc, ld)) => {
+                let joined = join_life((lc, ld), (created, deleted), None);
+                if joined != (lc, ld) {
+                    conn.execute(
+                        "UPDATE bank_connections SET created_ms = ?2, deleted_ms = ?3 WHERE id = ?1",
+                        params![id, joined.0, joined.1],
+                    )?;
+                    by_key.insert(key, (id, joined.0, joined.1));
+                }
+                id
+            }
+            None => {
+                conn.execute(
+                    "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol,
+                         state_json, last_sync_unix, created_ms, deleted_ms)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                    params![connector, name, login, bank, sym, state, last, created, deleted],
+                )?;
+                let id = conn.last_insert_rowid();
+                by_key.insert(key, (id, created, deleted));
+                id
+            }
+        };
+        map.insert(oid, id);
+    }
+    Ok(map)
+}
+
+/// Merges `other.accounts` by connection + external ref: missing ones are
+/// inserted with their `created_ms` / `deleted_ms`, existing ones take the
+/// joined life (`join_life`), and an account of a deleted connection goes with
+/// it unless it was added after that deletion. A changed deletion is applied
+/// to the account's bookings here (`recascade_account`). Returns other id ->
+/// local id and the ids of the accounts inserted (`accounts_added` counts the
+/// live ones).
+pub(crate) fn merge_accounts(
+    conn: &Connection,
+    conn_map: &HashMap<i64, i64>,
+    group_map: &HashMap<i64, i64>,
+    stats: &mut crate::vault::MergeStats,
+) -> CoreResult<(HashMap<i64, i64>, HashSet<i64>)> {
+    // local id -> (created, deleted) before this merge
+    let before: HashMap<i64, (i64, Option<i64>)> = conn
+        // includes soft-deleted rows
+        .prepare("SELECT id, created_ms, deleted_ms FROM main.accounts")?
+        .query_map([], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))?
+        .collect::<Result<_, _>>()?;
+    let mut now = before.clone();
+    // what the table holds
+    let mut stored = before.clone();
+
+    let mut acc_map: HashMap<i64, i64> = HashMap::new();
+    let mut inserted: HashSet<i64> = HashSet::new();
+    {
+        let mut st = conn.prepare(
+            // includes soft-deleted rows: deleted accounts travel as tombstones
+            "SELECT id, connection_id, group_id, external_ref, created_ms, deleted_ms
+               FROM other.accounts ORDER BY id",
+        )?;
+        #[allow(clippy::type_complexity)]
+        let rows: Vec<(i64, Option<i64>, i64, String, i64, Option<i64>)> = st
+            .query_map([], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            })?
+            .collect::<Result<_, _>>()?;
+        for (oid, ocon, ogrp, ext, created, deleted) in rows {
+            let con = ocon.and_then(|c| conn_map.get(&c).copied());
+            let existing: Option<i64> = conn
+                .query_row(
+                    // includes soft-deleted rows
+                    "SELECT id FROM accounts WHERE connection_id IS ?1 AND external_ref = ?2",
+                    params![con, ext],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let id = match existing {
+                Some(id) => {
+                    let joined = join_life(now[&id], (created, deleted), None);
+                    now.insert(id, joined);
+                    id
+                }
+                None => {
+                    let grp = group_map
+                        .get(&ogrp)
+                        .copied()
+                        .ok_or_else(|| CoreError::Database {
+                            message: "merge: unknown account group".into(),
+                        })?;
+                    conn.execute(
+                        "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner,
+                             iban, account_number, currency, kind, balance_cents, balance_date, sf_symbol,
+                             sort_order, initial_balance_cents, created_ms, deleted_ms)
+                         SELECT ?2, ?3, external_ref, name, bank_name, owner, iban, account_number, currency,
+                             kind, balance_cents, balance_date, sf_symbol, sort_order, initial_balance_cents,
+                             created_ms, deleted_ms
+                           FROM other.accounts WHERE id = ?1",
+                        params![oid, con, grp],
+                    )?;
+                    let id = conn.last_insert_rowid();
+                    if deleted.is_none() {
+                        stats.accounts_added += 1;
+                    }
+                    inserted.insert(id);
+                    now.insert(id, (created, deleted));
+                    stored.insert(id, (created, deleted));
+                    id
+                }
+            };
+            acc_map.insert(oid, id);
+        }
+    }
+
+    // an account goes with its deleted connection (unless added after it)
+    let con_deleted: HashMap<i64, Option<i64>> = conn
+        // includes soft-deleted rows
+        .prepare("SELECT a.id, c.deleted_ms FROM accounts a JOIN bank_connections c ON c.id = a.connection_id")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    for (id, life) in now.iter_mut() {
+        if let Some(&d) = con_deleted.get(id) {
+            *life = join_life(*life, *life, d);
+        }
+    }
+
+    let mut ids: Vec<i64> = now.keys().copied().collect();
+    ids.sort();
+    for id in ids {
+        let life = now[&id];
+        if stored[&id] != life {
+            conn.execute(
+                "UPDATE accounts SET created_ms = ?2, deleted_ms = ?3 WHERE id = ?1",
+                params![id, life.0, life.1],
+            )?;
+        }
+        // inserted accounts have no local bookings yet
+        if let Some(&(_, old)) = before.get(&id) {
+            recascade_account(conn, id, old, life.1)?;
+        }
+    }
+    Ok((acc_map, inserted))
+}
+
 // ------------------------------------------------------------------ bookings
 
 /// One split line: (category uuid, amount, note).
@@ -1528,11 +1794,32 @@ pub(crate) fn merge_bookings(
         bucket.sort();
     }
 
+    // A booking deleted together with its account (its `deleted_ms` is the
+    // account's) follows the merged account: deleted with it, back when the
+    // account was added again after that deletion. Only individual deletions
+    // join as such, so an older cascade tombstone on the other side never
+    // deletes the bookings of a revived account again.
+    let deletions = |schema: &str| -> CoreResult<HashMap<i64, Option<i64>>> {
+        Ok(conn
+            // includes soft-deleted rows
+            .prepare(&format!("SELECT id, deleted_ms FROM {schema}.accounts"))?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?)
+    };
+    let local_acc_deleted = deletions("main")?;
+    let other_acc_deleted = deletions("other")?;
+    let individual = |d: Option<i64>, account: Option<i64>| d.filter(|_| d != account);
+
     let mut cleared: HashSet<i64> = HashSet::new();
     for mut o in others {
         let Some(&acc) = acc_map.get(&o.account_id) else {
             continue;
         };
+        let acc_deleted = local_acc_deleted.get(&acc).copied().flatten();
+        o.fields.deleted_ms = individual(
+            o.fields.deleted_ms,
+            other_acc_deleted.get(&o.account_id).copied().flatten(),
+        );
         o.fields.splits = other_splits.remove(&o.id).unwrap_or_default();
         let existing = match by_key.get(&(acc, o.external_id.clone())) {
             Some(&id) => Some((id, false)),
@@ -1558,7 +1845,9 @@ pub(crate) fn merge_bookings(
             Some((id, renamed)) => {
                 let old = local[&id].clone();
                 let mut m = old.clone();
+                m.deleted_ms = individual(m.deleted_ms, acc_deleted);
                 m.merge(&o.fields);
+                m.deleted_ms = m.deleted_ms.or(acc_deleted);
                 if m == old {
                     if renamed {
                         stats.bookings_updated += 1;
@@ -1570,6 +1859,7 @@ pub(crate) fn merge_bookings(
                 stats.bookings_updated += 1;
             }
             None => {
+                o.fields.deleted_ms = o.fields.deleted_ms.or(acc_deleted);
                 let f = &o.fields;
                 let (cat, source, rule) = match (f.cat.is_some(), o.category_source.as_str()) {
                     (true, _) => (cat_id(&f.cat), "manual", None),
