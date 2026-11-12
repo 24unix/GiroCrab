@@ -566,7 +566,7 @@ fn english(de: &str) -> Option<&'static str> {
             "The bank expects a data format for instant transfers that GiroCrab does not support."
         }
         "comdirect Client-ID" => "comdirect client ID",
-        "Aus dem comdirect-Entwicklerportal (Persönlicher Bereich › Einstellungen › API)." => "From the comdirect developer portal (Persönlicher Bereich › Einstellungen › API).",
+        "Aus dem comdirect-Entwicklerportal (Persönlicher Bereich › Verwaltung › Entwicklerzugang)." => "From the comdirect developer portal (Persönlicher Bereich › Verwaltung › Entwicklerzugang).",
         "comdirect Client-Secret" => "comdirect client secret",
         "Wird beim Freischalten des API-Zugangs einmalig angezeigt." => "Shown once when API access is activated.",
         "comdirect REST-API" => "comdirect REST API",
