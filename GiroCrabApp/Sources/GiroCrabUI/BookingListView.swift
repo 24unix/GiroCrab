@@ -271,45 +271,19 @@ struct BookingStreamView: View {
 
 #if os(macOS)
 /// Keep the toolbar control independent of list, chart and inspector updates.
-/// Its only observable dependency is the selected scope.
+/// Its only observable dependency is the selected scope. The system segmented
+/// control brings arrow-key navigation, focus ring and VoiceOver with it (an
+/// older selection-animation glitch no longer occurs on current macOS).
 private struct BookingScopePicker: View {
     @Environment(AppModel.self) private var model
-    @Namespace private var selectionAnimation
 
     var body: some View {
-        // The native toolbar Picker can animate its selection back through an
-        // intermediate segment while the stream changes. Animate one stable
-        // highlight locally instead; hover and selection remain independent.
-        HStack(spacing: 0) {
-            ForEach(BookingScope.ordered, id: \.self) { scope in
-                Button {
-                    model.scope = scope
-                } label: {
-                    Text(scope.title)
-                        .font(.callout)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .background {
-                    if model.scope == scope {
-                        Capsule()
-                            .fill(Color.primary.opacity(0.09))
-                            .matchedGeometryEffect(id: "scope-selection", in: selectionAnimation)
-                    }
-                }
-                .accessibilityAddTraits(model.scope == scope ? .isSelected : [])
-            }
+        Picker("Ansicht", selection: Binding(get: { model.scope }, set: { model.scope = $0 })) {
+            ForEach(BookingScope.ordered, id: \.self) { Text($0.title).tag($0) }
         }
-        .padding(3)
-        .background(Theme.canvas, in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1).allowsHitTesting(false))
-        .frame(width: 430)
-        .animation(Motion.animation(.easeOut(duration: 0.16)), value: model.scope)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Ansicht")
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
         .help("Ansicht wählen (⌘1, ⌘2, ⌘3)")
     }
 }
