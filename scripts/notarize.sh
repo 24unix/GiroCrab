@@ -2,7 +2,8 @@
 # Build, Developer-ID sign, notarize, staple and verify GiroCrab.app (macOS),
 # and optionally archive & upload the iOS build to TestFlight / App Store Connect.
 #
-# Usage: scripts/notarize.sh [--upload <TAG> [--critical | --critical-below X.Y.Z] | --nightly] [--ios]
+# Usage: scripts/notarize.sh [--upload <TAG> [--critical | --critical-below X.Y.Z]
+#                             [--rotate-key <account> | --lost-key <account>] | --nightly] [--ios]
 #   --upload <TAG>  create/update GitHub release <TAG> with structured changelog and upload the
 #                   signed + notarized macOS disk image (GiroCrab-macOS-arm64.dmg)
 #                   vX.Y.Z          stable release
@@ -11,6 +12,14 @@
 #                   appcast: users can't skip/postpone it, but still confirm the install
 #   --critical-below X.Y.Z
 #                   critical only for installs older than X.Y.Z, normal update otherwise
+#   --rotate-key <account>
+#                   transition release for a new Sparkle key: generate key <account>, ship its
+#                   public key, but sign disk image and appcast with the CURRENT key (installed
+#                   apps only know that one); afterwards <account> signs. Stable tags only.
+#   --lost-key <account>
+#                   the signing key is LOST: new key <account>, new public key, new feed.
+#                   Installed apps accept it only after Sparkle's 20-day grace period.
+#                   See docs/auto-updates.md ("Schlüsselwechsel").
 #   --nightly       move 'nightly' tag to HEAD, create/update rolling GitHub pre-release and upload the disk image
 #                   (bundle version <last v* tag's version>.<UTC timestamp>)
 # In-app updates: every run merges its item into the one signed appcast.xml on
@@ -26,6 +35,8 @@ CRITICAL=0
 CRITICAL_BELOW=""
 NIGHTLY=0
 BUILD_IOS=0
+ROTATE_TO=""
+LOST_TO=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --upload)
@@ -47,13 +58,27 @@ while [ $# -gt 0 ]; do
     --ios)
       BUILD_IOS=1
       shift ;;
-    *) echo "usage: $0 [--upload <TAG> [--critical | --critical-below X.Y.Z] | --nightly] [--ios]" >&2; exit 2 ;;
+    --rotate-key)
+      ROTATE_TO="${2:-}"
+      [ -n "$ROTATE_TO" ] || { echo "error: --rotate-key needs a new keychain account name" >&2; exit 2; }
+      shift 2 ;;
+    --lost-key)
+      LOST_TO="${2:-}"
+      [ -n "$LOST_TO" ] || { echo "error: --lost-key needs a new keychain account name" >&2; exit 2; }
+      shift 2 ;;
+    *) echo "usage: $0 [--upload <TAG> [--critical | --critical-below X.Y.Z] [--rotate-key <account> | --lost-key <account>] | --nightly] [--ios]" >&2; exit 2 ;;
   esac
 done
 
 if [ -n "$UPLOAD_TAG" ] && [ "$NIGHTLY" -eq 1 ]; then
   echo "error: --upload and --nightly cannot be combined" >&2
   exit 2
+fi
+if [ -n "$ROTATE_TO$LOST_TO" ]; then
+  [ -z "$ROTATE_TO" ] || [ -z "$LOST_TO" ] || { echo "error: --rotate-key and --lost-key cannot be combined" >&2; exit 2; }
+  # One stable release reaches every channel (beta/nightly users also get stable).
+  [[ "$UPLOAD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || { echo "error: --rotate-key/--lost-key only with --upload of a stable tag vX.Y.Z" >&2; exit 2; }
 fi
 if [ "$CRITICAL" -eq 1 ]; then
   if [[ ! "$UPLOAD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -180,6 +205,18 @@ if [ "$NIGHTLY" -eq 1 ]; then
   STAMP="$(date -u +%Y%m%d%H%M)"
   export GIROCRAB_BUILD_VERSION="${LAST_BUILD}.${STAMP}"
   export GIROCRAB_VERSION="${LAST_TAG#v}-nightly.${STAMP}"
+fi
+
+# Sparkle key rotation / lost key: decide the keys BEFORE packaging – the
+# bundle gets the (new) public key from scripts/sparkle-public-ed-key.txt.
+if [ -n "$ROTATE_TO" ]; then
+  echo "==> Sparkle key rotation to '$ROTATE_TO' (transition release)"
+  KEY_EXPORTS="$(scripts/sparkle-key.sh prepare-rotation "$ROTATE_TO")"   # assignment: a failure stops the release
+  eval "$KEY_EXPORTS"
+elif [ -n "$LOST_TO" ]; then
+  echo "==> Sparkle key LOST – switching to '$LOST_TO'"
+  KEY_EXPORTS="$(scripts/sparkle-key.sh prepare-lost "$LOST_TO")"   # assignment: a failure stops the release
+  eval "$KEY_EXPORTS"
 fi
 
 echo "==> Build (xcframework + swift release + bundle) via package-macos-app.sh"
@@ -309,6 +346,10 @@ ${NOTES}"
   HAVE_FEED=0
   if make_feed "$UPLOAD_TAG" build/release-notes.md; then HAVE_FEED=1
   else echo "==> No appcast (no scripts/sparkle-public-ed-key.txt yet – in-app updates off)"; fi
+  if [ -n "$ROTATE_TO" ]; then
+    # Before anything is published: new key inside, old key signs.
+    scripts/sparkle-key.sh verify-transition "$VAPP" "$ARTIFACT" dist/appcast.xml
+  fi
 
   if ! git rev-parse "$UPLOAD_TAG" >/dev/null 2>&1; then
     echo "==> Creating and pushing git tag $UPLOAD_TAG"
@@ -331,6 +372,11 @@ ${NOTES}"
     else
       upload_feed_to_latest_stable
     fi
+  fi
+  if [ -n "$ROTATE_TO" ]; then
+    scripts/sparkle-key.sh finish-rotation "$SPARKLE_ROTATION_NEW" "$SPARKLE_ROTATION_OLD"
+  elif [ -n "$LOST_TO" ]; then
+    echo "==> New key '$LOST_TO' is active. Commit scripts/sparkle-public-ed-key.txt and scripts/sparkle-key-account.txt."
   fi
 elif [ "$NIGHTLY" -eq 1 ]; then
   SHORT_SHA="$(git rev-parse --short HEAD)"

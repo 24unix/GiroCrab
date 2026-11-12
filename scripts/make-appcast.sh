@@ -26,6 +26,18 @@
 #   GIROCRAB_REPO            owner/name (default GiroCrab/GiroCrab)
 #   GIROCRAB_DOWNLOAD_URL    full enclosure URL (tests)
 #   SPARKLE_ED_KEY_FILE      private key file instead of the login keychain (tests)
+# Keys (docs/auto-updates.md, "Schlüsselwechsel"):
+#   SPARKLE_KEY_ACCOUNT      keychain account of the signing key (default:
+#                            scripts/sparkle-key-account.txt, else Sparkle's "ed25519")
+#   SPARKLE_SIGNING_PUBLIC_KEY  public key the signing key must have (default:
+#                            scripts/sparkle-public-ed-key.txt). notarize.sh
+#                            --rotate-key sets the OLD key here: the transition
+#                            release is signed with the old key but ships the new one.
+#   SPARKLE_PREVIOUS_KEY_ACCOUNT  key the current feed may still be signed with
+#                            after a rotation (default: scripts/sparkle-previous-key-account.txt)
+#   SPARKLE_KEY_DIR          tests: private keys in <dir>/<account>.key instead of the keychain
+#   GIROCRAB_DISCARD_EXISTING_APPCAST=1  start a new feed (signing key lost: the
+#                            current feed cannot be verified any more)
 # Critical (security) updates, stable only – set by notarize.sh --critical:
 #   GIROCRAB_CRITICAL=1           <sparkle:criticalUpdate/>: no "Skip"/"Remind me
 #                                 later". Never installs without consent. Only
@@ -87,33 +99,57 @@ SPARKLE_BIN="$ROOT/GiroCrabApp/.build/artifacts/sparkle/Sparkle/bin"
 if [ ! -x "$SPARKLE_BIN/sign_update" ]; then
   (cd "$ROOT/GiroCrabApp" && swift package resolve >/dev/null)
 fi
-KEY_ARGS=()
-[ -n "${SPARKLE_ED_KEY_FILE:-}" ] && KEY_ARGS=(--ed-key-file "$SPARKLE_ED_KEY_FILE")
+# Signing key: keychain account (or a key file in tests).
+read_account() { [ -f "$1" ] && tr -d '[:space:]' < "$1" || true; }
+ACCOUNT="${SPARKLE_KEY_ACCOUNT:-$(read_account "$ROOT/scripts/sparkle-key-account.txt")}"
+ACCOUNT="${ACCOUNT:-ed25519}"
+PREV_ACCOUNT="${SPARKLE_PREVIOUS_KEY_ACCOUNT-$(read_account "$ROOT/scripts/sparkle-previous-key-account.txt")}"
+# Sets ARGS to the sign_update arguments for <account>.
+key_args() {
+  if [ -n "${SPARKLE_ED_KEY_FILE:-}" ]; then ARGS=(--ed-key-file "$SPARKLE_ED_KEY_FILE")
+  elif [ -n "${SPARKLE_KEY_DIR:-}" ]; then ARGS=(--ed-key-file "$SPARKLE_KEY_DIR/$1.key")
+  else ARGS=(--account "$1"); fi
+}
+key_args "$ACCOUNT"; KEY_ARGS=("${ARGS[@]}")
 
-# The key that signs must be the one baked into the app – catch a wrong
-# keychain entry before publishing an appcast no client would accept.
+# The key that signs must be the one the installed apps know – normally the
+# key baked into the app (scripts/sparkle-public-ed-key.txt), during a key
+# rotation the OLD key (SPARKLE_SIGNING_PUBLIC_KEY). Catch a wrong keychain
+# entry before publishing an appcast no client would accept.
 PUBKEY_FILE="$ROOT/scripts/sparkle-public-ed-key.txt"
-if [ -z "${SPARKLE_ED_KEY_FILE:-}" ] && [ -f "$PUBKEY_FILE" ]; then
-  KC_PUB="$("$SPARKLE_BIN/generate_keys" -p 2>/dev/null | tr -d '[:space:]' || true)"
-  if [ "$KC_PUB" != "$(tr -d '[:space:]' < "$PUBKEY_FILE")" ]; then
-    echo "error: keychain EdDSA key does not match scripts/sparkle-public-ed-key.txt" >&2
+EXPECTED_PUB="${SPARKLE_SIGNING_PUBLIC_KEY:-}"
+[ -z "$EXPECTED_PUB" ] && [ -f "$PUBKEY_FILE" ] && EXPECTED_PUB="$(tr -d '[:space:]' < "$PUBKEY_FILE")"
+if [ -z "${SPARKLE_ED_KEY_FILE:-}${SPARKLE_KEY_DIR:-}" ] && [ -n "$EXPECTED_PUB" ]; then
+  KC_PUB="$("$SPARKLE_BIN/generate_keys" --account "$ACCOUNT" -p 2>/dev/null | tr -d '[:space:]' || true)"
+  if [ "$KC_PUB" != "$EXPECTED_PUB" ]; then
+    echo "error: keychain EdDSA key (account '$ACCOUNT') does not match the expected public key" >&2
+    echo "       ${SPARKLE_SIGNING_PUBLIC_KEY:+(SPARKLE_SIGNING_PUBLIC_KEY)}${SPARKLE_SIGNING_PUBLIC_KEY:-scripts/sparkle-public-ed-key.txt}" >&2
     exit 1
   fi
 fi
 
-# Existing feed: only merge it if its signature verifies with our key.
+# Existing feed: only merge it if its signature verifies with our key – or,
+# right after a key rotation, with the previous key (its items are re-signed
+# with ours below).
 EXISTING=""
-if [ -n "${GIROCRAB_EXISTING_APPCAST:-}" ] && [ -s "$GIROCRAB_EXISTING_APPCAST" ]; then
-  if "$SPARKLE_BIN/sign_update" ${KEY_ARGS[@]+"${KEY_ARGS[@]}"} --verify "$GIROCRAB_EXISTING_APPCAST" >/dev/null 2>&1; then
+if [ "${GIROCRAB_DISCARD_EXISTING_APPCAST:-0}" = "1" ]; then
+  echo "==> Starting a new feed (GIROCRAB_DISCARD_EXISTING_APPCAST=1): other channels' items are dropped"
+elif [ -n "${GIROCRAB_EXISTING_APPCAST:-}" ] && [ -s "$GIROCRAB_EXISTING_APPCAST" ]; then
+  if "$SPARKLE_BIN/sign_update" "${KEY_ARGS[@]}" --verify "$GIROCRAB_EXISTING_APPCAST" >/dev/null 2>&1; then
+    EXISTING="$GIROCRAB_EXISTING_APPCAST"
+  elif [ -n "$PREV_ACCOUNT" ] && key_args "$PREV_ACCOUNT" \
+       && "$SPARKLE_BIN/sign_update" "${ARGS[@]}" --verify "$GIROCRAB_EXISTING_APPCAST" >/dev/null 2>&1; then
+    echo "==> Existing feed is signed with the previous key '$PREV_ACCOUNT' – merging and re-signing"
     EXISTING="$GIROCRAB_EXISTING_APPCAST"
   else
     echo "error: existing appcast $GIROCRAB_EXISTING_APPCAST does not verify with our key – refusing to merge" >&2
+    echo "       (signing key lost? see docs/auto-updates.md: GIROCRAB_DISCARD_EXISTING_APPCAST=1)" >&2
     exit 1
   fi
 fi
 
 # EdDSA signature of the archive (disk image or zip) -> 'sparkle:edSignature="…" length="…"'
-ENCLOSURE_SIG="$("$SPARKLE_BIN/sign_update" ${KEY_ARGS[@]+"${KEY_ARGS[@]}"} "$ARCHIVE")"
+ENCLOSURE_SIG="$("$SPARKLE_BIN/sign_update" "${KEY_ARGS[@]}" "$ARCHIVE")"
 echo "$ENCLOSURE_SIG" | grep -q 'sparkle:edSignature=' \
   || { echo "error: sign_update produced no signature" >&2; exit 1; }
 
@@ -172,6 +208,6 @@ PY
 
 xmllint --noout "$OUT"
 # Embed the feed signature (required by SURequireSignedFeed in the app).
-"$SPARKLE_BIN/sign_update" ${KEY_ARGS[@]+"${KEY_ARGS[@]}"} "$OUT"
-"$SPARKLE_BIN/sign_update" ${KEY_ARGS[@]+"${KEY_ARGS[@]}"} --verify "$OUT"
+"$SPARKLE_BIN/sign_update" "${KEY_ARGS[@]}" "$OUT"
+"$SPARKLE_BIN/sign_update" "${KEY_ARGS[@]}" --verify "$OUT"
 echo "==> Signed appcast ($CHANNEL): $OUT"
