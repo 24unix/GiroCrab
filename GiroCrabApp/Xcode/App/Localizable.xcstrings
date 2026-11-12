@@ -12680,6 +12680,61 @@
           }
         }
       }
+    },
+    "CSV exportieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export CSV"
+          }
+        }
+      }
+    },
+    "Gefilterte Buchungen als CSV exportieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export Filtered Transactions as CSV…"
+          }
+        }
+      }
+    },
+    "Gefilterte Buchungen drucken … (⌘P)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Print Filtered Transactions… (⌘P)"
+          }
+        }
+      }
+    },
+    "Kategorisierungsregeln … (⌥⌘K)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Categorization Rules… (⌥⌘K)"
+          }
+        }
+      }
+    },
+    "Einstellungen … (⌘,)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings… (⌘,)"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
