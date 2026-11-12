@@ -30,7 +30,6 @@ struct InspectorView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .card()
                 }
-                ShortcutHintCard()
             }
             .padding(16)
         }
@@ -414,7 +413,7 @@ struct CategoryGridCard: View {
             .buttonStyle(.borderedProminent)
             .tint(Theme.accent)
             .controlSize(.large)
-            Text("Tastatur: C kategorisieren · R Regel erstellen")
+            Text("In der Liste: C kategorisieren · R Regel erstellen")
                 .font(.caption2).foregroundStyle(Theme.tertiary)
         }
         .card()
@@ -489,29 +488,3 @@ struct RawDataCard: View {
     }
 }
 
-struct ShortcutHintCard: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Tastatur").font(.caption.weight(.semibold)).foregroundStyle(Theme.secondary)
-            hint("⌘K", "Befehlspalette")
-            hint("↑ ↓", "Buchung wechseln")
-            hint("↩", "Notiz bearbeiten (oder Doppelklick)")
-            hint("C", "Kategorisieren")
-            hint("R", "Regel erstellen")
-            hint("⌘1–3", "Alle · Alltag · Sparpläne")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.border, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
-    }
-
-    private func hint(_ key: String, _ text: LocalizedStringKey) -> some View {
-        HStack {
-            Text(key).font(.caption.monospaced().weight(.semibold))
-                .padding(.horizontal, 5).padding(.vertical, 1)
-                .background(RoundedRectangle(cornerRadius: 4).fill(Theme.card))
-                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.border))
-            Text(text).font(.caption).foregroundStyle(Theme.secondary)
-        }
-    }
-}
