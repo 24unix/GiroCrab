@@ -879,10 +879,9 @@ public final class AppModel {
                 } else {
                     self.useVault(v, demo: false)
                 }
-                // Auto-sync with the key already unlocked (no second biometric prompt).
                 if CloudSyncManager.shared.isEnabled {
-                        await self.performSyncOrAutoAdopt(vault: v, key: key)
-                    }
+                    await self.performSyncOrAutoAdopt(vault: v)
+                }
             } catch {
                 if self.ownVault == nil && !Self.vaultMayHoldRealData {
                     // Cancelled before any real data exists: back to the demo, never a dead end.
@@ -894,18 +893,11 @@ public final class AppModel {
         }
     }
 
-    /// Merge with the iCloud copy and write the result back (asks for biometrics to get the key).
+    /// Merges the other devices' snapshots and writes this device's one.
+    /// The open vault does this with its own key: no biometric prompt.
     func syncNow() {
         guard let v = ownVault else { return }
-        Task {
-            do {
-                var key = try await VaultKeyManager.shared.unlock()
-                defer { key.resetBytes(in: 0..<key.count) }
-                await self.performSyncOrAutoAdopt(vault: v, key: key)
-            } catch {
-                self.toast = describe(error)
-            }
-        }
+        Task { await self.performSyncOrAutoAdopt(vault: v) }
     }
 
     /// Secondary device: the user pasted the vault key of the iCloud snapshot.
@@ -918,7 +910,7 @@ public final class AppModel {
                 let pasted = try VaultKeyManager.parseKey(text)
                 let current = try await VaultKeyManager.shared.unlock()
                 let cloud = CloudSyncManager.shared
-                await cloud.sync(vault: v, localPath: Self.vaultURL.path, key: current, remoteKey: pasted, mergeOnly: true)
+                await cloud.sync(vault: v, remoteKey: pasted, mergeOnly: true)
                 guard cloud.lastError == nil else { self.toast = cloud.lastError; return }
                 if pasted != current {
                     try v.rekey(newKey: pasted)
@@ -931,7 +923,7 @@ public final class AppModel {
                         throw error
                     }
                 }
-                await cloud.sync(vault: v, localPath: Self.vaultURL.path, key: pasted)
+                await cloud.sync(vault: v)
                 self.reloadAll()
                 self.toast = String(localized: "Tresor-Schlüssel übernommen – iCloud Sync aktiv")
             } catch {
@@ -940,8 +932,9 @@ public final class AppModel {
         }
     }
 
-    private func performSyncOrAutoAdopt(vault v: Vault, key: Data) async {
-        await CloudSyncManager.shared.sync(vault: v, localPath: Self.vaultURL.path, key: key)
+    private func performSyncOrAutoAdopt(vault v: Vault) async {
+        await CloudSyncManager.shared.sync(vault: v)
+        CloudSyncManager.shared.startAutoSync(vault: v) { [weak self] in self?.reloadAll() }
         if ((try? v.accountCount()) ?? 0) > 0 || self.connectionsExist(v) {
             if self.demoActive {
                 self.useVault(v, demo: false)
@@ -1033,6 +1026,7 @@ public final class AppModel {
         endBankDialogsForLock()
         quickLookURL = nil
         Self.removeQuickLookFiles()
+        CloudSyncManager.shared.stopAutoSync(flushing: true)
         ownVault = nil
         demoActive = false
         vault = nil

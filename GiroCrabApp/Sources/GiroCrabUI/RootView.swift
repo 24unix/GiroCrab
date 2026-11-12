@@ -192,35 +192,39 @@ public struct GiroCrabRootView: View {
         return .none
         #endif
     }()
+    @Environment(\.scenePhase) private var scenePhase
 
     public init() {}
 
     public var body: some View {
-        switch model.vaultState {
-        case .starting where languageQuestion == .chooseLanguage:
-            LanguagePromptView { languageQuestion = .none }
-        case .starting:
-            // Same background + centred logo as the system launch screen (LaunchInfo.plist),
-            // so there is no visual jump between the two.
-            ZStack {
-                Theme.canvas.ignoresSafeArea()
-                StartLogo()
-                ProgressView().offset(y: 96)
+        Group {
+            switch model.vaultState {
+            case .starting where languageQuestion == .chooseLanguage:
+                LanguagePromptView { languageQuestion = .none }
+            case .starting:
+                // Same background + centred logo as the system launch screen (LaunchInfo.plist),
+                // so there is no visual jump between the two.
+                ZStack {
+                    Theme.canvas.ignoresSafeArea()
+                    StartLogo()
+                    ProgressView().offset(y: 96)
+                }
+                .onAppear { model.bootstrap() }
+            case .open:
+                MainSplitView()
+                    .onAppear { StartupClock.mark("MainSplitView appear") }
+                    // Asked only once the vault is open, so it never competes with Touch ID.
+                    .modifier(SystemLanguageChangedAlert(newLanguage: Binding(
+                        get: { if case .systemChanged(let to) = languageQuestion { to } else { nil } },
+                        set: { if $0 == nil { languageQuestion = .none } }
+                    )))
+            case .locked, .unlocking:
+                LockView()
+            case .failed(let message):
+                LockView(error: message)
             }
-            .onAppear { model.bootstrap() }
-        case .open:
-            MainSplitView()
-                .onAppear { StartupClock.mark("MainSplitView appear") }
-                // Asked only once the vault is open, so it never competes with Touch ID.
-                .modifier(SystemLanguageChangedAlert(newLanguage: Binding(
-                    get: { if case .systemChanged(let to) = languageQuestion { to } else { nil } },
-                    set: { if $0 == nil { languageQuestion = .none } }
-                )))
-        case .locked, .unlocking:
-            LockView()
-        case .failed(let message):
-            LockView(error: message)
         }
+        .onChange(of: scenePhase) { _, phase in CloudSyncManager.shared.sceneChanged(phase) }
     }
 }
 

@@ -1098,6 +1098,13 @@ impl Vault {
         Ok(db.query_row("SELECT count(*) FROM accounts", [], |r| r.get::<_, i64>(0))? as u32)
     }
 
+    /// Whether the vault ever held an account. Counts every row, so a vault
+    /// whose accounts are all deleted still syncs once deletions keep rows.
+    pub fn has_account_history(&self) -> Result<bool, crate::error::CoreError> {
+        let db = self.db()?;
+        Ok(db.query_row("SELECT EXISTS(SELECT 1 FROM accounts)", [], |r| r.get(0))?)
+    }
+
     /// Fills an empty vault with fictitious demo data for all 7 banks
     /// (accounts incl. loans, ~6 months of bookings, categories, rules).
     /// Returns the number of bookings created. No-op if data exists.
@@ -1356,6 +1363,8 @@ mod tests {
         assert!(own.seed_starter_categories().unwrap() > 30);
         assert_eq!(own.seed_starter_categories().unwrap(), 0);
         assert_eq!(own.account_count().unwrap(), 0);
+        assert!(!own.has_account_history().unwrap());
+        assert!(v.has_account_history().unwrap());
         let _ = std::fs::remove_file(&p2);
         // wrong key is rejected
         drop(v);

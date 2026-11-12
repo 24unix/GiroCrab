@@ -1,6 +1,50 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "Synchronisiert Ihren verschlüsselten Tresor über iCloud. Der Schlüssel liegt nie in iCloud Drive: Er wird über den iCloud-Schlüsselbund geteilt oder einmalig auf dem zweiten Gerät eingefügt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Syncs your encrypted vault via iCloud. The key is never stored in iCloud Drive: it is shared via iCloud Keychain or pasted once on the second device."
+          }
+        }
+      }
+    },
+    "Ordner wählen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose Folder …"
+          }
+        }
+      }
+    },
+    "GiroCrab darf den Sync-Ordner „%@“ nicht lesen. Erlauben Sie den Zugriff in den Systemeinstellungen unter Datenschutz & Sicherheit › Dateien und Ordner (iCloud Drive)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab isn't allowed to read the sync folder “%@”. Allow access in System Settings › Privacy & Security › Files & Folders (iCloud Drive)."
+          }
+        }
+      }
+    },
+    "GiroCrab kann den Sync-Ordner „%@“ nicht lesen. Wählen Sie den Ordner in den Einstellungen unter iCloud Sync neu aus." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab can't read the sync folder “%@”. Choose the folder again in Settings › iCloud Sync."
+          }
+        }
+      }
+    },
     "%@ – FNZ Bank" : {
       "extractionState" : "manual",
       "localizations" : {
