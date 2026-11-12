@@ -403,6 +403,11 @@ pub struct BookingFilter {
     pub merchant_key: Option<String>,
     /// Income / expenses only; `All` keeps both.
     pub direction: BookingDirection,
+    /// Only checked (`true`) or only new (`false`) bookings; `None` keeps both.
+    pub checked: Option<bool>,
+    /// Extend the page to the end of its last day, so a day is never split
+    /// between two pages (the list shows a sum per day).
+    pub whole_days: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

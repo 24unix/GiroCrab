@@ -582,14 +582,21 @@ struct LoadMoreBookingsFooter: View {
             Text("\(model.bookings.count) von \(model.bookings.count + model.remainingBookingCount) Buchungen geladen – ältere Buchungen sind noch nicht sichtbar.")
                 .font(.caption).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            if model.isLoadingMoreBookings {
+                ProgressView().controlSize(.small)
+            }
             HStack(spacing: 10) {
-                Button("Weitere Buchungen laden (+3.000)") { model.loadMoreBookings() }
+                Button("Weitere Buchungen laden") { model.loadMoreBookings() }
+                    .disabled(model.isLoadingMoreBookings)
                 Button("Alle Buchungen laden") { model.loadAllBookings() }
             }
             .buttonStyle(.bordered)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
+        // The footer scrolled into view: fetch the next page. Runs again after
+        // each page for as long as the footer stays visible.
+        .task(id: model.bookings.count) { model.loadMoreBookings() }
     }
 }
 
