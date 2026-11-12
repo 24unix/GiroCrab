@@ -347,11 +347,7 @@ struct DayCard: View {
 
     @ViewBuilder
     private func rowMenu(_ b: Booking) -> some View {
-        Button(model.isMultiSelection && model.selectedBookingIDs.contains(b.id)
-               ? "\(model.selectedBookingIDs.count) Buchungen kategorisieren …" : "Kategorisieren …", systemImage: "tag") {
-            if !model.selectedBookingIDs.contains(b.id) { model.selectedBookingID = b.id }
-            model.showCategorizer = true
-        }
+        CategorizeMenuButton(booking: b)
         Button("Regel für diesen Händler erstellen …", systemImage: "wand.and.stars") { model.openRuleEditor(from: b) }
         Button("Notiz bearbeiten …", systemImage: "note.text") { model.editNote(for: b) }
         Button("Umsatz aufteilen (Splitbuchung) …", systemImage: "arrow.triangle.branch") { model.splitBooking = b }
@@ -452,6 +448,21 @@ private struct RowSelectionBackground: View {
 
     var body: some View {
         model.selectedBookingIDs.contains(id) ? Theme.selection : Color.clear
+    }
+}
+
+/// "Kategorisieren …" of the row menu; its title follows a multiple selection.
+/// A view of its own, so the selection stays out of the day card's dependencies.
+private struct CategorizeMenuButton: View {
+    @Environment(AppModel.self) private var model
+    let booking: Booking
+
+    var body: some View {
+        Button(model.isMultiSelection && model.selectedBookingIDs.contains(booking.id)
+               ? "\(model.selectedBookingIDs.count) Buchungen kategorisieren …" : "Kategorisieren …", systemImage: "tag") {
+            if !model.selectedBookingIDs.contains(booking.id) { model.selectedBookingID = booking.id }
+            model.showCategorizer = true
+        }
     }
 }
 
