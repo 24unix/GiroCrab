@@ -68,9 +68,21 @@ struct SettingsView: View {
 
 /// Allgemein: app language (#93). Usable without an open vault.
 struct GeneralSettings: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
         Form {
             LanguageSettingsSection()
+            Section("Demo") {
+                Button {
+                    model.loadDemoData()
+                    model.settingsRequested = false
+                } label: {
+                    Label("Demo-Tresor / Demo-Daten laden", systemImage: "play.circle")
+                }
+                Text("Lädt einen Wegwerf-Tresor mit fiktiven Konten bei sieben Banken. „Alle abrufen“, TAN-Dialoge und Überweisungen laufen simuliert, ohne Netzwerk. Ihre eigenen Daten bleiben unberührt.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
     }

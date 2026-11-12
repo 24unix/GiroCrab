@@ -65,6 +65,7 @@ struct FinTsAddForm: View {
         TextField("FinTS-URL (https://…)", text: $url)
             .autocorrectionDisabled()
             .onChange(of: url) { _, new in if new != autoURL { urlEdited = true } }
+        DemoHintBanner(style: .credentials) { login = "demo" }
         TextField("Anmeldename / VR-NetKey / Kontonummer", text: $login).autocorrectionDisabled()
         TextField("TAN-Medium / Gerätename (optional, z. B. bei Postbank BestSign)", text: $tanMedium)
             .autocorrectionDisabled()

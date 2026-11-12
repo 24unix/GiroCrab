@@ -44,6 +44,36 @@ struct DemoBanner: View {
     }
 }
 
+/// Always-visible hint for testers (Apple App Review): login `demo`, PIN `12345`, TAN `123456`.
+/// `.credentials` = add-bank / PIN form, `.pinAndTan` = PIN, TAN and transfer dialogs.
+struct DemoHintBanner: View {
+    enum Style { case credentials, pinAndTan }
+    let style: Style
+    var buttonTitle: LocalizedStringKey? = nil
+    let onFill: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label {
+                Text(style == .credentials
+                     ? "Test- & Demo-Zugang (ohne echtes Bankkonto): Kennung demo · PIN 12345"
+                     : "Demo-Modus: PIN 12345 · TAN 123456")
+                    .font(.callout.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "play.circle.fill").foregroundStyle(Theme.accent)
+            }
+            Button(buttonTitle ?? (style == .credentials ? "Demo-Zugangsdaten ausfüllen" : "Demo-Werte einfügen"), action: onFill)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .contain)
+    }
+}
+
 /// Own vault without accounts: three steps + way back to the demo.
 struct EmptyVaultCard: View {
     @Environment(AppModel.self) private var model
@@ -78,7 +108,7 @@ struct EmptyVaultCard: View {
             Divider()
             HStack {
                 Text("Erst einmal ansehen?").font(.caption).foregroundStyle(Theme.secondary)
-                Button("Demo-Daten anzeigen") { model.showDemo() }
+                Button("Demo-Daten & Demo-Banken laden (Kennung: demo / PIN: 12345)") { model.loadDemoData() }
                     .buttonStyle(.borderless)
             }
         }

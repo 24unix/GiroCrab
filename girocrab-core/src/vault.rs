@@ -1114,7 +1114,9 @@ impl Vault {
         display_name: String,
         login_name: String,
     ) -> Result<i64, CoreError> {
-        crate::banking_gate::check_connector(connector.as_str())?;
+        if !crate::demo::is_magic_demo_login(&login_name) {
+            crate::banking_gate::check_connector(connector.as_str())?;
+        }
         let db = self.db()?;
         Ok(Self::add_bank_connection_inner(&db, connector, display_name, login_name)?.0)
     }
@@ -1143,7 +1145,9 @@ impl Vault {
             });
         }
         let key = ConnectorKind::fints_key(&blz);
-        crate::banking_gate::check_connector(&key)?;
+        if !crate::demo::is_magic_demo_login(&login_name) {
+            crate::banking_gate::check_connector(&key)?;
+        }
         let db = self.db()?;
         let (id, _) = Self::add_bank_connection_keyed(
             &db,
@@ -1188,7 +1192,9 @@ impl Vault {
                 message: tr("Bank oder Ländercode ungültig.").into(),
             });
         }
-        crate::banking_gate::check_connector(&key)?;
+        if !crate::demo::is_magic_demo_login(&login_name) {
+            crate::banking_gate::check_connector(&key)?;
+        }
         let login = if login_name.trim().is_empty() {
             aspsp.clone()
         } else {

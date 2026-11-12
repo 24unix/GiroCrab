@@ -84,6 +84,16 @@ fn demo_documents(conn: &Connection, today: NaiveDate, account_id: i64) -> CoreR
     Ok(())
 }
 
+/// Login name that switches a bank connection to the simulated demo bank
+/// (Apple App Review, guideline 2.1(a)): case-insensitive `demo`, PIN `12345`,
+/// any 4- or 6-digit TAN. No network access and no FinTS product ID needed.
+pub const MAGIC_DEMO_LOGIN: &str = "demo";
+pub const MAGIC_DEMO_PIN: &str = "12345";
+
+pub fn is_magic_demo_login(login: &str) -> bool {
+    login.trim().eq_ignore_ascii_case(MAGIC_DEMO_LOGIN)
+}
+
 pub struct DemoAccountSpec {
     pub connector: ConnectorKind,
     pub external_ref: &'static str,
