@@ -346,6 +346,14 @@ request is made for logos and everything stays 100 % local. **Never attach real 
 
 DE: Händler-Logos sind **standardmäßig deaktiviert** (Opt-in in den Einstellungen) – ohne Zustimmung werden keine Logos aus dem Netz geladen, alles bleibt zu 100 % lokal.
 
+## 🤖 KI-Transparenz / AI Transparency
+
+DE: GiroCrab entsteht in hybrider Mensch-KI-Entwicklung und ist Living Lab des Forschungsprojekts *„AI-enabled Transparency of AI Use in Software Creation Processes“*. Jeder PR bekommt automatisch eine **AI Provenance & Transparency Card**. Echte Finanzdaten kommen nie in Prompts.
+
+EN: Every PR automatically gets an AI provenance card. Real financial data never goes into prompts.
+
+→ **[docs/ai-transparency.md](docs/ai-transparency.md)**
+
 ---
 
 ## 🏦 Wie funktioniert der Bankabgleich? (FAQ & Technik)
