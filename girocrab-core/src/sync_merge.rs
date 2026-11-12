@@ -15,7 +15,7 @@
 //! NULL means live. A merge never stamps anything itself.
 
 use rusqlite::{params, Connection, OptionalExtension};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::error::{CoreError, CoreResult};
@@ -455,6 +455,808 @@ pub(crate) fn booking_key(conn: &Connection, id: i64) -> CoreResult<String> {
         .optional()?
         .ok_or_else(|| not_found("booking", id))?;
     Ok(format!("{}|{external_id}", account_key(conn, account)?))
+}
+
+// ------------------------------------------------------------------ merge
+
+/// Newest stamp wins; equal stamps with different values: the larger value.
+fn take_newer<T: PartialOrd>(val: &mut T, ms: &mut i64, other: T, other_ms: i64) {
+    if other_ms > *ms || (other_ms == *ms && other > *val) {
+        *val = other;
+        *ms = other_ms;
+    }
+}
+
+/// A deletion only ever gets set: the larger `deleted_ms` wins, and
+/// `merged_into` goes with it (equal stamps: the larger pointer).
+fn merge_deletion(
+    deleted: &mut Option<i64>,
+    merged: &mut Option<String>,
+    other_deleted: Option<i64>,
+    other_merged: Option<String>,
+) {
+    let mut ms = deleted.unwrap_or(0);
+    take_newer(merged, &mut ms, other_merged, other_deleted.unwrap_or(0));
+    *deleted = (*deleted).max(other_deleted);
+}
+
+/// Follows `merged_into` to the live row a deleted one was combined into.
+/// `None`: deleted without a live survivor.
+fn survivor<'a>(
+    uuid: &'a str,
+    live: impl Fn(&str) -> Option<(bool, Option<&'a str>)>,
+) -> Option<&'a str> {
+    let mut cur = uuid;
+    for _ in 0..64 {
+        let (is_live, merged) = live(cur)?;
+        if is_live {
+            return Some(cur);
+        }
+        cur = merged?;
+    }
+    None
+}
+
+/// Picks the local row a v7 row (no uuid of its own) stands for: live rows
+/// first, then the lowest uuid. Soft-deleted rows count, so that nothing
+/// deleted comes back with a new uuid.
+fn pick_match<'a>(cands: &[(&'a str, bool)]) -> Option<&'a str> {
+    cands
+        .iter()
+        .min_by_key(|(u, live)| (!live, *u))
+        .map(|(u, _)| *u)
+}
+
+#[derive(Clone, PartialEq, Debug)]
+struct Cat {
+    id: i64,
+    uuid: String,
+    name: String,
+    parent: Option<String>,
+    symbol: String,
+    color: String,
+    budget: Option<i64>,
+    order: i64,
+    name_ms: i64,
+    parent_ms: i64,
+    symbol_ms: i64,
+    color_ms: i64,
+    budget_ms: i64,
+    order_ms: i64,
+    deleted_ms: Option<i64>,
+    merged_into: Option<String>,
+}
+
+impl Cat {
+    fn merge(&mut self, o: Cat) {
+        take_newer(&mut self.name, &mut self.name_ms, o.name, o.name_ms);
+        take_newer(&mut self.parent, &mut self.parent_ms, o.parent, o.parent_ms);
+        take_newer(&mut self.symbol, &mut self.symbol_ms, o.symbol, o.symbol_ms);
+        take_newer(&mut self.color, &mut self.color_ms, o.color, o.color_ms);
+        take_newer(&mut self.budget, &mut self.budget_ms, o.budget, o.budget_ms);
+        take_newer(&mut self.order, &mut self.order_ms, o.order, o.order_ms);
+        merge_deletion(
+            &mut self.deleted_ms,
+            &mut self.merged_into,
+            o.deleted_ms,
+            o.merged_into,
+        );
+    }
+}
+
+fn load_categories(conn: &Connection, schema: &str) -> CoreResult<Vec<Cat>> {
+    // includes soft-deleted rows
+    let sql = format!(
+        "SELECT c.id, c.uuid, c.name, p.uuid, c.sf_symbol, c.color_hex, c.budget_cents,
+                c.sort_order, c.name_ms, c.parent_ms, c.symbol_ms, c.color_ms, c.budget_ms,
+                c.order_ms, c.deleted_ms, c.merged_into
+         FROM {schema}.categories c LEFT JOIN {schema}.categories p ON p.id = c.parent_id
+         ORDER BY c.id"
+    );
+    let rows = conn
+        .prepare(&sql)?
+        .query_map([], |r| {
+            Ok(Cat {
+                id: r.get(0)?,
+                uuid: r.get(1)?,
+                name: r.get(2)?,
+                parent: r.get(3)?,
+                symbol: r.get(4)?,
+                color: r.get(5)?,
+                budget: r.get(6)?,
+                order: r.get(7)?,
+                name_ms: r.get(8)?,
+                parent_ms: r.get(9)?,
+                symbol_ms: r.get(10)?,
+                color_ms: r.get(11)?,
+                budget_ms: r.get(12)?,
+                order_ms: r.get(13)?,
+                deleted_ms: r.get(14)?,
+                merged_into: r.get(15)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+/// uuid -> uuid of the category's current path (names from the root).
+fn path_uuids(cats: &[Cat]) -> HashMap<String, String> {
+    let by_uuid: HashMap<&str, &Cat> = cats.iter().map(|c| (c.uuid.as_str(), c)).collect();
+    cats.iter()
+        .map(|c| {
+            let mut path = vec![c.name.as_str()];
+            let mut cur = c.parent.as_deref();
+            while let Some(p) = cur.and_then(|p| by_uuid.get(p)) {
+                if path.len() > 64 {
+                    break;
+                }
+                path.push(p.name.as_str());
+                cur = p.parent.as_deref();
+            }
+            path.reverse();
+            (c.uuid.clone(), category_uuid_for_path(&path))
+        })
+        .collect()
+}
+
+fn cat_survivor<'a>(state: &'a BTreeMap<String, Cat>, uuid: &'a str) -> Option<&'a str> {
+    survivor(uuid, |u| {
+        state
+            .get(u)
+            .map(|c| (c.deleted_ms.is_none(), c.merged_into.as_deref()))
+    })
+}
+
+/// A parent that was combined into another moves its children to the
+/// survivor; a live child of a deleted parent moves to the top level (a
+/// deleted child keeps it). Cycles from crossing moves are cut at their
+/// lowest uuid. Derived: no stamps.
+fn resolve_parents(state: &mut BTreeMap<String, Cat>) {
+    let all: Vec<String> = state.keys().cloned().collect();
+    for u in &all {
+        let c = &state[u];
+        let parent = c
+            .parent
+            .as_deref()
+            .and_then(|p| match cat_survivor(state, p) {
+                Some(s) => Some(s),
+                None if c.deleted_ms.is_some() => Some(p),
+                None => None,
+            })
+            .filter(|p| *p != u.as_str())
+            .map(str::to_string);
+        state.get_mut(u).unwrap().parent = parent;
+    }
+    let live: Vec<String> = state
+        .values()
+        .filter(|c| c.deleted_ms.is_none())
+        .map(|c| c.uuid.clone())
+        .collect();
+    loop {
+        let mut cycle: Option<Vec<String>> = None;
+        for u in &live {
+            let mut seen = vec![u.clone()];
+            let mut cur = state[u].parent.clone();
+            while let Some(p) = cur {
+                if p == *u {
+                    cycle = Some(seen);
+                    break;
+                }
+                if seen.len() > state.len() {
+                    break;
+                }
+                cur = state.get(&p).and_then(|c| c.parent.clone());
+                seen.push(p);
+            }
+            if cycle.is_some() {
+                break;
+            }
+        }
+        let Some(cycle) = cycle else { break };
+        let lowest = cycle.iter().min().unwrap().clone();
+        state.get_mut(&lowest).unwrap().parent = None;
+    }
+}
+
+/// Live categories with the same parent and case-folded name are combined
+/// into the lowest uuid. Returns whether anything was combined.
+fn combine_categories(state: &mut BTreeMap<String, Cat>) -> bool {
+    let mut groups: BTreeMap<(Option<String>, String), Vec<String>> = BTreeMap::new();
+    for c in state.values().filter(|c| c.deleted_ms.is_none()) {
+        groups
+            .entry((c.parent.clone(), fold(&c.name)))
+            .or_default()
+            .push(c.uuid.clone());
+    }
+    let mut any = false;
+    for uuids in groups.into_values().filter(|g| g.len() > 1) {
+        // BTreeMap order: the first is the lowest uuid
+        let keep = &uuids[0];
+        let keep_ms = state[keep].name_ms;
+        for u in &uuids[1..] {
+            let c = state.get_mut(u).unwrap();
+            c.deleted_ms = Some(c.name_ms.max(keep_ms).max(1));
+            c.merged_into = Some(keep.clone());
+            any = true;
+        }
+    }
+    any
+}
+
+/// Merges `other.categories` into this vault: upsert by uuid, newest stamp per
+/// field, deletions win, same-named live siblings combined. Returns other id
+/// -> local id (combined rows map to their survivor; a deleted row without a
+/// survivor maps to its own deleted local row).
+///
+/// `legacy`: the other vault had no uuids (v7); its rows were given path
+/// uuids and are matched by their path against every local row, deleted ones
+/// included, so they cannot revive anything.
+pub(crate) fn merge_categories(
+    conn: &Connection,
+    legacy: bool,
+    stats: &mut crate::vault::MergeStats,
+) -> CoreResult<HashMap<i64, i64>> {
+    fill_missing_uuids(conn)?;
+    let local = load_categories(conn, "main")?;
+    let other = load_categories(conn, "other")?;
+    let original: HashMap<String, Cat> =
+        local.iter().map(|c| (c.uuid.clone(), c.clone())).collect();
+    let mut state: BTreeMap<String, Cat> =
+        local.iter().map(|c| (c.uuid.clone(), c.clone())).collect();
+
+    // v7 rows: other uuid -> the local uuid they stand for
+    let mut alias: HashMap<String, String> = HashMap::new();
+    if legacy {
+        let mut by_path: HashMap<String, Vec<(&str, bool)>> = HashMap::new();
+        for (u, p) in path_uuids(&local) {
+            let live = original[&u].deleted_ms.is_none();
+            let u = original.get_key_value(&u).unwrap().0.as_str();
+            by_path.entry(p).or_default().push((u, live));
+        }
+        for (u, p) in path_uuids(&other) {
+            if original.contains_key(&u) {
+                continue;
+            }
+            if let Some(m) = by_path.get(&p).and_then(|c| pick_match(c)) {
+                alias.insert(u, m.to_string());
+            }
+        }
+    }
+    let local_uuid = |u: Option<String>| u.map(|u| alias.get(&u).cloned().unwrap_or(u));
+
+    for o in &other {
+        let mut row = o.clone();
+        row.parent = local_uuid(row.parent);
+        row.merged_into = local_uuid(row.merged_into);
+        match alias.get(&o.uuid) {
+            Some(target) => {
+                // merged into its match; the row itself stays as a tombstone
+                let t = state.get_mut(target).unwrap();
+                t.merge(Cat {
+                    uuid: target.clone(),
+                    ..row.clone()
+                });
+                let ms = t.name_ms;
+                row.id = 0;
+                row.deleted_ms = Some(ms.max(1));
+                row.merged_into = Some(target.clone());
+                state.insert(row.uuid.clone(), row);
+            }
+            None => match state.get_mut(&o.uuid) {
+                Some(c) => c.merge(row),
+                None => {
+                    row.id = 0;
+                    state.insert(row.uuid.clone(), row);
+                }
+            },
+        }
+    }
+    loop {
+        resolve_parents(&mut state);
+        if !combine_categories(&mut state) {
+            break;
+        }
+    }
+
+    // write: new rows first (parked as deleted = -1, outside the unique name
+    // index), then every changed row, then unpark the live ones at once
+    let mut ids: HashMap<String, i64> = state.values().map(|c| (c.uuid.clone(), c.id)).collect();
+    let changed: Vec<&Cat> = state
+        .values()
+        .filter(|c| original.get(&c.uuid) != Some(c))
+        .collect();
+    for c in &changed {
+        if c.id == 0 {
+            conn.execute(
+                "INSERT INTO categories(uuid, name, deleted_ms) VALUES (?1, ?2, -1)",
+                params![c.uuid, c.name],
+            )?;
+            ids.insert(c.uuid.clone(), conn.last_insert_rowid());
+            if c.deleted_ms.is_none() {
+                stats.categories_added += 1;
+            }
+        } else {
+            conn.execute(
+                "UPDATE categories SET deleted_ms = -1 WHERE id = ?1",
+                [c.id],
+            )?;
+        }
+    }
+    for c in &changed {
+        let parent = c.parent.as_ref().and_then(|p| ids.get(p));
+        conn.execute(
+            "UPDATE categories SET name = ?2, parent_id = ?3, sf_symbol = ?4, color_hex = ?5,
+                    budget_cents = ?6, sort_order = ?7, name_ms = ?8, parent_ms = ?9,
+                    symbol_ms = ?10, color_ms = ?11, budget_ms = ?12, order_ms = ?13,
+                    deleted_ms = IFNULL(?14, -1), merged_into = ?15
+             WHERE id = ?1",
+            params![
+                ids[&c.uuid],
+                c.name,
+                parent,
+                c.symbol,
+                c.color,
+                c.budget,
+                c.order,
+                c.name_ms,
+                c.parent_ms,
+                c.symbol_ms,
+                c.color_ms,
+                c.budget_ms,
+                c.order_ms,
+                c.deleted_ms,
+                c.merged_into
+            ],
+        )?;
+    }
+    conn.execute(
+        "UPDATE categories SET deleted_ms = NULL WHERE deleted_ms = -1",
+        [],
+    )?;
+
+    // whatever points at a deleted category follows its survivor or becomes
+    // uncategorised (as a deletion does); derived, no stamps
+    for c in state.values().filter(|c| c.deleted_ms.is_some()) {
+        let id = ids[&c.uuid];
+        match cat_survivor(&state, &c.uuid) {
+            Some(s) => {
+                let s = ids[s];
+                conn.execute(
+                    "UPDATE transactions SET category_id = ?2 WHERE category_id = ?1",
+                    [id, s],
+                )?;
+                conn.execute(
+                    "UPDATE transaction_splits SET category_id = ?2 WHERE category_id = ?1",
+                    [id, s],
+                )?;
+                conn.execute(
+                    "UPDATE rules SET category_id = ?2 WHERE category_id = ?1",
+                    [id, s],
+                )?;
+            }
+            None => {
+                conn.execute(
+                    "UPDATE transactions SET category_id = NULL, rule_id = NULL, category_source = 'none'
+                     WHERE category_id = ?1",
+                    [id],
+                )?;
+                conn.execute(
+                    "UPDATE transaction_splits SET category_id = NULL WHERE category_id = ?1",
+                    [id],
+                )?;
+            }
+        }
+    }
+
+    Ok(other
+        .iter()
+        .map(|o| {
+            let u = alias.get(&o.uuid).unwrap_or(&o.uuid);
+            let target = cat_survivor(&state, u).unwrap_or(u.as_str());
+            (o.id, ids[target])
+        })
+        .collect())
+}
+
+/// The part of a rule that is replaced as a whole; compared for tie-breaks.
+#[derive(Clone, PartialEq, PartialOrd, Debug)]
+struct RuleBody {
+    category: String,
+    field: String,
+    kind: String,
+    pattern: String,
+    case_sensitive: bool,
+    min: Option<i64>,
+    max: Option<i64>,
+    account: Option<String>,
+    name: String,
+    priority: i64,
+    enabled: bool,
+}
+
+impl RuleBody {
+    fn content_uuid(&self) -> String {
+        rule_uuid_for_content(
+            &self.field,
+            &self.kind,
+            &self.pattern,
+            self.case_sensitive,
+            self.min,
+            self.max,
+            self.account.as_deref(),
+            &self.category,
+        )
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+struct MRule {
+    id: i64,
+    uuid: String,
+    body: RuleBody,
+    category_id: i64,
+    account_id: Option<i64>,
+    updated_ms: i64,
+    deleted_ms: Option<i64>,
+    merged_into: Option<String>,
+}
+
+impl MRule {
+    fn merge(&mut self, o: MRule) {
+        if o.updated_ms > self.updated_ms || (o.updated_ms == self.updated_ms && o.body > self.body)
+        {
+            self.body = o.body;
+            self.category_id = o.category_id;
+            self.account_id = o.account_id;
+            self.updated_ms = o.updated_ms;
+        }
+        merge_deletion(
+            &mut self.deleted_ms,
+            &mut self.merged_into,
+            o.deleted_ms,
+            o.merged_into,
+        );
+    }
+}
+
+type RawRule = (
+    i64,
+    String,
+    String,
+    i64,
+    String,
+    String,
+    String,
+    bool,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
+    i64,
+    bool,
+    i64,
+    Option<i64>,
+    Option<String>,
+);
+
+fn load_rules(conn: &Connection, schema: &str) -> CoreResult<Vec<RawRule>> {
+    // includes soft-deleted rows
+    let sql = format!(
+        "SELECT id, uuid, name, category_id, field, match_kind, pattern, case_sensitive,
+                min_amount_cents, max_amount_cents, account_id, priority, enabled,
+                updated_ms, deleted_ms, merged_into
+         FROM {schema}.rules ORDER BY id"
+    );
+    let rows = conn
+        .prepare(&sql)?
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
+                r.get(8)?,
+                r.get(9)?,
+                r.get(10)?,
+                r.get(11)?,
+                r.get(12)?,
+                r.get(13)?,
+                r.get(14)?,
+                r.get(15)?,
+            ))
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+/// Local categories: id -> (uuid, live, merged_into).
+type CatInfo = HashMap<i64, (String, bool, Option<String>)>;
+
+fn category_info(conn: &Connection) -> CoreResult<CatInfo> {
+    // includes soft-deleted rows
+    let rows = conn
+        .prepare("SELECT id, uuid, deleted_ms IS NULL, merged_into FROM categories")?
+        .query_map([], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?, r.get(3)?))))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+fn rule_survivor<'a>(state: &'a BTreeMap<String, MRule>, uuid: &'a str) -> Option<&'a str> {
+    survivor(uuid, |u| {
+        state
+            .get(u)
+            .map(|r| (r.deleted_ms.is_none(), r.merged_into.as_deref()))
+    })
+}
+
+/// Merges `other.rules`: upsert by uuid, the newer `updated_ms` replaces the
+/// whole rule, deletions win, rules of a deleted category are deleted with
+/// it, identical live rules are combined into the lowest uuid. `cat_map` and
+/// `acc_map` translate the other vault's ids. Returns other id -> local id
+/// (combined rules map to their survivor).
+pub(crate) fn merge_rules(
+    conn: &Connection,
+    cat_map: &HashMap<i64, i64>,
+    acc_map: &HashMap<i64, i64>,
+    legacy: bool,
+    stats: &mut crate::vault::MergeStats,
+) -> CoreResult<HashMap<i64, i64>> {
+    let cats = category_info(conn)?;
+    let cat_id_of: HashMap<&str, i64> = cats.iter().map(|(id, c)| (c.0.as_str(), *id)).collect();
+    let mut keys: HashMap<i64, String> = HashMap::new();
+    let mut key_of = |conn: &Connection, id: i64| -> CoreResult<String> {
+        if let Some(k) = keys.get(&id) {
+            return Ok(k.clone());
+        }
+        let k = account_key(conn, id)?;
+        keys.insert(id, k.clone());
+        Ok(k)
+    };
+    let mut build = |conn: &Connection,
+                     raw: RawRule,
+                     cat: i64,
+                     acc: Option<i64>|
+     -> CoreResult<MRule> {
+        let (id, uuid, name, _, field, kind, pattern, cs, min, max, _, prio, en, upd, del, merged) =
+            raw;
+        let account = match acc {
+            Some(a) => Some(key_of(conn, a)?),
+            None => None,
+        };
+        Ok(MRule {
+            id,
+            uuid,
+            body: RuleBody {
+                category: cats.get(&cat).map(|c| c.0.clone()).unwrap_or_default(),
+                field,
+                kind,
+                pattern,
+                case_sensitive: cs,
+                min,
+                max,
+                account,
+                name,
+                priority: prio,
+                enabled: en,
+            },
+            category_id: cat,
+            account_id: acc,
+            updated_ms: upd,
+            deleted_ms: del,
+            merged_into: merged,
+        })
+    };
+
+    let mut local = Vec::new();
+    for raw in load_rules(conn, "main")? {
+        let (cat, acc) = (raw.3, raw.10);
+        local.push(build(conn, raw, cat, acc)?);
+    }
+    let mut other = Vec::new();
+    for raw in load_rules(conn, "other")? {
+        let Some(&cat) = cat_map.get(&raw.3) else {
+            continue;
+        };
+        if raw.6.len() > crate::rules::MAX_PATTERN_LEN {
+            continue;
+        }
+        let acc = raw.10.and_then(|a| acc_map.get(&a).copied());
+        if raw.10.is_some() && acc.is_none() {
+            continue;
+        }
+        other.push(build(conn, raw, cat, acc)?);
+    }
+    let original: HashMap<String, MRule> =
+        local.iter().map(|r| (r.uuid.clone(), r.clone())).collect();
+    let mut state: BTreeMap<String, MRule> =
+        local.iter().map(|r| (r.uuid.clone(), r.clone())).collect();
+
+    // v7 rows: matched by content against every local rule, deleted ones too
+    let mut alias: HashMap<String, String> = HashMap::new();
+    if legacy {
+        let mut by_content: HashMap<String, Vec<(&str, bool)>> = HashMap::new();
+        for r in &local {
+            by_content
+                .entry(r.body.content_uuid())
+                .or_default()
+                .push((r.uuid.as_str(), r.deleted_ms.is_none()));
+        }
+        for o in other.iter().filter(|o| !original.contains_key(&o.uuid)) {
+            if let Some(m) = by_content
+                .get(&o.body.content_uuid())
+                .and_then(|c| pick_match(c))
+            {
+                alias.insert(o.uuid.clone(), m.to_string());
+            }
+        }
+    }
+
+    let mut other_ids = Vec::new();
+    for mut row in other {
+        other_ids.push((row.id, row.uuid.clone()));
+        row.merged_into = row.merged_into.map(|u| alias.get(&u).cloned().unwrap_or(u));
+        match alias.get(&row.uuid) {
+            Some(target) => {
+                let t = state.get_mut(target).unwrap();
+                t.merge(MRule {
+                    uuid: target.clone(),
+                    ..row.clone()
+                });
+                let ms = t.updated_ms;
+                row.id = 0;
+                row.deleted_ms = Some(ms.max(1));
+                row.merged_into = Some(target.clone());
+                state.insert(row.uuid.clone(), row);
+            }
+            None => match state.get_mut(&row.uuid) {
+                Some(r) => r.merge(row),
+                None => {
+                    row.id = 0;
+                    state.insert(row.uuid.clone(), row);
+                }
+            },
+        }
+    }
+
+    // a rule follows its category's survivor, or is deleted with it
+    for r in state.values_mut() {
+        let Some((_, false, _)) = cats.get(&r.category_id) else {
+            continue;
+        };
+        let s = survivor(&r.body.category, |u| {
+            cat_id_of
+                .get(u)
+                .and_then(|id| cats.get(id))
+                .map(|c| (c.1, c.2.as_deref()))
+        })
+        .map(str::to_string);
+        match s {
+            Some(s) => {
+                r.category_id = cat_id_of[s.as_str()];
+                r.body.category = s;
+            }
+            None if r.deleted_ms.is_none() => {
+                let del: Option<i64> = conn.query_row(
+                    // includes soft-deleted rows
+                    "SELECT deleted_ms FROM categories WHERE id = ?1",
+                    [r.category_id],
+                    |q| q.get(0),
+                )?;
+                r.deleted_ms = del;
+            }
+            None => {}
+        }
+    }
+
+    // identical live rules are combined into the lowest uuid
+    let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for r in state.values().filter(|r| r.deleted_ms.is_none()) {
+        groups
+            .entry(r.body.content_uuid())
+            .or_default()
+            .push(r.uuid.clone());
+    }
+    for uuids in groups.into_values().filter(|g| g.len() > 1) {
+        let keep = uuids[0].clone();
+        let keep_ms = state[&keep].updated_ms;
+        for u in &uuids[1..] {
+            let r = state.get_mut(u).unwrap();
+            r.deleted_ms = Some(r.updated_ms.max(keep_ms).max(1));
+            r.merged_into = Some(keep.clone());
+        }
+    }
+
+    let mut ids: HashMap<String, i64> = state.values().map(|r| (r.uuid.clone(), r.id)).collect();
+    for r in state.values().filter(|r| original.get(&r.uuid) != Some(r)) {
+        let b = &r.body;
+        if r.id == 0 {
+            conn.execute(
+                "INSERT INTO rules(uuid, name, category_id, pattern) VALUES (?1, ?2, ?3, ?4)",
+                params![r.uuid, b.name, r.category_id, b.pattern],
+            )?;
+            ids.insert(r.uuid.clone(), conn.last_insert_rowid());
+            if r.deleted_ms.is_none() {
+                stats.rules_added += 1;
+            }
+        }
+        conn.execute(
+            "UPDATE rules SET name = ?2, category_id = ?3, field = ?4, match_kind = ?5,
+                    pattern = ?6, case_sensitive = ?7, min_amount_cents = ?8,
+                    max_amount_cents = ?9, account_id = ?10, priority = ?11, enabled = ?12,
+                    updated_ms = ?13, deleted_ms = ?14, merged_into = ?15
+             WHERE id = ?1",
+            params![
+                ids[&r.uuid],
+                b.name,
+                r.category_id,
+                b.field,
+                b.kind,
+                b.pattern,
+                b.case_sensitive,
+                b.min,
+                b.max,
+                r.account_id,
+                b.priority,
+                b.enabled,
+                r.updated_ms,
+                r.deleted_ms,
+                r.merged_into
+            ],
+        )?;
+    }
+
+    // bookings follow a combined rule; a deleted rule's bookings are
+    // uncategorised (as `delete_rule` does); derived, no stamps
+    for r in state.values().filter(|r| r.deleted_ms.is_some()) {
+        let id = ids[&r.uuid];
+        match rule_survivor(&state, &r.uuid) {
+            Some(s) => {
+                conn.execute(
+                    "UPDATE transactions SET rule_id = ?2 WHERE rule_id = ?1",
+                    [id, ids[s]],
+                )?;
+            }
+            None => {
+                conn.execute(
+                    "UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL
+                     WHERE rule_id = ?1",
+                    [id],
+                )?;
+            }
+        }
+    }
+
+    Ok(other_ids
+        .iter()
+        .map(|(oid, u)| {
+            let u = alias.get(u).unwrap_or(u);
+            let target = rule_survivor(&state, u).unwrap_or(u.as_str());
+            (*oid, ids[target])
+        })
+        .collect())
+}
+
+/// Keeps the entries of an other-id -> local-id map whose local row is live.
+pub(crate) fn live_targets(
+    conn: &Connection,
+    table: &str,
+    map: &HashMap<i64, i64>,
+) -> CoreResult<HashMap<i64, i64>> {
+    // includes soft-deleted rows
+    let deleted: HashSet<i64> = conn
+        .prepare(&format!(
+            "SELECT id FROM {table} WHERE deleted_ms IS NOT NULL"
+        ))?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(map
+        .iter()
+        .filter(|(_, l)| !deleted.contains(l))
+        .map(|(o, l)| (*o, *l))
+        .collect())
 }
 
 /// The synced state of a vault, one line per row, ordered by sync key and

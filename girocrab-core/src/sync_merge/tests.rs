@@ -1602,3 +1602,419 @@ fn moving_an_account_ignores_deleted_neighbours() {
     let ids: Vec<i64> = group.accounts.iter().map(|a| a.id).collect();
     assert_eq!(ids, [a2, loose]);
 }
+
+// ------------------------------------------------------------ category / rule merge
+
+fn merge(into: &Vault, from: &Vault) -> crate::vault::MergeStats {
+    into.merge_other_vault(from.file_path(), vec![7u8; 32])
+        .unwrap()
+}
+
+/// Merges both ways and checks that the vaults agree.
+fn both_ways(a: &Vault, b: &Vault) {
+    merge(a, b);
+    merge(b, a);
+    assert_converged(a, b);
+}
+
+fn text(v: &Vault, sql: &str) -> String {
+    v.db().unwrap().query_row(sql, [], |r| r.get(0)).unwrap()
+}
+
+/// Same account group and account on both vaults (bookings need one).
+fn shared_account(v: &Vault) {
+    v.db()
+        .unwrap()
+        .execute_batch(
+            "INSERT INTO account_groups(id, name) VALUES (1, 'G');
+             INSERT INTO accounts(id, group_id, external_ref, name) VALUES (1, 1, 'DE1', 'A');",
+        )
+        .unwrap();
+}
+
+/// A creates "Food" with old stamps, B gets it by a merge.
+fn shared_food(tag: &str) -> (Arc<Vault>, Arc<Vault>, i64, i64) {
+    let dir = temp_dir(tag);
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let id_a = a
+        .create_category("Food".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    a.db()
+        .unwrap()
+        .execute(
+            "UPDATE categories SET name_ms=1, parent_ms=1, symbol_ms=1, color_ms=1, budget_ms=1, order_ms=1",
+            [],
+        )
+        .unwrap();
+    merge(&b, &a);
+    let id_b = n(&b, "SELECT id FROM categories WHERE name = 'Food'");
+    (a, b, id_a, id_b)
+}
+
+#[test]
+fn rename_on_a_and_color_on_b_both_survive() {
+    let (a, b, id_a, id_b) = shared_food("cat-fields");
+    a.update_category(id_a, "Essen".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    b.update_category(id_b, "Food".into(), None, "tag".into(), "#222222".into())
+        .unwrap();
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(
+            text(v, "SELECT name || ' ' || color_hex FROM categories"),
+            "Essen #222222"
+        );
+        assert_eq!(n(v, "SELECT count(*) FROM categories"), 1);
+    }
+}
+
+#[test]
+fn newer_rename_wins_in_both_merge_orders() {
+    for a_first in [true, false] {
+        let (a, b, id_a, id_b) = shared_food("cat-newer");
+        // the newer rename has the smaller value, so a tie-break can't fake it
+        a.db()
+            .unwrap()
+            .execute(
+                "UPDATE categories SET name = 'Zzz', name_ms = 100 WHERE id = ?1",
+                [id_a],
+            )
+            .unwrap();
+        b.db()
+            .unwrap()
+            .execute(
+                "UPDATE categories SET name = 'Aaa', name_ms = 200 WHERE id = ?1",
+                [id_b],
+            )
+            .unwrap();
+        // equal stamps, different values: the larger value wins
+        a.db()
+            .unwrap()
+            .execute(
+                "UPDATE categories SET color_hex = '#aaaaaa', color_ms = 50",
+                [],
+            )
+            .unwrap();
+        b.db()
+            .unwrap()
+            .execute(
+                "UPDATE categories SET color_hex = '#bbbbbb', color_ms = 50",
+                [],
+            )
+            .unwrap();
+        if a_first {
+            both_ways(&a, &b);
+        } else {
+            both_ways(&b, &a);
+        }
+        for v in [&a, &b] {
+            assert_eq!(
+                text(v, "SELECT name || ' ' || color_hex FROM categories"),
+                "Aaa #bbbbbb"
+            );
+        }
+    }
+}
+
+#[test]
+fn deleted_category_stays_deleted_against_older_edit() {
+    let (a, b, id_a, id_b) = shared_food("cat-del");
+    for v in [&a, &b] {
+        shared_account(v);
+        let cat = n(v, "SELECT id FROM categories WHERE name = 'Food'");
+        v.db()
+            .unwrap()
+            .execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents,
+                     category_id, category_source, category_ms)
+                 VALUES (1, 'e1', '2026-01-01', -5, ?1, 'manual', 7)",
+                [cat],
+            )
+            .unwrap();
+    }
+    // B: a rule and a child on Food, and an edit older than A's deletion
+    b.save_rule(plain_rule(id_b, "lidl")).unwrap();
+    b.create_category("Bio".into(), Some(id_b), "tag".into(), "#111111".into())
+        .unwrap();
+    b.update_category(id_b, "Essen".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    b.db()
+        .unwrap()
+        .execute("UPDATE categories SET name_ms = 2 WHERE id = ?1", [id_b])
+        .unwrap();
+    a.delete_category(id_a).unwrap();
+    both_ways(&a, &b);
+    // a later edit loses as well: delete wins
+    b.db()
+        .unwrap()
+        .execute(
+            "UPDATE categories SET name = 'Later', name_ms = 9999999999999 WHERE id = ?1",
+            [id_b],
+        )
+        .unwrap();
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(
+            n(
+                v,
+                "SELECT count(*) FROM categories WHERE deleted_ms IS NULL AND name != 'Bio'"
+            ),
+            0
+        );
+        // the child moved to the top level, the rule went with its category
+        assert_eq!(
+            n(
+                v,
+                "SELECT count(*) FROM categories WHERE name = 'Bio' AND parent_id IS NULL AND deleted_ms IS NULL"
+            ),
+            1
+        );
+        assert_eq!(
+            n(v, "SELECT count(*) FROM rules WHERE deleted_ms IS NULL"),
+            0
+        );
+        assert_eq!(
+            n(
+                v,
+                "SELECT count(*) FROM transactions WHERE category_id IS NULL AND category_source = 'none'"
+            ),
+            1
+        );
+        assert!(v.list_categories(None, None).unwrap().len() == 1);
+    }
+}
+
+#[test]
+fn same_import_on_two_vaults_has_no_duplicate_categories() {
+    let dir = temp_dir("cat-import");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    for v in [&a, &b] {
+        v.seed_starter_categories().unwrap();
+        v.create_category("Hobby".into(), None, "tag".into(), "#111111".into())
+            .unwrap();
+    }
+    let cats = n(&a, "SELECT count(*) FROM categories");
+    let rules = n(&a, "SELECT count(*) FROM rules");
+    assert!(cats > 1 && rules > 0);
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(n(v, "SELECT count(*) FROM categories"), cats);
+        assert_eq!(n(v, "SELECT count(*) FROM rules"), rules);
+        assert_eq!(
+            n(
+                v,
+                "SELECT count(*) FROM categories WHERE deleted_ms IS NOT NULL"
+            ),
+            0
+        );
+    }
+}
+
+#[test]
+fn independently_created_same_name_categories_are_combined() {
+    let dir = temp_dir("cat-combine");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    for (v, name, food, bio, rule) in [
+        (&a, "Food", "aaaa", "cccc", "r-1"),
+        (&b, "food", "bbbb", "dddd", "r-2"),
+    ] {
+        shared_account(v);
+        let f = v
+            .create_category(name.into(), None, "tag".into(), "#111111".into())
+            .unwrap();
+        let c = v
+            .create_category("Bio".into(), Some(f), "tag".into(), "#111111".into())
+            .unwrap();
+        let r = v.save_rule(plain_rule(f, "lidl")).unwrap();
+        let db = v.db().unwrap();
+        db.execute(
+            "UPDATE categories SET uuid = ?1 WHERE id = ?2",
+            params![food, f],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE categories SET uuid = ?1 WHERE id = ?2",
+            params![bio, c],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE rules SET uuid = ?1, updated_ms = 5 WHERE id = ?2",
+            params![rule, r],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO transactions(id, account_id, external_id, booking_date, amount_cents,
+                 category_id, category_source, category_ms)
+             VALUES (1, 1, 'e1', '2026-01-01', -5, ?1, 'manual', 7)",
+            [f],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO transaction_splits(transaction_id, category_id, amount_cents) VALUES (1, ?1, -5)",
+            [c],
+        )
+        .unwrap();
+    }
+    let stamp = n(&b, "SELECT name_ms FROM categories WHERE uuid = 'bbbb'")
+        .max(n(&a, "SELECT name_ms FROM categories WHERE uuid = 'aaaa'"));
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(
+            uuids(
+                v,
+                "SELECT uuid FROM categories WHERE deleted_ms IS NULL ORDER BY uuid"
+            ),
+            vec!["aaaa", "cccc"]
+        );
+        assert_eq!(
+            text(v, "SELECT merged_into FROM categories WHERE uuid = 'bbbb'"),
+            "aaaa"
+        );
+        assert_eq!(
+            n(v, "SELECT deleted_ms FROM categories WHERE uuid = 'bbbb'"),
+            stamp
+        );
+        assert_eq!(
+            text(v, "SELECT merged_into FROM categories WHERE uuid = 'dddd'"),
+            "cccc"
+        );
+        // bookings, splits, rules and children follow the survivor
+        assert_eq!(
+            text(
+                v,
+                "SELECT c.uuid FROM transactions t JOIN categories c ON c.id = t.category_id"
+            ),
+            "aaaa"
+        );
+        assert_eq!(
+            text(
+                v,
+                "SELECT c.uuid FROM transaction_splits s JOIN categories c ON c.id = s.category_id"
+            ),
+            "cccc"
+        );
+        assert_eq!(
+            uuids(v, "SELECT uuid FROM rules WHERE deleted_ms IS NULL"),
+            vec!["r-1"]
+        );
+        assert_eq!(
+            text(v, "SELECT merged_into FROM rules WHERE uuid = 'r-2'"),
+            "r-1"
+        );
+        assert_eq!(
+            text(
+                v,
+                "SELECT c.uuid FROM rules r JOIN categories c ON c.id = r.category_id WHERE r.uuid = 'r-2'"
+            ),
+            "aaaa"
+        );
+    }
+}
+
+#[test]
+fn rule_edit_newest_wins_and_deleted_rule_stays_deleted() {
+    let dir = temp_dir("rule-merge");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let cat = a
+        .create_category("Food".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    let edited = a.save_rule(plain_rule(cat, "lidl")).unwrap();
+    let doomed = a.save_rule(plain_rule(cat, "aldi")).unwrap();
+    a.db()
+        .unwrap()
+        .execute("UPDATE rules SET updated_ms = 1", [])
+        .unwrap();
+    merge(&b, &a);
+    let id = |v: &Vault, p: &str| n(v, &format!("SELECT id FROM rules WHERE pattern = '{p}'"));
+    let (b_edited, b_doomed) = (id(&b, "lidl"), id(&b, "aldi"));
+    let b_cat = n(&b, "SELECT id FROM categories WHERE name = 'Food'");
+    // A edits first (older), B later; the newer one has the smaller value
+    let mut r = plain_rule(cat, "zzz");
+    r.id = edited;
+    a.save_rule(r).unwrap();
+    a.db()
+        .unwrap()
+        .execute("UPDATE rules SET updated_ms = 100 WHERE id = ?1", [edited])
+        .unwrap();
+    let mut r = plain_rule(b_cat, "aaa");
+    r.id = b_edited;
+    r.priority = 3;
+    b.save_rule(r).unwrap();
+    b.db()
+        .unwrap()
+        .execute(
+            "UPDATE rules SET updated_ms = 200 WHERE id = ?1",
+            [b_edited],
+        )
+        .unwrap();
+    // A deletes the other rule, B edits it later: delete wins
+    a.delete_rule(doomed).unwrap();
+    let mut r = plain_rule(b_cat, "aldi süd");
+    r.id = b_doomed;
+    b.save_rule(r).unwrap();
+    b.db()
+        .unwrap()
+        .execute(
+            "UPDATE rules SET updated_ms = 9999999999999 WHERE id = ?1",
+            [b_doomed],
+        )
+        .unwrap();
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        let live: Vec<(String, i32)> = v
+            .list_rules()
+            .unwrap()
+            .into_iter()
+            .map(|r| (r.pattern, r.priority))
+            .collect();
+        assert_eq!(live, vec![("aaa".to_string(), 3)]);
+        assert_eq!(n(v, "SELECT count(*) FROM rules"), 2);
+    }
+}
+
+#[test]
+fn v7_snapshot_cannot_revive_deleted_category() {
+    let dir = temp_dir("v7-revive");
+    let a = open(&dir, "a.db");
+    // A created "Essen", renamed it "Food" (uuid stays the "Essen" path uuid)
+    let food = a
+        .create_category("Essen".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    a.update_category(food, "Food".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    a.save_rule(plain_rule(food, "lidl")).unwrap();
+    // an old (v7) device got "Food" and its rule before A deleted them
+    let path = dir.join("old.db").to_string_lossy().to_string();
+    {
+        let conn = Connection::open(&path).unwrap();
+        Vault::apply_key(&conn, &[7u8; 32]).unwrap();
+        conn.execute_batch(crate::vault::SCHEMA).unwrap();
+        crate::user_groups::migrate(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO categories(id, name, color_hex) VALUES (1, 'Food', '#111111');
+             INSERT INTO rules(name, category_id, pattern, priority) VALUES ('r', 1, 'lidl', 10);
+             PRAGMA user_version = 7;",
+        )
+        .unwrap();
+    }
+    a.delete_category(food).unwrap();
+    a.merge_other_vault(path.clone(), vec![7u8; 32]).unwrap();
+    assert_eq!(
+        n(
+            &a,
+            "SELECT count(*) FROM categories WHERE deleted_ms IS NULL"
+        ),
+        0
+    );
+    assert_eq!(
+        n(&a, "SELECT count(*) FROM rules WHERE deleted_ms IS NULL"),
+        0
+    );
+    // the old device updates and syncs: nothing comes back on either side
+    let b = Vault::open(path, vec![7u8; 32]).unwrap();
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert!(v.list_categories(None, None).unwrap().is_empty());
+        assert!(v.list_rules().unwrap().is_empty());
+    }
+}

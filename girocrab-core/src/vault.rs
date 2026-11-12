@@ -756,7 +756,8 @@ impl Vault {
 impl Vault {
     // includes soft-deleted rows: the merge reads and matches every row of
     // both vaults, deleted ones too
-    fn merge_attached(conn: &Connection) -> CoreResult<MergeStats> {
+    /// `legacy`: the other vault was written by a v7 build (no uuids).
+    fn merge_attached(conn: &Connection, legacy: bool) -> CoreResult<MergeStats> {
         let mut st = MergeStats::default();
         let tx = conn.unchecked_transaction()?;
 
@@ -895,146 +896,12 @@ impl Vault {
         // user groups, account placements and names (newest edit wins)
         st.groups_updated = crate::user_groups::merge_attached(&tx, &acc_map, &acc_inserted)?;
 
-        // categories (parents first, by parent + name)
-        let mut cat_map: HashMap<i64, i64> = HashMap::new();
-        {
-            let mut pending: Vec<(i64, Option<i64>, String, String, String, Option<i64>, i64)> = tx
-                .prepare(
-                    "SELECT id, parent_id, name, sf_symbol, color_hex, budget_cents, sort_order
-                     FROM other.categories ORDER BY id",
-                )?
-                .query_map([], |r| {
-                    Ok((
-                        r.get(0)?,
-                        r.get(1)?,
-                        r.get(2)?,
-                        r.get(3)?,
-                        r.get(4)?,
-                        r.get(5)?,
-                        r.get(6)?,
-                    ))
-                })?
-                .collect::<Result<_, _>>()?;
-            while !pending.is_empty() {
-                let before = pending.len();
-                let mut rest = Vec::new();
-                for row in pending {
-                    let (oid, opar, name, sym, color, budget, ord) = row.clone();
-                    let par = match opar {
-                        None => None,
-                        Some(p) => match cat_map.get(&p) {
-                            Some(&m) => Some(m),
-                            None => {
-                                rest.push(row);
-                                continue;
-                            }
-                        },
-                    };
-                    let existing: Option<i64> = tx
-                        .query_row(
-                            // includes soft-deleted rows
-                            "SELECT id FROM categories WHERE IFNULL(parent_id,0) = IFNULL(?1,0) AND name = ?2",
-                            params![par, name],
-                            |r| r.get(0),
-                        )
-                        .optional()?;
-                    let id = match existing {
-                        Some(id) => id,
-                        None => {
-                            tx.execute(
-                                "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, budget_cents, sort_order)
-                                 VALUES (?1,?2,?3,?4,?5,?6)",
-                                params![par, name, sym, color, budget, ord],
-                            )?;
-                            st.categories_added += 1;
-                            tx.last_insert_rowid()
-                        }
-                    };
-                    cat_map.insert(oid, id);
-                }
-                if rest.len() == before {
-                    break; // orphaned categories (broken parent) – skip
-                }
-                pending = rest;
-            }
-        }
-
-        // rules (by name + field + kind + pattern + category)
-        let mut rule_map: HashMap<i64, i64> = HashMap::new();
-        {
-            #[allow(clippy::type_complexity)]
-            let rows: Vec<(
-                i64,
-                String,
-                i64,
-                String,
-                String,
-                String,
-                bool,
-                Option<i64>,
-                Option<i64>,
-                Option<i64>,
-                i64,
-                bool,
-            )> = tx
-                .prepare(
-                    "SELECT id, name, category_id, field, match_kind, pattern, case_sensitive,
-                            min_amount_cents, max_amount_cents, account_id, priority, enabled
-                     FROM other.rules ORDER BY id",
-                )?
-                .query_map([], |r| {
-                    Ok((
-                        r.get(0)?,
-                        r.get(1)?,
-                        r.get(2)?,
-                        r.get(3)?,
-                        r.get(4)?,
-                        r.get(5)?,
-                        r.get(6)?,
-                        r.get(7)?,
-                        r.get(8)?,
-                        r.get(9)?,
-                        r.get(10)?,
-                        r.get(11)?,
-                    ))
-                })?
-                .collect::<Result<_, _>>()?;
-            for (oid, name, ocat, field, kind, pat, cs, min, max, oacc, prio, en) in rows {
-                let Some(&cat) = cat_map.get(&ocat) else {
-                    continue;
-                };
-                if pat.len() > crate::rules::MAX_PATTERN_LEN {
-                    continue;
-                }
-                let acc = oacc.and_then(|a| acc_map.get(&a).copied());
-                if oacc.is_some() && acc.is_none() {
-                    continue;
-                }
-                let existing: Option<i64> = tx
-                    .query_row(
-                        // includes soft-deleted rows
-                        "SELECT id FROM rules WHERE name=?1 AND field=?2 AND match_kind=?3 AND pattern=?4
-                         AND category_id=?5 AND account_id IS ?6",
-                        params![name, field, kind, pat, cat, acc],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
-                let id = match existing {
-                    Some(id) => id,
-                    None => {
-                        tx.execute(
-                            "INSERT INTO rules(name, category_id, field, match_kind, pattern, case_sensitive,
-                                min_amount_cents, max_amount_cents, account_id, priority, enabled)
-                             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
-                            params![name, cat, field, kind, pat, cs, min, max, acc, prio, en],
-                        )?;
-                        st.rules_added += 1;
-                        tx.last_insert_rowid()
-                    }
-                };
-                rule_map.insert(oid, id);
-            }
-        }
+        // categories and rules (newest edit wins, deletions stay deleted)
+        let cat_map = crate::sync_merge::merge_categories(&tx, legacy, &mut st)?;
+        let rule_map = crate::sync_merge::merge_rules(&tx, &cat_map, &acc_map, legacy, &mut st)?;
+        // bookings only point at live categories and rules
+        let cat_map = crate::sync_merge::live_targets(&tx, "categories", &cat_map)?;
+        let rule_map = crate::sync_merge::live_targets(&tx, "rules", &rule_map)?;
 
         // bookings
         #[allow(clippy::type_complexity)]
@@ -1255,7 +1122,9 @@ impl Vault {
     }
 
     /// Merges another vault file (e.g. a copy synced via iCloud) into this one.
-    /// Missing connections, accounts, categories, rules and bookings are added;
+    /// Categories and rules: newest edit wins, deletions stay deleted, same
+    /// ones created on both sides are combined. Missing connections, accounts
+    /// and bookings are added;
     /// existing bookings are never duplicated (matched by account + external id
     /// or import fingerprint) but gain `checked`, category and note if the
     /// other side has them and this side does not.
@@ -1270,19 +1139,28 @@ impl Vault {
                 message: "cannot merge a vault into itself".into(),
             });
         }
-        // Validate key and bring the other file up to the current schema.
-        {
+        // Validate key and bring the other file up to the current schema;
+        // a file from a v7 build has no uuids before that.
+        let legacy = {
             let o = Connection::open(&other_path)?;
             Self::apply_key(&o, &key)?;
+            let has_uuid: bool = o
+                .query_row(
+                    "SELECT count(*) > 0 FROM pragma_table_info('categories') WHERE name = 'uuid'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap_or(true);
             Self::migrate(&o)?;
-        }
+            !has_uuid
+        };
         let conn = self.db()?;
         let raw_key = Zeroizing::new(format!("x'{}'", hex::encode(&*key)));
         conn.execute(
             "ATTACH DATABASE ?1 AS other KEY ?2",
             params![other_path, &*raw_key],
         )?;
-        let res = Self::merge_attached(&conn);
+        let res = Self::merge_attached(&conn, legacy);
         let detach_res = conn.execute_batch("DETACH DATABASE other");
         // Fold WAL frames into the main file so a plain file copy is complete.
         let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
