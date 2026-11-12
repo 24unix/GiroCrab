@@ -448,7 +448,8 @@ mod tests {
 
     #[test]
     fn dedups_and_keeps_bookings() {
-        let p = std::env::temp_dir().join(format!("girocrab-dedup-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-dedup");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![4u8; 32]).unwrap();
         let a = v
             .add_bank_connection(
@@ -523,7 +524,8 @@ mod tests {
 
     #[test]
     fn loan_initial_balance_and_giro_crossmatch() {
-        let p = std::env::temp_dir().join(format!("girocrab-loan-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-loan");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
         let (giro, loan);
         {
@@ -576,7 +578,8 @@ mod tests {
 
     #[test]
     fn delete_account_cascades_and_cleans_connection() {
-        let p = std::env::temp_dir().join(format!("girocrab-del-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-del");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
         let (mut a1, mut a2) = (0i64, 0i64);
         let conn;

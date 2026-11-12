@@ -45,6 +45,9 @@ pub mod text;
 pub mod user_groups;
 pub mod vault;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 pub use connectors::{
     bank_catalog, BankDescriptor, Challenge, ChallengeKind, SyncSession, SyncStep, TransferSession,
     TransferStep,

@@ -135,14 +135,15 @@ generate_release_notes() {
     fi
 
     echo "### Commit-Übersicht (${prev_tag:-initial} → ${target_tag})"
+    # printf '%s': commit subjects are data – no backslash-escape interpretation.
     if [ -n "$feats" ]; then
-      echo -e "\n#### ✨ Neue Funktionen\n$feats"
+      printf '\n#### ✨ Neue Funktionen\n%s\n' "$feats"
     fi
     if [ -n "$perfs" ]; then
-      echo -e "\n#### ⚡ Performance\n$perfs"
+      printf '\n#### ⚡ Performance\n%s\n' "$perfs"
     fi
     if [ -n "$fixes" ]; then
-      echo -e "\n#### 🐛 Fehlerbehebungen\n$fixes"
+      printf '\n#### 🐛 Fehlerbehebungen\n%s\n' "$fixes"
     fi
     echo -e "\n---\n**macOS (Apple Silicon):** Signiert mit Developer ID & von Apple notarisiert (\`GiroCrab-macOS-arm64.dmg\`)."
   }
@@ -407,6 +408,7 @@ fi
 if [ "$BUILD_IOS" -eq 1 ]; then
   PBXPROJ="GiroCrabApp/Xcode/GiroCrab.xcodeproj/project.pbxproj"
   CURRENT_BUILD="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \([0-9][0-9]*\);.*/\1/p' "$PBXPROJ" | head -1)"
+  [ -n "$CURRENT_BUILD" ] || { echo "error: no numeric CURRENT_PROJECT_VERSION in $PBXPROJ" >&2; exit 1; }
   NEXT_BUILD=$((CURRENT_BUILD + 1))
   echo "==> Bumping iOS CURRENT_PROJECT_VERSION: ${CURRENT_BUILD} -> ${NEXT_BUILD}"
   sed -i '' "s/CURRENT_PROJECT_VERSION = ${CURRENT_BUILD};/CURRENT_PROJECT_VERSION = ${NEXT_BUILD};/g" "$PBXPROJ"

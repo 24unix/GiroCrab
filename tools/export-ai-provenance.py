@@ -349,13 +349,29 @@ def stages(f):
     if t["pr_body_test_section"]:
         ver.append("Test-Sektion im PR-Body")
     ver += f["verification"]["trailers"][:3]
-    ver.append("CI: fmt · clippy -D warnings · cargo test · swift build")
+    ver.append("CI: fmt, clippy -D warnings, cargo test, swift build")
     return [
         ("1 · Problem Framing & Intent", bool(framing), framing),
         ("2 · Architectural & Security Steering", steer_ok, steer),
         ("3 · Code & Test Generation", True, gen),
         ("4 · Verification & Audit", bool(len(ver) > 1), ver),
     ]
+
+
+EVIDENCE_SEP = " · "
+
+
+def md_cell(text):
+    """One evidence item as safe Markdown table-cell text. Items partly come from
+    PR-controlled commit trailers: no raw HTML, no column breaks, no @-mentions."""
+    text = " ".join(str(text).split())
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    text = text.replace("|", "\\|").replace(EVIDENCE_SEP.strip(), "/")
+    return text.replace("@", "@\u200b")
+
+
+def evidence_cell(items):
+    return EVIDENCE_SEP.join(md_cell(i) for i in items) or "–"
 
 
 def render_card(f, repo="GiroCrab/GiroCrab"):
@@ -374,7 +390,7 @@ def render_card(f, repo="GiroCrab/GiroCrab"):
         "|---|---|---|",
     ]
     for name, status, ev in stages(f):
-        lines.append(f"| {name} | {ok(status)} | {'<br>'.join(ev) or '–'} |")
+        lines.append(f"| {name} | {ok(status)} | {evidence_cell(ev)} |")
     lines += ["", f"**Schichten / Layers:** {layers or '–'}"]
     if sec:
         lines.append("**🔐 Security-Oberfläche:** " + ", ".join(
@@ -502,7 +518,7 @@ def cmd_comment(a):
     repo = repo_slug(a.repo)
     body = open(a.file, encoding="utf-8").read()
     pages = run(["gh", "api", "--paginate", f"repos/{repo}/issues/{a.pr}/comments",
-                 "-q", f'.[] | select(.body | contains("{MARKER}")) | .id'])
+                 "-q", f'.[] | select(.user.type == "Bot" and (.body | contains("{MARKER}"))) | .id'])
     ids = pages.split()
     if ids:
         run(["gh", "api", "-X", "PATCH", f"repos/{repo}/issues/comments/{ids[0]}", "-f", f"body={body}"])

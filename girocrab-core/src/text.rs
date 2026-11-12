@@ -427,7 +427,8 @@ mod tests {
 
     #[test]
     fn repairs_stored_mojibake_on_open() {
-        let p = std::env::temp_dir().join(format!("girocrab-moji-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-moji");
+        let p = p_dir.join("v.db");
         let path = p.to_string_lossy().to_string();
         {
             let v = crate::vault::Vault::open(path.clone(), vec![2u8; 32]).unwrap();

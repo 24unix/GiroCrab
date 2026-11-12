@@ -12,6 +12,7 @@
 # code-signed), see docs/auto-updates.md.
 set -euo pipefail
 
+[ $# -ge 2 ] || { echo "usage: $0 <path/to/GiroCrab.app> <out.dmg> [identity]" >&2; exit 2; }
 APP="$1"; OUT="$2"; IDENTITY="${3:-}"
 [ -d "$APP" ] || { echo "error: no app at $APP" >&2; exit 1; }
 

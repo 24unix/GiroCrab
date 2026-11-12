@@ -4,7 +4,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT=/tmp/girocrab_ui_verification
+# Inside the repo (git-ignored build/), not a predictable path in the shared /tmp.
+OUT="${GIROCRAB_UI_OUT:-$ROOT/build/ui-verification}"
 BIN="$ROOT/GiroCrabApp/.build/debug/GiroCrabMac"
 BUNDLE_ID=de.girocrab.app
 DEFAULT_UDID=595E93A5-3BBC-4313-8964-CC2384318858

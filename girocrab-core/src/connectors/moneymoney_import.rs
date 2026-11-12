@@ -1030,9 +1030,12 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    fn vault() -> Arc<Vault> {
-        let path = std::env::temp_dir().join(format!("girocrab-mm-{}.db", uuid::Uuid::new_v4()));
-        Vault::open(path.to_string_lossy().to_string(), vec![5u8; 32]).unwrap()
+    /// Keep the returned guard alive for the whole test (`let (_dir, v) = vault();`).
+    fn vault() -> (crate::test_support::TempDir, Arc<Vault>) {
+        let dir = crate::test_support::TempDir::new("mm");
+        let path = dir.join("v.db");
+        let v = Vault::open(path.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
+        (dir, v)
     }
 
     const CSV: &str = "\"Datum\";\"Wertstellung\";\"Kategorie\";\"Name\";\"Verwendungszweck\";\"Konto\";\"Bank\";\"Betrag\";\"Währung\";\"Notiz\"\n\
@@ -1090,7 +1093,7 @@ mod tests {
 
     #[test]
     fn import_creates_archive_account_categories_and_notes() {
-        let v = vault();
+        let (_dir, v) = vault();
         let res = v
             .import_moneymoney_data(
                 CSV.as_bytes().to_vec(),
@@ -1131,7 +1134,7 @@ mod tests {
 
     #[test]
     fn reimport_creates_no_duplicates_and_keeps_identical_rows() {
-        let v = vault();
+        let (_dir, v) = vault();
         let twin = format!("{CSV}\"15.03.2012\";\"\";\"Haushalt\\Supermarkt\";\"REWE Markt\";\"Einkauf Kartenzahlung\";\"DE02120300000000202051\";\"\";\"-1.234,56\";\"EUR\";\"\"\n");
         let a = v
             .import_moneymoney_data(twin.as_bytes().to_vec(), "x.csv".into(), None, true, true)
@@ -1157,7 +1160,7 @@ mod tests {
 
     #[test]
     fn overlap_with_fints_booking_enriches_and_fints_adopts_import() {
-        let v = vault();
+        let (_dir, v) = vault();
         let a = v
             .import_moneymoney_data(CSV.as_bytes().to_vec(), "a.csv".into(), None, true, true)
             .unwrap();
@@ -1240,7 +1243,7 @@ mod tests {
 
     #[test]
     fn adopt_fallback_on_differing_purpose_and_comdirect_name_in_purpose() {
-        let v = vault();
+        let (_dir, v) = vault();
         let acc = mm_acct(
             &v,
             "10.05.2026;REWE Markt;Einkauf;-12,50;Essen;n1\n11.05.2026;Stadtwerke Köln;Strom;-80,00;Wohnen;n2\n",
@@ -1287,7 +1290,7 @@ mod tests {
 
     #[test]
     fn adopt_fallback_is_skipped_when_ambiguous() {
-        let v = vault();
+        let (_dir, v) = vault();
         let acc = mm_acct(
             &v,
             "10.05.2026;Bäckerei Müller;Brötchen;-3,00;;\n10.05.2026;Bäckerei Müller;Kuchen;-3,00;;\n",
@@ -1310,7 +1313,7 @@ mod tests {
 
     #[test]
     fn merge_synced_twin_repairs_untouched_duplicate_and_spares_edited() {
-        let v = vault();
+        let (_dir, v) = vault();
         let acc = mm_acct(
             &v,
             "10.05.2026;REWE Markt;Einkauf;-12,50;Essen;wichtig\n12.05.2026;Aldi;Einkauf;-7,00;Essen;\n",
@@ -1359,7 +1362,7 @@ mod tests {
 
     #[test]
     fn xml_import_into_existing_account() {
-        let v = vault();
+        let (_dir, v) = vault();
         let first = v
             .import_moneymoney_data(CSV.as_bytes().to_vec(), "a.csv".into(), None, true, true)
             .unwrap();

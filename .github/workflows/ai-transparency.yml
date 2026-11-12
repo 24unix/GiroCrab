@@ -23,7 +23,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      GH_TOKEN: ${{ github.token }}
       PR: ${{ github.event.pull_request.number }}
       # Optional LLM enrichment (see bottom): "true" only if the secret exists.
       HAS_AI_SUMMARY_KEY: ${{ secrets.AI_SUMMARY_API_KEY != '' }}
@@ -39,7 +38,8 @@ jobs:
       # used only while main has no classifier yet (bootstrap, i.e. PR #130).
       - name: Select trusted verifier
         run: |
-          VERIFIER=/tmp/export-ai-provenance.py
+          # Runner-private temp dir instead of the shared /tmp.
+          VERIFIER="$RUNNER_TEMP/export-ai-provenance.py"
           if ! git fetch --quiet --depth=1 origin main; then
             echo "::warning::could not fetch origin/main – no card without trusted verifier"
             exit 0
@@ -55,6 +55,8 @@ jobs:
 
       - name: Build provenance card
         if: ${{ env.VERIFIER != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if python3 "$VERIFIER" card --pr "$PR" --out card.md; then
             cat card.md >> "$GITHUB_STEP_SUMMARY"
@@ -68,6 +70,8 @@ jobs:
       - name: Update PR comment
         if: ${{ hashFiles('card.md') != '' }}
         continue-on-error: true # fork PRs get a read-only token – never fail the run
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python3 "$VERIFIER" comment --pr "$PR" --file card.md
 
       # Optional (prepared, disabled): LLM-written narrative for the card.

@@ -7,7 +7,9 @@
 #               real identity, hardened runtime + secure timestamp are used.
 set -euo pipefail
 
+[ $# -eq 2 ] || { echo "usage: $0 <identity|-> <path/to/GiroCrab.app>" >&2; exit 2; }
 IDENTITY="$1"; APP="$2"
+[ -d "$APP" ] || { echo "error: no app at $APP" >&2; exit 1; }
 FLAGS=(--force --sign "$IDENTITY")
 if [ "$IDENTITY" != "-" ]; then
   FLAGS+=(--options runtime --timestamp)
