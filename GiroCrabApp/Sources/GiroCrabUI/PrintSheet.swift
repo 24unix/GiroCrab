@@ -17,6 +17,10 @@ struct PrintSheet: View {
     @State private var options = PrintOptions.load()
     @State private var report: PrintReport?
     @State private var selected: Set<Int64> = []
+    #if os(macOS)
+    /// Paper of the page setup, shown in the dialog and refreshed after „Papierformat …“.
+    @State private var paper = HTMLPrinter.currentPaper
+    #endif
 
     private var visibleRows: [PrintRow] {
         PrintReportBuilder.rows(report?.rows ?? [], options: options)
@@ -83,6 +87,14 @@ struct PrintSheet: View {
 
     @ViewBuilder
     private var optionSections: some View {
+        #if os(macOS)
+        // Paper and orientation are part of the layout (pages are broken before the
+        // print panel opens), so they are chosen here – not again in the panel.
+        Section("Papier") {
+            LabeledContent("Format", value: paper.label)
+            Button("Papierformat …") { PageSetup.run { paper = HTMLPrinter.currentPaper } }
+        }
+        #endif
         Section("Auswahl") {
             Picker("Buchungen", selection: $options.direction) {
                 ForEach(PrintDirection.allCases) { Text($0.title).tag($0) }
@@ -233,13 +245,14 @@ enum PrintLogoImage {
 /// File ▸ Papierformat … (⇧⌘P): the paper the printout is laid out for.
 @MainActor
 enum PageSetup {
-    static func run() {
+    static func run(_ done: @escaping () -> Void = {}) {
         let layout = NSPageLayout()
         let info = NSPrintInfo.shared
         if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            layout.beginSheet(using: info, on: window) { _ in }
+            layout.beginSheet(using: info, on: window) { _ in done() }
         } else {
             layout.runModal(with: info)
+            done()
         }
     }
 }
@@ -252,11 +265,15 @@ final class HTMLPrinter: NSObject, WKNavigationDelegate {
     private var jobName = ""
     private var paperSize = NSSize(width: 595, height: 842)
 
-    /// Paper of the user's page setup (portrait), used to lay out the report pages.
+    /// Paper of the user's page setup in its orientation (landscape = wider than
+    /// high), used to lay out the report pages.
     static var currentPaper: PrintReportBuilder.Paper {
         let size = NSPrintInfo.shared.paperSize
-        let w = min(size.width, size.height) * 25.4 / 72, h = max(size.width, size.height) * 25.4 / 72
-        return w > 50 && h > 50 ? .init(widthMM: w, heightMM: h) : .a4
+        let short = min(size.width, size.height) * 25.4 / 72, long = max(size.width, size.height) * 25.4 / 72
+        guard short > 50 && long > 50 else { return .a4 }
+        return NSPrintInfo.shared.orientation == .landscape
+            ? .init(widthMM: long, heightMM: short)
+            : .init(widthMM: short, heightMM: long)
     }
 
     func print(html: String, jobName: String, paper: PrintReportBuilder.Paper) {
@@ -280,7 +297,7 @@ final class HTMLPrinter: NSObject, WKNavigationDelegate {
     private func runPrint(_ web: WKWebView) {
         let info = NSPrintInfo.shared.copy() as! NSPrintInfo
         info.paperSize = paperSize
-        info.orientation = .portrait
+        info.orientation = paperSize.width > paperSize.height ? .landscape : .portrait
         info.horizontalPagination = .fit
         info.verticalPagination = .automatic
         info.isHorizontallyCentered = false
@@ -290,8 +307,8 @@ final class HTMLPrinter: NSObject, WKNavigationDelegate {
         op.jobTitle = jobName
         op.showsPrintPanel = true
         op.showsProgressPanel = true
-        // Pages are laid out for the Page Setup paper in portrait, so paper size and
-        // orientation are chosen there ("Papierformat …"), not in the print panel.
+        // Pages are laid out for the Page Setup paper and orientation, so both are
+        // chosen in the print dialog / "Papierformat …", not again in the print panel.
         op.printPanel.options.formUnion([.showsScaling, .showsPreview])
         op.printPanel.options.subtract([.showsPaperSize, .showsOrientation])
         // WKWebView's print view needs a frame, or the output is blank.

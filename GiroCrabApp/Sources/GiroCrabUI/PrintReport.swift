@@ -203,6 +203,17 @@ enum PrintReportBuilder {
         var widthMM: Double
         var heightMM: Double
         static let a4 = Paper(widthMM: 210, heightMM: 297)
+
+        /// "A4 · Hochformat", or the size in mm for other papers.
+        var label: String {
+            let short = min(widthMM, heightMM), long = max(widthMM, heightMM)
+            let known: [(String, Double, Double)] = [("A4", 210, 297), ("A5", 148, 210), ("A3", 297, 420),
+                                                     ("US Letter", 215.9, 279.4), ("US Legal", 215.9, 355.6)]
+            let name = known.first { abs($0.1 - short) < 1.5 && abs($0.2 - long) < 1.5 }?.0
+                ?? "\(Int(short.rounded())) × \(Int(long.rounded())) mm"
+            let orientation = widthMM > heightMM ? String(localized: "Querformat") : String(localized: "Hochformat")
+            return "\(name) · \(orientation)"
+        }
     }
 
     static func html(_ report: PrintReport, options: PrintOptions, paper: Paper = .a4) -> String {
