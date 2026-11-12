@@ -207,6 +207,9 @@ final class PortalBrowser {
     static let relevantURLWords = ["transaction", "activity", "balance", "account", "statement", "card", "umsa", "booking",
                                    "posting", "movement", "movimiento", "operation", "history", "contract", "product", "position"]
 
+    /// Customer profile / login endpoints: never handed to the parser or the structure dump.
+    static let privateURLWords = ["customer", "profile", "personal", "authentication", "authorize", "login", "kyc"]
+
     /// Paths (digits masked) of every JSON response seen, for "Portal-Struktur prüfen".
     private(set) var seenPaths: [String] = []
 
@@ -214,7 +217,9 @@ final class PortalBrowser {
         let path = Self.maskedPath(url)
         seenPaths.append(path)
         if seenPaths.count > 200 { seenPaths.removeFirst(seenPaths.count - 200) }
-        guard Self.relevantURLWords.contains(where: url.lowercased().contains) else { return }
+        let lower = url.lowercased()
+        guard Self.relevantURLWords.contains(where: lower.contains),
+              !Self.privateURLWords.contains(where: lower.contains) else { return }
         bodies.append(body)
         // room for a long history paged in with "mehr anzeigen" (≈20 bookings per page)
         if bodies.count > 300 { bodies.removeFirst(bodies.count - 300) }

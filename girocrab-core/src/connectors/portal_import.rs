@@ -1021,6 +1021,44 @@ fn mask_text(s: &str) -> String {
     out
 }
 
+/// Personal-data markers in key names: such fields are left out of the value hints.
+const HINT_SKIP: &[&str] = &[
+    "gender",
+    "marital",
+    "birth",
+    "document",
+    "aml",
+    "nationality",
+    "language",
+    "name",
+    "address",
+    "email",
+    "phone",
+    "mobile",
+    "tax",
+    "login",
+    "customer",
+    "person",
+    "occupation",
+    "income",
+    "residence",
+    "country",
+];
+/// Booking-related key parts whose code values may be logged verbatim.
+const HINT_VERBATIM: &[&str] = &[
+    "transaction",
+    "txn",
+    "denial",
+    "status",
+    "category",
+    "currency",
+    "payment",
+    "epp",
+    "indicator",
+    "creditdebit",
+    "debitcredit",
+];
+
 /// Value hints that are safe to share: the distinct values of code-like fields
 /// (`…Code`, `…Status`, `…Type`, `…Indicator`; only `[A-Z0-9_-]` values, anything else
 /// is masked), masked shapes of date/time fields and sign counts of amount/balance numbers.
@@ -1032,16 +1070,23 @@ fn value_hints(
         Value::Object(o) => {
             for (k, x) in o {
                 let kl = norm_key(k);
+                // customer-profile fields never appear, not even masked
+                if HINT_SKIP.iter().any(|s| kl.contains(s)) {
+                    continue;
+                }
                 let codeish = ["code", "status", "type", "indicator"]
                     .iter()
                     .any(|s| kl.ends_with(s));
+                // only booking-related codes verbatim; any other code is masked
+                let booking_code = HINT_VERBATIM.iter().any(|s| kl.contains(s));
                 let dateish = kl.contains("date") || kl.contains("time");
                 let moneyish = ["amount", "balance", "limit", "debt"]
                     .iter()
                     .any(|s| kl.contains(s));
                 let hint = match x {
                     Value::String(s) if codeish => Some(
-                        if s.len() <= 24
+                        if booking_code
+                            && s.len() <= 24
                             && s.chars().all(|c| {
                                 c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_' || c == '-'
                             })
@@ -1218,6 +1263,17 @@ mod tests {
                 && !d.contains("gesperrt")
                 && !d.contains("2025")
         );
+    }
+
+    #[test]
+    fn value_hints_leave_out_profile_fields() {
+        let d = portal_schema_dump(
+            vec![r#"{"genderTCode":"OTHER","maritalStatus":"SINGLE","documentType":"DA","productTypeCode":"ABC","transactionTypeCode":"D"}"#.into()],
+            "[]".into(),
+        );
+        assert!(!d.contains("OTHER") && !d.contains("SINGLE") && !d.contains("\"DA\""));
+        assert!(!d.contains("\"ABC\""), "non-booking codes are masked");
+        assert!(d.contains("\"D\""), "booking codes stay readable");
     }
 
     #[test]
