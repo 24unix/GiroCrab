@@ -315,7 +315,7 @@ public final class AppModel {
     var recurringHidden: [IgnoredRecurring] = []
     /// Booking whose custom recurrence dates are being edited.
     var customRecurringBooking: Booking?
-    var statusFilter: StatusFilter = .all { didSet { rebuildDayGroups() } }
+    var statusFilter: StatusFilter = .all { didSet { rebuildDayGroups(); pruneMultiSelection() } }
 
     /// Label of the header filter menu: "Status: Alle" or the active filters.
     var filterTitle: String {
@@ -487,6 +487,9 @@ public final class AppModel {
     private var syncBatchTotal = 0
     /// Logins the user skipped in the running batch, named when it ends.
     private var syncBatchSkipped: [String] = []
+    /// Bumped by every sync start, cancel, skip and lock: a deferred step of
+    /// an older one (e.g. the end of "Überspringen") checks it before acting.
+    @ObservationIgnored private var syncGeneration = 0
     /// Scheduled PSD2 sync loop (see PSD2Consent.swift).
     @ObservationIgnored var autoSyncTask: Task<Void, Never>?
     /// The running sync was started by the schedule: no login prompts, no error dialogs.
@@ -500,6 +503,8 @@ public final class AppModel {
     @ObservationIgnored private var loadsSelectionInBackground = false
     @ObservationIgnored private var merchantStatsTask: Task<Void, Never>?
     @ObservationIgnored private var merchantStatsCache: [String: MerchantStats] = [:]
+    /// Merchant whose history `merchantStats` currently shows.
+    @ObservationIgnored private var merchantStatsKey: String?
 
     public init(options: LaunchOptions = .current) {
         self.options = options
@@ -636,11 +641,14 @@ public final class AppModel {
     func bootstrap() {
         guard !bootstrapped, vaultState == .starting else { return }
         bootstrapped = true
+        _ = Self.quickLookCleanupObserver
         StartupClock.mark("first frame (RootView.onAppear)")
         Task { @MainActor [weak self] in
             let mayHoldRealData = await Task.detached(priority: .userInitiated) { () -> Bool in
                 // Core texts follow the language the app bundle resolved (German without a bundle).
                 GiroCrabCore.setLanguage(code: Bundle.main.preferredLocalizations.first ?? "de")
+                // Decrypted QuickLook copies a crash or force quit may have left behind.
+                Self.removeQuickLookFiles()
                 return Self.vaultMayHoldRealData
             }.value
             guard let self else { return }
@@ -789,7 +797,11 @@ public final class AppModel {
         vaultState = .unlocking
         Task {
             do {
-                var key = try await VaultKeyManager.shared.unlock()
+                // A new key only while no vault file exists: with a file, a missing
+                // key (e.g. iCloud Keychain not synced yet) is an error, never a
+                // fresh key that would shadow the real one.
+                let existingSize = (try? FileManager.default.attributesOfItem(atPath: Self.vaultURL.path)[.size] as? Int) ?? 0
+                var key = try await VaultKeyManager.shared.unlock(allowCreate: existingSize == 0)
                 defer { key.resetBytes(in: 0..<key.count) }
                 let fileSize = (try? FileManager.default.attributesOfItem(atPath: Self.vaultURL.path)[.size] as? Int) ?? -1
                 Self.debugLog("unlock: vault=\(Self.vaultURL.lastPathComponent) size=\(fileSize) key_created_new=\(VaultKeyManager.shared.lastUnlockCreatedKey)")
@@ -848,9 +860,11 @@ public final class AppModel {
                 if pasted != current {
                     try v.rekey(newKey: pasted)
                     do {
-                        try VaultKeyManager.shared.importKey(pasted)
+                        // On failure importKey writes `current` back into the keychain.
+                        try VaultKeyManager.shared.importKey(pasted, replacing: current)
                     } catch {
-                        try? v.rekey(newKey: current)   // keep vault and keychain consistent
+                        // keep vault and keychain consistent: both on `current` again
+                        try? v.rekey(newKey: current)
                         throw error
                     }
                 }
@@ -950,13 +964,45 @@ public final class AppModel {
         isLoadingSelection = false
         merchantStatsTask?.cancel()
         merchantStatsCache = [:]
+        searchTask?.cancel()
         stopAutoSync()
+        endBankDialogsForLock()
+        quickLookURL = nil
+        Self.removeQuickLookFiles()
         ownVault = nil
         demoActive = false
         vault = nil
         groups = []; userGroups = []; accountsByID = [:]; accountMarkers = [:]; bookings = []; categories = []; categoryTree = []; rules = []; connections = []; settings = []
         page = nil; dashboard = nil; merchantStats = nil; logoCache = [:]
         vaultState = .locked
+    }
+
+    /// Locking ends every bank dialog: no session keeps writing into the vault,
+    /// no PIN/TAN prompt comes back after unlocking, no PIN stays in memory.
+    private func endBankDialogsForLock() {
+        pollTask?.cancel()
+        pollTask = nil
+        let session = activeSession
+        let transfer = activeTransfer
+        activeSession = nil
+        activeTransfer = nil
+        activeChallenge = nil
+        payeeCheck = nil
+        pendingLogin = nil
+        setupRequest = nil
+        webLoginConnection = nil
+        syncingConnectionID = nil
+        quietSyncConnectionID = nil
+        statementsAccountID = nil
+        syncGeneration &+= 1
+        resetSyncBatch()
+        transferBusy = false
+        showTransferSheet = false
+        transferDraft.pin = ""
+        Task {
+            await session?.cancel()
+            await transfer?.cancel()
+        }
     }
 
     // MARK: - Loading
@@ -1014,11 +1060,15 @@ public final class AppModel {
     /// Merchant history of the selected booking. The core scans every booking
     /// for it, so it runs off the main thread and is cached per merchant; the
     /// short delay keeps arrow-key navigation from queueing one scan per row.
-    private func loadMerchantStats() {
+    /// `keepShown`: after a data change the shown history of the same merchant
+    /// stays until the fresh one arrives (no flicker).
+    private func loadMerchantStats(keepShown: Bool = false) {
         merchantStatsTask?.cancel()
-        guard let vault, let key = selectedBooking?.merchant.key else { merchantStats = nil; return }
-        if let cached = merchantStatsCache[key] { merchantStats = cached; return }
-        merchantStats = nil
+        guard let vault, let key = selectedBooking?.merchant.key else {
+            merchantStats = nil; merchantStatsKey = nil; return
+        }
+        if let cached = merchantStatsCache[key] { merchantStats = cached; merchantStatsKey = key; return }
+        if !(keepShown && merchantStatsKey == key) { merchantStats = nil; merchantStatsKey = nil }
         merchantStatsTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(80))
             guard !Task.isCancelled else { return }
@@ -1028,7 +1078,7 @@ public final class AppModel {
             // A vault switch or data change in the meantime cancels this task.
             guard !Task.isCancelled, let self, let stats else { return }
             self.merchantStatsCache[key] = stats
-            if self.selectedBooking?.merchant.key == key { self.merchantStats = stats }
+            if self.selectedBooking?.merchant.key == key { self.merchantStats = stats; self.merchantStatsKey = key }
         }
     }
 
@@ -1177,9 +1227,21 @@ public final class AppModel {
             selectedBookingID = bookings.first?.id
         }
         reloadSelectionKPIs()
-        // Every edit, sync and import ends up here: cached merchant histories may be stale.
+        pruneMultiSelection()
+        // Every edit, sync and import ends up here: cached merchant histories may be
+        // stale, and so may a scan still running from before the change. Restart it,
+        // also when a history is on screen (it would otherwise keep the old numbers).
         merchantStatsCache = [:]
-        if merchantStats == nil { loadMerchantStats() }
+        loadMerchantStats(keepShown: true)
+    }
+
+    /// After a reload: the multiple selection keeps only bookings the list still
+    /// shows (plus the inspector's own booking, which may be sticky).
+    private func pruneMultiSelection() {
+        guard !selectedBookingIDs.isEmpty else { return }
+        let visible = Set(visibleBookings.map(\.id))
+        let kept = selectedBookingIDs.filter { visible.contains($0) || $0 == selectedBookingID }
+        if kept.count != selectedBookingIDs.count { selectedBookingIDs = kept }
     }
 
     /// Let the segmented control finish updating immediately. Database work
@@ -1205,9 +1267,11 @@ public final class AppModel {
                 guard !Task.isCancelled, let self else { return }
                 self.page = p
                 self.bookings = p.transactions
-                if let id = self.selectedBookingID, !p.transactions.contains(where: { $0.id == id }) {
+                // Same rule as reloadBookings: a sticky booking stays selected.
+                if let id = self.selectedBookingID, self.booking(withID: id) == nil, self.stickyBooking?.id != id {
                     self.selectedBookingID = p.transactions.first?.id
                 }
+                self.pruneMultiSelection()
                 // selectionFlow always uses scope .all and is unchanged here.
             } catch {
                 guard !Task.isCancelled, let self else { return }
@@ -1360,6 +1424,7 @@ public final class AppModel {
                 if let sel = self.selectedBookingID, self.booking(withID: sel) == nil, self.stickyBooking?.id != sel {
                     self.selectedBookingID = self.bookings.first?.id
                 }
+                self.pruneMultiSelection()
                 self.selectionFlow = (loaded.flow.consumptionCents, loaded.flow.investedCents, loaded.flow.incomeCents)
                 self.recurring = loaded.recurring.series
                 self.recurringHidden = loaded.recurring.ignored
@@ -2147,7 +2212,55 @@ public final class AppModel {
         requestSync(connection)
     }
 
-    var quickLookURL: URL?
+    /// Decrypted copy shown in QuickLook; removed again as soon as the
+    /// preview closes or shows another document (and on lock / quit).
+    var quickLookURL: URL? {
+        didSet {
+            if let old = oldValue, old != quickLookURL { try? FileManager.default.removeItem(at: old) }
+        }
+    }
+
+    /// Private folder (0700) for the decrypted QuickLook copies.
+    nonisolated static var quickLookDirectory: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-QuickLook", isDirectory: true)
+    }
+
+    /// Deletes every decrypted QuickLook copy (lock, quit, next launch).
+    public nonisolated static func removeQuickLookFiles() {
+        try? FileManager.default.removeItem(at: quickLookDirectory)
+    }
+
+    /// Quit: the decrypted copies go too (launch cleans up after a crash). Both
+    /// entry points (SwiftPM and Xcode target) share this, so it lives here.
+    private static let quickLookCleanupObserver: NSObjectProtocol = {
+        #if os(macOS)
+        let name = NSApplication.willTerminateNotification
+        #else
+        let name = UIApplication.willTerminateNotification
+        #endif
+        return NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+            AppModel.removeQuickLookFiles()
+        }
+    }()
+
+    /// Creates the QuickLook folder owner-only; refuses a symlink or a
+    /// folder of another user in its place.
+    private nonisolated static func preparedQuickLookDirectory() -> URL? {
+        let fm = FileManager.default
+        let dir = quickLookDirectory
+        var st = Darwin.stat()
+        if lstat(dir.path, &st) == 0 {
+            guard (st.st_mode & S_IFMT) == S_IFDIR, st.st_uid == getuid() else { return nil }
+            if st.st_mode & 0o077 != 0 { chmod(dir.path, 0o700) }
+            return dir
+        }
+        do {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            return dir
+        } catch {
+            return nil
+        }
+    }
 
     func documents(for booking: Booking) -> [DocumentInfo] {
         _ = documentsVersion
@@ -2229,8 +2342,24 @@ public final class AppModel {
     func quickLook(_ doc: DocumentInfo) {
         guard let data = documentData(doc) else { return }
         let ext = ["image/png": "png", "image/jpeg": "jpg", "image/heic": "heic"][doc.mimeType] ?? "pdf"
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Beleg-\(doc.id).\(ext)")
-        try? data.write(to: url)
+        _ = Self.quickLookCleanupObserver
+        guard let dir = Self.preparedQuickLookDirectory() else { return }
+        let url = dir.appendingPathComponent("GiroCrab-Beleg-\(doc.id).\(ext)")
+        // Owner-only from the first byte: O_EXCL + O_NOFOLLOW, mode 0600.
+        try? FileManager.default.removeItem(at: url)
+        let fd = Darwin.open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { return }
+        let written = data.withUnsafeBytes { buf -> Bool in
+            var off = 0
+            while off < buf.count {
+                let n = Darwin.write(fd, buf.baseAddress! + off, buf.count - off)
+                if n <= 0 { return false }
+                off += n
+            }
+            return true
+        }
+        Darwin.close(fd)
+        guard written else { try? FileManager.default.removeItem(at: url); return }
         quickLookURL = url
     }
 
@@ -2350,11 +2479,16 @@ public final class AppModel {
         activeSession = nil
         activeChallenge = nil
         statementsAccountID = nil
+        syncGeneration &+= 1
+        let generation = syncGeneration
         Task {
             // end the bank dialog first: the next login may be the same bank.
             // syncingConnectionID stays set until then, so neither a scheduled
             // sync nor a new "Alle abrufen" can start in between.
             await s?.cancel()
+            // "Alle abbrechen", a lock or a new sync meanwhile own the state now:
+            // never end a session this skip did not start.
+            guard self.syncGeneration == generation else { return }
             self.syncingConnectionID = nil
             self.syncNextInQueue()
         }
@@ -2393,6 +2527,9 @@ public final class AppModel {
     /// cancelled: in a batch go on with the next login, otherwise end it –
     /// a stale queue would otherwise resume after a later single sync.
     private func skipPrompt(for connection: BankConnection?) {
+        // A cancelled "Kontoauszüge abrufen" must never carry over to the next
+        // sync – it would send that login's PIN for another bank's account.
+        statementsAccountID = nil
         guard syncBatchTotal > 1 else { resetSyncBatch(); return }
         if let name = connection?.displayName { syncBatchSkipped.append(name) }
         syncNextInQueue()
@@ -2435,12 +2572,21 @@ public final class AppModel {
         guard let vault else { return }
         if usesPortal(connection) { webLoginConnection = connection; return }
         pendingLogin = nil
+        // Statements only for an account of exactly this login: a stale value
+        // would hand this login's PIN to another bank.
+        if let accountID = statementsAccountID,
+           allAccounts.first(where: { $0.id == accountID })?.connectionId != connection.id
+            || quietSyncConnectionID == connection.id {
+            statementsAccountID = nil
+        }
+        let statementsFor = statementsAccountID
         syncingConnectionID = connection.id
+        syncGeneration &+= 1
         Task {
             var started: SyncSession?
             do {
                 let session: SyncSession
-                if let accountID = self.statementsAccountID {
+                if let accountID = statementsFor {
                     session = try vault.fetchAccountStatements(accountId: accountID, secret: secret, demo: isDemo)
                 } else {
                     session = try vault.beginSync(connectionId: connection.id, secret: secret, demo: isDemo)
@@ -2515,8 +2661,11 @@ public final class AppModel {
             guard !Task.isCancelled, let self else { return }
             if let transfer = self.activeTransfer {
                 do {
-                    self.handleTransfer(try await transfer.poll(), connection: connection)
+                    let step = try await transfer.poll()
+                    guard self.activeTransfer === transfer else { return }  // cancelled meanwhile
+                    self.handleTransfer(step, connection: connection)
                 } catch {
+                    guard self.activeTransfer === transfer else { return }
                     self.finishTransfer(error: error)
                 }
                 return
@@ -2539,8 +2688,12 @@ public final class AppModel {
             activeChallenge?.error = nil
             Task {
                 do {
-                    self.handleTransfer(try await transfer.submitCode(code: code), connection: ch.connection)
+                    let step = try await transfer.submitCode(code: code)
+                    // cancelled while the TAN was on its way: the cancel notice owns the sheet
+                    guard self.activeTransfer === transfer else { return }
+                    self.handleTransfer(step, connection: ch.connection)
                 } catch {
+                    guard self.activeTransfer === transfer else { return }
                     self.finishTransfer(error: error)
                 }
             }
@@ -2579,6 +2732,7 @@ public final class AppModel {
         pendingLogin = nil
         syncingConnectionID = nil
         statementsAccountID = nil
+        syncGeneration &+= 1
         resetSyncBatch()
         Task { await s?.cancel() }
     }
@@ -2799,8 +2953,11 @@ extension AppModel {
         payeeCheck?.busy = true
         Task {
             do {
-                self.handleTransfer(try await transfer.confirmPayee(), connection: pending.connection)
+                let step = try await transfer.confirmPayee()
+                guard self.activeTransfer === transfer else { return }  // cancelled meanwhile
+                self.handleTransfer(step, connection: pending.connection)
             } catch {
+                guard self.activeTransfer === transfer else { return }
                 self.finishTransfer(error: error)
             }
         }

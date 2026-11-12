@@ -115,13 +115,74 @@ func clearPortalSession(_ kind: ConnectorKind) async {
 
 // MARK: - Embedded browser
 
+/// Domains a portal browser may show and read: the portal's hosts and the
+/// base domain of its start page, matched on label boundaries
+/// (`kunden.openbankpay.com` matches `openbankpay.com`, `openbankpay.com.evil.io` does not).
+struct PortalDomains: Sendable {
+    let domains: [String]
+
+    init(_ hosts: [String]) {
+        var all = Set<String>()
+        for h in hosts.map({ $0.lowercased() }) where !h.isEmpty {
+            all.insert(h)
+            all.insert(Self.baseDomain(h))
+        }
+        domains = all.sorted()
+    }
+
+    init(kind: ConnectorKind) {
+        self.init(kind.portalHosts + [kind.portalURL?.host].compactMap { $0 })
+    }
+
+    /// Last two labels ("portal.fnz.de" -> "fnz.de"); enough for the portals' TLDs.
+    static func baseDomain(_ host: String) -> String {
+        host.split(separator: ".").suffix(2).joined(separator: ".")
+    }
+
+    func allows(_ host: String?) -> Bool {
+        guard var h = host?.lowercased(), !h.isEmpty else { return false }
+        if h.hasSuffix(".") { h.removeLast() }
+        return domains.contains { h == $0 || h.hasSuffix("." + $0) }
+    }
+}
+
 private final class WeakHandler: NSObject, WKScriptMessageHandler {
     weak var target: PortalBrowser?
-    init(_ t: PortalBrowser) { target = t }
+    let domains: PortalDomains
+    init(_ t: PortalBrowser, domains: PortalDomains) { target = t; self.domains = domains }
     func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
+        // Only the portal page itself: no third-party iframe and no page the
+        // user navigated to may hand "bookings" to the importer.
+        guard m.frameInfo.isMainFrame,
+              m.frameInfo.securityOrigin.protocol == "https",
+              domains.allows(m.frameInfo.securityOrigin.host) else { return }
         guard let d = m.body as? [String: Any], let body = d["body"] as? String else { return }
         let url = d["url"] as? String ?? ""
         Task { @MainActor in self.target?.captured(body, url: url) }
+    }
+}
+
+/// Keeps the main frame on the portal's domains (https only). Sub-frames
+/// (captcha, 3-D Secure) may load elsewhere but can never feed the importer.
+@MainActor
+private final class PortalNavigationGuard: NSObject, WKNavigationDelegate {
+    let domains: PortalDomains
+    weak var browser: PortalBrowser?
+    init(domains: PortalDomains) { self.domains = domains }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
+        guard navigationAction.targetFrame?.isMainFrame ?? true else { decisionHandler(.allow); return }
+        let url = navigationAction.request.url
+        if url?.absoluteString == "about:blank" { decisionHandler(.allow); return }
+        if url?.scheme?.lowercased() == "https", domains.allows(url?.host) {
+            browser?.blockedHost = nil
+            decisionHandler(.allow)
+            return
+        }
+        browser?.blockedHost = url?.host ?? url?.scheme ?? "?"
+        AppModel.debugLog("portal: blocked main-frame navigation to \(url?.host ?? url?.scheme ?? "?")")
+        decisionHandler(.cancel)
     }
 }
 
@@ -138,6 +199,17 @@ final class PortalBrowser {
     private(set) var currentURL: URL?
     private var observation: NSKeyValueObservation?
     private var urlObservation: NSKeyValueObservation?
+    let domains: PortalDomains
+    @ObservationIgnored private let navigationGuard: PortalNavigationGuard
+    /// Host of the last main-frame navigation refused because it left the portal.
+    fileprivate(set) var blockedHost: String?
+
+    /// The page shown is the portal itself (https, one of its domains): only
+    /// then are its tables read or its bookings imported.
+    var onPortal: Bool {
+        guard let u = currentURL else { return false }
+        return u.scheme?.lowercased() == "https" && domains.allows(u.host)
+    }
 
     /// Login / 2FA / consent pages: never auto-import while the user is on one of these.
     var onLoginPage: Bool {
@@ -180,7 +252,9 @@ final class PortalBrowser {
 
     /// `captureTraffic: false` leaves the page untouched (no injected fetch/XHR hook) and
     /// identifies as desktop Safari – used for Amazon, whose sign-in is picky about both.
-    init(url: URL, captureTraffic: Bool = true) {
+    init(url: URL, domains: PortalDomains, captureTraffic: Bool = true) {
+        self.domains = domains
+        navigationGuard = PortalNavigationGuard(domains: domains)
         let cfg = WKWebViewConfiguration()
         cfg.websiteDataStore = .default()
         let ucc = WKUserContentController()
@@ -192,7 +266,9 @@ final class PortalBrowser {
         if !captureTraffic {
             webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
         }
-        ucc.add(WeakHandler(self), name: "girocrab")
+        ucc.add(WeakHandler(self, domains: domains), name: "girocrab")
+        navigationGuard.browser = self
+        webView.navigationDelegate = navigationGuard
         observation = webView.observe(\.isLoading) { [weak self] w, _ in
             Task { @MainActor in self?.loading = w.isLoading }
         }
@@ -298,10 +374,13 @@ final class PortalBrowser {
     }
 
     func domRowsJSON() async -> String {
-        (try? await webView.evaluateJavaScript(Self.domRows) as? String) ?? "[]"
+        guard onPortal else { return "[]" }
+        return (try? await webView.evaluateJavaScript(Self.domRows) as? String) ?? "[]"
     }
 
     func teardown() {
+        webView.stopLoading()
+        webView.navigationDelegate = nil
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "girocrab")
         observation = nil
         urlObservation = nil
@@ -347,10 +426,14 @@ struct PortalWebSheet: View {
 
     init(connection: BankConnection) {
         self.connection = connection
-        _browser = State(initialValue: PortalBrowser(url: connection.connector.portalURL ?? URL(string: "about:blank")!))
+        _browser = State(initialValue: PortalBrowser(url: connection.connector.portalURL ?? URL(string: "about:blank")!,
+                                                     domains: PortalDomains(kind: connection.connector)))
     }
 
     private var info: String {
+        if let blocked = browser.blockedHost {
+            return String(localized: "Seite außerhalb des Portals blockiert (\(blocked)) – bitte im Portal bleiben.")
+        }
         if browser.onLoginPage { return String(localized: "Melden Sie sich wie gewohnt an (Benutzername, Passwort, 2FA) und öffnen Sie die Umsatzübersicht.") }
         if importedCount > 0 && olderOffered {
             return String(localized: "\(importedCount) Umsätze übernommen. Für ältere Umsätze im Portal „Umsätze anzeigen“ wählen und den SMS-Code bestätigen – die Übernahme läuft danach automatisch weiter.")
@@ -409,8 +492,9 @@ struct PortalWebSheet: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 guard !busy else { continue }
-                let rows = browser.onLoginPage ? "[]" : await browser.domRowsJSON()
-                let n = browser.onLoginPage ? 0 : model.previewPortalCapture(connection, bodies: browser.bodies, domRowsJSON: rows)
+                let away = browser.onLoginPage || !browser.onPortal
+                let rows = away ? "[]" : await browser.domRowsJSON()
+                let n = away ? 0 : model.previewPortalCapture(connection, bodies: browser.bodies, domRowsJSON: rows)
                 if n != lastSeenCount || n != recognized { lastSeenCount = n; lastChange = Date() }
                 recognized = n
                 if !openedTransactions, !browser.onLoginPage, !browser.loading,
@@ -421,7 +505,7 @@ struct PortalWebSheet: View {
                 }
                 // Amazon Visa lists ~20 bookings per page: keep paging until the end.
                 var pager = PortalBrowser.Pager()
-                if connection.connector == .amazonVisa, !browser.onLoginPage {
+                if connection.connector == .amazonVisa, !away {
                     pager = await browser.pager(clickMore: !browser.loading)
                     olderOffered = pager.older
                     if pager.more { lastChange = Date() }
@@ -430,7 +514,7 @@ struct PortalWebSheet: View {
                         AppModel.debugLog("portal pager: older=\(pager.older) buttons=\(pager.labels.joined(separator: " | "))")
                     }
                 }
-                if n > importedCount, !browser.onLoginPage, !pager.more, Date().timeIntervalSince(lastChange) > 4 {
+                if n > importedCount, !away, !pager.more, Date().timeIntervalSince(lastChange) > 4 {
                     // First sync with older history on offer: store what is there, but keep
                     // the sheet open so the user can unlock the rest (SMS code).
                     let keepOpen = pager.older && importedCount == 0

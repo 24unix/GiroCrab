@@ -24,11 +24,20 @@ public final class VaultKeyManager: @unchecked Sendable {
         case biometryUnavailable(String)
         case cancelled
         case keychain(OSStatus)
+        /// No key in the keychain although a vault file exists: never create a
+        /// new one then (a delayed iCloud Keychain sync would be shadowed).
+        case keyMissing
+        /// Writing the new key failed and writing the previous one back too.
+        case keyNotRestored(OSStatus)
 
         public var errorDescription: String? {
             switch self {
             case .biometryUnavailable(let why): return String(localized: "Face ID / Touch ID ist nicht verfügbar: \(why)")
             case .cancelled: return String(localized: "Entsperren abgebrochen.")
+            case .keyMissing:
+                return String(localized: "Der Schlüssel für den vorhandenen Tresor fehlt im Schlüsselbund. Wenn Sie den iCloud-Schlüsselbund nutzen, warten Sie, bis er synchronisiert ist, und versuchen Sie es erneut. Es wurde kein neuer Schlüssel angelegt.")
+            case .keyNotRestored(let status):
+                return String(localized: "Der Tresor-Schlüssel konnte nicht im Schlüsselbund gespeichert werden (Fehler \(status)). Der Tresor bleibt bis zum Beenden geöffnet – bitte GiroCrab nicht beenden, den Schlüsselbund prüfen (Schlüsselbundverwaltung) und den Vorgang wiederholen.")
             case .keychain(let status):
                 let msg = SecCopyErrorMessageString(status, nil) as String? ?? "unknown"
                 return String(localized: "Schlüsselbund-Fehler \(status): \(msg)")
@@ -52,18 +61,9 @@ public final class VaultKeyManager: @unchecked Sendable {
 
     /// Re-stores the existing key with the chosen synchronizable setting.
     public func setICloudKeychainSync(_ enabled: Bool) async throws {
-        let key = try await unlock()
-        let previous = syncViaICloudKeychain
-        destroyKey()
-        syncViaICloudKeychain = enabled
-        do {
-            try store(key)
-        } catch {
-            // Never lose the vault key: restore the previous storage mode.
-            syncViaICloudKeychain = previous
-            try store(key)
-            throw error
-        }
+        var key = try await unlock()
+        defer { key.resetBytes(in: 0..<key.count) }
+        try replaceStoredKey(with: key, previous: key, syncing: enabled)
     }
 
     /// True if the last `unlock()` generated a brand-new key (none was in the keychain).
@@ -94,8 +94,10 @@ public final class VaultKeyManager: @unchecked Sendable {
         }
     }
 
-    /// Authenticates the user and returns the master key, creating it on first use.
-    public func unlock(reason: String = String(localized: "GiroCrab-Tresor entsperren")) async throws -> Data {
+    /// Authenticates the user and returns the master key. A new key is created
+    /// only with `allowCreate` (first start, no vault file yet); otherwise a
+    /// missing key is `KeyError.keyMissing`.
+    public func unlock(reason: String = String(localized: "GiroCrab-Tresor entsperren"), allowCreate: Bool = false) async throws -> Data {
         let context = LAContext()
         context.localizedCancelTitle = String(localized: "Abbrechen")
         var err: NSError?
@@ -112,6 +114,7 @@ public final class VaultKeyManager: @unchecked Sendable {
             lastUnlockCreatedKey = false
             return key
         }
+        guard allowCreate else { throw KeyError.keyMissing }
         let key = GiroCrabCore.generateMasterKey()
         lastUnlockCreatedKey = true
         try store(key)
@@ -142,9 +145,34 @@ public final class VaultKeyManager: @unchecked Sendable {
         return key
     }
 
-    public func importKey(_ key: Data) throws {
+    /// Replaces the stored key with `key`. `previous` is the key stored now:
+    /// if the new one cannot be written, `previous` is written back, so the
+    /// keychain never ends up empty.
+    public func importKey(_ key: Data, replacing previous: Data) throws {
+        try replaceStoredKey(with: key, previous: previous, syncing: syncViaICloudKeychain)
+    }
+
+    /// Writes `key` in the requested storage mode. A keychain item cannot change
+    /// its access control or synchronizable flag in place (`SecItemUpdate`), and
+    /// both modes share service/account, so the old item has to go first – but
+    /// on any failure the previous key and mode are written back before the
+    /// error is reported. Only if even that fails, `keyNotRestored` says so.
+    private func replaceStoredKey(with key: Data, previous: Data, syncing: Bool) throws {
+        let previousMode = syncViaICloudKeychain
         destroyKey()
-        try store(key)
+        syncViaICloudKeychain = syncing
+        do {
+            try store(key)
+        } catch {
+            syncViaICloudKeychain = previousMode
+            do {
+                try store(previous)
+            } catch let restoreError as KeyError {
+                if case .keychain(let status) = restoreError { throw KeyError.keyNotRestored(status) }
+                throw restoreError
+            }
+            throw error
+        }
     }
 
     /// Clipboard helper for manual key transfer; cleared after 60 s.

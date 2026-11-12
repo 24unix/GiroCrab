@@ -163,7 +163,10 @@ struct AmazonWebSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let connection: BankConnection
-    @State private var browser = PortalBrowser(url: URL(string: "https://www.amazon.de/gp/css/order-history")!, captureTraffic: false)
+    @State private var browser = PortalBrowser(url: URL(string: "https://www.amazon.de/gp/css/order-history")!,
+                                                domains: AmazonWebSheet.domains, captureTraffic: false)
+    /// Real Amazon hosts only (`amazon.de`, `www.amazon.de`, …), never `amazon.evil.com`.
+    static let domains = PortalDomains(["amazon.de", "amazon.com"])
     @State private var years = 2
     @State private var running = false
     @State private var progress = ""
@@ -192,6 +195,9 @@ struct AmazonWebSheet: View {
     private var info: String {
         if running { return progress }
         if let notice { return notice }
+        if let blocked = browser.blockedHost {
+            return String(localized: "Seite außerhalb von Amazon blockiert (\(blocked)) – bitte bei Amazon bleiben.")
+        }
         if ready { return String(localized: "Angemeldet – „Bestellungen abrufen“ liest Ihre Bestellhistorie.") }
         return String(localized: "Melden Sie sich bei Amazon an (Passwort, Captcha, 2FA wie gewohnt).")
     }
@@ -244,9 +250,8 @@ struct AmazonWebSheet: View {
         .task {
             browser.webView.uiDelegate = uiDelegate
             while !Task.isCancelled {
-                let host = browser.currentURL?.host ?? ""
-                let ok = host.contains("amazon.")
-                    ? ((try? await browser.webView.evaluateJavaScript(Self.probe)) as? Bool ?? false)
+                let ok = browser.onPortal
+                    ? ((try? await browser.webView.evaluateJavaScript(Self.probe, in: nil, contentWorld: .defaultClient)) as? Bool ?? false)
                     : false
                 if ok != pageIsOrders { pageIsOrders = ok }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -284,7 +289,10 @@ struct AmazonWebSheet: View {
     }
 
     private func run(_ script: String, _ args: [String: Any]) async throws -> [String: Any] {
-        let res = try await browser.webView.callAsyncJavaScript(script, arguments: args, in: nil, contentWorld: .page)
+        // Checked before every call: the page may have navigated since "ready".
+        guard browser.onPortal else { throw AmazonError.loggedOut }
+        // Own JS world: page scripts cannot replace fetch/DOMParser for the scraper.
+        let res = try await browser.webView.callAsyncJavaScript(script, arguments: args, in: nil, contentWorld: .defaultClient)
         guard let s = res as? String, let d = s.data(using: .utf8),
               let o = try JSONSerialization.jsonObject(with: d) as? [String: Any] else {
             throw AmazonError.unreadable

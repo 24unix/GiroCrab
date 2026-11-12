@@ -80,7 +80,8 @@ struct FnzWebSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let connection: BankConnection
-    @State private var browser = PortalBrowser(url: URL(string: "https://portal.fnz.de/")!, captureTraffic: false)
+    @State private var browser = PortalBrowser(url: URL(string: "https://portal.fnz.de/")!,
+                                                domains: PortalDomains(kind: .fnz), captureTraffic: false)
     @State private var uiDelegate = AmazonUIDelegate()
     @State private var ready = false
     @State private var running = false
@@ -96,6 +97,9 @@ struct FnzWebSheet: View {
                     Text("\(connection.displayName) – FNZ Bank").font(.headline)
                     if running { Text(progress).font(.caption) }
                     else if let notice { Text(notice).font(.caption).foregroundStyle(.orange) }
+                    else if let blocked = browser.blockedHost {
+                        Text("Seite außerhalb des FNZ-Portals blockiert (\(blocked)).").font(.caption).foregroundStyle(.orange)
+                    }
                     else if ready { Text("Angemeldet – Kontosalden, Depotwerte und Postkorb können abgerufen werden.").font(.caption) }
                     else { Text("Melden Sie sich bei FNZ an und bestätigen Sie in FNZsecure.").font(.caption) }
                 }
