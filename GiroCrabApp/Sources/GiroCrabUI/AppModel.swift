@@ -315,7 +315,15 @@ public final class AppModel {
     var recurringHidden: [IgnoredRecurring] = []
     /// Booking whose custom recurrence dates are being edited.
     var customRecurringBooking: Booking?
-    var statusFilter: StatusFilter = .all { didSet { rebuildDayGroups(); pruneMultiSelection() } }
+    /// New / checked only; filtered in the core like the direction filter, so
+    /// the count, the pages and the printout follow.
+    var statusFilter: StatusFilter = .all {
+        didSet {
+            guard statusFilter != oldValue else { return }
+            listLimit = Self.defaultListLimit
+            reloadBookings()
+        }
+    }
 
     /// Label of the header filter menu: "Status: Alle" or the active filters.
     var filterTitle: String {
@@ -962,6 +970,7 @@ public final class AppModel {
         selectionLoadTask?.cancel()
         selectionLoadTask = nil
         isLoadingSelection = false
+        dropPendingPage()
         merchantStatsTask?.cancel()
         merchantStatsCache = [:]
         searchTask?.cancel()
@@ -1092,10 +1101,27 @@ public final class AppModel {
         return children(of: nil)
     }
 
-    /// The stream loads the newest bookings only; a click on an older day in
-    /// the balance chart raises the limit until that day is loaded.
-    static let defaultListLimit: UInt32 = 3000
+    /// The stream starts with the newest bookings (one page, rounded up to whole
+    /// days) and appends further pages while the user scrolls. A click on an
+    /// older day in the balance chart raises the limit until that day is loaded.
+    static let defaultListLimit: UInt32 = 300
+    /// How many bookings a full reload fetches: one page, or as many as are loaded.
     var listLimit: UInt32 = AppModel.defaultListLimit
+    /// Size of the pages appended while scrolling (tests use small pages).
+    var appendPageSize: UInt32 = AppModel.defaultListLimit
+    /// The next page is being fetched in the background.
+    private(set) var isLoadingMoreBookings = false
+    @ObservationIgnored private var loadMoreTask: Task<Void, Never>?
+    /// Bumped by every full reload of the list; a page requested before is dropped.
+    @ObservationIgnored private var listGeneration = 0
+
+    /// Every full reload calls this first: a page still on its way belongs to the old list.
+    private func dropPendingPage() {
+        listGeneration += 1
+        loadMoreTask?.cancel()
+        loadMoreTask = nil
+        isLoadingMoreBookings = false
+    }
 
     /// More bookings match the current filter than are loaded (list limit reached).
     var hasMoreBookings: Bool {
@@ -1107,10 +1133,45 @@ public final class AppModel {
         max(0, Int(page?.totalCount ?? 0) - bookings.count)
     }
 
-    /// Raises the list limit by one page (+3,000) and reloads.
+    /// Fetches the next page off the main thread and appends it. Nothing loaded
+    /// so far is fetched again, so scrolling stays smooth.
     func loadMoreBookings() {
-        listLimit += Self.defaultListLimit
-        reloadBookings()
+        guard let vault, hasMoreBookings, !isLoadingMoreBookings, selectionLoadTask == nil else { return }
+        var next = currentFilter
+        next.offset = UInt32(bookings.count)
+        next.limit = appendPageSize
+        let filter = next
+        let generation = listGeneration
+        isLoadingMoreBookings = true
+        loadMoreTask = Task { [weak self] in
+            let next = try? await Self.offMain {
+                try Perf.interval("listTransactions") { try vault.listTransactions(filter: filter) }
+            }
+            // A full reload in the meantime has replaced the list this page belongs to.
+            guard let self, !Task.isCancelled, generation == self.listGeneration else { return }
+            self.loadMoreTask = nil
+            self.isLoadingMoreBookings = false
+            guard let next, !next.transactions.isEmpty else { return }
+            Perf.interval("publishBookings") {
+                self.bookings.append(contentsOf: next.transactions)
+            }
+            // an edit reloads exactly what is on screen
+            self.listLimit = UInt32(self.bookings.count)
+        }
+    }
+
+    /// Loads the list far enough back to contain `day` (plus some older context).
+    private func loadBookings(through day: String) {
+        guard let vault, let total = page?.totalCount, UInt32(bookings.count) < total else { return }
+        if let oldest = dayGroups.last?.date, day >= oldest { return }
+        // count the bookings from that day on
+        var f = currentFilter
+        if f.dateFrom.map({ $0 < day }) ?? true { f.dateFrom = day }
+        f.limit = 1
+        if let newer = try? vault.listTransactions(filter: f).totalCount {
+            listLimit = max(listLimit, newer + 200)
+            reloadBookings()
+        }
     }
 
     /// Raises the list limit to everything matching the current filter.
@@ -1144,7 +1205,9 @@ public final class AppModel {
             offset: 0,
             scope: scope,
             merchantKey: nil,
-            direction: directionFilter
+            direction: directionFilter,
+            checked: statusFilter == .all ? nil : statusFilter == .checked,
+            wholeDays: true
         )
     }
 
@@ -1168,14 +1231,7 @@ public final class AppModel {
         var filter = currentFilter
         filter.limit = 0
         do {
-            let all = try vault.listTransactions(filter: filter).transactions
-            let rows = all.filter { b in
-                switch statusFilter {
-                case .all: return true
-                case .new: return !b.checked
-                case .checked: return b.checked
-                }
-            }.map(PrintRow.init)
+            let rows = try vault.listTransactions(filter: filter).transactions.map(PrintRow.init)
             let accounts = allAccounts.map {
                 PrintAccount(id: $0.id, name: $0.name, iban: $0.iban, balanceCents: $0.balanceCents,
                              balanceDate: $0.balanceDate, currency: $0.currency)
@@ -1214,6 +1270,7 @@ public final class AppModel {
         // any scope request still running in the background.
         settlePendingSelectionLoad()
         scopeLoadTask?.cancel()
+        dropPendingPage()
         guard let vault else { return }
         run {
             let filter = currentFilter
@@ -1248,6 +1305,7 @@ public final class AppModel {
     /// and UniFFI conversion must not run inside its selection setter.
     private func reloadScopeBookings() {
         scopeLoadTask?.cancel()
+        dropPendingPage()
         guard let vault else { return }
         let filter = currentFilter
         scopeLoadTask = Task { [weak self] in
@@ -1265,6 +1323,8 @@ public final class AppModel {
                 // Rapid switches or a different vault/filter must never publish
                 // a result from an older request, including an older error.
                 guard !Task.isCancelled, let self else { return }
+                // a page requested while this scope was loading belongs to no list
+                self.dropPendingPage()
                 self.page = p
                 self.bookings = p.transactions
                 // Same rule as reloadBookings: a sticky booking stays selected.
@@ -1287,7 +1347,7 @@ public final class AppModel {
         let (from, to) = periodRange
         let filter = currentFilter
         // The list query already summed the same bookings unless it is narrowed further.
-        if let page, filter.scope == .all, filter.direction == .all, filter.search == nil, filter.categoryId == nil, !filter.uncategorizedOnly {
+        if let page, filter.scope == .all, filter.direction == .all, filter.checked == nil, filter.search == nil, filter.categoryId == nil, !filter.uncategorizedOnly {
             selectionFlow = (page.flow.consumptionCents, page.flow.investedCents, page.flow.incomeCents)
             return
         }
@@ -1384,6 +1444,7 @@ public final class AppModel {
     private func startSelectionLoad() {
         selectionLoadTask?.cancel()
         scopeLoadTask?.cancel()
+        dropPendingPage()
         guard let vault else { return }
         let ids = selectionAccountIDs
         let month = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: Date())
@@ -1402,7 +1463,7 @@ public final class AppModel {
                 let filter = self.currentFilter
                 let (from, to) = self.periodRange
                 let chart = self.historyRequest
-                let listHasFlow = filter.scope == .all && filter.direction == .all && filter.search == nil && filter.categoryId == nil && !filter.uncategorizedOnly
+                let listHasFlow = filter.scope == .all && filter.direction == .all && filter.checked == nil && filter.search == nil && filter.categoryId == nil && !filter.uncategorizedOnly
                 let loaded = try await Self.offMain {
                     let page = try Perf.interval("listTransactions") { try vault.listTransactions(filter: filter) }
                     try Task.checkCancellation()
@@ -1541,7 +1602,7 @@ public final class AppModel {
         guard let vault else { return nil }
         let f = BookingFilter(accountIds: [b.accountId], categoryId: nil, includeSubcategories: true, uncategorizedOnly: false,
                               search: nil, dateFrom: b.bookingDate, dateTo: b.bookingDate, limit: 0, offset: 0,
-                              scope: .all, merchantKey: nil, direction: .all)
+                              scope: .all, merchantKey: nil, direction: .all, checked: nil, wholeDays: false)
         return (try? vault.listTransactions(filter: f))?.transactions.first { $0.id == b.id }
     }
 
@@ -1665,12 +1726,17 @@ public final class AppModel {
             sidebarSelection = .allAccounts
             period = .all
             directionFilter = .all
+            statusFilter = .all
             searchText = ""
         }
         // After a closing sheet / list reload, so the list can scroll to the row.
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard let self else { return }
+            // an older booking is not on the first page: load back to its day
+            if booking(withID: id) == nil, let day = try? vault?.bookingDate(bookingId: id) {
+                loadBookings(through: day)
+            }
             if selectedBookingID == id { selectedBookingID = nil }
             selectedBookingID = id
         }
@@ -1773,15 +1839,8 @@ public final class AppModel {
 
     // MARK: - Derived
 
-    var visibleBookings: [Booking] {
-        bookings.filter { b in
-            switch statusFilter {
-            case .all: return true
-            case .new: return !b.checked
-            case .checked: return b.checked
-            }
-        }
-    }
+    /// The loaded bookings; every filter of the list is applied by the core.
+    var visibleBookings: [Booking] { bookings }
 
     /// Day card the stream should scroll to (set by a click in the balance chart);
     /// a fresh token per click, so clicking the same day again scrolls again.
@@ -1791,17 +1850,7 @@ public final class AppModel {
     /// day with bookings (the balance of a quiet day comes from there).
     func jumpToDay(_ date: Date) {
         let day = DateText.iso(date)
-        if let vault, let oldest = dayGroups.last?.date, day < oldest,
-           let total = page?.totalCount, UInt32(bookings.count) < total {
-            // count the bookings from that day on, then load them plus some older context
-            var f = currentFilter
-            if f.dateFrom.map({ $0 < day }) ?? true { f.dateFrom = day }
-            f.limit = 1
-            if let newer = try? vault.listTransactions(filter: f).totalCount {
-                listLimit = max(listLimit, newer + 200)
-                reloadBookings()
-            }
-        }
+        loadBookings(through: day)
         let groups = dayGroups // newest first
         guard let target = groups.first(where: { $0.date <= day }) ?? groups.last else { return }
         scrollToDay = DayJump(day: target.date)
@@ -1854,9 +1903,9 @@ public final class AppModel {
     var investedThisMonth: Int64 { selectionFlow?.invested ?? dashboard?.monthly.last?.investmentCents ?? 0 }
     var incomeThisMonth: Int64 { selectionFlow?.income ?? dashboard?.monthly.last?.incomeCents ?? 0 }
 
-    /// Number of bookings matching the list filter (the list itself loads at most 3000).
+    /// Number of bookings matching the list filter (the list itself loads them page by page).
     var bookingCountLabel: Int {
-        statusFilter == .all ? Int(page?.totalCount ?? UInt32(visibleBookings.count)) : visibleBookings.count
+        Int(page?.totalCount ?? UInt32(bookings.count))
     }
 
     var title: String {
@@ -1970,6 +2019,8 @@ public final class AppModel {
     func setChecked(_ checked: Bool, for booking: Booking) {
         guard let vault else { return }
         run { try vault.setTransactionChecked(transactionId: booking.id, checked: checked) }
+        // With "Neu" / "Geprüft" active the booking leaves the list: keep it in the inspector.
+        if statusFilter != .all, selectedBookingID == booking.id { stickyBooking = freshBooking(booking) }
         reloadBookings(); reloadAccounts()
     }
 

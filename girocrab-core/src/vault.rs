@@ -2038,6 +2038,11 @@ impl Vault {
             args.push(Box::new(to.clone()));
             wh.push(format!("t.booking_date <= ?{}", args.len()));
         }
+        match filter.checked {
+            None => {}
+            Some(true) => wh.push("t.checked != 0".into()),
+            Some(false) => wh.push("t.checked = 0".into()),
+        }
         match filter.direction {
             BookingDirection::All => {}
             BookingDirection::Income => wh.push("t.amount_cents > 0".into()),
@@ -2214,11 +2219,15 @@ impl Vault {
         } else {
             filter.limit as usize
         };
-        let txs: Vec<Booking> = txs
-            .into_iter()
-            .skip(filter.offset as usize)
-            .take(limit)
-            .collect();
+        let start = (filter.offset as usize).min(txs.len());
+        let mut end = start.saturating_add(limit).min(txs.len());
+        if filter.whole_days && end > start {
+            // sorted by day: the rest of the page's last day follows directly
+            while end < txs.len() && txs[end].booking_date == txs[end - 1].booking_date {
+                end += 1;
+            }
+        }
+        let txs: Vec<Booking> = txs.drain(start..end).collect();
         Ok(BookingPage {
             transactions: txs,
             total_count: total,
@@ -2248,6 +2257,15 @@ impl Vault {
             });
         }
         Ok(())
+    }
+
+    /// Booking day of one booking ("2026-11-09"); `None` if it does not exist.
+    /// Lets the list load far enough back to show a booking it is asked to reveal.
+    pub fn booking_date(&self, booking_id: i64) -> Result<Option<String>, CoreError> {
+        let db = self.db()?;
+        let mut stmt = db.prepare("SELECT booking_date FROM transactions WHERE id = ?1")?;
+        let mut rows = stmt.query_map([booking_id], |r| r.get::<_, String>(0))?;
+        Ok(rows.next().transpose()?)
     }
 
     pub fn set_transaction_checked(
@@ -2839,5 +2857,105 @@ mod index_tests {
         assert_eq!(old, 0);
         drop(db);
         let _ = std::fs::remove_file(path);
+    }
+}
+
+#[cfg(test)]
+mod paging_tests {
+    use super::*;
+
+    fn demo() -> (Arc<Vault>, std::path::PathBuf) {
+        let p = std::env::temp_dir().join(format!("girocrab-page-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        (v, p)
+    }
+
+    #[test]
+    fn whole_day_pages_never_split_a_day_and_add_up() {
+        let (v, p) = demo();
+        let all = v
+            .list_transactions(BookingFilter::default())
+            .unwrap()
+            .transactions;
+        assert!(all.len() > 40);
+        let mut loaded: Vec<Booking> = Vec::new();
+        let mut pages = 0;
+        while loaded.len() < all.len() {
+            let page = v
+                .list_transactions(BookingFilter {
+                    limit: 7,
+                    offset: loaded.len() as u32,
+                    whole_days: true,
+                    ..Default::default()
+                })
+                .unwrap();
+            assert_eq!(page.total_count as usize, all.len());
+            assert!(
+                page.transactions.len() >= 7 || loaded.len() + page.transactions.len() == all.len()
+            );
+            loaded.extend(page.transactions);
+            // the next booking, if any, belongs to another day
+            if let Some(next) = all.get(loaded.len()) {
+                assert_ne!(next.booking_date, loaded.last().unwrap().booking_date);
+            }
+            pages += 1;
+            assert!(pages < 1000);
+        }
+        let ids = |l: &[Booking]| l.iter().map(|b| b.id).collect::<Vec<_>>();
+        assert_eq!(ids(&loaded), ids(&all));
+        // without the flag the limit is exact
+        let exact = v
+            .list_transactions(BookingFilter {
+                limit: 7,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(exact.transactions.len(), 7);
+        // an offset behind the end is an empty page, not an error
+        let past = v
+            .list_transactions(BookingFilter {
+                limit: 7,
+                offset: all.len() as u32 + 5,
+                whole_days: true,
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(past.transactions.is_empty());
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn checked_filter_selects_new_or_checked_bookings() {
+        let (v, p) = demo();
+        let all = v
+            .list_transactions(BookingFilter::default())
+            .unwrap()
+            .transactions;
+        let first = all.first().unwrap();
+        assert_eq!(
+            v.booking_date(first.id).unwrap().as_deref(),
+            Some(first.booking_date.as_str())
+        );
+        assert_eq!(v.booking_date(-1).unwrap(), None);
+        let pick = all.iter().find(|b| !b.checked).expect("a new booking").id;
+        v.set_transaction_checked(pick, true).unwrap();
+        let of = |checked: Option<bool>| {
+            v.list_transactions(BookingFilter {
+                checked,
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        let (new, done) = (of(Some(false)), of(Some(true)));
+        assert!(new.transactions.iter().all(|b| !b.checked));
+        assert!(done.transactions.iter().all(|b| b.checked));
+        assert!(done.transactions.iter().any(|b| b.id == pick));
+        assert_eq!(
+            new.total_count + done.total_count,
+            of(None).total_count,
+            "the count follows the filter"
+        );
+        let _ = std::fs::remove_file(p);
     }
 }

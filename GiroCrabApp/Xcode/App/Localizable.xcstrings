@@ -10203,13 +10203,13 @@
         }
       }
     },
-    "Weitere Buchungen laden (+3.000)" : {
+    "Weitere Buchungen laden" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Load more bookings (+3,000)"
+            "value" : "Load more bookings"
           }
         }
       }
