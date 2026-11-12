@@ -98,7 +98,7 @@ struct FnzWebSheet: View {
                     if running { Text(progress).font(.caption) }
                     else if let notice { Text(notice).font(.caption).foregroundStyle(.orange) }
                     else if let blocked = browser.blockedHost {
-                        Text("Seite außerhalb des FNZ-Portals blockiert (\(blocked)).").font(.caption).foregroundStyle(.orange)
+                        Text("Unsichere Seite blockiert (\(blocked)) – nur HTTPS-Seiten werden geöffnet.").font(.caption).foregroundStyle(.orange)
                     }
                     else if ready { Text("Angemeldet – Kontosalden, Depotwerte und Postkorb können abgerufen werden.").font(.caption) }
                     else { Text("Melden Sie sich bei FNZ an und bestätigen Sie in FNZsecure.").font(.caption) }

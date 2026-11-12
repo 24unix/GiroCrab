@@ -196,7 +196,7 @@ struct AmazonWebSheet: View {
         if running { return progress }
         if let notice { return notice }
         if let blocked = browser.blockedHost {
-            return String(localized: "Seite außerhalb von Amazon blockiert (\(blocked)) – bitte bei Amazon bleiben.")
+            return String(localized: "Unsichere Seite blockiert (\(blocked)) – nur HTTPS-Seiten werden geöffnet.")
         }
         if ready { return String(localized: "Angemeldet – „Bestellungen abrufen“ liest Ihre Bestellhistorie.") }
         return String(localized: "Melden Sie sich bei Amazon an (Passwort, Captcha, 2FA wie gewohnt).")

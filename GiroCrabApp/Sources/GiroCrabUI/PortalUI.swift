@@ -162,26 +162,26 @@ private final class WeakHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
-/// Keeps the main frame on the portal's domains (https only). Sub-frames
-/// (captcha, 3-D Secure) may load elsewhere but can never feed the importer.
+/// Main frame: any https page (bank SSO / OAuth logins may redirect to other
+/// domains), never http, file, javascript, data or app schemes. Reading data
+/// stays strict: the message handler and the DOM import accept only the
+/// portal's own domains (`PortalDomains`, `PortalBrowser.onPortal`).
 @MainActor
 private final class PortalNavigationGuard: NSObject, WKNavigationDelegate {
-    let domains: PortalDomains
     weak var browser: PortalBrowser?
-    init(domains: PortalDomains) { self.domains = domains }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
         guard navigationAction.targetFrame?.isMainFrame ?? true else { decisionHandler(.allow); return }
         let url = navigationAction.request.url
-        if url?.absoluteString == "about:blank" { decisionHandler(.allow); return }
-        if url?.scheme?.lowercased() == "https", domains.allows(url?.host) {
+        if url?.absoluteString == "about:blank" || url?.scheme?.lowercased() == "https" {
             browser?.blockedHost = nil
             decisionHandler(.allow)
             return
         }
-        browser?.blockedHost = url?.host ?? url?.scheme ?? "?"
-        AppModel.debugLog("portal: blocked main-frame navigation to \(url?.host ?? url?.scheme ?? "?")")
+        let what = url?.host ?? url?.scheme ?? "?"
+        browser?.blockedHost = what
+        AppModel.debugLog("portal: blocked non-https main-frame navigation (\(url?.scheme ?? "?"))")
         decisionHandler(.cancel)
     }
 }
@@ -201,7 +201,7 @@ final class PortalBrowser {
     private var urlObservation: NSKeyValueObservation?
     let domains: PortalDomains
     @ObservationIgnored private let navigationGuard: PortalNavigationGuard
-    /// Host of the last main-frame navigation refused because it left the portal.
+    /// Host (or scheme) of the last main-frame navigation refused as not https.
     fileprivate(set) var blockedHost: String?
 
     /// The page shown is the portal itself (https, one of its domains): only
@@ -254,7 +254,7 @@ final class PortalBrowser {
     /// identifies as desktop Safari – used for Amazon, whose sign-in is picky about both.
     init(url: URL, domains: PortalDomains, captureTraffic: Bool = true) {
         self.domains = domains
-        navigationGuard = PortalNavigationGuard(domains: domains)
+        navigationGuard = PortalNavigationGuard()
         let cfg = WKWebViewConfiguration()
         cfg.websiteDataStore = .default()
         let ucc = WKUserContentController()
@@ -432,7 +432,7 @@ struct PortalWebSheet: View {
 
     private var info: String {
         if let blocked = browser.blockedHost {
-            return String(localized: "Seite außerhalb des Portals blockiert (\(blocked)) – bitte im Portal bleiben.")
+            return String(localized: "Unsichere Seite blockiert (\(blocked)) – nur HTTPS-Seiten werden geöffnet.")
         }
         if browser.onLoginPage { return String(localized: "Melden Sie sich wie gewohnt an (Benutzername, Passwort, 2FA) und öffnen Sie die Umsatzübersicht.") }
         if importedCount > 0 && olderOffered {
