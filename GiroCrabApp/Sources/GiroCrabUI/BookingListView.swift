@@ -151,6 +151,9 @@ struct BookingStreamView: View {
         .onKeyPress(.downArrow) { model.moveSelection(1); return .handled }
         .onKeyPress(.upArrow) { model.moveSelection(-1); return .handled }
         .onKeyPress(.return) {
+            // The balance chart sits inside the list: with keyboard focus there,
+            // Return belongs to the chart (jump to the chosen day).
+            guard !model.chartHasKeyboardFocus else { return .ignored }
             guard model.options.screenshotPath == nil, let b = model.selectedBooking else { return .ignored }
             model.editNote(for: b)
             return .handled

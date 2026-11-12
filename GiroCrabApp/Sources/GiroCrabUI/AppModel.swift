@@ -361,6 +361,9 @@ public final class AppModel {
     var ruleDraft: Rule?
     var showSettings = false
     var showCommandPalette = false
+    /// The balance chart has keyboard focus (Return there jumps to its day,
+    /// instead of editing the selected booking's note).
+    @ObservationIgnored var chartHasKeyboardFocus = false
     /// Run after the command palette sheet has been dismissed (opens the next sheet).
     @ObservationIgnored var afterPaletteDismiss: (@MainActor () -> Void)?
     var showCategorizer = false

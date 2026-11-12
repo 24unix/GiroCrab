@@ -359,6 +359,7 @@ struct KPI: View {
 }
 
 struct BalanceChart: View {
+    @Environment(AppModel.self) private var model
     let points: [DailyBalance]
     /// Click on a day (jump to its bookings).
     var onSelect: ((Date) -> Void)? = nil
@@ -397,10 +398,40 @@ struct BalanceChart: View {
         }
     }
 
-    @ViewBuilder private var chartBody: some View {
-        let pts: [Point] = points.enumerated().compactMap { i, p in
+    private var pts: [Point] {
+        points.enumerated().compactMap { i, p in
             DateText.date(p.date).map { Point(id: i, date: $0, cents: p.balanceCents) }
         }
+    }
+
+    /// Keyboard: ←/→ walk the days (the hover readout follows), Return jumps
+    /// to the day's bookings, Esc ends. VoiceOver: summary, adjustable by day.
+    @FocusState private var chartFocused: Bool
+
+    private func step(_ delta: Int) {
+        let all = pts
+        guard !all.isEmpty else { return }
+        let current = hovered.flatMap { h in all.firstIndex { $0.id == h.id } } ?? (delta > 0 ? -1 : all.count)
+        hovered = all[min(max(current + delta, 0), all.count - 1)]
+    }
+
+    private var summary: String {
+        let all = pts
+        guard let first = all.first, let last = all.last,
+              let low = all.min(by: { $0.cents < $1.cents }), let high = all.max(by: { $0.cents < $1.cents }) else {
+            return String(localized: "Keine Daten")
+        }
+        let d = Date.FormatStyle.dateTime.day().month(.wide)
+        return String(localized: "Von \(Money.format(first.cents)) am \(first.date.formatted(d)) auf \(Money.format(last.cents)) am \(last.date.formatted(d)). Tiefststand \(Money.format(low.cents)) am \(low.date.formatted(d)), Höchststand \(Money.format(high.cents)) am \(high.date.formatted(d)).")
+    }
+
+    private var currentValue: String {
+        guard let h = hovered else { return summary }
+        return "\(h.date.formatted(.dateTime.weekday(.wide).day().month(.wide))): \(Money.format(h.cents))"
+    }
+
+    @ViewBuilder private var chartBody: some View {
+        let pts = self.pts
         let minV = pts.map(\.euros).min() ?? 0
         let maxV = pts.map(\.euros).max() ?? 1
         let pad = max((maxV - minV) * 0.15, 1)
@@ -487,5 +518,59 @@ struct BalanceChart: View {
         }
         .onChange(of: points.first?.date) { _, _ in hovered = nil }
         .onChange(of: points.count) { _, _ in hovered = nil }
+        #if os(macOS)
+        .focusable(interactions: .edit)
+        .focused($chartFocused)
+        .onKeyPress(.leftArrow) { step(-1); return .handled }
+        .onKeyPress(.rightArrow) { step(1); return .handled }
+        .onKeyPress(.return) {
+            guard let h = hovered, let onSelect else { return .ignored }
+            onSelect(h.date)
+            return .handled
+        }
+        .onKeyPress(.escape) { guard hovered != nil else { return .ignored }; hovered = nil; return .handled }
+        .onChange(of: chartFocused) { _, focused in
+            if !focused { hovered = nil }
+            model.chartHasKeyboardFocus = focused
+        }
+        #endif
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Saldoverlauf")
+        .accessibilityValue(currentValue)
+        .accessibilityHint(onSelect == nil ? "" : String(localized: "Pfeiltasten wählen einen Tag, Eingabe zeigt seine Buchungen."))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: step(1)
+            case .decrement: step(-1)
+            @unknown default: break
+            }
+        }
+        .accessibilityAction(named: "Buchungen dieses Tages zeigen") {
+            if let h = hovered, let onSelect { onSelect(h.date) }
+        }
+        .accessibilityChartDescriptor(BalanceChartDescriptor(points: pts.map { ($0.date, $0.euros) }))
+    }
+}
+
+/// Audio Graph / VoiceOver chart description of the balance history.
+private struct BalanceChartDescriptor: AXChartDescriptorRepresentable {
+    let points: [(Date, Double)]
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let dates = points.map(\.0)
+        let values = points.map(\.1)
+        let lo = dates.first?.timeIntervalSince1970 ?? 0
+        let hi = dates.last?.timeIntervalSince1970 ?? 1
+        let x = AXNumericDataAxisDescriptor(
+            title: String(localized: "Datum"), range: lo...max(hi, lo + 1), gridlinePositions: []
+        ) { Date(timeIntervalSince1970: $0).formatted(date: .abbreviated, time: .omitted) }
+        let y = AXNumericDataAxisDescriptor(
+            title: String(localized: "Saldo"), range: (values.min() ?? 0)...max(values.max() ?? 1, (values.min() ?? 0) + 1), gridlinePositions: []
+        ) { Money.format(Int64(($0 * 100).rounded())) }
+        let series = AXDataSeriesDescriptor(
+            name: String(localized: "Saldo"), isContinuous: true,
+            dataPoints: points.map { AXDataPoint(x: $0.0.timeIntervalSince1970, y: $0.1) }
+        )
+        return AXChartDescriptor(title: String(localized: "Saldoverlauf"), summary: nil, xAxis: x, yAxis: y, additionalAxes: [], series: [series])
     }
 }
