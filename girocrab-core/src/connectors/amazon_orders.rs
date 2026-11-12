@@ -129,8 +129,11 @@ fn iso(y: u32, m: u32, d: u32) -> Option<String> {
 }
 
 /// First price found in free text ("EUR 12,99", "12,99 €", "Gesamt: 1.234,56 €").
+/// Also accepts the English format amazon.de shows when the site language is
+/// English ("€1,329.00", "€45.98"); a German-only pattern read "€1,329.00" as
+/// 1,32 € and missed every amount below 1.000 €.
 pub fn price_cents(s: &str) -> Option<i64> {
-    let re = Regex::new(r"-?\s*\d{1,3}(?:\.\d{3})*,\d{2}|-?\s*\d+,\d{2}").ok()?;
+    let re = Regex::new(r"-?\s*(?:€\s*)?(?:\d{1,3}(?:[.,]\d{3})+|\d+)[.,]\d{2}\b").ok()?;
     let m = re.find(s)?;
     parse_amount(m.as_str())
 }
@@ -335,6 +338,7 @@ impl Vault {
                 message: tr("Keine Bestellungen erkannt.").into(),
             });
         }
+        self.heal_amazon_amounts(connection_id, &parsed)?;
         let summary = store_fetch(
             &self,
             kind,
@@ -344,6 +348,43 @@ impl Vault {
         // Fold the import into the main file; best effort, it is committed.
         let _ = self.checkpoint();
         Ok(summary)
+    }
+}
+
+impl Vault {
+    /// Order bookings already stored with a different total (e.g. the wrong
+    /// 1,32 € read from "€1,329.00" by an older parser) are corrected in place;
+    /// `store_fetch` only inserts new ids. The synthetic balance follows.
+    fn heal_amazon_amounts(&self, connection_id: i64, parsed: &[Booking]) -> Result<(), CoreError> {
+        let account_ref = format!("amazon-orders-{connection_id}");
+        let db = self.db()?;
+        let Ok(acc_id) = db.query_row(
+            "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref = ?2",
+            rusqlite::params![connection_id, account_ref],
+            |r| r.get::<_, i64>(0),
+        ) else {
+            return Ok(());
+        };
+        for b in parsed.iter().filter(|b| b.id.starts_with("amazon:")) {
+            let old: Option<i64> = db
+                .query_row(
+                    "SELECT amount_cents FROM transactions WHERE account_id = ?1 AND external_id = ?2",
+                    rusqlite::params![acc_id, b.id],
+                    |r| r.get(0),
+                )
+                .ok();
+            if let Some(old) = old.filter(|o| *o != b.cents) {
+                db.execute(
+                    "UPDATE transactions SET amount_cents = ?1 WHERE account_id = ?2 AND external_id = ?3",
+                    rusqlite::params![b.cents, acc_id, b.id],
+                )?;
+                db.execute(
+                    "UPDATE accounts SET balance_cents = balance_cents + ?1 WHERE id = ?2",
+                    rusqlite::params![b.cents - old, acc_id],
+                )?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -370,6 +411,35 @@ mod tests {
         assert_eq!(price_cents("EUR 1.234,56"), Some(123456));
         assert_eq!(price_cents("-5,00 €"), Some(-500));
         assert_eq!(price_cents("gratis"), None);
+        // English site language on amazon.de
+        assert_eq!(price_cents("€1,329.00"), Some(132900));
+        assert_eq!(price_cents("€45.98"), Some(4598));
+        assert_eq!(price_cents("-€5.00"), Some(-500));
+        assert_eq!(price_cents("€0.00"), Some(0));
+    }
+
+    #[test]
+    fn english_site_language_order_totals() {
+        // amazon.de with English UI: "€1,329.00" used to become -1,32 €, and
+        // every order below 1.000 € ("€45.98") produced no booking at all.
+        let iphone = order(
+            r#"{"code":"302-1","date":"February 14, 2026","items":[{"title":"Apple iPhone 17 Pro Max 256 GB"}],
+                "rows":[{"label":"Item(s) Subtotal:","value":"€1,329.00"},
+                        {"label":"Postage & Packing:","value":"€0.00"},
+                        {"label":"Total before VAT:","value":"€1,116.81"},
+                        {"label":"Grand Total:","value":"€1,329.00","bold":true}]}"#,
+        );
+        let small = order(
+            r#"{"code":"302-2","date":"March 1, 2026",
+                "rows":[{"label":"Item(s) Subtotal:","value":"€45.98"},
+                        {"label":"Grand Total:","value":"€45.98","bold":true},
+                        {"label":"Refund Total","value":"€10.00"}]}"#,
+        );
+        let b = bookings(&[iphone, small]);
+        assert_eq!(b.len(), 3);
+        assert_eq!((b[0].cents, b[0].date.as_str()), (-132900, "2026-02-14"));
+        assert_eq!(b[1].cents, -4598);
+        assert_eq!(b[2].cents, 1000);
     }
 
     #[test]
@@ -424,5 +494,50 @@ mod tests {
             r#"{"code":"3","date":"1. Mai 2025","rows":[{"label":"Summe","value":"7,00 €"},{"label":"Endbetrag","value":"8,50 €","bold":true}]}"#,
         );
         assert_eq!(bookings(&[o])[0].cents, -850);
+    }
+
+    #[test]
+    fn reimport_corrects_wrong_stored_total() {
+        let p = std::env::temp_dir().join(format!("girocrab-amazon-{}.db", uuid::Uuid::new_v4()));
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
+        let conn = v
+            .add_bank_connection(
+                ConnectorKind::AmazonOrders,
+                "Amazon Bestellungen".into(),
+                String::new(),
+            )
+            .unwrap();
+        let acc = format!("amazon-orders-{conn}");
+        let wrong = vec![Booking {
+            id: "amazon:302-1".into(),
+            date: "2026-02-14".into(),
+            cents: -132,
+            purpose: "iPhone".into(),
+            text: "Amazon-Bestellung",
+        }];
+        store_fetch(
+            &v,
+            ConnectorKind::AmazonOrders,
+            conn,
+            to_fetch(conn, "Amazon", wrong),
+        )
+        .unwrap();
+        let json = r#"{"orders":[{"code":"302-1","date":"February 14, 2026","items":[{"title":"iPhone"}],
+            "rows":[{"label":"Grand Total:","value":"€1,329.00","bold":true}]}]}"#;
+        Arc::clone(&v)
+            .import_amazon_orders(conn, json.into())
+            .unwrap();
+        let db = v.db().unwrap();
+        let (amount, balance): (i64, i64) = db
+            .query_row(
+                "SELECT t.amount_cents, a.balance_cents FROM transactions t JOIN accounts a ON a.id = t.account_id
+                 WHERE a.external_ref = ?1",
+                [acc],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((amount, balance), (-132900, -132900));
+        drop(db);
+        let _ = std::fs::remove_file(p);
     }
 }
