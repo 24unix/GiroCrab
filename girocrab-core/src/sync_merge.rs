@@ -1386,6 +1386,16 @@ const OTHER_BOOKINGS: &str = "SELECT id, account_id, external_id, import_fp,
         counterparty, purpose, text_ms, splits_ms, deleted_ms
      FROM other.transactions ORDER BY account_id, external_id";
 
+/// The id both sides keep for one booking known under two ids: the bank's
+/// (not a MoneyMoney `mm-` id), else the smaller.
+fn canonical_external_id<'a>(a: &'a str, b: &'a str) -> &'a str {
+    match (a.starts_with("mm-"), b.starts_with("mm-")) {
+        (true, false) => b,
+        (false, true) => a,
+        _ => a.min(b),
+    }
+}
+
 /// Merges `other.transactions` and their splits: bookings are matched by
 /// account + external id (else import fingerprint), new ones are inserted
 /// with their stamps and deletion, existing ones take the newest edit per
@@ -1492,10 +1502,17 @@ pub(crate) fn merge_bookings(
         })?
         .collect::<Result<_, _>>()?;
 
-    // The fingerprint stands in for the external id only where a twin merge
-    // renamed it: a local row whose key the other side lacks. It is a
-    // multiset (two identical coffees share one), so each candidate is used
-    // once, in external-id order on both sides.
+    // The fingerprint stands in for the external id where the two sides gave
+    // one booking different ids (MoneyMoney import here, bank fetch there):
+    // only local rows whose key the other side lacks take part. It is a
+    // multiset (two identical coffees share one), so the unmatched rows of a
+    // fingerprint are paired in external-id order, the i-th local with the
+    // i-th incoming, each used once; leftovers are inserted. The pairing
+    // ignores deletions (the pair stays deleted if either side deleted it):
+    // pairing by status first would let the merge order decide which rows
+    // pair, because a merged pair's status changes between the two merges.
+    // Both sides then keep one id for the pair (`canonical_external_id`), so
+    // the next merge matches it by key.
     let other_keys: HashSet<(i64, &str)> = others
         .iter()
         .filter_map(|o| Some((*acc_map.get(&o.account_id)?, o.external_id.as_str())))
@@ -1518,24 +1535,34 @@ pub(crate) fn merge_bookings(
         };
         o.fields.splits = other_splits.remove(&o.id).unwrap_or_default();
         let existing = match by_key.get(&(acc, o.external_id.clone())) {
-            Some(&id) => Some(id),
-            // a deleted local row only takes a deleted incoming one
-            None => by_fp
-                .get_mut(&(acc, o.import_fp.clone()))
-                .and_then(|bucket| {
-                    let incoming_deleted = o.fields.deleted_ms.is_some();
-                    let pos = bucket
-                        .iter()
-                        .position(|(_, id)| incoming_deleted || local[id].deleted_ms.is_none())?;
-                    Some(bucket.remove(pos).1)
-                }),
+            Some(&id) => Some((id, false)),
+            None => match by_fp.get_mut(&(acc, o.import_fp.clone())) {
+                Some(bucket) if !bucket.is_empty() => {
+                    let (ext, id) = bucket.remove(0);
+                    let key = canonical_external_id(&ext, &o.external_id).to_string();
+                    let renamed = key != ext;
+                    if renamed {
+                        conn.execute(
+                            "UPDATE transactions SET external_id = ?2 WHERE id = ?1",
+                            params![id, key],
+                        )?;
+                        by_key.remove(&(acc, ext));
+                        by_key.insert((acc, key), id);
+                    }
+                    Some((id, renamed))
+                }
+                _ => None,
+            },
         };
         match existing {
-            Some(id) => {
+            Some((id, renamed)) => {
                 let old = local[&id].clone();
                 let mut m = old.clone();
                 m.merge(&o.fields);
                 if m == old {
+                    if renamed {
+                        stats.bookings_updated += 1;
+                    }
                     continue;
                 }
                 write_booking(conn, id, &old, &m, &cat_id, &mut cleared)?;

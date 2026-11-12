@@ -2719,3 +2719,78 @@ fn identical_imported_bookings_stay_two() {
         }
     }
 }
+
+/// Runs `setup` on a fresh pair with only the shared account, merges both
+/// ways starting with A or with B, and returns the synced state of each run.
+fn fp_runs(tag: &str, setup: impl Fn(&Vault, &Vault)) -> Vec<Vec<String>> {
+    [true, false]
+        .into_iter()
+        .map(|a_first| {
+            let dir = temp_dir(tag);
+            let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+            shared_account(&a);
+            shared_account(&b);
+            setup(&a, &b);
+            if a_first {
+                both_ways(&a, &b);
+            } else {
+                both_ways(&b, &a);
+            }
+            synced_state(&a)
+        })
+        .collect()
+}
+
+#[test]
+fn imported_and_fetched_copy_become_one_booking() {
+    let runs = fp_runs("bk-fp-one", |a, b| {
+        exec(
+            a,
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, import_fp, note, checked)
+                 VALUES (1, 'mm-F-0', '2026-01-01', -300, 'F', 'imported', 1);",
+        );
+        exec(
+            b,
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, import_fp)
+                 VALUES (1, 'f1', '2026-01-01', -300, 'F');",
+        );
+    });
+    assert_eq!(runs[0], runs[1], "merge order changed the result");
+    let bookings: Vec<&String> = runs[0]
+        .iter()
+        .filter(|l| l.starts_with("booking"))
+        .collect();
+    assert_eq!(bookings.len(), 1, "{bookings:?}");
+    // the bank's id is kept, the note and check mark come along
+    assert!(bookings[0].contains("|DE1|f1\""), "{}", bookings[0]);
+    assert!(bookings[0].contains("imported"), "{}", bookings[0]);
+}
+
+#[test]
+fn identical_rows_with_a_deletion_pair_the_same_in_both_orders() {
+    let runs = fp_runs("bk-fp-mixed", |a, b| {
+        exec(
+            a,
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, import_fp, deleted_ms)
+                 VALUES (1, 'mm-F-0', '2026-01-01', -300, 'F', 50),
+                        (1, 'mm-F-1', '2026-01-01', -300, 'F', NULL);",
+        );
+        exec(
+            b,
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, import_fp)
+                 VALUES (1, 'b1', '2026-01-01', -300, 'F'), (1, 'b2', '2026-01-01', -300, 'F');",
+        );
+    });
+    assert_eq!(runs[0], runs[1], "merge order changed the result");
+    let bookings: Vec<&String> = runs[0]
+        .iter()
+        .filter(|l| l.starts_with("booking"))
+        .collect();
+    assert_eq!(bookings.len(), 2, "{bookings:?}");
+    // A's deletion survives: one of the two stays deleted
+    assert_eq!(
+        bookings.iter().filter(|l| l.ends_with("Null]")).count(),
+        1,
+        "{bookings:?}"
+    );
+}
