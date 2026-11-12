@@ -188,7 +188,9 @@ final class BankingPolicyTests: XCTestCase {
 
     func testPlaceholderKeyDisablesEverything() async {
         let fetcher = FakeFetcher()
-        let p = makePolicy(keys: BankingPolicy.publicKeys, fetcher: fetcher)
+        // Explicit placeholder (what `scripts/banking-policy.sh keygen` replaces),
+        // independent of the keys this build actually ships.
+        let p = makePolicy(keys: ["PLACEHOLDER-BANKING-POLICY-PUBLIC-KEY"], fetcher: fetcher)
         XCTAssertFalse(p.isEnabled)
         await p.refresh(force: true)
         XCTAssertEqual(fetcher.calls, 0)
@@ -196,9 +198,33 @@ final class BankingPolicyTests: XCTestCase {
         XCTAssertFalse(isBankingBlocked(key: "fints:50050201"))
     }
 
-    func testShippedKeysAreOnlyPlaceholders() {
-        // Until the maintainer adds a real key the feature must stay off.
-        XCTAssertTrue(BankingPolicy.publicKeys.allSatisfy { Data(base64Encoded: $0) == nil })
+    func testShippedKeysAreValidEd25519Keys() {
+        // Since 097a87a a real key ships: every entry must load exactly as the
+        // verifier loads it, otherwise it would be silently dropped.
+        XCTAssertFalse(BankingPolicy.publicKeys.isEmpty)
+        for entry in BankingPolicy.publicKeys {
+            let raw = Data(base64Encoded: entry)
+            XCTAssertNotNil(raw, "not base64: \(entry)")
+            XCTAssertEqual(raw?.count, 32, "not a raw Ed25519 key: \(entry)")
+            XCTAssertNoThrow(try Curve25519.Signing.PublicKey(rawRepresentation: raw ?? Data()), entry)
+        }
+        XCTAssertEqual(Set(BankingPolicy.publicKeys).count, BankingPolicy.publicKeys.count, "duplicate key")
+        let p = makePolicy(keys: BankingPolicy.publicKeys, fetcher: FakeFetcher())
+        XCTAssertTrue(p.isEnabled)
+    }
+
+    func testPublishedPolicyVerifiesWithShippedKeys() throws {
+        // policy/banking-policy.json(.sig) on main must be signed by a shipped key.
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("policy")
+        let json = try Data(contentsOf: dir.appendingPathComponent("banking-policy.json"))
+        let signature = try Data(contentsOf: dir.appendingPathComponent("banking-policy.json.sig"))
+        let keys = BankingPolicy.publicKeys.compactMap { Data(base64Encoded: $0) }
+            .compactMap { try? Curve25519.Signing.PublicKey(rawRepresentation: $0) }
+        XCTAssertTrue(BankingPolicyEvaluation.verify(json: json, signature: signature, keys: keys))
+        XCTAssertNoThrow(try BankingPolicyDocument.parse(json))
     }
 
     func testSignatureChecks() async {
