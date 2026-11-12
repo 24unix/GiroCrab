@@ -1105,6 +1105,11 @@ fn brand_banks_with_pseudo_bank_code_map_to_their_connector() {
         connector_for("20041111", "comdirect"),
         Some(ConnectorKind::Comdirect)
     );
+    // bunq: MoneyMoney files it under its German bank code; the login is an
+    // API key, never a stored PIN, so no PIN is carried over.
+    assert_eq!(connector_for("37019000", "bunq"), Some(ConnectorKind::Bunq));
+    assert_eq!(connector_for("", "bunq"), Some(ConnectorKind::Bunq));
+    assert!(!pin_usable(ConnectorKind::Bunq));
 }
 
 #[test]

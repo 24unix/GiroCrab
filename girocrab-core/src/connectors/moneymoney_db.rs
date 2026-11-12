@@ -543,6 +543,8 @@ fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
         "52090000" => return Some(ConnectorKind::VolksbankKasselGoettingen),
         "50050201" => return Some(ConnectorKind::Direkt1822),
         "20041111" | "20041133" | "20041144" | "20041155" => return Some(ConnectorKind::Comdirect),
+        // bunq's German branch code; GiroCrab talks to the bunq Public API.
+        "37019000" => return Some(ConnectorKind::Bunq),
         c if c.len() == 8 && super::fints_presets::known_fints_blz(c) => {
             return Some(ConnectorKind::FinTsGeneric)
         }
@@ -560,6 +562,8 @@ fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
         Some(ConnectorKind::AmazonVisa)
     } else if n.contains("comdirect") {
         Some(ConnectorKind::Comdirect)
+    } else if n.contains("bunq") {
+        Some(ConnectorKind::Bunq)
     } else {
         None // incl. any other German bank with an 8-digit code
     }
