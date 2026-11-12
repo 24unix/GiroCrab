@@ -257,10 +257,13 @@ extension AppModel {
     }
 
     /// "Gruppen bearbeiten …": Settings › Kontogruppen.
-    func openGroupSettings() {
-        settingsTab = .groups
+    func openGroupSettings() { openSettings(.groups) }
+
+    /// Opens Settings on the given tab (macOS: Settings window, iOS: sheet).
+    func openSettings(_ tab: SettingsTab) {
+        settingsTab = tab
         #if os(macOS)
-        groupSettingsRequested = true
+        settingsRequested = true
         #else
         showSettings = true
         #endif

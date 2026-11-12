@@ -9,6 +9,7 @@ public struct GiroCrabScenes: Scene {
 
     public init(options: LaunchOptions = .current) {
         _model = State(initialValue: AppModel(options: options))
+        GiroCrabTips.configure(options)
     }
 
     public var body: some Scene {
@@ -285,10 +286,10 @@ struct MainSplitView: View {
         .accountGroupDialogs($model.groupDialog)
         .manualLoanSheets(model)
         #if os(macOS)
-        // "Gruppen bearbeiten …" → Settings › Kontogruppen
-        .onChange(of: model.groupSettingsRequested) { _, requested in
+        // AppModel.openSettings(_:), e.g. "Gruppen bearbeiten …" → Settings › Kontogruppen
+        .onChange(of: model.settingsRequested) { _, requested in
             guard requested else { return }
-            model.groupSettingsRequested = false
+            model.settingsRequested = false
             openSettings()
         }
         #endif

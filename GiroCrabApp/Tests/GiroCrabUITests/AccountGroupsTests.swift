@@ -317,7 +317,18 @@ final class AccountGroupsTests: XCTestCase {
         model.openGroupSettings()
         XCTAssertEqual(model.settingsTab, .groups)
         #if os(macOS)
-        XCTAssertTrue(model.groupSettingsRequested, "the main window opens the Settings window")
+        XCTAssertTrue(model.settingsRequested, "the main window opens the Settings window")
+        #else
+        XCTAssertTrue(model.showSettings)
+        #endif
+    }
+
+    /// GitHub #33: the merchant-logo tip's "Einstellungen …" opens the logo pane.
+    func testOpenSettingsOnLogoPane() {
+        model.openSettings(.logos)
+        XCTAssertEqual(model.settingsTab, .logos)
+        #if os(macOS)
+        XCTAssertTrue(model.settingsRequested)
         #else
         XCTAssertTrue(model.showSettings)
         #endif

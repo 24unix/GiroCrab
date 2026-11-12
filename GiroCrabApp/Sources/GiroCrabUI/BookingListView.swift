@@ -39,6 +39,9 @@ struct BookingStreamView: View {
                         if emptyVault {
                             EmptyVaultCard()
                         }
+                        if !emptyVault && model.scope != .investments {
+                            MerchantLogoTipView()
+                        }
                         if model.scope == .investments {
                             InvestmentDashboardView()
                         } else if !model.allAccounts.isEmpty, isOverview || showAnalytics {
@@ -153,6 +156,7 @@ struct BookingStreamView: View {
             return .handled
         }
         .onChange(of: model.focusListToken) { _, _ in focused = true }
+        .merchantLogoTipEligibility()
         .onKeyPress(.space) {
             guard model.options.screenshotPath == nil, let b = model.selectedBooking else { return .ignored }
             // No receipt attached: Space toggles "checked" instead of QuickLook.

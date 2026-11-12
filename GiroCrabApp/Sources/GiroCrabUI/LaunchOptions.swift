@@ -24,6 +24,8 @@ import Foundation
 ///                         (developer) pretend the system language is <code> (e.g. en);
 ///                         the app's language choice is kept in the separate defaults
 ///                         domain de.girocrab.app.language-simulation (#93)
+///  --show-tips           (developer) reset TipKit and show tips in the demo
+///                         vault too (screenshots of contextual tips)
 ///  --screenshot <file>    (macOS) render the main window, save a PNG, quit.
 ///                         Implies --demo-seed so the picture is reproducible.
 public struct LaunchOptions: Sendable {
@@ -45,6 +47,8 @@ public struct LaunchOptions: Sendable {
     public var demoFilter: String?
     /// (developer) pretended system language, see `LanguagePreference.current`
     public var simulateSystemLanguage: String?
+    /// (developer) reset TipKit and show tips in the demo vault too
+    public var showTips: Bool
 
     public init(arguments: [String] = CommandLine.arguments, environment: [String: String] = ProcessInfo.processInfo.environment) {
         var demo = arguments.contains("--demo-seed")
@@ -97,6 +101,7 @@ public struct LaunchOptions: Sendable {
         } else {
             simulateSystemLanguage = nil
         }
+        self.showTips = arguments.contains("--show-tips")
     }
 
     public static let current = LaunchOptions()

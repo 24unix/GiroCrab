@@ -3660,6 +3660,17 @@
         }
       }
     },
+    "Einstellungen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings…"
+          }
+        }
+      }
+    },
     "Empfänger" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4375,6 +4386,17 @@
         }
       }
     },
+    "GiroCrab kann Logos von DuckDuckGo laden. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab can load logos from DuckDuckGo. Only the merchant domain (e.g. lidl.de) is sent – no amounts, no account data."
+          }
+        }
+      }
+    },
     "GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server, kein Tracking und keine Cloud-Synchronisation. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4778,6 +4800,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Merchant Logos"
+          }
+        }
+      }
+    },
+    "Händler-Logos anzeigen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show merchant logos?"
           }
         }
       }
@@ -6307,6 +6340,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "With AND, OR, NOT, parentheses, “phrases”, * and ?, /regex/, fields such as name: or purpose: and amounts such as amount<0."
+          }
+        }
+      }
+    },
+    "Mit DuckDuckGo laden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load with DuckDuckGo"
           }
         }
       }
