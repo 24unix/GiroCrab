@@ -365,7 +365,7 @@ public final class BankingPolicy {
     /// feature is off: no request, no block.
     /// `scripts/banking-policy.sh keygen` / `rotate-key` edit this list.
     nonisolated public static let publicKeys: [String] = [
-        "PLACEHOLDER-BANKING-POLICY-PUBLIC-KEY", // banking-policy-public-key
+        "sy8puSCv1QXXl0hU5cYaPaaShIltXDIXiKLRXLuNW+A=", // banking-policy-public-key
     ]
 
     /// Fixed address in the repository (`policy/` on `main`), independent of
