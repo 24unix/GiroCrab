@@ -2346,13 +2346,33 @@ public final class AppModel {
         }
     }
 
-    /// "Abbrechen" / "Überspringen" in the PIN sheet. In a batch the next
-    /// login follows; otherwise the prompt just closes.
+    /// "Abbrechen" / "Überspringen" in the PIN sheet.
     func cancelPendingLogin() {
-        let name = pendingLogin?.connection.displayName
+        let c = pendingLogin?.connection
         pendingLogin = nil
-        guard syncBatchTotal > 0 else { return }
-        if let name { syncBatchSkipped.append(name) }
+        skipPrompt(for: c)
+    }
+
+    /// "Abbrechen" / "Überspringen" in the setup sheet (missing settings).
+    func cancelSetupRequest() {
+        let c = setupRequest?.connection
+        setupRequest = nil
+        skipPrompt(for: c)
+    }
+
+    /// "Abbrechen" / "Überspringen" in the Trade Republic browser login.
+    func cancelWebLogin() {
+        let c = webLoginConnection
+        webLoginConnection = nil
+        skipPrompt(for: c)
+    }
+
+    /// A prompt before the bank dialog (PIN, setup, browser login) was
+    /// cancelled: in a batch go on with the next login, otherwise end it –
+    /// a stale queue would otherwise resume after a later single sync.
+    private func skipPrompt(for connection: BankConnection?) {
+        guard syncBatchTotal > 1 else { resetSyncBatch(); return }
+        if let name = connection?.displayName { syncBatchSkipped.append(name) }
         syncNextInQueue()
     }
 
@@ -2388,6 +2408,7 @@ public final class AppModel {
         pendingLogin = nil
         syncingConnectionID = connection.id
         Task {
+            var started: SyncSession?
             do {
                 let session: SyncSession
                 if let accountID = self.statementsAccountID {
@@ -2395,10 +2416,13 @@ public final class AppModel {
                 } else {
                     session = try vault.beginSync(connectionId: connection.id, secret: secret, demo: isDemo)
                 }
+                started = session
                 self.activeSession = session
                 let step = try await session.start()
+                guard self.activeSession === session else { return }  // skipped / cancelled meanwhile
                 self.handle(step, connection: connection)
             } catch {
+                if let started, self.activeSession !== started { return }
                 self.finishSync(error: error)
             }
         }
@@ -2471,8 +2495,10 @@ public final class AppModel {
             guard let session = self.activeSession else { return }
             do {
                 let step = try await session.poll()
+                guard self.activeSession === session else { return }  // skipped / cancelled meanwhile
                 self.handle(step, connection: connection)
             } catch {
+                guard self.activeSession === session else { return }
                 self.finishSync(error: error)
             }
         }
@@ -2497,8 +2523,11 @@ public final class AppModel {
         Task {
             do {
                 let step = try await session.submitCode(code: code)
+                // "Überspringen" while the code was on its way: drop the late answer
+                guard self.activeSession === session else { return }
                 self.handle(step, connection: ch.connection)
             } catch {
+                guard self.activeSession === session else { return }
                 self.finishSync(error: error)
             }
         }

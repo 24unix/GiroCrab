@@ -71,37 +71,13 @@ struct PinSheet: View {
                     }
                 }
             }
-            HStack {
-                if model.canSkipInSyncBatch {
-                    // "Alle abrufen": skip this login, go on with the next one.
-                    // HIG: the farther-reaching alternative stands apart on the
-                    // left; Cancel (Esc = skip) sits next to the default button.
-                    // fixedSize: the sheet widens instead of truncating titles.
-                    Button("Alle abbrechen") { model.cancelSync() }
-                        .help("Den Abruf für alle restlichen Bankzugänge beenden.")
-                        .fixedSize()
-                } else {
-                    Button("Abbrechen", role: .cancel) { model.cancelPendingLogin() }
-                        .keyboardShortcut(.cancelAction)
+            SyncPromptButtons(cancel: model.cancelPendingLogin) {
+                Button(action: start) {
+                    Text("Abrufen").frame(maxWidth: .infinity)
                 }
-                Spacer()
-                // HIG: Cancel and the default button side by side share one
-                // width (the widest title), see EqualWidthHStack.
-                EqualWidthHStack {
-                    if model.canSkipInSyncBatch {
-                        Button(role: .cancel) { model.cancelPendingLogin() } label: {
-                            Text("Überspringen").frame(maxWidth: .infinity)
-                        }
-                        .keyboardShortcut(.cancelAction)
-                        .help("Diesen Bankzugang auslassen und mit dem nächsten weitermachen.")
-                    }
-                    Button(action: start) {
-                        Text("Abrufen").frame(maxWidth: .infinity)
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(secret.isEmpty || login.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(secret.isEmpty || login.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(24)
@@ -524,6 +500,7 @@ struct WebLoginSheet: View {
                     Text(info).font(.caption).foregroundStyle(Theme.secondary)
                 }
                 Spacer()
+                SyncBatchProgressLabel()
                 if found != nil {
                     Label("Sitzung gefunden", systemImage: "checkmark.seal.fill").foregroundStyle(Theme.inflow).font(.caption)
                 } else {
@@ -535,13 +512,13 @@ struct WebLoginSheet: View {
             TRWebView(url: URL(string: "https://app.traderepublic.com/login")!, phone: connection.loginName)
                 .macFrame(minWidth: 720, minHeight: 620)
             Divider()
-            HStack {
-                Button("Abbrechen", role: .cancel) { model.webLoginConnection = nil; dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Sitzung übernehmen") {
+            // "Alle abrufen": cancelling skips this login (see SyncPromptButtons)
+            SyncPromptButtons(cancel: { model.cancelWebLogin(); dismiss() }) {
+                Button {
                     if let c = found { model.applyBrowserSession(connection, cookies: c) }
                     dismiss()
+                } label: {
+                    Text("Sitzung übernehmen").frame(maxWidth: .infinity)
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
