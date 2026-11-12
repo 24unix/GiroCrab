@@ -64,10 +64,28 @@ public struct GiroCrabScenes: Scene {
                     .disabled(model.vault == nil)
             }
             CommandMenu("Buchung") {
+                // In the list, the single keys C and R do the same (kept for speed).
                 Button("Kategorisieren …") { if model.selectedBooking != nil { model.showCategorizer = true } }
+                    .keyboardShortcut("c", modifiers: [.command, .control])
                     .disabled(model.selectedBooking == nil)
                 Button("Regel für diesen Händler erstellen …") { model.openRuleEditor(from: model.selectedBooking) }
+                    .keyboardShortcut("r", modifiers: [.command, .control])
                     .disabled(model.selectedBooking == nil)
+                // A checkmark item like "Als Gehalt / Rente zählen"; ⇧⌘U as in Mail
+                Toggle("Geprüft", isOn: Binding(
+                    get: { model.selectedBooking?.checked ?? false },
+                    set: { on in if let b = model.selectedBooking { model.setChecked(on, for: b) } }
+                ))
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+                .disabled(model.selectedBooking == nil)
+                Button("Notiz bearbeiten") { if let b = model.selectedBooking { model.editNote(for: b) } }
+                    .disabled(model.selectedBooking == nil)
+                // like the Finder (⌘Y); Space in the list does the same
+                Button("Beleg in Quick Look anzeigen") {
+                    if let b = model.selectedBooking, let d = model.documents(for: b).first { model.quickLook(d) }
+                }
+                .keyboardShortcut("y", modifiers: .command)
+                .disabled(model.selectedBooking.map { model.documents(for: $0).isEmpty } ?? true)
                 Divider()
                 RecurringMenu(model: model, booking: model.selectedBooking)
                     .disabled(model.selectedBooking == nil)
