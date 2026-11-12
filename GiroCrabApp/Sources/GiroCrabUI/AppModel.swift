@@ -626,11 +626,20 @@ public final class AppModel {
         }
     }
 
+    /// Set once the --fresh-vault file was wiped in this process.
+    private static var freshVaultWiped = false
+
     /// Developer switch --fresh-vault: empty personal vault without Keychain.
+    /// Wiped only once per launch: SwiftUI may build further `AppModel`s
+    /// (`State(initialValue:)` runs on every `RootView` init), and wiping again
+    /// would delete the file the live model is still writing to.
     private func openFreshVault() {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Fresh.girocrab")
-        for suffix in ["", "-wal", "-shm"] {
-            try? FileManager.default.removeItem(atPath: url.path + suffix)
+        if !Self.freshVaultWiped {
+            Self.freshVaultWiped = true
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: url.path + suffix)
+            }
         }
         do {
             let v = try Vault.open(path: url.path, key: Data(repeating: 0x5A, count: 32))
