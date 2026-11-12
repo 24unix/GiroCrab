@@ -70,6 +70,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct GiroCrabMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
+    // The model is built here, once and outside the body's dependency tracking
+    // (see GiroCrabScenes.prepare).
+    init() { GiroCrabScenes.prepare() }
+
     var body: some Scene {
         GiroCrabScenes()
     }
