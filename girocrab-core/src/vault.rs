@@ -1884,7 +1884,7 @@ impl Vault {
         // Own IBANs: bookings to / from them are transfers (Issue #94).
         let own_ibans: std::collections::HashSet<String> = {
             let mut st =
-                db.prepare("SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != ''")?;
+                db.prepare("SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != '' AND deleted_ms IS NULL")?;
             let ibans = st
                 .query_map([], |r| r.get::<_, String>(0))?
                 .filter_map(Result::ok)
