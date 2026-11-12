@@ -209,7 +209,13 @@ impl Vault {
                     .into(),
                 });
             }
-            let sum: i64 = splits.iter().map(|s| s.amount_cents).sum();
+            // checked: an overflowing (wrapping) sum must not pass as "equal"
+            let sum = splits
+                .iter()
+                .try_fold(0i64, |acc, s| acc.checked_add(s.amount_cents))
+                .ok_or_else(|| CoreError::InvalidInput {
+                    message: tr("Die Teilbeträge sind zu groß.").into(),
+                })?;
             if sum != amount {
                 return Err(CoreError::InvalidInput {
                     message: trf(
@@ -380,15 +386,6 @@ pub(crate) fn cashflow_for(
         }
     }
     keys.reverse();
-    let db = v.db()?;
-    let mut stmt =
-        db.prepare(
-            "SELECT booking_date, amount_cents FROM transactions
-             WHERE booking_date >= ?1
-               AND (counterparty_iban IS NULL OR counterparty_iban = ''
-                    OR REPLACE(UPPER(counterparty_iban), ' ', '') NOT IN
-                       (SELECT REPLACE(UPPER(iban), ' ', '') FROM accounts WHERE iban IS NOT NULL AND iban != ''))",
-        )?;
     let first = &keys[0];
     let from = match granularity {
         PeriodGranularity::Month => format!("{first}-01"),
@@ -406,11 +403,15 @@ pub(crate) fn cashflow_for(
         }
         PeriodGranularity::Year => format!("{first}-01-01"),
     };
+    // Same bookings, transfer detection and flow classification as the booking
+    // list and its KPI tiles (`list_transactions` / `SelectionFlow`).
+    let page = v.list_transactions(BookingFilter {
+        date_from: Some(from),
+        ..Default::default()
+    })?;
     let mut acc: HashMap<String, (i64, i64)> = HashMap::new();
-    for row in stmt.query_map([from], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-    })? {
-        let (date, amt) = row?;
+    for b in &page.transactions {
+        let (date, amt) = (&b.booking_date, b.amount_cents);
         // Non-ASCII / malformed dates are skipped instead of panicking on a slice.
         let key = match granularity {
             PeriodGranularity::Month => date.get(..7).map(str::to_string),
@@ -426,10 +427,11 @@ pub(crate) fn cashflow_for(
         };
         let Some(key) = key else { continue };
         let e = acc.entry(key).or_default();
-        if amt >= 0 {
-            e.0 += amt;
-        } else {
-            e.1 += -amt;
+        match kpi_side(b.flow, amt) {
+            KpiSide::Income => e.0 += amt,
+            // net: refunds reduce the expenses of their period
+            KpiSide::Expense => e.1 -= amt,
+            KpiSide::Neutral => {}
         }
     }
     Ok(keys
@@ -628,7 +630,44 @@ mod tests {
             limit: 50,
             ..Default::default()
         };
-        assert_eq!(v.list_transactions(f.clone()).unwrap().total_count, 1);
+        let page = v.list_transactions(f.clone()).unwrap();
+        assert_eq!(page.total_count, 1);
+        // only the split part of the filtered category counts in the KPIs
+        assert_eq!(page.expense_cents, -2_000);
+        assert_eq!(page.flow.consumption_cents, 2_000);
+        let food_page = v
+            .list_transactions(BookingFilter {
+                category_id: Some(food),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(food_page.expense_cents, -1_000);
+        // fully split: not "ohne Kategorie", even though the booking's own category is set
+        let unc = v
+            .list_transactions(BookingFilter {
+                uncategorized_only: true,
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(unc.transactions.iter().all(|t| t.id != id));
+        // overflowing parts are rejected instead of wrapping to the booking amount
+        assert!(v
+            .set_transaction_splits(
+                id,
+                vec![
+                    TransactionSplitInput {
+                        category_id: Some(food),
+                        amount_cents: i64::MAX,
+                        note: String::new(),
+                    },
+                    TransactionSplitInput {
+                        category_id: Some(fun),
+                        amount_cents: i64::MAX,
+                        note: String::new(),
+                    },
+                ],
+            )
+            .is_err());
         let csv = v.export_bookings_csv(f).unwrap();
         assert!(csv.starts_with(
             "\u{FEFF}Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Betrag;Währung\r\n"

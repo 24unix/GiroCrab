@@ -409,7 +409,9 @@ pub struct BookingFilter {
 pub struct BookingPage {
     pub transactions: Vec<Booking>,
     pub total_count: u32,
+    /// Sum of `FlowKind::Income` bookings (= `flow.income_cents`).
     pub income_cents: i64,
+    /// Net sum of all other non-transfer bookings (negative = outflow).
     pub expense_cents: i64,
     /// Everyday spending only (negative), never includes ETF plans or perks.
     pub consumption_cents: i64,
@@ -534,15 +536,67 @@ pub struct SelectionFlow {
 }
 
 impl SelectionFlow {
-    pub(crate) fn add(&mut self, b: &Booking) {
+    /// `amount_cents` is the booking's share in the selection: its full amount,
+    /// or with a category filter only the split parts of that category.
+    pub(crate) fn add(&mut self, flow: crate::merchants::FlowKind, amount_cents: i64) {
         use crate::merchants::FlowKind;
-        match b.flow {
-            FlowKind::Consumption => self.consumption_cents -= b.amount_cents,
-            FlowKind::Investment => self.invested_cents -= b.amount_cents,
-            FlowKind::Perk if b.amount_cents < 0 => self.invested_cents -= b.amount_cents,
-            FlowKind::Income => self.income_cents += b.amount_cents,
+        match flow {
+            FlowKind::Consumption => self.consumption_cents -= amount_cents,
+            FlowKind::Investment => self.invested_cents -= amount_cents,
+            FlowKind::Perk if amount_cents < 0 => self.invested_cents -= amount_cents,
             _ => {}
         }
+        if kpi_side(flow, amount_cents) == KpiSide::Income {
+            self.income_cents += amount_cents;
+        }
+    }
+}
+
+/// Side of a booking in the income / expense KPIs. The one definition used by
+/// `BookingPage`, `SelectionFlow` and the period comparison (`cashflow_by_period`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KpiSide {
+    /// `FlowKind::Income` (salary, other real inflows).
+    Income,
+    /// Money spent: every consumption booking, netted (a refund is a positive
+    /// `Consumption` and reduces the expenses), plus the *outflows* of
+    /// investments (savings plans, purchases, Round up) and loans (instalments).
+    Expense,
+    /// Transfers between own accounts / card settlements, and inflows that are
+    /// neither income nor a refund: sale proceeds, Saveback, loan payouts.
+    /// They must not reduce the expenses (a 20 000 € share sale is no refund).
+    Neutral,
+}
+
+pub(crate) fn kpi_side(flow: crate::merchants::FlowKind, amount_cents: i64) -> KpiSide {
+    use crate::merchants::FlowKind;
+    match flow {
+        FlowKind::Income => KpiSide::Income,
+        FlowKind::Transfer => KpiSide::Neutral,
+        FlowKind::Consumption => KpiSide::Expense,
+        FlowKind::Investment | FlowKind::Perk | FlowKind::Loan if amount_cents < 0 => {
+            KpiSide::Expense
+        }
+        FlowKind::Investment | FlowKind::Perk | FlowKind::Loan => KpiSide::Neutral,
+    }
+}
+
+#[cfg(test)]
+mod kpi_tests {
+    use super::*;
+    use crate::merchants::FlowKind;
+
+    #[test]
+    fn only_refunds_reduce_expenses() {
+        assert_eq!(kpi_side(FlowKind::Consumption, -5_000), KpiSide::Expense);
+        assert_eq!(kpi_side(FlowKind::Consumption, 1_000), KpiSide::Expense); // refund
+        assert_eq!(kpi_side(FlowKind::Investment, -10_000), KpiSide::Expense); // ETF plan
+        assert_eq!(kpi_side(FlowKind::Investment, 2_000_000), KpiSide::Neutral); // sale
+        assert_eq!(kpi_side(FlowKind::Loan, -80_000), KpiSide::Expense); // instalment
+        assert_eq!(kpi_side(FlowKind::Loan, 5_000_000), KpiSide::Neutral); // payout
+        assert_eq!(kpi_side(FlowKind::Perk, 300), KpiSide::Neutral); // Saveback
+        assert_eq!(kpi_side(FlowKind::Income, 300_000), KpiSide::Income);
+        assert_eq!(kpi_side(FlowKind::Transfer, -50_000), KpiSide::Neutral);
     }
 }
 

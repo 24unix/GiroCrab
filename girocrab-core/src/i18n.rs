@@ -504,6 +504,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Eine Splitbuchung braucht mindestens zwei Teilbeträge ungleich 0." => {
             "A split booking needs at least two non-zero parts."
         }
+        "Die Teilbeträge sind zu groß." => "The split amounts are too large.",
         "Die Teilbeträge ({0} ¢) ergeben nicht den Buchungsbetrag ({1} ¢)." => {
             "The parts ({0} ¢) do not add up to the booking amount ({1} ¢)."
         }

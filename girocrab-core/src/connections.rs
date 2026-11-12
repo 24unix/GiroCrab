@@ -39,7 +39,134 @@ pub(crate) fn pin_key(connection_id: i64) -> String {
 
 /// Merges duplicate logins (same connector + same normalised login) into the
 /// oldest one, keeping every account and booking. Returns the number removed.
+/// All or nothing: runs in a savepoint (works inside a caller's transaction too).
 pub(crate) fn deduplicate(conn: &Connection) -> CoreResult<u32> {
+    conn.execute_batch("SAVEPOINT dedup_logins")?;
+    match deduplicate_inner(conn) {
+        Ok(n) => {
+            conn.execute_batch("RELEASE dedup_logins")?;
+            Ok(n)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK TO dedup_logins; RELEASE dedup_logins");
+            Err(e)
+        }
+    }
+}
+
+/// Moves the user data of the duplicate account `dup` onto `keep` (same
+/// connection + external_ref) before `dup` is deleted: bookings that exist in
+/// both keep `keep`'s values and only gain what is missing there (category,
+/// note, checked, salary flag, splits, loan link, documents).
+fn merge_duplicate_account(conn: &Connection, keep: i64, dup: i64) -> CoreResult<()> {
+    // bookings present in both accounts (same bank id)
+    #[allow(clippy::type_complexity)]
+    let pairs: Vec<(
+        i64,
+        i64,
+        bool,
+        Option<i64>,
+        String,
+        Option<i64>,
+        bool,
+        String,
+        Option<i64>,
+    )> = {
+        let mut st = conn.prepare(
+            "SELECT k.id, o.id, k.amount_cents = o.amount_cents, o.category_id, o.category_source,
+                    o.rule_id, o.checked != 0, o.note, o.salary_flag
+               FROM transactions o JOIN transactions k
+                 ON k.account_id = ?1 AND k.external_id = o.external_id
+              WHERE o.account_id = ?2",
+        )?;
+        let r = st
+            .query_map(params![keep, dup], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                    r.get(7)?,
+                    r.get(8)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        r
+    };
+    for (k, o, same_amount, cat, src, rule, checked, note, salary) in pairs {
+        conn.execute(
+            "UPDATE transactions SET
+                checked = CASE WHEN ?2 THEN 1 ELSE checked END,
+                category_id = COALESCE(category_id, ?3),
+                category_source = CASE WHEN category_id IS NULL AND ?3 IS NOT NULL THEN ?4 ELSE category_source END,
+                rule_id = CASE WHEN category_id IS NULL AND ?3 IS NOT NULL THEN ?5 ELSE rule_id END,
+                note = CASE WHEN note = '' THEN ?6 ELSE note END,
+                salary_flag = COALESCE(salary_flag, ?7)
+             WHERE id = ?1",
+            params![k, checked, cat, src, rule, note, salary],
+        )?;
+        // splits only onto a booking without own splits and with the same amount
+        let keep_has_splits: bool = conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM transaction_splits WHERE transaction_id = ?1)",
+            [k],
+            |r| r.get(0),
+        )?;
+        if same_amount && !keep_has_splits {
+            conn.execute(
+                "UPDATE transaction_splits SET transaction_id = ?1 WHERE transaction_id = ?2",
+                params![k, o],
+            )?;
+        }
+        // a loan link of `keep` wins (transaction_id is the key)
+        conn.execute(
+            "UPDATE OR IGNORE loan_links SET transaction_id = ?1 WHERE transaction_id = ?2",
+            params![k, o],
+        )?;
+        conn.execute(
+            "UPDATE booking_documents SET booking_id = ?1 WHERE booking_id = ?2",
+            params![k, o],
+        )?;
+    }
+    // bookings only in `dup` move over unchanged (with splits / links / documents)
+    conn.execute(
+        "UPDATE OR IGNORE transactions SET account_id = ?1 WHERE account_id = ?2",
+        params![keep, dup],
+    )?;
+    // account-level data
+    conn.execute(
+        "UPDATE rules SET account_id = ?1 WHERE account_id = ?2",
+        params![keep, dup],
+    )?;
+    conn.execute(
+        "UPDATE booking_documents SET account_id = ?1 WHERE account_id = ?2",
+        params![keep, dup],
+    )?;
+    conn.execute(
+        "UPDATE loan_links SET loan_account_id = ?1 WHERE loan_account_id = ?2",
+        params![keep, dup],
+    )?;
+    conn.execute(
+        "UPDATE OR IGNORE loan_terms SET account_id = ?1 WHERE account_id = ?2",
+        params![keep, dup],
+    )?;
+    let keep_has_holdings: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM holdings WHERE account_id = ?1)",
+        [keep],
+        |r| r.get(0),
+    )?;
+    if !keep_has_holdings {
+        conn.execute(
+            "UPDATE holdings SET account_id = ?1 WHERE account_id = ?2",
+            params![keep, dup],
+        )?;
+    }
+    Ok(())
+}
+
+fn deduplicate_inner(conn: &Connection) -> CoreResult<u32> {
     let rows: Vec<(i64, String, String)> = {
         let mut st =
             conn.prepare("SELECT id, connector, login_name FROM bank_connections ORDER BY id")?;
@@ -82,11 +209,8 @@ pub(crate) fn deduplicate(conn: &Connection) -> CoreResult<u32> {
                     .optional()?;
                 match target {
                     Some(t) => {
-                        conn.execute("UPDATE OR IGNORE transactions SET account_id = ?1 WHERE account_id = ?2", params![t, acc_id])?;
-                        conn.execute(
-                            "UPDATE rules SET account_id = ?1 WHERE account_id = ?2",
-                            params![t, acc_id],
-                        )?;
+                        merge_duplicate_account(conn, t, acc_id)?;
+                        // only true duplicates are left; their data now lives on `t`
                         conn.execute("DELETE FROM accounts WHERE id = ?1", [acc_id])?;
                     }
                     None => {

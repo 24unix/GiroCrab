@@ -479,9 +479,16 @@ fn ignored_series(bookings: &[Booking], stored: &HashMap<String, Stored>) -> Vec
         .iter()
         .filter(|(_, s)| s.ignored)
         .filter_map(|(key, _)| {
-            let (base, amount) = match key.split_once('#') {
-                Some((b, a)) => (b, a.parse::<i64>().ok()),
-                None => (key.as_str(), None),
+            // The base key may hold free text with '#' ("-n:shop #12"): a whole key
+            // that is itself a series key wins, otherwise only a numeric suffix
+            // after the *last* '#' is the amount of a sub-series ("{key}#{cents}").
+            let whole = bookings.iter().any(|b| series_key(b) == *key);
+            let (base, amount) = match key.rsplit_once('#') {
+                Some((b, a)) if !whole => match a.parse::<i64>() {
+                    Ok(a) => (b, Some(a)),
+                    Err(_) => (key.as_str(), None),
+                },
+                _ => (key.as_str(), None),
             };
             let last = bookings
                 .iter()
