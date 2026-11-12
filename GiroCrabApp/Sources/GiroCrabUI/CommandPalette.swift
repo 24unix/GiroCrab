@@ -57,6 +57,9 @@ struct CommandPaletteView: View {
         out.append(Item(title: String(localized: "Übersicht"), subtitle: String(localized: "Konten"), symbol: "square.grid.2x2") { model.interactiveSidebarSelection = .allAccounts })
         out.append(Item(title: String(localized: "Neue Kontogruppe"), subtitle: "\(action) · ⇧⌘N", symbol: "folder.badge.plus") { model.groupDialog = .create() })
         out.append(Item(title: String(localized: "Kontogruppen bearbeiten"), subtitle: action, symbol: "slider.horizontal.3") { model.openGroupSettings() })
+        out.append(Item(title: String(localized: "Neue Hauptkategorie"), subtitle: action, symbol: "plus.square") {
+            model.afterPaletteDismiss = { model.newCategoryRequest = NewCategoryRequest(parent: nil) }
+        })
         out.append(Item(title: String(localized: "Neues Darlehen"), subtitle: action, symbol: "car") { model.openLoanEditor(.create) })
         if case .account(let id) = model.sidebarSelection, let loan = model.manualLoan(id) {
             out.append(Item(title: String(localized: "Stand von „\(loan.setup.name)“ neu setzen"), subtitle: action, symbol: "calendar.badge.clock") { model.openLoanEditor(.anchor, accountId: id) })
@@ -151,10 +154,53 @@ struct CategorizerSheet: View {
     @State private var query = ""
     @FocusState private var focused: Bool
 
-    var body: some View {
-        let leaves = model.categories.filter { c in c.depth > 0 || !model.categories.contains(where: { $0.parentId == c.id }) }
+    /// Pickable categories under one top-level category (`root == nil`:
+    /// top-level categories without sub-categories, shown first without a header).
+    struct Group: Identifiable {
+        var root: GiroCrabCore.Category?
+        var items: [GiroCrabCore.Category]
+        var id: Int64 { root?.id ?? -1 }
+    }
+
+    /// Pickable categories (sub-categories and childless top-level ones)
+    /// matching the query, grouped by their top-level category in sidebar order.
+    private var groups: [Group] {
+        let all = model.categories
+        let byID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let parents = Set(all.compactMap(\.parentId))
         let q = query.lowercased()
-        let shown = q.isEmpty ? leaves : leaves.filter { $0.path.lowercased().contains(q) }
+        var loose: [GiroCrabCore.Category] = []
+        var order: [Int64] = []
+        var byRoot: [Int64: [GiroCrabCore.Category]] = [:]
+        for c in all where c.parentId != nil || !parents.contains(c.id) {
+            if !q.isEmpty, !c.path.lowercased().contains(q) { continue }
+            guard c.parentId != nil else { loose.append(c); continue }
+            var root = c
+            for _ in 0..<32 { guard let p = root.parentId, let parent = byID[p] else { break }; root = parent }
+            if byRoot[root.id] == nil { order.append(root.id) }
+            byRoot[root.id, default: []].append(c)
+        }
+        var out: [Group] = loose.isEmpty ? [] : [Group(root: nil, items: loose)]
+        out += order.map { Group(root: byID[$0], items: byRoot[$0] ?? []) }
+        return out
+    }
+
+    /// Chip label: the path below the top-level category ("Restaurant › Lieferdienst"),
+    /// so deeper levels stay recognisable inside their group.
+    private func title(for c: GiroCrabCore.Category) -> String {
+        guard c.depth > 1 else { return c.name }
+        var names = [c.name]
+        var next = c.parentId
+        while let id = next, names.count < 32, let p = model.categories.first(where: { $0.id == id }), p.parentId != nil {
+            names.insert(p.name, at: 0)
+            next = p.parentId
+        }
+        return names.joined(separator: " › ")
+    }
+
+    var body: some View {
+        let groups = groups
+        let first = groups.first?.items.first
         VStack(alignment: .leading, spacing: 12) {
             if model.isMultiSelection {
                 let many = model.selectedBookings
@@ -175,12 +221,25 @@ struct CategorizerSheet: View {
             TextField("Kategorie suchen …", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .focused($focused)
-                .onSubmit { if let first = shown.first { pick(first.id) } }
+                .onSubmit { if let first { pick(first.id) } }
             ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 6)], spacing: 6) {
-                    ForEach(shown) { c in
-                        CategoryChip(category: c, selected: currentCategory == c.id) { pick(c.id) }
-                            .help(c.path)
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    ForEach(groups) { group in
+                        VStack(alignment: .leading, spacing: 6) {
+                            if let root = group.root {
+                                Label(root.name, systemImage: root.sfSymbol)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Theme.secondary)
+                                    .accessibilityAddTraits(.isHeader)
+                            }
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 6)], spacing: 6) {
+                                ForEach(group.items) { c in
+                                    CategoryChip(category: c, selected: currentCategory == c.id, title: title(for: c)) { pick(c.id) }
+                                        .help(c.path)
+                                        .accessibilityLabel(c.path)
+                                }
+                            }
+                        }
                     }
                 }
             }

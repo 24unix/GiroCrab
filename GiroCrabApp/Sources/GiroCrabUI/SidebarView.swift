@@ -6,7 +6,6 @@ struct SidebarView: View {
     @Environment(AppModel.self) private var model
     /// The one sidebar dialog on screen (group dialogs live in `model.groupDialog`).
     @State private var dialog: SidebarDialog?
-    @State private var newCategoryName = ""
     @State private var budgetCategory: IDBox?
     /// Row a drag is hovering over (drop highlight).
     @State private var dropTarget: String?
@@ -73,7 +72,18 @@ struct SidebarView: View {
                 .tag(SidebarItem.uncategorized)
                 categoryRows(model.categoryTree)
             } header: {
-                Text("Kategorien").font(.caption.weight(.semibold))
+                HStack(spacing: 4) {
+                    Text("Kategorien").font(.caption.weight(.semibold))
+                    Spacer()
+                    Button { model.newCategoryRequest = NewCategoryRequest(parent: nil) } label: {
+                        Image(systemName: "plus").frame(width: 24, height: 18).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(Theme.secondary)
+                    .help("Neue Hauptkategorie …")
+                    .accessibilityLabel("Neue Hauptkategorie")
+                    .disabled(model.vault == nil)
+                }
             }
         }
         .listStyle(.sidebar)
@@ -106,7 +116,7 @@ struct SidebarView: View {
         }
         .confirmationDialog(
             dialog?.title ?? Text(verbatim: ""),
-            isPresented: Binding(get: { dialog?.isConfirmation == true }, set: { if !$0, dialog?.isConfirmation == true { dialog = nil } }),
+            isPresented: Binding(get: { dialog != nil }, set: { if !$0 { dialog = nil } }),
             titleVisibility: .visible,
             presenting: dialog
         ) { d in
@@ -115,7 +125,6 @@ struct SidebarView: View {
             case .deleteAccount(let a): Button("Endgültig löschen", role: .destructive) { model.deleteAccount(a.id) }
             case .removeConnection(let id): Button("Entfernen", role: .destructive) { model.removeConnection(id) }
             case .deleteCategory(let c): Button("„\(c.name)“ löschen", role: .destructive) { model.deleteCategory(c.id) }
-            case .newCategory: EmptyView()
             }
             Button("Abbrechen", role: .cancel) {}
         } message: { d in
@@ -128,21 +137,6 @@ struct SidebarView: View {
                 Text("Alle Konten dieses Bankzugangs werden samt Buchungen, Belegen und gespeicherten Zugangsdaten aus dem Tresor gelöscht. Das lässt sich nicht widerrufen.")
             default: EmptyView()
             }
-        }
-        .alert(
-            "Neue Kategorie",
-            isPresented: Binding(get: { dialog?.isConfirmation == false }, set: { if !$0, dialog?.isConfirmation == false { dialog = nil } }),
-            presenting: dialog
-        ) { d in
-            TextField("Name", text: $newCategoryName)
-            Button("Anlegen") {
-                if case .newCategory(let parent) = d {
-                    let color = parent.flatMap { p in model.categories.first { $0.id == p }?.colorHex } ?? "#7A808A"
-                    model.createCategory(name: newCategoryName, parent: parent, symbol: "tag.fill", color: color)
-                }
-                newCategoryName = ""
-            }
-            Button("Abbrechen", role: .cancel) { newCategoryName = "" }
         }
         .sheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
     }
@@ -312,7 +306,8 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func categoryMenu(_ category: GiroCrabCore.Category) -> some View {
-        Button("Neue Unterkategorie …", systemImage: "plus") { dialog = .newCategory(parent: category.id) }
+        Button("Neue Unterkategorie …", systemImage: "plus") { model.newCategoryRequest = NewCategoryRequest(parent: category.id) }
+        Button("Neue Hauptkategorie …", systemImage: "plus.square") { model.newCategoryRequest = NewCategoryRequest(parent: nil) }
         Button("Monatsbudget festlegen …", systemImage: "gauge.with.dots.needle.67percent") { budgetCategory = IDBox(id: category.id) }
         Divider()
         Button("„\(category.name)“ löschen …", systemImage: "trash", role: .destructive) { dialog = .deleteCategory(category) }
@@ -483,13 +478,6 @@ private enum SidebarDialog {
     case deleteAccount(Account)
     case removeConnection(Int64)
     case deleteCategory(GiroCrabCore.Category)
-    case newCategory(parent: Int64?)
-
-    /// Confirmation dialog vs. text-input alert.
-    var isConfirmation: Bool {
-        if case .newCategory = self { return false }
-        return true
-    }
 
     var title: Text {
         switch self {
@@ -497,7 +485,6 @@ private enum SidebarDialog {
         case .deleteAccount: Text("Archiviertes Konto endgültig löschen?")
         case .removeConnection: Text("Bankzugang entfernen?")
         case .deleteCategory: Text("Kategorie löschen?")
-        case .newCategory: Text("Neue Kategorie")
         }
     }
 }

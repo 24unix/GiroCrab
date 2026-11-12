@@ -13043,6 +13043,50 @@
           }
         }
       }
+    },
+    "Neue Hauptkategorie" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Top-Level Category"
+          }
+        }
+      }
+    },
+    "Neue Hauptkategorie …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Top-Level Category…"
+          }
+        }
+      }
+    },
+    "Neue Unterkategorie" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Subcategory"
+          }
+        }
+      }
+    },
+    "Wird angelegt unter „%@“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Will be created under “%@”."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

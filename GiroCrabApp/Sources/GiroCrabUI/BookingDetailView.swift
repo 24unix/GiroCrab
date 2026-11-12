@@ -427,13 +427,15 @@ struct CategoryChip: View {
     let category: GiroCrabCore.Category
     var selected: Bool
     var filled = false
+    /// Label override (e.g. the path below the top-level category); default: the name.
+    var title: String?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: category.sfSymbol).font(.subheadline)
-                Text(category.name).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
+                Text(title ?? category.name).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
