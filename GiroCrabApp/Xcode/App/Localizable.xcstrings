@@ -23,6 +23,17 @@
         }
       }
     },
+    "Alle abbrechen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel All"
+          }
+        }
+      }
+    },
     "Angemeldet – Kontosalden, Depotwerte und Postkorb können abgerufen werden." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -30,6 +41,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Signed in — account balances, depot values and mailbox are ready to fetch."
+          }
+        }
+      }
+    },
+    "Bankzugang %lld von %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank login %1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "Diesen Bankzugang auslassen und mit dem nächsten weitermachen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leave out this bank login and continue with the next one."
           }
         }
       }
@@ -9132,6 +9165,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Loan assignment"
+          }
+        }
+      }
+    },
+    "Überspringen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skip"
+          }
+        }
+      }
+    },
+    "Übersprungen: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skipped: %@"
           }
         }
       }

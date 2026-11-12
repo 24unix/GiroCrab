@@ -483,6 +483,10 @@ public final class AppModel {
     var splitBooking: Booking?
     var transferBusy = false
     private var syncQueue: [BankConnection] = []
+    /// "Alle abrufen": number of logins in the running batch (0 = single sync).
+    private var syncBatchTotal = 0
+    /// Logins the user skipped in the running batch, named when it ends.
+    private var syncBatchSkipped: [String] = []
     /// Scheduled PSD2 sync loop (see PSD2Consent.swift).
     @ObservationIgnored var autoSyncTask: Task<Void, Never>?
     /// The running sync was started by the schedule: no login prompts, no error dialogs.
@@ -2306,7 +2310,56 @@ public final class AppModel {
         let batch = connections.filter { !usesPortal($0) && !$0.allAccountsArchived }
         guard let head = batch.first else { return }
         syncQueue = Array(batch.dropFirst())
+        syncBatchTotal = batch.count
+        syncBatchSkipped = []
         requestSync(head)
+    }
+
+    /// Position in a running "Alle abrufen" over several logins, e.g. (2, 5).
+    var syncBatchProgress: (current: Int, total: Int)? {
+        guard syncBatchTotal > 1 else { return nil }
+        return (syncBatchTotal - syncQueue.count, syncBatchTotal)
+    }
+
+    /// More logins wait after the current one: cancelling a PIN or TAN
+    /// prompt then skips this login instead of stopping the whole batch.
+    var canSkipInSyncBatch: Bool { !syncQueue.isEmpty }
+
+    /// Cancel button of the TAN sheet. In a batch it drops this login and goes
+    /// on with the next one (on the last one it ends the batch with its notice).
+    func skipCurrentSync() {
+        guard syncBatchTotal > 1, activeTransfer == nil else { cancelSync(); return }
+        if let name = activeChallenge?.connection.displayName
+            ?? connections.first(where: { $0.id == syncingConnectionID })?.displayName {
+            syncBatchSkipped.append(name)
+        }
+        pollTask?.cancel()
+        let s = activeSession
+        activeSession = nil
+        activeChallenge = nil
+        syncingConnectionID = nil
+        statementsAccountID = nil
+        Task {
+            // end the bank dialog first: the next login may be the same bank
+            await s?.cancel()
+            self.syncNextInQueue()
+        }
+    }
+
+    /// "Abbrechen" / "Überspringen" in the PIN sheet. In a batch the next
+    /// login follows; otherwise the prompt just closes.
+    func cancelPendingLogin() {
+        let name = pendingLogin?.connection.displayName
+        pendingLogin = nil
+        guard syncBatchTotal > 0 else { return }
+        if let name { syncBatchSkipped.append(name) }
+        syncNextInQueue()
+    }
+
+    private func resetSyncBatch() {
+        syncQueue = []
+        syncBatchTotal = 0
+        syncBatchSkipped = []
     }
 
     /// Toast suffix: new bookings the bank delivered for archived accounts (not stored).
@@ -2315,8 +2368,16 @@ public final class AppModel {
     }
 
     private func syncNextInQueue() {
-        guard !syncQueue.isEmpty else { return }
-        requestSync(syncQueue.removeFirst())
+        guard syncQueue.isEmpty else {
+            requestSync(syncQueue.removeFirst())
+            return
+        }
+        // batch done: name what was skipped, after the last login's own notice
+        if !syncBatchSkipped.isEmpty {
+            let note = String(localized: "Übersprungen: \(syncBatchSkipped.formatted(.list(type: .and)))")
+            toast = toast.map { $0 + " · " + note } ?? note
+        }
+        resetSyncBatch()
     }
 
     func startSync(_ connection: BankConnection, secret: String) {
@@ -2455,9 +2516,10 @@ public final class AppModel {
         let s = activeSession
         activeSession = nil
         activeChallenge = nil
+        pendingLogin = nil
         syncingConnectionID = nil
         statementsAccountID = nil
-        syncQueue = []
+        resetSyncBatch()
         Task { await s?.cancel() }
     }
 
@@ -2481,7 +2543,7 @@ public final class AppModel {
         activeSession = nil
         activeChallenge = nil
         syncingConnectionID = nil
-        syncQueue = []
+        resetSyncBatch()
         if let ce = error as? CoreError, case .BrowserLoginRequired(let m) = ce,
            let conn = connections.first(where: { $0.id == syncingConnectionIDBeforeError }) {
             toast = m

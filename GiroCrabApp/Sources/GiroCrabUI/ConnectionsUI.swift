@@ -26,6 +26,8 @@ struct PinSheet: View {
                     Text("Anmeldung bei \(connection.displayName)").font(.headline)
                     Text(d?.protocol ?? "").font(.caption).foregroundStyle(Theme.secondary)
                 }
+                Spacer()
+                SyncBatchProgressLabel()
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(d?.loginLabel ?? String(localized: "Anmeldung")).font(.caption).foregroundStyle(Theme.secondary)
@@ -70,8 +72,19 @@ struct PinSheet: View {
                 }
             }
             HStack {
-                Button("Abbrechen", role: .cancel) { model.pendingLogin = nil; dismiss() }
-                    .keyboardShortcut(.cancelAction)
+                if model.canSkipInSyncBatch {
+                    // "Alle abrufen": skip this login, go on with the next one
+                    // fixedSize: the sheet widens instead of truncating titles
+                    Button("Überspringen", role: .cancel) { model.cancelPendingLogin() }
+                        .keyboardShortcut(.cancelAction)
+                        .help("Diesen Bankzugang auslassen und mit dem nächsten weitermachen.")
+                        .fixedSize()
+                    Button("Alle abbrechen") { model.cancelSync() }
+                        .fixedSize()
+                } else {
+                    Button("Abbrechen", role: .cancel) { model.cancelPendingLogin() }
+                        .keyboardShortcut(.cancelAction)
+                }
                 Spacer()
                 Button("Abrufen", action: start)
                     .keyboardShortcut(.defaultAction)
@@ -81,6 +94,8 @@ struct PinSheet: View {
         }
         .padding(24)
         .macFrame(minWidth: 420)
+        // a swipe-down would bypass cancelPendingLogin and stall "Alle abrufen"
+        .interactiveDismissDisabled(model.syncBatchProgress != nil)
         .onAppear {
             login = connection.loginName
             savePin = model.connectionStatus(connection.id)?.hasPin ?? false

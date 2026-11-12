@@ -23,6 +23,7 @@ struct TwoFactorSheet: View {
                         Text(c.methodName).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    SyncBatchProgressLabel()
                 }
 
                 switch c.kind {
@@ -112,11 +113,24 @@ struct TwoFactorSheet: View {
                 }
 
                 HStack {
-                    Button("Abbrechen", role: .cancel) { model.cancelSync() }
-                        .keyboardShortcut(.cancelAction)
+                    if model.canSkipInSyncBatch {
+                        // "Alle abrufen": no TAN device at hand only skips this login
+                        // fixedSize: with up to four buttons the sheet widens
+                        // instead of truncating titles
+                        Button("Überspringen", role: .cancel) { model.skipCurrentSync() }
+                            .keyboardShortcut(.cancelAction)
+                            .help("Diesen Bankzugang auslassen und mit dem nächsten weitermachen.")
+                            .fixedSize()
+                        Button("Alle abbrechen") { model.cancelSync() }
+                            .fixedSize()
+                    } else {
+                        Button("Abbrechen", role: .cancel) { model.skipCurrentSync() }
+                            .keyboardShortcut(.cancelAction)
+                    }
                     if active.connection.connector == .tradeRepublic && c.kind == .code {
                         Button("Code per SMS") { model.submitCode("SMS") }
                             .help("Kein Code in der App? Code per SMS anfordern.")
+                            .fixedSize()
                     }
                     Spacer()
                     if c.kind == .code || c.kind == .imageCode || (c.kind == .redirect && showManualRedirect) {
@@ -124,6 +138,7 @@ struct TwoFactorSheet: View {
                             .keyboardShortcut(.defaultAction)
                             .buttonStyle(.borderedProminent)
                             .disabled(code.trimmingCharacters(in: .whitespaces).isEmpty || active.busy)
+                            .fixedSize()
                     }
                 }
             }
@@ -159,3 +174,18 @@ struct TwoFactorSheet: View {
     }
 }
 
+
+/// "Bankzugang 2 von 5" while "Alle abrufen" runs over several logins
+/// (PIN and TAN sheets), so skipping one is an informed choice.
+struct SyncBatchProgressLabel: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let p = model.syncBatchProgress {
+            Text("Bankzugang \(p.current) von \(p.total)")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+    }
+}
