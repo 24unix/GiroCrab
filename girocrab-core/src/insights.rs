@@ -415,7 +415,8 @@ mod logo_tests {
 
     #[test]
     fn online_logos_are_off_until_enabled() {
-        let p = std::env::temp_dir().join(format!("girocrab-logos-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-logos");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
         assert!(!v.online_logos_enabled().unwrap());
         // Off means no request: an uncached domain comes back empty and is not cached.
@@ -441,7 +442,8 @@ mod logo_tests {
 
     #[test]
     fn domain_override_applies_to_bookings() {
-        let p = std::env::temp_dir().join(format!("girocrab-ovr-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-ovr");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
         v.seed_demo_data().unwrap();
         let page = v

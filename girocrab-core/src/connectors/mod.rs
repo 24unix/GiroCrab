@@ -2271,7 +2271,8 @@ mod tests {
 
     #[test]
     fn store_fetch_matches_depot_holdings_without_iban() {
-        let p = std::env::temp_dir().join(format!("girocrab-depot-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-depot");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
         let conn = v
             .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
@@ -2314,7 +2315,8 @@ mod tests {
         // #65 (archive) + #66 (revoked marking): an account the user archived
         // is skipped by store_fetch, so it must not look "missing" from a
         // complete PSD2 sync.
-        let p = std::env::temp_dir().join(format!("girocrab-arch-eb-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-arch-eb");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
         let conn = v
             .add_bank_connection(ConnectorKind::EnableBanking, String::new(), "C24".into())
@@ -2383,7 +2385,8 @@ mod tests {
 
     #[test]
     fn store_fetch_skips_archived_accounts() {
-        let p = std::env::temp_dir().join(format!("girocrab-arch-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-arch");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
         let conn = v
             .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
@@ -2506,7 +2509,8 @@ mod tests {
     use crate::vault::Vault;
 
     fn demo_vault() -> (Arc<Vault>, std::path::PathBuf) {
-        let path = std::env::temp_dir().join(format!("girocrab-sync-{}.db", uuid::Uuid::new_v4()));
+        let path_dir = crate::test_support::TempDir::new("girocrab-sync");
+        let path = path_dir.join("v.db");
         let v = Vault::open(path.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
         v.seed_demo_data().unwrap();
         (v, path)
@@ -3419,7 +3423,8 @@ mod content_id_tests {
     }
 
     fn setup() -> (Arc<Vault>, i64) {
-        let p = std::env::temp_dir().join(format!("girocrab-cid-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-cid");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
         let conn = v
             .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())

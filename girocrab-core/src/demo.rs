@@ -1249,7 +1249,8 @@ mod tests {
     #[test]
     fn direction_filter_splits_income_and_expenses() {
         use crate::models::BookingDirection;
-        let dir = std::env::temp_dir().join(format!("girocrab-test-{}.db", uuid::Uuid::new_v4()));
+        let dir_dir = crate::test_support::TempDir::new("girocrab-test");
+        let dir = dir_dir.join("v.db");
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
         v.seed_demo_data().unwrap();
         let page = |direction| {
@@ -1294,7 +1295,8 @@ mod tests {
 
     #[test]
     fn demo_seed_has_six_accounts_and_exactly_fifty_two_bookings() {
-        let dir = std::env::temp_dir().join(format!("girocrab-test-{}.db", uuid::Uuid::new_v4()));
+        let dir_dir = crate::test_support::TempDir::new("girocrab-test");
+        let dir = dir_dir.join("v.db");
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
         assert_eq!(v.seed_demo_data().unwrap(), 52);
         assert_eq!(v.account_count().unwrap(), 6);
@@ -1348,8 +1350,8 @@ mod tests {
             .unwrap();
         assert_eq!(p.transactions[0].merchant.monogram, "LS");
         // A fresh personal vault gets categories + rules, but no bookings.
-        let p2 =
-            std::env::temp_dir().join(format!("girocrab-test-own-{}.db", uuid::Uuid::new_v4()));
+        let p2_dir = crate::test_support::TempDir::new("girocrab-test-own");
+        let p2 = p2_dir.join("v.db");
         let own = Vault::open(p2.to_string_lossy().to_string(), vec![9u8; 32]).unwrap();
         assert!(own.seed_starter_categories().unwrap() > 30);
         assert_eq!(own.seed_starter_categories().unwrap(), 0);
@@ -1365,7 +1367,8 @@ mod tests {
     #[test]
     fn default_names_are_shown_in_english_but_stored_in_german() {
         use crate::i18n::{with_language, Lang};
-        let dir = std::env::temp_dir().join(format!("girocrab-i18n-{}.db", uuid::Uuid::new_v4()));
+        let dir_dir = crate::test_support::TempDir::new("girocrab-i18n");
+        let dir = dir_dir.join("v.db");
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
         v.seed_demo_data().unwrap();
         let groups_en = with_language(Lang::En, || v.list_account_groups().unwrap());

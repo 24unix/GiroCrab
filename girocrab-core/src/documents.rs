@@ -902,7 +902,8 @@ mod tests {
     /// reads through every stored PDF to reach the columns behind the blob.
     #[test]
     fn document_list_is_answered_from_the_index() {
-        let path = std::env::temp_dir().join(format!("gc-docs-plan-{}.db", uuid::Uuid::new_v4()));
+        let path_dir = crate::test_support::TempDir::new("gc-docs-plan");
+        let path = path_dir.join("v.db");
         let v = Vault::open(path.to_string_lossy().into(), vec![5u8; 32]).unwrap();
         let acc = {
             let db = v.db().unwrap();
@@ -982,7 +983,8 @@ mod tests {
 
     #[test]
     fn drop_matches_metro_receipt_and_stores_encrypted() {
-        let p = std::env::temp_dir().join(format!("girocrab-docs-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-docs");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
         v.seed_demo_data().unwrap();
         let yesterday = (chrono::Local::now().date_naive() - chrono::Duration::days(1))
@@ -1010,8 +1012,8 @@ mod tests {
             .unwrap()
             .is_empty());
         // export
-        let dir = std::env::temp_dir().join(format!("girocrab-export-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let export = crate::test_support::TempDir::new("export");
+        let dir = export.path();
         assert!(
             v.export_all_documents(dir.to_string_lossy().to_string())
                 .unwrap()

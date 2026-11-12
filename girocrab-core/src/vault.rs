@@ -2632,7 +2632,8 @@ mod expression_rule_tests {
 
     #[test]
     fn expression_rules_round_trip_and_apply() {
-        let p = std::env::temp_dir().join(format!("girocrab-expr-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-expr");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
         let cat = {
             let c = v.db().unwrap();
@@ -2792,7 +2793,8 @@ mod index_tests {
     /// `list_transactions`, `list_accounts` and `marked_salary_ibans`).
     #[test]
     fn reload_queries_use_their_indexes() {
-        let path = std::env::temp_dir().join(format!("gc-index-{}.db", uuid::Uuid::new_v4()));
+        let path_dir = crate::test_support::TempDir::new("gc-index");
+        let path = path_dir.join("v.db");
         let v = Vault::open(path.to_string_lossy().into(), vec![4u8; 32]).unwrap();
         let db = v.db().unwrap();
         // booking list: in index order, no sorting afterwards

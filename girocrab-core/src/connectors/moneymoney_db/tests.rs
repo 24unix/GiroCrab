@@ -67,7 +67,7 @@ INSERT INTO securities (rowid, account_key, ident, isin, wpn, quantity, amount, 
 "#;
 
 fn temp(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("girocrab-mmdb-{name}-{}", uuid::Uuid::new_v4()))
+    crate::test_support::thread_temp_path(&format!("mmdb-{name}"))
 }
 
 fn fake_db_with(compat3: bool, extra: &str) -> String {

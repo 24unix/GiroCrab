@@ -73,7 +73,10 @@ case "$CHANNEL" in
   nightly) STAMP="${BUILD_VERSION##*.}"
            DEFAULT_SHORT="Nightly ${STAMP:0:4}-${STAMP:4:2}-${STAMP:6:2}" ;;
 esac
-SHORT_VERSION="${GIROCRAB_SHORT_VERSION:-$DEFAULT_SHORT}"
+# Values interpolated into the XML item below: escape markup characters.
+# (sed, not ${var//…/&…}: bash 5.2 treats '&' in the replacement as the match)
+xml_escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g'; }
+SHORT_VERSION="$(xml_escape "${GIROCRAB_SHORT_VERSION:-$DEFAULT_SHORT}")"
 
 if [ -n "${GIROCRAB_DOWNLOAD_URL:-}" ]; then
   URL="$GIROCRAB_DOWNLOAD_URL"
@@ -81,6 +84,7 @@ else
   TAG="${GIROCRAB_TAG:?GIROCRAB_TAG (or GIROCRAB_DOWNLOAD_URL) is required}"
   URL="https://github.com/${REPO}/releases/download/${TAG}/$(basename "$ARCHIVE")"
 fi
+URL="$(xml_escape "$URL")"
 
 CRITICAL_XML=""
 if [ -n "${GIROCRAB_CRITICAL_BELOW:-}" ] || [ "${GIROCRAB_CRITICAL:-0}" = "1" ]; then

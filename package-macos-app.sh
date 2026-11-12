@@ -57,22 +57,16 @@ rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" \
        "$APP/Contents/Frameworks/Sparkle.framework/XPCServices"
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/GiroCrabMac"
 
-# App icon: build AppIcon.icns from the asset catalog PNGs, if available.
-ICON_SET="GiroCrabApp/Xcode/App/Assets.xcassets/AppIcon.appiconset"
-ICON_KEY=""
-if [ -d "$ICON_SET" ]; then
-  ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"
-  mkdir -p "$ICONSET_DIR"
-  for base in 16 32 128 256 512; do
-    cp "$ICON_SET/icon-$base.png" "$ICONSET_DIR/icon_${base}x${base}.png" 2>/dev/null || true
-    cp "$ICON_SET/icon-$((base * 2)).png" "$ICONSET_DIR/icon_${base}x${base}@2x.png" 2>/dev/null || true
-  done
-  if iconutil -c icns "$ICONSET_DIR" -o "$APP/Contents/Resources/AppIcon.icns"; then
-    ICON_KEY="    <key>CFBundleIconFile</key><string>AppIcon</string>"
-  else
-    echo "warning: iconutil failed - bundle will have no icon" >&2
-  fi
-fi
+# App icon: rendered on every build from the master artwork into the macOS
+# squircle grid (transparent outside, verified by the script), so the bundle and
+# the disk image never ship a stale icon or one macOS puts on a grey plate.
+ICON_MASTER="GiroCrabApp/Branding/AppIcon-master.png"
+echo "==> Rendering AppIcon.icns from $ICON_MASTER"
+ICON_TMP="$(mktemp -d)"
+trap 'rm -rf "$ICON_TMP"' EXIT
+swift scripts/make-app-icon.swift "$ICON_MASTER" "$ICON_TMP/AppIcon.iconset" --iconset
+iconutil -c icns "$ICON_TMP/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
+ICON_KEY="    <key>CFBundleIconFile</key><string>AppIcon</string>"
 
 SPARKLE_KEYS=""
 if [ -n "$SPARKLE_PUBLIC_KEY" ]; then

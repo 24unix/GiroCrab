@@ -498,7 +498,8 @@ mod tests {
 
     #[test]
     fn reimport_corrects_wrong_stored_total() {
-        let p = std::env::temp_dir().join(format!("girocrab-amazon-{}.db", uuid::Uuid::new_v4()));
+        let p_dir = crate::test_support::TempDir::new("girocrab-amazon");
+        let p = p_dir.join("v.db");
         let v = Vault::open(p.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
         let conn = v
             .add_bank_connection(

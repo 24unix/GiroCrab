@@ -332,7 +332,8 @@ mod tests {
 
     #[test]
     fn repeated_sync_is_stable_preserves_holdings_and_retries_only_missing_pdfs() {
-        let path = std::env::temp_dir().join(format!("girocrab-fnz-{}.db", uuid::Uuid::new_v4()));
+        let path_dir = crate::test_support::TempDir::new("girocrab-fnz");
+        let path = path_dir.join("v.db");
         let v = Vault::open(path.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
         let conn = v
             .add_bank_connection(ConnectorKind::Fnz, "FNZ Test".into(), "test".into())

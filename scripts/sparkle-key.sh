@@ -85,7 +85,8 @@ case "$cmd" in
     [ "$new_pub" != "$old_pub" ] || die "new key equals the old one"
     echo "$new_pub" > "$PUB_FILE"
     echo "==> $PUB_FILE now holds the NEW key; this release is signed with the OLD key '$old'" >&2
-    printf 'export SPARKLE_KEY_ACCOUNT=%s SPARKLE_SIGNING_PUBLIC_KEY=%s SPARKLE_ROTATION_OLD=%s SPARKLE_ROTATION_NEW=%s\n' \
+    # notarize.sh evals this line: %q keeps every value a single shell word.
+    printf 'export SPARKLE_KEY_ACCOUNT=%q SPARKLE_SIGNING_PUBLIC_KEY=%q SPARKLE_ROTATION_OLD=%q SPARKLE_ROTATION_NEW=%q\n' \
       "$old" "$old_pub" "$old" "$new"
     ;;
   verify-transition)
@@ -143,7 +144,7 @@ EOF
     update without changelog – only because the disk image is Developer-ID signed and
     notarized. Announce a manual download on the release page.
 EOF
-    printf 'export SPARKLE_KEY_ACCOUNT=%s SPARKLE_SIGNING_PUBLIC_KEY=%s GIROCRAB_DISCARD_EXISTING_APPCAST=1\n' "$new" "$new_pub"
+    printf 'export SPARKLE_KEY_ACCOUNT=%q SPARKLE_SIGNING_PUBLIC_KEY=%q GIROCRAB_DISCARD_EXISTING_APPCAST=1\n' "$new" "$new_pub"
     ;;
   *)
     sed -n '2,26p' "$0"; exit 2 ;;
