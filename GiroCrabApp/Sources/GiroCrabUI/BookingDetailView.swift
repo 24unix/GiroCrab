@@ -437,9 +437,12 @@ struct CategoryChip: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
-            .foregroundStyle(selected ? Theme.accent : Theme.text)
+            // Selected: accent fill and border, text in the normal colour – accent-
+            // coloured text on an accent fill is unreadable with light accents (yellow).
+            .foregroundStyle(Theme.text)
+            .fontWeight(selected ? .semibold : nil)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(selected ? Theme.selection : (filled ? Theme.canvas : Theme.card)))
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(selected ? Theme.accent.opacity(0.5) : Theme.border, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(selected ? Theme.accent : Theme.border, lineWidth: selected ? 1.5 : 1))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
