@@ -77,7 +77,9 @@ extension ConnectorKind {
     var portalURL: URL? {
         switch self {
         case .americanExpress: return URL(string: "https://global.americanexpress.com/activity/recent")
-        case .amazonVisa: return URL(string: "https://www.openbank.de")
+        // Amazon Visa customer portal (Open Bank / Zinia); www.openbank.de is
+        // Open Bank's general site without the card login.
+        case .amazonVisa: return URL(string: "https://kunden.openbankpay.com/amazon/login")
         case .fnz: return URL(string: "https://portal.fnz.de/")
         case .amazonOrders: return URL(string: "https://www.amazon.de/gp/css/order-history")
         default: return nil
@@ -86,7 +88,7 @@ extension ConnectorKind {
     var portalHosts: [String] {
         switch self {
         case .americanExpress: return ["americanexpress.com", "aexp.com"]
-        case .amazonVisa: return ["openbank.de", "openbank.com", "zinia.de", "zinia.com"]
+        case .amazonVisa: return ["openbankpay.com", "openbank.de", "openbank.com", "zinia.de", "zinia.com"]
         case .amazonOrders: return ["amazon.de", "amazon.com"]
         case .fnz: return ["portal.fnz.de"]
         default: return []

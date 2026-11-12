@@ -778,6 +778,54 @@ fn first_bank_sync_adopts_imported_card_without_iban_by_kind() {
 }
 
 #[test]
+fn amazon_visa_filed_as_openbank_gets_its_connector_and_is_adopted() {
+    // MoneyMoney files the Amazon Visa as "Openbank" (bank code 50034200) and
+    // stores an IBAN for the card; an Open Bank current account stays unsupported.
+    let extra = "
+INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, systemid, local_storage) VALUES
+  (20, 'DE', '50034200', 'card-login', '', 'GEHEIM-20', 'Openbank', 'SYS', 'LS'),
+  (21, 'DE', '50034200', 'giro-login', '', 'GEHEIM-21', 'Openbank', 'SYS', 'LS');
+INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, currency, name, owner, kind, type, sort, initial_balance, group_key, cred) VALUES
+  (20, 20, '', '50034200', 0, 'DE12 5003 4200 0000 0000 01', 'EUR', 'Amazon Visa', 'Max Mustermann', 0, 3, 20, 0, 1, 'GEHEIM'),
+  (21, 21, '', '50034200', 0, 'DE12 5003 4200 0000 0000 02', 'EUR', 'Girokonto', 'Max Mustermann', 0, 0, 21, 0, 1, 'GEHEIM');
+";
+    let v = vault();
+    let path = fake_db_with(false, extra);
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let bank = |id| p.banks.iter().find(|b| b.mm_id == id).unwrap().connector;
+    assert_eq!(bank(20), Some(ConnectorKind::AmazonVisa));
+    assert_eq!(bank(21), None);
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+        .unwrap();
+    let conn = v
+        .list_bank_connections()
+        .unwrap()
+        .into_iter()
+        .find(|c| c.connector == ConnectorKind::AmazonVisa)
+        .unwrap();
+    assert_eq!(conn.login_name, "card-login");
+    let card = account_by_name(&v, "Amazon Visa");
+    assert_eq!(card.connection_id, Some(conn.id));
+    // the web login reports the card without an IBAN: still taken over, once
+    let db = v.db().unwrap();
+    assert_eq!(
+        adopt_account(&db, conn.id, "amazon-1", "", AccountKind::CreditCard).unwrap(),
+        Some(card.id)
+    );
+    db.execute(
+        "UPDATE accounts SET external_ref = 'amazon-1' WHERE id = ?1",
+        [card.id],
+    )
+    .unwrap();
+    assert_eq!(
+        adopt_account(&db, conn.id, "amazon-2", "", AccountKind::CreditCard).unwrap(),
+        None
+    );
+}
+
+#[test]
 fn starter_categories_are_replaced_in_an_empty_vault() {
     let v = vault();
     assert!(v.seed_starter_categories().unwrap() > 0);
