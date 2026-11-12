@@ -11945,6 +11945,171 @@
         }
       }
     },
+    "Allgemein" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "General"
+          }
+        }
+      }
+    },
+    "Sprache" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Language"
+          }
+        }
+      }
+    },
+    "Sprache wählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose Language"
+          }
+        }
+      }
+    },
+    "Systemsprache (%@)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System Language (%@)"
+          }
+        }
+      }
+    },
+    "GiroCrab ist in Ihrer Systemsprache noch nicht verfügbar. In welcher Sprache soll GiroCrab angezeigt werden?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab isn’t available in your system language yet. Which language should GiroCrab use?"
+          }
+        }
+      }
+    },
+    "GiroCrab startet dazu kurz neu. Sie können die Sprache später in den Einstellungen ändern." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab will restart briefly. You can change the language later in Settings."
+          }
+        }
+      }
+    },
+    "Sie können die Sprache später in den Einstellungen ändern." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can change the language later in Settings."
+          }
+        }
+      }
+    },
+    "Die Systemsprache wurde geändert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The System Language Has Changed"
+          }
+        }
+      }
+    },
+    "Zu %@ wechseln" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to %@"
+          }
+        }
+      }
+    },
+    "%@ beibehalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep %@"
+          }
+        }
+      }
+    },
+    "Ihr Mac verwendet jetzt %@, GiroCrab ist auf %@ eingestellt. Zum Wechseln startet GiroCrab neu." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Mac now uses %1$@, but GiroCrab is set to %2$@. GiroCrab restarts to switch."
+          }
+        }
+      }
+    },
+    "Die neue Sprache wird nach einem Neustart verwendet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The new language is used after a restart."
+          }
+        }
+      }
+    },
+    "Neu starten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restart"
+          }
+        }
+      }
+    },
+    "Diese Einstellung entspricht der Sprache für GiroCrab in den Systemeinstellungen unter „Allgemein › Sprache & Region › Programme“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This setting matches GiroCrab’s language in System Settings under “General › Language & Region › Applications”."
+          }
+        }
+      }
+    },
+    "In den Einstellungen ändern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change in Settings"
+          }
+        }
+      }
+    },
     "Einnahmen und Ausgaben" : {
       "extractionState" : "manual",
       "localizations" : {

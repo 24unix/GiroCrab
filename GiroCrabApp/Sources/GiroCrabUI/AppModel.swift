@@ -338,7 +338,7 @@ public final class AppModel {
         didSet { UserDefaults.standard.set(accountViewChoice?.rawValue, forKey: "sidebar.accountView") }
     }
     /// Settings tab on screen (set to `.groups` by "Gruppen bearbeiten …").
-    var settingsTab: SettingsTab = .banks
+    var settingsTab: SettingsTab = .general
     /// macOS: the main window opens Settings when this is set.
     var groupSettingsRequested = false
     /// The one group dialog on screen (new / rename / delete / move account).

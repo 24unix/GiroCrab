@@ -313,7 +313,7 @@ final class AccountGroupsTests: XCTestCase {
     // MARK: Settings › Kontogruppen
 
     func testEditGroupsOpensSettingsPane() {
-        XCTAssertEqual(model.settingsTab, .banks)
+        XCTAssertEqual(model.settingsTab, .general)
         model.openGroupSettings()
         XCTAssertEqual(model.settingsTab, .groups)
         #if os(macOS)

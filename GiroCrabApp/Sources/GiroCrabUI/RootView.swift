@@ -117,11 +117,25 @@ public struct GiroCrabScenes: Scene {
 
 public struct GiroCrabRootView: View {
     @Environment(AppModel.self) private var model
+    /// Language question at start-up (#93, macOS only; iOS has a per-app
+    /// language setting of its own). Skipped for developer/screenshot launches.
+    @State private var languageQuestion: LanguageQuestion = {
+        #if os(macOS)
+        let o = LaunchOptions.current
+        let developerLaunch = o.demoSeed || o.freshVault || o.screenshotPath != nil
+        guard LanguagePreference.isAvailable, !developerLaunch || o.simulateSystemLanguage != nil else { return .none }
+        return LanguagePreference.current.startupQuestion()
+        #else
+        return .none
+        #endif
+    }()
 
     public init() {}
 
     public var body: some View {
         switch model.vaultState {
+        case .starting where languageQuestion == .chooseLanguage:
+            LanguagePromptView { languageQuestion = .none }
         case .starting:
             // Same background + centred logo as the system launch screen (LaunchInfo.plist),
             // so there is no visual jump between the two.
@@ -132,7 +146,13 @@ public struct GiroCrabRootView: View {
             }
             .onAppear { model.bootstrap() }
         case .open:
-            MainSplitView().onAppear { StartupClock.mark("MainSplitView appear") }
+            MainSplitView()
+                .onAppear { StartupClock.mark("MainSplitView appear") }
+                // Asked only once the vault is open, so it never competes with Touch ID.
+                .modifier(SystemLanguageChangedAlert(newLanguage: Binding(
+                    get: { if case .systemChanged(let to) = languageQuestion { to } else { nil } },
+                    set: { if $0 == nil { languageQuestion = .none } }
+                )))
         case .locked, .unlocking:
             LockView()
         case .failed(let message):

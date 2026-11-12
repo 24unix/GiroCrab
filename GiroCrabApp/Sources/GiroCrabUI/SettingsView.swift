@@ -12,28 +12,36 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var model = model
         TabView(selection: $model.settingsTab) {
+            GeneralSettings()
+                .tabItem { Label("Allgemein", systemImage: "gearshape") }
+                .tag(SettingsTab.general)
             BankConnectionsSettings()
+                .disabled(model.vault == nil)
                 .tabItem { Label("Banken", systemImage: "building.columns") }
                 .tag(SettingsTab.banks)
             AccountGroupsSettings()
+                .disabled(model.vault == nil)
                 .tabItem { Label("Kontogruppen", systemImage: "folder") }
                 .tag(SettingsTab.groups)
             CredentialsSettings()
+                .disabled(model.vault == nil)
                 .tabItem { Label("FinTS & API-Schlüssel", systemImage: "key.horizontal") }
                 .tag(SettingsTab.credentials)
             LogoSettings()
+                .disabled(model.vault == nil)
                 .tabItem { Label("Händler-Logos", systemImage: "photo.on.rectangle") }
                 .tag(SettingsTab.logos)
             #if os(macOS)
             DocumentFolderSettings()
+                .disabled(model.vault == nil)
                 .tabItem { Label("Dokumente", systemImage: "doc.on.doc") }
                 .tag(SettingsTab.documents)
             #endif
             SecuritySettings()
+                .disabled(model.vault == nil)
                 .tabItem { Label("Sicherheit", systemImage: "lock.shield") }
                 .tag(SettingsTab.security)
         }
-        .disabled(model.vault == nil)
         #if os(iOS)
         .navigationTitle("Einstellungen")
         .navigationBarTitleDisplayMode(.inline)
@@ -41,9 +49,19 @@ struct SettingsView: View {
     }
 }
 
+/// Allgemein: app language (#93). Usable without an open vault.
+struct GeneralSettings: View {
+    var body: some View {
+        Form {
+            LanguageSettingsSection()
+        }
+        .formStyle(.grouped)
+    }
+}
+
 /// Tabs of the settings window (macOS) / sheet (iOS).
 enum SettingsTab: Hashable {
-    case banks, groups, credentials, logos, documents, security
+    case general, banks, groups, credentials, logos, documents, security
 }
 
 struct BankConnectionsSettings: View {
