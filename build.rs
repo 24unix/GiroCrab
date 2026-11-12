@@ -186,14 +186,19 @@ fn embed_sparkle(app_dir: &Path, exe: &Path) {
     let _ = std::fs::remove_dir_all(&dst);
     std::fs::create_dir_all(&frameworks).unwrap();
     // ditto keeps the framework's symlinks (Versions/Current etc.) intact.
-    run(Command::new("ditto").arg(&src).arg(&dst), "ditto Sparkle.framework");
+    run(
+        Command::new("ditto").arg(&src).arg(&dst),
+        "ditto Sparkle.framework",
+    );
     // XPC services are only for sandboxed apps; GiroCrab is not sandboxed.
     let _ = std::fs::remove_dir_all(dst.join("Versions/B/XPCServices"));
     let _ = std::fs::remove_file(dst.join("XPCServices"));
     // Removing them breaks Sparkle's own signature: re-sign ad hoc, so the
     // bundle's ad-hoc signature below can seal it.
     run(
-        Command::new("codesign").args(["--force", "--sign", "-"]).arg(&dst),
+        Command::new("codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(&dst),
         "codesign Sparkle.framework",
     );
 
@@ -206,7 +211,7 @@ fn embed_sparkle(app_dir: &Path, exe: &Path) {
     );
 }
 
-/// String Catalogs ->Contents/Resources/<lang>.lproj/{Localizable,InfoPlist}.strings(dict).
+/// String Catalogs -> Contents/Resources/<lang>.lproj/{Localizable,InfoPlist}.strings(dict).
 /// The SwiftUI code (GiroCrabUI) looks strings up in Bundle.main, i.e. this bundle.
 fn compile_localizations(app_dir: &Path) {
     let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
