@@ -141,6 +141,39 @@ struct DayGroup: Identifiable {
     var sum: Int64 { bookings.reduce(0) { $0 + $1.amountCents } }
 }
 
+/// One lazily built element of the booking stream: a day header or a single
+/// booking row. The list is flat, so its estimated height is based on rows of
+/// nearly equal height instead of day cards of 1 to 30 bookings – the scroll
+/// bar no longer jumps whenever a long or short day is built.
+enum StreamItem: Identifiable {
+    case header(DayGroup)
+    case row(Booking, isLast: Bool)
+
+    enum Key: Hashable {
+        case day(String)
+        case booking(Booking.ID)
+    }
+
+    var id: Key {
+        switch self {
+        case .header(let day): .day(day.id)
+        case .row(let b, _): .booking(b.id)
+        }
+    }
+
+    static func flatten(_ days: [DayGroup]) -> [StreamItem] {
+        var out: [StreamItem] = []
+        out.reserveCapacity(days.reduce(days.count) { $0 + $1.bookings.count })
+        for day in days {
+            out.append(.header(day))
+            for (i, b) in day.bookings.enumerated() {
+                out.append(.row(b, isLast: i == day.bookings.count - 1))
+            }
+        }
+        return out
+    }
+}
+
 struct ActiveChallenge: Identifiable {
     let id = UUID()
     let connection: BankConnection
@@ -260,7 +293,9 @@ public final class AppModel {
     var categoryTree: [CategoryNode] = []
     var bookings: [Booking] = [] { didSet { rebuildBookingIndex() } }
     /// Derived from `bookings` once per reload instead of on every view access.
-    private(set) var dayGroups: [DayGroup] = []
+    private(set) var dayGroups: [DayGroup] = [] { didSet { streamItems = StreamItem.flatten(dayGroups) } }
+    /// `dayGroups` flattened into headers and rows for the lazy booking stream.
+    private(set) var streamItems: [StreamItem] = []
     @ObservationIgnored private var bookingIndexByID: [Booking.ID: Int] = [:]
     var page: BookingPage?
     /// Flows of the selected account/group in the selected period; nil = not loaded yet.
