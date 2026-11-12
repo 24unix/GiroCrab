@@ -66,7 +66,8 @@ fi
 
 echo "==> Building $CRATE ($PROFILE) for: ${TARGETS[*]}"
 for t in "${TARGETS[@]}"; do
-  "$CARGO" build -p girocrab-core --lib "${BUILD_FLAGS[@]}" --target "$t" --target-dir "$TARGET_DIR"
+  # ${arr[@]+"${arr[@]}"}: an empty array (--debug) is "unbound" for bash 3.2 under set -u.
+  "$CARGO" build -p girocrab-core --lib ${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"} --target "$t" --target-dir "$TARGET_DIR"
 done
 
 echo "==> Building uniffi-bindgen-swift"
