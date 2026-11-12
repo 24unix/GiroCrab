@@ -90,6 +90,8 @@ Die GitHub Action [`ai-transparency.yml`](../.github/workflows/ai-transparency.y
 2. einen PR-Kommentar. Er wird über den Marker `<!-- girocrab-ai-transparency -->` gefunden und bei jedem Push oder jeder Bearbeitung **aktualisiert**, nicht neu angelegt. Bei Fork-PRs mit schreibgeschütztem Token wird dieser Schritt still übersprungen.
 3. Im Kommentar steht zusätzlich ein maschinenlesbarer Block `<!-- ai-provenance-json: {…} -->` mit den Features des PRs (Schema unten).
 
+**Audit-Integrität („Trusted Verifier from main“):** Die Action berechnet die Card immer mit der Skript-Version aus `origin/main`, nicht mit der aus dem PR-Branch. Ein PR kann also nicht beeinflussen, wie seine eigene Provenance bewertet wird. Die Version aus dem PR wird nur genutzt, solange es das Skript auf `main` noch nicht gibt. Welche Version gerechnet hat, steht in der Job-Zusammenfassung.
+
 Die Action braucht **keinen API-Key**. Eine optionale LLM-Zusammenfassung ist im Workflow auskommentiert vorbereitet (Secret `AI_SUMMARY_API_KEY`). Sie darf nur die abgeleiteten Features (`card.md`) bekommen, niemals Diffs oder PR-Texte.
 
 ## 4. Datenschutz-Garantie (Privacy guarantee)

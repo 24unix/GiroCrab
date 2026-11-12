@@ -34,10 +34,31 @@ jobs:
           sparse-checkout: tools
           persist-credentials: false
 
-      - name: Build provenance card
+      # Trusted Verifier from main: the card is computed by the classifier on main,
+      # so a PR cannot change how its own provenance is assessed. The PR's copy is
+      # used only while main has no classifier yet (bootstrap, i.e. PR #130).
+      - name: Select trusted verifier
         run: |
-          if python3 tools/export-ai-provenance.py card --pr "$PR" --out card.md; then
+          VERIFIER=/tmp/export-ai-provenance.py
+          if ! git fetch --quiet --depth=1 origin main; then
+            echo "::warning::could not fetch origin/main – no card without trusted verifier"
+            exit 0
+          fi
+          if git cat-file -e origin/main:tools/export-ai-provenance.py 2>/dev/null; then
+            git show origin/main:tools/export-ai-provenance.py > "$VERIFIER"
+            echo "VERIFIER_SOURCE=origin/main@$(git rev-parse --short origin/main)" >> "$GITHUB_ENV"
+          else
+            cp tools/export-ai-provenance.py "$VERIFIER"
+            echo "VERIFIER_SOURCE=PR branch (bootstrap: not yet on main)" >> "$GITHUB_ENV"
+          fi
+          echo "VERIFIER=$VERIFIER" >> "$GITHUB_ENV"
+
+      - name: Build provenance card
+        if: ${{ env.VERIFIER != '' }}
+        run: |
+          if python3 "$VERIFIER" card --pr "$PR" --out card.md; then
             cat card.md >> "$GITHUB_STEP_SUMMARY"
+            echo "<sub>Verifier: \`$VERIFIER_SOURCE\`</sub>" >> "$GITHUB_STEP_SUMMARY"
           else
             # informational check: never block a PR on a GitHub API hiccup
             echo "::warning::AI provenance card could not be built"
@@ -47,7 +68,7 @@ jobs:
       - name: Update PR comment
         if: ${{ hashFiles('card.md') != '' }}
         continue-on-error: true # fork PRs get a read-only token – never fail the run
-        run: python3 tools/export-ai-provenance.py comment --pr "$PR" --file card.md
+        run: python3 "$VERIFIER" comment --pr "$PR" --file card.md
 
       # Optional (prepared, disabled): LLM-written narrative for the card.
       # Add a repo secret, then uncomment. Fork PRs never receive secrets, so the step
