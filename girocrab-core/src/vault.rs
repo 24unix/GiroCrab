@@ -33,6 +33,16 @@ fn is_own_transfer(t: &Booking, own_ibans: &std::collections::HashSet<String>) -
         })
 }
 
+/// WHERE clause "booking `t` belongs to the categories `cat_match`" (e.g. `= ?3`,
+/// `IS NULL`), split-aware like `planning::EFFECTIVE_SQL`: an unsplit booking by
+/// its own category, a split booking only by the categories of its parts.
+fn category_match_sql(cat_match: &str) -> String {
+    format!(
+        "((t.category_id {cat_match} AND NOT EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id)) \
+         OR EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id AND sp.category_id {cat_match}))"
+    )
+}
+
 /// Adds merchant, flow kind, payment method and clean purpose to a booking.
 pub(crate) fn enrich(t: &mut Booking) {
     t.merchant = MerchantResolver::resolve(&t.counterparty, &t.purpose);
@@ -278,18 +288,42 @@ impl Vault {
         conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
             r.get::<_, i64>(0)
         })?;
+        // Connection settings first: neither pragma takes effect inside a transaction.
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
+        // All schema steps in one transaction (SQLite DDL is transactional): an
+        // aborted run leaves the old schema and `user_version`, never half of it.
+        let tx = conn.unchecked_transaction()?;
+        Self::migrate_schema(&tx)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn has_column(conn: &Connection, table: &str, col: &str) -> CoreResult<bool> {
+        let n: i64 = conn.query_row(
+            "SELECT count(*) FROM pragma_table_info(?1) WHERE name = ?2",
+            [table, col],
+            |r| r.get(0),
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Schema steps of [`Self::migrate`]; each one is idempotent, so also a
+    /// vault left half-migrated by an older version opens.
+    fn migrate_schema(conn: &Connection) -> CoreResult<()> {
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if version == 0 {
             conn.execute_batch(SCHEMA)?;
         } else {
-            if version == 1 {
-                conn.execute_batch(
-                    "ALTER TABLE accounts ADD COLUMN initial_balance_cents INTEGER;",
-                )?;
-            } else if version <= 4 {
-                // v5: loan_principal_cents -> initial_balance_cents
-                conn.execute_batch("ALTER TABLE accounts RENAME COLUMN loan_principal_cents TO initial_balance_cents;")?;
+            if version <= 4 && !Self::has_column(conn, "accounts", "initial_balance_cents")? {
+                if Self::has_column(conn, "accounts", "loan_principal_cents")? {
+                    // v5: loan_principal_cents -> initial_balance_cents
+                    conn.execute_batch("ALTER TABLE accounts RENAME COLUMN loan_principal_cents TO initial_balance_cents;")?;
+                } else {
+                    // v1 had neither column
+                    conn.execute_batch(
+                        "ALTER TABLE accounts ADD COLUMN initial_balance_cents INTEGER;",
+                    )?;
+                }
             }
             if version <= 2 {
                 // v3: merchant_logo_cache(domain, image_bytes, updated_at)
@@ -1477,7 +1511,12 @@ impl Vault {
             "SELECT a.id, a.connection_id, c.connector, a.group_id, a.name, a.bank_name, a.owner, a.iban, a.account_number,
                     a.currency, a.kind, a.balance_cents, a.balance_date, a.sf_symbol, a.sort_order,
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id),
-                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.category_id IS NULL),
+                    -- uncategorised, split-aware like `category_match_sql(\"IS NULL\")`
+                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.category_id IS NULL
+                        AND NOT EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id))
+                    + (SELECT count(DISTINCT sp.transaction_id) FROM transaction_splits sp
+                        JOIN transactions t ON t.id = sp.transaction_id
+                        WHERE t.account_id = a.id AND sp.category_id IS NULL),
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0),
                     a.initial_balance_cents, g.uuid, IFNULL(g.include_in_total, 1) AND a.archived_unix IS NULL,
                     a.color_hex, IFNULL(c.connector, ''), IFNULL(c.bank_code, ''), IFNULL(c.login_name, ''), a.external_ref,
@@ -1895,8 +1934,10 @@ impl Vault {
     /// uncategorised.
     pub fn delete_category(&self, id: i64) -> Result<(), CoreError> {
         let db = self.db()?;
-        db.execute("DELETE FROM categories WHERE id = ?1", [id])?;
-        db.execute("UPDATE transactions SET category_source = 'none', rule_id = NULL WHERE category_id IS NULL AND category_source != 'none'", [])?;
+        let tx = db.unchecked_transaction()?;
+        tx.execute("DELETE FROM categories WHERE id = ?1", [id])?;
+        tx.execute("UPDATE transactions SET category_source = 'none', rule_id = NULL WHERE category_id IS NULL AND category_source != 'none'", [])?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -1961,8 +2002,11 @@ impl Vault {
             ));
             wh.push(format!("({clause})"));
         }
-        if filter.uncategorized_only {
-            wh.push("t.category_id IS NULL".into());
+        // Category filters follow `planning::EFFECTIVE_SQL`: a split booking belongs
+        // to the categories of its parts (never to its own category), and only the
+        // parts of the filtered category count in the KPI sums (`share_sql`).
+        let cat_match: Option<String> = if filter.uncategorized_only {
+            Some("IS NULL".into())
         } else if let Some(cat) = filter.category_id {
             args.push(Box::new(cat));
             let n = args.len();
@@ -1970,16 +2014,22 @@ impl Vault {
                 cte = format!(
                     "WITH RECURSIVE sub(id) AS (SELECT ?{n} UNION ALL SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id) "
                 );
-                wh.push(
-                    "(t.category_id IN (SELECT id FROM sub) OR EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id AND sp.category_id IN (SELECT id FROM sub)))"
-                        .into(),
-                );
+                Some("IN (SELECT id FROM sub)".into())
             } else {
-                wh.push(format!(
-                    "(t.category_id = ?{n} OR EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id AND sp.category_id = ?{n}))"
-                ));
+                Some(format!("= ?{n}"))
             }
-        }
+        } else {
+            None
+        };
+        let share_sql = match &cat_match {
+            Some(m) => {
+                wh.push(category_match_sql(m));
+                format!(
+                    "COALESCE((SELECT SUM(sp.amount_cents) FROM transaction_splits sp WHERE sp.transaction_id = t.id AND sp.category_id {m}), t.amount_cents)"
+                )
+            }
+            None => "t.amount_cents".to_string(),
+        };
         if let Some(from) = filter.date_from.as_ref().filter(|s| !s.is_empty()) {
             args.push(Box::new(from.clone()));
             wh.push(format!("t.booking_date >= ?{}", args.len()));
@@ -2031,54 +2081,58 @@ impl Vault {
             "{cte}SELECT t.id, t.account_id, a.name, t.booking_date, t.value_date, t.amount_cents, t.currency, t.counterparty,
                     t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.category_source, t.rule_id, t.checked, a.kind,
                     (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note,
-                    t.purpose_code, t.gvc, t.salary_flag
+                    t.purpose_code, t.gvc, t.salary_flag, {share_sql}
              {from_sql} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC"
         );
         let mut stmt = db.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(args.iter().map(|b| b.as_ref())), |r| {
             let cat: Option<i64> = r.get(11)?;
             let src: String = r.get(12)?;
-            Ok(Booking {
-                id: r.get(0)?,
-                account_id: r.get(1)?,
-                account_name: r.get(2)?,
-                booking_date: r.get(3)?,
-                value_date: r.get(4)?,
-                amount_cents: r.get(5)?,
-                currency: r.get(6)?,
-                counterparty: r.get(7)?,
-                counterparty_iban: r.get(8)?,
-                purpose: r.get(9)?,
-                booking_text: r.get(10)?,
-                category_id: cat,
-                category_name: String::new(),
-                category_path: String::new(),
-                category_color_hex: String::new(),
-                category_symbol: String::new(),
-                category_source: match src.as_str() {
-                    "rule" => CategorySource::Rule,
-                    "manual" => CategorySource::Manual,
-                    _ => CategorySource::None,
+            let share: i64 = r.get(21)?;
+            Ok((
+                share,
+                Booking {
+                    id: r.get(0)?,
+                    account_id: r.get(1)?,
+                    account_name: r.get(2)?,
+                    booking_date: r.get(3)?,
+                    value_date: r.get(4)?,
+                    amount_cents: r.get(5)?,
+                    currency: r.get(6)?,
+                    counterparty: r.get(7)?,
+                    counterparty_iban: r.get(8)?,
+                    purpose: r.get(9)?,
+                    booking_text: r.get(10)?,
+                    category_id: cat,
+                    category_name: String::new(),
+                    category_path: String::new(),
+                    category_color_hex: String::new(),
+                    category_symbol: String::new(),
+                    category_source: match src.as_str() {
+                        "rule" => CategorySource::Rule,
+                        "manual" => CategorySource::Manual,
+                        _ => CategorySource::None,
+                    },
+                    rule_id: r.get(13)?,
+                    checked: r.get::<_, i64>(14)? != 0,
+                    merchant: MerchantResolver::placeholder(),
+                    merchant_name: String::new(),
+                    merchant_domain: None,
+                    merchant_svg_path: None,
+                    merchant_hex_color: String::new(),
+                    payment_method: String::new(),
+                    flow: FlowKind::Consumption,
+                    clean_purpose: String::new(),
+                    account_kind: AccountKind::from_str(&r.get::<_, String>(15)?),
+                    document_count: r.get::<_, i64>(16)? as u32,
+                    note: r.get(17)?,
+                    purpose_code: r.get(18)?,
+                    gvc: r.get(19)?,
+                    salary_flag: r.get::<_, Option<i64>>(20)?.map(|f| f != 0),
+                    is_salary: false,
+                    recurrence_key: String::new(),
                 },
-                rule_id: r.get(13)?,
-                checked: r.get::<_, i64>(14)? != 0,
-                merchant: MerchantResolver::placeholder(),
-                merchant_name: String::new(),
-                merchant_domain: None,
-                merchant_svg_path: None,
-                merchant_hex_color: String::new(),
-                payment_method: String::new(),
-                flow: FlowKind::Consumption,
-                clean_purpose: String::new(),
-                account_kind: AccountKind::from_str(&r.get::<_, String>(15)?),
-                document_count: r.get::<_, i64>(16)? as u32,
-                note: r.get(17)?,
-                purpose_code: r.get(18)?,
-                gvc: r.get(19)?,
-                salary_flag: r.get::<_, Option<i64>>(20)?.map(|f| f != 0),
-                is_salary: false,
-                recurrence_key: String::new(),
-            })
+            ))
         })?;
         let mut txs = Vec::new();
         let salary_ibans = crate::salary::marked_salary_ibans(&db)?;
@@ -2098,7 +2152,7 @@ impl Vault {
             (0i64, 0i64, 0i64, 0i64, 0i64);
         let mut flow = SelectionFlow::default();
         for row in rows {
-            let mut t = row?;
+            let (share, mut t) = row?;
             if let Some((name, path, color, sym)) = t.category_id.and_then(|c| paths.get(&c)) {
                 t.category_name = name.clone();
                 t.category_path = path.clone();
@@ -2136,21 +2190,22 @@ impl Vault {
             if !keep {
                 continue;
             }
-            // Transfers between own accounts are neutral (else counted on both sides).
-            if t.flow != FlowKind::Transfer {
-                if t.amount_cents > 0 {
-                    income += t.amount_cents;
-                } else {
-                    expense += t.amount_cents;
-                }
+            // One KPI definition (`kpi_side`) for the page sums and `SelectionFlow`;
+            // transfers between own accounts are neutral (else counted on both sides).
+            // `share` is the full amount, or with a category filter only the split
+            // parts of that category.
+            match kpi_side(t.flow, share) {
+                KpiSide::Income => income += share,
+                KpiSide::Expense => expense += share,
+                KpiSide::Neutral => {}
             }
             match t.flow {
-                FlowKind::Consumption => consumption += t.amount_cents,
-                FlowKind::Investment => investment += t.amount_cents,
-                FlowKind::Perk => perk += t.amount_cents,
+                FlowKind::Consumption => consumption += share,
+                FlowKind::Investment => investment += share,
+                FlowKind::Perk => perk += share,
                 _ => {}
             }
-            flow.add(&t);
+            flow.add(t.flow, share);
             txs.push(t);
         }
         let total = txs.len() as u32;
@@ -2300,8 +2355,10 @@ impl Vault {
 
     pub fn delete_rule(&self, rule_id: i64) -> Result<(), CoreError> {
         let db = self.db()?;
-        db.execute("UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL WHERE rule_id = ?1", [rule_id])?;
-        db.execute("DELETE FROM rules WHERE id = ?1", [rule_id])?;
+        let tx = db.unchecked_transaction()?;
+        tx.execute("UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL WHERE rule_id = ?1", [rule_id])?;
+        tx.execute("DELETE FROM rules WHERE id = ?1", [rule_id])?;
+        tx.commit()?;
         Ok(())
     }
 

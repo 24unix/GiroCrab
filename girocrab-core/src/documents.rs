@@ -381,7 +381,8 @@ const SELECT_INFO: &str = "SELECT d.id, d.booking_id, COALESCE(d.account_id, t.a
    LEFT JOIN accounts a ON a.id = COALESCE(d.account_id, t.account_id)";
 
 fn safe_name(s: &str) -> String {
-    s.chars()
+    let name = s
+        .chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '-' || c == '.' || c == ' ' {
                 c
@@ -392,7 +393,21 @@ fn safe_name(s: &str) -> String {
         .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
-        .join("_")
+        .join("_");
+    // No leading dots: "." / ".." would leave the target folder, ".x" is hidden.
+    let name = name.trim_start_matches('.');
+    if name.is_empty() {
+        "_".into()
+    } else {
+        name.to_string()
+    }
+}
+
+/// Shortens a file name to `max` characters (never splits a UTF-8 character).
+fn truncate_chars(s: &mut String, max: usize) {
+    if let Some((i, _)) = s.char_indices().nth(max) {
+        s.truncate(i);
+    }
 }
 
 impl Vault {
@@ -680,9 +695,7 @@ impl Vault {
                 .unwrap_or("")
                 .to_string();
             let mut file = safe_name(&format!("{}_{}_{}", d.doc_date, who, d.title));
-            if file.len() > 120 {
-                file.truncate(120);
-            }
+            truncate_chars(&mut file, 120);
             let mut candidate = format!("{file}.{ext}");
             let mut k = 2;
             while !used.insert(dir.join(&candidate)) {
@@ -713,10 +726,10 @@ fn mirror_file_name(d: &DocumentInfo) -> String {
         .filter(|p| !p.trim().is_empty())
         .collect();
     let mut file = safe_name(&stem.join("_"));
-    if file.is_empty() {
+    if file.trim_matches('_').is_empty() {
         file = format!("Dokument_{}", d.id);
     }
-    file.truncate(120);
+    truncate_chars(&mut file, 120);
     format!("{file}.{ext}")
 }
 
@@ -857,6 +870,23 @@ pub fn simple_pdf(lines: &[String]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_names_cut_on_char_boundaries_and_stay_in_folder() {
+        // 119 ASCII + "ü" (2 bytes): byte 120 is inside the umlaut
+        let mut s = format!("{}ü{}", "a".repeat(119), "b".repeat(10));
+        truncate_chars(&mut s, 120);
+        assert_eq!(s.chars().count(), 120);
+        assert!(s.ends_with('ü'));
+        let mut short = "Müller".to_string();
+        truncate_chars(&mut short, 120);
+        assert_eq!(short, "Müller");
+        assert_eq!(safe_name(".."), "_");
+        assert_eq!(safe_name("."), "_");
+        assert_eq!(safe_name("../x"), "_x");
+        assert_eq!(safe_name(".hidden"), "hidden");
+        assert_eq!(safe_name("Beleg 1.pdf"), "Beleg_1.pdf");
+    }
 
     fn plan(db: &Connection, sql: &str, args: impl rusqlite::Params) -> String {
         db.prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
