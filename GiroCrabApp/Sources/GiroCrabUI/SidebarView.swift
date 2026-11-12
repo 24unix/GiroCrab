@@ -55,6 +55,8 @@ struct SidebarView: View {
                         Spacer()
                         Button(model.missingSettings(for: c).isEmpty ? "Abrufen" : "Einrichten") { model.requestSync(c) }
                             .controlSize(.small)
+                            .disabled(model.bankingGate(for: c) != nil)
+                            .help(model.bankingGate(for: c)?.message ?? "")
                     }
                     .contextMenu {
                         Button("Bankzugang entfernen …", systemImage: "trash", role: .destructive) { dialog = .removeConnection(c.id) }
@@ -273,6 +275,7 @@ struct SidebarView: View {
         Divider()
         if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
             Button("\(conn.displayName) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
+                .disabled(model.bankingGate(for: conn) != nil)
         }
         if !account.iban.isEmpty {
             Button("IBAN kopieren", systemImage: "doc.on.doc") { copyToPasteboard(account.iban) }

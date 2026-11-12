@@ -441,7 +441,17 @@ public final class AppModel {
     var pendingLogin: PendingLogin?
     var setupRequest: SetupRequest?
     /// Trade Republic in-app browser login (WKWebView).
-    var webLoginConnection: BankConnection?
+    /// Not opened while the banking policy blocks this login (security lock).
+    var webLoginConnection: BankConnection? {
+        didSet {
+            if let c = webLoginConnection, let gate = bankingGate(for: c) {
+                webLoginConnection = nil
+                errorMessage = gate.message
+            }
+        }
+    }
+    /// Connector key per login (`fints:<BLZ>`, …) for the banking policy.
+    var connectionKeys: [Int64: String] = [:]
     /// Showing the throw-away demo vault (also when the own vault is still empty).
     var demoActive = false
     /// The personal vault while demo data is shown (nil if never unlocked).
@@ -1033,6 +1043,9 @@ public final class AppModel {
             }
             rebuildAccountIndex()
             connections = try vault.listBankConnections()
+            connectionKeys = Dictionary(uniqueKeysWithValues: connections.compactMap { c in
+                (try? vault.connectionKey(connectionId: c.id)).map { (c.id, $0) }
+            })
         }
     }
 
@@ -2070,6 +2083,13 @@ public final class AppModel {
     /// Adds a bank login. While demo data is shown, the login goes into the
     /// personal vault (switching to it), then setup / PIN entry starts.
     func addConnection(_ kind: ConnectorKind, login: String) {
+        withFreshBankingPolicy { [self] in
+            guard bankingAllowsAdding(bankingGate(forNew: kind)) else { return }
+            addConnectionChecked(kind, login: login)
+        }
+    }
+
+    private func addConnectionChecked(_ kind: ConnectorKind, login: String) {
         if demoActive, let ov = ownVault {
             useVault(ov, demo: false)
         }
@@ -2085,6 +2105,13 @@ public final class AppModel {
 
     /// Adds a login at any FinTS 3.0 bank (BLZ + https URL), then starts setup / PIN entry.
     func addFinTsConnection(name: String, blz: String, url: String, login: String, tanMedium: String = "") {
+        withFreshBankingPolicy { [self] in
+            guard bankingAllowsAdding(bankingGate(forNewFinTS: blz)) else { return }
+            addFinTsConnectionChecked(name: name, blz: blz, url: url, login: login, tanMedium: tanMedium)
+        }
+    }
+
+    private func addFinTsConnectionChecked(name: String, blz: String, url: String, login: String, tanMedium: String) {
         if demoActive, let ov = ownVault {
             useVault(ov, demo: false)
         }
@@ -2102,6 +2129,13 @@ public final class AppModel {
     /// Adds a login at a bank reached via Enable Banking (PSD2), then starts the
     /// setup (Enable Banking credentials, if missing) and the consent redirect.
     func addEnableBankingConnection(aspsp: String, country: String, name: String, label: String) {
+        withFreshBankingPolicy { [self] in
+            guard bankingAllowsAdding(bankingGate(forNew: .enableBanking)) else { return }
+            addEnableBankingConnectionChecked(aspsp: aspsp, country: country, name: name, label: label)
+        }
+    }
+
+    private func addEnableBankingConnectionChecked(aspsp: String, country: String, name: String, label: String) {
         if demoActive, let ov = ownVault {
             useVault(ov, demo: false)
         }
@@ -2412,7 +2446,21 @@ public final class AppModel {
         }
     }
 
+    /// Starts a sync (or the login it needs) once the banking policy is fresh
+    /// and allows this login; otherwise explains why not.
     func requestSync(_ connection: BankConnection) {
+        withFreshBankingPolicy { [self] in
+            if let gate = bankingGate(for: connection) {
+                syncQueue = []
+                statementsAccountID = nil
+                errorMessage = gate.message
+                return
+            }
+            requestSyncChecked(connection)
+        }
+    }
+
+    private func requestSyncChecked(_ connection: BankConnection) {
         // Amex / Amazon Visa: embedded web-portal login (no API keys needed).
         if usesPortal(connection) {
             webLoginConnection = connection
@@ -2446,14 +2494,25 @@ public final class AppModel {
 
     func requestSyncAll() {
         guard syncingConnectionID == nil else { return }
-        // portal connections need an interactive login – not part of "sync all"
-        // logins whose accounts are all archived are not asked at all
-        let batch = connections.filter { !usesPortal($0) && !$0.allAccountsArchived }
-        guard let head = batch.first else { return }
-        syncQueue = Array(batch.dropFirst())
-        syncBatchTotal = batch.count
-        syncBatchSkipped = []
-        requestSync(head)
+        withFreshBankingPolicy { [self] in
+            guard syncingConnectionID == nil else { return }
+            // portal connections need an interactive login – not part of "sync all"
+            // logins whose accounts are all archived are not asked at all
+            let batch = connections.filter { !usesPortal($0) && !$0.allAccountsArchived }
+            // Logins the banking policy blocks are skipped and named at the end.
+            let blocked = batch.filter { bankingGate(for: $0) != nil }
+            let allowed = batch.filter { bankingGate(for: $0) == nil }
+            guard let head = allowed.first else {
+                if let gate = blocked.first.flatMap({ bankingGate(for: $0) }) {
+                    showError(gate.title, gate.message)
+                }
+                return
+            }
+            syncQueue = Array(allowed.dropFirst())
+            syncBatchTotal = allowed.count
+            syncBatchSkipped = blocked.map { String(localized: "\($0.displayName) (Sicherheitssperre)") }
+            requestSyncChecked(head)
+        }
     }
 
     /// Position in a running "Alle abrufen" over several logins, e.g. (2, 5).
@@ -2809,7 +2868,7 @@ extension AppModel {
     var transferFormAccounts: [Account] { transferAccounts + giroCodeAccounts }
 
     func canSendTransfer(from accountID: Int64?) -> Bool {
-        transferAccounts.contains { $0.id == accountID }
+        transferAccounts.contains { $0.id == accountID } && bankingGate(forAccount: accountID) == nil
     }
 
     var canTransfer: Bool { vault != nil && !transferFormAccounts.isEmpty && syncingConnectionID == nil && activeTransfer == nil }
@@ -2855,6 +2914,16 @@ extension AppModel {
     }
 
     func startTransfer() {
+        withFreshBankingPolicy { [self] in
+            if let gate = bankingGate(forAccount: transferDraft.accountID) {
+                transferError = gate.message
+                return
+            }
+            startTransferChecked()
+        }
+    }
+
+    private func startTransferChecked() {
         guard let vault, let accID = transferDraft.accountID, canSendTransfer(from: accID),
               let account = allAccounts.first(where: { $0.id == accID }),
               let connection = connections.first(where: { $0.id == account.connectionId }) else { return }

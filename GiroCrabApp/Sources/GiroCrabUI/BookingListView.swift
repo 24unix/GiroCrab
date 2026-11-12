@@ -33,6 +33,8 @@ struct BookingStreamView: View {
         let emptyVault = !model.demoActive && model.allAccounts.isEmpty
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
+                // Security lock: first, above everything else (stays visible).
+                BankingPolicyBanner()
                 #if !os(iOS)
                 header(isOverview: isOverview, emptyVault: emptyVault, scope: $model.scope)
                 #endif
@@ -620,6 +622,7 @@ struct MainToolbar: ViewModifier {
         content.toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
+                    .disabled(model.bankingBlocksAll)
                 Menu {
                     Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
                         .disabled(!model.canTransfer)
@@ -648,7 +651,8 @@ struct MainToolbar: ViewModifier {
             }
             ToolbarItem(id: "sync", placement: .primaryAction) {
                 Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
-                    .help("Alle Konten abrufen (⌘R)")
+                    .help(model.bankingBlocksAll ? (BankingPolicy.shared.gate?.message ?? "") : String(localized: "Alle Konten abrufen (⌘R)"))
+                    .disabled(model.bankingBlocksAll)
             }
             ToolbarItem(id: "palette", placement: .primaryAction, showsByDefault: false) {
                 Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }

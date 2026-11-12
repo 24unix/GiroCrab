@@ -64,6 +64,13 @@ pub fn clear_banking_block() {
     *BLOCK.write().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
+/// Connector key of a connector kind (`ConnectorKind::as_str`), e.g. for a
+/// login that is about to be added.
+#[uniffi::export]
+pub fn connector_kind_key(kind: crate::models::ConnectorKind) -> String {
+    kind.as_str().to_string()
+}
+
 /// True if the connection key `key` (e.g. `fints:50050201`) is blocked.
 #[uniffi::export]
 pub fn is_banking_blocked(key: String) -> bool {

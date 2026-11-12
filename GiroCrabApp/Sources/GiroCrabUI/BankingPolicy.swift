@@ -116,11 +116,27 @@ public struct BankingGate: Equatable, Sendable {
     public var advisory: URL?
     public var updateAvailable: Bool
 
-    /// Human-readable message for banner, help texts and core errors.
+    /// Banner headline.
+    public var title: String {
+        switch reason {
+        case .checkUnavailable: return String(localized: "Sicherheitsprüfung nicht möglich")
+        case .outdated: return String(localized: "Bankverbindungen gesperrt")
+        }
+    }
+
+    /// Full sentence(s) for alerts, help texts and core errors.
     public var message: String {
         switch reason {
+        case .checkUnavailable: return title + ". " + detail
+        case .outdated: return detail
+        }
+    }
+
+    /// Explanation below the banner headline.
+    public var detail: String {
+        switch reason {
         case .checkUnavailable:
-            return String(localized: "Sicherheitsprüfung nicht möglich. GiroCrab konnte nicht prüfen, ob diese Version noch sicher mit Banken kommunizieren darf. Bitte später erneut versuchen.")
+            return String(localized: "GiroCrab konnte nicht prüfen, ob diese Version noch sicher mit Banken kommunizieren darf. Bitte später erneut versuchen.")
         case .outdated:
             var text: String
             if all {
@@ -365,6 +381,26 @@ public struct KeychainBankingPolicyStore: BankingPolicyStore {
     }
 }
 
+#if DEBUG
+/// Debug builds with a test key only (see `makeDefault`).
+final class MemoryBankingPolicyStore: BankingPolicyStore, @unchecked Sendable {
+    private var value: StoredBankingPolicy?
+    func load() -> StoredBankingPolicy? { value }
+    func save(_ policy: StoredBankingPolicy) throws { value = policy }
+}
+
+/// Debug builds with a test key only: survives restarts like the keychain item.
+struct FileBankingPolicyStore: BankingPolicyStore {
+    let url: URL
+    func load() -> StoredBankingPolicy? {
+        (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(StoredBankingPolicy.self, from: $0) }
+    }
+    func save(_ policy: StoredBankingPolicy) throws {
+        try JSONEncoder().encode(policy).write(to: url, options: .atomic)
+    }
+}
+#endif
+
 /// HTTPS download without cookies, cache or user data; at most 64 KB, 10 s.
 public struct URLSessionBankingPolicyFetcher: BankingPolicyFetcher {
     public static let maxBytes = 64 * 1024
@@ -466,11 +502,21 @@ public final class BankingPolicy {
         var keys = publicKeys
         var url = defaultURL
         var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        var store: BankingPolicyStore = KeychainBankingPolicyStore()
         #if DEBUG
         // Test hooks for throwaway keys and a local server. Not compiled into
         // release builds, so nobody can redirect or disable the check there.
         let env = ProcessInfo.processInfo.environment
-        if let k = env["GIROCRAB_BANKING_POLICY_KEY"], !k.isEmpty { keys = [k] }
+        if let k = env["GIROCRAB_BANKING_POLICY_KEY"], !k.isEmpty {
+            keys = [k]
+            // Test keys never touch the real keychain item: a file (to test
+            // restarts) or memory.
+            if let path = env["GIROCRAB_BANKING_POLICY_STORE"], !path.isEmpty {
+                store = FileBankingPolicyStore(url: URL(fileURLWithPath: path))
+            } else {
+                store = MemoryBankingPolicyStore()
+            }
+        }
         if let u = env["GIROCRAB_BANKING_POLICY_URL"].flatMap(URL.init(string:)) { url = u }
         if let v = env["GIROCRAB_BANKING_POLICY_VERSION"], !v.isEmpty { version = v }
         #endif
@@ -481,7 +527,7 @@ public final class BankingPolicy {
         let bundled = bundledJSON.flatMap { j in bundledSig.map { (json: j, signature: $0) } }
         return BankingPolicy(
             publicKeys: keys,
-            store: KeychainBankingPolicyStore(),
+            store: store,
             fetcher: URLSessionBankingPolicyFetcher(url: url),
             bundled: bundled,
             distribution: .current,
