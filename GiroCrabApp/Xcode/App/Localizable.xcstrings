@@ -12636,6 +12636,50 @@
           }
         }
       }
+    },
+    "Als ungeprüft markieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark as Not Reviewed"
+          }
+        }
+      }
+    },
+    "Notiz bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Note"
+          }
+        }
+      }
+    },
+    "Beleg in Quick Look anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quick Look Document"
+          }
+        }
+      }
+    },
+    "In der Liste: C kategorisieren · R Regel erstellen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In the list: C categorize · R create rule"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
