@@ -558,7 +558,7 @@ struct GroupDetailEditor: View {
                             model.moveAccount(a.id, to: member ? nil : g.uuid)
                         } label: {
                             HStack(spacing: 9) {
-                                AccountSignet(account: a, size: 22)
+                                AccountSignet(account: a, size: 22, color: model.accountColor(a.id))
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(a.name).foregroundStyle(Theme.text)
                                     if !member, let other = model.userGroup(of: a) {

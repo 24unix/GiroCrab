@@ -81,9 +81,14 @@ struct MerchantSignet: View {
 struct AccountSignet: View {
     let account: Account
     var size: CGFloat = 22
+    /// The account's colour (its marker in the booking list); nil = bank tint.
+    var color: Color? = nil
+    /// On the accent-coloured sidebar selection: system colour (white there).
+    var onSelection = false
 
     var body: some View {
-        let tint = account.kind == .loan ? Theme.loan : (account.connector?.tint ?? Theme.secondary)
+        let tint = onSelection ? Color.primary
+            : color ?? (account.kind == .loan ? Theme.loan : (account.connector?.tint ?? Theme.secondary))
         RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
             .fill(tint.opacity(0.12))
             .overlay(

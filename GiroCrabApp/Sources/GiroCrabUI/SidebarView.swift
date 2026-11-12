@@ -378,15 +378,8 @@ struct AccountRow: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            AccountSignet(account: account, size: 24)
-                // same colour as the account's marker in the booking list
-                .overlay(alignment: .bottomTrailing) {
-                    Circle()
-                        .fill(model.accountColor(account.id))
-                        .frame(width: 8, height: 8)
-                        .overlay(Circle().strokeBorder(Theme.canvas, lineWidth: 1.5))
-                        .offset(x: 2, y: 2)
-                }
+            // tinted like the account's marker in the booking list
+            AccountSignet(account: account, size: 24, color: model.accountColor(account.id), onSelection: onSelection)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(account.name).lineLimit(1)
