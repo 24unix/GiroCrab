@@ -146,11 +146,11 @@ struct SyncFolder: Sendable {
     /// is replaced only when it is absent or its current version was merged
     /// (`merged`: name → modification date), so a file this device couldn't
     /// read (other key, error, still downloading) is never overwritten.
-    /// Writes nothing when the vault has no accounts, so a fresh vault never
+    /// Writes nothing when the vault never had an account, so a fresh vault never
     /// replaces a filled one.
     @discardableResult
     func write(vault: Vault, merged: [String: Double] = [:]) throws -> SyncWrite {
-        guard try vault.accountCount() > 0 else { return SyncWrite() }
+        guard try vault.hasAccountHistory() else { return SyncWrite() }
         let fm = FileManager.default
         let tmp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".girocrab")
         defer { try? fm.removeItem(at: tmp) }
