@@ -209,7 +209,6 @@ struct DocumentsView: View {
                         .font(.caption).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    TextField("Suchen …", text: $search).textFieldStyle(.roundedBorder)
                     HStack(spacing: 12) {
                         Toggle("Nur ohne Buchung", isOn: $unlinkedOnly).toggleStyle(.switch).controlSize(.small)
                             .lineLimit(1).fixedSize()
@@ -294,7 +293,12 @@ struct DocumentsView: View {
         } message: { d in
             Text("„\(d.title)“ wird unwiderruflich gelöscht.")
         }
+        #if os(iOS)
         .navigationTitle("")
+        #endif
+        // System search field in the toolbar, like the booking list: ⌘F, clear
+        // button and Esc come with it.
+        .searchable(text: $search, placement: .toolbar, prompt: "Belege durchsuchen")
     }
 }
 

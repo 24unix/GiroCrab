@@ -342,8 +342,52 @@ public final class AppModel {
         didSet {
             if stickyBooking?.id != selectedBookingID { stickyBooking = nil }
             Perf.signposter.emitEvent("selectBooking")
+            // A plain selection (click, arrow keys, jumps) replaces a multiple one.
+            if let id = selectedBookingID {
+                if !selectedBookingIDs.contains(id) { selectedBookingIDs = [id] }
+            } else if !selectedBookingIDs.isEmpty {
+                selectedBookingIDs = []
+            }
+            // Cached per merchant; reloadMerchantStats() would drop the cache on every click.
             loadMerchantStats()
         }
+    }
+    /// All selected bookings (⌘-click adds/removes, ⇧-click selects a range,
+    /// ⌘A all visible). `selectedBookingID` is the one shown in the inspector.
+    var selectedBookingIDs: Set<Booking.ID> = []
+    var isMultiSelection: Bool { selectedBookingIDs.count > 1 }
+    /// The selected bookings in list order.
+    var selectedBookings: [Booking] { visibleBookings.filter { selectedBookingIDs.contains($0.id) } }
+
+    /// Click on a booking row: plain = only this one, `toggle` (⌘) adds or
+    /// removes it, `extend` (⇧) selects the range from the current booking.
+    func selectBooking(_ id: Booking.ID, toggle: Bool = false, extend: Bool = false) {
+        let list = visibleBookings.map(\.id)
+        if extend, let anchor = selectedBookingID, let a = list.firstIndex(of: anchor), let b = list.firstIndex(of: id) {
+            selectedBookingIDs = Set(list[min(a, b)...max(a, b)])
+            selectedBookingID = id
+        } else if toggle {
+            if selectedBookingIDs.contains(id) {
+                selectedBookingIDs.remove(id)
+                if selectedBookingID == id {
+                    selectedBookingID = list.first { selectedBookingIDs.contains($0) }
+                }
+            } else {
+                selectedBookingIDs.insert(id)
+                selectedBookingID = id
+            }
+        } else {
+            selectedBookingIDs = [id]
+            selectedBookingID = id
+        }
+    }
+
+    /// Bearbeiten › Alles auswählen (⌘A) in the booking list.
+    func selectAllBookings() {
+        let ids = visibleBookings.map(\.id)
+        guard !ids.isEmpty else { return }
+        selectedBookingIDs = Set(ids)
+        if selectedBookingID.map({ !selectedBookingIDs.contains($0) }) ?? true { selectedBookingID = ids.first }
     }
     /// A booking that left the filtered list because the user just edited it
     /// (e.g. "kein Gehalt" in the salary period). It stays selected and visible
@@ -378,6 +422,11 @@ public final class AppModel {
     var ruleDraft: Rule?
     var showSettings = false
     var showCommandPalette = false
+    /// The balance chart has keyboard focus (Return there jumps to its day,
+    /// instead of editing the selected booking's note).
+    @ObservationIgnored var chartHasKeyboardFocus = false
+    /// Run after the command palette sheet has been dismissed (opens the next sheet).
+    @ObservationIgnored var afterPaletteDismiss: (@MainActor () -> Void)?
     var showCategorizer = false
     /// Booking whose inspector note field should take focus (double-click / Return in the list).
     /// Carries the id because the NoteCard is recreated per booking and claims it on appear.
@@ -401,7 +450,21 @@ public final class AppModel {
     var payeeCheck: PendingPayeeCheck?
     var syncingConnectionID: Int64?
     var toast: String?
-    var errorMessage: String?
+    /// Text of the error alert. Clearing it also clears title and retry.
+    var errorMessage: String? {
+        didSet { if errorMessage == nil { errorTitle = nil; errorRetry = nil } }
+    }
+    /// Alert title naming what failed (HIG: specific, not "something went wrong").
+    var errorTitle: String?
+    /// Optional "Erneut versuchen" action of the error alert.
+    @ObservationIgnored var errorRetry: (@MainActor () -> Void)?
+
+    /// Error alert with a specific title and, where it helps, a retry action.
+    func showError(_ title: String, _ message: String, retry: (@MainActor () -> Void)? = nil) {
+        errorMessage = message
+        errorTitle = title
+        errorRetry = retry
+    }
 
     private var activeSession: SyncSession?
     private var activeTransfer: TransferSession?
@@ -533,7 +596,10 @@ public final class AppModel {
             if selectedBookingID == nil { selectedBookingID = bookings.first?.id }
             showCategorizer = true
         case "error":
-            errorMessage = "Die Bank hat nicht geantwortet (Zeitüberschreitung)."
+            if let c = connections.first {
+                showError(String(localized: "Abruf von „\(c.displayName)“ fehlgeschlagen"),
+                          String(localized: "Die Bank hat nicht geantwortet (Zeitüberschreitung).")) { [weak self] in self?.requestSync(c) }
+            }
         case "payee-match", "payee-close", "payee-nomatch":
             guard let connection = connections.first else { break }
             let result: PayeeMatch = name == "payee-match" ? .match : name == "payee-close" ? .closeMatch : .noMatch
@@ -1025,7 +1091,7 @@ public final class AppModel {
             csvExport = CSVFileDocument(data: Data(csv.utf8))
             showCSVExporter = true
         } catch {
-            errorMessage = error.localizedDescription
+            showError(String(localized: "Export fehlgeschlagen"), error.localizedDescription)
         }
     }
 
@@ -1058,7 +1124,7 @@ public final class AppModel {
             }
             return report
         } catch {
-            errorMessage = error.localizedDescription
+            showError(String(localized: "Drucken nicht möglich"), error.localizedDescription)
             return nil
         }
     }
@@ -1802,14 +1868,22 @@ public final class AppModel {
         guard !list.isEmpty else { return }
         let idx = selectedBookingID.flatMap { id in list.firstIndex { $0.id == id } } ?? -1
         let next = max(0, min(list.count - 1, idx + delta))
+        selectedBookingIDs = []
         selectedBookingID = list[next].id
     }
 
     // MARK: - Editing
 
     func setCategory(_ categoryID: Int64?, for booking: Booking) {
-        guard let vault else { return }
-        run { try vault.setTransactionCategory(transactionId: booking.id, categoryId: categoryID) }
+        setCategory(categoryID, for: [booking])
+    }
+
+    /// One category for several bookings (multiple selection); reloads once.
+    func setCategory(_ categoryID: Int64?, for bookings: [Booking]) {
+        guard let vault, !bookings.isEmpty else { return }
+        run {
+            for b in bookings { try vault.setTransactionCategory(transactionId: b.id, categoryId: categoryID) }
+        }
         reloadBookings(); reloadCategories(); reloadAccounts(); reloadRules(); reloadDashboard(); reloadMerchantStats()
     }
 
@@ -1882,7 +1956,7 @@ public final class AppModel {
             reloadAll()
             return id
         } catch {
-            errorMessage = describe(error)
+            showError(String(localized: "Regel konnte nicht gespeichert werden"), describe(error))
             return nil
         }
     }
@@ -2112,7 +2186,7 @@ public final class AppModel {
                         unmatched += 1
                     }
                 } catch {
-                    errorMessage = describe(error)
+                    showError(String(localized: "Beleg konnte nicht zugeordnet werden"), describe(error))
                 }
             }
             if !linked.isEmpty {
@@ -2189,7 +2263,7 @@ public final class AppModel {
             toast = String(localized: "Trade-Republic-Sitzung übernommen")
             startSync(connection, secret: "")
         } catch {
-            errorMessage = describe(error)
+            showError(String(localized: "Anmeldung konnte nicht übernommen werden"), describe(error))
         }
     }
 
@@ -2421,7 +2495,14 @@ public final class AppModel {
             setupRequest = SetupRequest(connection: conn, keys: keys)
             return
         }
-        errorMessage = describe(error)
+        if let conn = connections.first(where: { $0.id == syncingConnectionIDBeforeError }) {
+            showError(String(localized: "Abruf von „\(conn.displayName)“ fehlgeschlagen"), describe(error)) { [weak self] in
+                guard let self, let c = self.connections.first(where: { $0.id == conn.id }) else { return }
+                self.requestSync(c)
+            }
+        } else {
+            showError(String(localized: "Abruf fehlgeschlagen"), describe(error))
+        }
     }
 }
 

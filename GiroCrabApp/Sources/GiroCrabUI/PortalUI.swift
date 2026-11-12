@@ -63,12 +63,12 @@ extension AppModel {
             reloadAll()
         } catch let e as CoreError {
             if case .InvalidInput = e {
-                errorMessage = String(localized: "In \(url.lastPathComponent) wurden keine Umsätze erkannt. Erwartet: CSV mit Datum, Beschreibung, Betrag oder ein Kontoauszug als PDF mit Textebene.")
+                showError(String(localized: "Keine Umsätze erkannt"), String(localized: "In \(url.lastPathComponent) wurden keine Umsätze erkannt. Erwartet: CSV mit Datum, Beschreibung, Betrag oder ein Kontoauszug als PDF mit Textebene."))
             } else {
-                errorMessage = describe(e)
+                showError(String(localized: "Kontoauszug-Import fehlgeschlagen"), describe(e))
             }
         } catch {
-            errorMessage = describe(error)
+            showError(String(localized: "Kontoauszug-Import fehlgeschlagen"), describe(error))
         }
     }
 }
@@ -383,7 +383,9 @@ struct PortalWebSheet: View {
                 Button(importedCount > 0 ? "Fertig" : "Abbrechen", role: .cancel) { close() }
                     .keyboardShortcut(.cancelAction)
                 Button { importing = true } label: { Label("CSV- oder PDF-Kontoauszug importieren …", systemImage: "doc.badge.plus") }
-                if recognized == 0 {
+                // Developer tool, hidden from everyday use (--developer). Also offered on
+                // the login page: the dump records `on_login_page` itself.
+                if model.options.developer && recognized == 0 {
                     Button("Portal-Struktur prüfen") { Task { await dumpSchema() } }
                         .help("Speichert nur Feldnamen und Typen (keine Werte) nach /tmp/girocrab-portal-schema.json")
                 }

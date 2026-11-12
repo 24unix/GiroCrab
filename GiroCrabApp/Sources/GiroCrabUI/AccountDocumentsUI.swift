@@ -136,7 +136,7 @@ struct DocumentPreviewSheet: View {
             contentType: .pdf,
             defaultFilename: doc.fileName.replacingOccurrences(of: ".pdf", with: "")
         ) { result in
-            if case .failure(let e) = result { model.errorMessage = e.localizedDescription }
+            if case .failure(let e) = result { model.showError(String(localized: "Dokument konnte nicht gesichert werden"), e.localizedDescription) }
         }
     }
 }

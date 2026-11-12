@@ -16,7 +16,7 @@ extension AppModel {
             return true
         } catch {
             AppModel.debugLog("amazon import failed: \(describe(error))")
-            errorMessage = describe(error)
+            showError(String(localized: "Amazon-Bestellungen konnten nicht übernommen werden"), describe(error))
             return false
         }
     }
@@ -84,18 +84,77 @@ private enum AmazonScripts {
 
 // MARK: - Popups / dialogs
 
+/// A JavaScript alert/confirm of the page, shown to the user (HIG: never answer
+/// a site's question silently on the user's behalf).
+struct WebPageDialog: Identifiable {
+    let id = UUID()
+    let host: String
+    let message: String
+    let isConfirm: Bool
+    /// Must be called exactly once (true = OK).
+    let complete: (Bool) -> Void
+}
+
 /// Amazon's sign-in may open pop-ups or use JS dialogs. A bare WKWebView silently drops
-/// both, which can leave the form hanging: open pop-ups in the same view, answer dialogs.
+/// both, which can leave the form hanging: open pop-ups in the same view and show the
+/// dialogs (`onDialog`); without a handler they are answered like a browser's default.
 final class AmazonUIDelegate: NSObject, WKUIDelegate {
+    var onDialog: ((WebPageDialog) -> Void)?
+
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }
         return nil
     }
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
-                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) { completionHandler() }
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        guard let onDialog else { completionHandler(); return }
+        onDialog(WebPageDialog(host: frame.request.url?.host ?? "", message: message, isConfirm: false) { _ in completionHandler() })
+    }
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
-                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) { completionHandler(true) }
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        guard let onDialog else { completionHandler(false); return }
+        onDialog(WebPageDialog(host: frame.request.url?.host ?? "", message: message, isConfirm: true, complete: completionHandler))
+    }
+}
+
+/// Shows the alerts/confirms of a web page (via `AmazonUIDelegate.onDialog`) as
+/// system alerts, e.g. "portal.fnz.de meldet: …". Used by every sheet with a web
+/// login (Amazon, FNZ). A dialog still open when the sheet closes is cancelled.
+private struct WebPageDialogs: ViewModifier {
+    let delegate: AmazonUIDelegate
+    @State private var dialog: WebPageDialog?
+
+    func body(content: Content) -> some View {
+        content
+            .alert(dialog.map { $0.host.isEmpty ? String(localized: "Die Webseite meldet:") : String(localized: "\($0.host) meldet:") } ?? "",
+                   isPresented: Binding(get: { dialog != nil }, set: { if !$0 { answer(false) } }),
+                   presenting: dialog) { d in
+                if d.isConfirm {
+                    Button("Abbrechen", role: .cancel) { answer(false) }
+                    Button("OK") { answer(true) }
+                } else {
+                    Button("OK") { answer(true) }
+                }
+            } message: { d in
+                Text(d.message)
+            }
+            .onAppear { delegate.onDialog = { dialog = $0 } }
+            .onDisappear { answer(false); delegate.onDialog = nil }
+    }
+
+    /// Answers the page's dialog once and closes it.
+    private func answer(_ ok: Bool) {
+        guard let d = dialog else { return }
+        dialog = nil
+        d.complete(ok)
+    }
+}
+
+extension View {
+    func webPageDialogs(_ delegate: AmazonUIDelegate) -> some View {
+        modifier(WebPageDialogs(delegate: delegate))
+    }
 }
 
 // MARK: - Sheet
@@ -108,6 +167,9 @@ struct AmazonWebSheet: View {
     @State private var years = 2
     @State private var running = false
     @State private var progress = ""
+    /// Order details read so far / to read (determinate progress bar).
+    @State private var done = 0
+    @State private var total = 0
     @State private var task: Task<Void, Never>?
 
     @State private var pageIsOrders = false
@@ -162,6 +224,15 @@ struct AmazonWebSheet: View {
                 .fixedSize()
                 .disabled(running)
                 Spacer()
+                if running && total > 0 {
+                    ProgressView(value: Double(done), total: Double(total))
+                        .frame(width: 160)
+                        .accessibilityLabel(progress)
+                }
+                if running {
+                    // HIG: a long task can be stopped without closing the window.
+                    Button("Abrufen stoppen") { task?.cancel() }
+                }
                 Button("Bestellungen abrufen") { start() }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
@@ -169,6 +240,7 @@ struct AmazonWebSheet: View {
             }
             .padding(12)
         }
+        .webPageDialogs(uiDelegate)
         .task {
             browser.webView.uiDelegate = uiDelegate
             while !Task.isCancelled {
@@ -191,19 +263,22 @@ struct AmazonWebSheet: View {
     private func start() {
         running = true
         notice = nil
+        done = 0
+        total = 0
         task = Task {
-            defer { running = false }
+            defer { running = false; total = 0 }
             do {
                 let json = try await scrape()
                 if model.importAmazonOrders(connection, json: json) { close() }
             } catch is CancellationError {
+                notice = String(localized: "Abruf gestoppt – es wurde nichts übernommen.")
             } catch AmazonError.loggedOut {
                 // Session expired (the page may just be a cached copy): show the sign-in page.
                 notice = String(localized: "Sitzung abgelaufen – bitte neu anmelden (Haken bei „Angemeldet bleiben“ setzen).")
                 pageIsOrders = false
                 browser.webView.load(URLRequest(url: URL(string: "https://www.amazon.de/gp/css/order-history")!))
             } catch {
-                model.errorMessage = error.localizedDescription
+                model.showError(String(localized: "Amazon-Abruf fehlgeschlagen"), error.localizedDescription)
             }
         }
     }
@@ -234,11 +309,14 @@ struct AmazonWebSheet: View {
         }
         if codes.isEmpty { throw AmazonError.noOrders }
         var orders: [[String: Any]] = []
+        total = codes.count
         for (i, code) in codes.enumerated() {
             try Task.checkCancellation()
+            done = i
             progress = String(localized: "Bestellung \(i + 1) von \(codes.count) …")
             orders.append(try await run(AmazonScripts.orderDetails, ["code": code]))
         }
+        done = codes.count
         let data = try JSONSerialization.data(withJSONObject: ["orders": orders])
         return String(decoding: data, as: UTF8.self)
     }

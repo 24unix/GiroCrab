@@ -64,10 +64,28 @@ public struct GiroCrabScenes: Scene {
                     .disabled(model.vault == nil)
             }
             CommandMenu("Buchung") {
+                // In the list, the single keys C and R do the same (kept for speed).
                 Button("Kategorisieren …") { if model.selectedBooking != nil { model.showCategorizer = true } }
+                    .keyboardShortcut("c", modifiers: [.command, .control])
                     .disabled(model.selectedBooking == nil)
                 Button("Regel für diesen Händler erstellen …") { model.openRuleEditor(from: model.selectedBooking) }
+                    .keyboardShortcut("r", modifiers: [.command, .control])
                     .disabled(model.selectedBooking == nil)
+                // A checkmark item like "Als Gehalt / Rente zählen"; ⇧⌘U as in Mail
+                Toggle("Geprüft", isOn: Binding(
+                    get: { model.selectedBooking?.checked ?? false },
+                    set: { on in if let b = model.selectedBooking { model.setChecked(on, for: b) } }
+                ))
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+                .disabled(model.selectedBooking == nil)
+                Button("Notiz bearbeiten") { if let b = model.selectedBooking { model.editNote(for: b) } }
+                    .disabled(model.selectedBooking == nil)
+                // like the Finder (⌘Y); Space in the list does the same
+                Button("Beleg in Quick Look anzeigen") {
+                    if let b = model.selectedBooking, let d = model.documents(for: b).first { model.quickLook(d) }
+                }
+                .keyboardShortcut("y", modifiers: .command)
+                .disabled(model.selectedBooking.map { model.documents(for: $0).isEmpty } ?? true)
                 Divider()
                 RecurringMenu(model: model, booking: model.selectedBooking)
                     .disabled(model.selectedBooking == nil)
@@ -299,6 +317,15 @@ struct MainSplitView: View {
                     BookingStreamView()
                 }
             }
+            #if os(macOS)
+            // The customizable toolbar belongs to the column, not to the view in
+            // it: its items must stay when Belege replaces the booking list
+            // (AppKit crashes on customizable items that come and go).
+            .modifier(MainToolbar())
+            // Window title for both views here too, so the toolbar keeps the same
+            // compact style (and height) when switching to Belege.
+            .modifier(WindowTitle(title: model.title))
+            #endif
             .frame(minHeight: 0, maxHeight: .infinity)
             // min widths still sum to 1080 pt (240 + 560 + 280) so the minimum window size stays as before
             .macColumnWidth(min: 560, ideal: 700)
@@ -323,7 +350,13 @@ struct MainSplitView: View {
             RuleEditorView(initialDraft: model.ruleDraft)
                 .environment(model)
         }
-        .sheet(isPresented: $model.showCommandPalette) {
+        .sheet(isPresented: $model.showCommandPalette, onDismiss: {
+            // Follow-up sheet/popover chosen in the palette: opened once the
+            // palette is really gone, instead of after a guessed delay.
+            let next = model.afterPaletteDismiss
+            model.afterPaletteDismiss = nil
+            next?()
+        }) {
             CommandPaletteView()
                 .environment(model)
         }
@@ -393,7 +426,11 @@ struct MainSplitView: View {
                 Text(String(format: String(localized: "Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Die Überweisung wurde möglicherweise bereits ausgeführt.\n\nBitte prüfen Sie zuerst Ihr Konto (Umsätze oder Online-Banking), bevor Sie sie erneut senden. In GiroCrab ist sie als „Status unklar“ vorgemerkt.\n\nReferenz (EndToEnd-ID): %@\nBank: %@"), u.endToEndId, u.reason))
             }
         }
-        .alert("Etwas ist schiefgelaufen", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
+        .alert(model.errorTitle ?? String(localized: "Etwas ist schiefgelaufen"),
+               isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
+            if let retry = model.errorRetry {
+                Button("Erneut versuchen") { model.errorMessage = nil; retry() }
+            }
             Button("OK", role: .cancel) { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")

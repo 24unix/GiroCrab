@@ -12471,6 +12471,468 @@
           }
         }
       }
+    },
+    "Drucken nicht möglich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can’t Print"
+          }
+        }
+      }
+    },
+    "Beleg konnte nicht zugeordnet werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Match Document"
+          }
+        }
+      }
+    },
+    "Anmeldung konnte nicht übernommen werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Use Sign-In"
+          }
+        }
+      }
+    },
+    "Abruf von „%@“ fehlgeschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Refresh “%@”"
+          }
+        }
+      }
+    },
+    "Abruf fehlgeschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh Failed"
+          }
+        }
+      }
+    },
+    "Export fehlgeschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export Failed"
+          }
+        }
+      }
+    },
+    "Regel konnte nicht gespeichert werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Save Rule"
+          }
+        }
+      }
+    },
+    "Erneut versuchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try Again"
+          }
+        }
+      }
+    },
+    "Amazon-Bestellungen konnten nicht übernommen werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Import Amazon Orders"
+          }
+        }
+      }
+    },
+    "Amazon-Abruf fehlgeschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amazon Refresh Failed"
+          }
+        }
+      }
+    },
+    "Keine Umsätze erkannt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Transactions Found"
+          }
+        }
+      }
+    },
+    "Kontoauszug-Import fehlgeschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statement Import Failed"
+          }
+        }
+      }
+    },
+    "Dokument konnte nicht gesichert werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t Save Document"
+          }
+        }
+      }
+    },
+    "Belege durchsuchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search Documents"
+          }
+        }
+      }
+    },
+    "Die Bank hat nicht geantwortet (Zeitüberschreitung)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The bank didn’t respond (timeout)."
+          }
+        }
+      }
+    },
+    "Als ungeprüft markieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark as Not Reviewed"
+          }
+        }
+      }
+    },
+    "Notiz bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Note"
+          }
+        }
+      }
+    },
+    "Beleg in Quick Look anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quick Look Document"
+          }
+        }
+      }
+    },
+    "In der Liste: C kategorisieren · R Regel erstellen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In the list: C categorize · R create rule"
+          }
+        }
+      }
+    },
+    "CSV exportieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export CSV"
+          }
+        }
+      }
+    },
+    "Gefilterte Buchungen als CSV exportieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export Filtered Transactions as CSV…"
+          }
+        }
+      }
+    },
+    "Gefilterte Buchungen drucken … (⌘P)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Print Filtered Transactions… (⌘P)"
+          }
+        }
+      }
+    },
+    "Kategorisierungsregeln … (⌥⌘K)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Categorization Rules… (⌥⌘K)"
+          }
+        }
+      }
+    },
+    "Einstellungen … (⌘,)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings… (⌘,)"
+          }
+        }
+      }
+    },
+    "Festlegen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set…"
+          }
+        }
+      }
+    },
+    "Saldoverlauf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance History"
+          }
+        }
+      }
+    },
+    "Keine Daten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No data"
+          }
+        }
+      }
+    },
+    "Von %@ am %@ auf %@ am %@. Tiefststand %@ am %@, Höchststand %@ am %@." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From %1$@ on %2$@ to %3$@ on %4$@. Low %5$@ on %6$@, high %7$@ on %8$@."
+          }
+        }
+      }
+    },
+    "Pfeiltasten wählen einen Tag, Eingabe zeigt seine Buchungen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrow keys choose a day, Return shows its transactions."
+          }
+        }
+      }
+    },
+    "Buchungen dieses Tages zeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show This Day’s Transactions"
+          }
+        }
+      }
+    },
+    "Abrufen stoppen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop"
+          }
+        }
+      }
+    },
+    "Abruf gestoppt – es wurde nichts übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stopped – nothing was imported."
+          }
+        }
+      }
+    },
+    "Die Webseite meldet:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The webpage says:"
+          }
+        }
+      }
+    },
+    "%@ meldet:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ says:"
+          }
+        }
+      }
+    },
+    "Papier" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paper"
+          }
+        }
+      }
+    },
+    "Format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Size"
+          }
+        }
+      }
+    },
+    "Querformat" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Landscape"
+          }
+        }
+      }
+    },
+    "Hochformat" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Portrait"
+          }
+        }
+      }
+    },
+    "%lld Buchungen ausgewählt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld transactions selected"
+          }
+        }
+      }
+    },
+    "%lld Buchungen kategorisieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Categorize %lld Transactions"
+          }
+        }
+      }
+    },
+    "%lld Buchungen kategorisieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Categorize %lld Transactions…"
+          }
+        }
+      }
+    },
+    "⌘-Klick fügt eine Buchung hinzu oder entfernt sie, ⇧-Klick wählt einen Bereich, ⌘A alle." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⌘-click adds or removes a transaction, ⇧-click selects a range, ⌘A all."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -141,10 +141,18 @@ struct BookingStreamView: View {
         .focusable()
         .focusEffectDisabled()
         .focused($focused)
-        .onAppear { focused = model.options.screenshotPath == nil }
+        .onAppear {
+            focused = model.options.screenshotPath == nil
+            #if os(macOS)
+            ClickModifiers.install()
+            #endif
+        }
         .onKeyPress(.downArrow) { model.moveSelection(1); return .handled }
         .onKeyPress(.upArrow) { model.moveSelection(-1); return .handled }
         .onKeyPress(.return) {
+            // The balance chart sits inside the list: with keyboard focus there,
+            // Return belongs to the chart (jump to the chosen day).
+            guard !model.chartHasKeyboardFocus else { return .ignored }
             guard model.options.screenshotPath == nil, let b = model.selectedBooking else { return .ignored }
             model.editNote(for: b)
             return .handled
@@ -153,12 +161,14 @@ struct BookingStreamView: View {
         .merchantLogoTipEligibility()
         .onKeyPress(.space) {
             guard model.options.screenshotPath == nil, let b = model.selectedBooking else { return .ignored }
-            // No receipt attached: Space toggles "checked" instead of QuickLook.
-            guard let d = model.documents(for: b).first else { model.setChecked(!b.checked, for: b); return .handled }
+            // Space is Quick Look only (as in the Finder); "Geprüft" is ⇧⌘U.
+            guard let d = model.documents(for: b).first else { return .ignored }
             if model.quickLookURL != nil { model.quickLookURL = nil } else { model.quickLook(d) }
             return .handled
         }
         #if os(macOS)
+        // Bearbeiten › Alles auswählen (⌘A) selects all listed bookings
+        .onCommand(#selector(NSResponder.selectAll(_:))) { model.selectAllBookings() }
         // ⌘C copies the selected booking (Edit ▸ Copy)
         .onCopyCommand {
             guard let b = model.selectedBooking else { return [] }
@@ -177,49 +187,14 @@ struct BookingStreamView: View {
             return .handled
         }
         .searchable(text: $model.searchText, placement: .toolbar, prompt: "Händler, Zweck, IBAN, Betrag")
-        .toolbar {
-            #if os(iOS)
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
-                Menu {
-                    Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
-                        .disabled(!model.canTransfer)
-                    Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren …", systemImage: "square.and.arrow.up") }
-                    Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
-                    Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
-                    Button { model.showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
-                    if model.demoActive && (model.hasOwnVault || AppModel.vaultMayHoldRealData) {
-                        Button { model.showOwnVault() } label: { Label("Zurück zum eigenen Tresor", systemImage: "lock.open") }
-                    } else if !model.demoActive {
-                        Button { model.showDemo() } label: { Label("Demo-Daten-Vorschau starten", systemImage: "theatermasks") }
-                    }
-                } label: { Label("Mehr", systemImage: "ellipsis.circle") }
-            }
-            #else
-            ToolbarItem(placement: .principal) {
-                BookingScopePicker()
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
-                    .help("Neue Überweisung (⌘N)")
-                    .disabled(!model.canTransfer)
-                Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
-                    .help("Alle Konten abrufen (⌘R)")
-                Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }
-                    .help("Befehlspalette (⌘K)")
-                Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren …", systemImage: "square.and.arrow.up") }
-                    .help("Gefilterte Buchungen als CSV exportieren")
-                Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
-                    .help("Gefilterte Buchungen drucken (⌘P)")
-                Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
-                    .help("Kategorisierungsregeln")
-                SettingsLink { Label("Einstellungen", systemImage: "gearshape") }
-            }
-            #endif
-        }
+        #if os(iOS)
+        .modifier(MainToolbar())
+        #endif
         // A real window title (Window menu, Mission Control, VoiceOver); the
         // toolbar keeps its room for the scope picker.
+        #if os(iOS)
         .modifier(WindowTitle(title: model.title))
+        #endif
         .sheet(isPresented: $model.showPrintSheet) { PrintSheet() }
         .fileExporter(
             isPresented: $model.showCSVExporter,
@@ -227,7 +202,7 @@ struct BookingStreamView: View {
             contentType: .commaSeparatedText,
             defaultFilename: "GiroCrab-Buchungen"
         ) { result in
-            if case .failure(let e) = result { model.errorMessage = e.localizedDescription }
+            if case .failure(let e) = result { model.showError(String(localized: "Export fehlgeschlagen"), e.localizedDescription) }
         }
     }
 
@@ -300,45 +275,19 @@ struct BookingStreamView: View {
 
 #if os(macOS)
 /// Keep the toolbar control independent of list, chart and inspector updates.
-/// Its only observable dependency is the selected scope.
+/// Its only observable dependency is the selected scope. The system segmented
+/// control brings arrow-key navigation, focus ring and VoiceOver with it (an
+/// older selection-animation glitch no longer occurs on current macOS).
 private struct BookingScopePicker: View {
     @Environment(AppModel.self) private var model
-    @Namespace private var selectionAnimation
 
     var body: some View {
-        // The native toolbar Picker can animate its selection back through an
-        // intermediate segment while the stream changes. Animate one stable
-        // highlight locally instead; hover and selection remain independent.
-        HStack(spacing: 0) {
-            ForEach(BookingScope.ordered, id: \.self) { scope in
-                Button {
-                    model.scope = scope
-                } label: {
-                    Text(scope.title)
-                        .font(.callout)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .background {
-                    if model.scope == scope {
-                        Capsule()
-                            .fill(Color.primary.opacity(0.09))
-                            .matchedGeometryEffect(id: "scope-selection", in: selectionAnimation)
-                    }
-                }
-                .accessibilityAddTraits(model.scope == scope ? .isSelected : [])
-            }
+        Picker("Ansicht", selection: Binding(get: { model.scope }, set: { model.scope = $0 })) {
+            ForEach(BookingScope.ordered, id: \.self) { Text($0.title).tag($0) }
         }
-        .padding(3)
-        .background(Theme.canvas, in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1).allowsHitTesting(false))
-        .frame(width: 430)
-        .animation(Motion.animation(.easeOut(duration: 0.16)), value: model.scope)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Ansicht")
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
         .help("Ansicht wählen (⌘1, ⌘2, ⌘3)")
     }
 }
@@ -371,7 +320,16 @@ struct DayCard: View {
                         return !urls.isEmpty
                     }
                     .contentShape(Rectangle())
-                    .onTapGesture { model.selectedBookingID = b.id; model.showBookingSheet = true }
+                    .onTapGesture {
+                        #if os(macOS)
+                        // Finder-style: ⌘-click adds/removes, ⇧-click selects a range.
+                        let flags = ClickModifiers.atLastMouseDown
+                        model.selectBooking(b.id, toggle: flags.contains(.command), extend: flags.contains(.shift))
+                        #else
+                        model.selectBooking(b.id)
+                        #endif
+                        model.showBookingSheet = true
+                    }
                     .modifier(RowSelectionTraits(id: b.id))
                     // simultaneous, so single clicks keep selecting without the double-click delay
                     .simultaneousGesture(TapGesture(count: 2).onEnded { model.editNote(for: b) })
@@ -389,7 +347,11 @@ struct DayCard: View {
 
     @ViewBuilder
     private func rowMenu(_ b: Booking) -> some View {
-        Button("Kategorisieren …", systemImage: "tag") { model.selectedBookingID = b.id; model.showCategorizer = true }
+        Button(model.isMultiSelection && model.selectedBookingIDs.contains(b.id)
+               ? "\(model.selectedBookingIDs.count) Buchungen kategorisieren …" : "Kategorisieren …", systemImage: "tag") {
+            if !model.selectedBookingIDs.contains(b.id) { model.selectedBookingID = b.id }
+            model.showCategorizer = true
+        }
         Button("Regel für diesen Händler erstellen …", systemImage: "wand.and.stars") { model.openRuleEditor(from: b) }
         Button("Notiz bearbeiten …", systemImage: "note.text") { model.editNote(for: b) }
         Button("Umsatz aufteilen (Splitbuchung) …", systemImage: "arrow.triangle.branch") { model.splitBooking = b }
@@ -489,7 +451,7 @@ private struct RowSelectionBackground: View {
     let id: Booking.ID
 
     var body: some View {
-        model.selectedBookingID == id ? Theme.selection : Color.clear
+        model.selectedBookingIDs.contains(id) ? Theme.selection : Color.clear
     }
 }
 
@@ -500,7 +462,7 @@ private struct RowSelectionTraits: ViewModifier {
     let id: Booking.ID
 
     func body(content: Content) -> some View {
-        content.accessibilityAddTraits(model.selectedBookingID == id ? [.isButton, .isSelected] : .isButton)
+        content.accessibilityAddTraits(model.selectedBookingIDs.contains(id) ? [.isButton, .isSelected] : .isButton)
     }
 }
 
@@ -613,7 +575,7 @@ struct LoadMoreBookingsFooter: View {
 
 /// macOS: the window carries the view's title, the toolbar does not show it
 /// (macOS 15+). iOS keeps the empty navigation title as before.
-private struct WindowTitle: ViewModifier {
+struct WindowTitle: ViewModifier {
     let title: String
 
     func body(content: Content) -> some View {
@@ -628,3 +590,88 @@ private struct WindowTitle: ViewModifier {
         #endif
     }
 }
+
+/// Toolbar of the booking list. macOS: customizable (View › Symbolleiste
+/// anpassen …) – Überweisen and Abrufen are shown by default, the rest can be
+/// added; every command is also in the menu bar. iOS: unchanged.
+struct MainToolbar: ViewModifier {
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content.toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
+                Menu {
+                    Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
+                        .disabled(!model.canTransfer)
+                    Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren …", systemImage: "square.and.arrow.up") }
+                    Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
+                    Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
+                    Button { model.showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
+                    if model.demoActive && (model.hasOwnVault || AppModel.vaultMayHoldRealData) {
+                        Button { model.showOwnVault() } label: { Label("Zurück zum eigenen Tresor", systemImage: "lock.open") }
+                    } else if !model.demoActive {
+                        Button { model.showDemo() } label: { Label("Demo-Daten-Vorschau starten", systemImage: "theatermasks") }
+                    }
+                } label: { Label("Mehr", systemImage: "ellipsis.circle") }
+            }
+        }
+        #else
+        content.toolbar(id: "girocrab.main") {
+            ToolbarItem(id: "scope", placement: .principal) {
+                BookingScopePicker()
+                    .disabled(model.sidebarSelection == .documents)
+            }
+            ToolbarItem(id: "transfer", placement: .primaryAction) {
+                Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
+                    .help("Neue Überweisung (⌘N)")
+                    .disabled(!model.canTransfer)
+            }
+            ToolbarItem(id: "sync", placement: .primaryAction) {
+                Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
+                    .help("Alle Konten abrufen (⌘R)")
+            }
+            ToolbarItem(id: "palette", placement: .primaryAction, showsByDefault: false) {
+                Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }
+                    .help("Befehlspalette (⌘K)")
+            }
+            ToolbarItem(id: "csv", placement: .primaryAction, showsByDefault: false) {
+                Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren", systemImage: "square.and.arrow.up") }
+                    .help("Gefilterte Buchungen als CSV exportieren …")
+            }
+            ToolbarItem(id: "print", placement: .primaryAction, showsByDefault: false) {
+                Button { model.showPrintSheet = true } label: { Label("Drucken", systemImage: "printer") }
+                    .help("Gefilterte Buchungen drucken … (⌘P)")
+            }
+            ToolbarItem(id: "rules", placement: .primaryAction, showsByDefault: false) {
+                Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
+                    .help("Kategorisierungsregeln … (⌥⌘K)")
+            }
+            ToolbarItem(id: "settings", placement: .primaryAction, showsByDefault: false) {
+                SettingsLink { Label("Einstellungen", systemImage: "gearshape") }
+                    .help("Einstellungen … (⌘,)")
+            }
+        }
+        #endif
+    }
+}
+
+#if os(macOS)
+/// Modifier keys held at the last mouse-down in the app. SwiftUI runs a tap
+/// gesture after the event has passed, so `NSApp.currentEvent` no longer
+/// carries them; a local monitor records them as the click arrives.
+@MainActor
+enum ClickModifiers {
+    private(set) static var atLastMouseDown: NSEvent.ModifierFlags = []
+    private static var monitor: Any?
+
+    static func install() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { event in
+            atLastMouseDown = event.modifierFlags.intersection([.command, .shift, .option, .control])
+            return event
+        }
+    }
+}
+#endif

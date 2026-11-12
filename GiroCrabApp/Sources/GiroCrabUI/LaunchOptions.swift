@@ -11,6 +11,8 @@ import Foundation
 ///                         fixed key, no Keychain – to try onboarding/setup
 ///  --keep-fresh-vault     (developer) like --fresh-vault, but reopen the temp vault
 ///                         as it is instead of wiping it (e.g. a restored copy)
+///  --developer            (developer) show developer tools in the UI, e.g.
+///                         "Portal-Struktur prüfen"; also GIROCRAB_DEVELOPER=1
 ///  --try-add-bank <name>  (developer, with --fresh-vault) add a bank on start,
 ///                         e.g. 1822direkt, to see the setup form
 ///  --select <text>        (demo) preselect the account whose name contains <text>
@@ -47,6 +49,8 @@ public struct LaunchOptions: Sendable {
     public var freshVault: Bool
     /// (developer) reopen the --fresh-vault file without wiping it first
     public var keepFreshVault: Bool
+    /// (developer) show developer-only buttons
+    public var developer: Bool
     public var tryAddBank: String?
     /// (demo) preselect the account whose name contains this text
     public var selectAccount: String?
@@ -107,6 +111,7 @@ public struct LaunchOptions: Sendable {
         let sync = arguments.contains("--demo-sync")
         keepFreshVault = arguments.contains("--keep-fresh-vault")
         freshVault = arguments.contains("--fresh-vault") || keepFreshVault
+        developer = arguments.contains("--developer") || environment["GIROCRAB_DEVELOPER"] == "1"
         if let i = arguments.firstIndex(of: "--try-add-bank"), i + 1 < arguments.count {
             tryAddBank = arguments[i + 1].lowercased()
         } else {

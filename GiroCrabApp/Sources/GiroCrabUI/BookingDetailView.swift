@@ -11,7 +11,9 @@ struct InspectorView: View {
                 if case .account(let id) = model.sidebarSelection, let a = model.account(for: id), a.kind == .loan {
                     LoanProgressCard(account: a)
                 }
-                if let b = model.selectedBooking {
+                if model.isMultiSelection {
+                    MultiSelectionCard()
+                } else if let b = model.selectedBooking {
                     ReceiptCard(booking: b)
                     NoteCard(booking: b).id(b.id)
                     if b.amountCents > 0 { SalaryCard(booking: b) }
@@ -30,7 +32,6 @@ struct InspectorView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .card()
                 }
-                ShortcutHintCard()
             }
             .padding(16)
         }
@@ -414,7 +415,7 @@ struct CategoryGridCard: View {
             .buttonStyle(.borderedProminent)
             .tint(Theme.accent)
             .controlSize(.large)
-            Text("Tastatur: C kategorisieren · R Regel erstellen")
+            Text("In der Liste: C kategorisieren · R Regel erstellen")
                 .font(.caption2).foregroundStyle(Theme.tertiary)
         }
         .card()
@@ -436,9 +437,12 @@ struct CategoryChip: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
-            .foregroundStyle(selected ? Theme.accent : Theme.text)
+            // Selected: accent fill and border, text in the normal colour – accent-
+            // coloured text on an accent fill is unreadable with light accents (yellow).
+            .foregroundStyle(Theme.text)
+            .fontWeight(selected ? .semibold : nil)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(selected ? Theme.selection : (filled ? Theme.canvas : Theme.card)))
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(selected ? Theme.accent.opacity(0.5) : Theme.border, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(selected ? Theme.accent : Theme.border, lineWidth: selected ? 1.5 : 1))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -489,29 +493,38 @@ struct RawDataCard: View {
     }
 }
 
-struct ShortcutHintCard: View {
+/// Inspector for several selected bookings: count, sums and the bulk actions.
+struct MultiSelectionCard: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Tastatur").font(.caption.weight(.semibold)).foregroundStyle(Theme.secondary)
-            hint("⌘K", "Befehlspalette")
-            hint("↑ ↓", "Buchung wechseln")
-            hint("↩", "Notiz bearbeiten (oder Doppelklick)")
-            hint("C", "Kategorisieren")
-            hint("R", "Regel erstellen")
-            hint("⌘1–3", "Alle · Alltag · Sparpläne")
+        let many = model.selectedBookings
+        let income = many.filter { $0.amountCents > 0 }.reduce(Int64(0)) { $0 + $1.amountCents }
+        let expense = many.filter { $0.amountCents < 0 }.reduce(Int64(0)) { $0 + $1.amountCents }
+        VStack(alignment: .leading, spacing: 12) {
+            Label("\(many.count) Buchungen ausgewählt", systemImage: "checkmark.circle")
+                .font(.headline)
+            VStack(alignment: .leading, spacing: 4) {
+                LabeledContent("Summe", value: Money.format(income + expense))
+                if income != 0 { LabeledContent("Einnahmen", value: Money.format(income)) }
+                if expense != 0 { LabeledContent("Ausgaben", value: Money.format(expense)) }
+            }
+            .font(.callout.monospacedDigit())
+            Button {
+                model.showCategorizer = true
+            } label: {
+                Label("Kategorisieren …", systemImage: "tag").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            Button("Auswahl aufheben") {
+                if let id = model.selectedBookingID { model.selectBooking(id) }
+            }
+            Text("⌘-Klick fügt eine Buchung hinzu oder entfernt sie, ⇧-Klick wählt einen Bereich, ⌘A alle.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.border, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
-    }
-
-    private func hint(_ key: String, _ text: LocalizedStringKey) -> some View {
-        HStack {
-            Text(key).font(.caption.monospaced().weight(.semibold))
-                .padding(.horizontal, 5).padding(.vertical, 1)
-                .background(RoundedRectangle(cornerRadius: 4).fill(Theme.card))
-                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.border))
-            Text(text).font(.caption).foregroundStyle(Theme.secondary)
-        }
+        .card()
     }
 }
