@@ -37,7 +37,10 @@ struct BookingStreamView: View {
                 header(isOverview: isOverview, emptyVault: emptyVault, scope: $model.scope)
                 #endif
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
+                    // Spacing 0: the stream below is one flat run of day headers and
+                    // rows that form the day cards; everything above it is one block.
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 14) {
                         #if os(iOS)
                         // iPhone: header scrolls away so bookings get the screen.
                         header(isOverview: isOverview, emptyVault: emptyVault, scope: $model.scope)
@@ -91,12 +94,24 @@ struct BookingStreamView: View {
                             )
                             .padding(.top, 40)
                         }
-                        ForEach(model.dayGroups) { day in
-                            DayCard(day: day)
-                                .id(day.id)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        // One lazy element per header and per booking (not per day):
+                        // rows are nearly equally high, so the scroll bar stays steady.
+                        ForEach(model.streamItems) { item in
+                            switch item {
+                            case .header(let day):
+                                DayHeader(day: day)
+                                    .padding(.top, 14)
+                                    .id(day.id)
+                            case .row(let b, let isLast):
+                                DayCardRow(booking: b, isLast: isLast)
+                                    .id(b.id)
+                            }
                         }
                         if model.hasMoreBookings {
                             LoadMoreBookingsFooter()
+                                .padding(.top, 14)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -300,8 +315,40 @@ private struct BookingScopePicker: View {
 }
 #endif
 
-struct DayCard: View {
-    @Environment(AppModel.self) private var model
+/// One horizontal slice of a white day card. The stream draws a card from
+/// stacked slices (header, rows) so each slice can be a lazy element of its own:
+/// rounded corners only at the card's top and bottom, the border only on the
+/// sides in between.
+private struct DayCardSegment: ViewModifier {
+    let isTop: Bool
+    let isBottom: Bool
+
+    func body(content: Content) -> some View {
+        let r: CGFloat = 12
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: isTop ? r : 0, bottomLeadingRadius: isBottom ? r : 0,
+            bottomTrailingRadius: isBottom ? r : 0, topTrailingRadius: isTop ? r : 0,
+            style: .continuous)
+        content
+            .frame(maxWidth: .infinity)
+            .background(shape.fill(Theme.card))
+            .clipShape(shape)
+            .overlay {
+                // The border of the whole card: stroke a shape that reaches 1 pt past
+                // an open edge and clip it, so only top/bottom slices draw that edge.
+                Color.clear.overlay {
+                    shape.strokeBorder(Theme.border, lineWidth: 1)
+                        .padding(.top, isTop ? 0 : -1)
+                        .padding(.bottom, isBottom ? 0 : -1)
+                }
+                .clipped()
+                .allowsHitTesting(false)
+            }
+    }
+}
+
+/// Top of a day card: date and the day's sum.
+struct DayHeader: View {
     let day: DayGroup
 
     var body: some View {
@@ -318,9 +365,21 @@ struct DayCard: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             Rectangle().fill(Theme.border).frame(height: 1)
-            ForEach(Array(day.bookings.enumerated()), id: \.element.id) { i, b in
+        }
+        .modifier(DayCardSegment(isTop: true, isBottom: false))
+    }
+}
+
+/// One booking of a day card; the last one closes the card.
+struct DayCardRow: View {
+    @Environment(AppModel.self) private var model
+    let booking: Booking
+    let isLast: Bool
+
+    var body: some View {
+        let b = booking
+        VStack(spacing: 0) {
                 BookingRow(booking: b)
-                    .id(b.id)
                     .dropDestination(for: URL.self) { urls, _ in
                         model.selectedBookingID = b.id
                         model.attach(urls, to: b)
@@ -341,15 +400,11 @@ struct DayCard: View {
                     // simultaneous, so single clicks keep selecting without the double-click delay
                     .simultaneousGesture(TapGesture(count: 2).onEnded { model.editNote(for: b) })
                     .contextMenu { rowMenu(b) }
-                if i < day.bookings.count - 1 {
-                    Rectangle().fill(Theme.border.opacity(0.7)).frame(height: 1).padding(.leading, 64)
-                }
+            if !isLast {
+                Rectangle().fill(Theme.border.opacity(0.7)).frame(height: 1).padding(.leading, 64)
             }
         }
-        .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .modifier(DayCardSegment(isTop: false, isBottom: isLast))
     }
 
     @ViewBuilder
@@ -494,14 +549,9 @@ private struct SelectionScroller: View {
         Color.clear
             .onChange(of: model.selectedBookingID) { _, id in
                 guard let id else { return }
-                // Rows live inside lazily built day cards: an off-screen day must be
-                // scrolled to first, otherwise the row's id is unknown to the proxy.
-                if let day = model.dayGroups.first(where: { $0.bookings.contains { $0.id == id } }) {
-                    proxy.scrollTo(day.id)
-                }
-                DispatchQueue.main.async {
-                    withAnimation(Motion.animation(.easeOut(duration: 0.15))) { proxy.scrollTo(id) }
-                }
+                // Every row is an element of the lazy stream, so the proxy finds it
+                // even while it is off-screen.
+                withAnimation(Motion.animation(.easeOut(duration: 0.15))) { proxy.scrollTo(id) }
             }
     }
 }
@@ -580,9 +630,10 @@ struct LoadMoreBookingsFooter: View {
             Text("\(model.bookings.count) von \(model.bookings.count + model.remainingBookingCount) Buchungen geladen – ältere Buchungen sind noch nicht sichtbar.")
                 .font(.caption).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            if model.isLoadingMoreBookings {
-                ProgressView().controlSize(.small)
-            }
+            // always laid out, only faded: the footer keeps its height while a page loads
+            ProgressView().controlSize(.small)
+                .opacity(model.isLoadingMoreBookings ? 1 : 0)
+                .accessibilityHidden(!model.isLoadingMoreBookings)
             HStack(spacing: 10) {
                 Button("Weitere Buchungen laden") { model.loadMoreBookings() }
                     .disabled(model.isLoadingMoreBookings)
