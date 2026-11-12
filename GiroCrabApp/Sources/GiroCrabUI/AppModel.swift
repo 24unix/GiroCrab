@@ -635,7 +635,8 @@ public final class AppModel {
     /// would delete the file the live model is still writing to.
     private func openFreshVault() {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Fresh.girocrab")
-        if !Self.freshVaultWiped {
+        // --keep-fresh-vault reopens the file as it is (e.g. a restored copy).
+        if !Self.freshVaultWiped, !options.keepFreshVault {
             Self.freshVaultWiped = true
             for suffix in ["", "-wal", "-shm"] {
                 try? FileManager.default.removeItem(atPath: url.path + suffix)
