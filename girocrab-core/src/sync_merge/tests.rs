@@ -2666,3 +2666,56 @@ fn v7_snapshot_does_not_override_stamped_note() {
         );
     }
 }
+
+#[test]
+fn identical_imported_bookings_stay_two() {
+    for delete_first in [false, true] {
+        let dir = temp_dir("bk-fp");
+        let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+        shared_account(&a);
+        shared_account(&b);
+        // two identical coffees on one day: same fingerprint, two rows
+        exec(
+            &a,
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, import_fp, note)
+                 VALUES (1, 'mm-F-0', '2026-01-01', -300, 'F', 'one'),
+                        (1, 'mm-F-1', '2026-01-01', -300, 'F', 'two');",
+        );
+        if delete_first {
+            exec(
+                &a,
+                "UPDATE transactions SET deleted_ms = 50 WHERE external_id = 'mm-F-0'",
+            );
+        }
+        both_ways(&a, &b);
+        let live = if delete_first { 1 } else { 2 };
+        for v in [&a, &b] {
+            assert_eq!(n(v, "SELECT count(*) FROM transactions"), 2);
+            assert_eq!(
+                n(
+                    v,
+                    "SELECT count(*) FROM transactions WHERE deleted_ms IS NULL"
+                ),
+                live
+            );
+            assert_eq!(
+                text(
+                    v,
+                    "SELECT note FROM transactions WHERE external_id = 'mm-F-0'"
+                ),
+                "one"
+            );
+            assert_eq!(
+                text(
+                    v,
+                    "SELECT note FROM transactions WHERE external_id = 'mm-F-1'"
+                ),
+                "two"
+            );
+            assert_eq!(
+                n(v, "SELECT count(*) FROM transactions WHERE external_id = 'mm-F-1' AND deleted_ms IS NULL"),
+                1
+            );
+        }
+    }
+}

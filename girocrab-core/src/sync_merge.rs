@@ -1384,7 +1384,7 @@ const OTHER_BOOKINGS: &str = "SELECT id, account_id, external_id, import_fp,
         imported_unix, purpose_code, gvc, salary_flag,
         category_id, category_source, rule_id, category_ms, note, note_ms, checked, checked_ms,
         counterparty, purpose, text_ms, splits_ms, deleted_ms
-     FROM other.transactions ORDER BY id";
+     FROM other.transactions ORDER BY account_id, external_id";
 
 /// Merges `other.transactions` and their splits: bookings are matched by
 /// account + external id (else import fingerprint), new ones are inserted
@@ -1413,7 +1413,8 @@ pub(crate) fn merge_bookings(
     // local bookings, deleted ones included
     let mut local_splits = load_splits(conn, "main", local_uuid)?;
     let mut by_key: HashMap<(i64, String), i64> = HashMap::new();
-    let mut by_fp: HashMap<(i64, String), i64> = HashMap::new();
+    // (account, import_fp) -> (external_id, id) of local fingerprinted rows
+    let mut fp_rows: Vec<((i64, String), (String, i64))> = Vec::new();
     let mut local: HashMap<i64, BookingFields> = HashMap::new();
     {
         let mut st = conn.prepare(
@@ -1427,10 +1428,11 @@ pub(crate) fn merge_bookings(
         while let Some(r) = rows.next()? {
             let id: i64 = r.get(0)?;
             let acc: i64 = r.get(1)?;
-            by_key.insert((acc, r.get(2)?), id);
+            let ext: String = r.get(2)?;
+            by_key.insert((acc, ext.clone()), id);
             let fp: String = r.get(3)?;
             if !fp.is_empty() {
-                by_fp.entry((acc, fp)).or_insert(id);
+                fp_rows.push(((acc, fp), (ext, id)));
             }
             let source: String = r.get(5)?;
             let manual = if source == "manual" { r.get(4)? } else { None };
@@ -1490,20 +1492,44 @@ pub(crate) fn merge_bookings(
         })?
         .collect::<Result<_, _>>()?;
 
+    // The fingerprint stands in for the external id only where a twin merge
+    // renamed it: a local row whose key the other side lacks. It is a
+    // multiset (two identical coffees share one), so each candidate is used
+    // once, in external-id order on both sides.
+    let other_keys: HashSet<(i64, &str)> = others
+        .iter()
+        .filter_map(|o| Some((*acc_map.get(&o.account_id)?, o.external_id.as_str())))
+        .collect();
+    let mut by_fp: HashMap<(i64, String), Vec<(String, i64)>> = HashMap::new();
+    for (k, (ext, id)) in fp_rows {
+        if !other_keys.contains(&(k.0, ext.as_str())) {
+            by_fp.entry(k).or_default().push((ext, id));
+        }
+    }
+    drop(other_keys);
+    for bucket in by_fp.values_mut() {
+        bucket.sort();
+    }
+
     let mut cleared: HashSet<i64> = HashSet::new();
     for mut o in others {
         let Some(&acc) = acc_map.get(&o.account_id) else {
             continue;
         };
         o.fields.splits = other_splits.remove(&o.id).unwrap_or_default();
-        let existing = by_key
-            .get(&(acc, o.external_id.clone()))
-            .or_else(|| {
-                (!o.import_fp.is_empty())
-                    .then(|| by_fp.get(&(acc, o.import_fp.clone())))
-                    .flatten()
-            })
-            .copied();
+        let existing = match by_key.get(&(acc, o.external_id.clone())) {
+            Some(&id) => Some(id),
+            // a deleted local row only takes a deleted incoming one
+            None => by_fp
+                .get_mut(&(acc, o.import_fp.clone()))
+                .and_then(|bucket| {
+                    let incoming_deleted = o.fields.deleted_ms.is_some();
+                    let pos = bucket
+                        .iter()
+                        .position(|(_, id)| incoming_deleted || local[id].deleted_ms.is_none())?;
+                    Some(bucket.remove(pos).1)
+                }),
+        };
         match existing {
             Some(id) => {
                 let old = local[&id].clone();
@@ -1562,9 +1588,6 @@ pub(crate) fn merge_bookings(
                 let id = conn.last_insert_rowid();
                 insert_splits(conn, id, &f.splits, &cat_id)?;
                 by_key.insert((acc, o.external_id), id);
-                if !o.import_fp.is_empty() {
-                    by_fp.entry((acc, o.import_fp)).or_insert(id);
-                }
                 local.insert(id, o.fields);
                 if local[&id].deleted_ms.is_none() {
                     stats.bookings_added += 1;
