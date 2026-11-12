@@ -317,6 +317,15 @@ struct MainSplitView: View {
                     BookingStreamView()
                 }
             }
+            #if os(macOS)
+            // The customizable toolbar belongs to the column, not to the view in
+            // it: its items must stay when Belege replaces the booking list
+            // (AppKit crashes on customizable items that come and go).
+            .modifier(MainToolbar())
+            // Window title for both views here too, so the toolbar keeps the same
+            // compact style (and height) when switching to Belege.
+            .modifier(WindowTitle(title: model.title))
+            #endif
             .frame(minHeight: 0, maxHeight: .infinity)
             // min widths still sum to 1080 pt (240 + 560 + 280) so the minimum window size stays as before
             .macColumnWidth(min: 560, ideal: 700)

@@ -293,7 +293,9 @@ struct DocumentsView: View {
         } message: { d in
             Text("„\(d.title)“ wird unwiderruflich gelöscht.")
         }
+        #if os(iOS)
         .navigationTitle("")
+        #endif
         // System search field in the toolbar, like the booking list: ⌘F, clear
         // button and Esc come with it.
         .searchable(text: $search, placement: .toolbar, prompt: "Belege durchsuchen")

@@ -183,49 +183,14 @@ struct BookingStreamView: View {
             return .handled
         }
         .searchable(text: $model.searchText, placement: .toolbar, prompt: "Händler, Zweck, IBAN, Betrag")
-        .toolbar {
-            #if os(iOS)
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
-                Menu {
-                    Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
-                        .disabled(!model.canTransfer)
-                    Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren …", systemImage: "square.and.arrow.up") }
-                    Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
-                    Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
-                    Button { model.showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
-                    if model.demoActive && (model.hasOwnVault || AppModel.vaultMayHoldRealData) {
-                        Button { model.showOwnVault() } label: { Label("Zurück zum eigenen Tresor", systemImage: "lock.open") }
-                    } else if !model.demoActive {
-                        Button { model.showDemo() } label: { Label("Demo-Daten-Vorschau starten", systemImage: "theatermasks") }
-                    }
-                } label: { Label("Mehr", systemImage: "ellipsis.circle") }
-            }
-            #else
-            ToolbarItem(placement: .principal) {
-                BookingScopePicker()
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
-                    .help("Neue Überweisung (⌘N)")
-                    .disabled(!model.canTransfer)
-                Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
-                    .help("Alle Konten abrufen (⌘R)")
-                Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }
-                    .help("Befehlspalette (⌘K)")
-                Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren …", systemImage: "square.and.arrow.up") }
-                    .help("Gefilterte Buchungen als CSV exportieren")
-                Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
-                    .help("Gefilterte Buchungen drucken (⌘P)")
-                Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
-                    .help("Kategorisierungsregeln")
-                SettingsLink { Label("Einstellungen", systemImage: "gearshape") }
-            }
-            #endif
-        }
+        #if os(iOS)
+        .modifier(MainToolbar())
+        #endif
         // A real window title (Window menu, Mission Control, VoiceOver); the
         // toolbar keeps its room for the scope picker.
+        #if os(iOS)
         .modifier(WindowTitle(title: model.title))
+        #endif
         .sheet(isPresented: $model.showPrintSheet) { PrintSheet() }
         .fileExporter(
             isPresented: $model.showCSVExporter,
@@ -575,7 +540,7 @@ struct LoadMoreBookingsFooter: View {
 
 /// macOS: the window carries the view's title, the toolbar does not show it
 /// (macOS 15+). iOS keeps the empty navigation title as before.
-private struct WindowTitle: ViewModifier {
+struct WindowTitle: ViewModifier {
     let title: String
 
     func body(content: Content) -> some View {
@@ -587,6 +552,72 @@ private struct WindowTitle: ViewModifier {
         }
         #else
         content.navigationTitle("")
+        #endif
+    }
+}
+
+/// Toolbar of the booking list. macOS: customizable (View › Symbolleiste
+/// anpassen …) – Überweisen and Abrufen are shown by default, the rest can be
+/// added; every command is also in the menu bar. iOS: unchanged.
+struct MainToolbar: ViewModifier {
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content.toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
+                Menu {
+                    Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
+                        .disabled(!model.canTransfer)
+                    Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren …", systemImage: "square.and.arrow.up") }
+                    Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
+                    Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
+                    Button { model.showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
+                    if model.demoActive && (model.hasOwnVault || AppModel.vaultMayHoldRealData) {
+                        Button { model.showOwnVault() } label: { Label("Zurück zum eigenen Tresor", systemImage: "lock.open") }
+                    } else if !model.demoActive {
+                        Button { model.showDemo() } label: { Label("Demo-Daten-Vorschau starten", systemImage: "theatermasks") }
+                    }
+                } label: { Label("Mehr", systemImage: "ellipsis.circle") }
+            }
+        }
+        #else
+        content.toolbar(id: "girocrab.main") {
+            ToolbarItem(id: "scope", placement: .principal) {
+                BookingScopePicker()
+                    .disabled(model.sidebarSelection == .documents)
+            }
+            ToolbarItem(id: "transfer", placement: .primaryAction) {
+                Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
+                    .help("Neue Überweisung (⌘N)")
+                    .disabled(!model.canTransfer)
+            }
+            ToolbarItem(id: "sync", placement: .primaryAction) {
+                Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
+                    .help("Alle Konten abrufen (⌘R)")
+            }
+            ToolbarItem(id: "palette", placement: .primaryAction, showsByDefault: false) {
+                Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }
+                    .help("Befehlspalette (⌘K)")
+            }
+            ToolbarItem(id: "csv", placement: .primaryAction, showsByDefault: false) {
+                Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren", systemImage: "square.and.arrow.up") }
+                    .help("Gefilterte Buchungen als CSV exportieren …")
+            }
+            ToolbarItem(id: "print", placement: .primaryAction, showsByDefault: false) {
+                Button { model.showPrintSheet = true } label: { Label("Drucken", systemImage: "printer") }
+                    .help("Gefilterte Buchungen drucken … (⌘P)")
+            }
+            ToolbarItem(id: "rules", placement: .primaryAction, showsByDefault: false) {
+                Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
+                    .help("Kategorisierungsregeln … (⌥⌘K)")
+            }
+            ToolbarItem(id: "settings", placement: .primaryAction, showsByDefault: false) {
+                SettingsLink { Label("Einstellungen", systemImage: "gearshape") }
+                    .help("Einstellungen … (⌘,)")
+            }
+        }
         #endif
     }
 }
