@@ -56,6 +56,28 @@
         }
       }
     },
+    "Der Schlüssel für den vorhandenen Tresor fehlt im Schlüsselbund. Wenn Sie den iCloud-Schlüsselbund nutzen, warten Sie, bis er synchronisiert ist, und versuchen Sie es erneut. Es wurde kein neuer Schlüssel angelegt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The key for the existing vault is missing from the keychain. If you use iCloud Keychain, wait until it has synced and try again. No new key was created."
+          }
+        }
+      }
+    },
+    "Der Tresor-Schlüssel konnte nicht im Schlüsselbund gespeichert werden (Fehler %d). Der Tresor bleibt bis zum Beenden geöffnet – bitte GiroCrab nicht beenden, den Schlüsselbund prüfen (Schlüsselbundverwaltung) und den Vorgang wiederholen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The vault key could not be saved in the keychain (error %d). The vault stays open until you quit – please do not quit GiroCrab, check the keychain (Keychain Access) and try again."
+          }
+        }
+      }
+    },
     "Diesen Bankzugang auslassen und mit dem nächsten weitermachen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8377,6 +8399,17 @@
         }
       }
     },
+    "Sitzung gefunden – bitte „Sitzung übernehmen“ wählen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Session found – please choose “Take Over Session”."
+          }
+        }
+      }
+    },
     "Sitzung gelöscht" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9132,6 +9165,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Invalid key (expected 32 bytes, Base64 or hex)."
+          }
+        }
+      }
+    },
+    "Unsichere Seite blockiert (%@) – nur HTTPS-Seiten werden geöffnet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Insecure page blocked (%@) – only HTTPS pages are opened."
           }
         }
       }

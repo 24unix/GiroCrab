@@ -488,6 +488,12 @@ struct WebLoginSheet: View {
     let connection: BankConnection
     @State private var found: String?
     @State private var info = String(localized: "Melden Sie sich wie gewohnt an (Telefonnummer, PIN, Code aus der App).")
+    /// The old `tr_session` cookie is gone: only now the login page loads, so
+    /// any session found afterwards was set in this window.
+    @State private var storeCleared = false
+    /// Last automatic hand-over per login: if the core rejects a fresh session
+    /// right away, the sheet comes back – then the user decides (no loop).
+    @MainActor private static var lastAutoApply: [Int64: Date] = [:]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -507,8 +513,14 @@ struct WebLoginSheet: View {
             }
             .padding(14)
             Divider()
-            TRWebView(url: URL(string: "https://app.traderepublic.com/login")!, phone: connection.loginName)
-                .macFrame(minWidth: 720, minHeight: 620)
+            Group {
+                if storeCleared {
+                    TRWebView(url: URL(string: "https://app.traderepublic.com/login")!, phone: connection.loginName)
+                } else {
+                    ProgressView()
+                }
+            }
+            .macFrame(minWidth: 720, minHeight: 620)
             Divider()
             // "Alle abrufen": cancelling skips this login (see SyncPromptButtons)
             SyncPromptButtons(cancel: { model.cancelWebLogin(); dismiss() }) {
@@ -525,13 +537,25 @@ struct WebLoginSheet: View {
             .padding(12)
         }
         .task {
-            // Poll the shared cookie store until tr_session shows up.
+            // A session cookie left from an earlier (expired) login would be taken
+            // over at once, rejected by Trade Republic and bring this sheet back
+            // in a loop: drop it before the login page loads.
+            await Self.removeSessionCookies()
+            storeCleared = true
+            // Poll the shared cookie store until a new tr_session shows up.
             while !Task.isCancelled {
                 if let c = await Self.trCookies(), c.contains("tr_session=") {
                     if found == nil {
                         found = c
+                        let recent = Self.lastAutoApply[connection.id].map { Date().timeIntervalSince($0) < 120 } ?? false
+                        guard !recent else {
+                            info = String(localized: "Sitzung gefunden – bitte „Sitzung übernehmen“ wählen.")
+                            return
+                        }
+                        Self.lastAutoApply[connection.id] = Date()
                         info = String(localized: "Angemeldet – Sitzung wird übernommen …")
                         try? await Task.sleep(nanoseconds: 800_000_000)
+                        guard !Task.isCancelled else { return }
                         model.applyBrowserSession(connection, cookies: c)
                         dismiss()
                     }
@@ -542,10 +566,27 @@ struct WebLoginSheet: View {
         }
     }
 
+    /// Cookie or page host of Trade Republic itself: `traderepublic.com` or a
+    /// subdomain (not `nottraderepublic.com`, not `traderepublic.com.evil.io`).
+    static func isTradeRepublicHost(_ host: String?) -> Bool {
+        guard var h = host?.lowercased() else { return false }
+        if h.hasPrefix(".") { h.removeFirst() }
+        if h.hasSuffix(".") { h.removeLast() }
+        return h == "traderepublic.com" || h.hasSuffix(".traderepublic.com")
+    }
+
+    @MainActor
+    static func removeSessionCookies() async {
+        let store = WKWebsiteDataStore.default().httpCookieStore
+        for c in await store.allCookies() where isTradeRepublicHost(c.domain) && c.name == "tr_session" {
+            await store.deleteCookie(c)
+        }
+    }
+
     @MainActor
     static func trCookies() async -> String? {
         let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
-        let tr = cookies.filter { $0.domain.contains("traderepublic.com") }
+        let tr = cookies.filter { isTradeRepublicHost($0.domain) }
         guard !tr.isEmpty else { return nil }
         return tr.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
     }
@@ -559,7 +600,9 @@ final class TRWebCoordinator: NSObject, WKNavigationDelegate {
     init(phone: String) { self.phone = phone }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard !phone.isEmpty else { return }
+        // The phone number goes into Trade Republic's own form only (https).
+        guard !phone.isEmpty, webView.url?.scheme == "https",
+              WebLoginSheet.isTradeRepublicHost(webView.url?.host) else { return }
         let digits = phone.replacingOccurrences(of: "\"", with: "")
         let js = """
         (function fill(tries) {
