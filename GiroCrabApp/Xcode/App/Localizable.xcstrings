@@ -12801,6 +12801,50 @@
           }
         }
       }
+    },
+    "Abrufen stoppen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop"
+          }
+        }
+      }
+    },
+    "Abruf gestoppt – es wurde nichts übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stopped – nothing was imported."
+          }
+        }
+      }
+    },
+    "Die Webseite meldet:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The webpage says:"
+          }
+        }
+      }
+    },
+    "%@ meldet:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ says:"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
