@@ -1540,5 +1540,9 @@ INSERT INTO transactions (rowid, local_account_key, account, bankcode, amount, c
 "#;
     let with = kpis(fake_db_with(false, extra));
     assert_eq!(with.2, base.2 + 4, "transfers are still listed");
-    assert_eq!((with.0, with.1), (base.0, base.1), "but don't count as income / expense");
+    assert_eq!(
+        (with.0, with.1),
+        (base.0, base.1),
+        "but don't count as income / expense"
+    );
 }
