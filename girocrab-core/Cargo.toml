@@ -35,5 +35,8 @@ url = "2"
 simpleicons-rs = "16"
 miniz_oxide = "0.9.1"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

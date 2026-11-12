@@ -87,10 +87,12 @@ pub fn parse_86(raw: &str) -> Details {
     let mut purpose_parts = Vec::new();
     let mut name_parts = Vec::new();
     for part in s[4..].split(sep) {
-        if part.len() < 2 {
+        // Field keys are two ASCII digits; anything else (e.g. free text with
+        // umlauts after a '/' separator) is no field – and must not panic on
+        // a byte index inside a multi-byte character.
+        let (Some(key), Some(val)) = (part.get(..2), part.get(2..)) else {
             continue;
-        }
-        let (key, val) = part.split_at(2);
+        };
         match key {
             "00" => d.booking_text = val.trim().to_string(),
             "20" | "21" | "22" | "23" | "24" | "25" | "26" | "27" | "28" | "29" | "60" | "61"
@@ -320,5 +322,19 @@ mod tests {
         ] {
             let _ = parse(t, "", "EUR");
         }
+    }
+}
+
+#[cfg(test)]
+mod utf8_tests {
+    #[test]
+    fn umlaut_after_separator_does_not_panic() {
+        // '/' separator, free text "1ä…": byte 2 lies inside 'ä'
+        let d = super::parse_86("166/1äpfel/20Miete/32Müller");
+        assert_eq!(d.gvc, "166");
+        assert_eq!(d.counterparty, "Müller");
+        let d = super::parse_86("166?00GUTSCHRIFT? Über?20Zweck");
+        assert_eq!(d.booking_text, "GUTSCHRIFT");
+        assert_eq!(d.purpose, "Zweck");
     }
 }

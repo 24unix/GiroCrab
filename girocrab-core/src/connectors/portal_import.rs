@@ -468,7 +468,7 @@ fn candidate_keys(v: &Value, out: &mut std::collections::BTreeSet<String>) {
                 if (kl.contains("balance") || kl.contains("amount"))
                     && val.as_f64().is_some_and(|f| f != 0.0)
                 {
-                    out.insert(k.clone());
+                    out.insert(safe_key(k));
                 }
                 candidate_keys(val, out);
             }
@@ -527,7 +527,7 @@ pub fn schema_of(v: &Value, depth: usize) -> Value {
         }
         Value::Object(o) => Value::Object(
             o.iter()
-                .map(|(k, x)| (k.clone(), schema_of(x, depth + 1)))
+                .map(|(k, x)| (safe_key(k), schema_of(x, depth + 1)))
                 .collect(),
         ),
     }
@@ -904,7 +904,9 @@ impl Vault {
         let (mut parsed, keyed) = parse_json_bodies_keyed(&json_bodies, kind);
         let balance = keyed.as_ref().map(|(_, c)| *c);
         match &keyed {
-            Some((k, _)) => crate::depot_debug::log(&format!("portal matched balance: key={k}")),
+            Some((k, _)) => {
+                crate::depot_debug::log(&format!("portal matched balance: key={}", safe_key(k)))
+            }
             None => crate::depot_debug::log("portal matched balance: none"),
         }
         let mut keys = std::collections::BTreeSet::new();
@@ -1007,7 +1009,7 @@ pub fn portal_schema_dump(json_bodies: Vec<String>, dom_rows_json: String) -> St
 fn mask_text(s: &str) -> String {
     let mut out = String::new();
     for c in s.chars() {
-        let m = if c.is_ascii_digit() {
+        let m = if c.is_numeric() {
             '9'
         } else if c.is_alphabetic() {
             'a'
@@ -1059,9 +1061,33 @@ const HINT_VERBATIM: &[&str] = &[
     "debitcredit",
 ];
 
+/// JSON object keys can carry data themselves (maps keyed by card number,
+/// account id, booking id or date). Only plain identifier-like names (ASCII
+/// letters and `_ - . $ @`, at most 48 characters) are shown; anything with
+/// digits or other characters is masked like a value.
+fn safe_key(k: &str) -> String {
+    let plain = !k.is_empty()
+        && k.len() <= 48
+        && k.chars()
+            .all(|c| c.is_ascii_alphabetic() || matches!(c, '_' | '-' | '.' | '$' | '@'));
+    if plain {
+        k.to_string()
+    } else {
+        format!("<{}>", mask_text(k))
+    }
+}
+
+/// Code values shown verbatim: short, letters-only enums (`BOOK`, `PDNG`,
+/// `DBIT`, `D`, `SETTLED` …). Anything with digits (references, ids) or
+/// longer than 16 characters is masked.
+fn is_enum_value(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 16 && s.chars().all(|c| c.is_ascii_uppercase() || c == '_')
+}
+
 /// Value hints that are safe to share: the distinct values of code-like fields
-/// (`…Code`, `…Status`, `…Type`, `…Indicator`; only `[A-Z0-9_-]` values, anything else
-/// is masked), masked shapes of date/time fields and sign counts of amount/balance numbers.
+/// (`…Code`, `…Status`, `…Type`, `…Indicator`; only letters-only enums of
+/// booking-related keys, anything else is masked), masked shapes of date/time
+/// fields and sign counts of amount/balance numbers. Keys go through [`safe_key`].
 fn value_hints(
     v: &Value,
     out: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
@@ -1084,18 +1110,11 @@ fn value_hints(
                     .iter()
                     .any(|s| kl.contains(s));
                 let hint = match x {
-                    Value::String(s) if codeish => Some(
-                        if booking_code
-                            && s.len() <= 24
-                            && s.chars().all(|c| {
-                                c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_' || c == '-'
-                            })
-                        {
-                            s.clone()
-                        } else {
-                            mask_text(s)
-                        },
-                    ),
+                    Value::String(s) if codeish => Some(if booking_code && is_enum_value(s) {
+                        s.clone()
+                    } else {
+                        mask_text(s)
+                    }),
                     Value::String(s) if dateish => Some(mask_text(s)),
                     Value::Number(n) if moneyish => Some(
                         match n.as_f64().unwrap_or(0.0) {
@@ -1108,7 +1127,7 @@ fn value_hints(
                     _ => None,
                 };
                 if let Some(h) = hint {
-                    let set = out.entry(k.clone()).or_default();
+                    let set = out.entry(safe_key(k)).or_default();
                     if set.len() < 30 {
                         set.insert(h);
                     }
@@ -1300,5 +1319,38 @@ mod tests {
         let rows = vec![vec!["03.04.2025".into(), "REWE".into(), "23,50 €".into()]];
         let p = parse_dom_rows(&rows, ConnectorKind::AmazonVisa);
         assert_eq!((p[0].cents, p[0].text.as_str()), (2350, "REWE"));
+    }
+}
+
+#[cfg(test)]
+mod privacy_tests {
+    use super::*;
+
+    #[test]
+    fn data_carrying_keys_are_masked() {
+        assert_eq!(
+            safe_key("statement_balance_amount"),
+            "statement_balance_amount"
+        );
+        assert_eq!(safe_key("4871780012341234"), "<9999999999999999>");
+        assert_eq!(safe_key("2026-11-07"), "<9999-99-99>");
+        assert_eq!(
+            safe_key("DE89370400440532013000"),
+            format!("<a{}>", "9".repeat(20))
+        );
+    }
+
+    #[test]
+    fn schema_dump_hides_ids_in_keys_and_values() {
+        let d = portal_schema_dump(
+            vec![r#"{"cards":{"4871780012341234":{"transactionStatus":"BOOKED","transactionReferenceCode":"AB12CD34EF"}}}"#.into()],
+            "[]".into(),
+        );
+        assert!(!d.contains("4871780012341234"), "{d}");
+        assert!(!d.contains("AB12CD34EF"), "{d}");
+        assert!(
+            d.contains("BOOKED"),
+            "letters-only status stays readable: {d}"
+        );
     }
 }

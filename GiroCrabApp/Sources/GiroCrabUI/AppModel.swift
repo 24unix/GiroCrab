@@ -753,15 +753,26 @@ public final class AppModel {
     }
 
     /// Structural trace (no secrets) shared with the core's depot debug log.
+    /// Off unless `GIROCRAB_DEPOT_DEBUG=1`; per-user temp dir, mode 0600,
+    /// no symbolic links, 5 MB cap (same rules as `depot_debug.rs`).
+    static let debugLogEnabled =
+        ProcessInfo.processInfo.environment["GIROCRAB_DEPOT_DEBUG"]?
+            .trimmingCharacters(in: .whitespaces) == "1"
+
     static func debugLog(_ msg: String) {
+        guard debugLogEnabled else { return }
         let line = "\(Date()) \(msg)\n"
         guard let data = line.data(using: .utf8) else { return }
-        let path = "/tmp/girocrab-depot-debug.log"
-        if let h = FileHandle(forWritingAtPath: path) {
-            h.seekToEndOfFile(); h.write(data); try? h.close()
-        } else {
-            try? data.write(to: URL(fileURLWithPath: path))
-        }
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("girocrab-depot-debug.log").path
+        let fd = Darwin.open(path, O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { return }
+        defer { Darwin.close(fd) }
+        var st = Darwin.stat()
+        guard Darwin.fstat(fd, &st) == 0, st.st_uid == Darwin.getuid(), st.st_nlink == 1 else { return }
+        if st.st_mode & 0o077 != 0 { Darwin.fchmod(fd, 0o600) }
+        if st.st_size > 5 * 1024 * 1024 { Darwin.ftruncate(fd, 0) }
+        _ = data.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
     }
 
     nonisolated static var vaultURL: URL {

@@ -68,7 +68,7 @@ impl ComdirectConnector {
     ) -> CoreResult<(reqwest::header::HeaderMap, Value)> {
         let status = resp.status();
         let headers = resp.headers().clone();
-        let text = resp.text().await?;
+        let text = super::read_text_limited(resp).await?;
         if !status.is_success() {
             let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
             let msg = v["messages"][0]["message"]
@@ -163,7 +163,7 @@ impl ComdirectConnector {
                 message: format!("Download {path}"),
             });
         }
-        Ok(resp.bytes().await?.to_vec())
+        super::read_body_limited(resp, super::MAX_DOC_BYTES).await
     }
 
     /// PostBox: recent PDF documents (Finanzreport, Wertpapierabrechnungen …).
@@ -447,6 +447,7 @@ impl BankConnector for ComdirectConnector {
                 balance_date: super::today(),
             });
             let mut index = 0u32;
+            let mut ids = super::ContentIds::default();
             loop {
                 let page = self
                     .get(&format!(
@@ -481,7 +482,7 @@ impl BankConnector for ComdirectConnector {
                         ..Default::default()
                     };
                     if rt.external_id.is_empty() {
-                        rt.external_id = rt.content_id(index);
+                        rt.external_id = ids.next(&rt);
                     }
                     out.transactions.push(rt);
                     index += 1;

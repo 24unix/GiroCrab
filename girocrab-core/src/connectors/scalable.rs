@@ -563,7 +563,7 @@ impl ScalableConnector {
                 .get("dpop-nonce")
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
-            let body = resp.text().await.unwrap_or_default();
+            let body = super::read_text_limited(resp).await.unwrap_or_default();
             if (200..300).contains(&status) {
                 return Ok(Ok(serde_json::from_str(&body).unwrap_or(Value::Null)));
             }
@@ -620,7 +620,7 @@ impl ScalableConnector {
                 .get("dpop-nonce")
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
-            let body = resp.text().await.unwrap_or_default();
+            let body = super::read_text_limited(resp).await.unwrap_or_default();
             if let Some(n) = &nonce {
                 self.api_nonce = Some(n.clone());
             }

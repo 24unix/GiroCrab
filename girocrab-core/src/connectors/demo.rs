@@ -307,6 +307,7 @@ mod tests {
             settings: Default::default(),
             state: serde_json::Value::Null,
             since: String::new(),
+            since_by_account: Default::default(),
         }
     }
 

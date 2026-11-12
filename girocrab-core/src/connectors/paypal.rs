@@ -45,7 +45,7 @@ impl PayPalConnector {
             .send()
             .await?;
         let status = resp.status();
-        let v: Value = resp.json().await.unwrap_or(Value::Null);
+        let v: Value = super::read_json_or_null(resp).await;
         if !status.is_success() {
             return Err(CoreError::Bank {
                 code: status.as_u16().to_string(),
@@ -86,7 +86,7 @@ impl BankConnector for PayPalConnector {
             .send()
             .await?;
         let status = resp.status();
-        let v: Value = resp.json().await.unwrap_or(Value::Null);
+        let v: Value = super::read_json_or_null(resp).await;
         if !status.is_success() {
             return Err(CoreError::Authentication {
                 message: v["error_description"]

@@ -267,11 +267,9 @@ fn preview_lists_accounts_banks_categories_and_totals() {
     assert_eq!((giro.booking_count, giro.pending_count), (5, 1));
     assert_eq!(giro.first_date.as_deref(), Some("2005-01-01"));
     assert_eq!(giro.last_date.as_deref(), Some("2026-03-07"));
-    // newest `balances` row (100,00) + booked bookings (parent, not parts)
-    assert_eq!(
-        giro.computed_balance_cents,
-        10_000 + 250_000 - 4567 - 1230 - 10_000
-    );
+    // newest `balances` row (100,00, 2020-01-01) + booked bookings from that
+    // date on (parent, not parts); the 2005 salary is part of the initial balance
+    assert_eq!(giro.computed_balance_cents, 10_000 - 4567 - 1230 - 10_000);
     assert!(giro.balance_source.contains("Saldenverlauf"));
     let kind = |id: i64| {
         p.accounts
@@ -339,7 +337,7 @@ fn import_categories_splits_pending_notes_and_balance() {
     let giro = account_by_name(&v, "Girokonto");
     assert_eq!(giro.iban, "DE89370400440532013000");
     assert_eq!(giro.bank_name, "comdirect");
-    assert_eq!(giro.balance_cents, 10_000 + 250_000 - 4567 - 1230 - 10_000);
+    assert_eq!(giro.balance_cents, 10_000 - 4567 - 1230 - 10_000);
     assert_eq!(giro.balance_date, "2026-03-07");
     let bs = bookings(&v, giro.id);
     assert_eq!(bs.len(), 5);
@@ -448,7 +446,7 @@ fn reimport_is_idempotent() {
     assert_eq!(count(&v), after_first);
     assert_eq!(
         account_by_name(&v, "Girokonto").balance_cents,
-        10_000 + 250_000 - 4567 - 1230 - 10_000
+        10_000 - 4567 - 1230 - 10_000
     );
 }
 
@@ -1670,4 +1668,116 @@ INSERT INTO transactions (rowid, local_account_key, account, bankcode, amount, c
         (base.0, base.1),
         "but don't count as income / expense"
     );
+}
+
+fn src_acc(id: i64, account: &str, bankcode: &str, iban: &str, currency: &str) -> SrcAccount {
+    SrcAccount {
+        id,
+        account: account.into(),
+        bankcode: bankcode.into(),
+        iban: sepa::normalize_iban(iban),
+        currency: currency.into(),
+        ..Default::default()
+    }
+}
+
+fn src_tx(id: i64, account: i64, cp: &str, cp_bank: &str, amount: f64, ts: i64) -> SrcTx {
+    SrcTx {
+        id,
+        account_key: account,
+        cp_account: cp.into(),
+        cp_bankcode: cp_bank.into(),
+        amount: Some(amount),
+        ts: Some(ts),
+        booked: true,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn own_accounts_are_found_by_account_number_and_bank_code() {
+    // Issue #94: pre-SEPA bookings / cards / depots carry only Kto + BLZ
+    let giro = src_acc(
+        1,
+        "0532013000",
+        "37040044",
+        "DE89 3704 0044 0532 0130 00",
+        "EUR",
+    );
+    let tagesgeld = src_acc(2, "0098765432", "37040044", "", "EUR");
+    let card = src_acc(3, "4711", "37040044", "", "EUR");
+    let src = Source {
+        accounts: vec![giro.clone(), tagesgeld.clone(), card.clone()],
+        ..Default::default()
+    };
+    let own = |from: &SrcAccount, cp: &str, bank: &str| {
+        src.own_counter_account(from, cp, bank).map(|a| a.id)
+    };
+    // Kto/BLZ against the BLZ/Kto inside the own German IBAN
+    assert_eq!(own(&tagesgeld, "532013000", "37040044"), Some(1));
+    // Kto without IBAN on the own side, leading zeros ignored
+    assert_eq!(own(&giro, "98765432", "37040044"), Some(2));
+    assert_eq!(own(&giro, "4711", ""), Some(3));
+    // German IBAN pointing at an own account that only has Kto/BLZ
+    let iban = "DE77370400440098765432";
+    assert!(sepa::validate_iban(iban));
+    assert_eq!(own(&giro, iban, ""), Some(2));
+    // other bank code, foreign account, too short, itself: no match
+    assert_eq!(own(&giro, "98765432", "10010010"), None);
+    assert_eq!(own(&giro, "12345678", "37040044"), None);
+    assert_eq!(own(&giro, "47", ""), None);
+    assert_eq!(own(&giro, "532013000", "37040044"), None);
+}
+
+#[test]
+fn own_transfers_get_the_own_iban_and_the_transfer_category() {
+    let giro = src_acc(
+        1,
+        "0532013000",
+        "37040044",
+        "DE89 3704 0044 0532 0130 00",
+        "EUR",
+    );
+    let tagesgeld = src_acc(2, "0098765432", "37040044", "", "EUR");
+    let src = Source {
+        accounts: vec![giro.clone(), tagesgeld.clone()],
+        txs: vec![
+            src_tx(1, 2, "532013000", "37040044", 100.0, 1_600_000_000),
+            src_tx(2, 1, "98765432", "37040044", -100.0, 1_600_000_000),
+            src_tx(3, 1, "12345", "10010010", -5.0, 1_600_000_000),
+        ],
+        ..Default::default()
+    };
+    let rows = src.rows_for(&tagesgeld).rows;
+    assert_eq!(rows[0].iban, "DE89370400440532013000");
+    assert_eq!(rows[0].category_parts, vec!["Umbuchungen".to_string()]);
+    let rows = src.rows_for(&giro).rows;
+    let to_tg = rows.iter().find(|r| r.amount_cents == -10_000).unwrap();
+    assert_eq!(to_tg.iban, "", "own account without IBAN: no invented IBAN");
+    assert_eq!(to_tg.category_parts, vec!["Umbuchungen".to_string()]);
+    let other = rows.iter().find(|r| r.amount_cents == -500).unwrap();
+    assert!(other.category_parts.is_empty());
+}
+
+#[test]
+fn fallback_balance_counts_account_currency_from_the_initial_balance_date_on() {
+    let acc = src_acc(1, "1", "", "", "EUR");
+    let mut usd = src_tx(3, 1, "", "", -50.0, 1_700_000_000);
+    usd.currency = "USD".into();
+    let mut balances = HashMap::new();
+    // initial balance 100,00 as of 2020-09-13 (1_600_000_000)
+    balances.insert((1, "EUR".to_string()), (1_600_000_000, 100.0));
+    let src = Source {
+        accounts: vec![acc.clone()],
+        txs: vec![
+            src_tx(1, 1, "", "", 2500.0, 1_500_000_000), // before: part of the 100,00
+            src_tx(2, 1, "", "", -20.0, 1_600_000_000),  // same day: counts
+            usd,                                         // other currency: not summed
+        ],
+        balances,
+        ..Default::default()
+    };
+    let r = src.rows_for(&acc);
+    assert_eq!(r.rows.len(), 3, "all bookings are still imported");
+    assert_eq!(r.balance_cents, 10_000 - 2_000);
 }

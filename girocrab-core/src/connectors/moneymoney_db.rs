@@ -16,7 +16,9 @@
 //! used whenever present (it is the only source for depots, which have no
 //! bookings). Without it: `balance = initial balance + Σ booked bookings`,
 //! where the initial balance is the newest `balances.initial_balance` row of
-//! the account/currency, falling back to `accounts.initial_balance`. Pending
+//! the account/currency (then only bookings from its date on are added),
+//! falling back to `accounts.initial_balance` (all bookings). Only bookings in
+//! the account currency count. Pending
 //! bookings (`booked = 0`) are neither imported nor counted – GiroCrab has no
 //! "vorgemerkt" state and the bank delivers them again once they are booked.
 //!
@@ -437,6 +439,31 @@ fn parse_balances_blob(v: Value) -> Option<(i64, String)> {
     let amount: f64 = fields.next()?.parse().ok()?;
     let currency = fields.next().unwrap_or("").to_uppercase();
     Some((real_to_cents(amount)?, currency))
+}
+
+/// Account number / bank code for comparisons: alphanumerics only, upper
+/// case, leading zeros of purely numeric values dropped.
+fn norm_account_id(s: &str) -> String {
+    let s: String = s
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    if s.bytes().all(|b| b.is_ascii_digit()) {
+        s.trim_start_matches('0').to_string()
+    } else {
+        s
+    }
+}
+
+/// (account number, BLZ) of a German IBAN, normalised like [`norm_account_id`].
+fn de_iban_parts(iban: &str) -> Option<(String, String)> {
+    let iban = sepa::normalize_iban(iban);
+    if iban.len() != 22 || !iban.starts_with("DE") {
+        return None;
+    }
+    let (blz, kto) = (iban.get(4..12)?, iban.get(12..22)?);
+    Some((norm_account_id(kto), norm_account_id(blz)))
 }
 
 fn looks_like_bic(s: &str) -> bool {
@@ -1395,6 +1422,52 @@ impl Source {
         }
     }
 
+    /// The other own MoneyMoney account a booking's counter account points to:
+    /// by IBAN, or – for pre-SEPA bookings, cards and depots where MoneyMoney
+    /// only has an account number – by account number (+ bank code / BIC when
+    /// both sides have one), also against the BLZ/account number inside an
+    /// own German IBAN.
+    fn own_counter_account(
+        &self,
+        from: &SrcAccount,
+        cp_account: &str,
+        cp_bankcode: &str,
+    ) -> Option<&SrcAccount> {
+        let cp = norm_account_id(cp_account);
+        if cp.len() < 4 {
+            return None;
+        }
+        let cp_iban = sepa::validate_iban(cp_account).then(|| sepa::normalize_iban(cp_account));
+        // (account number, bank code) as written in a German IBAN
+        let cp_de = cp_iban.as_deref().and_then(de_iban_parts);
+        let cp_bank = norm_account_id(cp_bankcode);
+        let bank_ok = |own_bank: &str| {
+            let own_bank = norm_account_id(own_bank);
+            cp_bank.is_empty() || own_bank.is_empty() || own_bank == cp_bank
+        };
+        self.accounts.iter().filter(|o| o.id != from.id).find(|o| {
+            if let Some(iban) = &cp_iban {
+                if !o.iban.is_empty() {
+                    return *iban == o.iban;
+                }
+                // own account without IBAN in MoneyMoney: compare the German
+                // IBAN's account number / BLZ with it
+                return cp_de.as_ref().is_some_and(|(kto, blz)| {
+                    norm_account_id(&o.account) == *kto
+                        && (o.bankcode.is_empty() || norm_account_id(&o.bankcode) == *blz)
+                });
+            }
+            let own_acc = norm_account_id(&o.account);
+            if !own_acc.is_empty()
+                && own_acc == cp
+                && (bank_ok(&o.bankcode) || (!o.bic.is_empty() && bank_ok(&o.bic)))
+            {
+                return true;
+            }
+            de_iban_parts(&o.iban).is_some_and(|(kto, blz)| kto == cp && bank_ok(&blz))
+        })
+    }
+
     /// Normalised bookings of one account: booked only, split parts instead of
     /// their parent, plus the balance (see module docs).
     fn rows_for(&self, a: &SrcAccount) -> AccountRows {
@@ -1414,7 +1487,9 @@ impl Source {
             balance_source: String::new(),
             balance_date: String::new(),
         };
-        let mut sum = 0i64;
+        // (date, cents) of the booked bookings that count for the balance:
+        // parents (not their parts), account currency only.
+        let mut counted: Vec<(String, i64)> = Vec::new();
         for t in &txs {
             let (Some(ts), Some(amount)) = (t.ts, t.amount) else {
                 continue;
@@ -1427,8 +1502,8 @@ impl Source {
                 continue;
             }
             let part = is_part(t);
-            if !part {
-                sum += cents; // the parent carries the full amount
+            if !part && (t.currency.is_empty() || t.currency == a.currency) {
+                counted.push((date.clone(), cents)); // the parent carries the full amount
             }
             if parents.contains(&t.id) {
                 continue; // imported as its parts
@@ -1437,11 +1512,25 @@ impl Source {
                 out.split_parts += 1;
             }
             let clean = |s: &str| crate::text::clean_bank_text(s.trim());
-            let path = t
+            let own = self.own_counter_account(a, &t.cp_account, &t.cp_bankcode);
+            let mut path = t
                 .category_key
                 .and_then(|k| self.categories.get(&k))
                 .cloned()
                 .unwrap_or_default();
+            // Issue #94: a booking to / from another own account is a transfer,
+            // also when MoneyMoney only has the account number (pre-SEPA,
+            // cards, depots) – uncategorised ones go to "Umbuchungen".
+            if own.is_some() && path.is_empty() {
+                path = vec!["Umbuchungen".to_string()];
+            }
+            let iban = if sepa::validate_iban(&t.cp_account) {
+                sepa::normalize_iban(&t.cp_account)
+            } else {
+                own.map(|o| o.iban.clone())
+                    .filter(|i| sepa::validate_iban(i))
+                    .unwrap_or_default()
+            };
             out.rows.push(MmRow {
                 booking_date: date,
                 value_date: t.value_ts.and_then(unix_to_date).unwrap_or_default(),
@@ -1452,11 +1541,7 @@ impl Source {
                     t.currency.clone()
                 },
                 name: clean(&t.name),
-                iban: if sepa::validate_iban(&t.cp_account) {
-                    sepa::normalize_iban(&t.cp_account)
-                } else {
-                    String::new()
-                },
+                iban,
                 bic: if looks_like_bic(&t.cp_bankcode) {
                     t.cp_bankcode.to_uppercase()
                 } else {
@@ -1513,6 +1598,14 @@ impl Source {
                 _ => (0.0, tr("Summe der Umsätze").into(), String::new()),
             },
         };
+        // An initial balance from the balance history applies from its date on:
+        // earlier bookings are already part of it. (`base_date` is "" for the
+        // account's own initial balance → every booking counts.)
+        let sum: i64 = counted
+            .iter()
+            .filter(|(d, _)| *d >= base_date)
+            .map(|(_, c)| c)
+            .sum();
         out.balance_cents = real_to_cents(base).unwrap_or(0) + sum;
         out.balance_source = source;
         out.balance_date = last.max(base_date);

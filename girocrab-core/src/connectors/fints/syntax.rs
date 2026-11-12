@@ -185,13 +185,13 @@ pub fn parse(data: &[u8]) -> CoreResult<Vec<Segment>> {
                         message: "bad binary length".into(),
                     })?;
                 let start = i + 1 + end + 1;
-                if start + len > data.len() {
+                let Some(stop) = start.checked_add(len).filter(|s| *s <= data.len()) else {
                     return Err(CoreError::Protocol {
                         message: "binary data exceeds message".into(),
                     });
-                }
-                cur_binary = Some(data[start..start + len].to_vec());
-                i = start + len;
+                };
+                cur_binary = Some(data[start..stop].to_vec());
+                i = stop;
                 continue;
             }
             b':' => {
@@ -262,5 +262,14 @@ mod tests {
         assert_eq!(segs[2].get(1, 0), "3920");
         assert_eq!(segs[2].get(1, 3), "942");
         assert_eq!(segs[2].get(2, 0), "0020");
+    }
+}
+
+#[cfg(test)]
+mod binary_length_tests {
+    #[test]
+    fn huge_binary_length_is_an_error_not_a_panic() {
+        assert!(super::parse(b"HNHBK:1:3+@18446744073709551615@x'").is_err());
+        assert!(super::parse(b"HNHBK:1:3+@99@x'").is_err());
     }
 }
