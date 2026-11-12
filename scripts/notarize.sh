@@ -87,9 +87,21 @@ generate_release_notes() {
   }
 }
 
-# If releasing a version tag (e.g. v0.5.5), sync MARKETING_VERSION in Xcode before building
+# If releasing a version tag (e.g. v0.5.5), the tag is the single source of truth for the
+# app version: package-macos-app.sh would otherwise fall back to Cargo.toml, which can
+# already be ahead of the tag (v0.5.5 shipped with CFBundleShortVersionString 0.6.0).
 if [ -n "$UPLOAD_TAG" ]; then
+  if ! [[ "$UPLOAD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "error: release tag must look like vX.Y.Z (got '$UPLOAD_TAG')" >&2
+    exit 2
+  fi
   CLEAN_VER="${UPLOAD_TAG#v}"
+  export GIROCRAB_VERSION="$CLEAN_VER"
+  CARGO_VER="$(sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1)"
+  if [ "$CARGO_VER" != "$CLEAN_VER" ]; then
+    echo "warning: Cargo.toml version is ${CARGO_VER:-<none>}, release tag is $UPLOAD_TAG;" \
+      "the app is built as $CLEAN_VER" >&2
+  fi
   PBXPROJ="GiroCrabApp/Xcode/GiroCrab.xcodeproj/project.pbxproj"
   if [ -f "$PBXPROJ" ]; then
     echo "==> Setting MARKETING_VERSION = ${CLEAN_VER} in project.pbxproj"
@@ -140,6 +152,17 @@ echo "$CS_OUT" | grep -q "^Authority=Developer ID Application" \
   || { echo "error: signature is not 'Developer ID Application'" >&2; exit 1; }
 xcrun stapler validate "$VAPP"
 spctl -a -vvv -t exec "$VAPP"
+
+if [ -n "$UPLOAD_TAG" ]; then
+  for key in CFBundleShortVersionString CFBundleVersion; do
+    got="$(/usr/libexec/PlistBuddy -c "Print :$key" "$VAPP/Contents/Info.plist")"
+    if [ "$got" != "$CLEAN_VER" ]; then
+      echo "error: $key is '$got' but release tag is $UPLOAD_TAG; not uploading" >&2
+      exit 1
+    fi
+  done
+  echo "app version matches tag: $CLEAN_VER"
+fi
 
 echo "--- launch smoke test"
 "$VAPP/Contents/MacOS/GiroCrabMac" >/dev/null 2>&1 &
