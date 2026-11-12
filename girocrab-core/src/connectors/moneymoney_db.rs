@@ -1622,6 +1622,7 @@ fn find_existing_account(
 ) -> CoreResult<Option<(i64, String)>> {
     let by_ref: Option<(i64, String)> = conn
         .query_row(
+            // includes soft-deleted rows: the import revives a deleted account
             "SELECT id, name FROM accounts WHERE external_ref = ?1 ORDER BY id LIMIT 1",
             [ext],
             |r| Ok((r.get(0)?, r.get(1)?)),
@@ -1632,6 +1633,7 @@ fn find_existing_account(
     }
     Ok(conn
         .query_row(
+            // includes soft-deleted rows
             "SELECT id, name FROM accounts WHERE upper(replace(iban, ' ', '')) = ?1
              ORDER BY (connection_id IS NULL), id LIMIT 1",
             [iban],
@@ -1648,7 +1650,7 @@ fn find_connection(
 ) -> CoreResult<Option<i64>> {
     let login = crate::connections::normalize_login(kind, login);
     let mut st = conn
-        .prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1 ORDER BY id")?;
+        .prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1 AND deleted_ms IS NULL ORDER BY id")?;
     let rows: Vec<(i64, String)> = st
         .query_map([key], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<Result<_, _>>()?;
@@ -1674,6 +1676,7 @@ pub(crate) fn adopt_account(
         // Prefer imported accounts without an IBAN; a connector that reports
         // none (Amazon Visa web login) may still find the card with the IBAN
         // MoneyMoney stored for it – if it is the only one of its kind here.
+        // includes soft-deleted rows: `store_fetch` revives or skips them
         let single = |iban_filter: &str| -> CoreResult<Option<i64>> {
             let mut st = conn.prepare(&format!(
                 "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref LIKE 'moneymoney-db:%'
@@ -1693,6 +1696,7 @@ pub(crate) fn adopt_account(
         }
     } else {
         conn.query_row(
+            // includes soft-deleted rows
             "SELECT id FROM accounts WHERE (connection_id IS NULL OR connection_id = ?1)
                AND external_ref LIKE 'moneymoney-db:%' AND upper(replace(iban, ' ', '')) = ?2
              ORDER BY (connection_id IS NULL), id LIMIT 1",
@@ -1702,6 +1706,10 @@ pub(crate) fn adopt_account(
         .optional()?
     };
     if let Some(id) = id {
+        // a deleted account that stays deleted keeps its sync key
+        if crate::sync_merge::fetch_keeps_account_deleted(conn, connection_id, id)? {
+            return Ok(Some(id));
+        }
         conn.execute(
             "UPDATE accounts SET connection_id = ?1, external_ref = ?2 WHERE id = ?3",
             params![connection_id, external_ref, id],
@@ -1716,7 +1724,11 @@ fn replaces_starter_categories(conn: &Connection, src: &Source) -> CoreResult<bo
     if src.category_order.is_empty() {
         return Ok(false);
     }
-    let bookings: i64 = conn.query_row("SELECT count(*) FROM transactions", [], |r| r.get(0))?;
+    let bookings: i64 = conn.query_row(
+        "SELECT count(*) FROM transactions WHERE deleted_ms IS NULL",
+        [],
+        |r| r.get(0),
+    )?;
     Ok(bookings == 0)
 }
 
@@ -1927,7 +1939,7 @@ fn import_category_rules(
         let category_id =
             find_or_create_category(conn, path, cat_cache, &mut res.categories_created)?;
         let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM rules WHERE category_id = ?1 AND pattern = ?2)",
+            "SELECT EXISTS(SELECT 1 FROM rules WHERE category_id = ?1 AND pattern = ?2 AND deleted_ms IS NULL)",
             params![category_id, expr],
             |r| r.get(0),
         )?;
@@ -1946,14 +1958,15 @@ fn import_category_rules(
             leaf
         };
         conn.execute(
-            "INSERT INTO rules(name, category_id, field, match_kind, pattern, priority, enabled)
-             VALUES (?1, ?2, 'any', 'expression', ?3, ?4, ?5)",
+            "INSERT INTO rules(name, category_id, field, match_kind, pattern, priority, enabled, updated_ms)
+             VALUES (?1, ?2, 'any', 'expression', ?3, ?4, ?5, ?6)",
             params![
                 name,
                 category_id,
                 expr,
                 IMPORTED_RULE_PRIORITY + i as i32,
-                enabled
+                enabled,
+                crate::user_groups::now_ms()
             ],
         )?;
         res.rules_created += 1;
@@ -1961,6 +1974,7 @@ fn import_category_rules(
             res.rules_disabled += 1;
         }
     }
+    crate::sync_merge::fill_missing_uuids(conn)?;
     Ok(())
 }
 
@@ -2004,8 +2018,14 @@ fn import(
     report.emit()?;
     let mut cat_cache = HashMap::new();
     if options.import_categories && replaces_starter_categories(conn, src)? {
-        // rules and assignments go with them (ON DELETE CASCADE / SET NULL)
-        conn.execute("DELETE FROM categories", [])?;
+        // soft: rules and assignments go with them
+        let roots: Vec<i64> = conn
+            .prepare("SELECT id FROM categories WHERE parent_id IS NULL AND deleted_ms IS NULL")?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        for id in roots {
+            crate::sync_merge::soft_delete_categories(conn, id)?;
+        }
     }
     if options.import_categories {
         // the whole tree, also categories without bookings
@@ -2028,6 +2048,7 @@ fn import(
             Some(id) => Some(id),
             None => conn
                 .query_row(
+                    // includes soft-deleted rows: revived below
                     "SELECT id FROM accounts WHERE external_ref = ?1 ORDER BY id LIMIT 1",
                     [&ext],
                     |r| r.get::<_, i64>(0),
@@ -2036,6 +2057,7 @@ fn import(
         };
         let (account_id, currency) = match target {
             Some(id) => {
+                crate::sync_merge::revive_account_if_deleted(conn, id)?;
                 let cur: String = conn
                     .query_row("SELECT currency FROM accounts WHERE id = ?1", [id], |r| {
                         r.get(0)
@@ -2057,9 +2079,9 @@ fn import(
                     .unwrap_or_else(|| "MoneyMoney-Import".into());
                 conn.execute(
                     "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban, account_number,
-                                          currency, kind, balance_cents, balance_date, sf_symbol, sort_order)
+                                          currency, kind, balance_cents, balance_date, sf_symbol, sort_order, created_ms)
                      VALUES (NULL, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, '', ?10,
-                             (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts))",
+                             (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?11)",
                     params![
                         gid,
                         ext,
@@ -2070,7 +2092,8 @@ fn import(
                         a.account,
                         a.currency,
                         kind.as_str(),
-                        kind.sf_symbol()
+                        kind.sf_symbol(),
+                        crate::user_groups::now_ms()
                     ],
                 )?;
                 res.accounts_created += 1;
@@ -2358,4 +2381,4 @@ fn statement_files(explicit: Option<String>, found: Option<PathBuf>) -> Option<S
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

@@ -294,7 +294,7 @@ fn candidates(conn: &Connection, unlinked_only: bool) -> CoreResult<Vec<(Candida
                 CASE WHEN l.source = 'excluded' THEN l.loan_account_id END
            FROM transactions t JOIN accounts a ON a.id = t.account_id
            LEFT JOIN loan_links l ON l.transaction_id = t.id
-          WHERE a.kind != 'loan' {}",
+          WHERE a.kind != 'loan' AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL {}",
         if unlinked_only {
             "AND (l.transaction_id IS NULL OR l.source = 'excluded')"
         } else {
@@ -326,7 +326,8 @@ fn load_setup(conn: &Connection, account_id: i64) -> CoreResult<Option<LoanSetup
         .query_row(
             "SELECT a.name, a.initial_balance_cents, l.anchor_date, l.anchor_balance_cents,
                     l.interest_rate_ppm, l.match_expr
-               FROM loan_terms l JOIN accounts a ON a.id = l.account_id WHERE l.account_id = ?1",
+               FROM loan_terms l JOIN accounts a ON a.id = l.account_id
+              WHERE l.account_id = ?1 AND a.deleted_ms IS NULL",
             [account_id],
             |r| {
                 Ok(LoanSetup {
@@ -351,7 +352,7 @@ fn require_setup(conn: &Connection, account_id: i64) -> CoreResult<LoanSetup> {
 fn linked_bookings(conn: &Connection, loan_id: i64) -> CoreResult<Vec<(String, i64)>> {
     let mut st = conn.prepare(
         "SELECT t.booking_date, t.amount_cents FROM loan_links l JOIN transactions t ON t.id = l.transaction_id
-          WHERE l.loan_account_id = ?1 AND l.source != 'excluded'",
+          WHERE l.loan_account_id = ?1 AND l.source != 'excluded' AND t.deleted_ms IS NULL",
     )?;
     let rows = st.query_map([loan_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -369,7 +370,10 @@ fn refresh(conn: &Connection, loan_id: i64) -> CoreResult<LoanStatus> {
 }
 
 fn manual_loan_ids(conn: &Connection) -> CoreResult<Vec<i64>> {
-    let mut st = conn.prepare("SELECT account_id FROM loan_terms ORDER BY account_id")?;
+    let mut st = conn.prepare(
+        "SELECT account_id FROM loan_terms
+          WHERE account_id IN (SELECT id FROM accounts WHERE deleted_ms IS NULL) ORDER BY account_id",
+    )?;
     let rows = st.query_map([], |r| r.get(0))?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
@@ -389,7 +393,8 @@ pub(crate) fn apply_loan_rules(conn: &Connection) -> CoreResult<u32> {
     let loans: Vec<(i64, SearchExpr)> = {
         let mut st = conn.prepare(
             "SELECT l.account_id, l.match_expr FROM loan_terms l JOIN accounts a ON a.id = l.account_id
-              WHERE l.match_expr != '' AND a.archived_unix IS NULL ORDER BY l.account_id",
+              WHERE l.match_expr != '' AND a.archived_unix IS NULL AND a.deleted_ms IS NULL
+              ORDER BY l.account_id",
         )?;
         let rows: Vec<(i64, String)> = st
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
@@ -452,10 +457,11 @@ pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> 
             }
         }
     }
+    // links of live bookings only; a deleted booking has none
     let mut st = conn.prepare(
         "SELECT t.account_id, t.external_id, t.import_fp, l.loan_account_id, l.source
            FROM other.loan_links l JOIN other.transactions t ON t.id = l.transaction_id
-          WHERE l.source != 'rule'",
+          WHERE l.source != 'rule' AND t.deleted_ms IS NULL",
     )?;
     let rows: Vec<(i64, String, String, i64, String)> = st
         .query_map([], |r| {
@@ -466,15 +472,41 @@ pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> 
         let (Some(acc), Some(loan)) = (acc_map.get(&oacc), acc_map.get(&oloan)) else {
             continue;
         };
-        let tx: Option<i64> = conn
+        // the booking's key first; the fingerprint only when exactly one
+        // booking carries it (a pair the merge has not renamed yet)
+        let by_key: Option<(i64, bool)> = conn
             .query_row(
-                "SELECT id FROM transactions WHERE account_id = ?1
-                   AND (external_id = ?2 OR (?3 != '' AND import_fp = ?3)) LIMIT 1",
-                params![acc, ext, fp],
-                |r| r.get(0),
+                // includes soft-deleted rows: a deleted match stays unlinked
+                "SELECT id, deleted_ms IS NULL FROM transactions WHERE account_id = ?1 AND external_id = ?2",
+                params![acc, ext],
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
-        if let Some(tx) = tx {
+        let tx: Option<i64> = match by_key {
+            Some((id, live)) => live.then_some(id),
+            None if fp.is_empty() => None,
+            None => {
+                // includes soft-deleted rows: an ambiguous or deleted match links nothing
+                let ids: Vec<(i64, bool)> = conn
+                    .prepare(
+                        "SELECT id, deleted_ms IS NULL FROM transactions
+                          WHERE account_id = ?1 AND import_fp = ?2 LIMIT 2",
+                    )?
+                    .query_map(params![acc, fp], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<Result<_, _>>()?;
+                match ids[..] {
+                    [(id, true)] => Some(id),
+                    _ => None,
+                }
+            }
+        };
+        let loan_live: bool = conn.query_row(
+            // includes soft-deleted rows
+            "SELECT deleted_ms IS NULL FROM accounts WHERE id = ?1",
+            [loan],
+            |r| r.get(0),
+        )?;
+        if let (Some(tx), true) = (tx, loan_live) {
             conn.execute(
                 "INSERT OR IGNORE INTO loan_links(transaction_id, loan_account_id, source) VALUES (?1, ?2, ?3)",
                 params![tx, loan, source],
@@ -528,13 +560,14 @@ pub(crate) fn create_in(conn: &Connection, setup: &LoanSetup) -> CoreResult<i64>
     let (group, sym, order) = crate::connectors::group_for(AccountKind::Loan);
     let gid = Vault::ensure_group(conn, group, sym, order)?;
     conn.execute(
-        "INSERT INTO accounts(connection_id, group_id, external_ref, name, kind, sf_symbol, sort_order)
-         VALUES (NULL, ?1, ?2, ?3, 'loan', ?4, (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts))",
+        "INSERT INTO accounts(connection_id, group_id, external_ref, name, kind, sf_symbol, sort_order, created_ms)
+         VALUES (NULL, ?1, ?2, ?3, 'loan', ?4, (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?5)",
         params![
             gid,
             format!("manual-loan-{}", uuid::Uuid::new_v4()),
             s.name,
-            AccountKind::Loan.sf_symbol()
+            AccountKind::Loan.sf_symbol(),
+            crate::user_groups::now_ms()
         ],
     )?;
     let id = conn.last_insert_rowid();
@@ -670,7 +703,10 @@ impl Vault {
     pub fn list_loan_links(&self) -> Result<Vec<LoanLink>, CoreError> {
         let db = self.db()?;
         let mut st = db.prepare(
-            "SELECT transaction_id, loan_account_id, source = 'rule' FROM loan_links WHERE source != 'excluded'",
+            "SELECT l.transaction_id, l.loan_account_id, l.source = 'rule' FROM loan_links l
+              JOIN transactions t ON t.id = l.transaction_id AND t.deleted_ms IS NULL
+              JOIN accounts a ON a.id = l.loan_account_id AND a.deleted_ms IS NULL
+             WHERE l.source != 'excluded'",
         )?;
         let rows = st.query_map([], |r| {
             Ok(LoanLink {
@@ -693,7 +729,8 @@ impl Vault {
         let tx = db.unchecked_transaction()?;
         let kind: Option<String> = tx
             .query_row(
-                "SELECT a.kind FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.id = ?1",
+                "SELECT a.kind FROM transactions t JOIN accounts a ON a.id = t.account_id
+                  WHERE t.id = ?1 AND t.deleted_ms IS NULL AND a.deleted_ms IS NULL",
                 [transaction_id],
                 |r| r.get(0),
             )

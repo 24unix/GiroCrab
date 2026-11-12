@@ -1078,9 +1078,11 @@ fn generate(today: NaiveDate) -> Vec<Tx> {
 impl Vault {
     /// For a brand-new personal vault: the German category tree and the
     /// starter rules (no accounts, no bookings). Returns the number of
-    /// categories created; no-op if categories exist.
+    /// categories created; no-op if categories exist or ever existed (deleted
+    /// starter categories must not come back and spread to other devices).
     pub fn seed_starter_categories(&self) -> Result<u32, crate::error::CoreError> {
         let db = self.db()?;
+        // includes soft-deleted rows
         let n: i64 = db.query_row("SELECT count(*) FROM categories", [], |r| r.get(0))?;
         if n > 0 {
             return Ok(0);
@@ -1088,6 +1090,7 @@ impl Vault {
         let tx = db.unchecked_transaction()?;
         let cats = categories(&tx)?;
         rules(&tx, &cats)?;
+        crate::sync_merge::fill_missing_uuids(&tx)?;
         tx.commit()?;
         Ok(cats.len() as u32)
     }
@@ -1095,7 +1098,11 @@ impl Vault {
     /// Number of accounts (0 = nothing synced yet).
     pub fn account_count(&self) -> Result<u32, crate::error::CoreError> {
         let db = self.db()?;
-        Ok(db.query_row("SELECT count(*) FROM accounts", [], |r| r.get::<_, i64>(0))? as u32)
+        Ok(db.query_row(
+            "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL",
+            [],
+            |r| r.get::<_, i64>(0),
+        )? as u32)
     }
 
     /// Whether the vault ever held an account. Counts every row, so a vault
@@ -1116,6 +1123,7 @@ impl Vault {
         let tx = db.unchecked_transaction()?;
         let cats = categories(&tx)?;
         rules(&tx, &cats)?;
+        crate::sync_merge::fill_missing_uuids(&tx)?;
         let mut conn_ids = std::collections::HashMap::new();
         let logins = [
             (ConnectorKind::VolksbankKasselGoettingen, "demo-musterbank"),

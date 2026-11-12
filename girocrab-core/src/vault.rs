@@ -7,7 +7,7 @@
 //!   account_groups    sidebar grouping by account kind (Giro, Credit cards, ...)
 //!   user_groups       user-defined sidebar groups ("Privat", "Geschäft", ...), synced by uuid
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, ToSql};
@@ -103,9 +103,9 @@ CREATE INDEX IF NOT EXISTS tx_account_checked ON transactions(account_id, checke
 CREATE INDEX IF NOT EXISTS tx_salary_marked ON transactions(counterparty_iban) WHERE salary_flag = 1;
 ";
 
-const SCHEMA_VERSION: i64 = 7;
+const SCHEMA_VERSION: i64 = 8;
 
-const SCHEMA: &str = r#"
+pub(crate) const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS bank_connections (
     id              INTEGER PRIMARY KEY,
     connector       TEXT    NOT NULL,              -- ConnectorKind::as_str()
@@ -267,7 +267,7 @@ impl Vault {
         })
     }
 
-    fn apply_key(conn: &Connection, key: &[u8]) -> CoreResult<()> {
+    pub(crate) fn apply_key(conn: &Connection, key: &[u8]) -> CoreResult<()> {
         if key.len() < 16 {
             return Err(CoreError::InvalidInput {
                 message: "master key must be at least 16 bytes".into(),
@@ -413,6 +413,8 @@ impl Vault {
         conn.execute_batch(crate::recurring::RECURRING_SCHEMA)?;
         // v7: user-defined account groups – idempotent
         crate::user_groups::migrate(conn)?;
+        // v8: sync keys, per-field edit stamps and soft deletes – idempotent
+        crate::sync_merge::migrate(conn)?;
         // manual loans (#36) – idempotent
         conn.execute_batch(crate::loans::LOAN_SCHEMA)?;
         // after all column migrations: the indexes need the newest columns
@@ -435,7 +437,7 @@ impl Vault {
         if existing.is_some() {
             return Ok(());
         }
-        let mut stmt = conn.prepare("SELECT amount_cents FROM transactions WHERE account_id = ?1 ORDER BY booking_date DESC, id DESC")?;
+        let mut stmt = conn.prepare("SELECT amount_cents FROM transactions WHERE account_id = ?1 AND deleted_ms IS NULL ORDER BY booking_date DESC, id DESC")?;
         let amounts: Vec<i64> = stmt
             .query_map([account_id], |r| r.get(0))?
             .collect::<Result<_, _>>()?;
@@ -469,8 +471,10 @@ impl Vault {
         let mut stmt = conn.prepare(
             "SELECT r.id, r.name, r.category_id, r.field, r.match_kind, r.pattern, r.case_sensitive,
                     r.min_amount_cents, r.max_amount_cents, r.account_id, r.priority, r.enabled,
-                    (SELECT count(*) FROM transactions t WHERE t.rule_id = r.id)
-             FROM rules r ORDER BY r.priority, r.id",
+                    (SELECT count(*) FROM transactions t WHERE t.rule_id = r.id AND t.deleted_ms IS NULL)
+             FROM rules r WHERE r.deleted_ms IS NULL
+               AND (r.account_id IS NULL OR EXISTS (SELECT 1 FROM accounts a WHERE a.id = r.account_id AND a.deleted_ms IS NULL))
+             ORDER BY r.priority, r.id",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok(Rule {
@@ -503,15 +507,33 @@ impl Vault {
         conn: &Connection,
         only_uncategorised: bool,
     ) -> CoreResult<u32> {
+        let changed = Self::categorise_by_rules(conn, only_uncategorised, None)?;
+        // manual loans (#36): link new bookings by expression, refresh balances
+        crate::loans::apply_loan_rules(conn)?;
+        Ok(changed)
+    }
+
+    /// Runs the rules over the uncategorised bookings in `ids` (a merge lets
+    /// rules refill the bookings whose category it cleared).
+    pub(crate) fn apply_rules_to(conn: &Connection, ids: &HashSet<i64>) -> CoreResult<u32> {
+        Self::categorise_by_rules(conn, true, Some(ids))
+    }
+
+    /// `only`: restricts the run to these bookings.
+    fn categorise_by_rules(
+        conn: &Connection,
+        only_uncategorised: bool,
+        only: Option<&HashSet<i64>>,
+    ) -> CoreResult<u32> {
         let set = Self::rule_set(conn)?;
         let sql = if only_uncategorised {
             "SELECT t.id, t.account_id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.rule_id,
                     t.note, t.currency, IFNULL(a.iban, '')
-             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND t.category_source = 'none'"
+             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL AND t.category_source = 'none'"
         } else {
             "SELECT t.id, t.account_id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.rule_id,
                     t.note, t.currency, IFNULL(a.iban, '')
-             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND t.category_source != 'manual'"
+             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL AND t.category_source != 'manual'"
         };
         let mut stmt = conn.prepare(sql)?;
         // (note, currency, own account IBAN) ride along for search expressions
@@ -547,6 +569,9 @@ impl Vault {
                 ))
             })?
             .collect::<Result<_, _>>()?;
+        let rows = rows
+            .into_iter()
+            .filter(|r| only.is_none_or(|ids| ids.contains(&r.0 .0)));
         let mut changed = 0u32;
         let mut upd_rule = conn.prepare("UPDATE transactions SET category_id = ?1, rule_id = ?2, category_source = 'rule' WHERE id = ?3")?;
         let mut upd_none = conn.prepare("UPDATE transactions SET category_id = NULL, rule_id = NULL, category_source = 'none' WHERE id = ?1")?;
@@ -581,8 +606,6 @@ impl Vault {
                 }
             }
         }
-        // manual loans (#36): link new bookings by expression, refresh balances
-        crate::loans::apply_loan_rules(conn)?;
         Ok(changed)
     }
 
@@ -606,7 +629,7 @@ impl Vault {
     fn category_rows(
         conn: &Connection,
     ) -> CoreResult<Vec<(i64, Option<i64>, String, String, String, i32, Option<i64>)>> {
-        let mut stmt = conn.prepare("SELECT id, parent_id, name, sf_symbol, color_hex, sort_order, budget_cents FROM categories")?;
+        let mut stmt = conn.prepare("SELECT id, parent_id, name, sf_symbol, color_hex, sort_order, budget_cents FROM categories WHERE deleted_ms IS NULL")?;
         let rows = stmt
             .query_map([], |r| {
                 Ok((
@@ -710,15 +733,19 @@ impl Vault {
         let info = crate::connectors::descriptor(connector);
         let login_name = crate::connections::normalize_login(connector, &login_name);
         // Same provider + same login: update instead of creating a duplicate.
-        let existing: Vec<(i64, String)> = {
-            let mut st =
-                conn.prepare("SELECT id, login_name FROM bank_connections WHERE connector = ?1")?;
+        // A live match wins over a deleted one; a deleted one is revived.
+        let existing: Vec<(i64, String, bool)> = {
+            let mut st = conn.prepare(
+                // includes soft-deleted rows
+                "SELECT id, login_name, deleted_ms IS NOT NULL FROM bank_connections
+                 WHERE connector = ?1 ORDER BY deleted_ms IS NOT NULL, id",
+            )?;
             let r = st
-                .query_map([key], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .query_map([key], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
                 .collect::<Result<Vec<_>, _>>()?;
             r
         };
-        if let Some((id, _)) = existing.iter().find(|(_, l)| {
+        if let Some((id, _, deleted)) = existing.iter().find(|(_, l, _)| {
             !login_name.is_empty()
                 && crate::connections::normalize_login(connector, l)
                     .eq_ignore_ascii_case(&login_name)
@@ -729,16 +756,21 @@ impl Vault {
                     params![display_name.trim(), id],
                 )?;
             }
+            if *deleted {
+                crate::sync_merge::revive_connection(conn, *id)?;
+                return Ok((*id, true));
+            }
             return Ok((*id, false));
         }
         conn.execute(
-            "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol, created_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 key,
                 if display_name.trim().is_empty() { info.name.clone() } else { display_name },
                 login_name,
                 bank_code.map(str::to_string).unwrap_or(info.bank_code),
-                info.sf_symbol
+                info.sf_symbol,
+                crate::user_groups::now_ms()
             ],
         )?;
         Ok((conn.last_insert_rowid(), true))
@@ -750,7 +782,10 @@ impl Vault {
 }
 
 impl Vault {
-    fn merge_attached(conn: &Connection) -> CoreResult<MergeStats> {
+    // includes soft-deleted rows: the merge reads and matches every row of
+    // both vaults, deleted ones too
+    /// `legacy`: the other vault was written by a v7 build (no uuids).
+    fn merge_attached(conn: &Connection, legacy: bool) -> CoreResult<MergeStats> {
         let mut st = MergeStats::default();
         let tx = conn.unchecked_transaction()?;
 
@@ -775,368 +810,23 @@ impl Vault {
             }
         }
 
-        // bank connections (by connector + login + bank code)
-        let mut conn_map: HashMap<i64, i64> = HashMap::new();
-        {
-            let rows: Vec<(i64, String, String, String, String, String, String, Option<i64>)> = tx
-                .prepare(
-                    "SELECT id, connector, display_name, login_name, bank_code, sf_symbol, state_json, last_sync_unix
-                     FROM other.bank_connections",
-                )?
-                .query_map([], |r| {
-                    Ok((
-                        r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?,
-                        r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?,
-                    ))
-                })?
-                .collect::<Result<_, _>>()?;
-            for (oid, connector, name, login, bank, sym, state, last) in rows {
-                let existing: Option<i64> = tx
-                    .query_row(
-                        "SELECT id FROM bank_connections WHERE connector=?1 AND login_name=?2 AND bank_code=?3",
-                        params![connector, login, bank],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
-                let id = match existing {
-                    Some(id) => id,
-                    None => {
-                        tx.execute(
-                            "INSERT INTO bank_connections(connector, display_name, login_name, bank_code, sf_symbol, state_json, last_sync_unix)
-                             VALUES (?1,?2,?3,?4,?5,?6,?7)",
-                            params![connector, name, login, bank, sym, state, last],
-                        )?;
-                        tx.last_insert_rowid()
-                    }
-                };
-                conn_map.insert(oid, id);
-            }
-        }
-
-        // accounts (by connection + external_ref)
-        let mut acc_map: HashMap<i64, i64> = HashMap::new();
-        let mut acc_inserted: std::collections::HashSet<i64> = Default::default();
-        {
-            #[allow(clippy::type_complexity)]
-            let rows: Vec<(i64, Option<i64>, i64, String, String, String, String, String, String, String, String, i64, String, String, i64, Option<i64>)> = tx
-                .prepare(
-                    "SELECT id, connection_id, group_id, external_ref, name, bank_name, owner, iban,
-                            account_number, currency, kind, balance_cents, balance_date, sf_symbol,
-                            sort_order, initial_balance_cents FROM other.accounts",
-                )?
-                .query_map([], |r| {
-                    Ok((
-                        r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?,
-                        r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?,
-                        r.get(12)?, r.get(13)?, r.get(14)?, r.get(15)?,
-                    ))
-                })?
-                .collect::<Result<_, _>>()?;
-            for (
-                oid,
-                ocon,
-                ogrp,
-                ext,
-                name,
-                bank,
-                owner,
-                iban,
-                num,
-                cur,
-                kind,
-                bal,
-                bdate,
-                sym,
-                ord,
-                init,
-            ) in rows
-            {
-                let con = ocon.and_then(|c| conn_map.get(&c).copied());
-                let existing: Option<i64> = tx
-                    .query_row(
-                        "SELECT id FROM accounts WHERE connection_id IS ?1 AND external_ref = ?2",
-                        params![con, ext],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
-                let id = match existing {
-                    Some(id) => id,
-                    None => {
-                        let grp =
-                            group_map
-                                .get(&ogrp)
-                                .copied()
-                                .ok_or_else(|| CoreError::Database {
-                                    message: "merge: unknown account group".into(),
-                                })?;
-                        tx.execute(
-                            "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban,
-                                account_number, currency, kind, balance_cents, balance_date, sf_symbol, sort_order,
-                                initial_balance_cents)
-                             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
-                            params![con, grp, ext, name, bank, owner, iban, num, cur, kind, bal, bdate, sym, ord, init],
-                        )?;
-                        st.accounts_added += 1;
-                        acc_inserted.insert(tx.last_insert_rowid());
-                        tx.last_insert_rowid()
-                    }
-                };
-                acc_map.insert(oid, id);
-            }
-        }
+        // bank connections (by sync key) and accounts (by connection +
+        // external_ref): newest creation or deletion wins, deletions cascade
+        let conn_map = crate::sync_merge::merge_connections(&tx)?;
+        let (acc_map, acc_inserted) =
+            crate::sync_merge::merge_accounts(&tx, &conn_map, &group_map, &mut st)?;
         // user groups, account placements and names (newest edit wins)
         st.groups_updated = crate::user_groups::merge_attached(&tx, &acc_map, &acc_inserted)?;
 
-        // categories (parents first, by parent + name)
-        let mut cat_map: HashMap<i64, i64> = HashMap::new();
-        {
-            let mut pending: Vec<(i64, Option<i64>, String, String, String, Option<i64>, i64)> = tx
-                .prepare(
-                    "SELECT id, parent_id, name, sf_symbol, color_hex, budget_cents, sort_order
-                     FROM other.categories ORDER BY id",
-                )?
-                .query_map([], |r| {
-                    Ok((
-                        r.get(0)?,
-                        r.get(1)?,
-                        r.get(2)?,
-                        r.get(3)?,
-                        r.get(4)?,
-                        r.get(5)?,
-                        r.get(6)?,
-                    ))
-                })?
-                .collect::<Result<_, _>>()?;
-            while !pending.is_empty() {
-                let before = pending.len();
-                let mut rest = Vec::new();
-                for row in pending {
-                    let (oid, opar, name, sym, color, budget, ord) = row.clone();
-                    let par = match opar {
-                        None => None,
-                        Some(p) => match cat_map.get(&p) {
-                            Some(&m) => Some(m),
-                            None => {
-                                rest.push(row);
-                                continue;
-                            }
-                        },
-                    };
-                    let existing: Option<i64> = tx
-                        .query_row(
-                            "SELECT id FROM categories WHERE IFNULL(parent_id,0) = IFNULL(?1,0) AND name = ?2",
-                            params![par, name],
-                            |r| r.get(0),
-                        )
-                        .optional()?;
-                    let id = match existing {
-                        Some(id) => id,
-                        None => {
-                            tx.execute(
-                                "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, budget_cents, sort_order)
-                                 VALUES (?1,?2,?3,?4,?5,?6)",
-                                params![par, name, sym, color, budget, ord],
-                            )?;
-                            st.categories_added += 1;
-                            tx.last_insert_rowid()
-                        }
-                    };
-                    cat_map.insert(oid, id);
-                }
-                if rest.len() == before {
-                    break; // orphaned categories (broken parent) – skip
-                }
-                pending = rest;
-            }
-        }
+        // categories and rules (newest edit wins, deletions stay deleted)
+        let cat_map = crate::sync_merge::merge_categories(&tx, legacy, &mut st)?;
+        let rule_map = crate::sync_merge::merge_rules(&tx, &cat_map, &acc_map, legacy, &mut st)?;
+        // bookings only point at live categories and rules
+        let cat_map = crate::sync_merge::live_targets(&tx, "categories", &cat_map)?;
+        let rule_map = crate::sync_merge::live_targets(&tx, "rules", &rule_map)?;
 
-        // rules (by name + field + kind + pattern + category)
-        let mut rule_map: HashMap<i64, i64> = HashMap::new();
-        {
-            #[allow(clippy::type_complexity)]
-            let rows: Vec<(
-                i64,
-                String,
-                i64,
-                String,
-                String,
-                String,
-                bool,
-                Option<i64>,
-                Option<i64>,
-                Option<i64>,
-                i64,
-                bool,
-            )> = tx
-                .prepare(
-                    "SELECT id, name, category_id, field, match_kind, pattern, case_sensitive,
-                            min_amount_cents, max_amount_cents, account_id, priority, enabled
-                     FROM other.rules ORDER BY id",
-                )?
-                .query_map([], |r| {
-                    Ok((
-                        r.get(0)?,
-                        r.get(1)?,
-                        r.get(2)?,
-                        r.get(3)?,
-                        r.get(4)?,
-                        r.get(5)?,
-                        r.get(6)?,
-                        r.get(7)?,
-                        r.get(8)?,
-                        r.get(9)?,
-                        r.get(10)?,
-                        r.get(11)?,
-                    ))
-                })?
-                .collect::<Result<_, _>>()?;
-            for (oid, name, ocat, field, kind, pat, cs, min, max, oacc, prio, en) in rows {
-                let Some(&cat) = cat_map.get(&ocat) else {
-                    continue;
-                };
-                if pat.len() > crate::rules::MAX_PATTERN_LEN {
-                    continue;
-                }
-                let acc = oacc.and_then(|a| acc_map.get(&a).copied());
-                if oacc.is_some() && acc.is_none() {
-                    continue;
-                }
-                let existing: Option<i64> = tx
-                    .query_row(
-                        "SELECT id FROM rules WHERE name=?1 AND field=?2 AND match_kind=?3 AND pattern=?4
-                         AND category_id=?5 AND account_id IS ?6",
-                        params![name, field, kind, pat, cat, acc],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
-                let id = match existing {
-                    Some(id) => id,
-                    None => {
-                        tx.execute(
-                            "INSERT INTO rules(name, category_id, field, match_kind, pattern, case_sensitive,
-                                min_amount_cents, max_amount_cents, account_id, priority, enabled)
-                             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
-                            params![name, cat, field, kind, pat, cs, min, max, acc, prio, en],
-                        )?;
-                        st.rules_added += 1;
-                        tx.last_insert_rowid()
-                    }
-                };
-                rule_map.insert(oid, id);
-            }
-        }
-
-        // bookings
-        #[allow(clippy::type_complexity)]
-        let rows: Vec<(
-            i64,
-            String,
-            String,
-            String,
-            i64,
-            String,
-            String,
-            String,
-            String,
-            String,
-            Option<i64>,
-            String,
-            Option<i64>,
-            bool,
-            i64,
-            String,
-            String,
-        )> = tx
-            .prepare(
-                "SELECT account_id, external_id, booking_date, value_date, amount_cents, currency,
-                        counterparty, counterparty_iban, purpose, booking_text, category_id,
-                        category_source, rule_id, checked, imported_unix, note, import_fp
-                 FROM other.transactions",
-            )?
-            .query_map([], |r| {
-                Ok((
-                    r.get(0)?,
-                    r.get(1)?,
-                    r.get(2)?,
-                    r.get(3)?,
-                    r.get(4)?,
-                    r.get(5)?,
-                    r.get(6)?,
-                    r.get(7)?,
-                    r.get(8)?,
-                    r.get(9)?,
-                    r.get(10)?,
-                    r.get(11)?,
-                    r.get(12)?,
-                    r.get(13)?,
-                    r.get(14)?,
-                    r.get(15)?,
-                    r.get(16)?,
-                ))
-            })?
-            .collect::<Result<_, _>>()?;
-        for (
-            oacc,
-            ext,
-            bd,
-            vd,
-            amt,
-            cur,
-            cp,
-            cpi,
-            purpose,
-            text,
-            ocat,
-            csrc,
-            orule,
-            checked,
-            imp,
-            note,
-            fp,
-        ) in rows
-        {
-            let Some(&acc) = acc_map.get(&oacc) else {
-                continue;
-            };
-            let cat = ocat.and_then(|c| cat_map.get(&c).copied());
-            let rule = orule.and_then(|c| rule_map.get(&c).copied());
-            let existing: Option<i64> = tx
-                .query_row(
-                    "SELECT id FROM transactions WHERE account_id = ?1
-                       AND (external_id = ?2 OR (?3 != '' AND import_fp = ?3)) LIMIT 1",
-                    params![acc, ext, fp],
-                    |r| r.get(0),
-                )
-                .optional()?;
-            match existing {
-                Some(id) => {
-                    let n = tx.execute(
-                        "UPDATE transactions SET
-                            checked = CASE WHEN ?2 THEN 1 ELSE checked END,
-                            category_id = CASE WHEN category_id IS NULL AND ?3 IS NOT NULL THEN ?3 ELSE category_id END,
-                            category_source = CASE WHEN category_id IS NULL AND ?3 IS NOT NULL THEN ?4 ELSE category_source END,
-                            rule_id = CASE WHEN category_id IS NULL AND ?3 IS NOT NULL THEN ?5 ELSE rule_id END,
-                            note = CASE WHEN note = '' AND ?6 != '' THEN ?6 ELSE note END
-                         WHERE id = ?1
-                           AND ((?2 AND checked = 0)
-                             OR (category_id IS NULL AND ?3 IS NOT NULL)
-                             OR (note = '' AND ?6 != ''))",
-                        params![id, checked, cat, csrc, rule, note],
-                    )?;
-                    st.bookings_updated += n as u32;
-                }
-                None => {
-                    tx.execute(
-                        "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents,
-                            currency, counterparty, counterparty_iban, purpose, booking_text, category_id,
-                            category_source, rule_id, checked, imported_unix, note, import_fp)
-                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
-                        params![acc, ext, bd, vd, amt, cur, cp, cpi, purpose, text, cat, csrc, rule, checked, imp, note, fp],
-                    )?;
-                    st.bookings_added += 1;
-                }
-            }
-        }
+        // bookings and splits (newest edit per field wins, deletions stay)
+        crate::sync_merge::merge_bookings(&tx, &acc_map, &cat_map, &rule_map, &mut st)?;
         crate::loans::merge_attached(&tx, &acc_map)?;
         tx.commit()?;
         Ok(st)
@@ -1290,10 +980,11 @@ impl Vault {
     }
 
     /// Merges another vault file (e.g. a copy synced via iCloud) into this one.
-    /// Missing connections, accounts, categories, rules and bookings are added;
-    /// existing bookings are never duplicated (matched by account + external id
-    /// or import fingerprint) but gain `checked`, category and note if the
-    /// other side has them and this side does not.
+    /// Categories and rules: newest edit wins, deletions stay deleted, same
+    /// ones created on both sides are combined. Missing connections, accounts
+    /// and bookings are added; existing bookings (matched by account +
+    /// external id, else import fingerprint) take the newest edit per field
+    /// (category, note, checked, text, splits) and stay deleted once deleted.
     pub fn merge_other_vault(
         &self,
         other_path: String,
@@ -1305,12 +996,21 @@ impl Vault {
                 message: "cannot merge a vault into itself".into(),
             });
         }
-        // Validate key and bring the other file up to the current schema.
-        {
+        // Validate key and bring the other file up to the current schema;
+        // a file from a v7 build has no uuids before that.
+        let legacy = {
             let o = Connection::open(&other_path)?;
             Self::apply_key(&o, &key)?;
+            let has_uuid: bool = o
+                .query_row(
+                    "SELECT count(*) > 0 FROM pragma_table_info('categories') WHERE name = 'uuid'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap_or(true);
             Self::migrate(&o)?;
-        }
+            !has_uuid
+        };
         let conn = self.db()?;
         let before = conn.total_changes();
         let raw_key = Zeroizing::new(format!("x'{}'", hex::encode(&*key)));
@@ -1318,7 +1018,7 @@ impl Vault {
             "ATTACH DATABASE ?1 AS other KEY ?2",
             params![other_path, &*raw_key],
         )?;
-        let res = Self::merge_attached(&conn).map(|mut st| {
+        let res = Self::merge_attached(&conn, legacy).map(|mut st| {
             st.changes = conn.total_changes() - before;
             st
         });
@@ -1345,7 +1045,8 @@ impl Vault {
     pub fn is_empty(&self) -> Result<bool, CoreError> {
         let db = self.db()?;
         let n: i64 = db.query_row(
-            "SELECT (SELECT count(*) FROM accounts) + (SELECT count(*) FROM categories)",
+            "SELECT (SELECT count(*) FROM accounts WHERE deleted_ms IS NULL)
+                  + (SELECT count(*) FROM categories WHERE deleted_ms IS NULL)",
             [],
             |r| r.get(0),
         )?;
@@ -1358,9 +1059,9 @@ impl Vault {
         let db = self.db()?;
         let mut stmt = db.prepare(
             "SELECT id, connector, display_name, login_name, bank_code, sf_symbol, last_sync_unix,
-                    EXISTS (SELECT 1 FROM accounts a WHERE a.connection_id = bank_connections.id)
-                      AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.connection_id = bank_connections.id AND a.archived_unix IS NULL)
-             FROM bank_connections ORDER BY id",
+                    EXISTS (SELECT 1 FROM accounts a WHERE a.connection_id = bank_connections.id AND a.deleted_ms IS NULL)
+                      AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.connection_id = bank_connections.id AND a.deleted_ms IS NULL AND a.archived_unix IS NULL)
+             FROM bank_connections WHERE deleted_ms IS NULL ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
             let kind: String = r.get(1)?;
@@ -1526,7 +1227,7 @@ impl Vault {
         let tx = db.unchecked_transaction()?;
         let Some((conn, archived)) = tx
             .query_row(
-                "SELECT connection_id, archived_unix IS NOT NULL FROM accounts WHERE id = ?1",
+                "SELECT connection_id, archived_unix IS NOT NULL FROM accounts WHERE id = ?1 AND deleted_ms IS NULL",
                 [account_id],
                 |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, bool>(1)?)),
             )
@@ -1547,7 +1248,7 @@ impl Vault {
         crate::loans::refresh_all(&tx)?;
         if let Some(c) = conn {
             let left: i64 = tx.query_row(
-                "SELECT count(*) FROM accounts WHERE connection_id = ?1",
+                "SELECT count(*) FROM accounts WHERE connection_id = ?1 AND deleted_ms IS NULL",
                 [c],
                 |r| r.get(0),
             )?;
@@ -1565,7 +1266,9 @@ impl Vault {
         let db = self.db()?;
         let mut q = db.prepare(
             "SELECT isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents
-             FROM holdings WHERE account_id = ?1 ORDER BY value_cents DESC, name",
+             FROM holdings h WHERE account_id = ?1
+               AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = h.account_id AND a.deleted_ms IS NULL)
+             ORDER BY value_cents DESC, name",
         )?;
         let rows = q.query_map([account_id], |r| {
             Ok(Holding {
@@ -1588,19 +1291,20 @@ impl Vault {
         let mut stmt = db.prepare(
             "SELECT a.id, a.connection_id, c.connector, a.group_id, a.name, a.bank_name, a.owner, a.iban, a.account_number,
                     a.currency, a.kind, a.balance_cents, a.balance_date, a.sf_symbol, a.sort_order,
-                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id),
+                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.deleted_ms IS NULL),
                     -- uncategorised, split-aware like `category_match_sql(\"IS NULL\")`
-                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.category_id IS NULL
+                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.category_id IS NULL AND t.deleted_ms IS NULL
                         AND NOT EXISTS (SELECT 1 FROM transaction_splits sp WHERE sp.transaction_id = t.id))
                     + (SELECT count(DISTINCT sp.transaction_id) FROM transaction_splits sp
                         JOIN transactions t ON t.id = sp.transaction_id
-                        WHERE t.account_id = a.id AND sp.category_id IS NULL),
-                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0),
+                        WHERE t.account_id = a.id AND sp.category_id IS NULL AND t.deleted_ms IS NULL),
+                    (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0 AND t.deleted_ms IS NULL),
                     a.initial_balance_cents, g.uuid, IFNULL(g.include_in_total, 1) AND a.archived_unix IS NULL,
                     a.color_hex, IFNULL(c.connector, ''), IFNULL(c.bank_code, ''), IFNULL(c.login_name, ''), a.external_ref,
                     a.archived_unix, a.access_revoked
              FROM accounts a LEFT JOIN bank_connections c ON c.id = a.connection_id
              LEFT JOIN user_groups g ON g.uuid = a.user_group_uuid AND g.deleted_ms IS NULL
+             WHERE a.deleted_ms IS NULL
              ORDER BY a.sort_order, a.id",
         )?;
         let mut color_hashes: HashMap<i64, u64> = HashMap::new();
@@ -1672,7 +1376,7 @@ impl Vault {
         }) {
             let mut st = db.prepare(
                 "SELECT booking_date, amount_cents, counterparty || ' ' || purpose || ' ' || booking_text
-                 FROM transactions WHERE account_id = ?1 ORDER BY booking_date, id",
+                 FROM transactions WHERE account_id = ?1 AND deleted_ms IS NULL ORDER BY booking_date, id",
             )?;
             let tx_rows: Vec<(String, i64, String)> = st
                 .query_map([a.id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
@@ -1759,7 +1463,7 @@ impl Vault {
                 .collect::<Vec<_>>()
                 .join(",");
             let mut stmt = db.prepare(&format!(
-                "SELECT booking_date, SUM(amount_cents) FROM transactions WHERE account_id IN ({list}) AND booking_date > ?1 GROUP BY booking_date"
+                "SELECT booking_date, SUM(amount_cents) FROM transactions WHERE account_id IN ({list}) AND booking_date > ?1 AND deleted_ms IS NULL GROUP BY booking_date"
             ))?;
             let date = start.format("%Y-%m-%d").to_string();
             let args: Vec<rusqlite::types::Value> = std::iter::once(date.into())
@@ -1953,10 +1657,25 @@ impl Vault {
             |r| r.get(0),
         )?;
         db.execute(
-            "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![parent_id, name, if sf_symbol.is_empty() { "tag".to_string() } else { sf_symbol }, color_hex, order],
+            "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order,
+                    name_ms, parent_ms, symbol_ms, color_ms, order_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?6, ?6)",
+            params![
+                parent_id,
+                name,
+                if sf_symbol.is_empty() {
+                    "tag".to_string()
+                } else {
+                    sf_symbol
+                },
+                color_hex,
+                order,
+                crate::user_groups::now_ms()
+            ],
         )?;
-        Ok(db.last_insert_rowid())
+        let id = db.last_insert_rowid();
+        crate::sync_merge::fill_missing_uuids(&db)?;
+        Ok(id)
     }
 
     pub fn update_category(
@@ -1992,29 +1711,51 @@ impl Vault {
         }
         // The UI shows built-in names translated; saving that unchanged
         // display name keeps the stored German default (and its logic).
-        let stored: Option<String> = db
-            .query_row("SELECT name FROM categories WHERE id = ?1", [id], |r| {
-                r.get(0)
-            })
+        let stored: Option<(String, Option<i64>, String, String)> = db
+            .query_row(
+                "SELECT name, parent_id, sf_symbol, color_hex FROM categories WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
             .optional()?;
-        let name = match stored {
-            Some(stored) if stored != name && display_name(&stored) == name => stored,
+        let name = match &stored {
+            Some((stored, ..)) if *stored != name && display_name(stored) == name => stored.clone(),
             _ => name,
         };
+        // only fields that really change get a stamp (newest edit wins per field)
+        let now = crate::user_groups::now_ms();
+        let (old_name, old_parent, old_symbol, old_color) = stored.unwrap_or_default();
         db.execute(
-            "UPDATE categories SET name = ?1, parent_id = ?2, sf_symbol = ?3, color_hex = ?4 WHERE id = ?5",
-            params![name, parent_id, sf_symbol, color_hex, id],
+            "UPDATE categories SET name = ?1, parent_id = ?2, sf_symbol = ?3, color_hex = ?4,
+                    name_ms = CASE WHEN ?6 THEN ?10 ELSE name_ms END,
+                    parent_ms = CASE WHEN ?7 THEN ?10 ELSE parent_ms END,
+                    symbol_ms = CASE WHEN ?8 THEN ?10 ELSE symbol_ms END,
+                    color_ms = CASE WHEN ?9 THEN ?10 ELSE color_ms END
+             WHERE id = ?5",
+            params![
+                name,
+                parent_id,
+                sf_symbol,
+                color_hex,
+                id,
+                name != old_name,
+                parent_id != old_parent,
+                sf_symbol != old_symbol,
+                color_hex != old_color,
+                now
+            ],
         )?;
         Ok(())
     }
 
-    /// Deletes a category and its sub-categories; their transactions become
-    /// uncategorised.
+    /// Deletes a category and its sub-categories (soft: the rows stay with a
+    /// deletion stamp, so a sync does not bring them back); their rules go
+    /// too and their transactions and splits become uncategorised. The
+    /// uncategorising is derived, so it carries no `category_ms` stamp.
     pub fn delete_category(&self, id: i64) -> Result<(), CoreError> {
-        let db = self.db()?;
-        let tx = db.unchecked_transaction()?;
-        tx.execute("DELETE FROM categories WHERE id = ?1", [id])?;
-        tx.execute("UPDATE transactions SET category_source = 'none', rule_id = NULL WHERE category_id IS NULL AND category_source != 'none'", [])?;
+        let mut db = self.db()?;
+        let tx = db.transaction()?;
+        crate::sync_merge::soft_delete_categories(&tx, id)?;
         tx.commit()?;
         Ok(())
     }
@@ -2024,7 +1765,7 @@ impl Vault {
     pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
         let db = self.db()?;
         let paths = Self::category_paths(&db)?;
-        let mut wh: Vec<String> = vec!["1=1".into()];
+        let mut wh: Vec<String> = vec!["t.deleted_ms IS NULL AND a.deleted_ms IS NULL".into()];
         let mut args: Vec<Box<dyn ToSql>> = vec![];
         let mut cte = String::new();
         if !filter.account_ids.is_empty() {
@@ -2041,7 +1782,7 @@ impl Vault {
             // monthly "Zins / Tilgung" debits) that reference the loan's IBAN / account number.
             let loans: Vec<(i64, String, String)> = {
                 let mut q = db
-                    .prepare("SELECT id, iban, account_number FROM accounts WHERE kind = 'loan'")?;
+                    .prepare("SELECT id, iban, account_number FROM accounts WHERE kind = 'loan' AND deleted_ms IS NULL")?;
                 let rows = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
                 rows.collect::<Result<Vec<_>, _>>()?
             };
@@ -2090,7 +1831,7 @@ impl Vault {
             let n = args.len();
             if filter.include_subcategories {
                 cte = format!(
-                    "WITH RECURSIVE sub(id) AS (SELECT ?{n} UNION ALL SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id) "
+                    "WITH RECURSIVE sub(id) AS (SELECT ?{n} UNION ALL SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id WHERE c.deleted_ms IS NULL) "
                 );
                 Some("IN (SELECT id FROM sub)".into())
             } else {
@@ -2159,10 +1900,13 @@ impl Vault {
         }
         let loan_links = crate::loans::link_map(&db)?;
         let where_sql = wh.join(" AND ");
-        let from_sql = "FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN categories cat ON cat.id = t.category_id";
+        // a deleted category or rule reads as none (what the old SET NULL did)
+        let from_sql = "FROM transactions t JOIN accounts a ON a.id = t.account_id
+             LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL
+             LEFT JOIN rules r ON r.id = t.rule_id AND r.deleted_ms IS NULL";
         let sql = format!(
             "{cte}SELECT t.id, t.account_id, a.name, t.booking_date, t.value_date, t.amount_cents, t.currency, t.counterparty,
-                    t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.category_source, t.rule_id, t.checked, a.kind,
+                    t.counterparty_iban, t.purpose, t.booking_text, cat.id, t.category_source, r.id, t.checked, a.kind,
                     (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note,
                     t.purpose_code, t.gvc, t.salary_flag, {share_sql}
              {from_sql} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC"
@@ -2223,7 +1967,7 @@ impl Vault {
         // Own IBANs: bookings to / from them are transfers (Issue #94).
         let own_ibans: std::collections::HashSet<String> = {
             let mut st =
-                db.prepare("SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != ''")?;
+                db.prepare("SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != '' AND deleted_ms IS NULL")?;
             let ibans = st
                 .query_map([], |r| r.get::<_, String>(0))?
                 .filter_map(Result::ok)
@@ -2326,8 +2070,8 @@ impl Vault {
     ) -> Result<(), CoreError> {
         let db = self.db()?;
         let n = db.execute(
-            "UPDATE transactions SET category_id = ?1, rule_id = NULL, category_source = CASE WHEN ?1 IS NULL THEN 'none' ELSE 'manual' END WHERE id = ?2",
-            params![category_id, transaction_id],
+            "UPDATE transactions SET category_id = ?1, rule_id = NULL, category_source = CASE WHEN ?1 IS NULL THEN 'none' ELSE 'manual' END, category_ms = ?3 WHERE id = ?2",
+            params![category_id, transaction_id, crate::user_groups::now_ms()],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
@@ -2352,8 +2096,8 @@ impl Vault {
         checked: bool,
     ) -> Result<(), CoreError> {
         self.db()?.execute(
-            "UPDATE transactions SET checked = ?1 WHERE id = ?2",
-            params![checked as i64, transaction_id],
+            "UPDATE transactions SET checked = ?1, checked_ms = ?3 WHERE id = ?2",
+            params![checked as i64, transaction_id, crate::user_groups::now_ms()],
         )?;
         Ok(())
     }
@@ -2366,8 +2110,13 @@ impl Vault {
         purpose: String,
     ) -> Result<(), CoreError> {
         let n = self.db()?.execute(
-            "UPDATE transactions SET counterparty = ?1, purpose = ?2 WHERE id = ?3",
-            params![counterparty.trim(), purpose.trim(), transaction_id],
+            "UPDATE transactions SET counterparty = ?1, purpose = ?2, text_ms = ?4 WHERE id = ?3",
+            params![
+                counterparty.trim(),
+                purpose.trim(),
+                transaction_id,
+                crate::user_groups::now_ms()
+            ],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
@@ -2384,8 +2133,8 @@ impl Vault {
         note: String,
     ) -> Result<(), CoreError> {
         let n = self.db()?.execute(
-            "UPDATE transactions SET note = ?1 WHERE id = ?2",
-            params![note.trim(), transaction_id],
+            "UPDATE transactions SET note = ?1, note_ms = ?3 WHERE id = ?2",
+            params![note.trim(), transaction_id, crate::user_groups::now_ms()],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
@@ -2432,18 +2181,22 @@ impl Vault {
         };
         if rule.id == 0 {
             db.execute(
-                "INSERT INTO rules(name, category_id, field, match_kind, pattern, case_sensitive, min_amount_cents, max_amount_cents, account_id, priority, enabled)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                "INSERT INTO rules(name, category_id, field, match_kind, pattern, case_sensitive, min_amount_cents, max_amount_cents, account_id, priority, enabled, updated_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![rule.name, rule.category_id, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
-                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64],
+                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64,
+                        crate::user_groups::now_ms()],
             )?;
-            Ok(db.last_insert_rowid())
+            let id = db.last_insert_rowid();
+            crate::sync_merge::fill_missing_uuids(&db)?;
+            Ok(id)
         } else {
             db.execute(
                 "UPDATE rules SET name=?1, category_id=?2, field=?3, match_kind=?4, pattern=?5, case_sensitive=?6, min_amount_cents=?7,
-                        max_amount_cents=?8, account_id=?9, priority=?10, enabled=?11 WHERE id=?12",
+                        max_amount_cents=?8, account_id=?9, priority=?10, enabled=?11, updated_ms=?13 WHERE id=?12",
                 params![rule.name, rule.category_id, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
-                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64, rule.id],
+                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64, rule.id,
+                        crate::user_groups::now_ms()],
             )?;
             Ok(rule.id)
         }
@@ -2453,7 +2206,10 @@ impl Vault {
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
         tx.execute("UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL WHERE rule_id = ?1", [rule_id])?;
-        tx.execute("DELETE FROM rules WHERE id = ?1", [rule_id])?;
+        tx.execute(
+            "UPDATE rules SET deleted_ms = ?2 WHERE id = ?1 AND deleted_ms IS NULL",
+            params![rule_id, crate::user_groups::now_ms()],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -2471,7 +2227,7 @@ impl Vault {
         })?;
         let ibans: HashMap<i64, String> = {
             let db = self.db()?;
-            let mut st = db.prepare("SELECT id, iban FROM accounts")?;
+            let mut st = db.prepare("SELECT id, iban FROM accounts WHERE deleted_ms IS NULL")?;
             let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
             rows.collect::<Result<_, _>>()?
         };
@@ -2563,31 +2319,12 @@ impl Vault {
 
 impl Vault {
     fn delete_account_rows(db: &Connection, account_id: i64) -> Result<(), CoreError> {
-        for sql in [
-            "DELETE FROM holdings WHERE account_id = ?1",
-            "DELETE FROM booking_documents WHERE account_id = ?1",
-            "DELETE FROM transactions WHERE account_id = ?1",
-            "DELETE FROM accounts WHERE id = ?1",
-        ] {
-            db.execute(sql, [account_id])?;
-        }
-        Ok(())
+        crate::sync_merge::soft_delete_account(db, account_id)
     }
 
     fn purge_connection(db: &Connection, connection_id: i64) -> Result<(), CoreError> {
-        let ids: Vec<i64> = {
-            let mut q = db.prepare("SELECT id FROM accounts WHERE connection_id = ?1")?;
-            let rows = q.query_map([connection_id], |r| r.get(0))?;
-            rows.collect::<Result<_, _>>()?
-        };
-        for id in ids {
-            Self::delete_account_rows(db, id)?;
-        }
-        db.execute(
-            "DELETE FROM bank_connections WHERE id = ?1",
-            [connection_id],
-        )?;
-        // stored secrets of this connection (PIN); the session lives in state_json
+        crate::sync_merge::soft_delete_connection(db, connection_id)?;
+        // stored secrets of this connection (PIN); the soft delete blanked the session (state_json)
         db.execute(
             "DELETE FROM settings WHERE key = ?1",
             [crate::connections::pin_key(connection_id)],

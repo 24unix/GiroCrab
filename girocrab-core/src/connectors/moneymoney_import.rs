@@ -476,6 +476,8 @@ struct Existing {
     id: i64,
     category_source: String,
     note: String,
+    /// Soft-deleted: counts as present, but is never updated.
+    deleted: bool,
 }
 
 pub(crate) fn find_or_create_category(
@@ -495,7 +497,7 @@ pub(crate) fn find_or_create_category(
         }
         let found: Option<i64> = conn
             .query_row(
-                "SELECT id FROM categories WHERE parent_id IS ?1 AND name = ?2 COLLATE NOCASE",
+                "SELECT id FROM categories WHERE parent_id IS ?1 AND name = ?2 COLLATE NOCASE AND deleted_ms IS NULL",
                 params![parent, part],
                 |r| r.get(0),
             )
@@ -509,11 +511,14 @@ pub(crate) fn find_or_create_category(
                     |r| r.get(0),
                 )?;
                 conn.execute(
-                    "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order) VALUES (?1, ?2, 'tag', '#8E8E93', ?3)",
-                    params![parent, part, order],
+                    "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order, name_ms, parent_ms, symbol_ms, color_ms, order_ms)
+                     VALUES (?1, ?2, 'tag', '#8E8E93', ?3, ?4, ?4, ?4, ?4, ?4)",
+                    params![parent, part, order, crate::user_groups::now_ms()],
                 )?;
                 *created += 1;
-                conn.last_insert_rowid()
+                let id = conn.last_insert_rowid();
+                crate::sync_merge::fill_missing_uuids(conn)?;
+                id
             }
         };
         cache.insert(key.clone(), id);
@@ -556,9 +561,11 @@ fn run(
     match target {
         Some(id) => {
             account_currency = conn
-                .query_row("SELECT currency FROM accounts WHERE id = ?1", [id], |r| {
-                    r.get::<_, String>(0)
-                })
+                .query_row(
+                    "SELECT currency FROM accounts WHERE id = ?1 AND deleted_ms IS NULL",
+                    [id],
+                    |r| r.get::<_, String>(0),
+                )
                 .optional()?
                 .ok_or_else(|| CoreError::NotFound {
                     what: trf("Konto {0}", &[&id]),
@@ -573,14 +580,15 @@ fn run(
             let gid = Vault::ensure_group(conn, ARCHIVE_GROUP, "archivebox", 90)?;
             conn.execute(
                 "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, currency, kind,
-                                      balance_cents, balance_date, sf_symbol, sort_order)
+                                      balance_cents, balance_date, sf_symbol, sort_order, created_ms)
                  VALUES (NULL, ?1, ?2, ?3, 'MoneyMoney-Import', ?4, 'checking', 0, '', 'archivebox',
-                         (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts))",
+                         (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?5)",
                 params![
                     gid,
                     format!("moneymoney-{}", uuid::Uuid::new_v4()),
                     account_name_from_file(file_name),
-                    account_currency
+                    account_currency,
+                    crate::user_groups::now_ms()
                 ],
             )?;
             st.account_id = conn.last_insert_rowid();
@@ -631,8 +639,9 @@ pub(crate) fn merge_rows(
     let mut existing: HashMap<String, Vec<Existing>> = HashMap::new();
     {
         let mut q = conn.prepare(
+            // includes soft-deleted rows: a deleted booking is matched, never re-imported
             "SELECT id, booking_date, amount_cents, counterparty_iban, counterparty, purpose,
-                    import_fp, category_source, note
+                    import_fp, category_source, note, deleted_ms IS NOT NULL
              FROM transactions WHERE account_id = ?1 ORDER BY id",
         )?;
         let it = q.query_map([st.account_id], |r| {
@@ -654,6 +663,7 @@ pub(crate) fn merge_rows(
                     id: r.get(0)?,
                     category_source: r.get(7)?,
                     note: r.get(8)?,
+                    deleted: r.get(9)?,
                 },
             ))
         })?;
@@ -690,18 +700,21 @@ pub(crate) fn merge_rows(
         let note = if preserve_notes { r.note.as_str() } else { "" };
         if let Some(e) = existing.get(&fp).and_then(|v| v.get(k)) {
             st.duplicates += 1;
+            if e.deleted {
+                continue;
+            }
             let mut changed = false;
             if let Some(c) = cat_id.filter(|_| e.category_source != "manual") {
                 conn.execute(
-                    "UPDATE transactions SET category_id = ?1, rule_id = NULL, category_source = 'manual' WHERE id = ?2",
-                    params![c, e.id],
+                    "UPDATE transactions SET category_id = ?1, rule_id = NULL, category_source = 'manual', category_ms = ?3 WHERE id = ?2",
+                    params![c, e.id, crate::user_groups::now_ms()],
                 )?;
                 changed = true;
             }
             if !note.is_empty() && e.note.trim().is_empty() {
                 conn.execute(
-                    "UPDATE transactions SET note = ?1 WHERE id = ?2",
-                    params![note, e.id],
+                    "UPDATE transactions SET note = ?1, note_ms = ?3 WHERE id = ?2",
+                    params![note, e.id, crate::user_groups::now_ms()],
                 )?;
                 st.notes += 1;
                 changed = true;
@@ -713,8 +726,8 @@ pub(crate) fn merge_rows(
         }
         conn.execute(
             "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency,
-                    counterparty, counterparty_iban, purpose, booking_text, category_id, category_source, checked, note, import_fp)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 1, ?13, ?14)",
+                    counterparty, counterparty_iban, purpose, booking_text, category_id, category_source, checked, note, import_fp, category_ms, note_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 1, ?13, ?14, ?15, ?16)",
             params![
                 st.account_id,
                 format!("mm-{fp}-{k}"),
@@ -729,7 +742,9 @@ pub(crate) fn merge_rows(
                 cat_id,
                 if cat_id.is_some() { "manual" } else { "none" },
                 note,
-                fp
+                fp,
+                if cat_id.is_some() { crate::user_groups::now_ms() } else { 0 },
+                if note.is_empty() { 0 } else { crate::user_groups::now_ms() }
             ],
         )?;
         st.new += 1;
@@ -758,7 +773,7 @@ fn find_twin(
     let mut stmt = conn.prepare(
         "SELECT id, counterparty, counterparty_iban FROM transactions
           WHERE account_id = ?1 AND external_id LIKE 'mm-%' AND amount_cents = ?2
-            AND id != ?3 AND abs(julianday(booking_date) - julianday(?4)) <= 2",
+            AND deleted_ms IS NULL AND id != ?3 AND abs(julianday(booking_date) - julianday(?4)) <= 2",
     )?;
     let rows = stmt.query_map(
         params![account_id, cents, exclude_id.unwrap_or(-1), date],
@@ -807,7 +822,7 @@ pub(crate) fn adopt_import(
     let fp = fingerprint(date, cents, iban, name, purpose);
     let mut row: Option<i64> = conn
         .query_row(
-            "SELECT id FROM transactions WHERE account_id = ?1 AND import_fp = ?2 AND external_id LIKE 'mm-%' LIMIT 1",
+            "SELECT id FROM transactions WHERE account_id = ?1 AND import_fp = ?2 AND external_id LIKE 'mm-%' AND deleted_ms IS NULL LIMIT 1",
             params![account_id, fp],
             |r| r.get(0),
         )
@@ -818,6 +833,7 @@ pub(crate) fn adopt_import(
     let Some(id) = row else { return Ok(false) };
     let taken: bool = conn
         .query_row(
+            // includes soft-deleted rows: (account, external_id) is unique
             "SELECT 1 FROM transactions WHERE account_id = ?1 AND external_id = ?2",
             params![account_id, external_id],
             |_| Ok(true),
@@ -868,7 +884,7 @@ pub(crate) fn merge_synced_twin(
         .query_row(
             "SELECT id, counterparty_iban, booking_text FROM transactions
               WHERE account_id = ?1 AND external_id = ?2
-                AND category_source != 'manual' AND checked = 0 AND trim(note) = ''
+                AND deleted_ms IS NULL AND category_source != 'manual' AND checked = 0 AND trim(note) = ''
                 AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = transactions.id)
                 AND NOT EXISTS (SELECT 1 FROM booking_documents d WHERE d.booking_id = transactions.id)",
             params![account_id, external_id],
@@ -891,8 +907,25 @@ pub(crate) fn merge_synced_twin(
     else {
         return Ok(false);
     };
-    conn.execute("DELETE FROM transactions WHERE id = ?1", [bank_id])?;
+    // The twin continues under the bank's external id; the deleted copy
+    // keeps the twin's old MoneyMoney id as a tombstone, so another device
+    // still holding that row deletes it on merge. (account, external_id) is
+    // unique: the copy's id is moved aside while the two swap.
+    let mm_ext: String = conn.query_row(
+        "SELECT external_id FROM transactions WHERE id = ?1",
+        [mm_id],
+        |r| r.get(0),
+    )?;
+    conn.execute(
+        "UPDATE transactions SET external_id = external_id || '#merged-' || id WHERE id = ?1",
+        [bank_id],
+    )?;
     take_over(conn, mm_id, external_id, &bank_iban, &bank_text)?;
+    conn.execute(
+        "UPDATE transactions SET external_id = ?2 WHERE id = ?1",
+        params![bank_id, mm_ext],
+    )?;
+    crate::sync_merge::soft_delete_booking(conn, bank_id)?;
     Ok(true)
 }
 
@@ -1344,7 +1377,7 @@ mod tests {
 
         let n: i64 = db
             .query_row(
-                "SELECT count(*) FROM transactions WHERE account_id = ?1",
+                "SELECT count(*) FROM transactions WHERE account_id = ?1 AND deleted_ms IS NULL",
                 [acc],
                 |r| r.get(0),
             )

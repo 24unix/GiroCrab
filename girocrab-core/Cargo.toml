@@ -30,7 +30,7 @@ sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rand = "0.9"
 hex = "0.4"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "v5"] }
 url = "2"
 simpleicons-rs = "16"
 miniz_oxide = "0.9.1"

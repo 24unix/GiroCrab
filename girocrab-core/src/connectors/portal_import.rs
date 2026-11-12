@@ -853,7 +853,7 @@ impl Vault {
         let db = self.db()?;
         let (kind, name): (String, String) = db
             .query_row(
-                "SELECT connector, display_name FROM bank_connections WHERE id = ?1",
+                "SELECT connector, display_name FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
                 [connection_id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )

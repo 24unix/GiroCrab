@@ -42,6 +42,7 @@ pub mod rules;
 pub mod salary;
 pub mod search_expr;
 pub mod secret;
+mod sync_merge;
 pub mod text;
 pub mod user_groups;
 pub mod vault;

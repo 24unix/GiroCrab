@@ -6,7 +6,7 @@ use crate::models::{BookingFilter, CategorySource, MatchKind};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-const PW: &str = "Test-Passwort 'mit' Anführungszeichen";
+pub(crate) const PW: &str = "Test-Passwort 'mit' Anführungszeichen";
 
 /// The relevant MoneyMoney tables with their real columns.
 const SCHEMA: &str = r#"
@@ -92,7 +92,7 @@ fn fake_db_unencrypted() -> String {
     path.to_string_lossy().to_string()
 }
 
-fn fake_db() -> String {
+pub(crate) fn fake_db() -> String {
     fake_db_with(false, "")
 }
 
@@ -105,7 +105,7 @@ fn vault() -> Arc<Vault> {
 }
 
 /// Options as the UI would send them: every account, suggested kind and target.
-fn options_from(
+pub(crate) fn options_from(
     p: &MoneyMoneyDbPreview,
     connections: bool,
     pins: bool,
@@ -888,6 +888,29 @@ fn starter_categories_stay_when_the_vault_has_bookings() {
     o.import_categories = false;
     v.import_moneymoney_database(path, PW.into(), o).unwrap();
     assert_eq!(v.list_categories(None, None).unwrap().len(), starter);
+}
+
+/// Soft-deleted bookings are no bookings: the vault counts as empty.
+#[test]
+fn deleted_bookings_do_not_count_as_existing() {
+    let v = vault();
+    v.seed_starter_categories().unwrap();
+    {
+        let db = v.db().unwrap();
+        db.execute_batch(
+            "INSERT INTO account_groups(id, name) VALUES (1, 'G');
+             INSERT INTO accounts(id, group_id, external_ref, name) VALUES (1, 1, 'x', 'X');
+             INSERT INTO transactions(account_id, external_id, booking_date, amount_cents)
+             VALUES (1, 'e1', '2026-01-01', -5);",
+        )
+        .unwrap();
+    }
+    v.set_account_archived(1, true).unwrap();
+    v.delete_account(1).unwrap();
+    let p = v
+        .preview_moneymoney_database(fake_db(), PW.into(), None)
+        .unwrap();
+    assert!(p.replaces_starter_categories);
 }
 
 #[test]
@@ -1780,4 +1803,124 @@ fn fallback_balance_counts_account_currency_from_the_initial_balance_date_on() {
     let r = src.rows_for(&acc);
     assert_eq!(r.rows.len(), 3, "all bookings are still imported");
     assert_eq!(r.balance_cents, 10_000 - 2_000);
+}
+
+#[test]
+fn starter_wipe_on_import_soft_deletes_starter_categories() {
+    let v = vault();
+    let starter = v.seed_starter_categories().unwrap() as i64;
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    let db = v.db().unwrap();
+    let n = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+    assert_eq!(
+        n("SELECT count(*) FROM categories WHERE deleted_ms IS NOT NULL"),
+        starter
+    );
+    assert_eq!(n("SELECT count(*) FROM rules WHERE deleted_ms IS NULL"), 0);
+    assert!(n("SELECT count(*) FROM rules WHERE deleted_ms IS NOT NULL") > 0);
+    // the imported tree is live and stamped, with unique uuids
+    assert_eq!(
+        n("SELECT count(*) FROM categories WHERE deleted_ms IS NULL"),
+        7
+    );
+    assert_eq!(
+        n("SELECT count(*) FROM categories WHERE deleted_ms IS NULL AND name_ms > 0 AND uuid IS NOT NULL"),
+        7
+    );
+    assert_eq!(
+        n("SELECT count(DISTINCT uuid) FROM categories"),
+        starter + 7
+    );
+}
+
+#[test]
+fn import_stamps_manual_category_and_note() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    {
+        let db = v.db().unwrap();
+        let n = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        assert!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms > 0") > 0);
+        assert_eq!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms = 0"), 0);
+        assert_eq!(
+            n("SELECT count(*) FROM transactions WHERE note != '' AND note_ms = 0"),
+            0
+        );
+        assert!(n("SELECT count(*) FROM transactions WHERE note != '' AND note_ms > 0") > 0);
+        // pretend the bookings existed without category and note: the re-import enriches them
+        db.execute("UPDATE transactions SET category_id = NULL, category_source = 'none', note = '', category_ms = 0, note_ms = 0", []).unwrap();
+    }
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    let db = v.db().unwrap();
+    let n = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+    assert!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms > 0") > 0);
+    assert_eq!(n("SELECT count(*) FROM transactions WHERE category_source = 'manual' AND category_ms = 0"), 0);
+    assert!(n("SELECT count(*) FROM transactions WHERE note != '' AND note_ms > 0") > 0);
+    assert_eq!(
+        n("SELECT count(*) FROM transactions WHERE note != '' AND note_ms = 0"),
+        0
+    );
+}
+
+#[test]
+fn reimport_revives_deleted_account_with_its_cascade_bookings_only() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true, false))
+        .unwrap();
+    let giro = account_by_name(&v, "Girokonto").id;
+    let live = |v: &Vault| -> i64 {
+        v.db()
+            .unwrap()
+            .query_row(
+                "SELECT count(*) FROM transactions WHERE account_id = ?1 AND deleted_ms IS NULL",
+                [giro],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    let total = live(&v);
+    assert!(total >= 2);
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE transactions SET deleted_ms = 5 WHERE id = (SELECT min(id) FROM transactions WHERE account_id = ?1)",
+            [giro],
+        )
+        .unwrap();
+    v.set_account_archived(giro, true).unwrap();
+    v.delete_account(giro).unwrap();
+    assert_eq!(live(&v), 0);
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+        .unwrap();
+    assert_eq!(
+        v.list_accounts()
+            .unwrap()
+            .iter()
+            .filter(|a| a.id == giro)
+            .count(),
+        1
+    );
+    assert_eq!(
+        live(&v),
+        total - 1,
+        "individually deleted booking stays deleted"
+    );
 }

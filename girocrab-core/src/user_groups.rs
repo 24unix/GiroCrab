@@ -327,7 +327,7 @@ pub(crate) fn place_new_account(conn: &Connection, account_id: i64) -> CoreResul
         .query_row(
             "SELECT a.user_group_uuid FROM accounts a
                JOIN user_groups g ON g.uuid = a.user_group_uuid AND g.deleted_ms IS NULL
-             WHERE a.id != ?1
+             WHERE a.id != ?1 AND a.deleted_ms IS NULL
                AND a.connection_id = (SELECT connection_id FROM accounts WHERE id = ?1)
              GROUP BY a.user_group_uuid ORDER BY count(*) DESC, MIN(a.id) LIMIT 1",
             [account_id],
@@ -360,6 +360,7 @@ pub(crate) fn merge_attached(
         (Option<i64>, i64),
     )> = tx
         .prepare(
+            // includes soft-deleted rows (vault merge)
             "SELECT id, user_group_uuid, user_sort_order, placement_ms, name, name_ms, color_hex, color_ms,
                     archived_unix, archived_ms
              FROM other.accounts",
@@ -509,6 +510,7 @@ fn follow_merges(tx: &Connection) -> CoreResult<u32> {
     for _ in 0..8 {
         let pairs: Vec<(String, String)> = tx
             .prepare(
+                // includes soft-deleted rows: a revived account lands in the right group
                 "SELECT DISTINCT g.uuid, g.merged_into FROM accounts a
                    JOIN user_groups g ON g.uuid = a.user_group_uuid
                  WHERE g.merged_into IS NOT NULL ORDER BY g.uuid",
@@ -521,6 +523,7 @@ fn follow_merges(tx: &Connection) -> CoreResult<u32> {
         for (from, into) in pairs {
             let ids: Vec<i64> = tx
                 .prepare(
+                    // includes soft-deleted rows
                     "SELECT id FROM accounts WHERE user_group_uuid = ?1
                      ORDER BY user_sort_order, name, id",
                 )?
@@ -874,6 +877,7 @@ impl Vault {
         )?;
         let ids: Vec<i64> = tx
             .prepare(
+                // includes soft-deleted rows: none may keep pointing at the deleted group
                 "SELECT id FROM accounts WHERE user_group_uuid = ?1 ORDER BY user_sort_order, id",
             )?
             .query_map([&uuid], |r| r.get(0))?
@@ -934,7 +938,7 @@ impl Vault {
         }
         let mut ids: Vec<i64> = db
             .prepare(
-                "SELECT id FROM accounts WHERE user_group_uuid IS ?1 AND id != ?2
+                "SELECT id FROM accounts WHERE user_group_uuid IS ?1 AND id != ?2 AND deleted_ms IS NULL
                  ORDER BY user_sort_order, id",
             )?
             .query_map(params![group_uuid, account_id], |r| r.get(0))?

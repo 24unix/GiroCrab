@@ -11,7 +11,7 @@
 //! Once ready, `fetch()` downloads accounts and transactions, which the
 //! `SyncSession` merges into the vault and runs the categorisation rules over.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -911,6 +911,7 @@ pub(crate) fn store_fetch(
             if old.is_empty() || new.is_empty() || old == new {
                 continue;
             }
+            // includes soft-deleted rows (the new ref must stay unique)
             tx.execute(
                 "UPDATE accounts SET external_ref = ?3
                  WHERE connection_id = ?1 AND external_ref = ?2
@@ -931,9 +932,11 @@ pub(crate) fn store_fetch(
         // Archived accounts the bank still delivers: nothing is stored for
         // them (no balance, bookings, positions or documents).
         let mut archived_ids: HashMap<String, i64> = HashMap::new();
+        // the deleted ones among them (their bookings are not "skipped")
+        let mut deleted_refs: HashSet<String> = HashSet::new();
         let mut accounts_updated = 0u32;
         let had_accounts: i64 = tx.query_row(
-            "SELECT count(*) FROM accounts WHERE connection_id = ?1",
+            "SELECT count(*) FROM accounts WHERE connection_id = ?1 AND deleted_ms IS NULL",
             [connection_id],
             |r| r.get(0),
         )?;
@@ -941,6 +944,7 @@ pub(crate) fn store_fetch(
         for acc in &data.accounts {
             let existing: Option<i64> = tx
                 .query_row(
+                    // includes soft-deleted rows
                     "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref = ?2",
                     params![connection_id, acc.external_ref],
                     |r| r.get(0),
@@ -966,6 +970,14 @@ pub(crate) fn store_fetch(
                 None => adopt_unlinked(&tx, connection_id, &bank_name, acc)?,
             };
             if let Some(id) = existing {
+                // Deleted accounts stay deleted (like archived ones, nothing is
+                // stored), unless the connection was added again since.
+                if crate::sync_merge::fetch_keeps_account_deleted(&tx, connection_id, id)? {
+                    deleted_refs.insert(acc.external_ref.clone());
+                    archived_ids.insert(acc.external_ref.clone(), id);
+                    continue;
+                }
+                crate::sync_merge::revive_account_if_deleted(&tx, id)?;
                 let archived: bool = tx.query_row(
                     "SELECT archived_unix IS NOT NULL FROM accounts WHERE id = ?1",
                     [id],
@@ -1049,10 +1061,11 @@ pub(crate) fn store_fetch(
                     let gid = Vault::ensure_group(&tx, group, sym, order)?;
                     tx.execute(
                         "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban, account_number, currency, kind,
-                                              balance_cents, balance_date, sf_symbol, sort_order)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts))",
+                                              balance_cents, balance_date, sf_symbol, sort_order, created_ms)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?14)",
                         params![connection_id, gid, acc.external_ref, acc.name, bank_name, acc.owner, acc.iban, acc.account_number,
-                                acc.currency, acc.kind.as_str(), acc.balance_cents, acc.balance_date, acc.kind.sf_symbol()],
+                                acc.currency, acc.kind.as_str(), acc.balance_cents, acc.balance_date, acc.kind.sf_symbol(),
+                                crate::user_groups::now_ms()],
                     )?;
                     let id = tx.last_insert_rowid();
                     crate::user_groups::place_new_account(&tx, id)?;
@@ -1078,7 +1091,7 @@ pub(crate) fn store_fetch(
         if data.accounts_complete && !data.accounts.is_empty() {
             let mut q = tx.prepare(
                 "SELECT external_ref FROM accounts
-                 WHERE connection_id = ?1 AND access_revoked = 0 AND archived_unix IS NULL",
+                 WHERE connection_id = ?1 AND access_revoked = 0 AND archived_unix IS NULL AND deleted_ms IS NULL",
             )?;
             let stored: Vec<String> = q
                 .query_map([connection_id], |r| r.get(0))?
@@ -1095,7 +1108,7 @@ pub(crate) fn store_fetch(
             let name: Option<String> = tx
                 .query_row(
                     "SELECT name FROM accounts WHERE connection_id = ?1 AND external_ref = ?2
-                       AND access_revoked = 0 AND archived_unix IS NULL",
+                       AND access_revoked = 0 AND archived_unix IS NULL AND deleted_ms IS NULL",
                     params![connection_id, r],
                     |row| row.get(0),
                 )
@@ -1130,7 +1143,7 @@ pub(crate) fn store_fetch(
                 }
                 let mut st = tx.prepare(
                     "SELECT booking_date, amount_cents, counterparty || ' ' || purpose || ' ' || booking_text
-                     FROM transactions WHERE account_id = ?1 ORDER BY booking_date, id",
+                     FROM transactions WHERE account_id = ?1 AND deleted_ms IS NULL ORDER BY booking_date, id",
                 )?;
                 let rows: Vec<(String, i64, String)> = st
                     .query_map([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
@@ -1217,15 +1230,22 @@ pub(crate) fn store_fetch(
                 let Some(acc_id) = account_ids.get(&t.account_ref) else {
                     if let Some(id) = archived_ids.get(&t.account_ref) {
                         let known: bool = tx.query_row(
+                            // includes soft-deleted rows
                             "SELECT EXISTS (SELECT 1 FROM transactions WHERE account_id = ?1 AND external_id = ?2)",
                             params![id, t.external_id],
                             |r| r.get(0),
                         )?;
-                        skipped_archived += u32::from(!known);
+                        if !deleted_refs.contains(&t.account_ref) {
+                            skipped_archived += u32::from(!known);
+                        }
                     }
                     continue;
                 };
                 adopt_legacy_content_id(&tx, *acc_id, t)?;
+                // Deleted bookings stay deleted: neither inserted nor updated again.
+                if crate::sync_merge::booking_is_deleted(&tx, *acc_id, &t.external_id)? {
+                    continue;
+                }
                 // Already imported from MoneyMoney? Adopt that row (keeps category + note).
                 if moneymoney_import::adopt_import(
                     &tx,
@@ -1280,6 +1300,7 @@ pub(crate) fn store_fetch(
                     let good = |s: &str| !bad(s);
                     let existing: Option<(i64, String, String)> = tx
                         .query_row(
+                            // includes soft-deleted rows
                             "SELECT id, counterparty, purpose FROM transactions WHERE account_id = ?1 AND external_id = ?2",
                             params![acc_id, t.external_id],
                             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
@@ -1313,13 +1334,15 @@ pub(crate) fn store_fetch(
         // Drop optimistic transfer bookings once the bank's real booking arrived
         // (same account, amount and recipient IBAN) or after 14 days.
         tx.execute(
-            "DELETE FROM transactions WHERE external_id LIKE 'pending-%' AND (
+            "UPDATE transactions SET deleted_ms = ?1
+              WHERE external_id LIKE 'pending-%' AND deleted_ms IS NULL AND (
                 imported_unix < strftime('%s','now') - 14*86400 OR EXISTS (
                     SELECT 1 FROM transactions r WHERE r.account_id = transactions.account_id
+                      AND r.deleted_ms IS NULL
                       AND r.external_id NOT LIKE 'pending-%' AND r.amount_cents = transactions.amount_cents
                       AND r.counterparty_iban = transactions.counterparty_iban
                       AND r.booking_date >= transactions.booking_date))",
-            [],
+            [crate::user_groups::now_ms()],
         )?;
         // Card holds: keep exactly the ones the bank still reports as open.
         if let Some(prefix) = data.hold_prefix.as_deref().filter(|p| !p.is_empty()) {
@@ -1334,7 +1357,7 @@ pub(crate) fn store_fetch(
                 let stale: Vec<(i64, String)> = {
                     let mut q = tx.prepare(
                         "SELECT id, external_id FROM transactions
-                         WHERE account_id = ?1 AND external_id LIKE ?2 ESCAPE '\\'",
+                         WHERE account_id = ?1 AND external_id LIKE ?2 ESCAPE '\\' AND deleted_ms IS NULL",
                     )?;
                     let rows =
                         q.query_map(params![acc_id, like], |r| Ok((r.get(0)?, r.get(1)?)))?;
@@ -1342,7 +1365,7 @@ pub(crate) fn store_fetch(
                 };
                 for (row_id, ext) in stale {
                     if !current.contains(ext.as_str()) {
-                        tx.execute("DELETE FROM transactions WHERE id = ?1", [row_id])?;
+                        crate::sync_merge::soft_delete_booking(&tx, row_id)?;
                     }
                 }
             }
@@ -1353,6 +1376,7 @@ pub(crate) fn store_fetch(
             }
             let by_ref = |tx: &rusqlite::Transaction| -> Option<i64> {
                 tx.query_row(
+                    // includes soft-deleted rows
                     "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref = ?2",
                     params![connection_id, d.account_ref],
                     |r| r.get(0),
@@ -1372,6 +1396,7 @@ pub(crate) fn store_fetch(
             let booking_id: Option<i64> = match &d.booking_external_id {
                 Some(ext) => tx
                     .query_row(
+                        // includes soft-deleted rows
                         "SELECT id FROM transactions WHERE account_id = ?1 AND external_id = ?2",
                         params![acc_id, ext],
                         |r| r.get(0),
@@ -1566,7 +1591,7 @@ impl Vault {
         let (conn_id, ext): (Option<i64>, String) = {
             let db = self.db()?;
             db.query_row(
-                "SELECT connection_id, external_ref FROM accounts WHERE id = ?1",
+                "SELECT connection_id, external_ref FROM accounts WHERE id = ?1 AND deleted_ms IS NULL",
                 [account_id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
@@ -1606,7 +1631,7 @@ impl Vault {
     fn statements_due(&self, connection_id: i64) -> CoreResult<Vec<String>> {
         let db = self.db()?;
         let mut stmt = db.prepare(
-            "SELECT id, external_ref FROM accounts WHERE connection_id = ?1 AND kind != 'loan'",
+            "SELECT id, external_ref FROM accounts WHERE connection_id = ?1 AND kind != 'loan' AND deleted_ms IS NULL",
         )?;
         let accounts: Vec<(i64, String)> = stmt
             .query_map([connection_id], |r| Ok((r.get(0)?, r.get(1)?)))?
@@ -1646,7 +1671,7 @@ impl Vault {
             let db = self.db()?;
             let (kind, login, state): (String, String, String) = db
                 .query_row(
-                    "SELECT connector, login_name, state_json FROM bank_connections WHERE id = ?1",
+                    "SELECT connector, login_name, state_json FROM bank_connections WHERE id = ?1 AND deleted_ms IS NULL",
                     [connection_id],
                     |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
                 )
@@ -1697,9 +1722,9 @@ impl Vault {
                 let mut st = db.prepare(
                     "SELECT a.external_ref,
                             (SELECT MAX(t.booking_date) FROM transactions t
-                              WHERE t.account_id = a.id AND t.external_id NOT LIKE 'pending-%')
+                              WHERE t.account_id = a.id AND t.external_id NOT LIKE 'pending-%' AND t.deleted_ms IS NULL)
                        FROM accounts a
-                      WHERE a.connection_id = ?1 AND a.archived_unix IS NULL",
+                      WHERE a.connection_id = ?1 AND a.archived_unix IS NULL AND a.deleted_ms IS NULL",
                 )?;
                 let rows = st
                     .query_map([connection_id], |r| Ok((r.get(0)?, r.get(1)?)))?
@@ -1960,7 +1985,7 @@ impl Vault {
             let db = self.db()?;
             let row: (Option<i64>, String, String) = db
                 .query_row(
-                    "SELECT connection_id, iban, owner FROM accounts WHERE id = ?1",
+                    "SELECT connection_id, iban, owner FROM accounts WHERE id = ?1 AND deleted_ms IS NULL",
                     [request.account_id],
                     |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
                 )
@@ -2086,7 +2111,7 @@ impl Vault {
         let q = query.trim().replace(' ', "").to_lowercase();
         let mut stmt = db.prepare(
             "SELECT counterparty, counterparty_iban, count(*) AS n FROM transactions
-             WHERE counterparty_iban <> '' AND counterparty <> '' AND amount_cents < 0
+             WHERE counterparty_iban <> '' AND counterparty <> '' AND amount_cents < 0 AND deleted_ms IS NULL
              GROUP BY counterparty, counterparty_iban
              ORDER BY n DESC, MAX(booking_date) DESC",
         )?;
@@ -2173,6 +2198,7 @@ fn adopt_unlinked(
             .to_uppercase()
     };
     let mut st = tx.prepare(
+        // includes soft-deleted rows
         "SELECT id, IFNULL(iban,''), IFNULL(account_number,''), name, IFNULL(bank_name,'') FROM accounts WHERE connection_id IS NULL",
     )?;
     let rows: Vec<(i64, String, String, String, String)> = st
@@ -2210,6 +2236,10 @@ fn adopt_unlinked(
         }
     }
     if let Some(id) = found {
+        // a deleted account that stays deleted keeps its sync key
+        if crate::sync_merge::fetch_keeps_account_deleted(tx, connection_id, id)? {
+            return Ok(found);
+        }
         tx.execute(
             "UPDATE accounts SET connection_id = ?1, external_ref = ?2, kind = ?3 WHERE id = ?4",
             params![connection_id, acc.external_ref, acc.kind.as_str(), id],
@@ -2557,7 +2587,7 @@ mod tests {
         let holds = || -> Vec<String> {
             let db = v.db().unwrap();
             let mut q = db
-                .prepare("SELECT external_id FROM transactions WHERE external_id LIKE 'pending-hold-%' ORDER BY 1")
+                .prepare("SELECT external_id FROM transactions WHERE external_id LIKE 'pending-hold-%' AND deleted_ms IS NULL ORDER BY 1")
                 .unwrap();
             q.query_map([], |r| r.get(0))
                 .unwrap()

@@ -707,7 +707,7 @@ impl Vault {
         let row: Option<(String, i64)> = self
             .db()?
             .query_row(
-                "SELECT booking_date, account_id FROM transactions WHERE id = ?1",
+                "SELECT booking_date, account_id FROM transactions WHERE id = ?1 AND deleted_ms IS NULL",
                 [booking_id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )

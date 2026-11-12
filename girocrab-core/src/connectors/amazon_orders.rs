@@ -368,7 +368,7 @@ impl Vault {
         for b in parsed.iter().filter(|b| b.id.starts_with("amazon:")) {
             let old: Option<i64> = db
                 .query_row(
-                    "SELECT amount_cents FROM transactions WHERE account_id = ?1 AND external_id = ?2",
+                    "SELECT amount_cents FROM transactions WHERE account_id = ?1 AND external_id = ?2 AND deleted_ms IS NULL",
                     rusqlite::params![acc_id, b.id],
                     |r| r.get(0),
                 )
