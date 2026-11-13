@@ -72,7 +72,7 @@ struct AccountsSectionHeader: View {
                     .help("Neue Gruppe …")
                     .accessibilityLabel("Neue Gruppe")
                     Button { model.openGroupManager() } label: {
-                        Image(systemName: "folder.badge.gearshape").frame(width: 24, height: 18).contentShape(Rectangle())
+                        Image(systemName: "gearshape").frame(width: 24, height: 18).contentShape(Rectangle())
                     }
                     .help("Gruppen bearbeiten …")
                     .accessibilityLabel("Gruppen bearbeiten")
