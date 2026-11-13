@@ -54,7 +54,15 @@ zu Ihren Banken per **FinTS 3.0 / HBCI** und **PSD2 (Enable Banking)** – ohne 
 
 *Angaben zu Drittprodukten ohne Gewähr; GiroCrab ist unabhängig von diesen Anbietern. Auch als Alternative zu Banking4, Bank X oder Pecunia gedacht, die einen lokalen Mac-Client suchen.*
 
-### ✨ Neu in v0.6.1
+### ✨ Neu in v0.6.2
+
+*Aktuell als Beta `v0.6.2-beta.1` für Tester (Kanal „Beta“); die stabile Version bleibt v0.6.1.*
+
+- 🧮 **Startsaldo für Konten mit berechnetem Saldo (#212, #227):** wie in MoneyMoney lässt sich ein Startsaldo mit optionalem Stichtag festlegen und per „Kalibrieren“ aus dem letzten Kontostand ableiten; der MoneyMoney-Datenbankimport übernimmt ihn. Entfernen setzt den Saldo auf die reine Umsatzsumme zurück.
+- 🗄️ **Versionierte Schema-Migrationen mit Downgrade-Schutz (#206, #232):** Tresore werden in nummerierten Schritten migriert; ein Tresor aus einer neueren Version wird nicht geöffnet. Diese Version hebt Tresore auf **Schema 10** – vor dem Testen eine Sicherungskopie anlegen, falls v0.6.1 den Tresor wieder öffnen soll.
+- 🖱️ **Drag & Drop in der Seitenleiste mit Einfügelinie (#230)** wie in MoneyMoney, dazu eindeutige PSD-Bankennamen im FinTS-Verzeichnis (#145) und ein Kopieren-Menü auf iOS (Konto- und Depotpositionen).
+
+**Highlights aus v0.6.1:**
 
 - 📲 **iOS & iPadOS jetzt via Apple TestFlight:** Die iOS-App kann ab sofort direkt per **[TestFlight-Einladung](https://testflight.apple.com/join/KBmvKVpT)** auf iPhone und iPad installiert und automatisch aktualisiert werden – kein eigener Xcode-Build mehr nötig.
 - 💿 **macOS-Installer als `.dmg` + Sparkle Auto-Updates:** Offiziell von Apple signiertes und notarisiertes Disk-Image (`GiroCrab-macOS-arm64.dmg`) inklusive integrierter Update-Funktion über Sparkle.
@@ -241,7 +249,15 @@ recognition, savings-plan view, loan repayment progress and direct connections t
 
 *Information about third-party products without guarantee; GiroCrab is independent of these vendors.*
 
-### ✨ What's new in v0.6.1
+### ✨ What's new in v0.6.2
+
+*Currently available as beta `v0.6.2-beta.1` for testers (“Beta” channel); the stable version stays v0.6.1.*
+
+- 🧮 **Opening balance for accounts with a computed balance (#212, #227):** as in MoneyMoney, set an opening balance with an optional cut-off date and derive it from the latest statement balance with “Calibrate”; the MoneyMoney database import picks it up. Removing it falls back to the plain sum of the bookings.
+- 🗄️ **Versioned schema migrations with downgrade protection (#206, #232):** vaults migrate in numbered steps; a vault written by a newer version is refused. This version upgrades vaults to **schema 10** – make a backup copy first if you may want to open the vault in v0.6.1 again.
+- 🖱️ **Drag & drop in the sidebar with an insertion line (#230)** like MoneyMoney, unambiguous PSD bank names in the FinTS directory (#145) and a copy menu on iOS (account and depot positions).
+
+**Highlights from v0.6.1:**
 
 - 📲 **iOS & iPadOS via Apple TestFlight:** install and auto-update the iOS app on iPhone and iPad through the **[TestFlight invitation](https://testflight.apple.com/join/KBmvKVpT)** – no Xcode build needed any more.
 - 💿 **macOS installer as `.dmg` + Sparkle auto-updates:** a disk image signed and notarized by Apple (`GiroCrab-macOS-arm64.dmg`) with built-in updates via Sparkle.
