@@ -11,6 +11,7 @@
 //! in one `impl Vault` per feature module (`vault/*.rs`, `loans.rs`, `connectors/…`),
 //! see `docs/ARCHITECTURE.md` › "Vault modules".
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::{params, Connection};
@@ -182,6 +183,29 @@ pub struct Vault {
     /// The master key, kept for sync snapshots and peer merges so the app
     /// doesn't ask the keychain again. Wiped on drop.
     key: Mutex<Zeroizing<Vec<u8>>>,
+    _open: OpenVault,
+}
+
+/// Vaults alive in this process (the app's own plus peer copies a merge opens).
+static OPEN_VAULTS: AtomicUsize = AtomicUsize::new(0);
+
+/// Counts a vault as open; the last one to drop clears the process-wide
+/// merchant cache, which holds booking texts in plain text (#267).
+struct OpenVault;
+
+impl OpenVault {
+    fn new() -> Self {
+        OPEN_VAULTS.fetch_add(1, Ordering::SeqCst);
+        OpenVault
+    }
+}
+
+impl Drop for OpenVault {
+    fn drop(&mut self) {
+        if OPEN_VAULTS.fetch_sub(1, Ordering::SeqCst) == 1 {
+            crate::merchants::clear_resolve_cache();
+        }
+    }
 }
 
 impl Vault {
@@ -317,6 +341,7 @@ impl Vault {
             conn: Mutex::new(conn),
             path,
             key: Mutex::new(key),
+            _open: OpenVault::new(),
         }))
     }
 

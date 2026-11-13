@@ -21,6 +21,17 @@ use crate::models::AccountKind;
 /// Entries kept by the merchant cache of [`MerchantResolver::resolve`].
 const RESOLVE_CACHE_MAX: usize = 200_000;
 
+/// Counterparty/purpose → merchant, see [`MerchantResolver::resolve`].
+static RESOLVE_CACHE: OnceLock<Mutex<HashMap<(String, String), MerchantInfo>>> = OnceLock::new();
+
+/// Forgets every remembered merchant. Its keys are booking texts in plain
+/// text, so the last vault to close calls this (#267).
+pub(crate) fn clear_resolve_cache() {
+    if let Some(c) = RESOLVE_CACHE.get() {
+        c.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum MerchantKind {
     Supermarket,
@@ -868,11 +879,10 @@ impl MerchantResolver {
     ///
     /// The result only depends on the two texts, and the booking list asks
     /// for every booking again on each reload, so results are remembered
-    /// for the lifetime of the process (resolving ~19 000 bookings took
-    /// about 270 ms per reload; a remembered one is a hash lookup).
+    /// while a vault is open (resolving ~19 000 bookings took about 270 ms
+    /// per reload; a remembered one is a hash lookup).
     pub fn resolve(counterparty: &str, purpose: &str) -> MerchantInfo {
-        static CACHE: OnceLock<Mutex<HashMap<(String, String), MerchantInfo>>> = OnceLock::new();
-        let cache = CACHE.get_or_init(Default::default);
+        let cache = RESOLVE_CACHE.get_or_init(Default::default);
         let key = (counterparty.to_string(), purpose.to_string());
         if let Some(hit) = cache.lock().ok().and_then(|c| c.get(&key).cloned()) {
             return hit;
@@ -1160,10 +1170,11 @@ pub fn clean_purpose(raw: &str) -> String {
     words.join(" ").trim().trim_matches('.').trim().to_string()
 }
 
-/// Exposed for tests / tooling: resolve without a vault.
+/// Exposed for tests / tooling: resolve without a vault. Bypasses the cache,
+/// which only the last vault to close clears.
 #[uniffi::export]
 pub fn resolve_merchant(counterparty: String, purpose: String) -> MerchantInfo {
-    MerchantResolver::resolve(&counterparty, &purpose)
+    MerchantResolver::resolve_uncached(&counterparty, &purpose)
 }
 
 #[cfg(test)]

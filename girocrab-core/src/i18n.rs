@@ -8,15 +8,17 @@
 //!
 //! The Swift app calls [`set_language`] once at start-up with
 //! `Locale.preferredLanguages.first`. Tests never touch the process-wide
-//! language: they use [`tr_in`] or [`with_language`] (a thread-local
-//! override), so tests asserting German messages stay deterministic while
-//! `cargo test` runs them in parallel threads.
+//! language: they use [`tr_in`] or `with_language` (a thread-local override
+//! that only exists in test builds, so no async path can depend on the
+//! thread it runs on), so tests asserting German messages stay deterministic
+//! while `cargo test` runs them in parallel threads.
 //!
 //! Built-in account group and starter category names are stored in German in
 //! the vault (the code finds groups by name and classifies bookings by the
 //! top-level category name). They are translated only on the way out via
 //! [`display_name`] / [`display_path`], so user-renamed entries stay as written.
 
+#[cfg(test)]
 use std::cell::Cell;
 use std::fmt::Display;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -46,6 +48,7 @@ impl Lang {
 
 static LANGUAGE: AtomicU8 = AtomicU8::new(0);
 
+#[cfg(test)]
 thread_local! {
     static OVERRIDE: Cell<Option<Lang>> = const { Cell::new(None) };
 }
@@ -69,15 +72,18 @@ pub fn set_language(code: String) {
     LANGUAGE.store(parse_language(&code).to_u8(), Ordering::Relaxed);
 }
 
-/// The language in effect on this thread.
+/// The language in effect (process-wide; tests may override it per thread).
 pub fn current() -> Lang {
-    OVERRIDE
-        .with(|o| o.get())
-        .unwrap_or_else(|| Lang::from_u8(LANGUAGE.load(Ordering::Relaxed)))
+    #[cfg(test)]
+    if let Some(lang) = OVERRIDE.with(|o| o.get()) {
+        return lang;
+    }
+    Lang::from_u8(LANGUAGE.load(Ordering::Relaxed))
 }
 
 /// Runs `f` with `lang` as the language of the current thread only
 /// (for tests; the process-wide setting is left untouched).
+#[cfg(test)]
 pub fn with_language<R>(lang: Lang, f: impl FnOnce() -> R) -> R {
     struct Reset(Option<Lang>);
     impl Drop for Reset {
