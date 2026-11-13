@@ -60,11 +60,14 @@ struct GeneralSettings: View {
     var body: some View {
         @Bindable var model = model
         Form {
+            #if os(iOS)
+            // The Mac has these in its menus (Hilfe › GiroCrab-Hilfe, Ansicht › Demo-Daten anzeigen).
             Section {
                 Button { showHelp = true } label: {
                     Label("Hilfe & FAQ", systemImage: "questionmark.circle")
                 }
             }
+            #endif
             LanguageSettingsSection()
             AnnouncementsSettingsSection()
             Section("Ansicht") {
@@ -81,6 +84,7 @@ struct GeneralSettings: View {
             }
             BalanceChartSettingsSection()
             MerchantLogoSettingsSection()
+            #if os(iOS)
             Section("Demo") {
                 Button {
                     model.loadDemoData()
@@ -91,9 +95,12 @@ struct GeneralSettings: View {
                 Text("Lädt einen Wegwerf-Tresor mit fiktiven Konten bei sieben Banken. „Alle abrufen“, TAN-Dialoge und Überweisungen laufen simuliert, ohne Netzwerk. Ihre eigenen Daten bleiben unberührt.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            #endif
         }
         .formStyle(.grouped)
+        #if os(iOS)
         .sheet(isPresented: $showHelp) { HelpSheet() }
+        #endif
     }
 }
 
