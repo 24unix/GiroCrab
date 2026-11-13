@@ -63,7 +63,7 @@ module adds its own methods to it and reaches the database through `self.db()`.
   | `vault/rules.rs` | pattern and expression rules |
   | `vault/settings.rs` | settings and `KNOWN_SETTINGS` |
   | `vault/merge.rs` | merging a peer snapshot or another vault file |
-  | `loans.rs`, `planning.rs`, `documents.rs`, `insights.rs`, `connectors/*.rs`, … | their feature |
+  | `loans.rs`, `planning.rs`, `documents.rs`, `insights.rs`, `connectors/*.rs`, `importers/*.rs`, … | their feature |
 
 - A feature module has at most one `#[uniffi::export] impl Vault` (the Swift API) and one plain
   `impl Vault` (helpers taking `&Connection`, for use inside other transactions). Helpers are

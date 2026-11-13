@@ -140,7 +140,7 @@ pub(crate) fn store_fetch(
             // then adopted via the import fingerprint) instead of a second account.
             let existing = match existing {
                 Some(id) => Some(id),
-                None => moneymoney_db::adopt_account(
+                None => crate::importers::moneymoney_db::adopt_account(
                     &tx,
                     connection_id,
                     &acc.external_ref,
@@ -446,7 +446,7 @@ pub(crate) fn store_fetch(
                     continue;
                 }
                 // Already imported from MoneyMoney? Adopt that row (keeps category + note).
-                if moneymoney_import::adopt_import(
+                if crate::importers::moneymoney_import::adopt_import(
                     &tx,
                     *acc_id,
                     &t.external_id,
@@ -482,7 +482,7 @@ pub(crate) fn store_fetch(
                 imported += n;
                 if n == 0 {
                     // Old duplicate: bank row exists although an MoneyMoney twin does too.
-                    if moneymoney_import::merge_synced_twin(
+                    if crate::importers::moneymoney_import::merge_synced_twin(
                         &tx,
                         *acc_id,
                         &t.external_id,

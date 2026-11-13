@@ -206,7 +206,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
             "Open Bank",
             "enablebanking.country.amazonvisa",
         )),
-        ConnectorKind::AmazonOrders => Box::new(amazon_orders::WebOnlyConnector),
+        ConnectorKind::AmazonOrders => Box::new(crate::importers::amazon_orders::WebOnlyConnector),
         ConnectorKind::Fnz => Box::new(fnz::WebOnlyConnector),
         ConnectorKind::Ibkr => Box::new(ibkr::IbkrConnector::new()),
         ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),

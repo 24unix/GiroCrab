@@ -463,11 +463,11 @@ fn english(de: &str) -> Option<&'static str> {
         "Demo: Der Code muss 4 Ziffern haben" => "Demo: the code must be 4 digits",
         "Überweisung in der Banking-App freigeben" => "Approve the transfer in your banking app",
         "Demo: {0} an {1} wird nach wenigen Sekunden „freigegeben“." => "Demo: {0} to {1} will be “approved” in a few seconds.",
-        // ------------------------------------------------------------ connectors/portal_import.rs
+        // ------------------------------------------------------------ importers/portal_import.rs
         "Keine Umsätze erkannt." => "No transactions found.",
-        // ------------------------------------------------------------ connectors/moneymoney_import.rs
+        // ------------------------------------------------------------ importers/moneymoney_import.rs
         "Keine MoneyMoney-Kopfzeile (Datum/Buchungstag und Betrag) gefunden." => "No MoneyMoney header row (date/booking date and amount) found.",
-        // ------------------------------------------------------------ connectors/moneymoney_db.rs
+        // ------------------------------------------------------------ importers/moneymoney_db.rs
 "Import abgebrochen – es wurde nichts übernommen." => "Import cancelled – nothing was imported.",
                 "Falsches Passwort oder keine MoneyMoney-Datenbank." => "Wrong password or not a MoneyMoney database.",
         "MoneyMoney verschlüsselt diese Datenbank mit einem eigenen Schlüssel, weil dort kein Datenbank-Passwort festgelegt ist. Legen Sie in MoneyMoney unter Einstellungen → Sicherheit eines fest, beenden Sie MoneyMoney und geben Sie es hier ein." => "MoneyMoney encrypts this database with a key of its own because no database password is set there. Set one in MoneyMoney under Settings → Security, quit MoneyMoney and enter it here.",

@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::connectors::portal_import::{parse_date, split_csv};
+use super::portal_import::{parse_date, split_csv};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::merchants::{FlowKind, MerchantResolver};
@@ -412,7 +412,7 @@ fn remote_to_row(t: crate::connectors::RemoteTransaction) -> MmRow {
 
 /// CAMT.053 (ISO 20022 account statement) file → rows.
 pub fn parse_camt_statement(xml: &str) -> Vec<MmRow> {
-    let (txs, _) = super::fints::camt::parse(xml, "");
+    let (txs, _) = crate::connectors::fints::camt::parse(xml, "");
     txs.into_iter().map(remote_to_row).collect()
 }
 
@@ -423,7 +423,7 @@ fn looks_like_mt940(text: &str) -> bool {
 
 /// MT940 (`.sta` / `.mt940`) file → rows.
 pub fn parse_mt940_statement(text: &str) -> Vec<MmRow> {
-    let (txs, _) = super::fints::mt940::parse(text, "", "EUR");
+    let (txs, _) = crate::connectors::fints::mt940::parse(text, "", "EUR");
     txs.into_iter().map(remote_to_row).collect()
 }
 
