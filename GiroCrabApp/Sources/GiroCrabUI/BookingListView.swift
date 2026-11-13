@@ -712,6 +712,9 @@ struct MainToolbar: ViewModifier {
                     Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
                     Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
                     Button { model.showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
+                    if model.hasOwnVault {
+                        Button { model.lock() } label: { Label("Tresor sperren", systemImage: "lock") }
+                    }
                     if model.demoActive && (model.hasOwnVault || AppModel.vaultMayHoldRealData) {
                         Button { model.showOwnVault() } label: { Label("Zurück zum eigenen Tresor", systemImage: "lock.open") }
                     } else if !model.demoActive {
@@ -751,6 +754,11 @@ struct MainToolbar: ViewModifier {
             ToolbarItem(id: "rules", placement: .primaryAction, showsByDefault: false) {
                 Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
                     .help("Kategorisierungsregeln … (⌥⌘K)")
+            }
+            ToolbarItem(id: "lock", placement: .primaryAction, showsByDefault: false) {
+                Button { model.lock() } label: { Label("Tresor sperren", systemImage: "lock") }
+                    .help("Tresor sperren (⌃⌘L)")
+                    .disabled(!model.hasOwnVault)
             }
             ToolbarItem(id: "settings", placement: .primaryAction, showsByDefault: false) {
                 SettingsLink { Label("Einstellungen", systemImage: "gearshape") }
