@@ -17351,6 +17351,17 @@
         }
       }
     },
+    "Beleg löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Document…"
+          }
+        }
+      }
+    },
     "GiroCrab-Hilfe" : {
       "extractionState" : "manual",
       "localizations" : {
