@@ -23,6 +23,8 @@ generated/CashCrabCorePackage/
 *.sqlite3
 *.sqlcipher
 vault/
+# …but not the Rust module directory of `vault.rs`
+!girocrab-core/src/vault/
 vaults/
 tresor/
 *.mt940

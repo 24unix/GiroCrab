@@ -5,7 +5,8 @@ Rust core (`girocrab-core`, UniFFI) + SwiftUI app (`GiroCrabApp`). Root = this d
 ## File map (go here first; don't `find`/`grep` to locate code)
 - `girocrab-core/src/lib.rs` – crate root, UniFFI exports
 - `girocrab-core/src/models.rs` – domain types
-- `girocrab-core/src/vault.rs` – encrypted storage
+- `girocrab-core/src/vault.rs` – encrypted storage: open/key/migrate/snapshot only
+- `girocrab-core/src/vault/` – `impl Vault` per feature: `accounts.rs`, `bookings.rs` (list_transactions/paging), `categories.rs`, `rules.rs`, `settings.rs`, `merge.rs`
 - `girocrab-core/src/schema.rs` – versioned schema migrations (see `docs/ARCHITECTURE.md`)
 - `girocrab-core/src/connectors/mod.rs` – bank connector trait/dispatch (impls alongside: `fints/`, `comdirect.rs`, `trade_republic.rs`, …)
 - `girocrab-core/src/connectors/` – all connector impls: `fints/`, `comdirect.rs`, `trade_republic.rs`, `enable_banking.rs`, `paypal.rs`, `portal_import.rs` (Amex/Amazon Visa web + CSV/PDF import)
