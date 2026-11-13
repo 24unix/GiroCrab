@@ -484,16 +484,17 @@ final class AccountGroupsTests: XCTestCase {
         XCTAssertEqual(model.groups.map { $0.accounts.map(\.id) }, kindBefore.map(\.1), "'Nach Kontoart' never changes")
     }
 
-    // MARK: Settings › Kontogruppen
+    // MARK: Gruppen bearbeiten (Sheet)
 
-    func testEditGroupsOpensSettingsPane() {
-        XCTAssertEqual(model.settingsTab, .general)
-        model.openGroupSettings()
-        XCTAssertEqual(model.settingsTab, .groups)
+    func testEditGroupsOpensGroupManagerSheet() {
+        XCTAssertFalse(model.showGroupManager)
+        model.openGroupManager()
+        XCTAssertTrue(model.showGroupManager)
+        XCTAssertEqual(model.settingsTab, .general, "no Settings tab involved any more")
         #if os(macOS)
-        XCTAssertTrue(model.settingsRequested, "the main window opens the Settings window")
+        XCTAssertFalse(model.settingsRequested)
         #else
-        XCTAssertTrue(model.showSettings)
+        XCTAssertFalse(model.showSettings)
         #endif
     }
 

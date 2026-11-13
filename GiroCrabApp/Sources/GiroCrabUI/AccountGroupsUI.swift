@@ -71,7 +71,7 @@ struct AccountsSectionHeader: View {
                     }
                     .help("Neue Gruppe …")
                     .accessibilityLabel("Neue Gruppe")
-                    Button { model.openGroupSettings() } label: {
+                    Button { model.openGroupManager() } label: {
                         Image(systemName: "folder.badge.gearshape").frame(width: 24, height: 18).contentShape(Rectangle())
                     }
                     .help("Gruppen bearbeiten …")
@@ -428,9 +428,38 @@ extension View {
     func accountGroupDialogs(_ dialog: Binding<GroupDialog?>) -> some View { modifier(AccountGroupDialogs(dialog: dialog)) }
 }
 
-/// Settings › "Kontogruppen": list of groups with +/− below it (macOS:
-/// details beside it; iOS: pushed). Changes apply immediately, like the
-/// rest of Settings – no Done/Cancel.
+/// Sheet "Gruppen bearbeiten …" of the main window (sidebar header, View menu,
+/// command palette): the group editor below. Changes apply immediately – "Fertig"
+/// only closes the sheet.
+struct GroupManagerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        #if os(macOS)
+        VStack(spacing: 0) {
+            AccountGroupsSettings()
+            Divider()
+            HStack {
+                Spacer()
+                Button("Fertig") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(12)
+        }
+        .frame(width: 680, height: 560)
+        #else
+        NavigationStack {
+            AccountGroupsSettings()
+                .navigationTitle("Kontogruppen")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fertig") { dismiss() } } }
+        }
+        #endif
+    }
+}
+
+/// The group editor: list of groups with +/− below it (macOS: details beside
+/// it; iOS: pushed). Changes apply immediately – no Done/Cancel.
 struct AccountGroupsSettings: View {
     @Environment(AppModel.self) private var model
     @State private var selection: String?

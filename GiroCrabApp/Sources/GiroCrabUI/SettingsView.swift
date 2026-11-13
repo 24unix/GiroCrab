@@ -17,20 +17,10 @@ struct SettingsView: View {
                 .tabItem { Label("Allgemein", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
             BankConnectionsSettings()
-                .settingsPane(height: 520)
+                .settingsPane(height: 600)
                 .disabled(model.vault == nil)
                 .tabItem { Label("Banken", systemImage: "building.columns") }
                 .tag(SettingsTab.banks)
-            AccountGroupsSettings()
-                .settingsPane(height: 560)
-                .disabled(model.vault == nil)
-                .tabItem { Label("Kontogruppen", systemImage: "folder") }
-                .tag(SettingsTab.groups)
-            CredentialsSettings()
-                .settingsPane(height: 560)
-                .disabled(model.vault == nil)
-                .tabItem { Label("FinTS & API-Schlüssel", systemImage: "key.horizontal") }
-                .tag(SettingsTab.credentials)
             LogoSettings()
                 .settingsPane(height: 460)
                 .disabled(model.vault == nil)
@@ -134,15 +124,14 @@ struct BalanceChartSettingsSection: View {
 
 /// Tabs of the settings window (macOS) / sheet (iOS).
 enum SettingsTab: Hashable {
-    case general, banks, groups, credentials, logos, documents, security, updates
+    case general, banks, logos, documents, security, updates
 
     /// `--demo-settings <name>` (screenshots).
     init?(demoName: String) {
         switch demoName {
         case "general": self = .general
         case "banks": self = .banks
-        case "groups": self = .groups
-        case "credentials": self = .credentials
+        case "credentials": self = .banks   // FinTS registration now lives under "Banken"
         case "logos": self = .logos
         case "documents": self = .documents
         case "security": self = .security
@@ -216,6 +205,7 @@ struct BankConnectionsSettings: View {
                 Text("Suche nach Bankname, BLZ oder IBAN: FinTS-Banken, Banken mit eigener API (bunq, comdirect, Trade Republic, PayPal) und PSD2-Banken (N26, Revolut, C24 …).")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            fintsRegistrationSection
         }
         .formStyle(.grouped)
         .sheet(isPresented: $showAddBank) {
@@ -239,130 +229,45 @@ struct BankConnectionsSettings: View {
         }
     }
 
+    /// Which FinTS product registration is used for all FinTS banks. The server
+    /// address and the keys of the other connectors are edited per bank
+    /// (sheet "Bearbeiten / Details").
+    @ViewBuilder private var fintsRegistrationSection: some View {
+        Section {
+            if model.fintsBuiltinAvailable {
+                Picker("Verwenden", selection: Binding(
+                    get: { model.fintsProductIDMode == "own" ? "own" : "builtin" },
+                    set: { model.setFintsProductIDMode($0) }
+                )) {
+                    Text("GiroCrab-Registrierung (empfohlen)").tag("builtin")
+                    Text("Eigene Registrierung").tag("own")
+                }
+                #if os(macOS)
+                .pickerStyle(.radioGroup)
+                #endif
+            } else if AppUpdateChannel.current != .stable {
+                Label("Dieser Beta-Build enthält die FinTS-Registrierung von GiroCrab nicht. Bitte melden Sie das den Entwicklern.", systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundStyle(Theme.warning)
+            }
+            // The own ID is entered right here, only when it is the one in use.
+            if !model.fintsBuiltinAvailable || model.fintsProductIDMode == "own" {
+                OwnProductIDField()
+            }
+        } header: {
+            Text("FinTS-Registrierung")
+        } footer: {
+            Text(model.fintsBuiltinAvailable
+                 ? "Das FinTS-Produkt von GiroCrab ist eingebaut. Eigene API-Anwendungen (zum Beispiel für comdirect oder PayPal) registrieren Sie selbst; die Werte liegen nur in Ihrem verschlüsselten Tresor."
+                 : "Nichts davon wird mit dieser Version ausgeliefert. Registrieren Sie Ihr eigenes FinTS-Produkt und Ihre eigenen API-Anwendungen; die Werte liegen nur in Ihrem verschlüsselten Tresor.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .leadingFooter()
+        }
+    }
+
     private func protocolName(_ k: ConnectorKind) -> String {
         bankCatalog().first { $0.kind == k }?.protocol ?? ""
-    }
-}
-
-struct CredentialsSettings: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        // Group by the core's stable group id, show its translated title, match
-        // on keys (logo settings have their own tab) and keep the core's order.
-        let entries = model.settings.filter { !$0.key.hasPrefix("merchants.") && $0.key != "fints.product_id" }
-        let grouped = Dictionary(grouping: entries, by: \.group)
-        let order = entries.map(\.group).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
-        Form {
-            Section {
-                if model.fintsBuiltinAvailable {
-                    Label("Das FinTS-Produkt von GiroCrab ist eingebaut. Eigene API-Anwendungen (zum Beispiel für comdirect oder PayPal) registrieren Sie selbst; die Werte liegen nur in Ihrem verschlüsselten Tresor.", systemImage: "info.circle")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Label("Nichts davon wird mit dieser Version ausgeliefert. Registrieren Sie Ihr eigenes FinTS-Produkt und Ihre eigenen API-Anwendungen; die Werte liegen nur in Ihrem verschlüsselten Tresor.", systemImage: "info.circle")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    if AppUpdateChannel.current != .stable {
-                        Label("Dieser Beta-Build enthält die FinTS-Registrierung von GiroCrab nicht. Bitte melden Sie das den Entwicklern.", systemImage: "exclamationmark.triangle")
-                            .font(.callout)
-                            .foregroundStyle(Theme.warning)
-                    }
-                }
-            }
-            Section("FinTS-Registrierung") {
-                if model.fintsBuiltinAvailable {
-                    Picker("Verwenden", selection: Binding(
-                        get: { model.fintsProductIDMode == "own" ? "own" : "builtin" },
-                        set: { model.setFintsProductIDMode($0) }
-                    )) {
-                        Text("GiroCrab-Registrierung (empfohlen)").tag("builtin")
-                        Text("Eigene Registrierung").tag("own")
-                    }
-                    #if os(macOS)
-                    .pickerStyle(.radioGroup)
-                    #endif
-                }
-                // The own ID is entered right here, only when it is the one in use.
-                if !model.fintsBuiltinAvailable || model.fintsProductIDMode == "own" {
-                    OwnProductIDField()
-                }
-            }
-            ForEach(order.filter { grouped[$0] != nil }, id: \.self) { g in
-                Section(grouped[g]?.first?.groupTitle ?? g) {
-                    ForEach(grouped[g] ?? []) { entry in
-                        SettingField(entry: entry)
-                    }
-                }
-            }
-        }
-        .formStyle(.grouped)
-    }
-}
-
-struct SettingField: View {
-    @Environment(AppModel.self) private var model
-    let entry: SettingEntry
-    @State private var text = ""
-    @State private var editing = false
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(entry.label)
-                Spacer()
-                if entry.isSecret {
-                    // Secrets are set on purpose (never half-typed): explicit
-                    // „Festlegen“, Esc or „Abbrechen“ discards.
-                    if editing {
-                        SecureField(entry.label, text: $text)
-                            .labelsHidden()
-                            .frame(maxWidth: 280)
-                            .focused($focused)
-                            .onSubmit(save)
-                            #if os(macOS)
-                            .onExitCommand(perform: cancelSecret)
-                            #endif
-                        Button("Abbrechen", action: cancelSecret)
-                        Button("Festlegen", action: save)
-                            .disabled(text.isEmpty)
-                    } else {
-                        Text(entry.hasValue ? "••••••••" : "nicht gesetzt").foregroundStyle(entry.hasValue ? .primary : .secondary)
-                        Button(entry.hasValue ? "Ändern …" : "Festlegen …") { text = ""; editing = true; focused = true }
-                    }
-                } else {
-                    TextField(entry.label, text: $text, prompt: Text("nicht gesetzt"))
-                        .labelsHidden()
-                        .frame(maxWidth: 340)
-                        .multilineTextAlignment(.trailing)
-                        .autocorrectionDisabled()
-                        .focused($focused)
-                        .onSubmit(save)
-                }
-            }
-            Text(entry.help).font(.caption).foregroundStyle(.secondary)
-        }
-        .onAppear { if !entry.isSecret { text = entry.value } }
-        // HIG: settings apply without a Save button – a plain field is saved
-        // when it loses focus (Tab, click elsewhere), on Return and on leaving.
-        .onChange(of: focused) { _, isFocused in
-            if !isFocused && !entry.isSecret && text != entry.value { save() }
-        }
-        #if os(macOS)
-        .onDisappear { if !entry.isSecret && text != entry.value { save() } }
-        #endif
-    }
-
-    private func save() {
-        if !entry.isSecret && text == entry.value { return }
-        model.saveSettingInBackground(entry.key, text)
-        if entry.isSecret { text = ""; editing = false }
-    }
-
-    private func cancelSecret() {
-        text = ""
-        editing = false
     }
 }
 

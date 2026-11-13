@@ -4254,13 +4254,13 @@
         }
       }
     },
-    "Für diese Bank fehlt noch eine Einstellung: %@. Bitte in den Einstellungen unter „FinTS & API-Schlüssel“ eintragen." : {
+    "Für diese Bank fehlt noch eine Einstellung: %@. Bitte in den Einstellungen unter „Banken“ beim Bearbeiten dieser Bank eintragen." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A setting is still missing for this bank: %@. Please enter it in Settings under “FinTS & API Keys”."
+            "value" : "A setting is still missing for this bank: %@. Please enter it in Settings under “Banks” when editing this bank."
           }
         }
       }
