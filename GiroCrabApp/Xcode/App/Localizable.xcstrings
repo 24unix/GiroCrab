@@ -4562,13 +4562,13 @@
         }
       }
     },
-    "GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server, kein Tracking und keine Cloud-Synchronisation. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht." : {
+    "GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server und kein Tracking. Nur wenn Sie den iCloud-Sync oben einschalten, liegt der verschlüsselte Tresor in Ihrem iCloud Drive. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "GiroCrab connects to your banks directly from this device. There is no GiroCrab server, no tracking and no cloud sync. PINs and TANs are only kept in memory for a single fetch and deleted afterwards."
+            "value" : "GiroCrab connects to your banks directly from this device. There is no GiroCrab server and no tracking. Only if you turn on iCloud sync above is the encrypted vault stored in your iCloud Drive. PINs and TANs are only kept in memory for a single fetch and deleted afterwards."
           }
         }
       }
@@ -17930,6 +17930,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Accounts without a group appear in the sidebar under “Ungrouped”."
+          }
+        }
+      }
+    },
+    "Logos aus dem Internet laden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load logos from the internet"
+          }
+        }
+      }
+    },
+    "Ohne Anbieter zeigt GiroCrab mitgelieferte Markenzeichen, sonst Monogramme und Kategorie-Symbole. Mit Anbieter werden Favicons geladen und verschlüsselt im Tresor zwischengespeichert. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Without a provider, GiroCrab shows the bundled brand marks, otherwise monograms and category symbols. With a provider, favicons are fetched and cached encrypted in the vault. Only the merchant domain (e.g. lidl.de) is sent – no amounts, no account data."
           }
         }
       }

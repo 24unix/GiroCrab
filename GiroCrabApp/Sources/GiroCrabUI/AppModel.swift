@@ -1915,11 +1915,25 @@ public final class AppModel {
     /// Turns the document folder on (all documents are copied once) or off.
     func setDocumentMirror(_ url: URL?) {
         if let url {
-            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
             documentMirrorPath = url.path
             UserDefaults.standard.set(url.path, forKey: Self.mirrorDirKey)
-            if let vault { run { try vault.resetDocumentMirror() } }
-            mirrorDocumentsIfEnabled()
+            // Creating the folder (iCloud Drive can be slow) and resetting the
+            // copy markers (vault mutex) stay off the main thread. `mirrorRunning`
+            // keeps syncs from starting a copy in between.
+            let vault = self.vault
+            mirrorRunning = true
+            Task { @MainActor [weak self] in
+                let failure: Error? = await Task.detached(priority: .userInitiated) { () -> Error? in
+                    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+                    do { try vault?.resetDocumentMirror(); return nil } catch { return error }
+                }.value
+                guard let self else { return }
+                mirrorRunning = false
+                if let failure { errorMessage = describe(failure) }
+                // Switched off or changed again while resetting: nothing to copy here.
+                guard documentMirrorPath == url.path else { return }
+                mirrorDocumentsIfEnabled()
+            }
         } else {
             documentMirrorPath = nil
             documentMirrorStatus = nil
@@ -2674,6 +2688,43 @@ public final class AppModel {
         guard let vault else { return }
         run { try vault.setSetting(key: key, value: value) }
         reloadSettings()
+    }
+
+    /// Last queued background settings write; the next one waits for it, so
+    /// two quick edits reach the vault in the order they were made.
+    @ObservationIgnored private var settingsWriteTask: Task<Void, Never>?
+
+    /// Same as `saveSetting`, but the write and the list reload run off the main
+    /// thread (they hold the vault mutex). For edits made in the Settings window,
+    /// where nothing right after depends on the value being stored; flows that
+    /// continue with the vault straight away (add-bank, import) keep `saveSetting`.
+    func saveSettingInBackground(_ key: String, _ value: String) {
+        guard let vault else { return }
+        let previous = settingsWriteTask
+        settingsWriteTask = Task { @MainActor [weak self] in
+            await previous?.value
+            do {
+                let result: SettingsSnapshot = try await Self.offMain { () throws -> SettingsSnapshot in
+                    try vault.setSetting(key: key, value: value)
+                    let entries = try vault.listSettings()
+                    let provider = try vault.onlineLogoProvider()
+                    return SettingsSnapshot(entries: entries, logoProvider: provider)
+                }
+                // The vault may have been switched or locked meanwhile.
+                guard let self, self.vault === vault else { return }
+                self.settings = result.entries
+                self.logoProvider = result.logoProvider
+                self.reloadProductIDState(vault)
+            } catch {
+                guard let self else { return }
+                self.errorMessage = describe(error)
+            }
+        }
+    }
+
+    private struct SettingsSnapshot: Sendable {
+        let entries: [SettingEntry]
+        let logoProvider: String
     }
 
     /// Adds a bank login. While demo data is shown, the login goes into the

@@ -356,7 +356,7 @@ struct SettingField: View {
 
     private func save() {
         if !entry.isSecret && text == entry.value { return }
-        model.saveSetting(entry.key, text)
+        model.saveSettingInBackground(entry.key, text)
         if entry.isSecret { text = ""; editing = false }
     }
 
@@ -371,21 +371,23 @@ struct LogoSettings: View {
 
     var body: some View {
         Form {
-            Section("Händler-Logos") {
-                LabeledContent("Stufe 1 – offline", value: String(localized: "Mitgelieferte Händlertabelle (Monogramm + Markenfarbe)"))
-                LabeledContent("Stufe 1b – simple-icons", value: String(localized: "Vektor-Markenzeichen (CC0-Datensatz) für bekannte Marken"))
-                Picker("Händler-Logos laden", selection: Binding(
+            Section {
+                Picker("Logos aus dem Internet laden", selection: Binding(
                     get: { model.logoProvider },
-                    set: { model.saveSetting("merchants.online_logos", $0) }
+                    set: { model.logoProvider = $0; model.saveSettingInBackground("merchants.online_logos", $0) }
                 )) {
                     Text("Aus").tag("off")
                     Text("DuckDuckGo").tag("duckduckgo")
                     Text("Google").tag("google")
                 }
-                Text("Stufe 2: Lädt Favicons vom gewählten Anbieter (icons.duckduckgo.com bzw. google.com/s2/favicons) und speichert sie verschlüsselt in der Tabelle merchant_logo_cache. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten. Standard: aus.")
-                    .font(.caption).foregroundStyle(.secondary)
-                LabeledContent("Stufe 3 – Rückfall", value: String(localized: "SF Symbol der Kategorie"))
-                Button("Logo-Cache leeren", role: .destructive) { model.clearLogoCache() }
+                Button("Logo-Cache leeren") { model.clearLogoCache() }
+            } header: {
+                Text("Händler-Logos")
+            } footer: {
+                Text("Ohne Anbieter zeigt GiroCrab mitgelieferte Markenzeichen, sonst Monogramme und Kategorie-Symbole. Mit Anbieter werden Favicons geladen und verschlüsselt im Tresor zwischengespeichert. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .leadingFooter()
             }
         }
         .formStyle(.grouped)
@@ -460,6 +462,8 @@ struct DocumentFolderSettings: View {
 struct SecuritySettings: View {
     @Environment(AppModel.self) private var model
     @State private var requireBiometrics = VaultKeyManager.shared.requireBiometrics
+    /// Read once per vault: the core call takes the vault mutex, so not in `body`.
+    @State private var vaultPath = "–"
 
     var body: some View {
         Form {
@@ -481,7 +485,7 @@ struct SecuritySettings: View {
                         }
                 }
                 #endif
-                LabeledContent("Datei", value: model.vaultFilePath ?? "–")
+                LabeledContent("Datei", value: vaultPath)
                     .textSelection(.enabled)
                 LabeledContent("Version", value: AppVersionDisplay.current(core: coreVersion()))
                     .textSelection(.enabled)
@@ -489,7 +493,7 @@ struct SecuritySettings: View {
             ICloudSyncSection()
             BankingPolicySection()
             Section("Datenschutz") {
-                Text("GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server, kein Tracking und keine Cloud-Synchronisation. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht.")
+                Text("GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server und kein Tracking. Nur wenn Sie den iCloud-Sync oben einschalten, liegt der verschlüsselte Tresor in Ihrem iCloud Drive. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             if model.hasOwnVault && !model.isDemo {
@@ -499,6 +503,7 @@ struct SecuritySettings: View {
             }
         }
         .formStyle(.grouped)
+        .task(id: model.isDemo) { vaultPath = model.vaultFilePath ?? "–" }
     }
 }
 
@@ -809,7 +814,7 @@ struct OwnProductIDField: View {
         let value = text.trimmingCharacters(in: .whitespaces)
         text = ""
         guard !value.isEmpty else { return }
-        model.saveSetting("fints.product_id", value)
+        model.saveSettingInBackground("fints.product_id", value)
     }
 
     /// After a rejected registration the alert sends the user here.
