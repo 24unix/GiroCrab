@@ -35,6 +35,8 @@ pub enum ConnectorKind {
     AmazonOrders,
     /// FNZ / ebase / finvesto portal: account/depot values and mailbox PDFs.
     Fnz,
+    /// Interactive Brokers via the Flex Web Service (token + query id).
+    Ibkr,
 }
 
 impl ConnectorKind {
@@ -53,6 +55,7 @@ impl ConnectorKind {
             ConnectorKind::ScalableCapital => "scalable",
             ConnectorKind::AmazonOrders => "amazon-orders",
             ConnectorKind::Fnz => "fnz",
+            ConnectorKind::Ibkr => "ibkr",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -99,6 +102,7 @@ impl ConnectorKind {
             ConnectorKind::ScalableCapital,
             ConnectorKind::AmazonOrders,
             ConnectorKind::Fnz,
+            ConnectorKind::Ibkr,
         ]
     }
 }
