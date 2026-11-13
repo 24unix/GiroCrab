@@ -8,6 +8,7 @@ public struct GiroCrabScenes: Scene {
     @State private var model: AppModel
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
+    @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
     #endif
 
     public init(options: LaunchOptions = .current) {
@@ -163,6 +164,9 @@ public struct GiroCrabScenes: Scene {
             SidebarCommands()
             ToolbarCommands()
             CommandGroup(after: .sidebar) {
+                Toggle("Auswertungen anzeigen", isOn: $showStatistics)
+                    .disabled(model.vault == nil)
+                Divider()
                 Button("Befehlspalette …") { model.showCommandPalette = true }
                     .keyboardShortcut("k", modifiers: .command)
                     .disabled(model.vault == nil)

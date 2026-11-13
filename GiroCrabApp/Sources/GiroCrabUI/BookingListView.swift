@@ -9,6 +9,8 @@ struct BookingStreamView: View {
     @Environment(AppModel.self) private var model
     @FocusState private var focused: Bool
     @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
+    /// View › "Auswertungen anzeigen" (GitHub #233): hides the charts and analysis cards.
+    @AppStorage(ViewLayout.statisticsKey) private var showStatistics: Bool = true
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSize
     @State private var showCashflowIOS = false
@@ -52,7 +54,7 @@ struct BookingStreamView: View {
                         }
                         if model.scope == .investments {
                             InvestmentDashboardView()
-                        } else if !model.allAccounts.isEmpty, isOverview || showAnalytics {
+                        } else if showStatistics, !model.allAccounts.isEmpty, isOverview || showAnalytics {
                             // Overview: always; single account: only when toggled on.
                             #if os(iOS)
                             DisclosureGroup("Cashflow-Analyse", isExpanded: $showCashflowIOS) {
@@ -243,7 +245,7 @@ struct BookingStreamView: View {
                     #endif
                     if !emptyVault {
                         StreamHeaderCard()
-                        if !isOverview && !isDepot && model.scope != .investments && !model.allAccounts.isEmpty {
+                        if showStatistics && !isOverview && !isDepot && model.scope != .investments && !model.allAccounts.isEmpty {
                             HStack {
                                 Button {
                                     withAnimation(Motion.animation(.easeInOut(duration: 0.25))) { showAnalytics.toggle() }
