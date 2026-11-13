@@ -1417,9 +1417,10 @@ impl Vault {
                     .filter(|a| a.group_id == id)
                     .cloned()
                     .collect();
+                // archived accounts stay listed but don't count (GiroCrab/GiroCrab#208)
                 let balance = accs
                     .iter()
-                    .filter(|a| a.currency == "EUR")
+                    .filter(|a| a.currency == "EUR" && a.archived_unix.is_none())
                     .map(|a| a.balance_cents)
                     .sum();
                 AccountGroup {

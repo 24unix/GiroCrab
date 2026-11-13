@@ -189,6 +189,81 @@ fn excluded_group_leaves_the_total() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// GiroCrab/GiroCrab#208: an "Alle" group holding everything, with an "Alt"
+/// subgroup of old accounts. Archived accounts and subgroups taken out of
+/// the total must not count in the group sums.
+#[test]
+fn group_sums_skip_archived_accounts_and_excluded_subgroups() {
+    let dir = temp_dir("sums208");
+    let v = open(&dir, "a.db");
+    let ids = seed(&v); // Giro 100, Depot 5000, Visa -50
+    let alle = v.create_user_group("Alle".into(), "folder".into()).unwrap();
+    let alt = v
+        .create_user_group("Alt".into(), "archivebox".into())
+        .unwrap();
+    v.set_user_group_parent(alt.clone(), Some(alle.clone()))
+        .unwrap();
+    v.move_account_to_group(ids[0], Some(alle.clone()), None)
+        .unwrap();
+    v.move_account_to_group(ids[1], Some(alle.clone()), None)
+        .unwrap();
+    v.move_account_to_group(ids[2], Some(alt.clone()), None)
+        .unwrap();
+    let sums = |v: &Vault| -> HashMap<String, i64> {
+        v.list_user_groups()
+            .unwrap()
+            .into_iter()
+            .map(|g| (g.name, g.balance_cents))
+            .collect()
+    };
+    let kind_sum = |v: &Vault| -> i64 {
+        v.list_account_groups()
+            .unwrap()
+            .iter()
+            .map(|g| g.balance_cents)
+            .sum()
+    };
+    assert_eq!(sums(&v)["Alle"], 5_050_00);
+    assert_eq!(sums(&v)["Alt"], -50_00);
+    assert_eq!(kind_sum(&v), 5_050_00);
+
+    // archiving the Visa: it stays in "Alt", but no sum counts it any more
+    v.set_account_archived(ids[2], true).unwrap();
+    let s = sums(&v);
+    assert_eq!(s["Alt"], 0);
+    assert_eq!(s["Alle"], 5_100_00);
+    assert_eq!(kind_sum(&v), 5_100_00);
+    let alt_group = v
+        .list_user_groups()
+        .unwrap()
+        .into_iter()
+        .find(|g| g.name == "Alt")
+        .unwrap();
+    assert_eq!(alt_group.accounts.len(), 1, "archived account still listed");
+    v.set_account_archived(ids[2], false).unwrap();
+
+    // "Alt" out of the total: keeps its own sum, "Alle" no longer adds it
+    v.update_user_group(alt.clone(), "Alt".into(), "archivebox".into(), false)
+        .unwrap();
+    let s = sums(&v);
+    assert_eq!(s["Alt"], -50_00);
+    assert_eq!(s["Alle"], 5_100_00);
+
+    // the parent out of the total too: its own sum still shows everything
+    // inside it, apart from the subgroup excluded on its own
+    v.update_user_group(alle.clone(), "Alle".into(), "folder".into(), false)
+        .unwrap();
+    assert_eq!(sums(&v)["Alle"], 5_100_00);
+    v.update_user_group(alt.clone(), "Alt".into(), "archivebox".into(), true)
+        .unwrap();
+    assert_eq!(
+        sums(&v)["Alle"],
+        5_050_00,
+        "subgroup only inherits the exclusion"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[test]
 fn new_bank_account_joins_its_siblings_group() {
     let dir = temp_dir("place");
@@ -1257,11 +1332,12 @@ fn archived_account_keeps_group_and_history_but_leaves_total_and_rules() {
         50_00,
         "archived account leaves the overall total"
     );
-    // still a member of its group; the group and an explicit selection keep its history
+    // still a member of its group, but no longer in its sum (GiroCrab/GiroCrab#208);
+    // an explicit selection keeps its history
     let groups = v.list_user_groups().unwrap();
     let g = groups.iter().find(|g| g.uuid == umzug).unwrap();
     assert_eq!(g.accounts.len(), 1);
-    assert_eq!(g.balance_cents, 5_000_00);
+    assert_eq!(g.balance_cents, 0);
     let hist = v.balance_history(vec![ids[1]], 3).unwrap();
     assert_eq!(hist.last().unwrap().balance_cents, 5_000_00);
     assert_eq!(hist.first().unwrap().balance_cents, 5_010_00);

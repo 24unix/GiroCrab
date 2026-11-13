@@ -1523,8 +1523,9 @@ public final class AppModel {
         var ids: [Int64]
         switch sidebarSelection {
         case .account(let id): ids = [id]
-        case .group(let gid): ids = groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
-        case .userGroup(let uuid): ids = userGroupAccountIDs(uuid)
+        // same accounts as the group's sum in the header (#208)
+        case .group(let gid): ids = groups.first(where: { $0.id == gid })?.accounts.filter { !$0.isArchived }.map(\.id) ?? []
+        case .userGroup(let uuid): ids = userGroupBalanceAccountIDs(uuid)
         default: ids = liquidAccounts.map(\.id)
         }
         if ids.isEmpty { ids = [-1] }

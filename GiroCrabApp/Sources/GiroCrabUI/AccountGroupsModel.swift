@@ -130,6 +130,22 @@ extension AppModel {
         userGroupSubtree(uuid).flatMap { $0.accounts.map(\.id) }
     }
 
+    /// Accounts behind the group's sum, like the core's `balance_cents`: no
+    /// archived accounts, no subgroups taken out of the total on their own (#208).
+    func userGroupBalanceAccountIDs(_ uuid: String) -> [Int64] {
+        var skipBelow: UInt32?
+        var ids: [Int64] = []
+        for (n, g) in userGroupSubtree(uuid).enumerated() {
+            if let d = skipBelow {
+                if g.depth > d { continue }
+                skipBelow = nil
+            }
+            if n > 0 && !g.includeInTotal { skipBelow = g.depth; continue }
+            ids += g.accounts.filter { !$0.isArchived }.map(\.id)
+        }
+        return ids
+    }
+
     /// Groups `g` can be moved into: all but itself and its own subgroups.
     func parentCandidates(for g: UserGroup) -> [UserGroup] {
         let own = Set(userGroupSubtree(g.uuid).map(\.uuid))

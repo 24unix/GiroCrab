@@ -736,9 +736,10 @@ impl Vault {
             });
             v
         };
+        // archived accounts stay listed but don't count (GiroCrab/GiroCrab#208)
         let sum = |v: &[Account]| {
             v.iter()
-                .filter(|a| a.currency == "EUR")
+                .filter(|a| a.currency == "EUR" && a.archived_unix.is_none())
                 .map(|a| a.balance_cents)
                 .sum()
         };
@@ -779,13 +780,19 @@ impl Vault {
                 accounts: accs,
             });
         }
-        // sums include the subgroups: add each group to its parent, deepest first
+        // sums include the subgroups: add each group to its parent, deepest
+        // first – except subgroups taken out of the total themselves, which
+        // keep their own sum but don't count for the groups above
+        // (GiroCrab/GiroCrab#208)
         let index: HashMap<String, usize> = out
             .iter()
             .enumerate()
             .map(|(i, g)| (g.uuid.clone(), i))
             .collect();
         for i in (0..out.len()).rev() {
+            if !out[i].include_in_total {
+                continue;
+            }
             if let Some(p) = out[i].parent_uuid.as_ref().and_then(|p| index.get(p)) {
                 out[*p].balance_cents += out[i].balance_cents;
             }

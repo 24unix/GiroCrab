@@ -236,6 +236,35 @@ final class AccountGroupsTests: XCTestCase {
         XCTAssertEqual(model.liquidBalance, liquidBefore)
     }
 
+    /// GiroCrab/GiroCrab#208: an "everything" group with an "old" subgroup. Archived
+    /// accounts and subgroups taken out of the total don't count in the group sum,
+    /// and the balance chart of the group follows the same accounts.
+    func testGroupSumSkipsArchivedAccountsAndExcludedSubgroups() throws {
+        let eur = model.allAccounts.filter { $0.currency == "EUR" && $0.balanceCents != 0 }
+        XCTAssertGreaterThanOrEqual(eur.count, 3)
+        let (kept, archived, old) = (eur[0], eur[1], eur[2])
+        let alle = try XCTUnwrap(model.createUserGroup(name: "Alle (208)"))
+        let alt = try XCTUnwrap(model.createUserGroup(name: "Alt (208)", parent: alle))
+        model.moveAccount(kept.id, to: alle)
+        model.moveAccount(archived.id, to: alle)
+        model.moveAccount(old.id, to: alt)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(try group(alle).balanceCents, kept.balanceCents + archived.balanceCents + old.balanceCents)
+
+        model.setAccountArchived(archived, true)
+        model.updateUserGroup(try group(alt), includeInTotal: false)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(try group(alle).balanceCents, kept.balanceCents, "archived account and excluded subgroup don't count")
+        XCTAssertEqual(try group(alt).balanceCents, old.balanceCents, "the excluded subgroup keeps its own sum")
+        XCTAssertEqual(Set(try group(alle).accounts.map(\.id)), [kept.id, archived.id], "archived account stays listed")
+        XCTAssertEqual(model.userGroupBalanceAccountIDs(alle), [kept.id], "chart follows the sum")
+        XCTAssertEqual(Set(model.userGroupAccountIDs(alle)), [kept.id, archived.id, old.id], "bookings still cover everything")
+
+        model.updateUserGroup(try group(alt), includeInTotal: true)
+        XCTAssertEqual(try group(alle).balanceCents, kept.balanceCents + old.balanceCents)
+        XCTAssertEqual(Set(model.userGroupBalanceAccountIDs(alle)), [kept.id, old.id])
+    }
+
     // MARK: delete
 
     func testDeleteGroupKeepsAccounts() throws {
