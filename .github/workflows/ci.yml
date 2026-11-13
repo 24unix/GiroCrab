@@ -37,6 +37,8 @@ jobs:
         with:
           node-version: '24'
       - run: cargo fmt --all -- --check
+      - name: Keine FinTS-Produkt-ID im Repo
+        run: scripts/fints-registrierung.sh scan
       - name: Test FNZ portal browser scripts
         run: node --test scripts/test-fnz-portal.cjs
       - run: cargo clippy --workspace --all-targets -- -D warnings

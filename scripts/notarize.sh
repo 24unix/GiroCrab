@@ -284,6 +284,23 @@ elif [ -n "$LOST_TO" ]; then
   eval "$KEY_EXPORTS"
 fi
 
+# GiroCrab's own FinTS product registration (docs/fints-registrierung.md): from the
+# keychain, compiled in by girocrab-core/build.rs. Never from a file in the repo.
+FINTS_ID_EMBEDDED=0
+if GIROCRAB_FINTS_PRODUCT_ID="$(scripts/fints-registrierung.sh get 2>/dev/null)" && [ -n "$GIROCRAB_FINTS_PRODUCT_ID" ]; then
+  export GIROCRAB_FINTS_PRODUCT_ID
+  FINTS_ID_EMBEDDED=1
+  echo "==> FinTS product ID: available, will be compiled in (value not shown)"
+else
+  unset GIROCRAB_FINTS_PRODUCT_ID
+  if [ "$CHANNEL" = "stable" ] && [ "${ALLOW_NO_PRODUCT_ID:-0}" != "1" ]; then
+    echo "error: no FinTS product ID (scripts/fints-registrierung.sh set). Stable must ship it;" >&2
+    echo "       override for a test run only: ALLOW_NO_PRODUCT_ID=1" >&2
+    exit 1
+  fi
+  echo "warning: building WITHOUT GiroCrab's FinTS product ID ($CHANNEL): users must enter their own." >&2
+fi
+
 echo "==> Build (xcframework + swift release + bundle) via package-macos-app.sh"
 ./package-macos-app.sh
 
@@ -356,6 +373,13 @@ if [ ${#POLICY_FILES[@]} -gt 0 ]; then
   # without it the app gets no 90-day allowance for the bundled policy
   /usr/libexec/PlistBuddy -c "Print :GiroCrabBuildDate" "$VAPP/Contents/Info.plist" >/dev/null 2>&1 \
     || { echo "error: GiroCrabBuildDate missing in Info.plist" >&2; exit 1; }
+fi
+
+echo "--- FinTS product ID in the build"
+if [ "$FINTS_ID_EMBEDDED" = "1" ]; then
+  scripts/fints-registrierung.sh check-app "$VAPP"
+else
+  echo "none embedded (see warning above)"
 fi
 
 echo "--- launch smoke test"
