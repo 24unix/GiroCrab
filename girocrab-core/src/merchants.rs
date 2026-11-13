@@ -1073,7 +1073,10 @@ fn stock_confirmed(e: &Entry, text: &str, ctx: &str) -> bool {
                 .chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '.')
                 .collect();
-            matches!(word.trim_end_matches('.'), "ag" | "se" | "kgaa" | "inc" | "corp" | "plc")
+            matches!(
+                word.trim_end_matches('.'),
+                "ag" | "se" | "kgaa" | "inc" | "corp" | "plc"
+            )
         })
     })
 }
@@ -1873,7 +1876,15 @@ mod tests {
         for name in ["Max Bayer", "Anna Siemens", "Peter Henkel", "Lisa Allianz"] {
             let info = MerchantResolver::resolve(name, "Anteil Abendessen");
             assert_ne!(info.kind, K::Stock, "{name}");
-            let f = classify(-25_00, name, "Anteil Abendessen", "", &info, "", AccountKind::Checking);
+            let f = classify(
+                -25_00,
+                name,
+                "Anteil Abendessen",
+                "",
+                &info,
+                "",
+                AccountKind::Checking,
+            );
             assert_ne!(f, FlowKind::Investment, "{name}");
         }
     }
@@ -1883,7 +1894,15 @@ mod tests {
         let p = "WP-ABRECHNUNG Kauf DE000BAY0017";
         let info = MerchantResolver::resolve("Depotbank", p);
         assert_eq!(info.key, "stock-bayer");
-        let f = classify(-500_00, "Depotbank", p, "", &info, "", AccountKind::Checking);
+        let f = classify(
+            -500_00,
+            "Depotbank",
+            p,
+            "",
+            &info,
+            "",
+            AccountKind::Checking,
+        );
         assert_eq!(f, FlowKind::Investment);
         let info = MerchantResolver::resolve("Bayer AG", "Dividende 2025");
         assert_eq!(info.key, "stock-bayer");

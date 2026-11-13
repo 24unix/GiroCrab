@@ -243,7 +243,6 @@ struct DocumentsView: View {
                         }
                         .tag(d.id)
                         .contentShape(Rectangle())
-                        .onTapGesture { if isCompact { previewDoc = d } }
                         .contextMenu {
                             Button("QuickLook") { model.quickLook(d) }
                             Button("Verknüpfung lösen") { model.linkDocument(d, to: nil) }
@@ -253,6 +252,16 @@ struct DocumentsView: View {
                     }
                 }
                 .listStyle(.inset)
+                // Don't put a tap gesture on the rows: it swallows the click
+                // before List selection sees it, leaving only the row padding
+                // clickable (GitHub #174). On compact iOS, turn the selection
+                // into the preview sheet instead and clear it so the same
+                // document can be opened again.
+                .onChange(of: selected) { _, id in
+                    guard isCompact, let id, let d = docs.first(where: { $0.id == id }) else { return }
+                    previewDoc = d
+                    selected = nil
+                }
                 .overlay {
                     if docs.isEmpty, let id = model.documentsAccountFilter,
                        let account = model.allAccounts.first(where: { $0.id == id }) {

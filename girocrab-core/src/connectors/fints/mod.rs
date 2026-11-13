@@ -2390,8 +2390,15 @@ mod tests {
             let mut c = FinTsConnector::new("52090000");
             c.url = format!("http://127.0.0.1:{port}/fints");
             let r = c.send(&test_ctx(), vec![], "999", None).await;
-            assert!(matches!(r, Err(CoreError::Network { .. })), "code {code}: {r:?}");
-            assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1, "code {code}");
+            assert!(
+                matches!(r, Err(CoreError::Network { .. })),
+                "code {code}: {r:?}"
+            );
+            assert_eq!(
+                hits.load(std::sync::atomic::Ordering::SeqCst),
+                1,
+                "code {code}"
+            );
         }
     }
 
