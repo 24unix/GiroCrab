@@ -1270,6 +1270,41 @@ impl Vault {
             )?;
             acc_ids.insert(spec.external_ref, tx.last_insert_rowid());
         }
+        // Depot positions: the two savings plans, summing to the depot balance
+        // (28.450,00 EUR), so the "Positionen" card is not empty in the demo.
+        for (isin, wkn, name, quantity, current, purchase) in [
+            (
+                "IE00B4L5Y983",
+                "A0RPWH",
+                "iShares Core MSCI World UCITS ETF",
+                160.0_f64,
+                104_25_i64,
+                92_40_i64,
+            ),
+            (
+                "IE00BK5BQT80",
+                "A2PKXG",
+                "Vanguard FTSE All-World UCITS ETF",
+                110.0,
+                107_00,
+                98_10,
+            ),
+        ] {
+            tx.execute(
+                "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    acc_ids["demo-depot"],
+                    isin,
+                    wkn,
+                    name,
+                    quantity,
+                    current,
+                    purchase,
+                    (quantity * current as f64).round() as i64
+                ],
+            )?;
+        }
         // manual loan without a bank account (#36): Stand two months ago, rates from the Giro
         // (linked by `apply_rules_inner` below)
         let car = crate::loans::create_in(
@@ -1400,6 +1435,24 @@ mod tests {
             })
             .unwrap();
         assert_eq!(csv.lines().count() as u32, income.total_count + 1);
+    }
+
+    #[test]
+    fn demo_depot_has_positions_matching_its_balance() {
+        let dir_dir = crate::test_support::TempDir::new("girocrab-test");
+        let dir = dir_dir.join("v.db");
+        let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let depot = v
+            .list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.name == "Welt-Depot ETF")
+            .unwrap();
+        let holdings = v.list_holdings(depot.id).unwrap();
+        assert_eq!(holdings.len(), 2);
+        let sum: i64 = holdings.iter().map(|h| h.value_cents).sum();
+        assert_eq!(sum, depot.balance_cents);
     }
 
     #[test]
