@@ -106,6 +106,169 @@ pub(crate) use crate::schema::SCHEMA_VERSION;
 /// Base schema before #206 (`version == 0` branch of the probe-based setup):
 /// no sync, group or salary columns. Tests build old vaults from it; new vaults
 /// get `schema::BASELINE`.
+impl Vault {
+    /// WHERE clause (plus optional CTE, bound arguments and the KPI share
+    /// expression) of a `BookingFilter`; shared by the list and bulk updates.
+    #[allow(clippy::type_complexity)]
+    fn filter_clauses(
+        db: &rusqlite::Connection,
+        filter: &BookingFilter,
+    ) -> Result<(String, String, Vec<Box<dyn ToSql>>, String), CoreError> {
+        let mut wh: Vec<String> = vec!["t.deleted_ms IS NULL AND a.deleted_ms IS NULL".into()];
+        let mut args: Vec<Box<dyn ToSql>> = vec![];
+        let mut cte = String::new();
+        if !filter.account_ids.is_empty() {
+            let ph: Vec<String> = filter
+                .account_ids
+                .iter()
+                .map(|id| {
+                    args.push(Box::new(*id));
+                    format!("?{}", args.len())
+                })
+                .collect();
+            let mut clause = format!("t.account_id IN ({})", ph.join(","));
+            // Loan view: also surface bookings of other accounts (e.g. the Girokonto's
+            // monthly "Zins / Tilgung" debits) that reference the loan's IBAN / account number.
+            let loans: Vec<(i64, String, String)> = {
+                let mut q = db
+                    .prepare("SELECT id, iban, account_number FROM accounts WHERE kind = 'loan' AND deleted_ms IS NULL")?;
+                let rows = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            };
+            let loan_ids: Vec<i64> = loans.iter().map(|l| l.0).collect();
+            for (id, iban, number) in loans.iter().filter(|l| filter.account_ids.contains(&l.0)) {
+                let digits: String = number.chars().filter(|c| c.is_ascii_digit()).collect();
+                let trimmed = digits.trim_start_matches('0').to_string();
+                let mut ors: Vec<String> = Vec::new();
+                if iban.len() >= 15 {
+                    args.push(Box::new(iban.clone()));
+                    ors.push(format!("t.counterparty_iban = ?{0} OR REPLACE(t.purpose,' ','') LIKE '%' || ?{0} || '%'", args.len()));
+                }
+                if trimmed.len() >= 6 {
+                    args.push(Box::new(trimmed.clone()));
+                    let n = args.len();
+                    ors.push(format!(
+                        "t.counterparty_iban LIKE '%' || ?{n} OR t.purpose LIKE '%' || ?{n} || '%'"
+                    ));
+                }
+                // Only exact references (IBAN / full loan number) – no keyword or short-suffix
+                // heuristics: those pulled unrelated bookings of every account into a loan.
+                if !ors.is_empty() {
+                    let own: Vec<String> = loan_ids.iter().map(|i| i.to_string()).collect();
+                    clause.push_str(&format!(
+                        " OR (t.account_id NOT IN ({}) AND ({}))",
+                        own.join(","),
+                        ors.join(" OR ")
+                    ));
+                }
+                let _ = id;
+            }
+            // manual loans (#36): bookings linked by hand or by the loan's expression
+            clause.push_str(&format!(
+                " OR t.id IN (SELECT transaction_id FROM loan_links WHERE source != 'excluded' AND loan_account_id IN ({}))",
+                filter.account_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+            ));
+            wh.push(format!("({clause})"));
+        }
+        // Category filters follow `planning::EFFECTIVE_SQL`: a split booking belongs
+        // to the categories of its parts (never to its own category), and only the
+        // parts of the filtered category count in the KPI sums (`share_sql`).
+        let cat_match: Option<String> = if filter.uncategorized_only {
+            Some("IS NULL".into())
+        } else if let Some(cat) = filter.category_id {
+            args.push(Box::new(cat));
+            let n = args.len();
+            if filter.include_subcategories {
+                cte = format!(
+                    "WITH RECURSIVE sub(id) AS (SELECT ?{n} UNION ALL SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id WHERE c.deleted_ms IS NULL) "
+                );
+                Some("IN (SELECT id FROM sub)".into())
+            } else {
+                Some(format!("= ?{n}"))
+            }
+        } else {
+            None
+        };
+        let share_sql = match &cat_match {
+            Some(m) => {
+                wh.push(category_match_sql(m));
+                format!(
+                    "COALESCE((SELECT SUM(sp.amount_cents) FROM transaction_splits sp WHERE sp.transaction_id = t.id AND sp.category_id {m}), t.amount_cents)"
+                )
+            }
+            None => "t.amount_cents".to_string(),
+        };
+        if let Some(from) = filter.date_from.as_ref().filter(|s| !s.is_empty()) {
+            args.push(Box::new(from.clone()));
+            wh.push(format!("t.booking_date >= ?{}", args.len()));
+        }
+        if let Some(to) = filter.date_to.as_ref().filter(|s| !s.is_empty()) {
+            args.push(Box::new(to.clone()));
+            wh.push(format!("t.booking_date <= ?{}", args.len()));
+        }
+        match filter.checked {
+            None => {}
+            Some(true) => wh.push("t.checked != 0".into()),
+            Some(false) => wh.push("t.checked = 0".into()),
+        }
+        match filter.direction {
+            BookingDirection::All => {}
+            BookingDirection::Income => wh.push("t.amount_cents > 0".into()),
+            BookingDirection::Expense => wh.push("t.amount_cents < 0".into()),
+        }
+        if let Some(q) = filter
+            .search
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            let mut ors = Vec::new();
+            for term in q.split_whitespace() {
+                let like = format!(
+                    "%{}%",
+                    term.replace('\\', "\\\\")
+                        .replace('%', "\\%")
+                        .replace('_', "\\_")
+                );
+                args.push(Box::new(like));
+                let n = args.len();
+                let mut alt = format!(
+                    "(t.counterparty LIKE ?{n} ESCAPE '\\' OR t.purpose LIKE ?{n} ESCAPE '\\' OR t.booking_text LIKE ?{n} ESCAPE '\\' \
+                     OR t.counterparty_iban LIKE ?{n} ESCAPE '\\' OR cat.name LIKE ?{n} ESCAPE '\\' OR a.name LIKE ?{n} ESCAPE '\\'"
+                );
+                if term.chars().any(|c| c.is_ascii_digit()) {
+                    if let Ok(cents) = parse_cents(term) {
+                        args.push(Box::new(cents.abs()));
+                        alt.push_str(&format!(" OR ABS(t.amount_cents) = ?{}", args.len()));
+                    }
+                }
+                alt.push(')');
+                ors.push(alt);
+            }
+            wh.push(ors.join(" AND "));
+        }
+        let where_sql = wh.join(" AND ");
+        Ok((cte, where_sql, args, share_sql))
+    }
+
+    fn set_checked_ids(
+        tx: &rusqlite::Connection,
+        ids: &[i64],
+        checked: bool,
+    ) -> Result<(), CoreError> {
+        let now = crate::user_groups::now_ms();
+        for chunk in ids.chunks(500) {
+            let ph = vec!["?"; chunk.len()].join(",");
+            let sql =
+                format!("UPDATE transactions SET checked = ?1, checked_ms = ?2 WHERE id IN ({ph})");
+            let mut owned: Vec<Box<dyn ToSql>> = vec![Box::new(checked as i64), Box::new(now)];
+            owned.extend(chunk.iter().map(|id| Box::new(*id) as Box<dyn ToSql>));
+            tx.execute(&sql, params_from_iter(owned.iter().map(|b| b.as_ref())))?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 pub(crate) const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS bank_connections (
@@ -1670,144 +1833,70 @@ impl Vault {
 
     // ---------------------------------------------------------------- transactions
 
+    /// Marks every booking matching `filter` as checked / unchecked in one
+    /// SQL update (GitHub #236; with a scope or merchant filter the ids come
+    /// from the enriched list first). Returns the ids that actually changed,
+    /// so the caller can undo exactly those.
+    pub fn set_checked_for_filter(
+        &self,
+        filter: BookingFilter,
+        checked: bool,
+    ) -> Result<Vec<i64>, CoreError> {
+        // Scope (Alltag / Sparpläne) and merchant depend on the enriched booking, not
+        // on SQL columns: `list_transactions` applies them after the query. Take
+        // the ids from it, so the update touches exactly what the list shows.
+        if !matches!(filter.scope, BookingScope::All) || filter.merchant_key.is_some() {
+            let page = self.list_transactions(BookingFilter {
+                limit: 0,
+                offset: 0,
+                whole_days: false,
+                ..filter
+            })?;
+            let ids: Vec<i64> = page
+                .transactions
+                .iter()
+                .filter(|b| b.checked != checked)
+                .map(|b| b.id)
+                .collect();
+            self.set_checked_for_ids(ids.clone(), checked)?;
+            return Ok(ids);
+        }
+        let mut db = self.db()?;
+        let (cte, where_sql, args, _) = Self::filter_clauses(&db, &filter)?;
+        let tx = db.transaction()?;
+        let ids: Vec<i64> = {
+            let sql = format!(
+                "{cte}SELECT t.id FROM transactions t JOIN accounts a ON a.id = t.account_id \
+                 LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL \
+                 WHERE {where_sql} AND (t.checked != 0) != ?{}",
+                args.len() + 1
+            );
+            let mut stmt = tx.prepare(&sql)?;
+            let mut all: Vec<&dyn ToSql> = args.iter().map(|b| b.as_ref()).collect();
+            let flag = checked as i64;
+            all.push(&flag);
+            let rows = stmt.query_map(all.as_slice(), |r| r.get::<_, i64>(0))?;
+            rows.collect::<Result<_, _>>()?
+        };
+        Self::set_checked_ids(&tx, &ids, checked)?;
+        tx.commit()?;
+        Ok(ids)
+    }
+
+    /// Sets `checked` for explicit ids (undo of `set_checked_for_filter`).
+    pub fn set_checked_for_ids(&self, ids: Vec<i64>, checked: bool) -> Result<(), CoreError> {
+        let mut db = self.db()?;
+        let tx = db.transaction()?;
+        Self::set_checked_ids(&tx, &ids, checked)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
         let db = self.db()?;
         let paths = Self::category_paths(&db)?;
-        let mut wh: Vec<String> = vec!["t.deleted_ms IS NULL AND a.deleted_ms IS NULL".into()];
-        let mut args: Vec<Box<dyn ToSql>> = vec![];
-        let mut cte = String::new();
-        if !filter.account_ids.is_empty() {
-            let ph: Vec<String> = filter
-                .account_ids
-                .iter()
-                .map(|id| {
-                    args.push(Box::new(*id));
-                    format!("?{}", args.len())
-                })
-                .collect();
-            let mut clause = format!("t.account_id IN ({})", ph.join(","));
-            // Loan view: also surface bookings of other accounts (e.g. the Girokonto's
-            // monthly "Zins / Tilgung" debits) that reference the loan's IBAN / account number.
-            let loans: Vec<(i64, String, String)> = {
-                let mut q = db
-                    .prepare("SELECT id, iban, account_number FROM accounts WHERE kind = 'loan' AND deleted_ms IS NULL")?;
-                let rows = q.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
-                rows.collect::<Result<Vec<_>, _>>()?
-            };
-            let loan_ids: Vec<i64> = loans.iter().map(|l| l.0).collect();
-            for (id, iban, number) in loans.iter().filter(|l| filter.account_ids.contains(&l.0)) {
-                let digits: String = number.chars().filter(|c| c.is_ascii_digit()).collect();
-                let trimmed = digits.trim_start_matches('0').to_string();
-                let mut ors: Vec<String> = Vec::new();
-                if iban.len() >= 15 {
-                    args.push(Box::new(iban.clone()));
-                    ors.push(format!("t.counterparty_iban = ?{0} OR REPLACE(t.purpose,' ','') LIKE '%' || ?{0} || '%'", args.len()));
-                }
-                if trimmed.len() >= 6 {
-                    args.push(Box::new(trimmed.clone()));
-                    let n = args.len();
-                    ors.push(format!(
-                        "t.counterparty_iban LIKE '%' || ?{n} OR t.purpose LIKE '%' || ?{n} || '%'"
-                    ));
-                }
-                // Only exact references (IBAN / full loan number) – no keyword or short-suffix
-                // heuristics: those pulled unrelated bookings of every account into a loan.
-                if !ors.is_empty() {
-                    let own: Vec<String> = loan_ids.iter().map(|i| i.to_string()).collect();
-                    clause.push_str(&format!(
-                        " OR (t.account_id NOT IN ({}) AND ({}))",
-                        own.join(","),
-                        ors.join(" OR ")
-                    ));
-                }
-                let _ = id;
-            }
-            // manual loans (#36): bookings linked by hand or by the loan's expression
-            clause.push_str(&format!(
-                " OR t.id IN (SELECT transaction_id FROM loan_links WHERE source != 'excluded' AND loan_account_id IN ({}))",
-                filter.account_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")
-            ));
-            wh.push(format!("({clause})"));
-        }
-        // Category filters follow `planning::EFFECTIVE_SQL`: a split booking belongs
-        // to the categories of its parts (never to its own category), and only the
-        // parts of the filtered category count in the KPI sums (`share_sql`).
-        let cat_match: Option<String> = if filter.uncategorized_only {
-            Some("IS NULL".into())
-        } else if let Some(cat) = filter.category_id {
-            args.push(Box::new(cat));
-            let n = args.len();
-            if filter.include_subcategories {
-                cte = format!(
-                    "WITH RECURSIVE sub(id) AS (SELECT ?{n} UNION ALL SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id WHERE c.deleted_ms IS NULL) "
-                );
-                Some("IN (SELECT id FROM sub)".into())
-            } else {
-                Some(format!("= ?{n}"))
-            }
-        } else {
-            None
-        };
-        let share_sql = match &cat_match {
-            Some(m) => {
-                wh.push(category_match_sql(m));
-                format!(
-                    "COALESCE((SELECT SUM(sp.amount_cents) FROM transaction_splits sp WHERE sp.transaction_id = t.id AND sp.category_id {m}), t.amount_cents)"
-                )
-            }
-            None => "t.amount_cents".to_string(),
-        };
-        if let Some(from) = filter.date_from.as_ref().filter(|s| !s.is_empty()) {
-            args.push(Box::new(from.clone()));
-            wh.push(format!("t.booking_date >= ?{}", args.len()));
-        }
-        if let Some(to) = filter.date_to.as_ref().filter(|s| !s.is_empty()) {
-            args.push(Box::new(to.clone()));
-            wh.push(format!("t.booking_date <= ?{}", args.len()));
-        }
-        match filter.checked {
-            None => {}
-            Some(true) => wh.push("t.checked != 0".into()),
-            Some(false) => wh.push("t.checked = 0".into()),
-        }
-        match filter.direction {
-            BookingDirection::All => {}
-            BookingDirection::Income => wh.push("t.amount_cents > 0".into()),
-            BookingDirection::Expense => wh.push("t.amount_cents < 0".into()),
-        }
-        if let Some(q) = filter
-            .search
-            .as_ref()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-        {
-            let mut ors = Vec::new();
-            for term in q.split_whitespace() {
-                let like = format!(
-                    "%{}%",
-                    term.replace('\\', "\\\\")
-                        .replace('%', "\\%")
-                        .replace('_', "\\_")
-                );
-                args.push(Box::new(like));
-                let n = args.len();
-                let mut alt = format!(
-                    "(t.counterparty LIKE ?{n} ESCAPE '\\' OR t.purpose LIKE ?{n} ESCAPE '\\' OR t.booking_text LIKE ?{n} ESCAPE '\\' \
-                     OR t.counterparty_iban LIKE ?{n} ESCAPE '\\' OR cat.name LIKE ?{n} ESCAPE '\\' OR a.name LIKE ?{n} ESCAPE '\\'"
-                );
-                if term.chars().any(|c| c.is_ascii_digit()) {
-                    if let Ok(cents) = parse_cents(term) {
-                        args.push(Box::new(cents.abs()));
-                        alt.push_str(&format!(" OR ABS(t.amount_cents) = ?{}", args.len()));
-                    }
-                }
-                alt.push(')');
-                ors.push(alt);
-            }
-            wh.push(ors.join(" AND "));
-        }
+        let (cte, where_sql, args, share_sql) = Self::filter_clauses(&db, &filter)?;
         let loan_links = crate::loans::link_map(&db)?;
-        let where_sql = wh.join(" AND ");
         // a deleted category or rule reads as none (what the old SET NULL did)
         let from_sql = "FROM transactions t JOIN accounts a ON a.id = t.account_id
              LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL
@@ -2809,6 +2898,65 @@ mod paging_tests {
             })
             .unwrap();
         assert!(past.transactions.is_empty());
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn mark_all_checked_by_filter_and_undo() {
+        let (v, p) = demo();
+        let unchecked = BookingFilter {
+            checked: Some(false),
+            ..Default::default()
+        };
+        let before = v.list_transactions(unchecked.clone()).unwrap().total_count;
+        assert!(before > 1);
+        let ids = v.set_checked_for_filter(unchecked.clone(), true).unwrap();
+        assert_eq!(ids.len() as u32, before);
+        assert_eq!(
+            v.list_transactions(unchecked.clone()).unwrap().total_count,
+            0
+        );
+        // a second run changes nothing
+        assert!(v
+            .set_checked_for_filter(unchecked.clone(), true)
+            .unwrap()
+            .is_empty());
+        // undo restores exactly the touched bookings
+        v.set_checked_for_ids(ids, false).unwrap();
+        assert_eq!(v.list_transactions(unchecked).unwrap().total_count, before);
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn mark_all_checked_respects_scope() {
+        let (v, p) = demo();
+        // start with everything new
+        v.set_checked_for_filter(BookingFilter::default(), false)
+            .unwrap();
+        let count = |scope: BookingScope| {
+            v.list_transactions(BookingFilter {
+                checked: Some(false),
+                scope,
+                ..Default::default()
+            })
+            .unwrap()
+            .total_count
+        };
+        let (all, everyday) = (count(BookingScope::All), count(BookingScope::Everyday));
+        assert!(everyday < all, "demo has investments");
+        let ids = v
+            .set_checked_for_filter(
+                BookingFilter {
+                    checked: Some(false),
+                    scope: BookingScope::Everyday,
+                    ..Default::default()
+                },
+                true,
+            )
+            .unwrap();
+        assert_eq!(ids.len() as u32, everyday);
+        // what is outside the scope stays new
+        assert_eq!(count(BookingScope::All), all - everyday);
         let _ = std::fs::remove_file(p);
     }
 
