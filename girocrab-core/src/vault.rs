@@ -11,8 +11,11 @@
 //! in one `impl Vault` per feature module (`vault/*.rs`, `loans.rs`, `connectors/…`),
 //! see `docs/ARCHITECTURE.md` › "Vault modules".
 
+use std::ops::{Deref, DerefMut};
+use std::panic::Location;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 use rusqlite::{params, Connection};
 use zeroize::Zeroizing;
@@ -208,10 +211,69 @@ impl Drop for OpenVault {
     }
 }
 
+/// Lock wait or hold time above which debug builds report the `db()` call site.
+/// Every FFI call serialises on the vault mutex, so a long holder stalls the
+/// main thread even when it runs off-main (#266).
+const SLOW_LOCK: Duration = Duration::from_millis(50);
+
+/// The locked connection. Debug builds log the `db()` call site when the lock
+/// was waited for or held longer than `SLOW_LOCK`.
+pub(crate) struct DbGuard<'a> {
+    conn: MutexGuard<'a, Connection>,
+    #[cfg(debug_assertions)]
+    since: Instant,
+    #[cfg(debug_assertions)]
+    caller: &'static Location<'static>,
+}
+
+impl Deref for DbGuard<'_> {
+    type Target = Connection;
+    fn deref(&self) -> &Connection {
+        &self.conn
+    }
+}
+
+impl DerefMut for DbGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Connection {
+        &mut self.conn
+    }
+}
+
+#[cfg(debug_assertions)]
+impl Drop for DbGuard<'_> {
+    fn drop(&mut self) {
+        let held = self.since.elapsed();
+        if held > SLOW_LOCK {
+            eprintln!(
+                "vault: lock held {} ms by {}",
+                held.as_millis(),
+                self.caller
+            );
+        }
+    }
+}
+
 impl Vault {
-    pub(crate) fn db(&self) -> CoreResult<MutexGuard<'_, Connection>> {
-        self.conn.lock().map_err(|_| CoreError::Database {
+    #[track_caller]
+    pub(crate) fn db(&self) -> CoreResult<DbGuard<'_>> {
+        let caller = Location::caller();
+        let asked = Instant::now();
+        let conn = self.conn.lock().map_err(|_| CoreError::Database {
             message: "vault lock poisoned".into(),
+        })?;
+        let waited = asked.elapsed();
+        if cfg!(debug_assertions) && waited > SLOW_LOCK {
+            eprintln!(
+                "vault: waited {} ms for the lock at {caller}",
+                waited.as_millis()
+            );
+        }
+        Ok(DbGuard {
+            conn,
+            #[cfg(debug_assertions)]
+            since: Instant::now(),
+            #[cfg(debug_assertions)]
+            caller,
         })
     }
 
