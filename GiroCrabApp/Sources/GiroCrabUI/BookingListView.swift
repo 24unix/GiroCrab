@@ -229,7 +229,8 @@ struct BookingStreamView: View {
     @ViewBuilder
     private func header(isOverview: Bool, emptyVault: Bool, scope: Binding<BookingScope>) -> some View {
                 VStack(alignment: .leading, spacing: 14) {
-                    if model.demoActive {
+                    // Marketing screenshots (`--screenshot`) look like a real vault: no demo banner.
+                    if model.demoActive && LaunchOptions.current.screenshotPath == nil {
                         DemoBanner()
                     }
                     #if os(iOS)

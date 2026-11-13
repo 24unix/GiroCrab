@@ -1,38 +1,27 @@
 <p align="center">
-  <img src="GiroCrabApp/Assets/girocrab-icon.svg" alt="GiroCrab – Open-Source-Banking-App für macOS und iOS" width="128" height="128">
+  <img src="docs/assets/app-icon.png" alt="GiroCrab – App-Icon" width="112" height="112">
 </p>
 
 <h1 align="center">GiroCrab</h1>
 
-<p align="center"><b>Die schnelle, lokale Open-Source Online-Banking-App für macOS &amp; iOS (FinTS/HBCI, PSD2, SEPA) – die native MoneyMoney- &amp; Outbank-Alternative ohne Abo und ohne Cloud-Zwang.</b></p>
+<p align="center"><b>🇩🇪 <a href="#-deutsch">Deutsch</a> · 🇬🇧 <a href="#-english">English</a> · 🌐 <a href="https://girocrab.de">girocrab.de</a></b></p>
 
-<p align="center"><b>Native macOS &amp; iOS open-source banking client (FinTS/HBCI, PSD2, SEPA) built with Rust &amp; SwiftUI — local-first, SQLCipher-encrypted, no subscription.</b></p>
+<h3 align="center">Die freie, native Banking-App für Mac, iPhone &amp; iPad.</h3>
+
+<p align="center">FinTS 3.0 · PSD2 · SEPA · MoneyMoney-Import — 100&nbsp;% lokal verschlüsselt, ohne Abo, ohne Cloud-Zwang.</p>
 
 <p align="center">
-  <a href="https://github.com/GiroCrab/GiroCrab/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/GiroCrab/GiroCrab/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
-  <img alt="Rust" src="https://img.shields.io/badge/core-Rust-orange">
-  <img alt="Swift" src="https://img.shields.io/badge/app-SwiftUI-F05138">
-  <img alt="Platforms: macOS 14+, iOS 17+, Apple Silicon" src="https://img.shields.io/badge/macOS%2014%2B%20%C2%B7%20iOS%2017%2B%20%C2%B7%20Apple%20Silicon-lightgrey">
-  <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen">
+  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg"><img src="docs/assets/download-macos.svg" alt="Für macOS laden – v0.6.1 · Apple Silicon (.dmg)" width="260" height="56"></a>
+  &nbsp;
+  <a href="https://testflight.apple.com/join/KBmvKVpT"><img src="docs/assets/download-ios.svg" alt="iOS &amp; iPadOS App – kostenlos via Apple TestFlight" width="260" height="56"></a>
 </p>
+
+<p align="center"><sub>✓ Offiziell von Apple notarisiert · ✓ Automatische Updates · ✓ Version v0.6.1</sub></p>
 
 <p align="center">
   <a href="https://github.com/GiroCrab/GiroCrab/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/GiroCrab/GiroCrab?label=release&color=2ea44f"></a>
   <a href="https://github.com/GiroCrab/GiroCrab/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/GiroCrab/GiroCrab/total?color=007AFF"></a>
-  <img alt="Apple Notarized" src="https://img.shields.io/badge/Apple-Notarized-success?logo=apple">
-  <a href="https://testflight.apple.com/join/KBmvKVpT"><img alt="TestFlight iOS &amp; iPadOS" src="https://img.shields.io/badge/TestFlight-iOS%20%26%20iPadOS-0D96F6?logo=apple&logoColor=white"></a>
   <a href="https://github.com/GiroCrab/GiroCrab/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/GiroCrab/GiroCrab?style=flat"></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg">
-    <img src="https://img.shields.io/badge/💻_Download_für_macOS-Apple_Silicon_(DMG)-007AFF?style=for-the-badge&logo=apple&logoColor=white" alt="Download für macOS">
-  </a>
-  &nbsp;&nbsp;
-  <a href="https://testflight.apple.com/join/KBmvKVpT">
-    <img src="https://img.shields.io/badge/📲_iOS_&_iPadOS_App-Via_Apple_TestFlight-0D96F6?style=for-the-badge&logo=apple&logoColor=white" alt="iOS & iPadOS via TestFlight">
-  </a>
 </p>
 
 <p align="center">
@@ -42,17 +31,7 @@
   </picture>
 </p>
 
-<p align="center">
-  ⭐ <b>Gefällt dir GiroCrab?</b> Ein <b><a href="https://github.com/GiroCrab/GiroCrab/stargazers">Stern auf GitHub</a></b> hilft anderen Mac- &amp; iOS-Nutzern auf der Suche nach einer freien, lokalen Banking-App ohne Abo-Zwang, das Projekt zu finden!<br>
-  <sub><i>Like GiroCrab? A star on GitHub helps others looking for a free, local banking app without a subscription find the project.</i></sub>
-</p>
-
-<p align="center">
-  <b>💻 macOS:</b> <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg"><code>GiroCrab-macOS-arm64.dmg</code> laden</a> · <code>.dmg</code> öffnen &amp; in <code>Programme</code> ziehen · Starten (Apple-notarisiert + Auto-Updates via Sparkle)<br>
-  <b>📱 iPhone &amp; iPad:</b> <a href="https://testflight.apple.com/join/KBmvKVpT">TestFlight-Einladung öffnen</a> · kostenlos auf iOS / iPadOS 17+ installieren
-</p>
-
-<p align="center"><b>🇩🇪 <a href="#-deutsch">Deutsch</a> · 🇬🇧 <a href="#-english">English</a> · 📦 <a href="https://github.com/GiroCrab/GiroCrab/releases/latest">Alle Releases</a> · 📲 <a href="https://testflight.apple.com/join/KBmvKVpT">TestFlight (iOS)</a></b></p>
+<p align="center"><sub>⭐ Gefällt dir GiroCrab? Ein <a href="https://github.com/GiroCrab/GiroCrab/stargazers">Stern auf GitHub</a> hilft anderen, das Projekt zu finden. · <i>A star helps others find the project.</i></sub></p>
 
 ---
 
@@ -127,6 +106,8 @@ nur um Kategorie und Notiz ergänzt.
 
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.png"><img src="docs/screenshots/overview.png" alt="GiroCrab – Übersicht mit fiktiven Demo-Konten" width="900"></picture></p>
 
+<p align="center"><img src="docs/screenshots/workflow-demo.gif" alt="Animierter Rundgang: Übersicht, Alltag &amp; Konsum, Sparpläne, Dunkelmodus" width="900"></p>
+
 *Alle Screenshots zeigen ausschließlich erfundene Demo-Daten (`GIROCRAB_DEMO_SEED=1`).*
 
 - 🔒 **Local-First:** Alle Bankdaten bleiben auf Ihrem Gerät – in einem verschlüsselten Tresor (XChaCha20-Poly1305), geschützt durch Schlüsselbund / Touch ID bzw. Face ID. Es gibt keinen Entwickler-Server.
@@ -157,6 +138,15 @@ nur um Kategorie und Notiz ergänzt.
 | <img src="docs/screenshots/ios-overview.png" alt="GiroCrab auf dem iPhone – Übersicht" width="300"> | <img src="docs/screenshots/ios-transactions.png" alt="GiroCrab auf dem iPhone – Buchungen" width="300"> |
 
 ### Architektur
+
+<p>
+  <a href="https://github.com/GiroCrab/GiroCrab/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/GiroCrab/GiroCrab/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
+  <img alt="Rust" src="https://img.shields.io/badge/core-Rust-orange">
+  <img alt="Swift" src="https://img.shields.io/badge/app-SwiftUI-F05138">
+  <img alt="Platforms: macOS 14+, iOS 17+, Apple Silicon" src="https://img.shields.io/badge/macOS%2014%2B%20%C2%B7%20iOS%2017%2B%20%C2%B7%20Apple%20Silicon-lightgrey">
+  <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen">
+</p>
 
 ```
 ┌──────────────────────────┐   UniFFI    ┌────────────────────────────────────┐
@@ -299,6 +289,8 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.png"><img src="docs/screenshots/overview.png" alt="GiroCrab – overview with fictional demo accounts" width="900"></picture></p>
 
+<p align="center"><img src="docs/screenshots/workflow-demo.gif" alt="Animated tour: overview, everyday spending, savings plans, dark mode" width="900"></p>
+
 *All screenshots show purely fictional demo data (`GIROCRAB_DEMO_SEED=1`).*
 
 - 🔒 **Local-first:** all banking data lives on your device in an encrypted vault (XChaCha20-Poly1305) protected by the Keychain / Touch ID or Face ID. There is no developer server.
@@ -329,6 +321,15 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 | <img src="docs/screenshots/ios-overview.png" alt="GiroCrab on iPhone – overview" width="300"> | <img src="docs/screenshots/ios-transactions.png" alt="GiroCrab on iPhone – transactions" width="300"> |
 
 ### Architecture
+
+<p>
+  <a href="https://github.com/GiroCrab/GiroCrab/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/GiroCrab/GiroCrab/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
+  <img alt="Rust" src="https://img.shields.io/badge/core-Rust-orange">
+  <img alt="Swift" src="https://img.shields.io/badge/app-SwiftUI-F05138">
+  <img alt="Platforms: macOS 14+, iOS 17+, Apple Silicon" src="https://img.shields.io/badge/macOS%2014%2B%20%C2%B7%20iOS%2017%2B%20%C2%B7%20Apple%20Silicon-lightgrey">
+  <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen">
+</p>
 
 See the diagram above: the SwiftUI app (`GiroCrabApp`, macOS and iOS) talks to `girocrab-core` (Rust) through UniFFI; the core owns the
 encrypted vault, categorisation rules, merchant resolver and the bank connectors, and talks to

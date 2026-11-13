@@ -98,7 +98,8 @@ struct SidebarView: View {
         #endif
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: 6) {
-                if model.isDemo {
+                // Marketing screenshots (`--screenshot`) look like a real vault: no demo banner.
+                if model.isDemo && LaunchOptions.current.screenshotPath == nil {
                     Image(systemName: "theatermasks")
                     Text("Demo-Daten – keine echte Bank verbunden")
                     Button(model.hasOwnVault ? "Eigener Tresor" : "Tresor öffnen") { model.showOwnVault() }

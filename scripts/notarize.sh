@@ -31,6 +31,12 @@
 # signature or nothing published aborts the release. Skipped while the policy
 # key is a placeholder.
 #   --ios           also bump iOS build number, archive for iOS, and upload to TestFlight
+# LOCKSTEP RULE: GiroCrab/girocrab.de (the marketing site, checked out next to this
+# repo as ../girocrab.de) and the newest icon from
+# GiroCrabApp/Xcode/App/Assets.xcassets/AppIcon.appiconset must always be kept in sync
+# whenever README.md, the screenshots or a release change (version, download buttons
+# docs/assets/download-*.svg, docs/assets/app-icon.png, GiroCrabApp/Assets/girocrab-icon.svg).
+# Stable releases warn below if the site does not mention the new version yet.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -201,6 +207,16 @@ if [ -n "$UPLOAD_TAG" ]; then
     if [ -n "$BAD_MV" ]; then
       echo "error: project.pbxproj still has MARKETING_VERSION != ${CLEAN_VER}: $BAD_MV" >&2
       exit 2
+    fi
+  fi
+  # Lockstep: the marketing site must already show this version (warning only).
+  if [ "$CHANNEL" = "stable" ]; then
+    SITE_DIR="${GIROCRAB_SITE_DIR:-$ROOT/../girocrab.de}"
+    if [ -f "$SITE_DIR/index.html" ]; then
+      grep -q "v${CLEAN_VER}" "$SITE_DIR/index.html" \
+        || echo "warning: $SITE_DIR/index.html does not mention v${CLEAN_VER} – update GiroCrab/girocrab.de (icon, screenshots, buttons) in lockstep." >&2
+    else
+      echo "warning: girocrab.de checkout not found at $SITE_DIR – keep GiroCrab/girocrab.de in lockstep with README/screenshots/release." >&2
     fi
   fi
   # README: keep the "current version" lines in step with the stable tag.

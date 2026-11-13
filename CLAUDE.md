@@ -55,8 +55,17 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
   branch switch with Rust changes, rebuild before trusting `swift build` errors.
 - `Localizable.xcstrings` is not sorted: append keys, never re-sort (a sort is a 4k-line diff).
 
+## Lockstep: README, screenshots, releases, website
+`GiroCrab/girocrab.de` (clone next to this repo as `../girocrab.de`) and the newest icon from
+`GiroCrabApp/Xcode/App/Assets.xcassets/AppIcon.appiconset` must ALWAYS be updated together
+whenever `README.md`, `docs/screenshots/**`, `docs/assets/**` or a release changes:
+- Icon: `docs/assets/app-icon.png` (256 px, cropped from `icon-1024.png`) and `GiroCrabApp/Assets/girocrab-icon.svg` mirror the appiconset; the website's `img/` icons too. Never reuse the old logo.
+- Download buttons `docs/assets/download-macos.svg` / `download-ios.svg` carry the version; the site hero must show the same version and links.
+- Marketing screenshots: `--screenshot` hides the demo banners; re-shoot, then copy to `../girocrab.de/img/screenshots/`.
+- Commit + push both repos in the same session. `scripts/notarize.sh` warns if the site lacks the new version.
+
 ## Release checklist (`scripts/notarize.sh --upload vX.Y.Z`)
-- Before running: bump `version` in `Cargo.toml`, and in `README.md` rename `### ✨ Neu in v…` / `### ✨ What's new in v…` to the new version with updated highlights (DE + EN).
+- Before running: update `../girocrab.de` + icon/buttons/screenshots in lockstep (see above); bump `version` in `Cargo.toml`, and in `README.md` rename `### ✨ Neu in v…` / `### ✨ What's new in v…` to the new version with updated highlights (DE + EN).
 - The script aborts if `Cargo.toml` differs from the tag (override: `ALLOW_VERSION_MISMATCH=1`) or if those README headings lack the tag version.
 - It sets `MARKETING_VERSION` in `project.pbxproj` and `Aktuelle Version: **v…**` / `Current version: **v…**` in `README.md` (stable tags only), then verifies both. Commit those changes afterwards.
 
