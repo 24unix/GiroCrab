@@ -1,0 +1,4 @@
+#!/bin/sh
+# Only after a rebase (amend never changes the core bindings on its own).
+[ "$1" = rebase ] || exit 0
+exec "$(dirname "$0")/check-core-stamp"

@@ -2,13 +2,13 @@
 # Rewrite `version` and `sha256` in a Homebrew cask from a published GitHub release.
 #
 # Usage: scripts/update-homebrew-cask.sh <TAG> [CASK_FILE]
-#   TAG        vX.Y.Z         stable release   -> packaging/homebrew/Casks/girocrab.rb
-#              vX.Y.Z-beta.N  beta pre-release -> packaging/homebrew/Casks/girocrab@beta.rb
+#   TAG        vX.Y.Z         stable release   -> Casks/girocrab.rb
+#              vX.Y.Z-beta.N  beta pre-release -> Casks/girocrab@beta.rb
 #              ("nightly" is refused: girocrab@nightly uses version :latest, no checksum)
 #   CASK_FILE  overrides the default cask file
 #
 # Run after `scripts/notarize.sh --upload <TAG>`. Only edits the local file; it never
-# commits or pushes. Copy the result into the GiroCrab/homebrew-tap repo (see docs/homebrew.md).
+# commits or pushes. Casks/ in the repo root is the tap; commit the result (see docs/homebrew.md).
 set -euo pipefail
 
 REPO="${GIROCRAB_REPO:-GiroCrab/GiroCrab}"
@@ -26,7 +26,7 @@ elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
 else
   echo "usage: $0 vX.Y.Z|vX.Y.Z-beta.N [CASK_FILE]" >&2; exit 2
 fi
-CASK="${2:-$ROOT/packaging/homebrew/Casks/$DEFAULT_CASK}"
+CASK="${2:-$ROOT/Casks/$DEFAULT_CASK}"
 [ -f "$CASK" ] || { echo "error: cask not found: $CASK" >&2; exit 1; }
 VERSION="${TAG#v}"
 
@@ -73,4 +73,4 @@ VERSION="$VERSION" SHA="$SHA" ASSET="$ASSET" perl -0pi -e '
 ' "$CASK"
 
 echo "updated $CASK -> version $VERSION, $ASSET, sha256 $SHA"
-echo "next: brew style/audit via local tap, then copy into GiroCrab/homebrew-tap (see docs/homebrew.md)"
+echo "next: brew style/audit via local tap, then commit Casks/ (see docs/homebrew.md)"

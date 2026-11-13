@@ -45,3 +45,30 @@ The snapshot export (`write_snapshot`) stamps `user_version = SCHEMA_VERSION` on
 - Index changes are a migration step, not a probe that runs on every open.
 - Data repairs that must run on every open (e.g. `fill_missing_uuids`) are called from
   `Vault::open` directly, not from the schema steps.
+
+## Vault modules
+
+`Vault` is one object (one SQLCipher connection behind a mutex) with many feature modules. Each
+module adds its own methods to it and reaches the database through `self.db()`.
+
+- `vault.rs` only opens, keys, migrates and snapshots the vault (`open`, `rekey`,
+  `write_snapshot`, `checkpoint`, `is_empty`) and holds the schema constants.
+- Feature SQL lives in the module of its feature, never in `vault.rs`:
+
+  | Module | Feature |
+  |--------|---------|
+  | `vault/accounts.rs` | bank logins, accounts, account groups, holdings, balance history |
+  | `vault/bookings.rs` | booking list (filter, paging, enrichment), booking edits, CSV export |
+  | `vault/categories.rs` | category tree |
+  | `vault/rules.rs` | pattern and expression rules |
+  | `vault/settings.rs` | settings and `KNOWN_SETTINGS` |
+  | `vault/merge.rs` | merging a peer snapshot or another vault file |
+  | `loans.rs`, `planning.rs`, `documents.rs`, `insights.rs`, `connectors/*.rs`, … | their feature |
+
+- A feature module has at most one `#[uniffi::export] impl Vault` (the Swift API) and one plain
+  `impl Vault` (helpers taking `&Connection`, for use inside other transactions). Helpers are
+  private unless another module calls them; prefer `pub(super)` inside `vault/` over `pub(crate)`.
+- Modules under `vault/` are children of `vault`, so they see its private fields and helpers
+  (`kept_key`, `migrate`). Other modules use `Vault::db()` only.
+- Tests sit in the module whose code they exercise.
+- A new feature gets a new module. Don't add another section to an existing file.

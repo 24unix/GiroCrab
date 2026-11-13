@@ -12,6 +12,14 @@
 #   ./build-xcframework.sh --macos-only  # quick local build (used by `cargo build`)
 #   ./build-xcframework.sh --ios         # force iOS device + simulator slices (also with --macos-only)
 #   ./build-xcframework.sh --debug       # unoptimised libraries
+#   ./build-xcframework.sh --check       # only compare generated/.stamp with the
+#                                        # current core sources; exit 1 if stale
+#
+# Every build writes generated/.stamp with a fingerprint of everything that
+# goes into the library and the bindings (girocrab-core sources, uniffi-bindgen,
+# Cargo.lock, this script). The git hooks in .githooks run --check after a
+# checkout, merge or rebase, so stale bindings show up before `swift build`
+# fails with misleading errors.
 #
 # Requirements: Xcode 15+, rustup with the targets
 #   aarch64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim
@@ -24,16 +32,76 @@ CARGO="${CARGO:-cargo}"
 
 MACOS_ONLY=0
 FORCE_IOS=0
+CHECK_ONLY=0
 PROFILE=release
 for arg in "$@"; do
   case "$arg" in
     --macos-only) MACOS_ONLY=1 ;;
     --ios) FORCE_IOS=1 ;;
     --debug) PROFILE=debug ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    --check) CHECK_ONLY=1 ;;
+    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
+
+STAMP="$ROOT/generated/.stamp"
+# Inputs of the static library and the generated bindings (Cargo.lock is
+# hashed separately: cargo may rewrite it during the build).
+FINGERPRINT_INPUTS=(girocrab-core/src girocrab-core/Cargo.toml girocrab-core/build.rs
+  uniffi-bindgen Cargo.toml build-xcframework.sh)
+
+# sha256 over "content-hash  path" of every input file in the working tree, so
+# uncommitted edits count too. Untracked files only if they are not ignored and
+# are .rs/.toml (a stray vault.rs.orig must not mark the bindings stale).
+sources_fingerprint() {
+  local f files=()
+  if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    while IFS= read -r -d '' f; do
+      if [[ -f "$ROOT/$f" ]]; then files+=("$f"); fi
+    done < <(git -C "$ROOT" ls-files -z -c -- "${FINGERPRINT_INPUTS[@]}")
+    while IFS= read -r -d '' f; do
+      if [[ ( "$f" == *.rs || "$f" == *.toml ) && -f "$ROOT/$f" ]]; then files+=("$f"); fi
+    done < <(git -C "$ROOT" ls-files -z -o --exclude-standard -- "${FINGERPRINT_INPUTS[@]}")
+  else
+    while IFS= read -r -d '' f; do files+=("$f"); done \
+      < <(cd "$ROOT" && find "${FINGERPRINT_INPUTS[@]}" -type f -print0 2>/dev/null)
+  fi
+  (( ${#files[@]} )) || { echo none; return; }
+  (cd "$ROOT" && printf '%s\0' "${files[@]}" | LC_ALL=C sort -zu | xargs -0 shasum -a 256) \
+    | shasum -a 256 | cut -d' ' -f1
+}
+lock_fingerprint() { shasum -a 256 < "$ROOT/Cargo.lock" 2>/dev/null | cut -d' ' -f1; }
+combine_fingerprint() { printf '%s\n%s\n' "$1" "$2" | shasum -a 256 | cut -d' ' -f1; }
+
+stamp_value() { sed -n "s/^$1=//p" "$STAMP" 2>/dev/null | head -1; }
+
+if [[ $CHECK_ONLY -eq 1 ]]; then
+  if [[ ! -d "$ROOT/generated/GiroCrabCorePackage" ]]; then
+    echo "warning: generated/GiroCrabCorePackage is missing – run ./build-xcframework.sh --macos-only" >&2
+    exit 1
+  fi
+  hint="./build-xcframework.sh --macos-only"
+  [[ "$(stamp_value slices)" == *ios* ]] && hint="./build-xcframework.sh"
+  if [[ ! -f "$STAMP" ]]; then
+    echo "warning: generated/.stamp is missing (last build failed, or predates stamps) – run $hint" >&2
+    exit 1
+  fi
+  if [[ "$(stamp_value fingerprint)" != "$(combine_fingerprint "$(sources_fingerprint)" "$(lock_fingerprint)")" ]]; then
+    echo "warning: the xcframework / UniFFI bindings in generated/ are stale" >&2
+    echo "         (built from $(stamp_value commit); girocrab-core, uniffi-bindgen or Cargo.* changed since)." >&2
+    echo "         swift build may fail with misleading errors – rebuild: $hint" >&2
+    exit 1
+  fi
+  exit 0
+fi
+
+# Sources as they are when the build starts: an edit made while it runs leaves
+# the stamp stale instead of hiding the change. No stamp until the build
+# succeeds, so a failed or interrupted build never looks up to date.
+SOURCES_FP="$(sources_fingerprint)"
+BUILT_FROM="$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)"
+rm -f "$STAMP"
 
 CRATE=girocrab_core
 FFI_MODULE=girocrab_coreFFI
@@ -73,6 +141,7 @@ done
 echo "==> Building uniffi-bindgen-swift"
 "$CARGO" build -p uniffi-bindgen --bin uniffi-bindgen-swift --release --target-dir "$TARGET_DIR"
 BINDGEN="$TARGET_DIR/release/uniffi-bindgen-swift"
+FINGERPRINT="$(combine_fingerprint "$SOURCES_FP" "$(lock_fingerprint)")"
 
 MAC_LIB="$TARGET_DIR/aarch64-apple-darwin/$PROFILE/lib$CRATE.a"
 GEN="$TARGET_DIR/swift-gen"
@@ -92,15 +161,15 @@ XCF_ARGS=(-library "$MAC_LIB" -headers "$GEN/Headers")
 IOS_LIB="$TARGET_DIR/aarch64-apple-ios/$PROFILE/lib$CRATE.a"
 SIM_LIB="$TARGET_DIR/aarch64-apple-ios-sim/$PROFILE/lib$CRATE.a"
 INCLUDE_IOS=$(( MACOS_ONLY == 0 || FORCE_IOS == 1 ))
-if [[ $MACOS_ONLY -eq 1 && -f "$IOS_LIB" && -f "$SIM_LIB" ]]; then
-  # Keep iOS slices from an earlier full build, but only if they are newer
-  # than every core source file (stale slices would fail UniFFI's checksums).
-  newest_src=$(find "$ROOT/girocrab-core" \( -name '*.rs' -o -name 'Cargo.toml' \) -exec stat -f %m {} + | sort -n | tail -1)
-  ios_time=$(stat -f %m "$IOS_LIB"); sim_time=$(stat -f %m "$SIM_LIB")
-  if (( ios_time >= newest_src && sim_time >= newest_src )); then
-    INCLUDE_IOS=1
-    echo "    (keeping up-to-date iOS slices from the last full build)"
-  fi
+# Fingerprint of the sources the iOS slices in $TARGET_DIR were built from.
+IOS_STAMP="$TARGET_DIR/ios-slices-$PROFILE.fingerprint"
+if [[ $INCLUDE_IOS -eq 1 ]]; then
+  echo "$FINGERPRINT" > "$IOS_STAMP"
+elif [[ -f "$IOS_LIB" && -f "$SIM_LIB" && "$(cat "$IOS_STAMP" 2>/dev/null)" == "$FINGERPRINT" ]]; then
+  # Keep iOS slices from an earlier full build of exactly these sources
+  # (stale slices would fail UniFFI's checksums).
+  INCLUDE_IOS=1
+  echo "    (keeping up-to-date iOS slices from the last full build)"
 fi
 if [[ $INCLUDE_IOS -eq 1 ]]; then
   XCF_ARGS+=(-library "$IOS_LIB" -headers "$GEN/Headers")
@@ -136,5 +205,15 @@ let package = Package(
     ]
 )
 SWIFT
+
+SLICES=macos
+[[ $INCLUDE_IOS -eq 1 ]] && SLICES=macos,ios
+{
+  echo "# Written by build-xcframework.sh; checked by ./build-xcframework.sh --check"
+  echo "fingerprint=$FINGERPRINT"
+  echo "commit=$BUILT_FROM"
+  echo "slices=$SLICES"
+  echo "profile=$PROFILE"
+} > "$STAMP"
 
 echo "==> Done: $OUT"

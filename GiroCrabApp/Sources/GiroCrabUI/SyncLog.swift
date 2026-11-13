@@ -163,8 +163,10 @@ struct SyncLogView: View {
         }
         .confirmationDialog("Protokoll leeren?", isPresented: $confirmClear) {
             Button("Protokoll leeren", role: .destructive) {
-                try? model.vault?.clearSyncLog()
-                reload()
+                Task {
+                    _ = try? await model.vaultOffMain { try $0.clearSyncLog() }
+                    reload()
+                }
             }
         } message: {
             Text("Alle Einträge des Abruf-Protokolls werden gelöscht. Das lässt sich nicht widerrufen.")
@@ -189,9 +191,13 @@ struct SyncLogView: View {
     }
 
     private func reload() {
-        guard let vault = model.vault else { entries = []; return }
-        entries = (try? vault.listSyncLog(filter: filter)) ?? []
-        selection = selection.filter { id in entries.contains { $0.id == id } }
+        guard model.isUnlocked else { entries = []; return }
+        let filter = filter
+        Task {
+            guard let loaded = try? await model.vaultOffMain({ try $0.listSyncLog(filter: filter) }) else { return }
+            entries = loaded
+            selection = selection.filter { id in entries.contains { $0.id == id } }
+        }
     }
 
     private func copy(_ ids: Set<SyncLogEntry.ID>) {
