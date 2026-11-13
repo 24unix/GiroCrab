@@ -529,14 +529,15 @@ struct UpdateSettings: View {
                 Button("Nach Updates suchen …") { updates.checkForUpdates() }
                     .disabled(!updates.canCheckForUpdates)
             } footer: {
-                switch updates.channel {
+                Group { switch updates.channel {
                 case .stable:
                     Text("Updates werden nur installiert, wenn sie mit dem GiroCrab-Schlüssel signiert und von Apple notarisiert sind.")
                 case .beta:
                     Text("Beta-Versionen sind Vorabversionen zum Testen. Neuere stabile Versionen erhalten Sie weiterhin. Ein Wechsel zurück installiert keine ältere Version.")
                 case .nightly:
                     Text("Nightly-Builds sind ungetestete Entwicklungsstände. Neuere Beta- und stabile Versionen erhalten Sie weiterhin. Ein Wechsel zurück installiert keine ältere Version.")
-                }
+                } }
+                .leadingFooter()
             }
         }
         .formStyle(.grouped)
