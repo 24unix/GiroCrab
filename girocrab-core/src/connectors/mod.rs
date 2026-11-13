@@ -1742,6 +1742,22 @@ impl Vault {
                     settings.insert(key.to_string(), SecretString::new(v));
                 }
             }
+            if descriptor(kind)
+                .required_settings
+                .iter()
+                .any(|k| k == fints::product_id::OWN_KEY)
+            {
+                let mode =
+                    Vault::setting_inner(&db, fints::product_id::MODE_KEY)?.unwrap_or_default();
+                let own =
+                    Vault::setting_inner(&db, fints::product_id::OWN_KEY)?.unwrap_or_default();
+                if let Some((_, id)) = fints::product_id::resolve(&mode, &own) {
+                    settings.insert(
+                        fints::product_id::OWN_KEY.to_string(),
+                        SecretString::new(id),
+                    );
+                }
+            }
             if let Some(blz) = ConnectorKind::fints_blz(&key_str) {
                 let k = format!("fints.url.{blz}");
                 match Vault::setting_inner(&db, &k)? {
@@ -3103,10 +3119,13 @@ mod tests {
                 String::new(),
             )
             .unwrap();
-        assert!(matches!(
-            v.clone().begin_sync(other, "1".into(), false),
-            Err(CoreError::MissingSetting { .. })
-        ));
+        // (Only without an embedded GiroCrab registration: release builds carry one.)
+        if !fints::product_id::builtin_available() {
+            assert!(matches!(
+                v.clone().begin_sync(other, "1".into(), false),
+                Err(CoreError::MissingSetting { .. })
+            ));
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 

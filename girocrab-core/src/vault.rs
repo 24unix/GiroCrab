@@ -2199,6 +2199,37 @@ impl Vault {
         Ok(out)
     }
 
+    /// Stored choice of the FinTS product registration: `"builtin"`, `"own"`
+    /// or empty (not decided yet).
+    pub fn fints_product_id_mode(&self) -> Result<String, CoreError> {
+        let db = self.db()?;
+        let v = Self::setting_inner(&db, crate::connectors::fints::product_id::MODE_KEY)?
+            .unwrap_or_default();
+        Ok(crate::connectors::fints::product_id::normalize_mode(&v).to_string())
+    }
+
+    /// Stores the choice (`"builtin"` / `"own"`; anything else clears it). The
+    /// user's own ID is never touched.
+    pub fn set_fints_product_id_mode(&self, mode: String) -> Result<(), CoreError> {
+        let mode = crate::connectors::fints::product_id::normalize_mode(&mode);
+        self.set_setting(
+            crate::connectors::fints::product_id::MODE_KEY.to_string(),
+            mode.to_string(),
+        )
+    }
+
+    /// Which registration would be sent right now: `"builtin"`, `"own"` or
+    /// empty when none is available. Never returns the ID itself.
+    pub fn fints_product_id_source(&self) -> Result<String, CoreError> {
+        use crate::connectors::fints::product_id as pid;
+        let db = self.db()?;
+        let mode = Self::setting_inner(&db, pid::MODE_KEY)?.unwrap_or_default();
+        let own = Self::setting_inner(&db, pid::OWN_KEY)?.unwrap_or_default();
+        Ok(pid::resolve(&mode, &own)
+            .map(|(s, _)| s.as_str().to_string())
+            .unwrap_or_default())
+    }
+
     pub fn get_setting(&self, key: String) -> Result<Option<String>, CoreError> {
         let db = self.db()?;
         Self::setting_inner(&db, &key)

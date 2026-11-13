@@ -39,6 +39,7 @@
 pub mod camt;
 pub mod mt535;
 pub mod mt940;
+pub mod product_id;
 pub mod sepa;
 pub mod syntax;
 

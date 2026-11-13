@@ -68,6 +68,13 @@ pub fn core_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// True when this build carries GiroCrab's own FinTS product registration
+/// (release builds only; the ID itself is never exposed).
+#[uniffi::export]
+pub fn fints_builtin_product_id_available() -> bool {
+    connectors::fints::product_id::builtin_available()
+}
+
 /// Generates 32 random bytes for a new SQLCipher master key.
 /// The Swift side stores it in the Keychain behind Face ID / Touch ID.
 #[uniffi::export]
