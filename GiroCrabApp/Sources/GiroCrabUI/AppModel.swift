@@ -2454,6 +2454,8 @@ public final class AppModel {
             um.setActionName(String(localized: "Alle als gelesen markieren"))
         }
         toast = String(localized: "\(ids.count) Umsätze als gelesen markiert")
+        // With "Neu" / "Geprüft" active the bookings leave the list: keep the selected one in the inspector (like setChecked)
+        if statusFilter != .all, let b = selectedBooking, ids.contains(b.id) { stickyBooking = freshBooking(b) }
         reloadBookings(); reloadAccounts()
     }
 

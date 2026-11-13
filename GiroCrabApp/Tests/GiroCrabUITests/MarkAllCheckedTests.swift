@@ -57,4 +57,20 @@ final class MarkAllCheckedTests: XCTestCase {
         XCTAssertEqual(model.newCount, total)
         XCTAssertNil(model.toast)
     }
+
+    func testSelectedBookingStaysInTheInspectorWithTheNewFilter() async throws {
+        let model = demoModel()
+        model.statusFilter = .new
+        for _ in 0..<300 where model.bookings.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        let id = try XCTUnwrap(model.bookings.first?.id)
+        model.selectedBookingID = id
+        XCTAssertEqual(model.selectedBooking?.id, id)
+        model.markAllChecked()
+        for _ in 0..<300 where model.toast == nil { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<300 where !model.bookings.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        // the list is empty now, the inspector still shows the booking (as checked)
+        XCTAssertTrue(model.bookings.isEmpty)
+        XCTAssertEqual(model.selectedBooking?.id, id)
+        XCTAssertEqual(model.selectedBooking?.checked, true)
+    }
 }
