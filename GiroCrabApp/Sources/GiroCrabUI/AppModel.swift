@@ -2418,8 +2418,13 @@ public final class AppModel {
     /// filtered now, or – with `accountIDs`, from a sidebar entry – in those
     /// accounts regardless of period, search and scope. One SQL update off the
     /// main thread; undoable via Bearbeiten › Widerrufen.
+    /// The Buchung menu entry: nothing to do without new bookings, and not in
+    /// Belege (there the list would silently mean every account).
+    var canMarkAllChecked: Bool { vault != nil && newCount > 0 && sidebarSelection != .documents }
+
     func markAllChecked(accountIDs: [Int64]? = nil) {
         guard let vault else { return }
+        if accountIDs == nil, sidebarSelection == .documents { return }
         var f = currentFilter
         if let accountIDs {
             f.accountIds = accountIDs; f.categoryId = nil; f.uncategorizedOnly = false

@@ -41,8 +41,20 @@ final class MarkAllCheckedTests: XCTestCase {
         let total = model.newCount
         XCTAssertGreaterThan(total, 0)
         model.markAllChecked()
-        try await Task.sleep(for: .milliseconds(500))
-        // the demo has no new investment bookings: nothing outside the list's scope may change
+        // the demo has no new investment bookings: the update finishes with "Keine neuen Umsätze"
+        for _ in 0..<300 where model.toast == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNotNil(model.toast)
         XCTAssertEqual(model.newCount, total)
+    }
+
+    func testMarkAllOfTheListNeverRunsInDocuments() async throws {
+        let model = demoModel()
+        model.sidebarSelection = .documents
+        XCTAssertFalse(model.canMarkAllChecked)
+        let total = model.newCount
+        model.markAllChecked()
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(model.newCount, total)
+        XCTAssertNil(model.toast)
     }
 }

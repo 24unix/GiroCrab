@@ -2928,6 +2928,68 @@ mod paging_tests {
     }
 
     #[test]
+    fn mark_all_checked_respects_search_category_and_period() {
+        let (v, p) = demo();
+        v.set_checked_for_filter(BookingFilter::default(), false)
+            .unwrap();
+        let all = v.list_transactions(BookingFilter::default()).unwrap();
+        let cat = all.transactions.iter().find_map(|b| b.category_id).unwrap();
+        let mid = all.transactions[all.transactions.len() / 2]
+            .booking_date
+            .clone();
+        let filters = [
+            BookingFilter {
+                search: Some("rewe".into()),
+                ..Default::default()
+            },
+            BookingFilter {
+                category_id: Some(cat),
+                include_subcategories: true,
+                ..Default::default()
+            },
+            BookingFilter {
+                date_from: Some(mid.clone()),
+                direction: BookingDirection::Expense,
+                ..Default::default()
+            },
+        ];
+        for f in filters {
+            v.set_checked_for_filter(BookingFilter::default(), false)
+                .unwrap();
+            let shown = v
+                .list_transactions(BookingFilter {
+                    checked: Some(false),
+                    ..f.clone()
+                })
+                .unwrap()
+                .total_count;
+            assert!(
+                shown > 0 && shown < all.total_count,
+                "filter must narrow: {shown}"
+            );
+            let ids = v
+                .set_checked_for_filter(
+                    BookingFilter {
+                        checked: Some(false),
+                        ..f
+                    },
+                    true,
+                )
+                .unwrap();
+            assert_eq!(ids.len() as u32, shown);
+            let left = v
+                .list_transactions(BookingFilter {
+                    checked: Some(false),
+                    ..Default::default()
+                })
+                .unwrap()
+                .total_count;
+            assert_eq!(left, all.total_count - shown);
+        }
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
     fn mark_all_checked_respects_scope() {
         let (v, p) = demo();
         // start with everything new

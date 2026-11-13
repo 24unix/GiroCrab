@@ -106,7 +106,7 @@ public struct GiroCrabScenes: Scene {
                 .keyboardShortcut("u", modifiers: [.command, .shift])
                 .disabled(model.selectedBooking == nil)
                 Button("Alle als gelesen markieren") { model.markAllChecked() }
-                    .disabled(model.vault == nil || model.newCount == 0)
+                    .disabled(!model.canMarkAllChecked)
                 Button("Notiz bearbeiten") { if let b = model.selectedBooking { model.editNote(for: b) } }
                     .disabled(model.selectedBooking == nil)
                 // like the Finder (⌘Y); Space in the list does the same
