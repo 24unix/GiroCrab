@@ -295,9 +295,7 @@ struct SidebarView: View {
             Button("\(conn.displayName) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
                 .disabled(model.bankingGate(for: conn) != nil)
         }
-        if !account.iban.isEmpty {
-            Button("IBAN kopieren", systemImage: "doc.on.doc") { copyToPasteboard(account.iban) }
-        }
+        AccountCopyMenu(account: account)
         Button("Belege anzeigen", systemImage: "doc.text.magnifyingglass") {
             model.documentsAccountFilter = account.id
             model.interactiveSidebarSelection = .documents
