@@ -8,6 +8,7 @@
 #                   signed + notarized macOS disk image (GiroCrab-macOS-arm64.dmg)
 #                   vX.Y.Z          stable release
 #                   vX.Y.Z-beta.N   beta (GitHub pre-release; bundle version X.Y.ZbN)
+#                   RELEASE_NOTE_PREFIX="…" adds a Markdown block above the notes (and the appcast).
 #   --critical      mark this stable release as a critical (security) update in the
 #                   appcast: users can't skip/postpone it, but still confirm the install
 #   --critical-below X.Y.Z
@@ -410,6 +411,12 @@ if [ -n "$UPLOAD_TAG" ]; then
 ${NOTES}"
   elif [ "$CHANNEL" = "beta" ]; then
     NOTES="> 🧪 **Beta-Version** – Vorabversion zum Testen.
+
+${NOTES}"
+  fi
+  # Optional extra text above the notes (also in the appcast), e.g. a schema warning.
+  if [ -n "${RELEASE_NOTE_PREFIX:-}" ]; then
+    NOTES="${RELEASE_NOTE_PREFIX}
 
 ${NOTES}"
   fi
