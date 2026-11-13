@@ -82,6 +82,10 @@ Package.resolved
 *.dSYM.zip
 *.dSYM
 
+# --- Python bytecode ---
+__pycache__/
+*.py[cod]
+
 # --- OS / editors ---
 .DS_Store
 .AppleDouble
