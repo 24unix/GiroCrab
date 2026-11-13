@@ -468,7 +468,8 @@ struct BookingRow: View {
                 HStack(spacing: 6) {
                     #if !os(iOS)
                     if model.showsAccountMarkers {
-                        AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId), compact: compactChip)
+                        AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId),
+                                    symbol: model.accountSymbol(booking.accountId), compact: compactChip)
                     }
                     #endif
                     // category with the sidebar's icon and colour, then the payment method
@@ -592,16 +593,20 @@ struct BookingCategoryLabel: View {
     }
 }
 
-/// Account of a booking in mixed lists: coloured dot + short name.
+/// Account of a booking in mixed lists: the account's symbol in its colour
+/// + short name (#170 – a symbol is easier to spot than a small dot).
 struct AccountChip: View {
     let label: String
     let color: Color
-    /// Narrow iPhone rows: just the dot (the category keeps the room).
+    var symbol = "building.columns"
+    /// Narrow rows: just the symbol (the category keeps the room).
     var compact = false
 
     var body: some View {
         HStack(spacing: 4) {
-            Circle().fill(color).frame(width: 6, height: 6)
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(color)
             if !compact {
                 Text(label)
                     .font(.subheadline.weight(.medium))

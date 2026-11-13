@@ -2122,6 +2122,10 @@ public final class AppModel {
 
     /// Short account label for the booking list, e.g. "Girokonto" – with
     /// "··3000" only when another account has the same name.
+    func accountSymbol(_ accountId: Int64) -> String {
+        accountMarkers[accountId]?.symbol ?? "building.columns"
+    }
+
     func accountShortLabel(_ accountId: Int64) -> String {
         accountMarkers[accountId]?.label ?? ""
     }
@@ -2160,7 +2164,7 @@ public final class AppModel {
                 let digits = String((a.iban.isEmpty ? a.accountNumber : a.iban).filter(\.isNumber).suffix(4))
                 if !digits.isEmpty && !label.contains(digits) { label += " ··\(digits)" }
             }
-            return (a.id, AccountMarker(label: label, color: Color.readable(hex: a.colorHex)))
+            return (a.id, AccountMarker(label: label, color: Color.readable(hex: a.colorHex), symbol: a.sfSymbol))
         }, uniquingKeysWith: { a, _ in a })
     }
 
@@ -3449,6 +3453,8 @@ func formatIBAN(_ iban: String) -> String {
 struct AccountMarker {
     let label: String
     let color: Color
+    /// The account's SF Symbol, tinted with `color` (#170).
+    let symbol: String
 }
 
 
