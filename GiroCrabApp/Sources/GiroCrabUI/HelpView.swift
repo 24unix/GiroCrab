@@ -85,7 +85,7 @@ enum HelpCatalog {
                 "de": """
                 FinTS fragt deine Bank direkt ab, ohne Zwischenserver. Gehe auf *Ablage › Bank hinzufügen …* und wähle FinTS.
 
-                - **Registrierung:** GiroCrab nutzt standardmäßig seine **eingebaute FinTS-Registrierung**. Wenn du lieber eine eigene Produkt-ID der Deutschen Kreditwirtschaft verwendest, trage sie unter *Einstellungen › FinTS & API-Schlüssel › FinTS-Registrierung* ein.
+                - **Registrierung:** GiroCrab nutzt standardmäßig seine **eingebaute FinTS-Registrierung**. Wenn du lieber eine eigene Produkt-ID der Deutschen Kreditwirtschaft verwendest, trage sie unter *Einstellungen › Banken › FinTS-Registrierung* ein.
                 - **Anmeldung:** Viele Banken verlangen die **Anmelde-/Legitimations-ID** (VR-NetKey, Benutzerkennung) statt der Kontonummer. Wenn die Anmeldung scheitert, probiere diese Kennung.
                 - **PIN:** Die Online-Banking-PIN ist oft nur 5-stellig. Sie wird im Schlüsselbund bzw. im verschlüsselten Tresor gespeichert, nicht im Klartext.
                 - **TAN:** Das TAN-Verfahren (pushTAN, chipTAN, …) wählst du beim Hinzufügen; der TAN-Dialog erscheint beim Abruf.
@@ -93,7 +93,7 @@ enum HelpCatalog {
                 "en": """
                 FinTS queries your bank directly, without an intermediary server. Go to *File › Add bank …* and choose FinTS.
 
-                - **Registration:** GiroCrab uses its **built-in FinTS registration** by default. If you prefer your own product ID from the German banking industry (DK), enter it under *Settings › FinTS & API keys › FinTS registration*.
+                - **Registration:** GiroCrab uses its **built-in FinTS registration** by default. If you prefer your own product ID from the German banking industry (DK), enter it under *Settings › Banks › FinTS registration*.
                 - **Login:** Many banks require the **login / legitimation ID** (VR-NetKey, user ID) instead of the account number. If sign-in fails, try that ID.
                 - **PIN:** The online-banking PIN is often only 5 digits. It is stored in the keychain / encrypted vault, never in plain text.
                 - **TAN:** You pick the TAN method (pushTAN, chipTAN, …) when adding the bank; the TAN dialog appears during sync.

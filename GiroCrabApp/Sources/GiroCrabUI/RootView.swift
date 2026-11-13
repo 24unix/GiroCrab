@@ -192,7 +192,7 @@ public struct GiroCrabScenes: Scene {
                     Text("Nach Kontoart").tag(AccountSidebarMode.byKind)
                 }
                 .disabled(!model.isUnlocked)
-                Button("Kontogruppen bearbeiten …") { model.openGroupSettings() }
+                Button("Kontogruppen bearbeiten …") { model.openGroupManager() }
                     .disabled(!model.isUnlocked)
                 Divider()
                 Button(model.demoActive ? "Eigenen Tresor anzeigen" : "Demo-Daten anzeigen") {
@@ -447,13 +447,17 @@ struct MainSplitView: View {
         .manualLoanSheets(model)
         .openingBalanceSheet(model)
         #if os(macOS)
-        // AppModel.openSettings(_:), e.g. "Gruppen bearbeiten …" → Settings › Kontogruppen
+        // AppModel.openSettings(_:), e.g. the merchant-logo tip → Settings › Händler-Logos
         .onChange(of: model.settingsRequested) { _, requested in
             guard requested else { return }
             model.settingsRequested = false
             openSettings()
         }
         #endif
+        .sheet(isPresented: $model.showGroupManager) {
+            GroupManagerSheet()
+                .environment(model)
+        }
         .sheet(isPresented: $model.showRuleEditor) {
             RuleEditorView(initialDraft: model.ruleDraft)
                 .environment(model)

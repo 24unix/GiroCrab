@@ -391,8 +391,8 @@ extension AppModel {
         reorderUserGroups(list)
     }
 
-    /// "Gruppen bearbeiten …": Settings › Kontogruppen.
-    func openGroupSettings() { openSettings(.groups) }
+    /// "Gruppen bearbeiten …": the group editor as a sheet of the main window.
+    func openGroupManager() { showGroupManager = true }
 
     /// Opens Settings on the given tab (macOS: Settings window, iOS: sheet).
     func openSettings(_ tab: SettingsTab) {

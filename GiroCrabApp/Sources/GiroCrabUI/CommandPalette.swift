@@ -58,7 +58,7 @@ struct CommandPaletteView: View {
         #endif
         out.append(Item(title: String(localized: "Übersicht"), subtitle: String(localized: "Konten"), symbol: "square.grid.2x2") { model.interactiveSidebarSelection = .allAccounts })
         out.append(Item(title: String(localized: "Neue Kontogruppe"), subtitle: "\(action) · ⇧⌘N", symbol: "folder.badge.plus") { model.groupDialog = .create() })
-        out.append(Item(title: String(localized: "Kontogruppen bearbeiten"), subtitle: action, symbol: "slider.horizontal.3") { model.openGroupSettings() })
+        out.append(Item(title: String(localized: "Kontogruppen bearbeiten"), subtitle: action, symbol: "slider.horizontal.3") { model.openGroupManager() })
         out.append(Item(title: String(localized: "Neue Hauptkategorie"), subtitle: action, symbol: "plus.square") {
             model.afterPaletteDismiss = { model.newCategoryRequest = NewCategoryRequest(parent: nil) }
         })

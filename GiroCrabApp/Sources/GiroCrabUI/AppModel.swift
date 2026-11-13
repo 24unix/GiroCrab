@@ -495,6 +495,8 @@ public final class AppModel {
     var settingsTab: SettingsTab = .general
     /// macOS: the main window opens Settings when this is set (see `openSettings(_:)`).
     var settingsRequested = false
+    /// "Gruppen bearbeiten …": the account-group editor sheet (list, details, accounts).
+    var showGroupManager = false
     /// (demo, `--demo-settings banks:edit|banks:add`) sheet the bank settings open on appear.
     var demoSettingsSheet: String?
     /// The one group dialog on screen (new / rename / delete / move account).
@@ -689,9 +691,10 @@ public final class AppModel {
                 let parts = settings.split(separator: ":").map(String.init)
                 settingsTab = SettingsTab(demoName: parts[0]) ?? .general
                 demoSettingsSheet = parts.count > 1 ? parts[1] : nil
+                let groups = parts[0] == "groups"   // the group editor is a sheet of the main window now
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: 600_000_000)
-                    self?.settingsRequested = true
+                    if groups { self?.showGroupManager = true } else { self?.settingsRequested = true }
                 }
             }
             if options.demoSync {
@@ -2868,12 +2871,12 @@ public final class AppModel {
         return out
     }
 
-    /// After a rejected registration: switch to the own one, open Settings › FinTS & API keys
+    /// After a rejected registration: switch to the own one, open Settings › Banks (FinTS registration)
     /// and put the cursor into its field (no extra field in the alert).
     func enterOwnProductID() {
         setFintsProductIDMode("own")
         focusOwnProductID = true
-        openSettings(.credentials)
+        openSettings(.banks)
     }
 
     func settingEntry(_ key: String) -> SettingEntry? { settings.first { $0.key == key } }
@@ -3901,7 +3904,7 @@ func describe(_ error: Error) -> String {
     case .InvalidInput(let m): return String(localized: "Ungültige Eingabe: \(m)")
     case .MissingSetting(let key):
         let label = settingLabels[key] ?? key
-        return String(localized: "Für diese Bank fehlt noch eine Einstellung: \(label). Bitte in den Einstellungen unter „FinTS & API-Schlüssel“ eintragen.")
+        return String(localized: "Für diese Bank fehlt noch eine Einstellung: \(label). Bitte in den Einstellungen unter „Banken“ beim Bearbeiten dieser Bank eintragen.")
     case .Network(let m): return String(localized: "Netzwerkfehler: \(m)")
     case .Bank(let code, let m): return String(localized: "Die Bank hat abgelehnt (\(code)): \(m)")
     case .Authentication(let m): return String(localized: "Anmeldung fehlgeschlagen: \(m)")

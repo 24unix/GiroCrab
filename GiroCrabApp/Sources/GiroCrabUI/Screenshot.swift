@@ -15,8 +15,9 @@ public enum WindowScreenshot {
 
     @MainActor
     private static func capture(to path: String, attempt: Int) {
-        // --demo-settings: capture the Settings window instead of the main window.
-        let wantsSettings = LaunchOptions.current.demoSettings != nil
+        // --demo-settings: capture the Settings window instead of the main window
+        // (`groups` is the group editor, a sheet of the main window: captured below).
+        let wantsSettings = LaunchOptions.current.demoSettings.map { !$0.hasPrefix("groups") } ?? false
         let candidates = NSApp.windows.filter { $0.isVisible && $0.contentView != nil && $0.frame.width > 300 && !$0.isSheet }
         let settingsWindow = candidates.first { $0.identifier?.rawValue.localizedCaseInsensitiveContains("settings") == true }
         if wantsSettings && settingsWindow == nil && attempt < 20 {

@@ -13,29 +13,14 @@ struct SettingsView: View {
         @Bindable var model = model
         TabView(selection: $model.settingsTab) {
             GeneralSettings()
-                .settingsPane(height: 380)   // "Sprache" + "Mitteilungen" + "Buchungen" + "Demo"
+                .settingsPane(height: 600)   // "Sprache" … "Händler-Logos" + "Demo": scrolls
                 .tabItem { Label("Allgemein", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
             BankConnectionsSettings()
-                .settingsPane(height: 520)
+                .settingsPane(height: 600)
                 .disabled(!model.isUnlocked)
                 .tabItem { Label("Banken", systemImage: "building.columns") }
                 .tag(SettingsTab.banks)
-            AccountGroupsSettings()
-                .settingsPane(height: 560)
-                .disabled(!model.isUnlocked)
-                .tabItem { Label("Kontogruppen", systemImage: "folder") }
-                .tag(SettingsTab.groups)
-            CredentialsSettings()
-                .settingsPane(height: 560)
-                .disabled(!model.isUnlocked)
-                .tabItem { Label("FinTS & API-Schlüssel", systemImage: "key.horizontal") }
-                .tag(SettingsTab.credentials)
-            LogoSettings()
-                .settingsPane(height: 460)
-                .disabled(!model.isUnlocked)
-                .tabItem { Label("Händler-Logos", systemImage: "photo.on.rectangle") }
-                .tag(SettingsTab.logos)
             #if os(macOS)
             DocumentFolderSettings()
                 .settingsPane(height: 420)
@@ -75,11 +60,14 @@ struct GeneralSettings: View {
     var body: some View {
         @Bindable var model = model
         Form {
+            #if os(iOS)
+            // The Mac has these in its menus (Hilfe › GiroCrab-Hilfe, Ansicht › Demo-Daten anzeigen).
             Section {
                 Button { showHelp = true } label: {
                     Label("Hilfe & FAQ", systemImage: "questionmark.circle")
                 }
             }
+            #endif
             LanguageSettingsSection()
             AnnouncementsSettingsSection()
             Section("Ansicht") {
@@ -95,6 +83,8 @@ struct GeneralSettings: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             BalanceChartSettingsSection()
+            MerchantLogoSettingsSection()
+            #if os(iOS)
             Section("Demo") {
                 Button {
                     model.loadDemoData()
@@ -105,9 +95,12 @@ struct GeneralSettings: View {
                 Text("Lädt einen Wegwerf-Tresor mit fiktiven Konten bei sieben Banken. „Alle abrufen“, TAN-Dialoge und Überweisungen laufen simuliert, ohne Netzwerk. Ihre eigenen Daten bleiben unberührt.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            #endif
         }
         .formStyle(.grouped)
+        #if os(iOS)
         .sheet(isPresented: $showHelp) { HelpSheet() }
+        #endif
     }
 }
 
@@ -134,16 +127,15 @@ struct BalanceChartSettingsSection: View {
 
 /// Tabs of the settings window (macOS) / sheet (iOS).
 enum SettingsTab: Hashable {
-    case general, banks, groups, credentials, logos, documents, security, updates
+    case general, banks, documents, security, updates
 
     /// `--demo-settings <name>` (screenshots).
     init?(demoName: String) {
         switch demoName {
         case "general": self = .general
         case "banks": self = .banks
-        case "groups": self = .groups
-        case "credentials": self = .credentials
-        case "logos": self = .logos
+        case "credentials": self = .banks   // FinTS registration now lives under "Banken"
+        case "logos": self = .general   // merchant logos are a section of "Allgemein"
         case "documents": self = .documents
         case "security": self = .security
         case "updates": self = .updates
@@ -216,6 +208,7 @@ struct BankConnectionsSettings: View {
                 Text("Suche nach Bankname, BLZ oder IBAN: FinTS-Banken, Banken mit eigener API (bunq, comdirect, Trade Republic, PayPal) und PSD2-Banken (N26, Revolut, C24 …).")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            fintsRegistrationSection
         }
         .formStyle(.grouped)
         .sheet(isPresented: $showAddBank) {
@@ -239,158 +232,72 @@ struct BankConnectionsSettings: View {
         }
     }
 
+    /// Which FinTS product registration is used for all FinTS banks. The server
+    /// address and the keys of the other connectors are edited per bank
+    /// (sheet "Bearbeiten / Details").
+    @ViewBuilder private var fintsRegistrationSection: some View {
+        Section {
+            if model.fintsBuiltinAvailable {
+                Picker("Verwenden", selection: Binding(
+                    get: { model.fintsProductIDMode == "own" ? "own" : "builtin" },
+                    set: { model.setFintsProductIDMode($0) }
+                )) {
+                    Text("GiroCrab-Registrierung (empfohlen)").tag("builtin")
+                    Text("Eigene Registrierung").tag("own")
+                }
+                #if os(macOS)
+                .pickerStyle(.radioGroup)
+                #endif
+            } else if AppUpdateChannel.current != .stable {
+                Label("Dieser Beta-Build enthält die FinTS-Registrierung von GiroCrab nicht. Bitte melden Sie das den Entwicklern.", systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .foregroundStyle(Theme.warning)
+            }
+            // The own ID is entered right here, only when it is the one in use.
+            if !model.fintsBuiltinAvailable || model.fintsProductIDMode == "own" {
+                OwnProductIDField()
+            }
+        } header: {
+            Text("FinTS-Registrierung")
+        } footer: {
+            Text(model.fintsBuiltinAvailable
+                 ? "Das FinTS-Produkt von GiroCrab ist eingebaut. Eigene API-Anwendungen (zum Beispiel für comdirect oder PayPal) registrieren Sie selbst; die Werte liegen nur in Ihrem verschlüsselten Tresor."
+                 : "Nichts davon wird mit dieser Version ausgeliefert. Registrieren Sie Ihr eigenes FinTS-Produkt und Ihre eigenen API-Anwendungen; die Werte liegen nur in Ihrem verschlüsselten Tresor.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .leadingFooter()
+        }
+    }
+
     private func protocolName(_ k: ConnectorKind) -> String {
         bankCatalog().first { $0.kind == k }?.protocol ?? ""
     }
 }
 
-struct CredentialsSettings: View {
+/// Merchant logos from the internet (GitHub #33); needs an open vault.
+struct MerchantLogoSettingsSection: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        // Group by the core's stable group id, show its translated title, match
-        // on keys (logo settings have their own tab) and keep the core's order.
-        let entries = model.settings.filter { !$0.key.hasPrefix("merchants.") && $0.key != "fints.product_id" }
-        let grouped = Dictionary(grouping: entries, by: \.group)
-        let order = entries.map(\.group).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
-        Form {
-            Section {
-                if model.fintsBuiltinAvailable {
-                    Label("Das FinTS-Produkt von GiroCrab ist eingebaut. Eigene API-Anwendungen (zum Beispiel für comdirect oder PayPal) registrieren Sie selbst; die Werte liegen nur in Ihrem verschlüsselten Tresor.", systemImage: "info.circle")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Label("Nichts davon wird mit dieser Version ausgeliefert. Registrieren Sie Ihr eigenes FinTS-Produkt und Ihre eigenen API-Anwendungen; die Werte liegen nur in Ihrem verschlüsselten Tresor.", systemImage: "info.circle")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    if AppUpdateChannel.current != .stable {
-                        Label("Dieser Beta-Build enthält die FinTS-Registrierung von GiroCrab nicht. Bitte melden Sie das den Entwicklern.", systemImage: "exclamationmark.triangle")
-                            .font(.callout)
-                            .foregroundStyle(Theme.warning)
-                    }
-                }
+        Section {
+            Picker("Logos aus dem Internet laden", selection: Binding(
+                get: { model.logoProvider },
+                set: { model.logoProvider = $0; model.saveSettingInBackground("merchants.online_logos", $0) }
+            )) {
+                Text("Aus").tag("off")
+                Text("DuckDuckGo").tag("duckduckgo")
+                Text("Google").tag("google")
             }
-            Section("FinTS-Registrierung") {
-                if model.fintsBuiltinAvailable {
-                    Picker("Verwenden", selection: Binding(
-                        get: { model.fintsProductIDMode == "own" ? "own" : "builtin" },
-                        set: { model.setFintsProductIDMode($0) }
-                    )) {
-                        Text("GiroCrab-Registrierung (empfohlen)").tag("builtin")
-                        Text("Eigene Registrierung").tag("own")
-                    }
-                    #if os(macOS)
-                    .pickerStyle(.radioGroup)
-                    #endif
-                }
-                // The own ID is entered right here, only when it is the one in use.
-                if !model.fintsBuiltinAvailable || model.fintsProductIDMode == "own" {
-                    OwnProductIDField()
-                }
-            }
-            ForEach(order.filter { grouped[$0] != nil }, id: \.self) { g in
-                Section(grouped[g]?.first?.groupTitle ?? g) {
-                    ForEach(grouped[g] ?? []) { entry in
-                        SettingField(entry: entry)
-                    }
-                }
-            }
+            Button("Logo-Cache leeren") { model.clearLogoCache() }
+        } header: {
+            Text("Händler-Logos")
+        } footer: {
+            Text("Ohne Anbieter zeigt GiroCrab mitgelieferte Markenzeichen, sonst Monogramme und Kategorie-Symbole. Mit Anbieter werden Favicons geladen und verschlüsselt im Tresor zwischengespeichert. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .leadingFooter()
         }
-        .formStyle(.grouped)
-    }
-}
-
-struct SettingField: View {
-    @Environment(AppModel.self) private var model
-    let entry: SettingEntry
-    @State private var text = ""
-    @State private var editing = false
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(entry.label)
-                Spacer()
-                if entry.isSecret {
-                    // Secrets are set on purpose (never half-typed): explicit
-                    // „Festlegen“, Esc or „Abbrechen“ discards.
-                    if editing {
-                        SecureField(entry.label, text: $text)
-                            .labelsHidden()
-                            .frame(maxWidth: 280)
-                            .focused($focused)
-                            .onSubmit(save)
-                            #if os(macOS)
-                            .onExitCommand(perform: cancelSecret)
-                            #endif
-                        Button("Abbrechen", action: cancelSecret)
-                        Button("Festlegen", action: save)
-                            .disabled(text.isEmpty)
-                    } else {
-                        Text(entry.hasValue ? "••••••••" : "nicht gesetzt").foregroundStyle(entry.hasValue ? .primary : .secondary)
-                        Button(entry.hasValue ? "Ändern …" : "Festlegen …") { text = ""; editing = true; focused = true }
-                    }
-                } else {
-                    TextField(entry.label, text: $text, prompt: Text("nicht gesetzt"))
-                        .labelsHidden()
-                        .frame(maxWidth: 340)
-                        .multilineTextAlignment(.trailing)
-                        .autocorrectionDisabled()
-                        .focused($focused)
-                        .onSubmit(save)
-                }
-            }
-            Text(entry.help).font(.caption).foregroundStyle(.secondary)
-        }
-        .onAppear { if !entry.isSecret { text = entry.value } }
-        // HIG: settings apply without a Save button – a plain field is saved
-        // when it loses focus (Tab, click elsewhere), on Return and on leaving.
-        .onChange(of: focused) { _, isFocused in
-            if !isFocused && !entry.isSecret && text != entry.value { save() }
-        }
-        #if os(macOS)
-        .onDisappear { if !entry.isSecret && text != entry.value { save() } }
-        #endif
-    }
-
-    private func save() {
-        if !entry.isSecret && text == entry.value { return }
-        model.saveSettingInBackground(entry.key, text)
-        if entry.isSecret { text = ""; editing = false }
-    }
-
-    private func cancelSecret() {
-        text = ""
-        editing = false
-    }
-}
-
-struct LogoSettings: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        Form {
-            Section {
-                Picker("Logos aus dem Internet laden", selection: Binding(
-                    get: { model.logoProvider },
-                    set: { model.logoProvider = $0; model.saveSettingInBackground("merchants.online_logos", $0) }
-                )) {
-                    Text("Aus").tag("off")
-                    Text("DuckDuckGo").tag("duckduckgo")
-                    Text("Google").tag("google")
-                }
-                Button("Logo-Cache leeren") { model.clearLogoCache() }
-            } header: {
-                Text("Händler-Logos")
-            } footer: {
-                Text("Ohne Anbieter zeigt GiroCrab mitgelieferte Markenzeichen, sonst Monogramme und Kategorie-Symbole. Mit Anbieter werden Favicons geladen und verschlüsselt im Tresor zwischengespeichert. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .leadingFooter()
-            }
-        }
-        .formStyle(.grouped)
+        .disabled(!model.isUnlocked)
     }
 }
 
