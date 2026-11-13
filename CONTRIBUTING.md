@@ -26,6 +26,7 @@ Swift-only changes: `cd GiroCrabApp && swift build -q` (no core rebuild needed).
    Add the Swift display name/colour in `GiroCrabUI/Formatting.swift`.
 3. **Test it with fake data.** Unit-test your parser with invented fixtures, then check the UI via
    `GIROCRAB_DEMO_SEED=1`. Run `cargo fmt`, `cargo clippy` and `cargo test -p girocrab-core`.
+   Optional: `git config core.hooksPath .githooks` runs `cargo fmt --check` before every push, like CI does.
 
 Open a *New bank request* issue first if unsure – ING, N26, Scalable Capital, Consorsbank and
 Santander are wanted.
