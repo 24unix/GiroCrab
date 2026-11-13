@@ -1,0 +1,8 @@
+#!/bin/sh
+# $3 = 1: branch checkout (not a single-file checkout); skip if HEAD is unchanged.
+[ "$3" = 1 ] && [ "$1" != "$2" ] || exit 0
+# During a rebase post-rewrite checks once at the end, not on intermediate trees.
+for d in rebase-merge rebase-apply; do
+  [ -d "$(git rev-parse --git-path "$d")" ] && exit 0
+done
+exec "$(dirname "$0")/check-core-stamp"

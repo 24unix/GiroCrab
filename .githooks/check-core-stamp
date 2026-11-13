@@ -1,0 +1,7 @@
+#!/bin/sh
+# Shared by post-checkout, post-merge and post-rewrite: warn (never fail) when
+# generated/ no longer matches the Rust core after a branch switch, pull or
+# rebase. Silent if generated/ was never built in this worktree.
+[ -d generated/GiroCrabCorePackage ] || exit 0
+./build-xcframework.sh --check || true
+exit 0

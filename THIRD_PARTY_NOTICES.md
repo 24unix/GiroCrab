@@ -15,14 +15,19 @@ The macOS user interface uses only native Apple system frameworks (`SwiftUI`, `A
 | **`hex`** | `0.4.3` | `MIT OR Apache-2.0` | [https://github.com/KokaKiwi/rust-hex](https://github.com/KokaKiwi/rust-hex) |
 | **`jsonwebtoken`** | `11.1.0` | `MIT` | [https://github.com/Keats/jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
 | **`miniz_oxide`** | `0.9.1` | `MIT OR Zlib OR Apache-2.0` | [https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide) |
+| **`libc`** | `0.2.191` | `MIT OR Apache-2.0` | [https://github.com/rust-lang/libc](https://github.com/rust-lang/libc) |
+| **`p256`** | `0.13.2` | `Apache-2.0 OR MIT` | [https://github.com/RustCrypto/elliptic-curves](https://github.com/RustCrypto/elliptic-curves/tree/master/p256) |
 | **`rand`** | `0.8.8` | `MIT OR Apache-2.0` | [https://github.com/rust-random/rand](https://github.com/rust-random/rand) |
 | **`rand`** | `0.9.5` | `MIT OR Apache-2.0` | [https://github.com/rust-random/rand](https://github.com/rust-random/rand) |
 | **`rand`** | `0.10.3` | `MIT OR Apache-2.0` | [https://github.com/rust-random/rand](https://github.com/rust-random/rand) |
 | **`regex`** | `1.13.1` | `MIT OR Apache-2.0` | [https://github.com/rust-lang/regex](https://github.com/rust-lang/regex) |
 | **`reqwest`** | `0.13.5` | `MIT OR Apache-2.0` | [https://github.com/seanmonstar/reqwest](https://github.com/seanmonstar/reqwest) |
+| **`rsa`** | `0.9.10` | `MIT OR Apache-2.0` | [https://github.com/RustCrypto/RSA](https://github.com/RustCrypto/RSA) |
 | **`rusqlite`** | `0.41.1` | `MIT` | [https://github.com/rusqlite/rusqlite](https://github.com/rusqlite/rusqlite) |
+| **`rusqlite_migration`** | `2.7.0` | `Apache-2.0` | [https://github.com/cljoly/rusqlite_migration](https://github.com/cljoly/rusqlite_migration) |
 | **`serde`** | `1.0.229` | `MIT OR Apache-2.0` | [https://github.com/serde-rs/serde](https://github.com/serde-rs/serde) |
 | **`serde_json`** | `1.0.154` | `MIT OR Apache-2.0` | [https://github.com/serde-rs/json](https://github.com/serde-rs/json) |
+| **`sha2`** | `0.10.9` | `MIT OR Apache-2.0` | [https://github.com/RustCrypto/hashes](https://github.com/RustCrypto/hashes) |
 | **`simpleicons-rs`** | `16.37.0` | `MIT AND CC0-1.0` | [https://github.com/cscnk52/simpleicons-rs](https://github.com/cscnk52/simpleicons-rs) |
 | **`thiserror`** | `2.0.21` | `MIT OR Apache-2.0` | [https://github.com/dtolnay/thiserror](https://github.com/dtolnay/thiserror) |
 | **`tokio`** | `1.54.1` | `MIT` | [https://github.com/tokio-rs/tokio](https://github.com/tokio-rs/tokio) |
@@ -31,6 +36,28 @@ The macOS user interface uses only native Apple system frameworks (`SwiftUI`, `A
 | **`url`** | `2.5.8` | `MIT OR Apache-2.0` | [https://github.com/servo/rust-url](https://github.com/servo/rust-url) |
 | **`uuid`** | `1.29.2` | `Apache-2.0 OR MIT` | [https://github.com/uuid-rs/uuid](https://github.com/uuid-rs/uuid) |
 | **`zeroize`** | `1.9.1` | `Apache-2.0 OR MIT` | [https://github.com/RustCrypto/utils](https://github.com/RustCrypto/utils) |
+
+## Build Tooling (not shipped in the app)
+
+| Crate | Version | License | Repository |
+|---|---|---|---|
+| **`uniffi`** (`uniffi-bindgen`, feature `cli`) | `0.32.2` | `MPL-2.0` | [https://github.com/mozilla/uniffi-rs](https://github.com/mozilla/uniffi-rs) |
+
+## Swift Packages (`GiroCrabApp`)
+
+| Package | Version | License | Repository |
+|---|---|---|---|
+| **Sparkle** (`GiroCrabMac` only, macOS auto-update) | `2.10.1` | MIT (with bundled third-party components under MIT / BSD-style licenses; see the `LICENSE` file shipped inside `Sparkle.framework`) | [https://github.com/sparkle-project/Sparkle](https://github.com/sparkle-project/Sparkle) |
+| **GiroCrabCorePackage** | – | GPL-3.0-or-later (this project's own generated UniFFI package) | local path `generated/GiroCrabCorePackage` |
+
+## Bundled Native Code & Data
+
+| Component | License | Notes |
+|---|---|---|
+| **SQLCipher** (via `rusqlite` feature `bundled-sqlcipher-vendored-openssl`, crate `sqlcipher-src`) | BSD-style (Zetetic LLC), SQLite public domain | Encrypted vault storage |
+| **OpenSSL** (crate `openssl-src`) | Apache-2.0 | Crypto backend for SQLCipher |
+| **Simple Icons** (via `simpleicons-rs`) | CC0-1.0 (icon data); brand logos remain trademarks of their owners | Merchant/bank icons |
+| **Bundesbank Bankleitzahlendatei** (`tools/gen-bic-directory`) | Public data of Deutsche Bundesbank | BLZ → BIC table |
 
 ## Complete Transitive Dependency Tree
 

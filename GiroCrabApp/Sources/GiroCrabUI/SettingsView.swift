@@ -18,19 +18,19 @@ struct SettingsView: View {
                 .tag(SettingsTab.general)
             BankConnectionsSettings()
                 .settingsPane(height: 600)
-                .disabled(model.vault == nil)
+                .disabled(!model.isUnlocked)
                 .tabItem { Label("Banken", systemImage: "building.columns") }
                 .tag(SettingsTab.banks)
             #if os(macOS)
             DocumentFolderSettings()
                 .settingsPane(height: 420)
-                .disabled(model.vault == nil)
+                .disabled(!model.isUnlocked)
                 .tabItem { Label("Dokumente", systemImage: "doc.on.doc") }
                 .tag(SettingsTab.documents)
             #endif
             SecuritySettings()
                 .settingsPane(height: 760)   // incl. "Sicherheitssperre für Bankverbindungen"
-                .disabled(model.vault == nil)
+                .disabled(!model.isUnlocked)
                 .tabItem { Label("Sicherheit", systemImage: "lock.shield") }
                 .tag(SettingsTab.security)
             #if os(macOS)
@@ -297,7 +297,7 @@ struct MerchantLogoSettingsSection: View {
                 .foregroundStyle(.secondary)
                 .leadingFooter()
         }
-        .disabled(model.vault == nil)
+        .disabled(!model.isUnlocked)
     }
 }
 
@@ -410,7 +410,7 @@ struct SecuritySettings: View {
             }
         }
         .formStyle(.grouped)
-        .task(id: model.isDemo) { vaultPath = model.vault?.filePath() ?? "–" }
+        .task(id: model.isDemo) { vaultPath = model.vaultFilePath ?? "–" }
     }
 }
 

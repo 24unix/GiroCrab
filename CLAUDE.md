@@ -5,7 +5,8 @@ Rust core (`girocrab-core`, UniFFI) + SwiftUI app (`GiroCrabApp`). Root = this d
 ## File map (go here first; don't `find`/`grep` to locate code)
 - `girocrab-core/src/lib.rs` – crate root, UniFFI exports
 - `girocrab-core/src/models.rs` – domain types
-- `girocrab-core/src/vault.rs` – encrypted storage
+- `girocrab-core/src/vault.rs` – encrypted storage: open/key/migrate/snapshot only
+- `girocrab-core/src/vault/` – `impl Vault` per feature: `accounts.rs`, `bookings.rs` (list_transactions/paging), `categories.rs`, `rules.rs`, `settings.rs`, `merge.rs`
 - `girocrab-core/src/schema.rs` – versioned schema migrations (see `docs/ARCHITECTURE.md`)
 - `girocrab-core/src/connectors/mod.rs` – bank connector trait/dispatch (impls alongside: `fints/`, `comdirect.rs`, `trade_republic.rs`, …)
 - `girocrab-core/src/connectors/` – all connector impls: `fints/`, `comdirect.rs`, `trade_republic.rs`, `enable_banking.rs`, `paypal.rs`, `portal_import.rs` (Amex/Amazon Visa web + CSV/PDF import)
@@ -43,6 +44,9 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 ## Architecture rules of thumb
 - Every core call from Swift is synchronous and holds the vault mutex. Anything over ~16 ms goes
   through `AppModel.offMain` and checks `listGeneration` / vault identity before publishing.
+  From UI code use `model.vaultOffMain { try $0.… }` (nil when locked/swapped) or
+  `requireVaultOffMain` (multi-step jobs: `pinVault()`); views never touch `model.vault` (`isUnlocked` for the nil check) –
+  `scripts/lint-vault-access.sh` enforces this in CI.
 - `vault.list_transactions` enriches every row in the filter (merchant, flow, sums); `limit`/`offset`
   only trim the result. Never call it for a count or a sum – add a SQL aggregate.
 - An edit must either reload synchronously or declare what it invalidates (`rulesStale`,
@@ -56,8 +60,9 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 ## Workflow
 - Branch from `upstream/main`, push to `origin` (fork), PR against `GiroCrab/GiroCrab`. PR title
   and description in German, conventional-commit prefix (`feat:`, `fix:`, `perf:`, `ci:`, `docs:`).
-- The local xcframework is whatever branch last ran `./build-xcframework.sh`. After a rebase or
-  branch switch with Rust changes, rebuild before trusting `swift build` errors.
+- The local xcframework is whatever branch last ran `./build-xcframework.sh`. Before trusting
+  `swift build` errors, run `./build-xcframework.sh --check` (silent + exit 0 = bindings match the
+  core sources; the hooks in `.githooks` run it after checkout/merge/rebase) and rebuild if it warns.
 - `Localizable.xcstrings` is not sorted: append keys, never re-sort (a sort is a 4k-line diff).
 
 ## Lockstep: README, screenshots, releases, website
@@ -70,6 +75,10 @@ whenever `README.md`, `docs/screenshots/**`, `docs/assets/**` or a release chang
 - Never remove from `../girocrab.de/index.html` the support section `#unterstuetzen` ("☕ Projekt unterstützen (Freiwillige Zuwendung)", paypal.me/aprinz) and its `THIRD_PARTY_NOTICES.md` link; keep it above the footer on every sync.
 - Social preview: `og:image`/`twitter:image` use the square `og-logo-v2.png` (512×512, from `icon-1024.png`; `twitter:card=summary`). Regenerate it when the icon changes.
 - Commit + push both repos in the same session. `scripts/notarize.sh` warns if the site lacks the new version.
+
+## Third-party notices (dependencies)
+- **Rule:** whenever dependencies in `Cargo.toml` (any workspace crate), `Cargo.lock` or `GiroCrabApp/Package.swift` are added, removed or upgraded (and before every release), `THIRD_PARTY_NOTICES.md` MUST be updated in the same commit/PR (name, version, exact license, repository).
+- Check: `scripts/check-third-party-notices.sh` fails if a direct crate or Swift package is missing from the notices (also runs in CI). Run it before pushing and before `scripts/notarize.sh`.
 
 ## Release checklist (`scripts/notarize.sh --upload vX.Y.Z`)
 - Before running: update `../girocrab.de` + icon/buttons/screenshots in lockstep (see above); bump `version` in `Cargo.toml`, and in `README.md` rename `### ✨ Neu in v…` / `### ✨ What's new in v…` to the new version with updated highlights (DE + EN).
