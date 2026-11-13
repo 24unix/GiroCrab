@@ -59,6 +59,13 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Build Rust core + UniFFI bindings (macOS only)
         run: ./build-xcframework.sh --macos-only
+      - name: Stale-bindings check (build-xcframework.sh --check)
+        run: |
+          ./build-xcframework.sh --check
+          echo '// stale' >> girocrab-core/src/text.rs
+          if ./build-xcframework.sh --check; then echo "--check missed a core change" >&2; exit 1; fi
+          git checkout -- girocrab-core/src/text.rs
+          ./build-xcframework.sh --check
       - name: Build SwiftUI app
         run: cd GiroCrabApp && swift build
       - name: Test SwiftUI app

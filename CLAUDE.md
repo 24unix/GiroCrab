@@ -60,8 +60,9 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 ## Workflow
 - Branch from `upstream/main`, push to `origin` (fork), PR against `GiroCrab/GiroCrab`. PR title
   and description in German, conventional-commit prefix (`feat:`, `fix:`, `perf:`, `ci:`, `docs:`).
-- The local xcframework is whatever branch last ran `./build-xcframework.sh`. After a rebase or
-  branch switch with Rust changes, rebuild before trusting `swift build` errors.
+- The local xcframework is whatever branch last ran `./build-xcframework.sh`. Before trusting
+  `swift build` errors, run `./build-xcframework.sh --check` (silent + exit 0 = bindings match the
+  core sources; the hooks in `.githooks` run it after checkout/merge/rebase) and rebuild if it warns.
 - `Localizable.xcstrings` is not sorted: append keys, never re-sort (a sort is a 4k-line diff).
 
 ## Lockstep: README, screenshots, releases, website
