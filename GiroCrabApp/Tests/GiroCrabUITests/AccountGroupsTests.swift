@@ -180,6 +180,36 @@ final class AccountGroupsTests: XCTestCase {
         assertConsistent()
     }
 
+    func testDropLinePositionBecomesMoveIndex() {
+        // from another group: above row 2 → 2, below row 2 → 3
+        XCTAssertEqual(GroupDrag.insertionIndex(row: 2, below: false, from: nil), 2)
+        XCTAssertEqual(GroupDrag.insertionIndex(row: 2, below: true, from: nil), 3)
+        // same group, dragged down: the moved account leaves a gap above
+        XCTAssertEqual(GroupDrag.insertionIndex(row: 2, below: false, from: 0), 1)
+        XCTAssertEqual(GroupDrag.insertionIndex(row: 2, below: true, from: 0), 2)
+        // same group, dragged up: nothing shifts
+        XCTAssertEqual(GroupDrag.insertionIndex(row: 0, below: false, from: 2), 0)
+        XCTAssertEqual(GroupDrag.insertionIndex(row: 0, below: true, from: 2), 1)
+    }
+
+    func testDropBelowNextRowMovesAccountDownOne() throws {
+        let g = try XCTUnwrap(groups.first { $0.accounts.count >= 2 })
+        let ids = g.accounts.map(\.id)
+        // drag the first account onto the lower half of the second
+        model.moveAccount(ids[0], to: g.uuid, at: GroupDrag.insertionIndex(row: 1, below: true, from: 0))
+        XCTAssertEqual(try Array(members(g.uuid).prefix(2)), [ids[1], ids[0]])
+        assertConsistent()
+    }
+
+    func testDropGroupIntoItselfOrItsSubgroupIsRefused() throws {
+        let a = try XCTUnwrap(model.createUserGroup(name: "A (drop)"))
+        let sub = try XCTUnwrap(model.createUserGroup(name: "Sub (drop)", parent: a))
+        XCTAssertFalse(model.canDropGroup(a, on: try group(a), into: true))
+        XCTAssertFalse(model.canDropGroup(a, on: try group(sub), into: true))
+        XCTAssertFalse(model.canDropGroup(a, on: try group(sub), into: false))
+        XCTAssertTrue(model.canDropGroup(sub, on: try group(a), into: false))
+    }
+
     func testReorderAccountsInGroup() throws {
         let g = try XCTUnwrap(groups.first { $0.accounts.count >= 2 })
         let reversed = Array(g.accounts.map(\.id).reversed())

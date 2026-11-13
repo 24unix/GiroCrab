@@ -7,8 +7,8 @@ struct SidebarView: View {
     /// The one sidebar dialog on screen (group dialogs live in `model.groupDialog`).
     @State private var dialog: SidebarDialog?
     @State private var budgetCategory: IDBox?
-    /// Row a drag is hovering over (drop highlight).
-    @State private var dropTarget: String?
+    /// Where a drop would land: a thin line above or below one row.
+    @State private var dropLine: DropLine?
 
     var body: some View {
         @Bindable var model = model
@@ -187,6 +187,15 @@ struct SidebarView: View {
             let toggle = { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { model.toggleCollapsed(group) } }
             let indent = CGFloat(group.depth) * 14
             UserGroupHeader(group: group, open: open, toggle: toggle)
+                // an account goes to the top of this group; a group above it
+                // (upper half) or into it as a subgroup (lower half)
+                .modifier(DropSlot(key: "g:" + group.uuid, inset: 0, line: $dropLine, edge: { half in
+                    guard let dragged = GroupDrag.draggedGroup else { return .below }
+                    let into = half == .below && !group.isUngrouped
+                    return model.canDropGroup(dragged, on: group, into: into) ? (into ? .into : .above) : nil
+                }, perform: { items, edge in
+                    handleDrop(items, into: group, row: nil, edge: edge)
+                }, freeLeading: 12))  // the expand/collapse arrow
                 .padding(.top, group.depth == 0 ? 10 : 4)
                 .padding(.leading, indent)
                 .groupHeaderTap(SidebarItem.userGroup(group.uuid), toggle: toggle)
@@ -196,38 +205,40 @@ struct SidebarView: View {
                 .popover(isPresented: model.iconColorBinding(.group(group.uuid)), arrowEdge: .trailing) {
                     IconColorPopover(target: .group(group.uuid)).environment(model)
                 }
-                .modifier(DropHighlight(key: "g:" + group.uuid, target: $dropTarget))
-                .draggable(GroupDrag.group(group.uuid)) {
-                    Label(group.name, systemImage: group.sfSymbol).padding(6)
-                }
-                // middle of the row: into this group; top edge: before it
-                // (insertion line) – like mailboxes in Mail
-                .modifier(GroupHeaderDrop(group: group, target: $dropTarget) { items, before in
-                    handleDrop(items, into: group, at: nil, before: before)
-                })
+                // no custom preview: the drag shows the row itself, like MoneyMoney
+                .draggable(GroupDrag.group(group.uuid))
             if open {
                 if group.accounts.isEmpty && !group.isUngrouped && model.userGroupSubtree(group.uuid).count == 1 {
                     Text(emptyHint)
                         .font(.caption)
                         .foregroundStyle(Theme.tertiary)
                         .padding(.leading, 33 + indent)
-                        .modifier(DropHighlight(key: "e:" + group.uuid, target: $dropTarget))
-                        .dropDestination(for: String.self) { items, _ in
-                            handleDrop(items, into: group, at: nil)
-                        } isTargeted: { dropTarget = $0 ? "e:" + group.uuid : (dropTarget == "e:" + group.uuid ? nil : dropTarget) }
+                        // an account goes here; a group into the group (header lights up)
+                        .modifier(DropSlot(key: "e:" + group.uuid, inset: 33 + indent, line: $dropLine, edge: { _ in
+                            if let dragged = GroupDrag.draggedGroup {
+                                return model.canDropGroup(dragged, on: group, into: true) ? .into : nil
+                            }
+                            return .above
+                        }, perform: { items, edge in
+                            handleDrop(items, into: group, row: nil, edge: edge)
+                        }, intoKey: "g:" + group.uuid))
                 }
                 // offsets of the full list: a drop position counts hidden archived accounts too
                 ForEach(Array(group.accounts.enumerated()).filter { isShown($0.element) }, id: \.element.id) { i, account in
-                    accountRow(account)
+                    // an account: the line follows the half of the row under the pointer,
+                    // also over the dragged row itself so it shows from the start;
+                    // a group: into this group, its header lights up
+                    accountRow(account, drop: DropSlot(key: "a:\(account.id)", inset: 0, line: $dropLine, edge: { half in
+                        if let dragged = GroupDrag.draggedGroup {
+                            return model.canDropGroup(dragged, on: group, into: true) ? .into : nil
+                        }
+                        return half
+                    }, perform: { items, edge in
+                        handleDrop(items, into: group, row: i, edge: edge)
+                    }, intoKey: "g:" + group.uuid))
                         // one step right of their group, at every nesting level
                         .padding(.leading, indent + 14)
-                        .draggable(GroupDrag.account(account.id)) {
-                            Label(account.name, systemImage: account.sfSymbol).padding(6)
-                        }
-                        .modifier(DropHighlight(key: "a:\(account.id)", target: $dropTarget))
-                        .dropDestination(for: String.self) { items, _ in
-                            handleDrop(items, into: group, at: i)
-                        } isTargeted: { dropTarget = $0 ? "a:\(account.id)" : (dropTarget == "a:\(account.id)" ? nil : dropTarget) }
+                        .draggable(GroupDrag.account(account.id))
                 }
             }
         }
@@ -241,22 +252,20 @@ struct SidebarView: View {
         #endif
     }
 
-    /// Account dropped on a row/header → move there; group dropped on a header → reorder.
-    /// A drop onto a group row. Accounts join the group. A dragged group goes
-    /// into the target group (becomes its subgroup), or – `before` – next to
-    /// it, as a sibling right above it; onto "Ohne Gruppe" it moves to the
-    /// top level, at the end.
-    @discardableResult
-    private func handleDrop(_ items: [String], into group: UserGroup, at index: Int?, before: Bool = false) -> Bool {
+    /// A drop next to or onto a sidebar row. An account lands at the line
+    /// next to row `row` (`row` nil = a header: top of the group). A group goes
+    /// into `group` (`.into`, becomes its subgroup) or right above it as its
+    /// sibling; onto "Ohne Gruppe" it moves to the top level, at the end.
+    private func handleDrop(_ items: [String], into group: UserGroup, row: Int?, edge: DropLine.Edge = .above) -> Bool {
         var handled = false
         for item in items {
             if let id = GroupDrag.accountID(item) {
+                let from = group.accounts.firstIndex { $0.id == id }
+                let index = row.map { GroupDrag.insertionIndex(row: $0, below: edge == .below, from: from) } ?? 0
                 model.moveAccount(id, to: group.uuid, at: index)
                 handled = true
-            } else if index == nil, let uuid = GroupDrag.groupUUID(item) {
-                // groups only land on group rows (and the empty-group hint),
-                // not on account rows
-                handled = model.dropUserGroup(uuid, onto: group, before: before) || handled
+            } else if let uuid = GroupDrag.groupUUID(item) {
+                handled = model.dropUserGroup(uuid, onto: group, before: edge != .into) || handled
             }
         }
         return handled
@@ -267,8 +276,11 @@ struct SidebarView: View {
         model.showArchivedAccounts || !account.isArchived
     }
 
-    private func accountRow(_ account: Account) -> some View {
+    /// `drop` sits inside the context menu (and the caller's drag), so its drop
+    /// zones don't cover the row for clicks.
+    private func accountRow(_ account: Account, drop: DropSlot? = nil) -> some View {
         AccountRow(account: account, syncing: model.syncingConnectionID != nil && model.syncingConnectionID == account.connectionId)
+            .dropSlot(drop)
             .tag(SidebarItem.account(account.id))
             .contextMenu { accountMenu(account) }
             .popover(isPresented: model.iconColorBinding(.account(account.id)), arrowEdge: .trailing) {
@@ -514,97 +526,104 @@ private extension View {
     }
 }
 
-/// Accent outline on the row a drag is hovering over.
-private struct DropHighlight: ViewModifier {
+/// The insertion line a drag shows: above or below one sidebar row.
+private struct DropLine: Equatable {
+    /// `into`: onto the row itself (a group becoming a subgroup).
+    enum Edge { case above, below, into }
+    /// The row that draws the mark.
     let key: String
-    @Binding var target: String?
-
-    func body(content: Content) -> some View {
-        content.background(
-            RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Theme.accent, lineWidth: 1.5)
-                .opacity(target == key ? 1 : 0)
-                .padding(-3)
-        )
-    }
+    let edge: Edge
+    /// The drop zone under the pointer (one row half; may mark another row).
+    let zone: String
 }
 
-/// Drop zone of a group row: the top edge means "before this group"
-/// (insertion line, key `b:<uuid>`), the rest "into this group" (outline,
-/// key `g:<uuid>`). `dropDestination` can't tell the two apart while
-/// hovering, so this uses a DropDelegate with the pointer position.
-private struct GroupHeaderDrop: ViewModifier {
-    let group: UserGroup
-    @Binding var target: String?
-    let perform: (_ items: [String], _ before: Bool) -> Void
-    @State private var height: CGFloat = 24
+/// A sidebar row as drop target. Like MoneyMoney and Finder it marks the
+/// spot with a thin line between rows instead of outlining the row. The row
+/// gets two drop zones, its upper and lower half, so the line can follow the
+/// pointer while every drop still goes through `dropDestination` (a
+/// `DropDelegate` here left the sidebar list unable to start a second drag).
+private struct DropSlot: ViewModifier {
+    let key: String
+    /// Where the line starts, so it lines up with the row's content.
+    let inset: CGFloat
+    @Binding var line: DropLine?
+    /// The line's edge for the pointer over the given half; nil = no drop here.
+    let edge: (_ half: DropLine.Edge) -> DropLine.Edge?
+    let perform: (_ items: [String], _ edge: DropLine.Edge) -> Bool
+    /// The row that lights up for `.into` (default: this one), e.g. the
+    /// group's header while a group hovers over its accounts.
+    var intoKey: String?
+    /// Leading strip the drop zones leave free, so a button there still gets
+    /// its clicks (the zones lie on top of the row).
+    var freeLeading: CGFloat = 0
+
+    /// Zones a drag is over right now. Not state: changing it must not redraw.
+    @MainActor private static var hovered: Set<String> = []
 
     func body(content: Content) -> some View {
         content
-            .background(GeometryReader { g in
-                Color.clear
-                    .onAppear { height = g.size.height }
-                    .onChange(of: g.size.height) { _, h in height = h }
-            })
-            .overlay(alignment: .top) {
-                Capsule()
-                    .fill(Theme.accent)
-                    .frame(height: 2)
-                    .offset(y: -4)
-                    .opacity(target == "b:" + group.uuid ? 1 : 0)
-                    .allowsHitTesting(false)
+            .overlay {
+                VStack(spacing: 0) {
+                    zone(.above)
+                    zone(.below)
+                }
+                .padding(.leading, freeLeading)
             }
-            .onDrop(of: [.plainText], delegate: Delegate(group: group, height: height, target: $target, perform: perform))
+            .background {
+                // dropping into the row: a highlight, like Finder on a folder
+                if line?.key == key, line?.edge == .into {
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Theme.accent.opacity(0.18))
+                        .strokeBorder(Theme.accent, lineWidth: 1.5)
+                        .padding(.leading, inset - 4)
+                        .padding(.vertical, -2)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: line?.edge == .below ? .bottom : .top) {
+                if line?.key == key, line?.edge != .into {
+                    // a small ring, then a thin line, centred on the gap between two rows
+                    HStack(spacing: 0) {
+                        Circle().strokeBorder(Theme.secondary, lineWidth: 1.5).frame(width: 7, height: 7)
+                        Rectangle().fill(Theme.secondary).frame(height: 1.5)
+                    }
+                    .padding(.leading, inset)
+                    .offset(y: line?.edge == .below ? 3.5 : -3.5)
+                    .allowsHitTesting(false)
+                }
+            }
     }
 
-    private struct Delegate: DropDelegate {
-        let group: UserGroup
-        let height: CGFloat
-        @Binding var target: String?
-        let perform: (_ items: [String], _ before: Bool) -> Void
-
-        /// Upper part (the gap above the header plus its top edge): before
-        /// the group. "Ohne Gruppe" only takes "into".
-        private func isBefore(_ info: DropInfo) -> Bool {
-            !group.isUngrouped && info.location.y < height * 0.4
-        }
-
-        func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.plainText]) }
-
-        func dropUpdated(info: DropInfo) -> DropProposal? {
-            target = (isBefore(info) ? "b:" : "g:") + group.uuid
-            return DropProposal(operation: .move)
-        }
-
-        func dropExited(info: DropInfo) {
-            if target == "b:" + group.uuid || target == "g:" + group.uuid { target = nil }
-        }
-
-        func performDrop(info: DropInfo) -> Bool {
-            // what the user saw last (line or outline) decides, not a
-            // recomputed position – they can differ at the moment of the drop
-            let before = target == "b:" + group.uuid || (target == nil && isBefore(info))
-            target = nil
-            let providers = info.itemProviders(for: [.plainText])
-            guard !providers.isEmpty else { return false }
-            Task { @MainActor in
-                var items: [String] = []
-                for p in providers {
-                    if let s = try? await p.loadTransferable(type: String.self) { items.append(s) }
+    private func zone(_ half: DropLine.Edge) -> some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .dropDestination(for: String.self) { items, _ in
+                line = nil
+                guard let edge = edge(half) else { return false }
+                return perform(items, edge)
+            } isTargeted: { targeted in
+                // SwiftUI reports a quick off/on while the pointer moves within a
+                // zone: write only real changes and clear a tick later, unless the
+                // zone came back meanwhile, so the mark doesn't flicker.
+                let zone = key + (half == .above ? "↑" : "↓")
+                if targeted, let edge = edge(half) {
+                    Self.hovered.insert(zone)
+                    let next = DropLine(key: edge == .into ? intoKey ?? key : key, edge: edge, zone: zone)
+                    if line != next { line = next }
+                } else {
+                    Self.hovered.remove(zone)
+                    DispatchQueue.main.async {
+                        if !Self.hovered.contains(zone), line?.zone == zone { line = nil }
+                    }
                 }
-                if !items.isEmpty { perform(items, before) }
             }
-            return true
-        }
     }
 }
 
-private extension NSItemProvider {
-    /// async wrapper of `loadTransferable` (not async on macOS 14).
-    func loadTransferable<T: Transferable & Sendable>(type: T.Type) async throws -> T {
-        try await withCheckedThrowingContinuation { cont in
-            _ = loadTransferable(type: type) { cont.resume(with: $0) }
-        }
+extension View {
+    @ViewBuilder
+    fileprivate func dropSlot(_ slot: DropSlot?) -> some View {
+        if let slot { modifier(slot) } else { self }
     }
 }
 

@@ -17,6 +17,26 @@ enum GroupDrag {
     static func groupUUID(_ s: String) -> String? {
         s.hasPrefix(groupPrefix) ? String(s.dropFirst(groupPrefix.count)) : nil
     }
+
+    /// The group the drag in progress carries (nil = an account), read from
+    /// the drag pasteboard so a row knows where it shows the drop line.
+    /// iOS has no drag pasteboard: there it counts as an account.
+    static var draggedGroup: String? {
+        #if os(macOS)
+        NSPasteboard(name: .drag).string(forType: .string).flatMap(groupUUID)
+        #else
+        nil
+        #endif
+    }
+
+    /// The drop line above (`below` false) or below row `row` as an index for
+    /// `moveAccount`, which counts without the moved account. `from` is the
+    /// account's own row when it is dragged within its group.
+    static func insertionIndex(row: Int, below: Bool, from: Int?) -> Int {
+        let at = below ? row + 1 : row
+        if let from, from < at { return at - 1 }
+        return at
+    }
 }
 
 // MARK: - Sidebar pieces
