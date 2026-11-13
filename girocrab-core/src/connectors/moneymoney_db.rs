@@ -842,6 +842,32 @@ fn wrong_password() -> CoreError {
     }
 }
 
+/// MoneyMoney holds a lock on its database while it runs; reading then fails
+/// with `SQLITE_BUSY`, which is not a wrong password (#201).
+fn locked_by_moneymoney() -> CoreError {
+    CoreError::Authentication {
+        message: tr("MoneyMoney ist noch geöffnet und sperrt die Datenbank. Beenden Sie MoneyMoney vollständig und versuchen Sie es erneut.").into(),
+    }
+}
+
+/// How long to wait for MoneyMoney's lock before reporting it.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Maps a failure while unlocking/probing the source: only "not a database"
+/// (wrong key or no SQLite file) is a wrong password; a lock is reported as
+/// such, anything else as what it is.
+fn open_failure(e: rusqlite::Error) -> CoreError {
+    match e.sqlite_error_code() {
+        Some(rusqlite::ErrorCode::NotADatabase) | None => wrong_password(),
+        Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked) => {
+            locked_by_moneymoney()
+        }
+        Some(_) => CoreError::Database {
+            message: e.to_string(),
+        },
+    }
+}
+
 /// MoneyMoney encrypts its database even when no database password is set
 /// (with a key of its own that GiroCrab cannot know). Such a file can only
 /// be read after the user sets a password in MoneyMoney.
@@ -884,13 +910,14 @@ fn open_source(path: &str, password: &SecretString) -> CoreResult<Connection> {
             path,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )
-        .map_err(|_| wrong_password())?;
+        .map_err(open_failure)?;
+        let _ = conn.busy_timeout(LOCK_WAIT);
         return conn
             .query_row("SELECT count(*) FROM sqlite_master", [], |r| {
                 r.get::<_, i64>(0)
             })
             .map(|_| conn)
-            .map_err(|_| wrong_password());
+            .map_err(open_failure);
     }
     let mut pragma = Zeroizing::new(String::from("PRAGMA key = '"));
     for c in password.expose().chars() {
@@ -900,12 +927,14 @@ fn open_source(path: &str, password: &SecretString) -> CoreResult<Connection> {
         pragma.push(c);
     }
     pragma.push_str("';");
+    let mut failure = wrong_password();
     for compat in [None, Some(3)] {
         let conn = Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )
-        .map_err(|_| wrong_password())?;
+        .map_err(open_failure)?;
+        let _ = conn.busy_timeout(LOCK_WAIT);
         // Errors of the key statement are swallowed: they must never carry the SQL.
         if conn.execute_batch(&pragma).is_err() {
             continue;
@@ -920,16 +949,24 @@ fn open_source(path: &str, password: &SecretString) -> CoreResult<Connection> {
                 continue;
             }
         }
-        if conn
-            .query_row("SELECT count(*) FROM sqlite_master", [], |r| {
-                r.get::<_, i64>(0)
-            })
-            .is_ok()
-        {
-            return Ok(conn);
+        match conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
+            r.get::<_, i64>(0)
+        }) {
+            Ok(_) => return Ok(conn),
+            // MoneyMoney holds the file: another cipher setting would only
+            // wait for the same lock again
+            Err(e)
+                if matches!(
+                    e.sqlite_error_code(),
+                    Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
+                ) =>
+            {
+                return Err(locked_by_moneymoney())
+            }
+            Err(e) => failure = open_failure(e),
         }
     }
-    Err(wrong_password())
+    Err(failure)
 }
 
 fn objects(conn: &Connection) -> CoreResult<HashSet<String>> {

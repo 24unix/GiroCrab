@@ -463,6 +463,7 @@ fn english(de: &str) -> Option<&'static str> {
                 "Falsches Passwort oder keine MoneyMoney-Datenbank." => "Wrong password or not a MoneyMoney database.",
         "MoneyMoney verschlüsselt diese Datenbank mit einem eigenen Schlüssel, weil dort kein Datenbank-Passwort festgelegt ist. Legen Sie in MoneyMoney unter Einstellungen → Sicherheit eines fest, beenden Sie MoneyMoney und geben Sie es hier ein." => "MoneyMoney encrypts this database with a key of its own because no database password is set there. Set one in MoneyMoney under Settings → Security, quit MoneyMoney and enter it here.",
         "MoneyMoney-Datenbank" => "MoneyMoney database",
+        "MoneyMoney ist noch geöffnet und sperrt die Datenbank. Beenden Sie MoneyMoney vollständig und versuchen Sie es erneut." => "MoneyMoney is still open and locks the database. Quit MoneyMoney completely and try again.",
         "Anfangssaldo laut MoneyMoney-Saldenverlauf ({0}) + Umsätze" => {
             "Opening balance from MoneyMoney balance history ({0}) + transactions"
         }

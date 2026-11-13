@@ -2369,3 +2369,34 @@ fn a_bank_can_be_switched_to_enable_banking_or_left_out() {
         .iter()
         .any(|c| c.name == "Girokonto" && c.ok));
 }
+
+/// #201: a database locked by a running MoneyMoney is reported as such –
+/// quickly and not as a wrong password – and reads fine once released.
+#[test]
+fn database_locked_by_running_moneymoney_is_not_a_wrong_password() {
+    let path = fake_db();
+    let v = vault();
+    let holder = Connection::open(&path).unwrap();
+    holder
+        .execute_batch(&format!("PRAGMA key = '{}';", PW.replace('\'', "''")))
+        .unwrap();
+    holder
+        .execute_batch(
+            "PRAGMA locking_mode = EXCLUSIVE; BEGIN; UPDATE accounts SET sort = sort; COMMIT;",
+        )
+        .unwrap();
+    let started = std::time::Instant::now();
+    let err = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap_err();
+    assert!(started.elapsed() < std::time::Duration::from_secs(3));
+    assert!(matches!(err, CoreError::Authentication { .. }));
+    let msg = err.to_string();
+    assert!(msg.contains("noch geöffnet"), "{msg}");
+    assert!(!msg.contains("Falsches Passwort"), "{msg}");
+    drop(holder);
+    let p = v
+        .preview_moneymoney_database(path, PW.into(), None)
+        .unwrap();
+    assert_eq!(p.accounts.len(), 4);
+}
