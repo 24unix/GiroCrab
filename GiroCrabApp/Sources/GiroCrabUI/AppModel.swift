@@ -2562,6 +2562,10 @@ public final class AppModel {
 
     func removeConnection(_ id: Int64) {
         guard let vault else { return }
+        // Trade Republic: also drop the browser session (tr_session, tr_refresh, website data).
+        if connections.first(where: { $0.id == id })?.connector == .tradeRepublic {
+            Task { await WebLoginSheet.clearAllTradeRepublicWebData() }
+        }
         run { try vault.deleteBankConnection(connectionId: id) }
         reloadAll()
     }

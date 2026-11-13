@@ -56,7 +56,7 @@ struct AnnouncementBanner: View {
                 }
                 if hasMore {
                     Button("Mehr erfahren") { detail = a }
-                        .buttonStyle(.link)
+                        .linkButtonStyle()
                         .padding(.top, 2)
                 }
             }
@@ -139,7 +139,7 @@ struct AnnouncementsListView: View {
                             : a.localized(a.body, language: lang)
                         Text(markdown(text)).foregroundStyle(.secondary).textSelection(.enabled)
                         if let link = a.link {
-                            Button("Mehr im Web") { openURL(link) }.buttonStyle(.link)
+                            Button("Mehr im Web") { openURL(link) }.linkButtonStyle()
                         }
                     }
                     .padding(.vertical, 4)
@@ -148,5 +148,16 @@ struct AnnouncementsListView: View {
         }
         .frame(minWidth: 380, minHeight: 280)
         .task { await center.refresh() }
+    }
+}
+
+private extension View {
+    /// `.buttonStyle(.link)` is macOS-only; on iOS use a plain, tinted button.
+    @ViewBuilder func linkButtonStyle() -> some View {
+        #if os(macOS)
+        self.buttonStyle(.link)
+        #else
+        self.buttonStyle(.plain).foregroundStyle(.tint)
+        #endif
     }
 }

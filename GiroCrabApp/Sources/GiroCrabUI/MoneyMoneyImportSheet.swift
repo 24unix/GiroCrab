@@ -245,6 +245,8 @@ struct MoneyMoneyExportImportView: View {
                 preview = demo
                 fileName = "MoneyMoney-Umsaetze.xml"
                 fileData = Data([0])
+                // `--demo-sheet moneymoney` shows the "Übernahme" step (preview + target account)
+                step = .options
             }
         }
         .onChange(of: target) { _, _ in refreshPreview() }

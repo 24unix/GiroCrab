@@ -331,7 +331,7 @@ static TABLE: &[Entry] = &[
     Entry {
         key: "stock-bayer",
         name: "Bayer",
-        needles: &["bayer "],
+        needles: &["bayer ", "de000bay0017", "bay001"],
         domain: "bayer.com",
         color: "#10384F",
         symbol: "chart.bar",
@@ -1038,12 +1038,56 @@ pub fn normalise(s: &str) -> String {
 include!("merchant_dict.rs");
 
 /// Stage A: priority list, built-in table, German dictionary (~260 brands).
-fn find(text: &str) -> Option<&'static Entry> {
+/// Words that mark a booking as a securities transaction.
+const SECURITIES_HINTS: &[&str] = &[
+    "wp-abrechnung",
+    "wp abrechnung",
+    "wertpapier",
+    "sparplan",
+    "aktie",
+    "dividende",
+    "depot",
+    "isin",
+    "wkn",
+    "kauf order",
+    "verkauf order",
+];
+
+/// A company name can also be a surname ("Max Bayer", "Anna Siemens"). A
+/// stock entry only counts when the booking carries securities evidence:
+/// its ISIN/WKN, a securities keyword, or the needle followed by a legal form
+/// ("Bayer AG").
+fn stock_confirmed(e: &Entry, text: &str, ctx: &str) -> bool {
+    if (!e.isin.is_empty() && ctx.contains(&e.isin.to_lowercase()))
+        || (!e.wkn.is_empty() && ctx.contains(&e.wkn.to_lowercase()))
+    {
+        return true;
+    }
+    if contains_any(ctx, SECURITIES_HINTS) {
+        return true;
+    }
+    e.needles.iter().any(|n| {
+        text.find(n.trim()).is_some_and(|p| {
+            let rest = text[p + n.trim().len()..].trim_start();
+            let word: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '.')
+                .collect();
+            matches!(word.trim_end_matches('.'), "ag" | "se" | "kgaa" | "inc" | "corp" | "plc")
+        })
+    })
+}
+
+/// Like `find`, but skips stock entries without securities evidence.
+fn find_checked(text: &str, ctx: &str) -> Option<&'static Entry> {
     PRIORITY
         .iter()
         .chain(TABLE.iter())
         .chain(GERMAN.iter())
-        .find(|e| e.needles.iter().any(|n| text.contains(n)))
+        .find(|e| {
+            e.needles.iter().any(|n| text.contains(n))
+                && (e.kind != K::Stock || stock_confirmed(e, text, ctx))
+        })
 }
 
 /// Every domain of the curated dictionary (whitelist for the logo cache).
@@ -1561,14 +1605,15 @@ impl MerchantResolver {
         let cp = normalise(counterparty);
         let pu = normalise(purpose);
         // "PayPal *Spotify", "PayPal Europe ... Ihr Einkauf bei Spotify AB": look behind the processor.
-        if let Some(entry) = find(&cp) {
+        let ctx = format!("{cp} {pu}");
+        if let Some(entry) = find_checked(&cp, &ctx) {
             if entry.kind == K::PaymentService {
                 let behind = cp
                     .split_once(entry.needles[0])
                     .map(|x| x.1.to_string())
                     .unwrap_or_default();
-                if let Some(real) = find(&behind)
-                    .or_else(|| find(&pu))
+                if let Some(real) = find_checked(&behind, &ctx)
+                    .or_else(|| find_checked(&pu, &ctx))
                     .filter(|r| r.kind != K::PaymentService)
                 {
                     return to_info(real);
@@ -1576,7 +1621,7 @@ impl MerchantResolver {
             }
             return to_info(entry);
         }
-        if let Some(entry) = find(&pu).filter(|e| {
+        if let Some(entry) = find_checked(&pu, &ctx).filter(|e| {
             matches!(e.kind, K::Etf | K::Crypto | K::Stock | K::PaymentService)
                 || counterparty.trim().is_empty()
         }) {
@@ -1822,6 +1867,27 @@ pub fn resolve_merchant(counterparty: String, purpose: String) -> MerchantInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn private_surname_is_not_investment() {
+        for name in ["Max Bayer", "Anna Siemens", "Peter Henkel", "Lisa Allianz"] {
+            let info = MerchantResolver::resolve(name, "Anteil Abendessen");
+            assert_ne!(info.kind, K::Stock, "{name}");
+            let f = classify(-25_00, name, "Anteil Abendessen", "", &info, "", AccountKind::Checking);
+            assert_ne!(f, FlowKind::Investment, "{name}");
+        }
+    }
+
+    #[test]
+    fn security_booking_is_investment() {
+        let p = "WP-ABRECHNUNG Kauf DE000BAY0017";
+        let info = MerchantResolver::resolve("Depotbank", p);
+        assert_eq!(info.key, "stock-bayer");
+        let f = classify(-500_00, "Depotbank", p, "", &info, "", AccountKind::Checking);
+        assert_eq!(f, FlowKind::Investment);
+        let info = MerchantResolver::resolve("Bayer AG", "Dividende 2025");
+        assert_eq!(info.key, "stock-bayer");
+    }
 
     #[test]
     fn remembered_merchants_equal_fresh_ones() {

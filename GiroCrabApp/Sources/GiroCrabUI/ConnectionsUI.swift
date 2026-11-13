@@ -324,6 +324,7 @@ struct ConnectionEditSheet: View {
                 case .portal: Task { await clearPortalSession(connection.connector) }
                 case .tradeRepublic:
                     model.clearSession(connection.id)
+                    Task { await WebLoginSheet.clearAllTradeRepublicWebData() }
                     status = model.connectionStatus(connection.id)
                 }
             }
@@ -583,6 +584,20 @@ struct WebLoginSheet: View {
         for c in await store.allCookies() where isTradeRepublicHost(c.domain) && c.name == "tr_session" {
             await store.deleteCookie(c)
         }
+    }
+
+    /// Removes everything the embedded browser keeps for traderepublic.com:
+    /// all cookies (tr_session, tr_refresh, …) and all website data records.
+    @MainActor
+    static func clearAllTradeRepublicWebData() async {
+        let data = WKWebsiteDataStore.default()
+        let cookieStore = data.httpCookieStore
+        for c in await cookieStore.allCookies() where isTradeRepublicHost(c.domain) {
+            await cookieStore.deleteCookie(c)
+        }
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        let records = await data.dataRecords(ofTypes: types)
+        await data.removeData(ofTypes: types, for: records.filter { isTradeRepublicHost($0.displayName) || $0.displayName.lowercased().contains("traderepublic.com") })
     }
 
     @MainActor

@@ -513,10 +513,11 @@ impl FinTsConnector {
         }
         sent.insert(3 + payload.len() as u32, "HNSHA".to_string());
         let msg = self.build_message(ctx, &payload, sec_func, tan);
+        super::ensure_secure_fints_url(&self.url)?;
         let client = match &self.client {
             Some(c) => c.clone(),
             None => {
-                let c = super::http_client()?;
+                let c = super::http_client_no_redirect()?;
                 self.client = Some(c.clone());
                 c
             }
@@ -2337,6 +2338,62 @@ impl BankConnector for FinTsConnector {
 mod tests {
     use super::*;
     use crate::secret::SecretString;
+
+    fn test_ctx() -> ConnectContext {
+        ConnectContext {
+            connection_id: 1,
+            login_name: "user:1".into(),
+            secret: SecretString::new("12345".into()),
+            settings: Default::default(),
+            state: serde_json::json!({}),
+            since: "2025-01-01".into(),
+            since_by_account: Default::default(),
+        }
+    }
+
+    #[test]
+    fn secure_url_check_rejects_plain_http() {
+        assert!(crate::connectors::ensure_secure_fints_url("https://bank.example/fints").is_ok());
+        assert!(crate::connectors::ensure_secure_fints_url("http://bank.example/fints").is_err());
+        assert!(crate::connectors::ensure_secure_fints_url("ftp://bank.example").is_err());
+        assert!(crate::connectors::ensure_secure_fints_url("").is_err());
+    }
+
+    #[tokio::test]
+    async fn send_rejects_http_url() {
+        let mut c = FinTsConnector::new("52090000");
+        c.url = "http://bank.example/fints".into();
+        let r = c.send(&test_ctx(), vec![], "999", None).await;
+        assert!(matches!(r, Err(CoreError::Protocol { .. })));
+    }
+
+    #[tokio::test]
+    async fn send_does_not_follow_redirects() {
+        use std::io::{Read, Write};
+        for code in [301, 302, 307, 308] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let h2 = hits.clone();
+            std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    let Ok(mut s) = stream else { break };
+                    h2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let mut buf = [0u8; 8192];
+                    let _ = s.read(&mut buf);
+                    let resp = format!(
+                        "HTTP/1.1 {code} Moved\r\nLocation: http://127.0.0.1:{port}/other\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    );
+                    let _ = s.write_all(resp.as_bytes());
+                }
+            });
+            let mut c = FinTsConnector::new("52090000");
+            c.url = format!("http://127.0.0.1:{port}/fints");
+            let r = c.send(&test_ctx(), vec![], "999", None).await;
+            assert!(matches!(r, Err(CoreError::Network { .. })), "code {code}: {r:?}");
+            assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1, "code {code}");
+        }
+    }
 
     #[test]
     fn message_has_correct_length_and_structure() {

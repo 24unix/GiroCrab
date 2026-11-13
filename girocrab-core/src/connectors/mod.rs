@@ -759,6 +759,36 @@ pub(crate) fn http_client() -> CoreResult<reqwest::Client> {
         .build()?)
 }
 
+/// HTTP client for FinTS: never follows redirects, so POST bodies carrying
+/// PIN/TAN cannot be replayed to a different location.
+pub(crate) fn http_client_no_redirect() -> CoreResult<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .user_agent(concat!(
+            "GiroCrab/",
+            env!("CARGO_PKG_VERSION"),
+            " (open source; +https://github.com/)"
+        ))
+        .timeout(std::time::Duration::from_secs(60))
+        .cookie_store(true)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?)
+}
+
+/// FinTS URLs must be https. Plain http to localhost is accepted in tests only.
+pub(crate) fn ensure_secure_fints_url(url: &str) -> CoreResult<()> {
+    let lower = url.trim().to_ascii_lowercase();
+    if lower.starts_with("https://") {
+        return Ok(());
+    }
+    #[cfg(test)]
+    if lower.starts_with("http://127.0.0.1") || lower.starts_with("http://localhost") {
+        return Ok(());
+    }
+    Err(CoreError::Protocol {
+        message: "FinTS URL must use https://".to_string(),
+    })
+}
+
 /// Upper bound for JSON / text / FinTS responses.
 pub(crate) const MAX_TEXT_BYTES: usize = 10 * 1024 * 1024;
 /// Upper bound for downloaded documents (PDF statements, receipts, images).
