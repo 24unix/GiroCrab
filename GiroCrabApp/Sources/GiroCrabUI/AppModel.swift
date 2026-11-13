@@ -499,8 +499,6 @@ public final class AppModel {
     var groupDialog: GroupDialog?
     /// The account / group whose "Symbol & Farbe" popover is open.
     var iconColorTarget: IconColorTarget?
-    /// "Symbol …" sheet: the searchable symbol picker (#167).
-    var symbolSheet: SymbolSheetTarget?
     /// The "new category" name prompt on screen (sidebar, menu bar, ⌘K).
     var newCategoryRequest: NewCategoryRequest?
     /// "Belege & PostBox" filtered to one account (#172); nil = all accounts.
@@ -687,10 +685,16 @@ public final class AppModel {
     /// Screenshot helper: open a sheet pre-filled with fictional data.
     private func presentDemoSheet(_ name: String) {
         switch name {
+        case "icon-color":
+            // the "Symbol & Farbe" popover of the first account (#167)
+            if let a = allAccounts.first { iconColorTarget = .account(a.id) }
+        case "icon-color-category":
+            // the "Symbol & Farbe" popover of the first main category (#168)
+            if let c = categories.first(where: { $0.depth == 0 }) { iconColorTarget = .category(c.id) }
         case "category":
-            // edit sheet of the first sub-category (#168)
-            if let c = categories.first(where: { $0.depth > 0 }) {
-                newCategoryRequest = NewCategoryRequest(parent: c.parentId, editing: c.id)
+            // "Neue Unterkategorie" sheet of the first main category (#168)
+            if let c = categories.first(where: { $0.depth == 0 }) {
+                newCategoryRequest = NewCategoryRequest(parent: c.id)
             }
         case "print":
             // Print dialog (GitHub #53) on last month's demo bookings.
@@ -2394,15 +2398,52 @@ public final class AppModel {
         reloadCategories()
     }
 
-    /// Name, parent, symbol and colour of an existing category (#168).
-    func updateCategory(_ category: GiroCrabCore.Category, name: String, parent: Int64?, symbol: String, color: String) {
-        guard let vault else { return }
+    /// Changes one property of a category and keeps the others (#168) –
+    /// the core only updates a category as a whole.
+    private func editCategory(_ id: Int64, _ change: (inout GiroCrabCore.Category) -> Void) {
+        guard let vault, var c = categories.first(where: { $0.id == id }) else { return }
+        change(&c)
         run {
-            try vault.updateCategory(id: category.id, name: name, parentId: parent,
-                                     sfSymbol: symbol, colorHex: color)
+            try vault.updateCategory(id: c.id, name: c.name, parentId: c.parentId,
+                                     sfSymbol: c.sfSymbol, colorHex: c.colorHex)
         }
         reloadCategories()
-        reloadBookings()
+        reloadBookings() // the booking list shows a category's name, symbol and colour
+    }
+
+    /// "Umbenennen …" of a category.
+    func renameCategory(_ id: Int64, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        editCategory(id) { $0.name = trimmed }
+    }
+
+    /// "Verschieben nach ▸" of a category: under another category, or to the
+    /// top level (nil). The core refuses moving it below itself.
+    func moveCategory(_ id: Int64, to parent: Int64?) {
+        editCategory(id) { $0.parentId = parent }
+        if let parent { expandedCategories.insert(parent) } // keep it in view
+    }
+
+    /// "Symbol & Farbe …" of a category.
+    func setCategorySymbol(_ id: Int64, symbol: String) { editCategory(id) { $0.sfSymbol = symbol } }
+    func setCategoryColor(_ id: Int64, hex: String) { editCategory(id) { $0.colorHex = hex } }
+
+    /// Where a category can move: every category except itself and its own
+    /// sub-categories.
+    func categoryMoveTargets(for id: Int64) -> [GiroCrabCore.Category] {
+        let byID = Dictionary(categories.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        func isOwnOrBelow(_ c: GiroCrabCore.Category) -> Bool {
+            var cur: Int64? = c.id
+            var steps = 0
+            while let i = cur, steps < 64 {
+                if i == id { return true }
+                cur = byID[i]?.parentId
+                steps += 1
+            }
+            return false
+        }
+        return categories.filter { !isOwnOrBelow($0) }
     }
 
     /// "Hauptkategorie › Unterkategorie" for a category id (nil = top level).

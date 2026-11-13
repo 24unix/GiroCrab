@@ -149,18 +149,6 @@ struct SidebarView: View {
             }
         }
         .sheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
-        .sheet(item: $model.symbolSheet) { target in SymbolSheet(target: target).environment(model) }
-        .task { // screenshots: --demo-sheet group-symbol / account-symbol
-            switch model.options.demoSheet {
-            case "group-symbol":
-                try? await Task.sleep(nanoseconds: 800_000_000)
-                if let g = model.namedUserGroups.first { model.symbolSheet = .group(g.uuid) }
-            case "account-symbol":
-                try? await Task.sleep(nanoseconds: 800_000_000)
-                if let a = model.allAccounts.first { model.symbolSheet = .account(a.id) }
-            default: break
-            }
-        }
     }
 
     /// "Nach Kontoart": the fixed kind sections.
@@ -336,25 +324,46 @@ struct SidebarView: View {
                 } label: {
                     CategoryRow(category: node.category)
                         .contextMenu { categoryMenu(node.category) }
+                        .modifier(CategoryIconColorPopover(id: node.id))
                 }
                 .tag(SidebarItem.category(node.id))
             } else {
                 CategoryRow(category: node.category)
                     .tag(SidebarItem.category(node.id))
                     .contextMenu { categoryMenu(node.category) }
+                    .modifier(CategoryIconColorPopover(id: node.id))
             }
         })
     }
 
     @ViewBuilder
     private func categoryMenu(_ category: GiroCrabCore.Category) -> some View {
-        Button("Bearbeiten …", systemImage: "pencil") { model.newCategoryRequest = NewCategoryRequest(parent: category.parentId, editing: category.id) }
+        // same order as the menus of accounts and groups (#183): rename, look,
+        // place – then what only categories have – then delete
+        Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .renameCategory(category) }
+        Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .category(category.id) }
+        Menu("Verschieben nach", systemImage: "arrow.turn.down.right") {
+            Toggle(isOn: Binding(
+                get: { category.parentId == nil },
+                set: { _ in model.moveCategory(category.id, to: nil) }
+            )) {
+                Label("Oberste Ebene", systemImage: "arrow.up.to.line")
+            }
+            Divider()
+            ForEach(model.categoryMoveTargets(for: category.id)) { c in
+                Toggle(isOn: Binding(
+                    get: { category.parentId == c.id },
+                    set: { _ in model.moveCategory(category.id, to: c.id) }
+                )) {
+                    Label(String(repeating: "\u{2003}", count: Int(c.depth)) + c.name, systemImage: c.sfSymbol)
+                }
+            }
+        }
         Divider()
         Button("Neue Unterkategorie …", systemImage: "plus") { model.newCategoryRequest = NewCategoryRequest(parent: category.id) }
-        Button("Neue Hauptkategorie …", systemImage: "plus.square") { model.newCategoryRequest = NewCategoryRequest(parent: nil) }
         Button("Monatsbudget festlegen …", systemImage: "gauge.with.dots.needle.67percent") { budgetCategory = IDBox(id: category.id) }
         Divider()
-        Button("„\(category.name)“ löschen …", systemImage: "trash", role: .destructive) { dialog = .deleteCategory(category) }
+        Button("Kategorie löschen …", systemImage: "trash", role: .destructive) { dialog = .deleteCategory(category) }
     }
 }
 
@@ -371,27 +380,30 @@ struct SectionHeader: View {
         HStack(spacing: 5) {
             Button(action: toggle) {
                 Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.bold))
+                    .font(.caption.weight(.bold))
                     .rotationEffect(.degrees(open ? 90 : 0))
-                    .frame(width: 12, height: 14)
+                    .frame(width: 12, height: 18)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .accessibilityLabel(open ? "„\(group.name)“ einklappen" : "„\(group.name)“ ausklappen")
             .accessibilityValue(open ? "Ausgeklappt" : "Eingeklappt")
-            // same size as the account rows below and the "Gruppen" headers (#171)
+            // styled like the "Gruppen" headers (UserGroupHeader), so both
+            // views read the same and no header is smaller than its accounts (#171)
             Image(systemName: group.sfSymbol)
+                .font(.body.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 24)
+                .frame(width: 20)
                 .accessibilityHidden(true)
             Text(group.name)
             Spacer()
             Text(Money.format(group.balanceCents))
+                .font(.callout.weight(.semibold)) // same size as the account balances
                 .monospacedDigit()
                 .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(group.balanceCents < 0 && isLoanGroup ? Theme.loan : (group.balanceCents < 0 ? Theme.negative : Theme.secondary)))
         }
-        .font(.body.weight(.semibold))
+        .font(.body.weight(.semibold)) // as big as the account names
         .foregroundStyle(.secondary)
     }
 }
@@ -552,9 +564,10 @@ private struct GroupHeaderDrop: ViewModifier {
         @Binding var target: String?
         let perform: (_ items: [String], _ before: Bool) -> Void
 
-        /// Upper third: before the group ("Ohne Gruppe" only takes "into").
+        /// Upper part (the gap above the header plus its top edge): before
+        /// the group. "Ohne Gruppe" only takes "into".
         private func isBefore(_ info: DropInfo) -> Bool {
-            !group.isUngrouped && info.location.y < height / 3
+            !group.isUngrouped && info.location.y < height * 0.4
         }
 
         func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.plainText]) }
@@ -569,7 +582,9 @@ private struct GroupHeaderDrop: ViewModifier {
         }
 
         func performDrop(info: DropInfo) -> Bool {
-            let before = isBefore(info)
+            // what the user saw last (line or outline) decides, not a
+            // recomputed position – they can differ at the moment of the drop
+            let before = target == "b:" + group.uuid || (target == nil && isBefore(info))
             target = nil
             let providers = info.itemProviders(for: [.plainText])
             guard !providers.isEmpty else { return false }
@@ -608,6 +623,19 @@ private enum SidebarDialog {
         case .deleteAccount: Text("Archiviertes Konto endgültig löschen?")
         case .removeConnection: Text("Bankzugang entfernen?")
         case .deleteCategory: Text("Kategorie löschen?")
+        }
+    }
+}
+
+/// The "Symbol & Farbe" popover of a category row, anchored to the row like
+/// those of accounts and groups.
+private struct CategoryIconColorPopover: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let id: Int64
+
+    func body(content: Content) -> some View {
+        content.popover(isPresented: model.iconColorBinding(.category(id)), arrowEdge: .trailing) {
+            IconColorPopover(target: .category(id)).environment(model)
         }
     }
 }

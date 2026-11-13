@@ -206,6 +206,20 @@ enum DateText {
 }
 
 extension Color {
+    /// `#RRGGBB` in sRGB (nil if the colour can't be converted) – the
+    /// inverse of `init(hex:)`, for the system colour well.
+    var hexRGB: String? {
+        #if os(macOS)
+        guard let c = NSColor(self).usingColorSpace(.sRGB) else { return nil }
+        let (r, g, b) = (c.redComponent, c.greenComponent, c.blueComponent)
+        #else
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a) else { return nil }
+        #endif
+        func byte(_ v: CGFloat) -> Int { Int((min(max(v, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", byte(r), byte(g), byte(b))
+    }
+
     init(hex: String) {
         var s = hex.trimmingCharacters(in: .whitespaces)
         if s.hasPrefix("#") { s.removeFirst() }

@@ -157,8 +157,8 @@ enum AccountColorNames {
     ]
 }
 
-/// "Symbol & Farbe …" of an account or group: colour palette and symbol
-/// grid in one popover, like MoneyMoney. A click applies immediately.
+/// "Symbol & Farbe …" of an account, group or category: colour palette and
+/// symbol grid in one popover, like MoneyMoney. A click applies immediately.
 struct IconColorPopover: View {
     @Environment(AppModel.self) private var model
     let target: IconColorTarget
@@ -174,23 +174,39 @@ struct IconColorPopover: View {
         if case .group(let uuid) = target { return model.userGroups.first { $0.uuid == uuid } }
         return nil
     }
-    private var colorHex: String { (account?.colorHex ?? group?.colorHex ?? "").uppercased() }
-    private var symbol: String { account?.sfSymbol ?? group?.sfSymbol ?? "" }
+    private var category: GiroCrabCore.Category? {
+        if case .category(let id) = target { return model.categories.first { $0.id == id } }
+        return nil
+    }
+    private var colorHex: String { (account?.colorHex ?? group?.colorHex ?? category?.colorHex ?? "").uppercased() }
+    private var symbol: String { account?.sfSymbol ?? group?.sfSymbol ?? category?.sfSymbol ?? "" }
+    /// The palette, plus the current colour first if it is not in it (e.g.
+    /// from an import), so the current choice is always marked.
+    private var swatches: [String] {
+        colorHex.isEmpty || Self.palette.contains(colorHex) ? Self.palette : [colorHex] + Self.palette
+    }
+    /// The chosen colour, else the accent (also marks the current symbol).
+    private var tint: Color {
+        if let account { return model.accountColor(account.id) }
+        return colorHex.isEmpty ? Theme.accent : Color.readable(hex: colorHex)
+    }
 
     private func setColor(_ hex: String?) {
         if let account { model.setAccountColor(account.id, hex: hex) }
         if let group { model.setUserGroupColor(group, hex: hex) }
+        if let category, let hex { model.setCategoryColor(category.id, hex: hex) }
     }
     private func setSymbol(_ s: String) {
         if let account { model.setAccountSymbol(account.id, symbol: s) }
         if let group { model.updateUserGroup(group, symbol: s) }
+        if let category { model.setCategorySymbol(category.id, symbol: s) }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Farbe").font(.headline)
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(26), spacing: 6), count: 7), spacing: 6) {
-                ForEach(Self.palette, id: \.self) { hex in
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(26), spacing: 6), count: 7), alignment: .leading, spacing: 6) {
+                ForEach(swatches, id: \.self) { hex in
                     Button { setColor(hex) } label: {
                         Circle().fill(Color.readable(hex: hex))
                             .frame(width: 20, height: 20)
@@ -200,46 +216,50 @@ struct IconColorPopover: View {
                     .focusEffectDisabled() // no focus ring on the first swatch
                     .help(Self.names[hex].map { Text($0) } ?? Text(verbatim: hex))
                 }
-                Button { setColor(nil) } label: {
-                    Image(systemName: "arrow.uturn.backward.circle")
-                        .font(.title3)
-                        .frame(width: 20, height: 20)
+                // a category always has a colour: no "none" for it
+                if category == nil {
+                    Button { setColor(nil) } label: {
+                        Image(systemName: "arrow.uturn.backward.circle")
+                            .font(.title3)
+                            .frame(width: 20, height: 20)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .focusEffectDisabled()
+                    .help(account != nil ? Text("Standardfarbe") : Text("Keine Farbe"))
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .focusEffectDisabled()
-                .help(account != nil ? Text("Standardfarbe") : Text("Keine Farbe"))
+                // any other colour: the system colour well (like the category sheet)
+                ColorPicker("Eigene Farbe", selection: Binding(
+                    get: { colorHex.isEmpty ? Theme.accent : Color(hex: colorHex) },
+                    set: { if let hex = $0.hexRGB { setColor(hex) } }
+                ), supportsOpacity: false)
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(width: 26, height: 20)
+                .help("Eigene Farbe")
             }
+            .frame(maxWidth: .infinity, alignment: .leading) // under its heading, not centred
             Divider()
-            Text("Symbol").font(.headline)
-            // the searchable picker (#167) in its own sheet
-            Button {
-                let t = target
-                model.iconColorTarget = nil
-                switch t {
-                case .account(let id): model.symbolSheet = .account(id)
-                case .group(let uuid): model.symbolSheet = .group(uuid)
+            HStack {
+                Text("Symbol").font(.headline)
+                Spacer()
+                // an account's symbol can go back to the one of its kind
+                if let account {
+                    Button { model.resetAccountSymbol(account.id) } label: {
+                        Label("Standardsymbol", systemImage: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help("Symbol der Kontoart verwenden")
                 }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: SymbolCatalog.exists(symbol) ? symbol : "questionmark")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(width: 22)
-                    (SymbolCatalog.name(of: symbol).map { Text($0) } ?? Text("Symbol wählen"))
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.accent.opacity(0.12)))
             }
-            .buttonStyle(.plain)
-            .focusEffectDisabled()
+            // the shared, searchable picker (#167) instead of a fixed list;
+            // a click applies the symbol and the popover stays open
+            SymbolPicker(selection: Binding(get: { symbol }, set: setSymbol), tint: tint)
+                .padding(.horizontal, -14) // full popover width for the grid
         }
         .padding(14)
-        .frame(width: 340)
+        .frame(width: SymbolPicker.size.width)
     }
 }
 
@@ -351,7 +371,7 @@ struct AccountGroupDialogs: ViewModifier {
                     }
                 case .merge(let from, let into):
                     Button("Zusammenführen") { model.mergeUserGroups(from, into: into) }
-                case .create, .rename, .renameAccount:
+                case .create, .rename, .renameAccount, .renameCategory:
                     EmptyView()
                 }
                 Button("Abbrechen", role: .cancel) {}
@@ -375,6 +395,7 @@ struct AccountGroupDialogs: ViewModifier {
             // after the alert has closed
             if let next = model.renameUserGroup(g, to: name) { DispatchQueue.main.async { dialog = next } }
         case .renameAccount(let a): model.renameAccount(a.id, to: name)
+        case .renameCategory(let c): model.renameCategory(c.id, to: name)
         case .delete, .moveAccount, .merge: break
         }
     }
@@ -564,6 +585,7 @@ struct GroupDetailEditor: View {
     /// default: pop back (iOS navigation).
     var onGone: (() -> Void)?
     @State private var name = ""
+    @State private var iconColorOpen = false
 
     private var group: UserGroup? { model.userGroups.first { $0.uuid == uuid } }
 
@@ -575,11 +597,21 @@ struct GroupDetailEditor: View {
                         .onSubmit { commitName() }
                 }
                 Section {
-                    // shared picker for groups, accounts and categories (#167)
-                    SymbolPickerButton(selection: Binding(
-                        get: { g.sfSymbol },
-                        set: { model.updateUserGroup(g, symbol: $0) }
-                    ))
+                    // the same "Symbol & Farbe" popover as the sidebar's group menu
+                    LabeledContent("Symbol & Farbe") {
+                        Button { iconColorOpen = true } label: {
+                            Image(systemName: g.sfSymbol)
+                                .foregroundStyle(g.colorHex.isEmpty ? Theme.accent : Color.readable(hex: g.colorHex))
+                                .frame(width: 24, height: 22)
+                                .background(RoundedRectangle(cornerRadius: 6).fill(Theme.accent.opacity(0.12)))
+                                .contentShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text("Symbol & Farbe …"))
+                        .popover(isPresented: $iconColorOpen, arrowEdge: .trailing) {
+                            IconColorPopover(target: .group(g.uuid)).environment(model)
+                        }
+                    }
                 }
                 Section {
                     Picker("Übergeordnete Gruppe", selection: Binding(

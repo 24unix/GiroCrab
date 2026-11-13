@@ -21,6 +21,11 @@ final class IconColorTests: XCTestCase {
         for a in model.allAccounts {
             XCTAssertTrue(offered.contains(a.sfSymbol), "\(a.name): \(a.sfSymbol) missing")
         }
+        // every kind's own symbol, not only those of the demo accounts
+        for s in ["building.columns", "banknote", "creditcard", "envelope.circle",
+                  "chart.line.uptrend.xyaxis", "eurosign.circle", "house"] {
+            XCTAssertTrue(offered.contains(s), "\(s) missing")
+        }
         XCTAssertEqual(offered.count, all.count, "no duplicates")
     }
 

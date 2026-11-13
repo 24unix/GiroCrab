@@ -35,9 +35,9 @@ enum SymbolCatalog {
 
     private static let raw: [Section] = [
         Section(title: "Finanzen", items: [
-            i("banknote", "Geld"), i("creditcard", "Karte"), i("eurosign.circle", "Euro"),
-            i("dollarsign.circle", "Dollar"), i("building.columns", "Bank"), i("wallet.bifold", "Geldbörse"),
-            i("chart.pie", "Vermögen"), i("chart.line.uptrend.xyaxis", "Rendite"), i("percent", "Zinsen"),
+            i("banknote", "Geld"), i("creditcard", "Kreditkarte"), i("eurosign.circle", "Bargeld"),
+            i("dollarsign.circle", "Dollar"), i("building.columns", "Bank"), i("envelope.circle", "Bezahldienst"), i("wallet.bifold", "Geldbörse"),
+            i("chart.pie", "Vermögen"), i("chart.line.uptrend.xyaxis", "Depot"), i("percent", "Zinsen"),
             i("bitcoinsign.circle", "Krypto"), i("giftcard", "Gutschein"), i("arrow.left.arrow.right", "Umbuchung"),
             i("lock.shield", "Sicherheit"), i("doc.text", "Vertrag"), i("building.2", "Firma"),
         ]),
@@ -135,13 +135,6 @@ enum SymbolCatalog {
     }
 }
 
-/// What a "Symbol …" sheet edits.
-enum SymbolSheetTarget: Identifiable, Hashable {
-    case account(Int64)
-    case group(String)
-    var id: Self { self }
-}
-
 /// The symbol grid with a search field. Picks on click and calls `onPick`
 /// (closes the popover or sheet). Always the same size, so it looks the same
 /// wherever it is shown.
@@ -154,7 +147,7 @@ struct SymbolPicker: View {
     static let size = CGSize(width: 360, height: 420)
 
     var body: some View {
-        let sections = SymbolCatalog.search(query)
+        let sections = withCurrent(SymbolCatalog.search(query))
         VStack(spacing: 0) {
             SymbolSearchField(text: $query)
                 .padding(10)
@@ -196,6 +189,16 @@ struct SymbolPicker: View {
             }
         }
         .frame(width: Self.size.width, height: Self.size.height)
+    }
+
+    /// The current symbol on top when it is not in the catalogue (e.g. from
+    /// an import or a typed-in name), so the current choice is always marked.
+    private func withCurrent(_ sections: [SymbolCatalog.Section]) -> [SymbolCatalog.Section] {
+        guard query.isEmpty, SymbolCatalog.exists(selection),
+              !sections.contains(where: { $0.items.contains { $0.symbol == selection } })
+        else { return sections }
+        let item = SymbolCatalog.Item(symbol: selection, name: LocalizedStringResource(stringLiteral: selection))
+        return [SymbolCatalog.Section(title: "Aktuell", items: [item])] + sections
     }
 
     private func cell(_ item: SymbolCatalog.Item) -> some View {
@@ -277,69 +280,8 @@ private struct NativeSearchField: NSViewRepresentable {
 }
 #endif
 
-/// "Symbol …" from a context menu (account or group): the picker in a sheet,
-/// since a menu command has no control to anchor a popover to. Picking a
-/// symbol applies it and closes the sheet.
-struct SymbolSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    let target: SymbolSheetTarget
-
-    private struct Resolved {
-        let name: String
-        let symbol: String
-        let tint: Color
-        let set: (String) -> Void
-        /// nil = no default to go back to
-        let reset: (() -> Void)?
-    }
-
-    private var resolved: Resolved? {
-        switch target {
-        case .account(let id):
-            guard let a = model.allAccounts.first(where: { $0.id == id }) else { return nil }
-            return Resolved(
-                name: a.name, symbol: a.sfSymbol, tint: model.accountColor(id),
-                set: { model.setAccountSymbol(id, symbol: $0) },
-                // back to the symbol of the account kind (#169)
-                reset: { model.resetAccountSymbol(id) }
-            )
-        case .group(let uuid):
-            guard let g = model.userGroups.first(where: { $0.uuid == uuid }) else { return nil }
-            return Resolved(
-                name: g.name, symbol: g.sfSymbol, tint: Theme.accent,
-                set: { model.updateUserGroup(g, symbol: $0) }, reset: nil
-            )
-        }
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            if let r = resolved {
-                Text("Symbol für „\(r.name)“")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding([.horizontal, .top], 16)
-                    .padding(.bottom, 6)
-                SymbolPicker(selection: Binding(get: { r.symbol }, set: r.set), tint: r.tint) { dismiss() }
-                Divider()
-                HStack {
-                    if let reset = r.reset {
-                        Button("Standardsymbol") { reset(); dismiss() }
-                    }
-                    Spacer()
-                    Button("Abbrechen", role: .cancel) { dismiss() }
-                        .keyboardShortcut(.cancelAction)
-                }
-                .padding(16)
-            }
-        }
-        .onDisappear { model.symbolSheet = nil }
-    }
-}
-
 /// A form row "Symbol [icon]" that opens the picker in a popover anchored to
-/// the button – the same picker as the "Symbol …" sheet.
+/// the button (e.g. the category sheet).
 struct SymbolPickerButton: View {
     @Binding var selection: String
     var tint: Color = Theme.accent

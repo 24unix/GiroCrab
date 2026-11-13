@@ -40,6 +40,8 @@ enum GroupDialog {
     case rename(UserGroup)
     /// "Umbenennen …" of an account (same alert as for groups).
     case renameAccount(Account)
+    /// "Umbenennen …" of a category (same alert as for groups and accounts).
+    case renameCategory(GiroCrabCore.Category)
     case delete(UserGroup)
     /// iOS swipe "Gruppe …".
     case moveAccount(Account)
@@ -49,7 +51,7 @@ enum GroupDialog {
     /// Text-input alert vs. confirmation dialog.
     var needsText: Bool {
         switch self {
-        case .create, .rename, .renameAccount: true
+        case .create, .rename, .renameAccount, .renameCategory: true
         case .delete, .moveAccount, .merge: false
         }
     }
@@ -60,6 +62,7 @@ enum GroupDialog {
         case .create: Text("Neue Gruppe")
         case .rename: Text("Gruppe umbenennen")
         case .renameAccount: Text("Konto umbenennen")
+        case .renameCategory: Text("Kategorie umbenennen")
         case .delete(let g): Text("Gruppe „\(g.name)“ löschen?")
         case .moveAccount(let a): Text("„\(a.name)“ verschieben nach")
         case .merge(_, let into): Text("Mit „\(into.name)“ zusammenführen?")
@@ -68,7 +71,7 @@ enum GroupDialog {
 
     var isRename: Bool {
         switch self {
-        case .rename, .renameAccount: true
+        case .rename, .renameAccount, .renameCategory: true
         default: false
         }
     }
@@ -78,6 +81,7 @@ enum GroupDialog {
         switch self {
         case .rename(let g): g.name
         case .renameAccount(let a): a.name
+        case .renameCategory(let c): c.name
         default: ""
         }
     }
@@ -87,6 +91,7 @@ enum GroupDialog {
 enum IconColorTarget: Equatable {
     case account(Int64)
     case group(String)
+    case category(Int64)
 }
 
 extension AppModel {

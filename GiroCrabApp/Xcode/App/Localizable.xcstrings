@@ -16932,6 +16932,61 @@
           }
         }
       }
+    },
+    "Symbol & Farbe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Icon & Colour"
+          }
+        }
+      }
+    },
+    "Aktuell" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current"
+          }
+        }
+      }
+    },
+    "Kategorie umbenennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename Category"
+          }
+        }
+      }
+    },
+    "Kategorie löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Category…"
+          }
+        }
+      }
+    },
+    "Symbol der Kontoart verwenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use the account type’s icon"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
