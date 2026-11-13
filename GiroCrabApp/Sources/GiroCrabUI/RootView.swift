@@ -6,6 +6,9 @@ import GiroCrabCore
 /// multiplatform target.
 public struct GiroCrabScenes: Scene {
     @State private var model: AppModel
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
 
     public init(options: LaunchOptions = .current) {
         _model = State(initialValue: Self.prepare(options: options))
@@ -143,12 +146,19 @@ public struct GiroCrabScenes: Scene {
                     .keyboardShortcut("l", modifiers: [.command, .control])
                     .disabled(!model.hasOwnVault)
             }
-            // Bearbeiten › Suchen …: focuses the toolbar search field.
-            CommandGroup(after: .pasteboard) {
-                Divider()
-                Button("Suchen …") { ToolbarSearch.focus() }
-                    .keyboardShortcut("f", modifiers: .command)
-                    .disabled(model.vault == nil)
+            // `Group`: a CommandsBuilder takes at most 10 children (older Xcode in CI).
+            Group {
+                // Hilfe › Mitteilungen …: ellipsis because a window opens.
+                CommandGroup(after: .help) {
+                    Button("Mitteilungen …") { openWindow(id: "announcements") }
+                }
+                // Bearbeiten › Suchen …: focuses the toolbar search field.
+                CommandGroup(after: .pasteboard) {
+                    Divider()
+                    Button("Suchen …") { ToolbarSearch.focus() }
+                        .keyboardShortcut("f", modifiers: .command)
+                        .disabled(model.vault == nil)
+                }
             }
             SidebarCommands()
             ToolbarCommands()
@@ -175,6 +185,10 @@ public struct GiroCrabScenes: Scene {
         #endif
 
         #if os(macOS)
+        Window("Mitteilungen", id: "announcements") {
+            AnnouncementsListView()
+        }
+        .defaultSize(width: 460, height: 360)
         Settings {
             // HIG: the Settings window fits each tab (SettingsView sizes them).
             SettingsView()

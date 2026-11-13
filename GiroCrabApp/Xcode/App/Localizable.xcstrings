@@ -15161,6 +15161,105 @@
           }
         }
       }
+    },
+    "Mitteilung ausblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dismiss announcement"
+          }
+        }
+      }
+    },
+    "Mehr im Web" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More on the Web"
+          }
+        }
+      }
+    },
+    "Keine Mitteilungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Announcements"
+          }
+        }
+      }
+    },
+    "Es gibt derzeit nichts Neues vom GiroCrab-Projekt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "There is nothing new from the GiroCrab project right now."
+          }
+        }
+      }
+    },
+    "Mitteilungen sind in den Einstellungen ausgeschaltet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Announcements are turned off in Settings."
+          }
+        }
+      }
+    },
+    "Mitteilungen des GiroCrab-Projekts anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show announcements from the GiroCrab project"
+          }
+        }
+      }
+    },
+    "Mitteilungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Announcements"
+          }
+        }
+      }
+    },
+    "Mitteilungen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Announcements …"
+          }
+        }
+      }
+    },
+    "Gelegentliche Neuigkeiten, unabhängig von Updates. GiroCrab lädt dazu eine signierte Textdatei von GitHub, ohne Kennung und ohne Tracking. Mitteilungen erscheinen nie als Fenster und lassen sich jederzeit ausblenden. Sicherheitswarnungen sind davon unabhängig." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Occasional news, independent of updates. For this, GiroCrab downloads a signed text file from GitHub – without an identifier and without tracking. Announcements never appear as a pop-up window and can be dismissed at any time. Security warnings are independent of this."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

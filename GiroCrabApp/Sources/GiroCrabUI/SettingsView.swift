@@ -13,7 +13,7 @@ struct SettingsView: View {
         @Bindable var model = model
         TabView(selection: $model.settingsTab) {
             GeneralSettings()
-                .settingsPane(height: 340)   // "Sprache" + "Buchungen" + "Demo"
+                .settingsPane(height: 380)   // "Sprache" + "Mitteilungen" + "Buchungen" + "Demo"
                 .tabItem { Label("Allgemein", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
             BankConnectionsSettings()
@@ -74,6 +74,7 @@ struct GeneralSettings: View {
         @Bindable var model = model
         Form {
             LanguageSettingsSection()
+            AnnouncementsSettingsSection()
             Section("Buchungen") {
                 Picker("Als geprüft markieren", selection: $model.autoReviewDelay) {
                     ForEach(AutoReviewDelay.allCases) { Text($0.title).tag($0) }
@@ -668,5 +669,19 @@ private extension View {
         #else
         self
         #endif
+    }
+}
+
+
+/// Einstellungen › Mitteilungen: one switch, on by default (quiet banner only).
+struct AnnouncementsSettingsSection: View {
+    @State private var center = AnnouncementCenter.shared
+
+    var body: some View {
+        Section("Mitteilungen") {
+            Toggle("Mitteilungen des GiroCrab-Projekts anzeigen", isOn: $center.isEnabled)
+            Text("Gelegentliche Neuigkeiten, unabhängig von Updates. GiroCrab lädt dazu eine signierte Textdatei von GitHub, ohne Kennung und ohne Tracking. Mitteilungen erscheinen nie als Fenster und lassen sich jederzeit ausblenden. Sicherheitswarnungen sind davon unabhängig.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
     }
 }

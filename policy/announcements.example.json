@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "sequence": 0,
+  "announcements": [
+    {
+      "id": "example-bank-cutover",
+      "severity": "important",
+      "until": "2027-03-31",
+      "title": {
+        "de": "Beispielbank stellt FinTS ein",
+        "en": "Example Bank is retiring FinTS"
+      },
+      "summary": {
+        "de": "Ab 1. April ist der Abruf per FinTS nicht mehr möglich. Bitte das Konto über Enable Banking neu verbinden.",
+        "en": "From 1 April, FinTS access will stop working. Please reconnect the account via Enable Banking."
+      },
+      "body": {
+        "de": "Die Beispielbank schaltet ihren FinTS-Zugang zum **1. April** ab.\n\n1. Einstellungen › Banken › Konto auswählen\n2. Neu über Enable Banking verbinden\n\nBestehende Buchungen bleiben erhalten.",
+        "en": "Example Bank is switching off its FinTS access on **1 April**.\n\n1. Settings › Banks › choose the account\n2. Reconnect via Enable Banking\n\nExisting transactions are kept."
+      },
+      "link": "https://github.com/GiroCrab/GiroCrab/discussions"
+    },
+    {
+      "id": "example-known-bug-0.6.1",
+      "severity": "info",
+      "until": "2026-12-31",
+      "minVersion": "0.6.1",
+      "maxVersion": "0.6.1",
+      "title": {
+        "de": "Bekannter Fehler in 0.6.1",
+        "en": "Known issue in 0.6.1"
+      },
+      "summary": {
+        "de": "Beispiel: Ein Abruf kann Vormerkungen doppelt zeigen. Die Behebung kommt mit dem nächsten Update.",
+        "en": "Example: a sync can show pending items twice. A fix is coming with the next update."
+      },
+      "link": "https://github.com/GiroCrab/GiroCrab/issues"
+    },
+    {
+      "id": "example-survey-next-bank",
+      "severity": "info",
+      "until": "2027-01-15",
+      "distribution": ["developer-id"],
+      "title": {
+        "de": "Welche Bank soll als Nächstes folgen?",
+        "en": "Which bank should come next?"
+      },
+      "summary": {
+        "de": "Beispiel: Zwei Minuten, anonym, ohne Anmeldung.",
+        "en": "Example: two minutes, anonymous, no sign-in."
+      },
+      "link": "https://github.com/GiroCrab/GiroCrab/discussions"
+    }
+  ]
+}

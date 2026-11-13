@@ -30,6 +30,7 @@ struct BookingStreamView: View {
             VStack(spacing: 0) {
                 // Security lock: first, above everything else (stays visible).
                 BankingPolicyBanner()
+                AnnouncementBanner()
                 #if !os(iOS)
                 header(isOverview: isOverview, emptyVault: emptyVault, scope: $model.scope)
                 #endif
