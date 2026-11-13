@@ -350,7 +350,7 @@ struct MainSplitView: View {
         NavigationSplitView(columnVisibility: $columns) {
             SidebarView()
                 .frame(minHeight: 0, maxHeight: .infinity)
-                .macColumnWidth(min: 240, ideal: 260, max: 320)
+                .macColumnWidth(min: 240, ideal: 260, max: 480)
         } content: {
             Group {
                 if model.sidebarSelection == .documents {
