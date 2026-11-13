@@ -17394,6 +17394,28 @@
           }
         }
       }
+    },
+    "Alle Konten sind in Gruppen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All accounts are in groups."
+          }
+        }
+      }
+    },
+    "Konten ohne Gruppe stehen in der Seitenleiste unter „Ohne Gruppe“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accounts without a group appear in the sidebar under “Ungrouped”."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

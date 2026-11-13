@@ -447,7 +447,7 @@ struct AccountGroupsSettings: View {
                 // select a group just created here; leave a deleted one
                 if let added = new.first(where: { !old.contains($0) }) {
                     selection = added
-                } else if let s = selection, !new.contains(s) {
+                } else if let s = selection, !s.isEmpty, !new.contains(s) {
                     selection = new.first
                 }
             }
@@ -470,6 +470,10 @@ struct AccountGroupsSettings: View {
                             GroupListRow(group: g).tag(g.uuid)
                         }
                         .onMove { model.moveUserGroups(from: $0, to: $1) }
+                        // fixed at the end, like in the sidebar: where "−" puts accounts
+                        if model.hasUserGroups {
+                            GroupListRow(group: model.ungroupedForSettings).tag("")
+                        }
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
@@ -503,7 +507,9 @@ struct AccountGroupsSettings: View {
             }
             .frame(width: 240)
             Group {
-                if let uuid = selectedGroup?.uuid {
+                if selection == "" {
+                    UngroupedDetail()
+                } else if let uuid = selectedGroup?.uuid {
                     GroupDetailEditor(uuid: uuid, ask: { dialog = $0 }, onGone: { selection = nil })
                         .id(uuid)
                 } else {
@@ -527,6 +533,9 @@ struct AccountGroupsSettings: View {
                 }
                 .onMove { model.moveUserGroups(from: $0, to: $1) }
                 .onDelete { idx in dialog = idx.first.map { .delete(model.namedUserGroups[$0]) } }
+                if model.hasUserGroups {
+                    NavigationLink(value: "") { GroupListRow(group: model.ungroupedForSettings) }
+                }
             } footer: {
                 Text(footer)
             }
@@ -534,7 +543,13 @@ struct AccountGroupsSettings: View {
                 Button("Neue Gruppe …", systemImage: "folder.badge.plus") { dialog = .create() }
             }
         }
-        .navigationDestination(for: String.self) { uuid in GroupDetailEditor(uuid: uuid, ask: { dialog = $0 }) }
+        .navigationDestination(for: String.self) { uuid in
+            if uuid.isEmpty {
+                UngroupedDetail()
+            } else {
+                GroupDetailEditor(uuid: uuid, ask: { dialog = $0 })
+            }
+        }
         .toolbar { ToolbarItem(placement: .topBarTrailing) { EditButton() } }
     }
     #endif
@@ -666,7 +681,7 @@ private struct GroupAccountsList: View {
             .scrollContentBackground(.hidden)
             .overlay {
                 if group.accounts.isEmpty {
-                    Text("Noch keine Konten – mit + hinzufügen")
+                    Text(group.isUngrouped ? "Alle Konten sind in Gruppen." : "Noch keine Konten – mit + hinzufügen")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -689,7 +704,8 @@ private struct GroupAccountsList: View {
                 Button { if let a = selectedAccount { model.moveAccount(a.id, to: nil) } } label: {
                     Image(systemName: "minus").frame(width: 26, height: 22).contentShape(Rectangle())
                 }
-                .disabled(selectedAccount == nil)
+                // accounts in "Ohne Gruppe" are already out of every group
+                .disabled(selectedAccount == nil || group.isUngrouped)
                 .help("Aus Gruppe entfernen")
                 .accessibilityLabel("Aus Gruppe entfernen")
                 Spacer()
@@ -708,8 +724,10 @@ private struct GroupAccountsList: View {
             row(a)
                 // not the system "Löschen": the account only leaves the group
                 .swipeActions {
-                    Button("Aus Gruppe entfernen", systemImage: "minus.circle") { model.moveAccount(a.id, to: nil) }
-                        .tint(.orange)
+                    if !group.isUngrouped {
+                        Button("Aus Gruppe entfernen", systemImage: "minus.circle") { model.moveAccount(a.id, to: nil) }
+                            .tint(.orange)
+                    }
                 }
         }
         .onMove { model.moveAccounts(in: group.uuid, from: $0, to: $1) }
@@ -721,6 +739,29 @@ private struct GroupAccountsList: View {
         .disabled(nothingToAdd)
     }
     #endif
+}
+
+/// "Ohne Gruppe" in the settings (#229): only its accounts – it has no
+/// name, symbol, parent or total switch of its own. "+" takes an account
+/// out of its group.
+private struct UngroupedDetail: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Form {
+            Section {
+                GroupAccountsList(group: model.ungroupedForSettings)
+            } header: {
+                Text("Konten")
+            } footer: {
+                Text("Konten ohne Gruppe stehen in der Seitenleiste unter „Ohne Gruppe“.")
+            }
+        }
+        .formStyle(.grouped)
+        #if os(iOS)
+        .navigationTitle(Text("Ohne Gruppe"))
+        #endif
+    }
 }
 
 /// One group: name, symbol, total switch and which accounts belong to it.

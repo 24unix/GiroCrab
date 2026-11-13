@@ -265,6 +265,23 @@ final class AccountGroupsTests: XCTestCase {
         XCTAssertEqual(accountDetail(a), String(localized: "Archiviert · \("DE12 5001 0517 0648 4898 90")"))
     }
 
+    func testUngroupedForSettingsExistsEvenWhenEmpty() throws {
+        let a = try XCTUnwrap(model.allAccounts.first)
+        model.moveAccount(a.id, to: nil)
+        XCTAssertTrue(model.ungroupedForSettings.isUngrouped)
+        XCTAssertTrue(model.ungroupedForSettings.accounts.contains { $0.id == a.id })
+        // every account in a group: "Ohne Gruppe" stays listable, just empty
+        let g = try XCTUnwrap(model.createUserGroup(name: "Alle (229)"))
+        for b in model.allAccounts { model.moveAccount(b.id, to: g) }
+        XCTAssertNil(model.userGroups.first { $0.isUngrouped })
+        XCTAssertTrue(model.ungroupedForSettings.isUngrouped)
+        XCTAssertEqual(model.ungroupedForSettings.uuid, "")
+        XCTAssertTrue(model.ungroupedForSettings.accounts.isEmpty)
+        // adding to "Ohne Gruppe" from its settings = taking the account out of its group
+        let section = try XCTUnwrap(model.addableAccounts(for: "").first)
+        XCTAssertEqual(section.id, g)
+    }
+
     func testReorderAccountsInGroup() throws {
         let g = try XCTUnwrap(groups.first { $0.accounts.count >= 2 })
         let reversed = Array(g.accounts.map(\.id).reversed())

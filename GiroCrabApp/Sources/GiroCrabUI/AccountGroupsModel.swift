@@ -300,6 +300,16 @@ extension AppModel {
         }
     }
 
+    /// "Ohne Gruppe" for the settings list (#229): always there, also when
+    /// every account is in a group (the core then leaves it out).
+    var ungroupedForSettings: UserGroup {
+        userGroups.first(where: \.isUngrouped) ?? UserGroup(
+            uuid: "", name: String(localized: "Ohne Gruppe"), sfSymbol: "tray", colorHex: "",
+            sortOrder: .max, includeInTotal: true, inTotal: true, isUngrouped: true,
+            parentUuid: nil, depth: 0, balanceCents: 0, accounts: []
+        )
+    }
+
     /// Accounts that can be added to group `uuid`: those without a group
     /// first, then the members of every other group in sidebar order.
     func addableAccounts(for uuid: String) -> [AddableAccounts] {
