@@ -26,7 +26,6 @@ use crate::vault::Vault;
 
 pub mod amazon_orders;
 pub mod bank_directory;
-mod bic_directory_data;
 pub mod bunq;
 pub mod comdirect;
 pub mod demo;
@@ -34,7 +33,6 @@ pub mod dpop;
 pub mod enable_banking;
 pub mod fints;
 pub mod fints_directory;
-mod fints_directory_data;
 pub mod fints_presets;
 pub mod fnz;
 pub mod moneymoney_db;

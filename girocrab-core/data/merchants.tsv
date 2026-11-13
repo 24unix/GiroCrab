@@ -1,0 +1,317 @@
+# Curated merchant dictionary (stage A of merchant matching, see src/merchants.rs).
+# Embedded with include_str! and parsed once on first use. Edit here; `cargo test -q -p
+# girocrab-core --lib merchants` checks every row.
+#
+# One merchant per line, tab-separated; lines starting with # and blank lines are ignored.
+# Rows are matched top to bottom, the first hit wins.
+# Columns: key, name, needles (|-separated), kind (MerchantKind variant), symbol (SF Symbol),
+#          color, domain, isin, wkn (the last two optional)
+# Needles are matched against the normalised (lower-case, space-padded) text; short brand
+# names carry spaces (" dm ", " tk ") to avoid false hits. Keep those spaces.
+
+# === Priority: checked before everything else (more specific than a generic needle) ===
+aldi-talk	ALDI TALK	aldi talk|alditalk	Telecom	antenna.radiowaves.left.and.right	#00005F	alditalk.de
+tk-maxx	TK Maxx	tk maxx|tkmaxx	OnlineShop	bag	#D71920	tkmaxx.de
+uber-eats	Uber Eats	uber eats|ubereats	Delivery	takeoutbag.and.cup.and.straw	#06C167	ubereats.com
+kleinanzeigen	Kleinanzeigen	kleinanzeigen	OnlineShop	bag	#1D4B00	kleinanzeigen.de
+enbw	EnBW	enbw|mobility+	Utilities	bolt	#000099	enbw.com
+amazon-prime	Amazon Prime	amazon prime|prime video	Streaming	play.tv	#00A8E1	amazon.de
+shell-recharge	Shell Recharge	shell recharge	Fuel	fuelpump	#DD1D21	shell.de
+google-youtube	YouTube	youtube	Streaming	play.tv	#FF0000	youtube.com
+deutsche-post	Deutsche Post / DHL	deutsche post| dhl 	OnlineShop	bag	#FFCC00	dhl.de
+
+# === Main table. Order matters: investments first, then specific merchants,
+# === payment processors last (so "PayPal *Spotify" resolves to Spotify).
+# === ISIN/WKN are public reference data; please double-check before trading.
+
+# --- ETFs, crypto, stocks (savings plans) ---
+etf-core-msci-world	iShares Core MSCI World	core msci world|msci world usd	Etf	chart.line.uptrend.xyaxis	#1A1A1A	ishares.com	IE00B4L5Y983	A0RPWH
+etf-core-msci-em-imi	iShares Core MSCI EM IMI	core msci em imi|msci em imi	Etf	chart.line.uptrend.xyaxis	#1A1A1A	ishares.com	IE00BKM4GZ66	A111X9
+etf-core-stoxx-600	Amundi Core STOXX Europe 600	core stoxx europe 600|stoxx europe 600	Etf	chart.line.uptrend.xyaxis	#0F2B5B	amundi.de	LU0908500753	LYX0Q0
+etf-ftse-india	Franklin FTSE India	ftse india	Etf	chart.line.uptrend.xyaxis	#2A5CAA	franklintempleton.de	IE00BHZRQZ17	A2PB5L
+etf-ai-big-data	Xtrackers AI & Big Data	ai & big data|ai and big data|artificial intelligence & big data	Etf	chart.line.uptrend.xyaxis	#0B7FAB	dws.com	IE00BGV5VN51	A2N6LC
+etf-ftse-all-world	Vanguard FTSE All-World	ftse all-world|ftse all world	Etf	chart.line.uptrend.xyaxis	#96151D	de.vanguard	IE00BK5BQT80	A2PKXG
+etf-core-sp500	iShares Core S&P 500	core s&p 500|s&p 500	Etf	chart.line.uptrend.xyaxis	#1A1A1A	ishares.com	IE00B5BMR087	A0YEDG
+crypto-bitcoin	Bitcoin	bitcoin| btc 	Crypto	bitcoinsign.circle	#F7931A	bitcoin.org
+crypto-ethereum	Ethereum	ethereum	Crypto	diamond	#627EEA	ethereum.org
+stock-bayer	Bayer	bayer |de000bay0017|bay001	Stock	chart.bar	#10384F	bayer.com	DE000BAY0017	BAY001
+
+# --- ETF issuers / brokers ---
+ishares	iShares	ishares	EtfIssuer	chart.line.uptrend.xyaxis	#1A1A1A	ishares.com
+blackrock	BlackRock	blackrock	EtfIssuer	chart.line.uptrend.xyaxis	#000000	blackrock.com
+xtrackers	Xtrackers	xtrackers	EtfIssuer	chart.line.uptrend.xyaxis	#0B7FAB	dws.com
+vanguard	Vanguard	vanguard	EtfIssuer	chart.line.uptrend.xyaxis	#96151D	de.vanguard
+amundi	Amundi	amundi	EtfIssuer	chart.line.uptrend.xyaxis	#0F2B5B	amundi.de
+trade-republic	Trade Republic	trade republic	Broker	chart.line.uptrend.xyaxis.circle	#111111	traderepublic.com
+
+# --- Supermarkets & food ---
+rewe	REWE	rewe	Supermarket	cart	#CC071E	rewe.de
+edeka	EDEKA	edeka	Supermarket	cart	#1A4C9C	edeka.de
+lidl	Lidl	lidl	Supermarket	cart	#0050AA	lidl.de
+aldi-sued	ALDI SÜD	aldi sud|aldi süd|aldi-sued|aldi sued	Supermarket	cart	#00005F	aldi-sued.de
+aldi-nord	ALDI Nord	aldi nord|aldi	Supermarket	cart	#00005F	aldi-nord.de
+kaufland	Kaufland	kaufland	Supermarket	cart	#E10915	kaufland.de
+penny	PENNY	penny	Supermarket	cart	#CD1414	penny.de
+netto	Netto	netto marken|netto	Supermarket	cart	#D7001E	netto-online.de
+metro	METRO	metro	Supermarket	cart	#002D72	metro.de
+tegut	tegut…	tegut	Supermarket	cart	#E2001A	tegut.com
+globus	Globus	globus	Supermarket	cart	#00704A	globus.de
+vinzenz-murr	Vinzenz Murr	vinzenz murr|vinzenzmurr	Butcher	fork.knife	#8B1E2D	vinzenzmurr.de
+too-good-to-go	Too Good To Go	too good to go|toogoodtogo	FoodRescue	leaf	#00615F	toogoodtogo.com
+lieferando	Lieferando	lieferando	Delivery	takeoutbag.and.cup.and.straw	#FF8000	lieferando.de
+wolt	Wolt	wolt	Delivery	takeoutbag.and.cup.and.straw	#009DE0	wolt.com
+dm	dm-drogerie markt	dm-drogerie|dm drogerie|dm fil	Drugstore	cross.vial	#002878	dm.de
+rossmann	Rossmann	rossmann	Drugstore	cross.vial	#C3002D	rossmann.de
+
+# --- Insurers ---
+barmenia	Barmenia	barmenia	Insurance	cross.case	#00468C	barmenia.de
+allianz	Allianz	allianz	Insurance	shield.lefthalf.filled	#003781	allianz.de
+huk	HUK-COBURG	huk-coburg|huk coburg|huk24	Insurance	shield.lefthalf.filled	#1C5C9E	huk.de
+ergo	ERGO	ergo versicherung|ergo 	Insurance	shield.lefthalf.filled	#BF1528	ergo.de
+axa	AXA	axa 	Insurance	shield.lefthalf.filled	#00008F	axa.de
+devk	DEVK	devk	Insurance	shield.lefthalf.filled	#006E3C	devk.de
+debeka	Debeka	debeka	Insurance	shield.lefthalf.filled	#E2001A	debeka.de
+haftpflichtkasse	Die Haftpflichtkasse	haftpflichtkasse	Insurance	shield.lefthalf.filled	#00559F	haftpflichtkasse.de
+
+# --- Mobility & fuel ---
+deutsche-bahn	Deutsche Bahn	db fernverkehr|db vertrieb|deutsche bahn|bahn.de	Mobility	tram	#EC0016	bahn.de
+nvv	NVV Deutschlandticket	nvv|deutschlandticket	Mobility	tram	#00843D	nvv.de
+lufthansa	Lufthansa	lufthansa	Travel	airplane	#05164D	lufthansa.com
+eurowings	Eurowings	eurowings	Travel	airplane	#A6005B	eurowings.com
+uber	Uber	uber 	Mobility	car	#000000	uber.com
+aral	Aral	aral	Fuel	fuelpump	#0066B2	aral.de
+shell	Shell	shell	Fuel	fuelpump	#DD1D21	shell.de
+esso	Esso	esso	Fuel	fuelpump	#003A8F	esso.de
+fixbike	Fixbike	fixbike	Mobility	bicycle	#2E7D32	fixbike.de
+
+# --- Streaming, telecom, utilities ---
+spotify	Spotify	spotify	Streaming	music.note	#1DB954	spotify.com
+netflix	Netflix	netflix	Streaming	play.tv	#E50914	netflix.com
+disney-plus	Disney+	disney plus|disney+|disneyplus	Streaming	play.tv	#113CCF	disneyplus.com
+apple	Apple	apple.com/bill|apple media|apple services	Streaming	apple.logo	#333333	apple.com
+audible	Audible	audible	Streaming	headphones	#F7991C	audible.de
+telekom	Telekom	telekom	Telecom	antenna.radiowaves.left.and.right	#E20074	telekom.de
+vodafone	Vodafone	vodafone	Telecom	antenna.radiowaves.left.and.right	#E60000	vodafone.de
+o2	O2	o2 |telefonica	Telecom	antenna.radiowaves.left.and.right	#0019A5	o2online.de
+staedtische-werke	Städtische Werke Kassel	städtische werke|stadtische werke|staedtische werke	Utilities	bolt	#004F9F	sw-kassel.de
+
+# --- Shops & games ---
+amazon	Amazon	amzn|amazon	OnlineShop	shippingbox	#FF9900	amazon.de
+zalando	Zalando	zalando	OnlineShop	bag	#FF6900	zalando.de
+ebay	eBay	ebay	OnlineShop	bag	#E53238	ebay.de
+ikea	IKEA	ikea	OnlineShop	sofa	#0058A3	ikea.com
+mediamarkt	MediaMarkt	mediamarkt|media markt	Electronics	desktopcomputer	#DF0000	mediamarkt.de
+cyberport	Cyberport	cyberport	Electronics	desktopcomputer	#004B93	cyberport.de
+steam	Steam	steam	Games	gamecontroller	#1B2838	steampowered.com
+nintendo	Nintendo	nintendo	Games	gamecontroller	#E60012	nintendo.de
+fitx	FitX	fitx	Fitness	figure.run	#E3000F	fitx.de
+booking-com	Booking.com	booking.com	Travel	bed.double	#003580	booking.com
+airbnb	Airbnb	airbnb	Travel	bed.double	#FF5A5F	airbnb.de
+
+# --- Banks ---
+kasseler-bank	Kasseler Bank	kasseler bank	Bank	building.columns	#0066B3	kasseler-bank.de
+volksbank	Volksbank Kassel Göttingen	volksbank|vr bank|raiffeisen	Bank	building.columns	#0066B3	vr.de
+1822direkt	1822direkt	1822direkt|1822 direkt|frankfurter sparkasse	Bank	building.columns	#E30613	1822direkt.de
+comdirect	comdirect	comdirect	Bank	building.columns	#3C3C3C	comdirect.de
+sparkasse	Sparkasse	sparkasse|stadtsparkasse|kreissparkasse	Bank	building.columns	#FF0000	sparkasse.de
+ing	ING	ing-diba|ing diba|ing bank	Bank	building.columns	#FF6200	ing.de
+american-express	American Express	american express|amex	Bank	creditcard	#2E77BC	americanexpress.com
+zinia	Zinia / Amazon Visa	zinia|open bank	Bank	creditcard	#3C2A7A	zinia.de
+
+# --- Payment processors (last: look inside the purpose for the real merchant) ---
+paypal	PayPal	paypal	PaymentService	p.circle	#003087	paypal.com
+klarna	Klarna	klarna	PaymentService	creditcard	#FFA8CD	klarna.com
+
+# === Curated German merchant dictionary ===
+
+# --- Energie & Laden (E-Mobilität)
+eon	E.ON	e.on| eon 	Utilities	bolt	#EA1C0A	eon.de
+vattenfall	Vattenfall	vattenfall	Utilities	bolt	#FFDA00	vattenfall.de
+maingau	Maingau Energie	maingau	Utilities	bolt	#E30613	maingau-energie.de
+ionity	IONITY	ionity	Fuel	fuelpump	#1E1E1E	ionity.eu
+lichtblick	LichtBlick	lichtblick	Utilities	bolt	#FFDC00	lichtblick.de
+rwe	RWE	 rwe 	Utilities	bolt	#00A19F	rwe.com
+yello	Yello	yello strom| yello 	Utilities	bolt	#FFD700	yello.de
+ewe	EWE	 ewe 	Utilities	bolt	#00A0E1	ewe.de
+naturstrom	naturstrom	naturstrom	Utilities	bolt	#7AB51D	naturstrom.de
+octopus	Octopus Energy	octopus energy	Utilities	bolt	#5840FF	octopusenergy.de
+tibber	Tibber	tibber	Utilities	bolt	#1C2333	tibber.com
+polarstern	Polarstern	polarstern	Utilities	bolt	#005A5A	polarstern-energie.de
+swm	Stadtwerke München	stadtwerke muenchen|stadtwerke münchen| swm 	Utilities	bolt	#E2001A	swm.de
+tesla	Tesla	tesla	Fuel	fuelpump	#E31937	tesla.com
+allego	Allego	allego	Fuel	fuelpump	#E4007C	allego.eu
+plugsurfing	Plugsurfing	plugsurfing	Fuel	fuelpump	#00B2A9	plugsurfing.com
+rundfunkbeitrag	Rundfunkbeitrag	rundfunk|beitragsservice|ard zdf	Utilities	bolt	#1F4F9C	rundfunkbeitrag.de
+
+# --- Versicherungen & Krankenkassen
+tk	Techniker Krankenkasse	techniker krankenkasse| tk 	Insurance	shield.lefthalf.filled	#00A2E1	tk.de
+aok	AOK	 aok 	Insurance	shield.lefthalf.filled	#005E3F	aok.de
+barmer	BARMER	barmer	Insurance	shield.lefthalf.filled	#00A0AF	barmer.de
+dak	DAK-Gesundheit	dak-gesundheit| dak 	Insurance	shield.lefthalf.filled	#F39200	dak.de
+ikk	IKK classic	ikk classic| ikk 	Insurance	shield.lefthalf.filled	#0066B3	ikk-classic.de
+generali	Generali	generali	Insurance	shield.lefthalf.filled	#C21B17	generali.de
+ruv	R+V Versicherung	r+v|r v versicherung	Insurance	shield.lefthalf.filled	#004A99	ruv.de
+signal-iduna	SIGNAL IDUNA	signal iduna	Insurance	shield.lefthalf.filled	#FFDD00	signal-iduna.de
+gothaer	Gothaer	gothaer	Insurance	shield.lefthalf.filled	#00A651	gothaer.de
+wuerttembergische	Württembergische	württembergische|wuerttembergische	Insurance	shield.lefthalf.filled	#E30613	wuerttembergische.de
+zurich	Zurich	zurich versicherung| zurich 	Insurance	shield.lefthalf.filled	#2167AE	zurich.de
+hansemerkur	HanseMerkur	hansemerkur	Insurance	shield.lefthalf.filled	#00539F	hansemerkur.de
+continentale	Continentale	continentale	Insurance	shield.lefthalf.filled	#00468C	continentale.de
+provinzial	Provinzial	provinzial	Insurance	shield.lefthalf.filled	#E30613	provinzial.de
+vhv	VHV	 vhv 	Insurance	shield.lefthalf.filled	#00508C	vhv.de
+cosmosdirekt	CosmosDirekt	cosmosdirekt|cosmos direkt	Insurance	shield.lefthalf.filled	#E3000F	cosmosdirekt.de
+lvm	LVM	 lvm 	Insurance	shield.lefthalf.filled	#00744A	lvm.de
+nuernberger	NÜRNBERGER	nürnberger vers|nuernberger	Insurance	shield.lefthalf.filled	#0062A7	nuernberger.de
+arag	ARAG	 arag 	Insurance	shield.lefthalf.filled	#00A651	arag.de
+dkv	DKV	 dkv 	Insurance	shield.lefthalf.filled	#00A3E0	dkv.com
+alte-leipziger	Alte Leipziger	alte leipziger	Insurance	shield.lefthalf.filled	#004B87	alte-leipziger.de
+check24	CHECK24	check24	OnlineShop	bag	#063773	check24.de
+verivox	Verivox	verivox	OnlineShop	bag	#E2001A	verivox.de
+
+# --- Lebensmittel, Drogerie, Handel
+norma	NORMA	 norma 	Supermarket	cart	#E30613	norma-online.de
+real	real	 real gmbh|real markt	Supermarket	cart	#004E9E	real.de
+marktkauf	Marktkauf	marktkauf	Supermarket	cart	#E2001A	marktkauf.de
+mueller	Müller	drogerie müller|mueller drogerie|müller handels	Drugstore	cross.vial	#F39200	mueller.de
+budni	Budni	budni	Drugstore	cross.vial	#004F9F	budni.de
+obi	OBI	 obi 	OnlineShop	bag	#FF7E21	obi.de
+bauhaus	BAUHAUS	bauhaus	OnlineShop	bag	#E2001A	bauhaus.info
+hornbach	HORNBACH	hornbach	OnlineShop	bag	#F27B00	hornbach.de
+toom	toom Baumarkt	 toom 	OnlineShop	bag	#E2001A	toom.de
+hagebau	hagebaumarkt	hagebau	OnlineShop	bag	#009EE3	hagebau.de
+saturn	Saturn	saturn	Electronics	desktopcomputer	#EE7F00	saturn.de
+notebooksbilliger	notebooksbilliger.de	notebooksbilliger	Electronics	desktopcomputer	#E30613	notebooksbilliger.de
+otto	OTTO	otto gmbh|otto.de| otto 	OnlineShop	bag	#E2001A	otto.de
+aboutyou	ABOUT YOU	about you|aboutyou	OnlineShop	bag	#000000	aboutyou.de
+hm	H&M	h&m|hennes & mauritz|hennes mauritz	OnlineShop	bag	#E50010	hm.com
+ca	C&A	c&a	OnlineShop	bag	#0055A5	c-and-a.com
+primark	Primark	primark	OnlineShop	bag	#0DAADB	primark.com
+decathlon	Decathlon	decathlon	OnlineShop	bag	#0082C3	decathlon.de
+intersport	Intersport	intersport	OnlineShop	bag	#E30613	intersport.de
+deichmann	Deichmann	deichmann	OnlineShop	bag	#00A0E1	deichmann.com
+douglas	Douglas	douglas	Drugstore	cross.vial	#9BDCD2	douglas.de
+thalia	Thalia	thalia	OnlineShop	bag	#E3000F	thalia.de
+hugendubel	Hugendubel	hugendubel	OnlineShop	bag	#003D7C	hugendubel.de
+tchibo	Tchibo	tchibo	OnlineShop	bag	#00369F	tchibo.de
+fressnapf	Fressnapf	fressnapf	OnlineShop	bag	#008D36	fressnapf.de
+kik	KiK	 kik 	OnlineShop	bag	#E30613	kik.de
+action	Action	action b.v| action 	OnlineShop	bag	#0058A3	action.com
+xxxlutz	XXXLutz	xxxlutz|xxx lutz	OnlineShop	bag	#E2001A	xxxlutz.de
+poco	POCO	 poco 	OnlineShop	bag	#E30613	poco.de
+jysk	JYSK	jysk|dänisches bettenlager	OnlineShop	bag	#143C8A	jysk.de
+galeria	GALERIA	galeria	OnlineShop	bag	#000000	galeria.de
+docmorris	DocMorris	docmorris	Drugstore	cross.vial	#00965E	docmorris.de
+shop-apotheke	Shop Apotheke	shop apotheke|shop-apotheke	Drugstore	cross.vial	#00A23E	shop-apotheke.com
+temu	Temu	temu	OnlineShop	bag	#FB7701	temu.com
+shein	SHEIN	shein	OnlineShop	bag	#000000	shein.com
+aliexpress	AliExpress	aliexpress	OnlineShop	bag	#E62E04	aliexpress.com
+vinted	Vinted	vinted	OnlineShop	bag	#09B1BA	vinted.de
+etsy	Etsy	etsy	OnlineShop	bag	#F1641E	etsy.com
+apple-store	Apple Store	apple store	Electronics	desktopcomputer	#333333	apple.com
+
+# --- Gastronomie & Lieferdienste
+hellofresh	HelloFresh	hellofresh	Delivery	takeoutbag.and.cup.and.straw	#91C11E	hellofresh.de
+flink	Flink	 flink 	Delivery	takeoutbag.and.cup.and.straw	#E31C79	goflink.com
+mcdonalds	McDonald's	mcdonald	Restaurant	fork.knife	#FFC72C	mcdonalds.de
+burgerking	Burger King	burger king	Restaurant	fork.knife	#D62300	burgerking.de
+starbucks	Starbucks	starbucks	Restaurant	fork.knife	#00704A	starbucks.de
+subway	Subway	subway	Restaurant	fork.knife	#008C15	subway.com
+kfc	KFC	 kfc 	Restaurant	fork.knife	#A3080C	kfc.de
+nordsee	NORDSEE	nordsee	Restaurant	fork.knife	#003E7E	nordsee.com
+vapiano	Vapiano	vapiano	Restaurant	fork.knife	#C8102E	vapiano.com
+backwerk	BackWerk	backwerk	Restaurant	fork.knife	#E30613	back-werk.de
+kamps	Kamps	 kamps 	Restaurant	fork.knife	#9A1D2D	kamps.de
+ditsch	Ditsch	ditsch	Restaurant	fork.knife	#E2001A	ditsch.de
+tank-rast	Tank & Rast	tank & rast|tank und rast|serways	Restaurant	fork.knife	#004E9F	tank.rast.de
+
+# --- Telekommunikation, Medien, Software
+1und1	1&1	1&1|1und1|1 und 1	Telecom	antenna.radiowaves.left.and.right	#003D8F	1und1.de
+congstar	congstar	congstar	Telecom	antenna.radiowaves.left.and.right	#3A1D61	congstar.de
+freenet	freenet	freenet|mobilcom-debitel|mobilcom debitel	Telecom	antenna.radiowaves.left.and.right	#7AB51D	freenet.de
+netcologne	NetCologne	netcologne	Telecom	antenna.radiowaves.left.and.right	#E30613	netcologne.de
+m-net	M-net	m-net	Telecom	antenna.radiowaves.left.and.right	#D51130	m-net.de
+pyur	PŸUR	pyur|tele columbus	Telecom	antenna.radiowaves.left.and.right	#7C3B97	pyur.com
+fraenk	fraenk	fraenk	Telecom	antenna.radiowaves.left.and.right	#00D8C5	fraenk.de
+dazn	DAZN	dazn	Streaming	play.tv	#0C161C	dazn.com
+sky	Sky	sky deutschland| sky 	Streaming	play.tv	#000FF5	sky.de
+rtlplus	RTL+	rtl+|rtl plus|rtl interactive	Streaming	play.tv	#E2001A	plus.rtl.de
+joyn	Joyn	 joyn 	Streaming	play.tv	#000000	joyn.de
+waipu	waipu.tv	waipu	Streaming	play.tv	#E91E63	waipu.tv
+zattoo	Zattoo	zattoo	Streaming	play.tv	#F0A000	zattoo.com
+deezer	Deezer	deezer	Streaming	play.tv	#A238FF	deezer.com
+google	Google	google	Streaming	play.tv	#4285F4	google.com
+microsoft	Microsoft	microsoft|msft 	Streaming	play.tv	#737373	microsoft.com
+adobe	Adobe	adobe	Streaming	play.tv	#FA0F00	adobe.com
+dropbox	Dropbox	dropbox	Streaming	play.tv	#0061FF	dropbox.com
+openai	OpenAI / ChatGPT	openai|chatgpt	Streaming	play.tv	#10A37F	openai.com
+github	GitHub	github	Streaming	play.tv	#181717	github.com
+patreon	Patreon	patreon	Streaming	play.tv	#FF424D	patreon.com
+playstation	PlayStation	playstation|sony interactive	Games	gamecontroller	#003791	playstation.com
+xbox	Xbox	 xbox 	Games	gamecontroller	#107C10	xbox.com
+blizzard	Blizzard	blizzard	Games	gamecontroller	#148EFF	blizzard.com
+electronic-arts	EA	electronic arts	Games	gamecontroller	#FF4747	ea.com
+
+# --- Mobilität & Reisen
+bvg	BVG	 bvg 	Mobility	tram	#F0D722	bvg.de
+mvg	MVG	 mvg |mvv	Mobility	tram	#00519E	mvg.de
+hvv	HVV	 hvv 	Mobility	tram	#E2001A	hvv.de
+rmv	RMV	 rmv 	Mobility	tram	#E2001A	rmv.de
+vrr	VRR	 vrr 	Mobility	tram	#00A0E1	vrr.de
+kvv	KVV	 kvv 	Mobility	tram	#E30613	kvv.de
+flixbus	FlixBus	flixbus|flixtrain|flixmobility	Mobility	tram	#73D700	flixbus.de
+ryanair	Ryanair	ryanair	Travel	airplane	#073590	ryanair.com
+condor	Condor	condor	Travel	airplane	#FFCB05	condor.com
+tui	TUI	 tui 	Travel	airplane	#D40E14	tui.com
+bolt	Bolt	 bolt 	Mobility	tram	#34D186	bolt.eu
+freenow	FREENOW	free now|freenow	Mobility	tram	#C30044	free-now.com
+sixt	SIXT	sixt	Mobility	tram	#FF5F00	sixt.de
+europcar	Europcar	europcar	Mobility	tram	#00A651	europcar.de
+avis	Avis	 avis 	Mobility	tram	#D4002A	avis.de
+hertz	Hertz	 hertz 	Mobility	tram	#FFD100	hertz.de
+sharenow	SHARE NOW	share now|sharenow	Mobility	tram	#00ABEB	share-now.com
+miles	MILES	miles mobility| miles 	Mobility	tram	#FFDF00	miles-mobility.com
+tier	TIER	tier mobility| tier 	Mobility	tram	#0E1A50	tier.app
+lime	Lime	lime|neutron holdings	Mobility	tram	#00DD00	li.me
+voi	Voi	 voi 	Mobility	tram	#F26961	voi.com
+total	TotalEnergies	totalenergies| total 	Fuel	fuelpump	#ED0000	totalenergies.de
+jet	JET	jet tankstelle| jet 	Fuel	fuelpump	#FFDD00	jet.de
+star	star Tankstelle	star tankstelle|orlen	Fuel	fuelpump	#E30613	star.de
+agip	Eni / Agip	 agip | eni 	Fuel	fuelpump	#FFD200	eni.com
+omv	OMV	 omv 	Fuel	fuelpump	#0068B4	omv.de
+adac	ADAC	 adac 	Mobility	tram	#FFCC00	adac.de
+contipark	Contipark	contipark	Mobility	tram	#E30613	contipark.de
+apcoa	APCOA	apcoa	Mobility	tram	#0055A4	apcoa.de
+easypark	EasyPark	easypark	Mobility	tram	#00B176	easypark.de
+parknow	PARK NOW	park now|parknow	Mobility	tram	#00A0DF	park-now.com
+jobrad	JobRad	jobrad	Mobility	tram	#00A99D	jobrad.org
+expedia	Expedia	expedia	Travel	airplane	#FDDB32	expedia.de
+hrs	HRS	 hrs 	Travel	airplane	#E2001A	hrs.de
+
+# --- Banken & Finanzen
+dkb	DKB	 dkb |deutsche kreditbank	Bank	building.columns	#148DEA	dkb.de
+n26	N26	 n26 	Bank	building.columns	#36A18B	n26.com
+commerzbank	Commerzbank	commerzbank	Bank	building.columns	#FFCC00	commerzbank.de
+deutsche-bank	Deutsche Bank	deutsche bank	Bank	building.columns	#0018A8	deutsche-bank.de
+postbank	Postbank	postbank	Bank	building.columns	#FFCC00	postbank.de
+consorsbank	Consorsbank	consorsbank	Bank	building.columns	#00A0E1	consorsbank.de
+targobank	TARGOBANK	targobank	Bank	building.columns	#0B2D6E	targobank.de
+santander	Santander	santander	Bank	building.columns	#EC0000	santander.de
+hypovereinsbank	HypoVereinsbank	hypovereinsbank| hvb 	Bank	building.columns	#E2001A	hypovereinsbank.de
+scalable	Scalable Capital	scalable capital	Broker	building.columns	#28EBCF	scalable.capital
+revolut	Revolut	revolut	Bank	building.columns	#191C1F	revolut.com
+wise	Wise	wise payments|transferwise	Bank	building.columns	#9FE870	wise.com
+barclays	Barclays	barclays	Bank	building.columns	#00AEEF	barclays.de
+schwaebisch-hall	Bausparkasse Schwäbisch Hall	schwäbisch hall|schwaebisch hall	Bank	building.columns	#FF6600	schwaebisch-hall.de
+lbs	LBS	 lbs 	Bank	building.columns	#E2001A	lbs.de
+wuestenrot	Wüstenrot	wüstenrot|wuestenrot	Bank	building.columns	#FFD400	wuestenrot.de
+finanzamt	Finanzamt	finanzamt|bundeskasse	Unknown		#333333	elster.de
+hermes	Hermes	hermes germany| hermes 	OnlineShop	bag	#0091CD	myhermes.de
+
+# --- Fitness & Freizeit
+mcfit	McFIT	mcfit	Fitness	figure.run	#E30613	mcfit.com
+urban-sports	Urban Sports Club	urban sports	Fitness	figure.run	#0E1E2D	urbansportsclub.com
+clever-fit	clever fit	clever fit	Fitness	figure.run	#E30613	clever-fit.com
+fitness-first	Fitness First	fitness first	Fitness	figure.run	#E30613	fitnessfirst.de
+wellpass	EGYM Wellpass	wellpass|hansefit	Fitness	figure.run	#2D2DFF	egym-wellpass.com
+eventim	Eventim	eventim	Games	gamecontroller	#002B5C	eventim.de
+lotto	LOTTO	lotto|westlotto|lotto hessen	Games	gamecontroller	#E30613	lotto.de

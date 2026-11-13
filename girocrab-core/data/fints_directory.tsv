@@ -1,0 +1,2019 @@
+# GENERATED – do not edit by hand.
+#
+# BLZ -> FinTS 3.0 PIN/TAN endpoint table. Source: github.com/moay/fints-institute-db
+# (CC0-1.0, derived from the public DK institute list), with legacy Fiducia/GAD
+# hosts and the Sparda bankingonline.de gateway mapped to the current Atruvia endpoint, HypoVereinsbank mapped to its
+# current endpoint, and explicit overrides for ING, GLS, DKB, Consorsbank, Norisbank,
+# BBBank, apoBank, EthikBank and Postbank. Every URL is https and was taken from
+# the dataset or the maintainers' list – none is derived from a pattern.
+# Columns (tab-separated): blz, bank name, FinTS URL. Sorted by BLZ.
+10010010	Postbank	https://hbci.postbank.de/banking/hbci.do
+10020200	BHF-Bank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+10020890	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+10030500	Bankhaus Löbbecke (M.M.Warburg)	https://www.warburg-bank.de/fints
+10030600	Bankhaus Kruber	https://fints1.atruvia.de/cgi-bin/hbciservlet
+10030700	Gries & Heissel - Bankiers	https://fints1.atruvia.de/cgi-bin/hbciservlet
+10050000	Berliner Sparkasse	https://banking-be3.s-fints-pt-be.de/fints30
+10070000	Deutsche Bank Fil Berlin	https://fints.deutsche-bank.de/
+10070024	Deutsche Bank Privat und Geschäftskunden F 700	https://fints.deutsche-bank.de/
+10070100	Deutsche Bank Fil Berlin II	https://fints.deutsche-bank.de/
+10070124	Deutsche Bank Privat und Geschäftskd Berlin II	https://fints.deutsche-bank.de/
+10077777	Norisbank	https://fints.norisbank.de/
+10090000	Berliner Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+10090900	PSD Bank Berlin-Brandenburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+10120100	Weberbank	https://banking-bb6.s-fints-pt-bb.de/fints30
+10130600	Isbank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+10130800	biw Bank für Investments und Wertpapiere	https://konto.biw-bank.de/hbci/
+12030000	DKB (Deutsche Kreditbank)	https://fints.dkb.de/fints
+12030900	Merck Finck & Co.	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+12070000	Deutsche Bank Ld Brandenburg	https://fints.deutsche-bank.de/
+12070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+12096597	Sparda-Bank Berlin eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+13050000	Ostseesparkasse Rostock	https://banking-mv6.s-fints-pt-mv.de/fints30
+13061008	Volksbank Wolgast eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+13061028	Volksbank Greifswald eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+13061078	Volks- und Raiffeisenbank eG Wismar	https://fints1.atruvia.de/cgi-bin/hbciservlet
+13061128	Raiffeisenbank Bad Doberan eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+13070000	Deutsche Bank	https://fints.deutsche-bank.de/
+13070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+13090000	Rostocker Volks- und Raiffeisenbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+13091054	Stralsunder Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+14051000	Sparkasse Mecklenburg-Nordwest	https://banking-mv6.s-fints-pt-mv.de/fints30
+14051362	Sparkasse Parchim-Lübz	https://banking-mv6.s-fints-pt-mv.de/fints30
+14052000	Sparkasse Mecklenburg-Schwerin	https://banking-mv6.s-fints-pt-mv.de/fints30
+14061308	Volks- und Raiffeisenbank Güstrow eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+14091464	VR-Bank Schwerin eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+15050100	Müritz-Sparkasse	https://banking-mv6.s-fints-pt-mv.de/fints30
+15050200	Sparkasse Neubrandenburg-Demmin	https://banking-mv6.s-fints-pt-mv.de/fints30
+15050400	Sparkasse Uecker-Randow	https://banking-mv6.s-fints-pt-mv.de/fints30
+15050500	Sparkasse Vorpommern	https://banking-mv6.s-fints-pt-mv.de/fints30
+15051732	Sparkasse Mecklenburg-Strelitz	https://banking-mv6.s-fints-pt-mv.de/fints30
+15061618	Raiffeisenbank Waren eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+15061638	Raiffeisenbank Anklam eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+15061698	Raiffeisenbank Malchin eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+15091674	Volksbank Demmin eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+15091704	Volksbank Uckermark eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+16020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+16050000	Mittelbrandenburgische Sparkasse in Potsdam	https://banking-bb6.s-fints-pt-bb.de/fints30
+16050101	Sparkasse Prignitz	https://banking-bb6.s-fints-pt-bb.de/fints30
+16050202	Sparkasse Ostprignitz-Ruppin	https://banking-bb6.s-fints-pt-bb.de/fints30
+16060122	Volks- und Raiffeisenbank Prignitz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+16061938	Raiffeisenbank Ostprignitz-Ruppin eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+16062008	Volksbank Teltow-Fläming eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+16062073	Brandenburger Bank Volksbank-Raiffeisenbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+16091994	Volksbank Rathenow eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+17020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+17052000	Sparkasse Barnim	https://banking-bb6.s-fints-pt-bb.de/fints30
+17052302	Stadtsparkasse Schwedt	https://banking-bb6.s-fints-pt-bb.de/fints30
+17054040	Sparkasse Märkisch-Oderland	https://banking-bb6.s-fints-pt-bb.de/fints30
+17055050	Sparkasse Oder-Spree	https://banking-bb6.s-fints-pt-bb.de/fints30
+17056060	Sparkasse Uckermark	https://banking-bb6.s-fints-pt-bb.de/fints30
+17062428	Raiffeisen-Volksbank Oder-Spree eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+17092404	Volks- und Raiffeisenbank Fürstenw. Seelow Wriezen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+18020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+18050000	Sparkasse Spree-Neiße	https://banking-bb6.s-fints-pt-bb.de/fints30
+18051000	Sparkasse Elbe-Elster	https://banking-bb6.s-fints-pt-bb.de/fints30
+18055000	Sparkasse Niederlausitz	https://banking-bb6.s-fints-pt-bb.de/fints30
+18062678	NL Bank Volks- und Raiffeisenbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+18062758	Volks- und Raiffeisenbank Forst eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+18092684	Spreewaldbank eG Volksbank-Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+18092744	Volksbank Spremberg-Bad Muskau eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20010020	Postbank	https://hbci.postbank.de/banking/hbci.do
+20030000	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+20030300	Donner & Reuschel Aktiengesellschaft	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20030400	Marcard,Stein & Co GmbH	https://online-banking.marcard.de/fints/
+20030600	Sydbank A/S	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+20030700	Merck Finck & Co.	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+20050550	Hamburger Sparkasse	https://banking-hh7.s-fints-pt-hh.de/fints30
+20069125	Raiffeisenbank Kaltenkirchen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069130	Raiffeisen- und Volksbank Bad Bramstedt eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069144	Raiffeisenbank Seestermühe eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069177	Raiffeisenbank Südstormarn eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069232	Raiffeisenbank Struvenhütten eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069641	Raiffeisenbank Owschlag eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069782	Volksbank Geest eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069786	Volksbank Kehdingen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069800	Spar- und Kreditbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069812	Volksbank eG Fredenbeck-Oldendorf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069815	Volksbank Oldendorf eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069861	Raiffeisenbank Ratzeburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069882	Raiffeisenbank Travemünde eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069965	Volksbank Winsener Marsch eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20069989	Volksbank Wulfsen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20070000	Deutsche Bank	https://fints.deutsche-bank.de/
+20070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+20090400	Deutsche Genossenschafts-Hypothekenbank AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20090500	netbank	https://banking.netbank.de/hbci
+20090700	EDEKABANK AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20090745	EDEKABANK AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20090900	PSD Bank Nord (Hamburg)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20120100	M.M.Warburg & CO (AG & Co.) Kommanditgesellschaft auf Aktien	https://www.warburg-bank.de/fints
+20120600	Goyer & Göppel	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20130400	GRENKE BANK	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20190003	Hamburger Bank v. 1861	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20190109	Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20190800	MKB Mittelstandskreditbank Aktiengesellschaft	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20230300	Otto M. Schröder Bank AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20230600	Isbank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+20690500	Sparda-Bank Hamburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+20750000	Sparkasse Harburg-Buxtehude	https://banking-ni3.s-fints-pt-ni.de/fints30
+21020600	Sydbank A/S	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+21050000	HSH Nordbank AG	https://homebanking.hsh-nordbank-banking.de/tristan/hbci
+21050170	Förde Sparkasse	https://banking-sh1.s-fints-pt-sh.de/fints30
+21051275	Bordesholmer Sparkasse AG	https://banking-sh1.s-fints-pt-sh.de/fints30
+21070020	Deutsche Bank	https://fints.deutsche-bank.de/
+21070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+21090007	Kieler Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21090900	PSD Bank Kiel	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21092023	Eckernförder Bank eG Volksbank-Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21270020	Deutsche Bank	https://fints.deutsche-bank.de/
+21270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+21290016	VB RB eG, Neumünster	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21352240	Sparkasse Holstein	https://banking-sh2.s-fints-pt-sh.de/fints30
+21390008	Volksbank Ostholstein Nord eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21392218	Volksbank-Raiffeisenbank Eutin eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21450000	Sparkasse Mittelholstein AG	https://banking-sh1.s-fints-pt-sh.de/fints30
+21463603	Volksbank-Raiffeisenbank im Kreis Rendsburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21464671	Raiffeisenbank Todenbüttel eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21510600	Sydbank A/S	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+21565316	Raiffeisenbank Handewitt eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21570011	Deutsche Bank	https://fints.deutsche-bank.de/
+21570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+21690020	Volksbank Schleswig eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21750000	Nord-Ostsee Sparkasse	https://banking-sh1.s-fints-pt-sh.de/fints30
+21762550	Volksbank-Raiffeisenbank Westküste eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21763542	VR Bank Nord eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21770011	Deutsche Bank	https://fints.deutsche-bank.de/
+21770024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+21791805	Volks- und Raiffeisenbank Sylt eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21791906	Föhr-Amrumer Bank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+21852310	Sparkasse Hennstedt-Wesselburen	https://banking-sh1.s-fints-pt-sh.de/fints30
+21890022	Dithmarscher Volks- und Raiffeisenbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+22150000	Sparkasse Elmshorn	https://banking-sh1.s-fints-pt-sh.de/fints30
+22151730	Stadtsparkasse Wedel	https://banking-sh2.s-fints-pt-sh.de/fints30
+22163114	Raiffeisenbank Elbmarsch eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+22190030	Volksbank Elmshorn eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+22191405	Volksbank Pinneberg-Uetersen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+22250020	Sparkasse Westholstein	https://banking-sh2.s-fints-pt-sh.de/fints30
+22290031	Volksbank Raiffeisenbank eG (Itzehoe)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+23050101	Sparkasse zu Lübeck AG	https://banking-sh2.s-fints-pt-sh.de/fints30
+23051030	Sparkasse Südholstein	https://banking-sh2.s-fints-pt-sh.de/fints30
+23052750	Kreissparkasse Herzogtum Lauenburg	https://banking-sh1.s-fints-pt-sh.de/fints30
+23061220	Raiffeisenbank Leezen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+23062124	Raiffeisenbank Bargteheide eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+23063129	RB eG Lauenburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+23064107	Raiffeisenbank Hagenow eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+23070700	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+23070710	Deutsche Bank	https://fints.deutsche-bank.de/
+23090142	Volksbank Lübeck Landbank von 1902 eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+24050110	Sparkasse Lüneburg	https://banking-ni3.s-fints-pt-ni.de/fints30
+24060300	Volksbank Nordheide eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+24070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+24070075	Deutsche Bank	https://fints.deutsche-bank.de/
+24121000	Ritterschaftl. Kreditinst. Stade	https://fints1.atruvia.de/cgi-bin/hbciservlet
+24150001	Stadtsparkasse Cuxhaven	https://banking-ni1.s-fints-pt-ni.de/fints30
+24151005	Sparkasse Stade-Altes Land	https://banking-ni3.s-fints-pt-ni.de/fints30
+24151116	Kreissparkasse Stade	https://banking-ni3.s-fints-pt-ni.de/fints30
+24151235	Sparkasse Rotenburg Osterholz	https://banking-ni1.s-fints-pt-ni.de/fints30
+24161594	Zevener Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+24162898	Spar- und Darlehnskasse Börde Lamstedt-Hechthausen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+24191015	Volksbank Stade-Cuxhaven eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25010030	Postbank	https://hbci.postbank.de/banking/hbci.do
+25010900	Calenberger Kreditverein	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25050000	Nord/LB Hannover	https://banking-li1.s-fints-pt-li.de/fints30
+25050180	Sparkasse Hannover	https://banking-ni4.s-fints-pt-ni.de/fints30
+25060180	Bankhaus Hallbaum (M.M.Warburg)	https://www.warburg-bank.de/fints
+25069262	Raiffeisen-Volksbank Neustadt eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25069270	Volksbank Südheide	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+25070066	Deutsche Bank	https://fints.deutsche-bank.de/
+25070070	Deutsche Bank	https://fints.deutsche-bank.de/
+25070077	Deutsche Bank	https://fints.deutsche-bank.de/
+25070084	Deutsche Bank	https://fints.deutsche-bank.de/
+25070086	Deutsche Bank	https://fints.deutsche-bank.de/
+25090500	Sparda-Bank Hannover eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25090900	PSD Bank Hannover	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25151270	Stadtsparkasse Barsinghausen	https://banking-ni2.s-fints-pt-ni.de/fints30
+25151371	Stadtsparkasse Burgdorf	https://banking-ni2.s-fints-pt-ni.de/fints30
+25152375	Kreissparkasse Walsrode	https://banking-ni3.s-fints-pt-ni.de/fints30
+25152490	Stadtsparkasse Wunsdorf	https://banking-ni2.s-fints-pt-ni.de/fints30
+25190001	Hannoversche Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25193331	Volksbank Hildesheim-Lehrte-Pattensen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25250001	Kreissparkasse Peine	https://banking-ni2.s-fints-pt-ni.de/fints30
+25450110	Sparkasse Hameln-Weserbergland	https://banking-ni2.s-fints-pt-ni.de/fints30
+25451345	Stadtsparkasse Bad Pyrmont	https://banking-ni2.s-fints-pt-ni.de/fints30
+25462160	Volksbank Hameln-Stadthagen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25462680	Volksbank am Ith eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25470024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+25470073	Deutsche Bank	https://fints.deutsche-bank.de/
+25471024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+25471073	Deutsche Bank	https://fints.deutsche-bank.de/
+25491273	Volksbank Aerzen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25551480	Sparkasse Schaumburg	https://banking-ni2.s-fints-pt-ni.de/fints30
+25591413	Volksbank in Schaumburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25650106	Sparkasse Nienburg	https://banking-ni3.s-fints-pt-ni.de/fints30
+25651325	Kreissparkasse Grafschaft Diepholz	https://banking-ni1.s-fints-pt-ni.de/fints30
+25663584	Volksbank Aller-Weser eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25690009	Volksbank Nienburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25691633	Volksbank eG Sulingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25750001	Sparkasse Celle	https://banking-ni2.s-fints-pt-ni.de/fints30
+25770024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+25770069	Deutsche Bank	https://fints.deutsche-bank.de/
+25791635	Volksbank eG Südheide-Isenhagener Land-Altmark	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25850110	Sparkasse Uelzen Lüchow-Dannenberg	https://banking-ni3.s-fints-pt-ni.de/fints30
+25851660	Kreissparkasse Soltau	https://banking-ni3.s-fints-pt-ni.de/fints30
+25861990	Volksbank Clenze-Hitzacker eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25862292	Volksbank Uelzen-Bevensen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25863489	Volksbank Osterburg-Lüchow-Dannenberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25891636	Volksbank Lüneburger Heide eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+25950130	Sparkasse Hildesheim	https://banking-ni2.s-fints-pt-ni.de/fints30
+25970024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+25970074	Deutsche Bank	https://fints.deutsche-bank.de/
+25971024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+25971071	Deutsche Bank	https://fints.deutsche-bank.de/
+25991528	Volksbank Hildesheimer Börde eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26050001	Sparkasse Göttingen	https://banking-ni2.s-fints-pt-ni.de/fints30
+26051260	Sparkasse Duderstadt	https://banking-ni2.s-fints-pt-ni.de/fints30
+26051450	Sparkasse Münden	https://banking-ni2.s-fints-pt-ni.de/fints30
+26061291	Volksbank Mitte eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26061556	Volksbank Adelebsen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26062433	VR-Bank in Südniedersachsen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+26070072	Deutsche Bank	https://fints.deutsche-bank.de/
+26250001	Kreissparkasse Northeim	https://banking-ni2.s-fints-pt-ni.de/fints30
+26251425	Sparkasse Einbeck	https://banking-ni2.s-fints-pt-ni.de/fints30
+26261396	Volksbank Dassel eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26261492	Volksbank Einbeck eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26261693	Volksbank Solling eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26271424	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+26271471	Deutsche Bank	https://fints.deutsche-bank.de/
+26351015	Sparkasse Osterode am Harz	https://banking-ni2.s-fints-pt-ni.de/fints30
+26351445	Stadtsparkasse Bad Sachsa	https://banking-ni2.s-fints-pt-ni.de/fints30
+26550105	Sparkasse Osnabrück	https://banking-ni3.s-fints-pt-ni.de/fints30
+26551540	Kreissparkasse Bersenbrück	https://banking-ni3.s-fints-pt-ni.de/fints30
+26552286	Kreissparkasse Melle	https://banking-ni3.s-fints-pt-ni.de/fints30
+26562490	Volksbank Melle-Borgloh eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26563960	Volksbank Bramgau eG im Osnabrücker Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26565928	Volksbank Georgsmarienhütte-Hagen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26567943	VR-Bank eG im Altkreis Bersenbrück	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+26570090	Deutsche Bank	https://fints.deutsche-bank.de/
+26590025	Volksbank Osnabrück eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26650001	Sparkasse Emsland	https://banking-ni3.s-fints-pt-ni.de/fints30
+26660060	Volksbank Lingen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26661380	Volksbank Haselünne eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26661494	Emsländische Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26662932	Volksbank Lengerich eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26750001	Kreissparkasse Grafschaft Bentheim zu Nordhorn	https://banking-ni3.s-fints-pt-ni.de/fints30
+26770024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+26770095	Deutsche Bank	https://fints.deutsche-bank.de/
+26850001	Sparkasse Goslar/Harz	https://banking-ni2.s-fints-pt-ni.de/fints30
+26870024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+26870032	Deutsche Bank	https://fints.deutsche-bank.de/
+26890019	Volksbank Nordharz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26891484	Volksbank Im Harz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+26951311	Sparkasse Gifhorn-Wolfsburg	https://banking-ni2.s-fints-pt-ni.de/fints30
+26971024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+26971038	Deutsche Bank	https://fints.deutsche-bank.de/
+26991066	Volksbank eG Braunschweig Wolfsburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+27032500	Bankhaus C. L. Seeliger	https://banking.seeligerbank.de/eBankingProxy/
+27062290	Volksbank Börßum-Hornburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+27070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+27070030	Deutsche Bank	https://fints.deutsche-bank.de/
+27070031	Deutsche Bank	https://fints.deutsche-bank.de/
+27070034	Deutsche Bank	https://fints.deutsche-bank.de/
+27070041	Deutsche Bank	https://fints.deutsche-bank.de/
+27070042	Deutsche Bank	https://fints.deutsche-bank.de/
+27070043	Deutsche Bank	https://fints.deutsche-bank.de/
+27070079	Deutsche Bank	https://fints.deutsche-bank.de/
+27072524	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+27072537	Deutsche Bank	https://fints.deutsche-bank.de/
+27072724	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+27072736	Deutsche Bank	https://fints.deutsche-bank.de/
+27090900	PSD Bank Braunschweig	https://fints1.atruvia.de/cgi-bin/hbciservlet
+27092555	Volksbank Wolfenbüttel-Salzgitter eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+27131300	Bankhaus Rautenschlein	https://fints1.atruvia.de/cgi-bin/hbciservlet
+27190082	Volksbank Helmstedt eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+27893215	Volksbank Harzburg-Wernigerode eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+27893359	Volksbank Braunlage eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+27893760	Volksbank Seesen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28020050	Oldenburgische Landesbank AG	https://hbci.olb.de
+28030300	Oldenburgische Landesbank AG (vormals W. Fortmann & Söhne)	https://hbci.olb.de
+28050100	Landessparkasse zu Oldenburg	https://banking-ni1.s-fints-pt-ni.de/fints30
+28060228	Raiffeisenbank Oldenburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28061410	Raiffeisenbank Berne-Moorriem eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28061501	Volksbank Cloppenburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28061679	Volksbank Damme-Osterfeine eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28061822	Volksbank Ammerland-Süd eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28062165	Raiffeisenbank Rastede eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28062249	Vereinigte Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28062560	Lohner Bank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28062913	Volksbank Bösel eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28063253	Volksbank Westerstede eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28063526	Volksbank Essen-Cappeln eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28063607	Volksbank Bakum eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28064179	Volksbank Vechta eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28065061	Volksbank Löningen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28065108	Spar- und Darlehnskasse Dinklage eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28065286	Raiffeisenbank Scharrel eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28066103	Volksbank Visbek eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28066214	Volksbank Wildeshauser Geest eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28066620	Spar- und Darlehnskasse Friesoythe eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28067068	Volksbank Neuenkirchen-Vörden eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28067170	Raiffeisen-Volksbank Delmenhorst-Schierbrok eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28067257	Volksbank Lastrup eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28068218	Raiffeisenbank Butjadingen-Abbehausen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069052	Raiffeisenbank Strücklingen-Idafehn eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069092	VR Bank Oldenburg Land West eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069109	Volksbank Emstek eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069128	Raiffeisenbank Garrel eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069381	Hümmlinger Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069706	Volksbank Nordhümmling eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069773	Raiffeisenbank Wiesede-Marcardsmoor eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069878	Raiffeisenbank Emsland-Mitte eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069926	Volksbank Hoogstede-Wilsum eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069930	Volksbank Langen-Gersten eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069935	Raiffeisenbank Lorup eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069956	Grafschafter Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069991	Volksbank Emstal Rütenbrock-Lathen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28069994	VB Spelle-Freren eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+28070057	Deutsche Bank	https://fints.deutsche-bank.de/
+28250110	Sparkasse Wilhelmshaven	https://banking-ni1.s-fints-pt-ni.de/fints30
+28262254	Raiffeisen-Volksbank Jever eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28262673	Raiffeisen-Volksbank Varel-Nordenham eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+28270056	Deutsche Bank	https://fints.deutsche-bank.de/
+28290063	Volksbank Wilhelmshaven eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28291551	Volksbank Esens-Holtriem eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28350000	Sparkasse Aurich-Norden	https://banking-ni1.s-fints-pt-ni.de/fints30
+28361592	Brookmerlander Raiffeisenbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28450000	Sparkasse Emden	https://banking-ni1.s-fints-pt-ni.de/fints30
+28470024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+28470091	Deutsche Bank	https://fints.deutsche-bank.de/
+28550000	Sparkasse LeerWittmund	https://banking-ni1.s-fints-pt-ni.de/fints30
+28562297	Raiffeisen-Volksbank Uplengen-Remels eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28562716	Raiffeisenbank Flachsmeer eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28562863	Spar- und Darlehnskasse Holtland eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28563749	Raiffeisenbank Moormerland eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+28570092	Deutsche Bank	https://fints.deutsche-bank.de/
+28590075	Ostfriesische Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+28591654	Volksbank Westrhauderfehn eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29020000	Bankhaus Neelmeyer	https://hbci.neelmeyer.de
+29020100	KBC-Bank	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+29020200	NF Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29030400	Bankhaus Plump (M.M. Warburg)	https://www.warburg-bank.de/fints
+29050000	Bremer Landesbank	https://banking-li1.s-fints-pt-li.de/fints30
+29050101	Die Sparkasse Bremen	https://banking-hb6.s-fints-pt-hb.de/fints30
+29070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+29070050	Deutsche Bank	https://fints.deutsche-bank.de/
+29070051	Deutsche Bank	https://fints.deutsche-bank.de/
+29070052	Deutsche Bank	https://fints.deutsche-bank.de/
+29070058	Deutsche Bank	https://fints.deutsche-bank.de/
+29070059	Deutsche Bank	https://fints.deutsche-bank.de/
+29090900	PSD Bank Nord (Bremen)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29151700	Kreissparkasse Syke	https://banking-ni1.s-fints-pt-ni.de/fints30
+29152550	Sparkasse Scheeßel	https://banking-ni1.s-fints-pt-ni.de/fints30
+29152670	Kreissparkasse Verden	https://banking-ni1.s-fints-pt-ni.de/fints30
+29162394	Volksbank Osterholz-Scharmbeck eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29162453	Volksbank Schwanewede eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29165545	Volksbank Oyten eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29165681	Volksbank Sottrum eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29166568	Volksbank Worpswede eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29167624	Volksbank Stuhr eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29172624	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+29172655	Deutsche Bank	https://fints.deutsche-bank.de/
+29190024	Bremische Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29190330	Volksbank Bremen-Nord eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29250000	Weser-Elbe-Sparkasse	https://banking-ni1.s-fints-pt-ni.de/fints30
+29262722	Volksbank Geeste-Nord eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29265747	VB eG im Landkr. Cuxhav.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+29290034	VB eG Bremerhaven	https://fints1.atruvia.de/cgi-bin/hbciservlet
+30010700	Mufg Bank (Europe) Germany Branch	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+30020500	BHF-Bank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+30020900	TARGOBANK AG	https://fints.targobank.de/travicretail_fints30pintanbroker/FinTs30PinTanHttpGate
+30030880	HSBC Trinkaus & Burkhardt AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+30030900	Merck Finck & Co.	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+30050110	Stadt-Sparkasse Düsseldorf	https://banking-rl1.s-fints-pt-rl.de/fints30
+30060601	Deutsche Apotheker- und Ärztebank (apoBank)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+30060992	PSD Bank Rhein-Ruhr (Düsseldorf)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+30070010	Deutsche Bank	https://fints.deutsche-bank.de/
+30070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+30130600	Isbank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+30150200	Kreissparkasse Düsseldorf	https://banking-rl2.s-fints-pt-rl.de/fints30
+30160213	Düsseldorfer Bank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+30220190	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+30351220	Stadt-Sparkasse Haan (Rheinland)	https://banking-rl2.s-fints-pt-rl.de/fints30
+30520037	Renault-Bank direkt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+30530500	Bank11 für Privatkunden und Handel GmbH	https://fints1.atruvia.de/cgi-bin/hbciservlet
+30550000	Sparkasse Neuss	https://banking-rl5.s-fints-pt-rl.de/fints30
+30560548	VR Bank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+31050000	Stadtsparkasse Mönchengladbach	https://banking-rl1.s-fints-pt-rl.de/fints30
+31060181	Gladbacher Bank AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+31060517	VB Mönchengladbach eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+31062154	Volksbank Brüggen-Nettetal eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+31062553	Volksbank Schwalmtal eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+31070001	Deutsche Bank	https://fints.deutsche-bank.de/
+31070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+31251220	Kreissparkasse Heinsberg	https://banking-rl5.s-fints-pt-rl.de/fints30
+31263359	Raiffeisenbank Erkelenz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+31460290	Volksbank Viersen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+31470004	Deutsche Bank	https://fints.deutsche-bank.de/
+31470024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+32050000	Sparkasse Krefeld	https://banking-rl1.s-fints-pt-rl.de/fints30
+32060362	Volksbank Krefeld eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+32061384	Volksbank an der Niers	https://fints1.atruvia.de/cgi-bin/hbciservlet
+32061414	Volksbank Kempen-Grefrath eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+32070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+32070080	Deutsche Bank	https://fints.deutsche-bank.de/
+32250050	Verbandssparkasse Goch-Kevelaer-Weeze	https://banking-rl2.s-fints-pt-rl.de/fints30
+32450000	Sparkasse Rhein-Maas	https://banking-rl2.s-fints-pt-rl.de/fints30
+32460422	Volksbank Kleverland eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+32470024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+32470077	Deutsche Bank	https://fints.deutsche-bank.de/
+33020000	akf bank GmbH & Co KG	https://hbci.akf24.de
+33020190	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+33050000	Stadtsparkasse Wuppertal	https://banking-rl3.s-fints-pt-rl.de/fints30
+33060592	Sparda-Bank West eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+33070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+33070090	Deutsche Bank	https://fints.deutsche-bank.de/
+33450000	Sparkasse Hilden-Ratingen-Velbert	https://banking-rl2.s-fints-pt-rl.de/fints30
+34050000	Sparkasse Remscheid	https://banking-rl3.s-fints-pt-rl.de/fints30
+34051350	Sparkasse Radevormwald-Hückeswagen	https://banking-rl5.s-fints-pt-rl.de/fints30
+34051570	Stadtsparkasse Wermelskirchen	https://banking-rl5.s-fints-pt-rl.de/fints30
+34060094	Volksbank Remscheid-Solingen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+34070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+34070093	Deutsche Bank	https://fints.deutsche-bank.de/
+34250000	Stadt-Sparkasse Solingen	https://banking-rl3.s-fints-pt-rl.de/fints30
+34270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+34270094	Deutsche Bank	https://fints.deutsche-bank.de/
+35050000	Sparkasse Duisburg	https://banking-rl4.s-fints-pt-rl.de/fints30
+35060190	Bank für Kirche und Diakonie eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+35060386	Volksbank Rhein-Ruhr eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+35070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+35070030	Deutsche Bank	https://fints.deutsche-bank.de/
+35450000	Sparkasse am Niederrhein	https://banking-rl2.s-fints-pt-rl.de/fints30
+35461106	Volksbank Niederrhein eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+35650000	Niederrheinische Sparkasse RheinLippe	https://banking-rl2.s-fints-pt-rl.de/fints30
+35660599	Volksbank Rhein-Lippe eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+35860245	Raiffeisenbank Emmerich eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+36010043	Postbank	https://hbci.postbank.de/banking/hbci.do
+36010600	GALLINAT-BANK	https://fints1.atruvia.de/cgi-bin/hbciservlet
+36020030	National-Bank	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+36020186	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+36050105	Sparkasse Essen	https://banking-rl4.s-fints-pt-rl.de/fints30
+36060295	Bank im Bistum Essen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+36060488	Geno-Volks-Bank Essen eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+36060591	Sparda-Bank West eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+36070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+36070050	Deutsche Bank	https://fints.deutsche-bank.de/
+36250000	Sparkasse Mülheim a.d. Ruhr	https://banking-rl4.s-fints-pt-rl.de/fints30
+36270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+36270048	Deutsche Bank	https://fints.deutsche-bank.de/
+36550000	Stadtsparkasse Oberhausen	https://banking-rl4.s-fints-pt-rl.de/fints30
+36570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+36570049	Deutsche Bank	https://fints.deutsche-bank.de/
+37010050	Postbank	https://hbci.postbank.de/banking/hbci.do
+37020090	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+37030800	Isbank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+37050198	Sparkasse KölnBonn	https://banking-rl7.s-fints-pt-rl.de/fints30
+37050299	Kreissparkasse Köln	https://banking-rl6.s-fints-pt-rl.de/fints30
+37060193	Pax Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37060590	Sparda-Bank West eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37060993	PSD Bank West (Köln)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37062124	Bensberger Bank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37062365	Raiffeisenbank Frechen-Hürth	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37062600	VR Bank eG Bergisch Gladbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37063367	RB Fischenich-Kendenich eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069101	SpaDaka Aegidienberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069125	Raiffeisenbank Kürten-Odenthal eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069153	SparDaKa Brachelen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069164	Volksbank Meerbusch eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069252	Volksbank Erft eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069306	Raiffeisenbank Grevenbroich eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069322	Raiffeisenbank Gymnich eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069330	Volksbank Haaren eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069331	Raiffeisenbank von 1895 eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069342	Volksbank Heimbach eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069405	Raiffeisenbank Kaarst eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069412	Volksbank Heinsberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069427	Voba Dünnwald-Holweide eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069520	VR Bank Rhein-Sieg eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069627	RB Rheinbach-Voreifel eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069639	Rosbacher Raiffeisenbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069642	Raiffeisenbank Simmerath eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069720	VR-Bank Nordeifel eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37069991	Brühler Kreditbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+37070060	Deutsche Bank	https://fints.deutsche-bank.de/
+37161289	VR-Bank Rhein-Erft eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+37551440	Sparkasse Leverkusen	https://banking-rl5.s-fints-pt-rl.de/fints30
+37551780	Stadt-Sparkasse Langenfeld	https://banking-rl5.s-fints-pt-rl.de/fints30
+37570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+37570064	Deutsche Bank	https://fints.deutsche-bank.de/
+38020090	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+38051290	Stadtsparkasse Bad Honnef	https://banking-rl5.s-fints-pt-rl.de/fints30
+38060186	Volksbank Bonn Rhein-Sieg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+38070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+38070059	Deutsche Bank	https://fints.deutsche-bank.de/
+38070724	Deutsche Bank Privat und Geschäftskunden F 950	https://fints.deutsche-bank.de/
+38077724	Deutsche Bank Privat und Geschäftskunden F 950	https://fints.deutsche-bank.de/
+38160220	Raiffeisenbank Hardtbg.-Alfter	https://fints1.atruvia.de/cgi-bin/hbciservlet
+38250110	Kreissparkasse Euskirchen	https://banking-rl5.s-fints-pt-rl.de/fints30
+38260082	Volksbank Euskirchen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+38450000	Sparkasse Gummersbach-Bergneustadt	https://banking-rl5.s-fints-pt-rl.de/fints30
+38452490	Sparkasse der Homburgischen Gemeinden	https://banking-rl5.s-fints-pt-rl.de/fints30
+38462135	Raiffeisenbank Wiehl eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+38470024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+38470091	Deutsche Bank	https://fints.deutsche-bank.de/
+38621500	Steyler Missionssparinst. GmbH	https://fints1.atruvia.de/cgi-bin/hbciservlet
+39050000	Sparkasse Aachen	https://banking-rl3.s-fints-pt-rl.de/fints30
+39060180	Aachener Bank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+39070020	Deutsche Bank	https://fints.deutsche-bank.de/
+39070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+39162980	VR-Bank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+39362254	Raiffeisenbank Eschweiler eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+39550110	Sparkasse Düren	https://banking-rl5.s-fints-pt-rl.de/fints30
+39560201	Volksbank Düren eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+39570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+39570061	Deutsche Bank	https://fints.deutsche-bank.de/
+40030000	Münsterländische Bank Thie & Co	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40050150	Stadtsparkasse Münsterland Ost	https://banking-wl6.s-fints-pt-wl.de/fints30
+40060265	DKM Darlehnskasse Münster eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40060300	WL-Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40060560	Sparda-Bank Münster eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40061238	Volksbank Greven eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069266	Volksbank Marsberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069283	Volksbank Schlangen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069348	Volksbank Medebach eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069362	Volksbank Saerbeck eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069363	Volksbank Schermbeck eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069408	Volksbank Baumberge eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069546	Volksbank Senden eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069600	Volksbank Amelsbüren eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069601	Volksbank Ascheberg-Herbern eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069606	Volksbank Erle eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069622	Volksbank Seppenrade eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069709	Volksbank in der Hohen Mark eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40069716	VB Südkirchen-Cap.-Nordkirchen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+40070080	Deutsche Bank	https://fints.deutsche-bank.de/
+40090900	PSD Bank Westfalen-Lippe	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40153768	Sparkasse Emsdetten-Ochtrup	https://banking-wl1.s-fints-pt-wl.de/fints30
+40154476	Stadtsparkasse Lengerich	https://banking-wl5.s-fints-pt-wl.de/fints30
+40154530	Sparkasse Westmünsterland	https://banking-wl6.s-fints-pt-wl.de/fints30
+40160050	Volksbank Münster eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40163720	VB Nordmünsterland Mitte eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40164024	Volksbank Gronau-Ahaus eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40164256	VB Laer-Horstmar-Leer eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40164352	Volksbank Nottuln eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40164528	Volksbank Lüdinghausen-Olfen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40164618	Volksbank Ochtrup eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40164901	Spadaka Gescher eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40165366	Volksbank Selm-Bork eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40350005	Stadtsparkasse Rheine	https://banking-wl1.s-fints-pt-wl.de/fints30
+40351060	Kreissparkasse Steinfurt	https://banking-wl5.s-fints-pt-wl.de/fints30
+40361627	VB Westerkappeln-Wersen eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40361906	Ibbenbürener Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40363433	Volksbank Hörstel eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+40370024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+40370079	Deutsche Bank	https://fints.deutsche-bank.de/
+41050095	Sparkasse Hamm	https://banking-wl5.s-fints-pt-wl.de/fints30
+41051845	Sparkasse Bergkamen-Bönen	https://banking-wl6.s-fints-pt-wl.de/fints30
+41060120	Volksbank Hamm eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41061011	Spadaka Bockum-Hövel eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41061903	BAG Bankaktiengesellsch. Hamm	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41062215	Volksbank Bönen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+41070049	Deutsche Bank	https://fints.deutsche-bank.de/
+41250035	Sparkasse Beckum-Wadersloh	https://banking-wl2.s-fints-pt-wl.de/fints30
+41260006	Volksbank Beckum eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41261324	Volksbank Enniger Ostenf. Westkirchen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41261419	Volksbank Ahlen Sassenberg Warendorf eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41262501	Volksbank Ahlen Sassenberg Warendorf eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41262621	Volksbank 2000 eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41450075	Sparkasse SoestWerl	https://banking-wl3.s-fints-pt-wl.de/fints30
+41460116	Volksbank Hellweg eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41462295	Volksbank Wickede (Ruhr) eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41650001	Sparkasse Lippstadt	https://banking-wl4.s-fints-pt-wl.de/fints30
+41651770	Sparkasse Hochsauerland	https://banking-wl5.s-fints-pt-wl.de/fints30
+41651815	Sparkasse Erwitte-Anröchte	https://banking-wl4.s-fints-pt-wl.de/fints30
+41651965	Sparkasse Geseke	https://banking-wl4.s-fints-pt-wl.de/fints30
+41660124	Volksbank Lippstadt eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41661206	Volksbank Anröchte eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41661504	Volksbank Benninghausen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41661719	Volksbank Brilon eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41662465	Volksbank Störmede eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+41670024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+41670027	Deutsche Bank	https://fints.deutsche-bank.de/
+41670028	Deutsche Bank	https://fints.deutsche-bank.de/
+41670029	Deutsche Bank	https://fints.deutsche-bank.de/
+41670030	Deutsche Bank	https://fints.deutsche-bank.de/
+42030600	Isbank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+42050001	Sparkasse Gelsenkirchen	https://banking-wl3.s-fints-pt-wl.de/fints30
+42070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+42070062	Deutsche Bank	https://fints.deutsche-bank.de/
+42260001	VB Gelsenkirchen-Buer	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42450040	Stadtsparkasse Gladbeck	https://banking-wl6.s-fints-pt-wl.de/fints30
+42451220	Sparkasse Bottrop	https://banking-wl3.s-fints-pt-wl.de/fints30
+42461435	Vereinte Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42650150	Sparkasse Vest Recklinghausen	https://banking-wl6.s-fints-pt-wl.de/fints30
+42651315	Stadtsparkasse Haltern am See	https://banking-wl1.s-fints-pt-wl.de/fints30
+42661008	Volksbank Marl-Recklinghausen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42661330	Volksbank Haltern eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42661717	Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42850035	Stadtsparkasse Bocholt	https://banking-wl1.s-fints-pt-wl.de/fints30
+42860003	Volksbank Bocholt eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42861239	Spadaka Reken eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42861387	Borkener Volksbank eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42861515	Volksbank Gemen eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42861608	Volksbank Heiden eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42861814	Volksbank Rhede eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42862451	Volksbank Raesfeld eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+42870024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+42870077	Deutsche Bank	https://fints.deutsche-bank.de/
+43050001	Sparkasse Bochum	https://banking-wl4.s-fints-pt-wl.de/fints30
+43051040	Sparkasse Hattingen	https://banking-wl2.s-fints-pt-wl.de/fints30
+43060129	Volksbank Bochum Witten eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+43060967	GLS Gemeinschaftsbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+43070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+43070061	Deutsche Bank	https://fints.deutsche-bank.de/
+43250030	Herner Sparkasse	https://banking-wl5.s-fints-pt-wl.de/fints30
+44010046	Postbank	https://hbci.postbank.de/banking/hbci.do
+44020090	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+44050199	Sparkasse Dortmund	https://banking-wl7.s-fints-pt-wl.de/fints30
+44060122	Volksbank Dortmund-Nordwest eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+44070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+44070050	Deutsche Bank	https://fints.deutsche-bank.de/
+44090920	PSD Bank Rhein-Ruhr (Dortmund)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+44152370	Sparkasse an der Lippe	https://banking-wl5.s-fints-pt-wl.de/fints30
+44152490	Stadtsparkasse Schwerte	https://banking-wl2.s-fints-pt-wl.de/fints30
+44160014	Dortmunder Volksbank eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+44350060	Sparkasse UnnaKamen	https://banking-wl2.s-fints-pt-wl.de/fints30
+44361342	Volksbank Kamen-Werne eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+44550045	Sparkasse Iserlohn	https://banking-wl2.s-fints-pt-wl.de/fints30
+44551210	Stadtsparkasse Märkisches Sauerland Hemer-Menden	https://banking-wl2.s-fints-pt-wl.de/fints30
+44570004	Deutsche Bank	https://fints.deutsche-bank.de/
+44570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+44761312	Mendener Bank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+44761534	Volksbank in Südwestfalen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+45050001	Sparkasse HagenHerdecke	https://banking-wl2.s-fints-pt-wl.de/fints30
+45060009	Märkische Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+45061524	Volksbank Hohenlimburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+45070002	Deutsche Bank	https://fints.deutsche-bank.de/
+45070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+45250035	Stadtsparkasse Witten	https://banking-wl1.s-fints-pt-wl.de/fints30
+45251515	Stadtsparkasse Sprockhövel	https://banking-wl2.s-fints-pt-wl.de/fints30
+45260475	Spar- und Kreditbank Witten eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+45261547	Volksbank Sprockhövel eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+45450050	Sparkasse Gevelsberg-Wetter	https://banking-wl4.s-fints-pt-wl.de/fints30
+45451060	Sparkasse Ennepetal-Breckerfeld	https://banking-wl6.s-fints-pt-wl.de/fints30
+45451555	Stadtsparkasse Schwelm	https://banking-wl4.s-fints-pt-wl.de/fints30
+45850005	Sparkasse Lüdenscheid	https://banking-wl4.s-fints-pt-wl.de/fints30
+45851020	Vereinigte Sparkasse im Märkischen Kreis	https://banking-wl5.s-fints-pt-wl.de/fints30
+45851665	Sparkasse Kierspe-Meinerzhagen	https://banking-wl5.s-fints-pt-wl.de/fints30
+45860033	Volksbank Lüdenscheid eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+45861434	Volksbank Kierspe eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+45861617	Volksbank Meinerzhagen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46050001	Sparkasse Siegen	https://banking-wl3.s-fints-pt-wl.de/fints30
+46051240	Sparkasse Burbach-Neunkirchen	https://banking-wl4.s-fints-pt-wl.de/fints30
+46052855	Stadtsparkasse Schmallenberg	https://banking-wl4.s-fints-pt-wl.de/fints30
+46053480	Sparkasse Wittgenstein	https://banking-wl5.s-fints-pt-wl.de/fints30
+46060040	Volksbank Siegerland eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46061724	VB Freudenberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46062817	Volksbank Schmallenberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46063405	Volksbank Wittgenstein eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+46070090	Deutsche Bank	https://fints.deutsche-bank.de/
+46250049	Sparkasse Olpe-Drolshagen-Wenden	https://banking-wl3.s-fints-pt-wl.de/fints30
+46251590	Sparkasse Finnentrop	https://banking-wl3.s-fints-pt-wl.de/fints30
+46251630	Sparkasse Attendorn-Lennestadt-Kichhundern	https://banking-wl4.s-fints-pt-wl.de/fints30
+46260023	Volksbank Olpe eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46261607	VB Grevenbrück eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46261822	Volksbank Wenden-Drolshagen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46262456	Volksbank Bigge-Lenne eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46451012	Sparkasse Meschede	https://banking-wl4.s-fints-pt-wl.de/fints30
+46461126	Volksbank Sauerland eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46462271	SDK Oeventrop eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46464453	Volksbank Reiste-Eslohe eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46650005	Sparkasse Arnsberg-Sundern	https://banking-wl1.s-fints-pt-wl.de/fints30
+46660022	VB Arnsberg-Sundern eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+46670007	Deutsche Bank	https://fints.deutsche-bank.de/
+46670024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+47251550	Sparkasse Höxter	https://banking-wl6.s-fints-pt-wl.de/fints30
+47251740	Stadtsparkasse Delbrück	https://banking-wl2.s-fints-pt-wl.de/fints30
+47260121	VerbundVolksbank OWL eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47260234	Volksbank Elsen-Wewer-Borchen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47260307	Bank für Kirche und Caritas eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47261603	Volksbank Brilon-Büren-Salzkotten eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47262626	Volksbank Westenholz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47262703	Volksbank Delbrück-Hövelshof eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47263472	VB Westerloh-Westerwiehe eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47264367	Volksbank Driburg - Brakel - Steinheim eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47265383	Volksbank Wewelsburg-Ahden eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+47270029	Deutsche Bank	https://fints.deutsche-bank.de/
+47460028	Volksbank Warburg-Scherfede eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47650130	Sparkasse Paderborn-Detmold	https://banking-wl1.s-fints-pt-wl.de/fints30
+47651225	Stadtsparkasse Blomberg/Lippe	https://banking-wl6.s-fints-pt-wl.de/fints30
+47670023	Deutsche Bank	https://fints.deutsche-bank.de/
+47670024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+47691200	Volksbank Ostlippe eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47850065	Sparkasse Gütersloh	https://banking-wl1.s-fints-pt-wl.de/fints30
+47853355	Stadtsparkasse Versmold	https://banking-wl2.s-fints-pt-wl.de/fints30
+47853520	Kreissparkasse Wiedenbrück	https://banking-wl5.s-fints-pt-wl.de/fints30
+47860125	Volksbank Gütersloh eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47861317	VB Clarholz-Lette-Beelen eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47861518	Volksbank Harsewinkel eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47862447	Volksbank Rietberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+47863373	Volksbank Versmold eG.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+48020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+48020151	Bankhaus Lampe	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+48021900	Bankverein Werther AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+48050161	Sparkasse Bielefeld	https://banking-wl1.s-fints-pt-wl.de/fints30
+48051580	Kreissparkasse Halle (Westf.)	https://banking-wl1.s-fints-pt-wl.de/fints30
+48060036	VB Bielefeld eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+48062051	Volksbank Halle/Westf. eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+48062466	SDK Schloß Holte-Stukenbrock	https://fints1.atruvia.de/cgi-bin/hbciservlet
+48070020	Deutsche Bank	https://fints.deutsche-bank.de/
+48070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+48070040	Deutsche Bank	https://fints.deutsche-bank.de/
+48070042	Deutsche Bank	https://fints.deutsche-bank.de/
+48070043	Deutsche Bank	https://fints.deutsche-bank.de/
+48070044	Deutsche Bank	https://fints.deutsche-bank.de/
+48070045	Deutsche Bank	https://fints.deutsche-bank.de/
+48070050	Deutsche Bank	https://fints.deutsche-bank.de/
+48070052	Deutsche Bank	https://fints.deutsche-bank.de/
+48250110	Sparkasse Lemgo	https://banking-wl5.s-fints-pt-wl.de/fints30
+48291490	VB Bad Salzuflen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+49050101	Sparkasse Minden-Lübbecke	https://banking-wl2.s-fints-pt-wl.de/fints30
+49051065	Stadtsparkasse Rahden	https://banking-wl2.s-fints-pt-wl.de/fints30
+49051285	Sparkasse Bad Oeynhausen-Porta Westfalica	https://banking-wl2.s-fints-pt-wl.de/fints30
+49060127	Spadaka Minden-Porta Westfalica	https://fints1.atruvia.de/cgi-bin/hbciservlet
+49061510	Volksbank Eisbergen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+49070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+49070028	Deutsche Bank	https://fints.deutsche-bank.de/
+49092650	Volksbank Lübbecke eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+49262364	Volksbank Schnathorst eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+49450120	Sparkasse Herford	https://banking-wl3.s-fints-pt-wl.de/fints30
+49490070	Volksbank Bad Oeynhausen-Herford eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50010060	Postbank	https://hbci.postbank.de/banking/hbci.do
+50010517	ING	https://fints.ing.de/fints/
+50010700	Degussa Bank AG	https://fints.degussa-bank.de
+50020000	Sberbank Direct	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50020200	BHF-Bank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+50030100	HKB-Bank GmbH	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50031000	Triodos Bank Deutschland	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50050201	1822direkt	https://banking-hs5.s-fints-pt-hs.de/fints30
+50050222	1822direkt (PIN/TAN)	https://fints.1822direkt.com/fints/hbci
+50060474	GENO Broker GmbH	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50061741	Raiffeisenbank Oberursel	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50069126	Raiffeisenbank Alzey-Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50069146	Volksbank eG Grebenhain	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50069187	Volksbank Egelsbach -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50069241	Raiffeisenkasse Erbes-Büdesheim und Umgebung	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50069345	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50069455	Hüttenberger Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50069477	Raiffeisenbank Kirtorf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50069693	Raiffeisenbank Bad Homburg Ndl d FrankfurterVB	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50069976	Volksbank Wißmar	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50070010	Deutsche Bank Filiale	https://fints.deutsche-bank.de/
+50070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+50073019	Deutsche Bank	https://fints.deutsche-bank.de/
+50073024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+50090500	Sparda-Bank Hessen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50090900	PSD Bank Hessen-Thüringen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50092100	Spar- u Kreditbank ev-freikirchl Gemeinden	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50092200	Volksbank Main-Taunus	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50092900	Volksbank Usinger Land Ndl d Frankfurter VB	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50093000	Rüsselsheimer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50093400	Volksbank Kelsterbach Ndl d Frankfurter VB	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50110700	Frankfurter Bankgesellschaft	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50120900	VakifBank International Wien Zndl Frankfurt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50123400	VTB Bank AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50130400	Merck Finck & Co.	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+50190000	Frankfurter Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50230600	Isbank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+50320191	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+50520190	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+50530000	Cronbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50550020	Sparkasse Offenbach	https://banking-hs3.s-fints-pt-hs.de/fints30
+50560102	Raiffeisenbank Offenbach/M.-Bieber	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50570018	Deutsche Bank	https://fints.deutsche-bank.de/
+50570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+50590000	Offenbacher Volksbank -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50592200	Volksbank Dreieich eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50650023	Sparkasse Hanau	https://banking-hs3.s-fints-pt-hs.de/fints30
+50652124	Sparkasse Langen-Seligenstadt	https://banking-hs1.s-fints-pt-hs.de/fints30
+50661639	VR Bank Main-Kinzig-Büdingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50661816	Volksbank Heldenbergen Ndl d Frankfurter VB	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50662299	Raiffeisenbank Bruchköbel -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50662669	Raiffeisenbank Maintal Ndl d Frankfurter VB	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50663699	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50670009	Deutsche Bank	https://fints.deutsche-bank.de/
+50670024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+50690000	Volksbank Raiffeisenbank Hanau Ndl d Frankf VB	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50692100	Volksbank Seligenstadt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50750094	Kreissparkasse Gelnhausen	https://banking-hs1.s-fints-pt-hs.de/fints30
+50761333	Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50761613	Volksbank Büdingen -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50763319	Raiffeisenbank Vogelsberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50790000	VR Bank Bad Orb-Gelnhausen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50793300	Birsteiner Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50794300	VR Bank Wächtersbach/Bad Soden-Salmünster -alt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50820292	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+50850150	Sparkasse Darmstadt	https://banking-hs3.s-fints-pt-hs.de/fints30
+50851952	Sparkasse Odenwaldkreis	https://banking-hs4.s-fints-pt-hs.de/fints30
+50852553	Kreissparkasse Groß-Gerau	https://banking-hs2.s-fints-pt-hs.de/fints30
+50852651	Sparkasse Dieburg	https://banking-hs2.s-fints-pt-hs.de/fints30
+50861393	Spar- und Darlehnskasse Zell -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50861501	Raiffeisenbank Nördliche Bergstraße	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50862311	Volksbank Gräfenhausen -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50862408	Vereinigte Volksbank Griesheim-Weiterstadt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50862703	Volksbank Gersprenztal-Otzberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50862835	Raiffeisenbank Schaafheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50862903	Volksbank Mainspitze	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50863513	Volksbank Odenwald	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50865224	VB Mörfelden-Walldorf Ndl d Frankfurter VB	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50870005	Deutsche Bank	https://fints.deutsche-bank.de/
+50870024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+50890000	Volksbank Darmstadt - Südhessen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50892500	Groß-Gerauer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50950068	Sparkasse Bensheim	https://banking-hs4.s-fints-pt-hs.de/fints30
+50951469	Sparkasse Starkenburg	https://banking-hs4.s-fints-pt-hs.de/fints30
+50961206	Raiffeisenbank Ried	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50961312	Raiffeisenbank Groß-Rohrheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50961592	Volksbank Weschnitztal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50961685	Volksbank Überwald-Gorxheimertal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+50970004	Deutsche Bank	https://fints.deutsche-bank.de/
+50970024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+51020000	BHF-Bank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+51020186	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+51050015	Nassauische Sparkasse	https://banking-hs7.s-fints-pt-hs.de/fints30
+51070021	Deutsche Bank	https://fints.deutsche-bank.de/
+51070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+51090000	Wiesbadener Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51091400	Volksbank Eltville	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51091500	Rheingauer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51091700	vr bank Untertaunus	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51091711	Bank f Orden u Mission Zndl vr bk Untertaunus	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51150018	Kreissparkasse Limburg	https://banking-hs2.s-fints-pt-hs.de/fints30
+51151919	Kreissparkasse Weilburg	https://banking-hs4.s-fints-pt-hs.de/fints30
+51161606	Volksbank Langendernbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51170010	Deutsche Bank	https://fints.deutsche-bank.de/
+51170024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+51190000	Vereinigte Volksbank Limburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51191200	Volksbank Goldner Grund	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51191800	Volksbank Schupbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51192200	Volks- und Raiffeisenbank Weilmünster -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51210700	NIBC Bank Zndl Frankfurt am Main	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51250000	Taunus-Sparkasse	https://banking-hs3.s-fints-pt-hs.de/fints30
+51350025	Sparkasse Giessen	https://banking-hs3.s-fints-pt-hs.de/fints30
+51351526	Sparkasse Grünberg	https://banking-hs1.s-fints-pt-hs.de/fints30
+51352227	Sparkasse Laubach Hungen	https://banking-hs2.s-fints-pt-hs.de/fints30
+51361021	Volksbank Heuchelheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51370008	Deutsche Bank	https://fints.deutsche-bank.de/
+51370024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+51390000	Volksbank Mittelhessen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51420300	Bankhaus Julius Bär Europe AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+51550035	Sparkasse Wetzlar	https://banking-hs1.s-fints-pt-hs.de/fints30
+51560231	Volksbank Wetzlar-Weilburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51570008	Deutsche Bank	https://fints.deutsche-bank.de/
+51570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+51591300	Volksbank Brandoberndorf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51650045	Sparkasse Dillenburg	https://banking-hs2.s-fints-pt-hs.de/fints30
+51752267	Sparkasse Battenberg	https://banking-hs3.s-fints-pt-hs.de/fints30
+51762434	VR Bank Lahn-Dill eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51850079	Sparkasse Oberhessen	https://banking-hs1.s-fints-pt-hs.de/fints30
+51861325	BVB Volksbank Ndl d Frankfurter Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51861403	Volksbank Butzbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51861616	Landbank Horlofftal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51861806	Volksbank Ober-Mörlen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51961023	Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51961801	Volksbank Feldatal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+51990000	Volksbank Lauterbach-Schlitz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52050353	Kasseler Sparkasse	https://banking-hs3.s-fints-pt-hs.de/fints30
+52051373	Stadtsparkasse Borken	https://banking-hs2.s-fints-pt-hs.de/fints30
+52051555	Stadtsparkasse Felsberg	https://banking-hs4.s-fints-pt-hs.de/fints30
+52051877	Stadtsparkasse Grebenstein	https://banking-hs4.s-fints-pt-hs.de/fints30
+52052154	Kreissparkasse Schwalm-Eder	https://banking-hs4.s-fints-pt-hs.de/fints30
+52053458	Stadtsparkasse Schwalmstadt	https://banking-hs2.s-fints-pt-hs.de/fints30
+52060208	Kurhessische Landbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52060410	Evangelische Kreditgenossenschaft	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52061303	Raiffeisenbank Borken	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52062601	VR-Bank Schwalm-Eder eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52063369	VR-Bank Spangenberg-Morschen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52063550	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52064156	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52069013	Raiffeisenbank Burghaun	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52069029	Spar-u. Kredit-Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52069103	Raiffeisenbank Trendelburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52069149	Raiffeisenbank Volkmarsen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52069519	Frankenberger Bank Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52070012	Deutsche Bank	https://fints.deutsche-bank.de/
+52070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+52071212	Deutsche Bank	https://fints.deutsche-bank.de/
+52071224	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+52090000	Volksbank Kassel Göttingen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52250030	Sparkasse Werra-Meißner	https://banking-hs4.s-fints-pt-hs.de/fints30
+52260385	VR-Bank Werra-Meißner	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52270012	Deutsche Bank	https://fints.deutsche-bank.de/
+52270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+52350005	Sparkasse Waldeck-Frankenberg	https://banking-hs4.s-fints-pt-hs.de/fints30
+52360059	Waldecker Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+52411000	Cash Express Gesellschaft f Finanz-u Reisedienstleistungen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53050180	Sparkasse Fulda	https://banking-hs2.s-fints-pt-hs.de/fints30
+53051396	Kreissparkasse Schlüchtern	https://banking-hs1.s-fints-pt-hs.de/fints30
+53060180	VR Genossenschaftsbank Fulda eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53061230	VR-Bank Nordrhön eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53062035	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53062350	Raiffeisenbank Biebergrund-Petersberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53064023	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53070007	Deutsche Bank	https://fints.deutsche-bank.de/
+53070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+53093200	VR Bank HessenLand	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53093255	AgrarB@nk	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53250000	Sparkasse Bad Hersfeld-Rotenburg	https://banking-hs3.s-fints-pt-hs.de/fints30
+53260145	Raiffeisenbank Asbach-Sorga	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53261342	Raiffeisenbank Werratal-Landeck Zw	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53270012	Deutsche Bank	https://fints.deutsche-bank.de/
+53270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+53290000	VR-Bank Bad Hersfeld-Rotenburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53350000	Sparkasse Marburg-Biedenkopf	https://banking-hs1.s-fints-pt-hs.de/fints30
+53361724	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+53370008	Deutsche Bank	https://fints.deutsche-bank.de/
+53370024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+54020090	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+54050110	Stadtsparkasse Kaiserslautern	https://banking-rp4.s-fints-pt-rp.de/fints30
+54050220	Kreissparkasse Kaiserlautern	https://banking-rp3.s-fints-pt-rp.de/fints30
+54051550	Kreissparkasse Kusel	https://banking-rp3.s-fints-pt-rp.de/fints30
+54051990	Sparkasse Donnersberg	https://banking-rp3.s-fints-pt-rp.de/fints30
+54062027	Raiffeisenbank Donnersberg -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+54070092	Deutsche Bank	https://fints.deutsche-bank.de/
+54090000	Volksbank Kaiserslautern-Nordwestpfalz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54091700	Volksbank Lauterecken	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54091800	VR Bank Nordwestpfalz -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54092400	Volksbank Glan-Münchweiler	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54220091	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+54250010	Sparkasse Südwestpfalz	https://banking-rp4.s-fints-pt-rp.de/fints30
+54261700	VR-Bank Südwestpfalz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+54270096	Deutsche Bank	https://fints.deutsche-bank.de/
+54510067	Postbank	https://hbci.postbank.de/banking/hbci.do
+54520194	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+54550010	Stadtsparkasse Vorderpfalz	https://banking-rp4.s-fints-pt-rp.de/fints30
+54561310	RV Bank Rhein-Haardt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+54570094	Deutsche Bank	https://fints.deutsche-bank.de/
+54620093	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+54651240	Sparkasse Rhein-Haardt	https://banking-rp4.s-fints-pt-rp.de/fints30
+54661800	Raiffeisenbank Freinsheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54663270	Raiffeisenbank Friedelsheim-Rödersheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54670024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+54670095	Deutsche Bank	https://fints.deutsche-bank.de/
+54691200	VR Bank Mittelhaardt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54790000	Volksbank Kur- und Rheinpfalz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54850010	Sparkasse Südliche Weinstraße Landau	https://banking-rp4.s-fints-pt-rp.de/fints30
+54851440	Sparkasse Germersheim-Kandel	https://banking-rp4.s-fints-pt-rp.de/fints30
+54861190	Raiffeisenbank Oberhaardt-Gäu	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54862500	VR Bank Südpfalz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+54891300	VR Bank Südliche Weinstraße eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55020000	BHF-Bank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+55020486	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+55050120	Sparkasse Mainz	https://banking-rp3.s-fints-pt-rp.de/fints30
+55060321	Volksbank Mainz-Finthen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55060417	VR-Bank Mainz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55060611	Genobank Mainz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55061303	Budenheimer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55061507	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55061907	Volksbank Rhein-Selz -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+55070040	Deutsche Bank	https://fints.deutsche-bank.de/
+55090500	Sparda-Bank Südwest eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55091200	Volksbank Alzey	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55190000	Mainzer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55190028	Mainzer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55190050	Mainzer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55190064	Mainzer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55190065	Mainzer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55190068	Mainzer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55190088	Mainzer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55190094	Mainzer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55350010	Sparkasse Worms-Alzey-Ried	https://banking-rp3.s-fints-pt-rp.de/fints30
+55361202	Raiffeisenbank Alsheim-Gimbsheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55362071	Volksbank Bechtheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+55390000	Volksbank Worms-Wonnegau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+56020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+56050180	Sparkasse Rhein-Nahe	https://banking-rp3.s-fints-pt-rp.de/fints30
+56051790	Kreissparkasse Rhein-Hunsrück	https://banking-rp3.s-fints-pt-rp.de/fints30
+56061151	Raiffeisenbank Kastellaun eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+56061472	VB Hunsrück eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+56062227	Volksbank Rheinböllen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+56070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+56070040	Deutsche Bank	https://fints.deutsche-bank.de/
+56090000	VB Nahetal eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+56250030	Kreissparkasse Birkenfeld	https://banking-rp3.s-fints-pt-rp.de/fints30
+56261735	Raiffeisenbank Nahe eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+56270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+56270044	Deutsche Bank	https://fints.deutsche-bank.de/
+57020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+57050120	Sparkasse Koblenz	https://banking-rp1.s-fints-pt-rp.de/fints30
+57062675	Raiffeisenbk. Niederwallmenach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57069067	Raiba Lutzerather Höhe eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57069081	Raiffeisenbank Moselkrampen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57069144	Raiffeisenbank Kaisersesch eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57069238	Raiba Asbach-Neustadt eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57069361	Raiffeisenbank Welling eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57069727	Raiffeisenbank Irrel eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+57070045	Deutsche Bank	https://fints.deutsche-bank.de/
+57090000	VBM Volksbank Mittelrhein eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57090900	PSD Bank Koblenz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57091100	Volksbank Höhr-Grenzhausen -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57092800	Volksbank Rhein-Lahn eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57263015	Raiba eG Unterwesterwald	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57351030	Sparkasse Westerwald-Sieg	https://banking-rp1.s-fints-pt-rp.de/fints30
+57361476	Volksbank Gebhardshain eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57391200	Volksbank Daaden	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57391500	Volksbank Hamm, Sieg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57391800	Westerwald Bank eG Volks- und Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57450120	Sparkasse Neuwied	https://banking-rp1.s-fints-pt-rp.de/fints30
+57460117	VR-Bank Neuwied-Linz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57470024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+57470047	Deutsche Bank	https://fints.deutsche-bank.de/
+57650010	Kreissparkasse Mayen	https://banking-rp1.s-fints-pt-rp.de/fints30
+57661253	Raiffeisenbank Kehrig eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57662263	VR-Bank Rhein-Mosel	https://fints1.atruvia.de/cgi-bin/hbciservlet
+57751310	Kreissparkasse Ahrweiler	https://banking-rp1.s-fints-pt-rp.de/fints30
+57761591	VB RheinAhrEifel eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+58520086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+58550130	Sparkasse Trier	https://banking-rp1.s-fints-pt-rp.de/fints30
+58560103	Volksbank Trier eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+58561626	Volksbank Saarburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+58561771	Raiba Mehring-Leiwen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+58570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+58570048	Deutsche Bank	https://fints.deutsche-bank.de/
+58590900	PSD Bank West (Trier)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+58650030	Kreissparkasse Bitburg-Prüm	https://banking-rp1.s-fints-pt-rp.de/fints30
+58651240	Kreissparkasse Vulkaneifel	https://banking-rp1.s-fints-pt-rp.de/fints30
+58660101	VB Bitburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+58661901	Raiffeisenbank Westeifel eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+58662653	Raiffeisenbank östl. Südeifel eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+58751230	Sparkasse Mittelmosel-Eifel-Mosel-Hunsrück	https://banking-rp1.s-fints-pt-rp.de/fints30
+58760954	RB Bernkastel-Wittlich eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+58761343	Raiffeisenbank Zeller Land eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+58771224	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+58771242	Deutsche Bank	https://fints.deutsche-bank.de/
+59010066	Postbank	https://hbci.postbank.de/banking/hbci.do
+59020090	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+59050000	SaarLB	https://banking-li2.s-fints-pt-li.de/fints30
+59050101	Sparkasse Saabrücken eG	https://banking-sl2.s-fints-pt-sl.de/fints30
+59070070	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+59090900	PSD Bank RheinNeckarSaar (Saarbrücken)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59092000	Vereinigte Volksbank eG Dillingen*Dudweiler*Sulzbach/Saar	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59099550	Volksbank Nahe-Schaumberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59190000	Bank 1 Saar	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59251020	Kreissparkasse St. Wendel	https://banking-sl2.s-fints-pt-sl.de/fints30
+59252046	Sparkasse Neunkirchen	https://banking-sl2.s-fints-pt-sl.de/fints30
+59291000	St. Wendeler Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59291200	Volksbank Saarpfalz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59292400	Eppelborner Volksbank -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59320087	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+59350110	Kreissparkasse Saarlouis	https://banking-sl2.s-fints-pt-sl.de/fints30
+59351040	Sparkasse Merzig-Wadern	https://banking-sl2.s-fints-pt-sl.de/fints30
+59390100	Volksbank Saarlouis	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59391200	Volksbank Überherrn	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59392000	Volksbank Dillingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59392200	Volksbank Untere Saar	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59393000	LevoBank Vereinte VB Lebach Eppelborn	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59450010	Kreissparkasse Saarpfalz	https://banking-sl2.s-fints-pt-sl.de/fints30
+59491114	VR Bank Saarpfalz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+59491300	VR Bank Saarpfalz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60010070	Postbank	https://hbci.postbank.de/banking/hbci.do
+60020100	Schwäbische Bank AG	https://www.warburg-bank.de/fints
+60020290	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+60030100	Bankhaus Bauer	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60030200	Bankhaus Ellwanger & Geiger	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60030700	AKTIVBANK	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60030900	Isbank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+60050101	Baden-Württembergische Bank (BW-Bank)	https://banking-li4.s-fints-pt-li.de/fints30
+60060396	Untertürkheimer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60062775	Echterdinger Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069066	Raiffeisenbank Niedere Alb	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069075	Raiffeisenbank Vellberg-Großaltdorf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069147	Raiffeisenbank Sondelfingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069158	Raiffeisenbank Steinheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069206	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069224	Genossenschaftsbank Weil im Schönbuch	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069235	Raiffeisenbank Zndl VB Nordschwarzwald	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069239	Bopfinger Bank Sechta-Ries	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069242	Raiffeisenbank Gruibingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069245	Raiffeisenbank Oberes Bühlertal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069251	Raiffeisenbank Donau-Iller	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069302	Raiffeisenbank Erlenmoos	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069303	Raiffeisenbank Bad Schussenried	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069308	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069315	Volksbank Freiberg und Umgebung	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069336	Raiffeisenbank Maitis	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069343	Raiffeisenbank Rißtal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069346	Raiffeisenbank Ehingen-Hochsträß eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069350	Raiffeisenbank Reute-Gaisbeuren	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069355	Ehninger Bank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069378	Volksbank Dettenhausen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069387	Dettinger Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069419	Uhlbacher Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069420	Raiffeisenbank Mittelbiberach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069431	Raiffeisenbank Oberessendorf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069442	Raiffeisenbank Frankenhardt-Stimpfach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069455	Raiffeisenbank Vordersteinenberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069457	Raiffeisenbank Ottenbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069462	Winterbacher Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069463	Raiffeisenbank Geislingen-Rosenfeld	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069476	Raiffeisenbank Heidenheimer Alb	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069505	Volksbank Murgtal Baiersbr-Klosterreichenbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069517	Scharnhauser Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069527	Volksbank Brenztal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069544	Raiffeisenbank Westhausen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069553	Raiffeisenbank Aichhalden-Hardt-Sulgen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069595	Raiffeisenbank Schrozberg-Rot am See	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069648	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069669	Erligheimer Bank -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069673	Abtsgmünder Bank -Raiffeisen-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069680	Raiffeisenbank Bretzfeld-Neuenstein	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069685	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069705	Raiffeisenbank Schlat -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069706	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069710	Raiffeisenbank Gammesfeld	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069714	Raiffeisenbank Kocher-Jagst	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069724	Raiffeisenbank Heroldstatt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069738	Volksbank Freiberg und Umgebung	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069766	Volks- und Raiffeisenbank Boll -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069795	Volksbank Freiberg und Umgebung	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069817	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069832	Raiffeisenbank Urbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069858	Enztalbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069860	Federseebank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069876	Raiffeisenbank Oberes Gäu Ergenzingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069896	Volksbank Freiberg und Umgebung	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069904	VR-Bank Alb	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069905	Volksbank Remseck	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069911	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069926	Volksbank Glatten-Wittendorf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069927	Berkheimer Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069931	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069950	Raiffeisenbank Tüngental	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069976	Raiffeisenbank Böllingertal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60069980	Raiffeisenbank Maselheim-Äpfingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+60070070	Deutsche Bank	https://fints.deutsche-bank.de/
+60090100	Volksbank Stuttgart eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60090300	Volksbank Zuffenhausen m Zndl Stammheimer VB	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60090700	Südwestbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60090800	Sparda-Bank Baden-Württemberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60090900	PSD Bank RheinNeckarSaar (Stuttgart)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60120200	BHF-Bank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+60130100	SG BANK AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60250010	Kreissparkasse Waiblingen	https://banking-bw6.s-fints-pt-bw.de/fints30
+60261818	Raiffeisenbank Weissacher Tal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60262063	Korber Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+60270073	Deutsche Bank	https://fints.deutsche-bank.de/
+60290110	Volksbank Rems	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60291120	Volksbank Backnang eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60320291	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+60350130	Kreissparkasse Böblingen	https://banking-bw5.s-fints-pt-bw.de/fints30
+60390000	Vereinigte Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60390300	Volksbank Region Leonberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60391310	Volksbank Herrenberg-Rottenburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60391420	Volksbank Magstadt eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60420000	Wüstenrot Bank AG Pfandbriefbank	https://fints.wuestenrot.de
+60420020	Wüstenrot Bank AG Pfandbriefbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60420186	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+60422000	RSB Retail + Service Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60450050	Kreissparkasse Ludwigsburg	https://banking-bw4.s-fints-pt-bw.de/fints30
+60460142	Volksbank Freiberg und Umgebung	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60462808	VR-Bank Asperg-Markgröningen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60470024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+60470082	Deutsche Bank	https://fints.deutsche-bank.de/
+60490150	Volksbank Ludwigsburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60491430	VR-Bank Neckar-Enz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60661906	Raiffeisenbank Wimsheim-Mönsheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60663084	Raiffeisenbank im Kreis Calw	https://fints1.atruvia.de/cgi-bin/hbciservlet
+60670024	Deutsche Bank Privat- und Geschäftskunden	https://fints.deutsche-bank.de/
+60670070	Deutsche Bank	https://fints.deutsche-bank.de/
+61050000	Kreissparkasse Göppingen	https://banking-bw3.s-fints-pt-bw.de/fints30
+61060500	Volksbank Göppingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+61070078	Deutsche Bank	https://fints.deutsche-bank.de/
+61091200	Volksbank-Raiffeisenbank Deggingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61120286	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+61150020	Kreissparkasse Esslingen-Nürtingen	https://banking-bw1.s-fints-pt-bw.de/fints30
+61161696	Volksbank Filder	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61170024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+61170076	Deutsche Bank	https://fints.deutsche-bank.de/
+61190110	Volksbank Esslingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61191310	Volksbank Plochingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61261213	Raiffeisenbank Teck	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61261339	Volksbank Hohenneuffen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61262345	Bernhauser Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61290120	Volksbank Kirchheim-Nürtingen e.G.	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61361722	Raiffeisenbank Rosenstein	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61361975	Raiffeisenbank Mutlangen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61370024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+61370086	Deutsche Bank	https://fints.deutsche-bank.de/
+61391410	Volksbank Welzheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61420086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+61450050	Kreissparkasse Ostalb (Aalen)	https://banking-bw5.s-fints-pt-bw.de/fints30
+61490150	VR-Bank Aalen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+61491010	VR-Bank Ellwangen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62020000	Hoerner-Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62050000	Kreissparkasse Heilbronn	https://banking-bw2.s-fints-pt-bw.de/fints30
+62061991	Volksbank Sulmtal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62062215	Volksbank Beilstein-Ilsfeld-Abstatt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62062643	Volksbank Flein-Talheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62063263	Volksbank im Unterland eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+62070081	Deutsche Bank	https://fints.deutsche-bank.de/
+62090100	Volksbank Heilbronn	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62091600	Volksbank Möckmühl-Neuenstadt eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62091800	Volksbank Hohenlohe	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62250030	Kreissparkasse Schwäbisch Hall-Crailsheim	https://banking-bw2.s-fints-pt-bw.de/fints30
+62251550	Sparkasse Hohenlohekreis	https://banking-bw5.s-fints-pt-bw.de/fints30
+62290110	VR Bank Schwäbisch Hall-Crailsheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62291020	Crailsheimer Volksbank -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62391010	Volksbank Bad Mergentheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+62391420	Volksbank Vorbach-Tauber	https://fints1.atruvia.de/cgi-bin/hbciservlet
+63020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+63050000	Sparkasse Ulm	https://banking-bw6.s-fints-pt-bw.de/fints30
+63061486	VR-Bank Langenau-Ulmer Alb	https://fints1.atruvia.de/cgi-bin/hbciservlet
+63070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+63070088	Deutsche Bank	https://fints.deutsche-bank.de/
+63090100	Volksbank Ulm-Biberach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+63091010	Ehinger Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+63091200	Volksbank Blaubeuren	https://fints1.atruvia.de/cgi-bin/hbciservlet
+63091300	Volksbank Laichingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+63220090	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+63250030	Kreissparkasse Heidenheim	https://banking-bw3.s-fints-pt-bw.de/fints30
+63290110	Heidenheimer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64020186	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+64050000	Kreissparkasse Reutlingen	https://banking-bw3.s-fints-pt-bw.de/fints30
+64061854	VR Bank Steinlach-Wiesaz-Härten eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+64070085	Deutsche Bank	https://fints.deutsche-bank.de/
+64090100	Volksbank Reutlingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64091200	Volksbank Ermstal-Alb eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64091300	Volksbank Münsingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64150020	Kreissparkasse Tübingen	https://banking-bw5.s-fints-pt-bw.de/fints30
+64161397	Volksbank Ammerbuch	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64161608	Raiffeisenbank Härten -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64161956	Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64163225	Volksbank Hohenzollern	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64191030	Volksbank Nagoldtal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64191210	Volksbank Nordschwarzwald	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64191700	Volksbank Horb -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64250040	Kreissparkasse Rottweil	https://banking-bw1.s-fints-pt-bw.de/fints30
+64251060	Kreissparkasse Freudenstadt	https://banking-bw1.s-fints-pt-bw.de/fints30
+64261363	Volksbank Baiersbronn	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64261626	Murgtalbank Mitteltal - Obertal -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64261853	Volksbank Nordschwarzwald eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64262408	Volksbank Dornstetten eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64290120	Volksbank Rottweil	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64291010	Volksbank Horb-Freudenstadt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64291420	Volksbank Deißlingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64292310	Volksbank Trossingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64350070	Kreissparkasse Tuttlingen	https://banking-bw1.s-fints-pt-bw.de/fints30
+64361359	Raiffeisenbank Donau-Heuberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+64390130	Volksbank Donau-Neckar eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65020186	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+65050110	Kreissparkasse Ravensburg	https://banking-bw6.s-fints-pt-bw.de/fints30
+65061219	Raiffeisenbank Aulendorf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65062577	Raiffeisenbank Ravensburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65062793	Raiffeisenbank Vorallgäu	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65063086	Raiffeisenbank Bad Saulgau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+65070084	Deutsche Bank	https://fints.deutsche-bank.de/
+65090100	Volksbank Ulm-Biberach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65091040	Leutkircher Bank, Raiffeisen- und Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65091300	Bad Waldseer Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65092200	Volksbank Altshausen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65093020	Volksbank Bad Saulgau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65110200	Internationales Bankhaus Bodensee	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65162832	Raiffeisenbank Oberteuringen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65191500	Volksbank Tettnang eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65351050	Kreissparkasse Sigmaringen	https://banking-bw2.s-fints-pt-bw.de/fints30
+65351260	Sparkasse Zollernalb	https://banking-bw1.s-fints-pt-bw.de/fints30
+65361469	Volksbank Heuberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65361898	Winterlinger Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65361989	Onstmettinger Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65362499	Raiffeisenbank Geislingen-Rosenfeld	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65370024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+65370075	Deutsche Bank	https://fints.deutsche-bank.de/
+65390120	Volksbank Ebingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65391210	Volksbank Balingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65392030	Volksbank Tailfingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65450070	Kreissparkasse Biberach	https://banking-bw3.s-fints-pt-bw.de/fints30
+65461878	Raiffeisenbank Riss-Umlach eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65462231	Raiffeisenbank Illertal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65491320	Volksbank Laupheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+65491510	Volksbank-Raiffeisenbank Riedlingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66010075	Postbank	https://hbci.postbank.de/banking/hbci.do
+66020286	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+66030600	Isbank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+66050101	Sparkasse Karlsruhe Ettlingen	https://banking-bw4.s-fints-pt-bw.de/fints30
+66061059	Volksbank Stutensee Hardt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66061407	Spar- und Kreditbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66061724	Volksbank Weingarten-Walzbachtal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66062138	Spar- und Kreditbank Hardt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66062366	Raiffeisenbank Hardt-Bruhrain	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66069103	Raiffeisenbank Elztal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66069342	Volksbank Krautheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66070004	Deutsche Bank	https://fints.deutsche-bank.de/
+66070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+66090800	BBBank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66090900	PSD Bank Karlsruhe-Neustadt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66091200	Volksbank Ettlingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66190000	Volksbank Karlsruhe eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66250030	Stadtsparkasse Baden-Baden Gaggenau	https://banking-bw3.s-fints-pt-bw.de/fints30
+66251434	Sparkasse Bühl	https://banking-bw3.s-fints-pt-bw.de/fints30
+66261092	Spar- und Kreditbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66261416	Raiffeisenbank Altschweier	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66270001	Deutsche Bank	https://fints.deutsche-bank.de/
+66270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+66290000	Volksbank Baden-Baden Rastatt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66291400	Volksbank Bühl	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66350036	Sparkasse Kraichgau (Bruchsal-Bretten-Sinsheim)	https://banking-bw2.s-fints-pt-bw.de/fints30
+66391200	Volksbank Bruchsal-Bretten	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66391600	Volksbank Bruhrain-Kraich-Hardt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66432700	Bankhaus C. Faisst OHG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+66450050	Sparkasse Offenburg/Ortenau	https://banking-bw5.s-fints-pt-bw.de/fints30
+66451346	Sparkasse Gengenbach	https://banking-bw5.s-fints-pt-bw.de/fints30
+66451548	Sparkasse Haslach-Zell	https://banking-bw5.s-fints-pt-bw.de/fints30
+66451862	Sparkasse Hanauerland	https://banking-bw5.s-fints-pt-bw.de/fints30
+66452776	Sparkasse Wolfach	https://banking-bw5.s-fints-pt-bw.de/fints30
+66470024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+66470035	Deutsche Bank	https://fints.deutsche-bank.de/
+66490000	Volksbank Offenburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66491800	Volksbank Bühl Fil Kehl	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66492600	Volksbank Appenweier-Urloffen Appenweier -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66492700	Volksbank Kinzigtal eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66550070	Sparkasse Rastatt-Gernsbach	https://banking-bw3.s-fints-pt-bw.de/fints30
+66562053	Raiffeisenbank Südhardt Durmersheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66562300	VR-Bank in Mittelbaden	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66650085	Sparkasse Pforzheim Calw	https://banking-bw3.s-fints-pt-bw.de/fints30
+66661329	Raiffeisenbank Kieselbronn	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66662155	Raiffeisenbank Ersingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66670006	Deutsche Bank	https://fints.deutsche-bank.de/
+66670024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+66690000	Volksbank Pforzheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66692300	Volksbank Wilferdingen-Keltern eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+66762332	Raiffeisenbank Kraichgau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67020190	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+67050505	Sparkasse Rhein-Neckar-Nord (Mannheim/Weinheim)	https://banking-bw4.s-fints-pt-bw.de/fints30
+67060031	Volksbank Sandhofen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67070010	Deutsche Bank	https://fints.deutsche-bank.de/
+67070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+67090000	VR Bank Rhein-Neckar	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67092300	Volksbank Weinheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67220286	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+67230000	MLP Finanzdienstleistungen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67230001	MLP Finanzdienstleistungen Zw CS	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67250020	Sparkasse Heidelberg	https://banking-bw4.s-fints-pt-bw.de/fints30
+67262243	Raiffeisenbank Baiertal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67262550	Volksbank Rot	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67270003	Deutsche Bank	https://fints.deutsche-bank.de/
+67270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+67290000	Heidelberger Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67290100	H + G BANK Heidelberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67291700	Volksbank Neckartal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67291900	Volksbank Kraichgau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67292200	Volksbank Wiesloch	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67352565	Sparkasse Tauberfranken	https://banking-bw1.s-fints-pt-bw.de/fints30
+67362560	Volksbank Tauber -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67390000	Volksbank Main-Tauber eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67450048	Sparkasse Neckartal-Odenwald	https://banking-bw5.s-fints-pt-bw.de/fints30
+67460041	Volksbank Mosbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67461424	Volksbank Franken	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67461733	Volksbank Kirnau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67462368	Volksbank Limbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+67462480	Raiffeisenbank Schefflenz-Seckach -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68020186	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+68030000	Bankhaus E. Mayer AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68050101	Sparkasse Freiburg - Nördlicher Breisgau	https://banking-bw2.s-fints-pt-bw.de/fints30
+68051004	Sparkasse Hochschwarzwald	https://banking-bw2.s-fints-pt-bw.de/fints30
+68051207	Sparkasse Bonndorf-Stühlingen	https://banking-bw1.s-fints-pt-bw.de/fints30
+68052230	Bezirkssparkasse St. Blasien	https://banking-bw1.s-fints-pt-bw.de/fints30
+68052328	Sparkasse Staufen-Breisach	https://banking-bw2.s-fints-pt-bw.de/fints30
+68061505	Volksbank Breisgau-Süd eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68062105	Raiffeisenbank Denzlingen-Sexau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68062730	Raiffeisenbank Wyhl	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68063479	Raiffeisenbank Kaiserstuhl	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68064222	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+68070030	Deutsche Bank	https://fints.deutsche-bank.de/
+68090000	Volksbank Freiburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68090900	PSD Bank RheinNeckarSaar (Freiburg)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68092000	Volksbank Breisgau Nord	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68092300	Volksbank Staufen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+68270033	Deutsche Bank	https://fints.deutsche-bank.de/
+68290000	Volksbank Lahr	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68350048	Sparkasse Lörrach-Rheinfelden	https://banking-bw1.s-fints-pt-bw.de/fints30
+68351557	Sparkasse Wiesental eG	https://banking-bw1.s-fints-pt-bw.de/fints30
+68351865	Sparkasse Markgräflerland	https://banking-bw1.s-fints-pt-bw.de/fints30
+68370024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+68370034	Deutsche Bank	https://fints.deutsche-bank.de/
+68390000	Volksbank Dreiländereck	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68391500	VR Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68452290	Sparkasse Hochrhein	https://banking-bw1.s-fints-pt-bw.de/fints30
+68462427	Volksbank Klettgau-Wutöschingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68490000	Volksbank Rhein-Wehra	https://fints1.atruvia.de/cgi-bin/hbciservlet
+68492200	Volksbank Hochrhein	https://fints1.atruvia.de/cgi-bin/hbciservlet
+69020190	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+69050001	Sparkasse Bodensee	https://banking-bw6.s-fints-pt-bw.de/fints30
+69051410	Bezirkssparkasse Reichenau	https://banking-bw6.s-fints-pt-bw.de/fints30
+69051620	Sparkasse Pfullendorf-Meßkirch	https://banking-bw2.s-fints-pt-bw.de/fints30
+69051725	Sparkasse Salem-Heiligenberg	https://banking-bw6.s-fints-pt-bw.de/fints30
+69061800	Volksbank Überlingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+69070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+69070032	Deutsche Bank	https://fints.deutsche-bank.de/
+69091200	Hagnauer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+69091600	Volksbank Pfullendorf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+69220186	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+69250035	Sparkasse Hegau Bodensee	https://banking-bw2.s-fints-pt-bw.de/fints30
+69251445	Sparkasse Engen-Gottmadingen	https://banking-bw2.s-fints-pt-bw.de/fints30
+69251755	Sparkasse Stockach	https://banking-bw2.s-fints-pt-bw.de/fints30
+69270024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+69270038	Deutsche Bank	https://fints.deutsche-bank.de/
+69290000	Volksbank Hegau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+69291000	Volksbank Konstanz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+69362032	Volksbank Meßkirch Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+69450065	Sparkasse Schwarzwald-Baar	https://banking-bw6.s-fints-pt-bw.de/fints30
+69470024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+69470039	Deutsche Bank	https://fints.deutsche-bank.de/
+69490000	Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70010080	Postbank	https://hbci.postbank.de/banking/hbci.do
+70012200	Bank Sarasin	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70013100	net-m privatbank 1891 AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70013155	net-m privatbank 1891 AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70013199	net-m privatbank 1891 AG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70017000	PayCenter GmbH	https://fints.paycenter.de
+70020270	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+70021180	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+70025175	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+70030014	Fürst Fugger Privatbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70030300	Donner & Reuschel Aktiengesellschaft	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70030400	Merck Finck & Co.	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+70031000	Bankhaus Ludwig Sperrer KG	https://hbciplus.sperrer.de
+70032500	St. Galler Kantonalbank Deutschland	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70035000	Oldenburgische Landesbank AG (vormals Allianz Bank)	https://hbci.olb.de
+70051003	Sparkasse Freising	https://banking-by2.s-fints-pt-by.de/fints30
+70051540	Sparkasse Dachau	https://banking-by3.s-fints-pt-by.de/fints30
+70051995	Sparkasse Erding - Dorfen	https://banking-by2.s-fints-pt-by.de/fints30
+70052060	Sparkasse Landsberg-Dießen	https://banking-by2.s-fints-pt-by.de/fints30
+70053070	Sparkasse Fürstenfeldbruck	https://banking-by3.s-fints-pt-by.de/fints30
+70054306	Sparkasse Bad Tölz-Wolfratshausen	https://banking-by2.s-fints-pt-by.de/fints30
+70070010	Deutsche Bank	https://fints.deutsche-bank.de/
+70070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+70090100	Hausbank München	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70090500	Sparda-Bank München eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70091500	Volksbank Raiffeisenbank Dachau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70091600	Landsberg-Ammersee Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70093200	VR-Bank Starnberg-Herrsching-Landsberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70093400	Volksbank Raiffeisenbank Ismaning	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70120400	BNP Paribas S.A. Niederlassung Deutschland-Consorsbank	https://brokerage-hbci.consorsbank.de/hbci
+70120700	Oberbank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+70130800	Merkur Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70150000	Stadtsparkasse München	https://banking-by6.s-fints-pt-by.de/fints30
+70160300	Raiffeisenbank München -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70163370	Volksbank Raiffeisenbank Fürstenfeldbruck	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70166486	VR Bank München Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169132	Raiffeisenbank Griesstätt-Halfing	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169165	Raiffeisenbank Chiemgau-Nord - Obing	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169168	VR-Bank Chiemgau-Süd -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169186	Raiffeisenbank Pfaffenhofen a d Glonn	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169190	Raiffeisenbank Tattenh-Großkarolinenf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169191	Raiffeisenbank Rupertiwinkel	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169195	Raiffeisenbank Trostberg-Traunreut	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169310	Raiffeisenbank Alxing-Bruck	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169331	Raiffeisenbank südöstl. Starnberger See	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169333	Raiffeisenbank Beuerberg-Eurasburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169351	Raiffeisenbank Nordkreis Landsberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169356	Raiffeisenbank Erding	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169382	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169383	Raiffeisenbank Gmund am Tegernsee	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169388	Raiffeisenbank Haag-Gars-Maitenbeth	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169410	Raiffeisenbank Holzkirchen-Otterfing	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169413	Raiffeisenbank Singoldtal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169450	Raiffeisen-Volksbank Ebersberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169459	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169460	Raiffeisenbank Westkreis Fürstenfeldbruck	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169464	Genossenschaftsbank München	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169465	Raiffeisenbank München-Nord	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169466	Raiffeisenbank München-Süd	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169474	Raiffbk Neumarkt-St. Veit - Niederbergkirchen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169476	Raiffeisenbank -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169493	Raiffeisenbank Oberschleißheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169509	Raiffeisenbank Pfaffenwinkel	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169521	Raiffeisenbank Raisting	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169524	Raiffeisenbank RSA	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169530	Raiffeisenbank Reischach-Wurmannsquick-Zeilarn	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169538	Raiffeisenbank St. Wolfgang-Schwindkirchen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169541	Raiffeisenbank Lech-Ammersee	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169543	Raiffeisenbank Isar-Loisachtal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169558	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169566	VR-Bank Taufkirchen-Dorfen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169568	Raiffeisenbank Taufkirchen-Oberneukirchen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169571	Raiffeisenbank Tölzer Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169575	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169576	Raiffeisen-Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169585	Raiffeisenbank Unterschleißheim-Haimhn -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169598	Raiffeisenbank im Oberland eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169599	Raiffeisenbank Weil u Umgebung	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169602	Raiffeisenbank Weilheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169605	Raiffeisen-Volksbank Isen-Sempt eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169614	Freisinger Bank Volksbank-Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169619	Raiffeisenbank Zorneding	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169653	Raiffeisenbank Aiglsbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70169693	Raiffeisenbank Hallertau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70190000	Münchner Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70220200	BHF-Bank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+70230600	Isbank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+70250150	Kreissparkasse München Starnberg Ebersberg	https://banking-by3.s-fints-pt-by.de/fints30
+70320090	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+70321194	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+70322192	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+70350000	Kreissparkasse Garmisch-Partenkirchen	https://banking-by2.s-fints-pt-by.de/fints30
+70351030	Vereinigte Sparkasse i. Ldkr. Weilheim	https://banking-by2.s-fints-pt-by.de/fints30
+70362595	Raiffeisenbank Wallgau-Krün	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70390000	VR-Bank im Landkreis Garmisch-Partenkirchen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+70391800	Volksbank-Raiffeisenbank Penzberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+71020072	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+71021270	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+71022182	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+71023173	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+71050000	Sparkasse Berchtesgadener Land	https://banking-by2.s-fints-pt-by.de/fints30
+71052050	Kreissparkasse Traunstein-Trostberg	https://banking-by2.s-fints-pt-by.de/fints30
+71061009	VR I meine Raiffeisenbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+71062802	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+71090000	Volksbank Raiffeisenbank Oberbayern Südost	https://fints1.atruvia.de/cgi-bin/hbciservlet
+71120077	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+71120078	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+71121176	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+71122183	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+71150000	Sparkasse Rosenheim-Bad/Aibling	https://banking-by2.s-fints-pt-by.de/fints30
+71151020	Sparkasse Altötting-Mühldorf a.Inn	https://banking-by2.s-fints-pt-by.de/fints30
+71152570	Kreissparkasse Miesbach-Tegernsee	https://banking-by2.s-fints-pt-by.de/fints30
+71152680	Kreis- und Stadtsparkasse Wasserburg am Inn	https://banking-by2.s-fints-pt-by.de/fints30
+71160000	Volksbank Raiffeisenbank Rosenheim-Chiemsee eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+71160161	VR Bank Rosenheim-Chiemsee	https://fints1.atruvia.de/cgi-bin/hbciservlet
+71161964	Volksbank-Raiffeisenbank Chiemsee -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+71162355	Raiffeisenbank Oberaudorf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+71162804	Raiffeisenbank Aschau-Samerberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+71165150	Raiffeisenbank Mangfalltal -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+71190000	Volksbank Rosenheim -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+71191000	VR-Bank Burghausen-Mühldorf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72020070	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+72020700	Augsburger Aktienbank AG	https://banking.aab.de/hbci
+72021271	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+72021876	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+72030014	Fürst Fugger Privatbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72050000	Stadtsparkasse Augsburg	https://banking-by5.s-fints-pt-by.de/fints30
+72050101	Kreissparkasse Augsburg	https://banking-by5.s-fints-pt-by.de/fints30
+72051210	Stadtsparkasse Aichach-Schrobenhausen	https://banking-by5.s-fints-pt-by.de/fints30
+72051840	Sparkasse Günzburg-Krumbach	https://banking-by5.s-fints-pt-by.de/fints30
+72062152	VR-Bank Lech-Zusam	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069002	Raiffeisenbank Adelzhausen-Sielenbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069005	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069034	Raiffeisenbank Bissingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069036	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069043	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069105	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069113	Raiffeisenbank Aschberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069119	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069123	Raiffeisenbank Jettingen-Scheppach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069126	Raiffeisenbank Bibertal-Kötz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069135	Raiffeisenbank Stauden	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069155	Raiffeisenbank Kissing-Mering	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069179	Raiffeisenbank Unteres Zusamtal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069193	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069220	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069235	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069263	Raiffeisenbank Wittislingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069274	Raiffeisenbank Augsburger Land West	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069308	Raiffeisen-Volksbank Wemding	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069329	Raiffeisen-Volksbank Ries	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069736	Raiffeisenbank Iller-Roth-Günz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72069789	Raiffeisenbank Pfaffenhausen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72070001	Deutsche Bank	https://fints.deutsche-bank.de/
+72070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+72090000	Augusta-Bank Raiffeisen-Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72090500	Sparda-Bank Augsburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72090900	PSD Bank München	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72091800	Volksbank Günzburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72120078	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+72122181	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+72150000	Sparkasse Ingolstadt Eichstätt	https://banking-by2.s-fints-pt-by.de/fints30
+72151650	Vereinigte Sparkasse d. Ldkr. Pfaffenhofen	https://banking-by2.s-fints-pt-by.de/fints30
+72152070	Sparkasse Neuburg-Rain	https://banking-by2.s-fints-pt-by.de/fints30
+72160818	Volksbank Raiffeisenbank Bayern Mitte eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72169013	Raiffeisenbank Aresing-Hörzhausen-Schiltberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72169080	Raiffeisenbank Gerolsbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72169218	Raiffeisenbank Schrobenhausen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72169246	Raiffeisenbank Schrobenhausener Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72169380	Raiffeisenbank Beilngries	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72169733	Raiffeisenbank Berg im Gau-Langenmosen -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72169745	Raiffeisenbank Ehekirchen-Oberhausen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72169756	Raiffeisen-Volksbank Neuburg/Donau eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72169764	Raiffeisenbank Donaumooser Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72169812	Raiffeisenbank Gaimersheim-Buxheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72169831	Raiffeisenbank Riedenburg-Lobsing	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72170007	Deutsche Bank	https://fints.deutsche-bank.de/
+72170024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+72220074	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+72223182	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+72250000	Sparkasse Nördlingen	https://banking-by5.s-fints-pt-by.de/fints30
+72250160	Sparkasse Donauwörth	https://banking-by5.s-fints-pt-by.de/fints30
+72251520	Kreis- und Stadtsparkasse Dillingen	https://banking-by5.s-fints-pt-by.de/fints30
+72262401	Raiffeisen-Volksbank Dillingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+72290100	Raiffeisen-Volksbank Donauwörth	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73050000	Sparkasse Neu-Ulm-Illertissen	https://banking-by5.s-fints-pt-by.de/fints30
+73061191	VR-Bank Neu-Ulm eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73090000	Volksbank Neu-Ulm	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73120075	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+73150000	Sparkasse Memmingen-Lindau-Mindelheim	https://banking-by5.s-fints-pt-by.de/fints30
+73160000	Genossenschaftsbank Unterallgäu	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73190000	VR-Bank Memmingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73191500	Volksbank Ulm-Biberach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73320073	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+73321177	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+73322380	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+73331700	Gabler-Saliter-Bank KG	https://banking.gabler-saliter-bank.de/eBankingProxy/
+73350000	Sparkasse Allgäu (Kempten)	https://banking-by5.s-fints-pt-by.de/fints30
+73351635	Sparkasse Riezlern	https://banking-by5.s-fints-pt-by.de/fints30
+73369264	Raiffeisenbank im Allgäuer Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369821	Raiffeisen-Bodenseebank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369823	Raiffeisenbank Westallgäu	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369826	Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369851	Raiffeisenbank Aitrang-Ruderatshofen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369854	Raiffeisenbank Fuchstal-Denklingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369859	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369871	Raiffeisenbank Baisweil-Eggenthal-Friesenried	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369902	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369918	Raiffeisenbank Kirchweihtal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369920	Raiffeisenbank Oberallgäu-Süd	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369933	Raiffeisenbank Südliches Ostallgäu	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369936	Raiffeisenbank Seeg -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73369954	Raiffeisenbank Wald-Görisried	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73370008	Deutsche Bank	https://fints.deutsche-bank.de/
+73370024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+73390000	Allgäuer Volksbank Kempten-Sonthofen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73392000	Volksbank Immenstadt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+73420071	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+73421478	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+73450000	Kreis- und Stadtsparkasse Kaufbeuren	https://banking-by5.s-fints-pt-by.de/fints30
+73451450	Kreissparkasse Schongau	https://banking-by2.s-fints-pt-by.de/fints30
+73460046	VR Bank Kaufbeuren-Ostallgäu	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74020074	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+74020100	Raiffeisenlandesbank Oberösterreich	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+74050000	Sparkasse Passau	https://banking-by3.s-fints-pt-by.de/fints30
+74051230	Sparkasse Freyung-Grafenau	https://banking-by3.s-fints-pt-by.de/fints30
+74061101	Raiffeisenbank Am Goldenen Steig	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74061564	Raiffeisenbank Unteres Inntal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74061670	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74061813	VR-Bank Rottal-Inn eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74062490	Raiffeisenbank Vilshofener Land eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74062786	Raiffeisenbank i Lkr Passau-Nord	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74064593	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74066749	Raiffeisenbank im Südl Bayerischen Wald	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74067000	Rottaler Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74069744	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74069758	Raiffeisenbank Kirchberg v. Wald	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74069768	Raiffeisenbank am Dreisessel	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74090000	VR-Bank Passau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74092400	Volksbank Vilshofen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74120071	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+74150000	Sparkasse Deggendorf	https://banking-by3.s-fints-pt-by.de/fints30
+74151450	Sparkasse Regen-Viechtach	https://banking-by3.s-fints-pt-by.de/fints30
+74160025	Raiffeisenbank Deggendorf-Plattling eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74161608	Raiffeisenbank Hengersberg-Schöllnach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74190000	GenoBank DonauWald eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74191000	VR-Bank Landau eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74220075	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+74221170	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+74250000	Sparkasse Niederbayern Mitte	https://banking-by3.s-fints-pt-by.de/fints30
+74251020	Sparkasse im Landkreis Cham	https://banking-by4.s-fints-pt-by.de/fints30
+74260110	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74261024	Raiffeisenbank Cham-Roding-Furth im Wald	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74290000	Volksbank Straubing	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74320073	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+74350000	Sparkasse Landshut	https://banking-by3.s-fints-pt-by.de/fints30
+74351430	Sparkasse Rottal-Inn	https://banking-by3.s-fints-pt-by.de/fints30
+74351740	Sparkasse Moosburg	https://banking-by2.s-fints-pt-by.de/fints30
+74361211	Raiffeisenbank Arnstorf	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74362663	Raiffeisenbank Altdorf-Ergolding	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74364689	Raiffeisenbank Pfeffenhausen-Rottenburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74369068	Raiffeisenbank Hofkirchen-Bayerbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74369088	Raiffeisenbank Geiselhöring-Pfaffenberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74369130	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74369146	Raiffeisenbank Rattiszell-Konzell	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74369656	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74369662	Raiffeisenbank Buch-Eching	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74390000	VR-Bank Landshut	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74391300	Volksbank-Raiffeisenbank Dingolfing	https://fints1.atruvia.de/cgi-bin/hbciservlet
+74392300	VR-Bank Vilsbiburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75020073	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+75021174	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+75050000	Sparkasse Regensburg	https://banking-by4.s-fints-pt-by.de/fints30
+75051040	Sparkasse im Landkreis Schwandorf	https://banking-by4.s-fints-pt-by.de/fints30
+75051565	Kreissparkasse Kelheim	https://banking-by3.s-fints-pt-by.de/fints30
+75060150	Raiffeisenbank Regensburg-Wenzenbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75061851	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75062026	Raiffeisenbank Oberpfalz Süd	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75069014	Raiffeisen-Bank Bad Abbach-Saal eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75069020	Raiffeisen-Bank Bruck	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75069038	Raiffeisenbank Falkenstein-Wörth	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75069055	Raiffeisenbank Alteglofsheim-Hagelstadt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75069061	Raiffeisenbank Hemau-Kallmünz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75069076	Raiffeisenbank Kallmünz -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75069078	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75069081	Raiffeisenbank Bad Kötzting	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75069094	Raiffeisenbank Parsberg-Velburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75069110	Raiffeisenbank Eschlkam-Lam-Lohberg-Neukirchen b Hl Blut	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75069171	Raiffeisenbank im Naabtal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75070013	Deutsche Bank	https://fints.deutsche-bank.de/
+75070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+75090000	Volksbank Regensburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75090300	LIGA Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75090500	Sparda-Bank Regensburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75090900	VR Bank Niederbayern-Oberpfalz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75091400	VR Bank Burglengenfeld	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75220070	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+75250000	Sparkasse Amberg-Sulzbach	https://banking-by4.s-fints-pt-by.de/fints30
+75261700	Raiffeisenbank Sulzbach-Rosenberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75290000	Volksbank-Raiffeisenbank Amberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75320075	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+75350000	Sparkasse Oberpfalz-Nord	https://banking-by4.s-fints-pt-by.de/fints30
+75351960	Vereinigte Sparkasse Eschenbach, Neustadt, Vohenstrauß	https://banking-by4.s-fints-pt-by.de/fints30
+75362039	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75363189	Raiffeisenbank Neustadt-Vohenstrauß	https://fints1.atruvia.de/cgi-bin/hbciservlet
+75390000	Volksbank Nordoberpfalz eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76010085	Postbank	https://hbci.postbank.de/banking/hbci.do
+76020070	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+76020099	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+76026000	norisbank GmbH	https://fints.norisbank.de/
+76030080	Consorsbank	https://brokerage-hbci.consorsbank.de/hbci
+76030600	Isbank AG	https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp
+76035000	UmweltBank AG	https://fints.umweltbank.de
+76050101	Sparkasse Nürnberg	https://banking-by1.s-fints-pt-by.de/fints30
+76052080	Sparkasse Neumarkt i.d.OPf.-Parsberg	https://banking-by4.s-fints-pt-by.de/fints30
+76060618	Volksbank Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76061025	Raiffeisen Spar+Kreditbank Lauf a d Pegnitz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76061482	Raiffeisenbank Hersbruck	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069369	Raiffeisenbank Auerbach-Freihung	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069372	Raiffeisenbank Bad Windsheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069378	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069404	Raiffeisenbank Uehlfeld-Dachsbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069409	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069410	Raiffeisenbank Dietersheim und Umgebung	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069440	Raiffeisenbank Altdorf-Feucht	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069441	VR-Bank Feuchtwangen-Limes	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069448	Raiffeisenbank -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069449	Raiffeisenbank Berching-Freystadt-Mühlhausen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069462	Raiffeisenbank Greding - Thalmässing	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069468	Raiffeisenbank Weißenburg-Gunzenhausen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069486	Raiffeisenbank Hirschau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069512	Raiffeisenbank Knoblauchsland Nürnberg-Buch	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069553	Raiffeisenbank Neumarkt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069559	Raiffeisenbank Uffenheim-Neustadt eG RVB	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069564	Raiffeisenbank Oberferrieden-Burgthann	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069576	Raiffeisenbank Plankstetten	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069602	Raiffeisenbank Seebachgrund	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069611	Raiffeisenbank Unteres Vilstal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069635	Raiffeisenbank Ursensollen-Ammerthal-Hohenburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069663	Raiffeisenbank Heilsbronn-Windsbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76069669	Raiffeisenbank Zirndorf eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76070012	Deutsche Bank	https://fints.deutsche-bank.de/
+76070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+76090400	Evenord-Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76090500	Sparda-Bank Nürnberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76090900	PSD Bank Nürnberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76211900	CVW - Privatbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76220073	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+76250000	Sparkasse Fürth	https://banking-by1.s-fints-pt-by.de/fints30
+76251020	Sparkasse im Landkreis Neustadt a.d.Aisch-Bad Winsheim	https://banking-by1.s-fints-pt-by.de/fints30
+76320072	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+76350000	Stadt- und Kreissparkasse Erlangen Höchstadt Herzogenaurach	https://banking-by1.s-fints-pt-by.de/fints30
+76351040	Sparkasse Forchheim	https://banking-by4.s-fints-pt-by.de/fints30
+76360033	Raiffeisen-Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76391000	Volksbank Forchheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76420080	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+76450000	Sparkasse Mittelfranken-Süd	https://banking-by1.s-fints-pt-by.de/fints30
+76460015	Raiffeisenbank Roth-Schwabach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76520071	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+76550000	Sparkasse Ansbach	https://banking-by1.s-fints-pt-by.de/fints30
+76551540	Vereinigte Sparkasse Gunzenhausen	https://banking-by1.s-fints-pt-by.de/fints30
+76560060	RaiffeisenVolksbank Gewerbebank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76561979	Raiffeisenbank -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+76591000	VR Bank Dinkelsbühl eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77020070	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+77050000	Sparkasse Bamberg	https://banking-by4.s-fints-pt-by.de/fints30
+77060100	VR Bank Bamberg Raiffeisen-Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77061004	Raiffeisenbank Obermain Nord	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77062014	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77062139	Raiffeisen-Volksbank Bad Staffelstein	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069042	Raiffeisenbank Gößweinstein -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069044	Raiffeisenbank Küps-Mitwitz-Stockheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069051	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069052	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069091	Raiffeisenbank Ebrachgrund	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069110	Raiffeisenbank Pretzfeld -alt-	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069461	Vereinigte Raiffeisenbanken	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069556	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069739	Raiffeisenbank Thurnauer Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069746	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069764	Raiffeisenbank Kemnather Land - Steinwald eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069782	Raiffeisenbank am Kulm	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069868	Raiffeisenbank Oberland	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069870	Raiffeisenbank Frankenwald Ost-Oberkotzau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069906	Raiffeisenbank Wüstenselbitz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77069908	Raiffeisenbank Sparneck-Stammbach-Zell	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77091800	Raiffeisen-Volksbank Lichtenfels-Itzgrund eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77120073	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+77150000	Sparkasse Kulmbach-Kronach	https://banking-by4.s-fints-pt-by.de/fints30
+77190000	Kulmbacher Bank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77320072	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+77350110	Sparkasse Bayreuth	https://banking-by4.s-fints-pt-by.de/fints30
+77361600	Raiffeisen-Volksbank Kronach-Ludwigsstadt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77363749	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+77365792	Raiffeisenbank Hollfeld-Waischenfeld-Aufseß	https://fints1.atruvia.de/cgi-bin/hbciservlet
+78020070	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+78050000	Sparkasse Hochfranken	https://banking-by4.s-fints-pt-by.de/fints30
+78060896	VR Bank Hof eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+78160069	VR-Bank Fichtelgebirge eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+78320076	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+78350000	Vereinigte Coburger Sparkassen	https://banking-by4.s-fints-pt-by.de/fints30
+78360000	VR-Bank Coburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79020076	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+79030001	Fürstlich Castell'sche Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79032038	Bank Schilling & Co	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79050000	Sparkasse Mainfranken-Würzburg	https://banking-by7.s-fints-pt-by.de/fints30
+79061000	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79063060	Raiffeisenbank Estenfeld-Bergtheim	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79063122	Raiffeisenbank Höchberg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79065028	Volksbank Raiffeisenbank Bad Kissingen-Bad Brückenau eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79069001	Raiffeisenbank Volkach-Wiesentheid eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79069010	VR-Bank Schweinfurt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79069031	Raiffeisenbank Bütthard-Gaukönigshofen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79069150	Raiffeisenbank Karlstadt-Gemünden	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79069165	Genobank Rhön-Grabfeld eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79069181	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79069188	Raiffeisenbank Obereßfeld-Römhild	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79069213	Raiffeisenbank Maßbach	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79069271	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79070016	Deutsche Bank	https://fints.deutsche-bank.de/
+79070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+79090000	Volksbank Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79161499	Raiffeisenbank Kitzinger Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79190000	VR Bank Kitzingen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79320075	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+79330111	Bankhaus Max Flessa KG (Flessabank)	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79350101	Sparkasse Schweinfurt-Haßberge	https://banking-by7.s-fints-pt-by.de/fints30
+79351010	Sparkasse Bad Kissingen	https://banking-by7.s-fints-pt-by.de/fints30
+79353090	Sparkasse Bad Neustadt a. d. Saale	https://banking-by7.s-fints-pt-by.de/fints30
+79362081	VR-Bank Gerolzhofen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79363151	Raiffeisen-Volksbank Haßberge	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79364069	Raiffeisenbank Frankenwinheim und Umgebung	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79520070	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+79550000	Sparkasse Aschaffenburg-Alzenau	https://banking-by7.s-fints-pt-by.de/fints30
+79561348	Raiffeisenbank Bachgau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79562514	Raiffeisenbank Aschaffenburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79565568	Raiffeisenbank Waldaschaff-Heigenbrücken	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79566545	Raiffeisenbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79567531	RV-Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79568518	Raiffeisenbank Haibach-Obernau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79570024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+79570051	Deutsche Bank	https://fints.deutsche-bank.de/
+79590000	Volksbank Aschaffenburg	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79650000	Sparkasse Miltenberg-Obernburg	https://banking-by7.s-fints-pt-by.de/fints30
+79665540	Raiffeisenbank Elsavatal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+79668509	Raiffeisenbank Eichenbühl und Umgebung	https://fints1.atruvia.de/cgi-bin/hbciservlet
+80010090	Postbank	https://hbci.postbank.de/banking/hbci.do
+80020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+80020087	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+80053000	Sparkasse Burgenlandkreis	https://banking-st5.s-fints-pt-st.de/fints30
+80053572	Stadtsparkasse Dessau	https://banking-st5.s-fints-pt-st.de/fints30
+80053722	Kreissparkasse Anhalt-Bitterfeld	https://banking-st5.s-fints-pt-st.de/fints30
+80053762	Saalesparkasse	https://banking-st5.s-fints-pt-st.de/fints30
+80055008	Sparkasse Mansfeld-Südharz	https://banking-st5.s-fints-pt-st.de/fints30
+80055500	Salzlandsparkasse	https://banking-st5.s-fints-pt-st.de/fints30
+80062608	Raiffeisenbank Jessen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+80063508	Raiffeisen-Volksbank Quedlinburg-Aschersleben eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+80063558	Volksbank Sangerhausen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+80063598	Volksbank Wittenberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+80063628	Volksbank Köthen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+80063648	Volks- und Raiffeisenbank Saale-Unstrut eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+80063718	Volks- und Raiffeisenbank Eisleben eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+80093574	Volksbank Dessau-Anhalt eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+80093784	Volksbank Halle (Saale) eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+80550101	Sparkasse Wittenberg	https://banking-st5.s-fints-pt-st.de/fints30
+81050555	Kreissparkasse Stendal	https://banking-st5.s-fints-pt-st.de/fints30
+81052000	Harzsparkasse	https://banking-st5.s-fints-pt-st.de/fints30
+81053272	Stadtsparkasse Magdeburg	https://banking-st5.s-fints-pt-st.de/fints30
+81054000	Sparkasse Jerichower Land	https://banking-st5.s-fints-pt-st.de/fints30
+81055000	Kreissparkasse Börde	https://banking-st5.s-fints-pt-st.de/fints30
+81055555	Sparkasse Altmark-West	https://banking-st5.s-fints-pt-st.de/fints30
+81063028	Raiffeisenbank Kalbe-Bismark eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+81063238	Volks- und Raiffeisenbank Burg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+81069052	Volksbank Börde-Bernburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+81070000	Deutsche Bank	https://fints.deutsche-bank.de/
+81070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+81093034	Volksbank Gardelegen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+81093054	Volksbank Stendal eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+81093274	Volksbank Magdeburg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+82020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+82020087	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+82020088	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+82051000	Sparkasse Mittelthüringen	https://banking-th5.s-fints-pt-th.de/fints30
+82052020	Kreissparkasse Gotha	https://banking-th5.s-fints-pt-th.de/fints30
+82054052	Kreissparkasse Nordhausen	https://banking-th5.s-fints-pt-th.de/fints30
+82055000	Kyffhäusersparkasse Artern-Sondershausen	https://banking-th5.s-fints-pt-th.de/fints30
+82056060	Sparkasse Unstrut-Hainich	https://banking-th5.s-fints-pt-th.de/fints30
+82057070	Kreissparkasse Eichsfeld	https://banking-th5.s-fints-pt-th.de/fints30
+82064038	VR Bank Westthüringen	https://fints1.atruvia.de/cgi-bin/hbciservlet
+82064088	Volksbank und Raiffeisenbank Eisenach eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+82064168	Raiffeisenbank Gotha	https://fints1.atruvia.de/cgi-bin/hbciservlet
+82064188	VR Bank Weimar	https://fints1.atruvia.de/cgi-bin/hbciservlet
+82064228	Erfurter Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+82070000	Deutsche Bank	https://fints.deutsche-bank.de/
+82070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+82094054	Nordthüringer Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+83020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+83020087	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+83020088	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+83050000	Sparkasse Gera-Greiz	https://banking-th5.s-fints-pt-th.de/fints30
+83050200	Sparkasse Altenburger Land	https://banking-th5.s-fints-pt-th.de/fints30
+83050303	Kreissparkasse Saalfeld-Rudolstadt	https://banking-th5.s-fints-pt-th.de/fints30
+83050505	Kreissparkasse Saale-Orla	https://banking-th5.s-fints-pt-th.de/fints30
+83053030	Sparkasse Jena Saale-Holzland	https://banking-th5.s-fints-pt-th.de/fints30
+83064488	Raiffeisen-Volksbank Hermsdorfer Kreuz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+83064568	Geraer Bank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+83065408	VR-Bank Altenburger Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+83065410	Deutsche Skatbank Zndl VR Bank Altenburger Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+83094444	Raiffeisen-Volksbank Saale-Orla	https://fints1.atruvia.de/cgi-bin/hbciservlet
+83094454	Volksbank Saaletal	https://fints1.atruvia.de/cgi-bin/hbciservlet
+83094494	Volksbank Eisenberg eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+83094495	EthikBank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+84020087	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+84050000	Rhön-Rennsteig-Sparkasse	https://banking-th5.s-fints-pt-th.de/fints30
+84051010	Sparkasse Arnstadt-Ilmenau	https://banking-th5.s-fints-pt-th.de/fints30
+84054040	Kreissparkasse Hildburghausen	https://banking-th5.s-fints-pt-th.de/fints30
+84054722	Sparkasse Sonneberg	https://banking-th5.s-fints-pt-th.de/fints30
+84055050	Wartburg-Sparkasse	https://banking-th5.s-fints-pt-th.de/fints30
+84064798	Genobank Rhön-Grabfeld	https://fints1.atruvia.de/cgi-bin/hbciservlet
+84094754	VR-Bank Bad Salzungen Schmalkalden	https://fints1.atruvia.de/cgi-bin/hbciservlet
+84094814	VR Bank Südthüringen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+85020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+85050100	Sparkasse Oberlausitz-Niederschlesien	https://banking-sn5.s-fints-pt-sn.de/fints30
+85050300	Ostsächsische Sparkasse Dresden	https://banking-sn5.s-fints-pt-sn.de/fints30
+85055000	Sparkasse Meißen	https://banking-sn5.s-fints-pt-sn.de/fints30
+85060000	Volksbank Pirna	https://fints1.atruvia.de/cgi-bin/hbciservlet
+85065028	Raiffeisenbank Neustadt, Sachs	https://fints1.atruvia.de/cgi-bin/hbciservlet
+85090000	Dresdner Volksbank Raiffeisenbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+85094984	Volksbank Riesa	https://fints1.atruvia.de/cgi-bin/hbciservlet
+85095004	Volksbank Raiffeisenbank Meißen Großenhain	https://fints1.atruvia.de/cgi-bin/hbciservlet
+85550000	Kreissparkasse Bautzen	https://banking-sn5.s-fints-pt-sn.de/fints30
+85590100	Volksbank Löbau-Zittau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+85591000	Volksbank Raiffeisenbank Niederschlesien	https://fints1.atruvia.de/cgi-bin/hbciservlet
+86010090	Postbank	https://hbci.postbank.de/banking/hbci.do
+86020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+86050200	Sparkasse Muldental	https://banking-sn5.s-fints-pt-sn.de/fints30
+86055462	Kreissparkasse Döbeln	https://banking-sn4.s-fints-pt-sn.de/fints30
+86055592	Stadt- und Kreissparkasse Leipzig	https://banking-sn5.s-fints-pt-sn.de/fints30
+86065448	VR Bank Leipziger Land	https://fints1.atruvia.de/cgi-bin/hbciservlet
+86065468	Volksbank Raiffeisenbank Döbeln	https://fints1.atruvia.de/cgi-bin/hbciservlet
+86065483	Raiffeisenbank Grimma	https://fints1.atruvia.de/cgi-bin/hbciservlet
+86070000	Deutsche Bank	https://fints.deutsche-bank.de/
+86070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+86095484	Volks- und Raiffeisenbank Muldental	https://fints1.atruvia.de/cgi-bin/hbciservlet
+86095554	Volksbank Delitzsch	https://fints1.atruvia.de/cgi-bin/hbciservlet
+86095604	Leipziger Volksbank eG	https://fints1.atruvia.de/cgi-bin/hbciservlet
+87020086	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+87020087	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+87020088	UniCredit Bank - HypoVereinsbank AG	https://hbci.hypovereinsbank.de/hbci/hbci.do
+87050000	Sparkasse Chemnitz	https://banking-sn4.s-fints-pt-sn.de/fints30
+87052000	Sparkasse Mittelsachsen	https://banking-sn4.s-fints-pt-sn.de/fints30
+87054000	Erzgebirgssparkasse	https://banking-sn4.s-fints-pt-sn.de/fints30
+87055000	Sparkasse Zwickau	https://banking-sn4.s-fints-pt-sn.de/fints30
+87058000	Sparkasse Vogtland	https://banking-sn4.s-fints-pt-sn.de/fints30
+87069075	Volksbank Mittleres Erzgebirge	https://fints1.atruvia.de/cgi-bin/hbciservlet
+87069077	Vereinigte Raiffeisenbank Burgstädt	https://fints1.atruvia.de/cgi-bin/hbciservlet
+87070000	Deutsche Bank	https://fints.deutsche-bank.de/
+87070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+87095824	Volksbank Vogtland	https://fints1.atruvia.de/cgi-bin/hbciservlet
+87095934	Volksbank Zwickau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+87095974	Volksbank-Raiffeisenbank Glauchau	https://fints1.atruvia.de/cgi-bin/hbciservlet
+87096124	Volksbank	https://fints1.atruvia.de/cgi-bin/hbciservlet
+87096214	Volksbank Chemnitz	https://fints1.atruvia.de/cgi-bin/hbciservlet
+90010085	Postbank	https://hbci.postbank.de/banking/hbci.do
