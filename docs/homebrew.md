@@ -12,15 +12,18 @@ no beta or nightly release exists yet. Homebrew handles both formats the same wa
 (`app "GiroCrab.app"`).
 
 ```bash
+brew tap girocrab/tap https://github.com/GiroCrab/GiroCrab   # once
 brew install --cask girocrab/tap/girocrab           # stable
 brew install --cask girocrab/tap/girocrab@beta      # beta (pre-release)
 brew install --cask girocrab/tap/girocrab@nightly   # nightly build
 ```
 
-The cask sources live in this repo in
-[`packaging/homebrew/Casks/`](../packaging/homebrew/Casks/) and are copied into the tap
-repository `GiroCrab/homebrew-tap` (path `Casks/`). The three casks install the same
-`GiroCrab.app` and therefore declare `conflicts_with` each other.
+The casks live in [`Casks/`](../Casks/) in the root of this repo, which is where Homebrew
+looks for them. The explicit `brew tap` URL turns this repository into the tap
+`girocrab/tap`, so no separate `GiroCrab/homebrew-tap` repository is needed. If one is
+created later, the `brew tap` line is dropped and the install commands stay the same. The
+three casks install the same `GiroCrab.app` and therefore declare `conflicts_with` each
+other.
 
 ## Channels: stable, beta, nightly
 
@@ -60,9 +63,9 @@ leaves updates to Sparkle. One thing to know:
 
 ## Own tap vs. official `homebrew/cask`
 
-| | Own tap `GiroCrab/homebrew-tap` | Official `homebrew/cask` |
+| | Own tap (`Casks/` in this repo) | Official `homebrew/cask` |
 |---|---|---|
-| Install command | `brew install --cask girocrab/tap/girocrab` | `brew install --cask girocrab` |
+| Install command | `brew tap girocrab/tap https://github.com/GiroCrab/GiroCrab` once, then `brew install --cask girocrab/tap/girocrab` | `brew install --cask girocrab` |
 | Who updates | us (script below) | Homebrew's autobump bot, from `livecheck` |
 | Requirements | none | notability + review (see below) |
 | Available | immediately | after acceptance |
@@ -123,19 +126,17 @@ update.
 The script reads the release via `gh api`, picks the asset (`.dmg`, or `.zip` for releases
 up to v0.5.5), takes its SHA-256 digest (or downloads and hashes it if GitHub has no
 digest), and rewrites `version`, `sha256` and the file name in the `url` line of
-`packaging/homebrew/Casks/girocrab.rb` (or `girocrab@beta.rb`). It does **not** commit or push.
+`Casks/girocrab.rb` (or `girocrab@beta.rb`). It does **not** commit or push.
 
-Then validate and publish manually:
+Then validate against a local tap and commit the changed cask to this repo:
 
 ```bash
-brew tap-new --no-git girocrab/tap   # once, creates a local tap for testing
-cp packaging/homebrew/Casks/girocrab.rb "$(brew --repository)/Library/Taps/girocrab/homebrew-tap/Casks/"
-brew trust girocrab/tap
+brew tap girocrab/tap "$PWD"         # local checkout as the tap (use `brew untap girocrab/tap` afterwards)
 brew style --cask girocrab/tap/girocrab
 brew audit --cask --online --strict girocrab/tap/girocrab
 ```
 
-Finally, copy the file into the `GiroCrab/homebrew-tap` checkout, commit and push it.
+Users get the new cask on their next `brew update`, once the commit is on `main`.
 
 ## Uninstall and `--zap`: the vault
 
@@ -169,5 +170,6 @@ change the caveat text to "is never deleted by Homebrew".
 
 ```markdown
 ### Homebrew
+brew tap girocrab/tap https://github.com/GiroCrab/GiroCrab
 brew install --cask girocrab/tap/girocrab
 ```
