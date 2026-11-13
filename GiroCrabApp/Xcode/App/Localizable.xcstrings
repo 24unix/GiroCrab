@@ -17350,6 +17350,83 @@
           }
         }
       }
+    },
+    "GiroCrab-Hilfe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab Help"
+          }
+        }
+      }
+    },
+    "Hilfe & FAQ" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Help & FAQ"
+          }
+        }
+      }
+    },
+    "In der Hilfe suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search Help"
+          }
+        }
+      }
+    },
+    "Support" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support"
+          }
+        }
+      }
+    },
+    "Webseite & Dokumentation (girocrab.de)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Website & Documentation (girocrab.de)"
+          }
+        }
+      }
+    },
+    "Fehler melden / Issue erstellen (GitHub)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report a Bug / Open an Issue (GitHub)"
+          }
+        }
+      }
+    },
+    "Community & Diskussionen (GitHub)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Community & Discussions (GitHub)"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -69,10 +69,16 @@ struct SettingsView: View {
 /// Allgemein: app language (#93). Usable without an open vault.
 struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
+    @State private var showHelp = false
 
     var body: some View {
         @Bindable var model = model
         Form {
+            Section {
+                Button { showHelp = true } label: {
+                    Label("Hilfe & FAQ", systemImage: "questionmark.circle")
+                }
+            }
             LanguageSettingsSection()
             AnnouncementsSettingsSection()
             Section("Buchungen") {
@@ -95,6 +101,7 @@ struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showHelp) { HelpSheet() }
     }
 }
 

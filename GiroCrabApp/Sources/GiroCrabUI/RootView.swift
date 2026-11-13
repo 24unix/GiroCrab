@@ -149,8 +149,16 @@ public struct GiroCrabScenes: Scene {
             // `Group`: a CommandsBuilder takes at most 10 children (older Xcode in CI).
             Group {
                 // Hilfe › Mitteilungen …: ellipsis because a window opens.
-                CommandGroup(after: .help) {
+                // Replaces the default Help menu ("Help isn't available for …").
+                CommandGroup(replacing: .help) {
+                    Button("GiroCrab-Hilfe") { openWindow(id: "help") }
+                        .keyboardShortcut("?", modifiers: .command)
+                    Divider()
                     Button("Mitteilungen …") { openWindow(id: "announcements") }
+                    Divider()
+                    Link("Webseite & Dokumentation (girocrab.de)", destination: HelpLinks.website)
+                    Link("Fehler melden / Issue erstellen (GitHub)", destination: HelpLinks.issues)
+                    Link("Community & Diskussionen (GitHub)", destination: HelpLinks.discussions)
                 }
                 // Bearbeiten › Suchen …: focuses the toolbar search field.
                 CommandGroup(after: .pasteboard) {
@@ -189,6 +197,10 @@ public struct GiroCrabScenes: Scene {
             AnnouncementsListView()
         }
         .defaultSize(width: 460, height: 360)
+        Window("GiroCrab-Hilfe", id: "help") {
+            NavigationStack { HelpView() }
+        }
+        .defaultSize(width: 640, height: 720)
         Settings {
             // HIG: the Settings window fits each tab (SettingsView sizes them).
             SettingsView()
