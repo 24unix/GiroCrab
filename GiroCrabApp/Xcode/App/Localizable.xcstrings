@@ -17427,6 +17427,17 @@
           }
         }
       }
+    },
+    "Die bestehende Aufteilung konnte nicht geladen werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The existing split could not be loaded."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

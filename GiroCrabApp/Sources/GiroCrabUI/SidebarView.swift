@@ -84,7 +84,7 @@ struct SidebarView: View {
                     .foregroundStyle(Theme.secondary)
                     .help("Neue Hauptkategorie …")
                     .accessibilityLabel("Neue Hauptkategorie")
-                    .disabled(model.vault == nil)
+                    .disabled(!model.isUnlocked)
                 }
             }
         }
@@ -116,7 +116,7 @@ struct SidebarView: View {
                 .buttonStyle(.borderless)
                 .help("Bank hinzufügen …")
                 .accessibilityLabel("Bank hinzufügen")
-                .disabled(model.vault == nil)
+                .disabled(!model.isUnlocked)
             }
             .font(.caption)
             .foregroundStyle(Theme.secondary)
