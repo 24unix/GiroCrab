@@ -17427,6 +17427,17 @@
           }
         }
       }
+    },
+    "Beim Entsperren %@ verlangen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Require %@ on Unlock"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

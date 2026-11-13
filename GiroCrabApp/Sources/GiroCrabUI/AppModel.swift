@@ -959,7 +959,8 @@ public final class AppModel {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("GiroCrab", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base.appendingPathComponent("tresor.girocrab")
+        // Keychain bypass (dev): separate file, so the real vault is never opened with the throw-away key.
+        return base.appendingPathComponent(VaultKeyManager.keychainBypassed ? "tresor-dev.girocrab" : "tresor.girocrab")
     }
 
     func unlock() {

@@ -453,12 +453,28 @@ struct DocumentFolderSettings: View {
 
 struct SecuritySettings: View {
     @Environment(AppModel.self) private var model
+    @State private var requireBiometrics = VaultKeyManager.shared.requireBiometrics
 
     var body: some View {
         Form {
             Section("Tresor") {
                 LabeledContent("Verschlüsselung", value: "SQLCipher 4 (AES-256)")
                 LabeledContent("Hauptschlüssel", value: model.isDemo ? String(localized: "Demo-Schlüssel (Wegwerf)") : String(localized: "Schlüsselbund, geschützt durch \(VaultKeyManager.shared.biometryName)"))
+                #if os(macOS)
+                if !model.isDemo {
+                    Toggle("Beim Entsperren \(VaultKeyManager.shared.biometryName) verlangen", isOn: $requireBiometrics)
+                        .onChange(of: requireBiometrics) { _, on in
+                            guard on != VaultKeyManager.shared.requireBiometrics else { return }
+                            Task {
+                                do { try await VaultKeyManager.shared.setRequireBiometrics(on) }
+                                catch {
+                                    requireBiometrics = VaultKeyManager.shared.requireBiometrics
+                                    model.toast = error.localizedDescription
+                                }
+                            }
+                        }
+                }
+                #endif
                 LabeledContent("Datei", value: model.vault?.filePath() ?? "–")
                     .textSelection(.enabled)
                 LabeledContent("Version", value: AppVersionDisplay.current(core: coreVersion()))
