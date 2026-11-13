@@ -8,8 +8,11 @@ Rust core (`girocrab-core`, UniFFI) + SwiftUI app (`GiroCrabApp`). Root = this d
 - `girocrab-core/src/vault.rs` – encrypted storage: open/key/migrate/snapshot only
 - `girocrab-core/src/vault/` – `impl Vault` per feature: `accounts.rs`, `bookings.rs` (list_transactions/paging), `categories.rs`, `rules.rs`, `settings.rs`, `merge.rs`
 - `girocrab-core/src/schema.rs` – versioned schema migrations (see `docs/ARCHITECTURE.md`)
-- `girocrab-core/src/connectors/mod.rs` – bank connector trait/dispatch (impls alongside: `fints/`, `comdirect.rs`, `trade_republic.rs`, …)
-- `girocrab-core/src/connectors/` – all connector impls: `fints/`, `comdirect.rs`, `trade_republic.rs`, `enable_banking.rs`, `paypal.rs`, `portal_import.rs` (Amex/Amazon Visa web + CSV/PDF import)
+- `girocrab-core/src/connectors/` – `mod.rs` (submodule decls + shared HTTP helpers), `types.rs` (`BankConnector`
+  trait + DTOs), `catalog.rs` (`descriptor`, `make_connector*`), `sync_session.rs` / `transfer_session.rs` (FFI state
+  machines), `persist.rs` (`impl Vault`: `store_fetch`, `begin_sync`/`begin_transfer`), tests in `connectors/tests/`;
+  connector impls alongside: `fints/`, `comdirect.rs`, `trade_republic.rs`, `enable_banking.rs`, `paypal.rs`,
+  `portal_import.rs` (Amex/Amazon Visa web + CSV/PDF import)
 - `girocrab-core/src/merchants.rs` – merchant matching
 - `girocrab-core/src/documents.rs` – booking documents / PDF text extraction
 - `girocrab-core/src/text.rs` – text helpers (mojibake repair etc.)

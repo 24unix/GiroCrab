@@ -3,7 +3,7 @@
 //! Copy this file (e.g. `ing.rs`), rename `TemplateConnector`, then:
 //!   1. implement `begin` / `respond` / `fetch` against the bank's API
 //!   2. add a `ConnectorKind` variant in `models.rs` + a `BankDescriptor` in
-//!      `connectors/mod.rs::descriptor()`
+//!      `connectors/catalog.rs::descriptor()`
 //!   3. wire it into `make_connector()` and add a test (see below).
 //!
 //! Rules: money is always `i64` cents (never floats); never log secrets;

@@ -143,7 +143,7 @@ Monetary values arrive as decimal strings or numbers; never trust floats, parse 
 ### Identity
 
 - `ConnectorKind::ScalableCapital`, key `"scalable"` (`models.rs::as_str/all`).
-- `BankDescriptor` in `connectors/mod.rs::descriptor()`: name "Scalable Capital",
+- `BankDescriptor` in `connectors/catalog.rs::descriptor()`: name "Scalable Capital",
   protocol "OAuth 2.0 Device-Flow + GraphQL (offizielle CLI-API)", `login_label`
   = e-mail (display only; the browser does the real login), `secret_label` empty,
   `required_settings: []`, note explaining the "Agentic Investing" switch and the
@@ -291,7 +291,7 @@ Each step ends with `cargo check -q -p girocrab-core` (Rust) or `swift build -q`
 
 ### Phase 5 – Wiring (~80 lines Rust, ~40 lines Swift)
 
-15. `models.rs`: enum variant, `as_str`, `all`. `connectors/mod.rs`: descriptor,
+15. `models.rs`: enum variant, `as_str`, `all`. `connectors/catalog.rs`: descriptor,
     `make_connector_for`. `connections.rs`: no login normalisation needed.
 16. `demo.rs` demo accounts; `make_connector_for(.., demo = true)` stub.
 17. Rebuild xcframework; Swift: `Formatting.swift`, `ConnectionsUI.swift`,
@@ -324,7 +324,7 @@ Each step ends with `cargo check -q -p girocrab-core` (Rust) or `swift build -q`
 
 Files: `girocrab-core/src/connectors/dpop.rs` (signer, 3 unit tests),
 `girocrab-core/src/connectors/scalable.rs` (connector, 5 unit tests), wiring in
-`models.rs`, `connectors/mod.rs`, `connectors/demo.rs`, `i18n.rs`; Swift in
+`models.rs`, `connectors/catalog.rs`, `connectors/demo.rs`, `i18n.rs`; Swift in
 `Formatting.swift`, `ConnectionsUI.swift`, `BankPicker.swift`, `TwoFactorSheet.swift`
 and `Xcode/App/Localizable.xcstrings`.
 

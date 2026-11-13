@@ -25,7 +25,8 @@ Database schema changes are a new migration step plus a fixture vault, see
    and implement `begin` (login / challenge), `respond` (TAN/poll) and `fetch` (accounts + bookings).
    Amounts are `i64` cents, debits negative; `external_id` must be stable for de-duplication.
 2. **Register it.** Add a variant to `ConnectorKind` (`models.rs`), a `BankDescriptor` in
-   `descriptor()` and a line in `make_connector()` (`connectors/mod.rs`), plus `pub mod <bank>;`.
+   `descriptor()` and a line in `make_connector()` (`connectors/catalog.rs`), plus `pub mod <bank>;`
+   in `connectors/mod.rs`.
    Add the Swift display name/colour in `GiroCrabUI/Formatting.swift`.
 3. **Test it with fake data.** Unit-test your parser with invented fixtures, then check the UI via
    `GIROCRAB_DEMO_SEED=1`. Run `cargo fmt`, `cargo clippy` and `cargo test -p girocrab-core`.

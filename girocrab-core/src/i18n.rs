@@ -267,7 +267,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Browser-Anmeldung nötig: {0}" => "Browser sign-in required: {0}",
         "Dieser Abruf ist nicht mehr aktiv" => "This sync is no longer active",
         "Dieser Tresor wurde mit einer neueren GiroCrab-Version gespeichert. Bitte die App aktualisieren." => "This vault was saved by a newer version of GiroCrab. Please update the app.",
-        // ------------------------------------------------------------ connectors/mod.rs
+        // ------------------------------------------------------------ connectors (catalog, sessions, persist)
         "VR-NetKey oder Alias" => "VR-NetKey or alias",
         "Online-Banking-PIN" => "Online banking PIN",
         "Die BLZ muss aus genau 8 Ziffern bestehen." => "The bank code (BLZ) must be exactly 8 digits.",
