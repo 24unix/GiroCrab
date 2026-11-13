@@ -5,4 +5,6 @@ import SwiftUI
 enum ViewLayout {
     /// Charts and analysis cards above the booking list.
     static let statisticsKey = "showStatistics"
+    /// Right-hand inspector column.
+    static let inspectorKey = "showInspector"
 }
