@@ -85,3 +85,33 @@ public enum BankingVersion {
         return (aLonger == longerIsNewer) ? .orderedDescending : .orderedAscending
     }
 }
+
+/// Version line for Settings and bug reports. TestFlight pins
+/// `CFBundleShortVersionString` to an already reviewed version (a changed
+/// marketing version triggers a new beta review, a new build number does not),
+/// so the true core version and the bundle/build numbers are shown together.
+public enum AppVersionDisplay {
+    /// - Parameters:
+    ///   - core: version of the Rust core (`coreVersion()`).
+    ///   - bundleVersion: `CFBundleShortVersionString`.
+    ///   - build: `CFBundleVersion`. Only a plain number counts as a build number;
+    ///     macOS builds carry a version string there, which is not repeated.
+    public static func text(core: String, bundleVersion: String?, build: String?) -> String {
+        let bundle = bundleVersion?.trimmingCharacters(in: .whitespaces) ?? ""
+        let build = build?.trimmingCharacters(in: .whitespaces) ?? ""
+        let hasBuild = !build.isEmpty && build.allSatisfy { $0.isASCII && $0.isNumber }
+        if bundle.isEmpty || bundle == core {
+            return hasBuild ? "\(core) (Build \(build))" : core
+        }
+        return hasBuild ? "\(core) (TestFlight \(bundle) · Build \(build))" : "\(core) (App \(bundle))"
+    }
+
+    public static func current(core: String) -> String {
+        let info = Bundle.main
+        return text(
+            core: core,
+            bundleVersion: info.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+            build: info.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        )
+    }
+}

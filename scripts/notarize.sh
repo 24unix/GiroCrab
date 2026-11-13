@@ -32,6 +32,8 @@
 # signature or nothing published aborts the release. Skipped while the policy
 # key is a placeholder.
 #   --ios           also bump iOS build number, archive for iOS, and upload to TestFlight
+#                   (IOS_MARKETING_VERSION=0.6.1 pins the iOS MARKETING_VERSION, so only the
+#                   build number changes and no new external beta review is needed)
 # LOCKSTEP RULE: GiroCrab/girocrab.de (the marketing site, checked out next to this
 # repo as ../girocrab.de) and the newest icon from
 # GiroCrabApp/Xcode/App/Assets.xcassets/AppIcon.appiconset must always be kept in sync
@@ -524,12 +526,24 @@ if [ "$BUILD_IOS" -eq 1 ]; then
 
   ./build-xcframework.sh
 
+  # TestFlight: a changed MARKETING_VERSION triggers a 24 h external beta
+  # review, a new build number under an approved version does not. With
+  # IOS_MARKETING_VERSION=0.6.1 only the iOS archive is pinned (override on the
+  # xcodebuild command line); project.pbxproj and macOS keep the release version.
+  IOS_MARKETING_VERSION="${IOS_MARKETING_VERSION:-}"
+  IOS_VERSION_ARGS=()
+  if [ -n "$IOS_MARKETING_VERSION" ]; then
+    echo "==> Pinning iOS MARKETING_VERSION = ${IOS_MARKETING_VERSION} (Build ${NEXT_BUILD})"
+    IOS_VERSION_ARGS=("MARKETING_VERSION=${IOS_MARKETING_VERSION}")
+  fi
+
   xcodebuild archive \
     -project GiroCrabApp/Xcode/GiroCrab.xcodeproj \
     -scheme GiroCrab \
     -destination "generic/platform=iOS" \
     -archivePath "$IOS_ARCHIVE" \
-    -allowProvisioningUpdates
+    -allowProvisioningUpdates \
+    ${IOS_VERSION_ARGS[@]+"${IOS_VERSION_ARGS[@]}"}
 
   cp scripts/ExportOptions.plist "$IOS_PLIST"
   /usr/libexec/PlistBuddy -c "Add :destination string upload" "$IOS_PLIST" 2>/dev/null \
@@ -541,7 +555,7 @@ if [ "$BUILD_IOS" -eq 1 ]; then
     -exportPath "$IOS_EXPORT" \
     -allowProvisioningUpdates
 
-  echo "==> iOS Build ${NEXT_BUILD} uploaded to TestFlight"
+  echo "==> iOS Build ${NEXT_BUILD} uploaded to TestFlight${IOS_MARKETING_VERSION:+ (MARKETING_VERSION ${IOS_MARKETING_VERSION})}"
 fi
 
 echo "==> Done"
