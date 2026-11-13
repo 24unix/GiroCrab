@@ -308,13 +308,15 @@ final class MemoryBankingPolicyStore: BankingPolicyStore, @unchecked Sendable {
     func save(_ policy: StoredBankingPolicy) throws { value = policy }
 }
 
-/// Debug builds with a test key only: survives restarts like the keychain item.
+/// Debug builds: a file instead of the keychain item; survives restarts
+/// like the keychain item (see `makeDefault`).
 struct FileBankingPolicyStore: BankingPolicyStore {
     let url: URL
     func load() -> StoredBankingPolicy? {
         (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(StoredBankingPolicy.self, from: $0) }
     }
     func save(_ policy: StoredBankingPolicy) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONEncoder().encode(policy).write(to: url, options: .atomic)
     }
 }
@@ -446,12 +448,13 @@ public final class BankingPolicy {
         // Test hooks for throwaway keys and a local server. Not compiled into
         // release builds, so nobody can redirect or disable the check there.
         let env = ProcessInfo.processInfo.environment
-        // Unit tests never touch the keychain: the unsigned xctest process falls
-        // back to the login keychain, where the item belongs to the signed app,
-        // and every `AppModel` would raise a keychain access dialog.
-        if NSClassFromString("XCTestCase") != nil || env["XCTestConfigurationFilePath"] != nil {
-            store = MemoryBankingPolicyStore()
-        }
+        // Debug builds never touch the keychain item. They are not signed like
+        // the release app, so they lack the data-protection keychain and fall
+        // back to the login keychain, where the item belongs to the signed app:
+        // macOS then asks for the password on every launch of a new build (and
+        // for every `AppModel` in unit tests). Tests keep the policy in memory,
+        // other debug runs in their own file.
+        store = isRunningTests(env) ? MemoryBankingPolicyStore() : FileBankingPolicyStore(url: debugStoreURL)
         if let k = env["GIROCRAB_BANKING_POLICY_KEY"], !k.isEmpty {
             keys = [k]
             // Test keys never touch the real keychain item: a file (to test
@@ -481,6 +484,19 @@ public final class BankingPolicy {
             buildDate: buildDate
         )
     }
+
+    #if DEBUG
+    /// Where debug builds keep the policy instead of the keychain item.
+    static var debugStoreURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("GiroCrab", isDirectory: true)
+            .appendingPathComponent("banking-policy-debug.json")
+    }
+
+    static func isRunningTests(_ env: [String: String]) -> Bool {
+        NSClassFromString("XCTestCase") != nil || env["XCTestConfigurationFilePath"] != nil
+    }
+    #endif
 
     /// True when the debug overrides are in use (shown in settings).
     public static var usesDebugOverrides: Bool {
