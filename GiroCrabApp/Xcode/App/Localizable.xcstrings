@@ -15117,6 +15117,50 @@
           }
         }
       }
+    },
+    "Belege anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Documents"
+          }
+        }
+      }
+    },
+    "Belege eines Kontos anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show the documents of one account"
+          }
+        }
+      }
+    },
+    "Keine Belege für „%@“" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Documents for “%@”"
+          }
+        }
+      }
+    },
+    "Alle Konten anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show All Accounts"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

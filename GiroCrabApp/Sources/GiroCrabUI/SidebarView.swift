@@ -291,6 +291,10 @@ struct SidebarView: View {
         if !account.iban.isEmpty {
             Button("IBAN kopieren", systemImage: "doc.on.doc") { copyToPasteboard(account.iban) }
         }
+        Button("Belege anzeigen", systemImage: "doc.text.magnifyingglass") {
+            model.documentsAccountFilter = account.id
+            model.interactiveSidebarSelection = .documents
+        }
         Divider()
         if account.isArchived {
             Button("Reaktivieren", systemImage: "arrow.uturn.backward") { model.setAccountArchived(account, false) }

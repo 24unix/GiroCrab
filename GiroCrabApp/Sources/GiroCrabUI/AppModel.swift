@@ -501,6 +501,8 @@ public final class AppModel {
     var iconColorTarget: IconColorTarget?
     /// The "new category" name prompt on screen (sidebar, menu bar, ⌘K).
     var newCategoryRequest: NewCategoryRequest?
+    /// "Belege & PostBox" filtered to one account (#172); nil = all accounts.
+    var documentsAccountFilter: Int64?
     var expandedCategories: Set<Int64> = []
     var showRuleEditor = false {
         didSet { if showRuleEditor, rulesStale { reloadRules() } }
@@ -2640,9 +2642,9 @@ public final class AppModel {
         return (try? vault?.listDocumentsForBooking(bookingId: booking.id)) ?? []
     }
 
-    func allDocuments(search: String = "", unlinkedOnly: Bool = false) -> [DocumentInfo] {
+    func allDocuments(search: String = "", unlinkedOnly: Bool = false, accountId: Int64? = nil) -> [DocumentInfo] {
         _ = documentsVersion
-        let f = DocumentFilter(accountId: nil, docType: nil, search: search.isEmpty ? nil : search, unlinkedOnly: unlinkedOnly)
+        let f = DocumentFilter(accountId: accountId, docType: nil, search: search.isEmpty ? nil : search, unlinkedOnly: unlinkedOnly)
         return (try? vault?.listAllDocuments(filter: f)) ?? []
     }
 

@@ -200,7 +200,8 @@ struct DocumentsView: View {
     #endif
 
     var body: some View {
-        let docs = model.allDocuments(search: search, unlinkedOnly: unlinkedOnly)
+        @Bindable var model = model
+        let docs = model.allDocuments(search: search, unlinkedOnly: unlinkedOnly, accountId: model.documentsAccountFilter)
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -210,6 +211,18 @@ struct DocumentsView: View {
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 12) {
+                        // filter by account (#172)
+                        Picker("Konto", selection: $model.documentsAccountFilter) {
+                            Text("Alle Konten").tag(Int64?.none)
+                            Divider()
+                            ForEach(model.allAccounts) { a in
+                                Label(a.name, systemImage: a.sfSymbol).tag(Int64?.some(a.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .frame(minWidth: 150, maxWidth: 240)
+                        .help("Belege eines Kontos anzeigen")
                         Toggle("Nur ohne Buchung", isOn: $unlinkedOnly).toggleStyle(.switch).controlSize(.small)
                             .lineLimit(1).fixedSize()
                         Spacer(minLength: 0)
@@ -241,7 +254,15 @@ struct DocumentsView: View {
                 }
                 .listStyle(.inset)
                 .overlay {
-                    if docs.isEmpty {
+                    if docs.isEmpty, let id = model.documentsAccountFilter,
+                       let account = model.allAccounts.first(where: { $0.id == id }) {
+                        // filtered to one account (#172): say so, offer the way back
+                        ContentUnavailableView {
+                            Label("Keine Belege für „\(account.name)“", systemImage: "doc.on.doc")
+                        } actions: {
+                            Button("Alle Konten anzeigen") { model.documentsAccountFilter = nil }
+                        }
+                    } else if docs.isEmpty {
                         ContentUnavailableView("Keine Belege", systemImage: "doc.on.doc", description: Text("Belege kommen beim Abruf (Trade Republic, comdirect-PostBox, FinTS-Kontoauszug) oder per Drag & Drop."))
                     }
                 }
