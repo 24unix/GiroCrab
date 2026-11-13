@@ -43,6 +43,10 @@ jobs:
         run: scripts/check-third-party-notices.sh
       - name: Kein Vault-Zugriff aus Views (nur über AppModel)
         run: scripts/lint-vault-access.sh
+      - name: String Catalogs sortiert (scripts/xcstrings.py format)
+        run: scripts/xcstrings.py check
+      - name: Test String-Catalog-Merge-Driver
+        run: python3 -m unittest scripts/test_xcstrings.py
       - name: Test FNZ portal browser scripts
         run: node --test scripts/test-fnz-portal.cjs
       - run: cargo clippy --workspace --all-targets -- -D warnings

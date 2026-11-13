@@ -11,6 +11,7 @@
 # Xcode/App/Localizable.xcstrings. Translate new entries in Xcode's catalog
 # editor or directly in the JSON. Entries are kept as "manual" so Xcode builds
 # of the app target (whose own sources contain no strings) don't mark them stale.
+# The catalog is written sorted by key, in the form scripts/xcstrings.py checks in CI.
 set -euo pipefail
 
 PKG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
