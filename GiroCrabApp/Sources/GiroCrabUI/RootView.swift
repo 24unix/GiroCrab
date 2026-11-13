@@ -479,9 +479,21 @@ struct MainSplitView: View {
             if let retry = model.errorRetry {
                 Button("Erneut versuchen") { model.errorMessage = nil; retry() }
             }
+            ForEach(Array(model.errorAlternatives.enumerated()), id: \.offset) { _, alt in
+                Button(alt.title) { model.errorMessage = nil; alt.action() }
+            }
             Button("OK", role: .cancel) { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
+        }
+        // After the upgrade: GiroCrab's own FinTS registration or keep the user's (asked once).
+        .alert("Welche FinTS-Registrierung soll GiroCrab verwenden?",
+               isPresented: Binding(get: { model.offerProductIDChoice }, set: { _ in })) {
+            Button("GiroCrab-Registrierung verwenden (empfohlen)") { model.setFintsProductIDMode("builtin") }
+                .keyboardShortcut(.defaultAction)
+            Button("Meine eigene behalten") { model.setFintsProductIDMode("own") }
+        } message: {
+            Text("GiroCrab hat jetzt eine eigene FinTS-Produktregistrierung. Sie müssen dafür nichts mehr tun. Ihre eigene Registrierung bleibt gespeichert, und Sie können jederzeit in den Einstellungen wechseln.")
         }
         .overlay(alignment: .bottom) {
             if let toast = model.toast {

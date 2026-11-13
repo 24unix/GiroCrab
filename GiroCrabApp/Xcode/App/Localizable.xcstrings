@@ -17141,6 +17141,215 @@
           }
         }
       }
+    },
+    "Mit GiroCrab-Registrierung erneut versuchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try again with GiroCrab’s registration"
+          }
+        }
+      }
+    },
+    "Welche FinTS-Registrierung soll GiroCrab verwenden?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Which FinTS registration should GiroCrab use?"
+          }
+        }
+      }
+    },
+    "GiroCrab-Registrierung verwenden (empfohlen)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use GiroCrab’s registration (recommended)"
+          }
+        }
+      }
+    },
+    "Meine eigene behalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep my own"
+          }
+        }
+      }
+    },
+    "GiroCrab hat jetzt eine eigene FinTS-Produktregistrierung. Sie müssen dafür nichts mehr tun. Ihre eigene Registrierung bleibt gespeichert, und Sie können jederzeit in den Einstellungen wechseln." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab now has its own FinTS product registration, so you no longer need to do anything. Your own registration stays saved, and you can switch at any time in Settings."
+          }
+        }
+      }
+    },
+    "Das FinTS-Produkt von GiroCrab ist eingebaut. Eigene API-Anwendungen (zum Beispiel für comdirect oder PayPal) registrieren Sie selbst; die Werte liegen nur in Ihrem verschlüsselten Tresor." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab’s FinTS product is built in. You register your own API applications (for example for comdirect or PayPal) yourself; the values are only kept in your encrypted vault."
+          }
+        }
+      }
+    },
+    "Nichts davon wird mit dieser Version ausgeliefert. Registrieren Sie Ihr eigenes FinTS-Produkt und Ihre eigenen API-Anwendungen; die Werte liegen nur in Ihrem verschlüsselten Tresor." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None of this ships with this version. Register your own FinTS product and your own API applications; the values are only kept in your encrypted vault."
+          }
+        }
+      }
+    },
+    "FinTS-Registrierung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FinTS registration"
+          }
+        }
+      }
+    },
+    "Verwenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use"
+          }
+        }
+      }
+    },
+    "GiroCrab-Registrierung (empfohlen)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab’s registration (recommended)"
+          }
+        }
+      }
+    },
+    "Eigene Registrierung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Own registration"
+          }
+        }
+      }
+    },
+    "Produktregistrierung bei der Deutschen Kreditwirtschaft beantragen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply for a product registration at Die Deutsche Kreditwirtschaft"
+          }
+        }
+      }
+    },
+    "Dieser Beta-Build enthält die FinTS-Registrierung von GiroCrab nicht. Bitte melden Sie das den Entwicklern." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This beta build does not include GiroCrab’s FinTS registration. Please report this to the developers."
+          }
+        }
+      }
+    },
+    "Eigene Registrierung eintragen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter your own registration…"
+          }
+        }
+      }
+    },
+    "Eigene Produktregistrierung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Own product registration"
+          }
+        }
+      }
+    },
+    "Gespeichert – zum Ersetzen neu eingeben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved – enter again to replace"
+          }
+        }
+      }
+    },
+    "Registrierungsnummer eintragen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter registration number"
+          }
+        }
+      }
+    },
+    "Nur nötig, wenn Sie Ihre eigene Registrierung statt der von GiroCrab verwenden. Sie bleibt gespeichert, auch wenn Sie die von GiroCrab nutzen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only needed if you use your own registration instead of GiroCrab’s. It stays saved even if you use GiroCrab’s."
+          }
+        }
+      }
+    },
+    "Eigene Registrierung ersetzen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Replace your own registration…"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

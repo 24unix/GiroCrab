@@ -216,11 +216,13 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 "#;
 
-/// Known settings shown in the Settings UI. Nothing is pre-filled: every user
-/// registers their own FinTS product and API applications.
+/// Known settings shown in the Settings UI. Nothing is pre-filled. The FinTS
+/// product ID here is the user's *own* one; GiroCrab's registration is compiled
+/// in separately (see `connectors::fints::product_id`). API applications are
+/// always the user's own.
 /// (key, label, help, group, is_secret, default)
 pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
-    ("fints.product_id", "FinTS-Produktregistrierung", "Kostenlos bei der Deutschen Kreditwirtschaft registrieren (fints.org › Hersteller › Produktregistrierung). Pflicht für alle FinTS-Banken.", "FinTS 3.0", true, ""),
+    ("fints.product_id", "Eigene FinTS-Produktregistrierung", "Nur nötig, wenn Sie Ihre eigene Registrierung statt der von GiroCrab verwenden. Kostenlos bei der Deutschen Kreditwirtschaft zu beantragen.", "FinTS 3.0", true, ""),
     ("fints.product_version", "FinTS-Produktversion", "Versionsangabe, die mit HKVVB gesendet wird.", "FinTS 3.0", false, "0.1"),
     ("fints.url.52090000", "Server Volksbank Kassel Göttingen (BLZ 52090000)", "FinTS-PIN/TAN-Adresse laut öffentlicher DK-Institutsliste.", "FinTS 3.0", false, "https://fints1.atruvia.de/cgi-bin/hbciservlet"),
     ("fints.url.50050201", "Server 1822direkt (BLZ 50050201)", "FinTS-PIN/TAN-Adresse laut öffentlicher DK-Institutsliste.", "FinTS 3.0", false, "https://banking-hs5.s-fints-pt-hs.de/fints30"),

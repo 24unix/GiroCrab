@@ -237,14 +237,41 @@ struct CredentialsSettings: View {
     var body: some View {
         // Group by the core's stable group id, show its translated title, match
         // on keys (logo settings have their own tab) and keep the core's order.
-        let entries = model.settings.filter { !$0.key.hasPrefix("merchants.") }
+        let entries = model.settings.filter { !$0.key.hasPrefix("merchants.") && $0.key != "fints.product_id" }
         let grouped = Dictionary(grouping: entries, by: \.group)
         let order = entries.map(\.group).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
         Form {
             Section {
-                Label("Nichts davon wird mit der App ausgeliefert. Registrieren Sie Ihr eigenes FinTS-Produkt und Ihre eigenen API-Anwendungen; die Werte liegen nur in Ihrem verschlüsselten Tresor.", systemImage: "info.circle")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                if model.fintsBuiltinAvailable {
+                    Label("Das FinTS-Produkt von GiroCrab ist eingebaut. Eigene API-Anwendungen (zum Beispiel für comdirect oder PayPal) registrieren Sie selbst; die Werte liegen nur in Ihrem verschlüsselten Tresor.", systemImage: "info.circle")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("Nichts davon wird mit dieser Version ausgeliefert. Registrieren Sie Ihr eigenes FinTS-Produkt und Ihre eigenen API-Anwendungen; die Werte liegen nur in Ihrem verschlüsselten Tresor.", systemImage: "info.circle")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    if AppUpdateChannel.current != .stable {
+                        Label("Dieser Beta-Build enthält die FinTS-Registrierung von GiroCrab nicht. Bitte melden Sie das den Entwicklern.", systemImage: "exclamationmark.triangle")
+                            .font(.callout)
+                            .foregroundStyle(Theme.warning)
+                    }
+                }
+            }
+            Section("FinTS-Registrierung") {
+                if model.fintsBuiltinAvailable {
+                    Picker("Verwenden", selection: Binding(
+                        get: { model.fintsProductIDMode == "own" ? "own" : "builtin" },
+                        set: { model.setFintsProductIDMode($0) }
+                    )) {
+                        Text("GiroCrab-Registrierung (empfohlen)").tag("builtin")
+                        Text("Eigene Registrierung").tag("own")
+                    }
+                    .pickerStyle(.radioGroup)
+                }
+                // The own ID is entered right here, only when it is the one in use.
+                if !model.fintsBuiltinAvailable || model.fintsProductIDMode == "own" {
+                    OwnProductIDField()
+                }
             }
             ForEach(order.filter { grouped[$0] != nil }, id: \.self) { g in
                 Section(grouped[g]?.first?.groupTitle ?? g) {
@@ -705,5 +732,57 @@ struct AnnouncementsSettingsSection: View {
             Text("Gelegentliche Neuigkeiten, unabhängig von Updates. GiroCrab lädt dazu eine signierte Textdatei von GitHub, ohne Kennung und ohne Tracking. Mitteilungen erscheinen nie als Fenster und lassen sich jederzeit ausblenden. Sicherheitswarnungen sind davon unabhängig.")
                 .font(.callout).foregroundStyle(.secondary)
         }
+    }
+}
+
+/// The user's own FinTS product registration. Applies like every other setting: on Return
+/// and when the field is left, no extra button. The value stays hidden (it is not shared).
+struct OwnProductIDField: View {
+    @Environment(AppModel.self) private var model
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    private var hasValue: Bool { model.settingEntry("fints.product_id")?.hasValue == true }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Eigene Produktregistrierung")
+                Spacer()
+                SecureField("Eigene Produktregistrierung", text: $text,
+                            prompt: Text(hasValue ? "Gespeichert – zum Ersetzen neu eingeben" : "Registrierungsnummer eintragen"))
+                    .labelsHidden()
+                    .frame(maxWidth: 340)
+                    .multilineTextAlignment(.trailing)
+                    .focused($focused)
+                    .onSubmit(commit)
+            }
+            Text("Nur nötig, wenn Sie Ihre eigene Registrierung statt der von GiroCrab verwenden. Sie bleibt gespeichert, auch wenn Sie die von GiroCrab nutzen.")
+                .font(.caption).foregroundStyle(.secondary)
+            Link("Produktregistrierung bei der Deutschen Kreditwirtschaft beantragen",
+                 destination: URL(string: "https://www.fints.org/de/hersteller/produktregistrierung")!)
+                .font(.caption)
+        }
+        .onAppear(perform: focusIfAsked)
+        .onChange(of: model.focusOwnProductID) { _, _ in focusIfAsked() }
+        .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+        #if os(macOS)
+        .onDisappear(perform: commit)
+        #endif
+    }
+
+    /// An empty field changes nothing (the stored value is never shown or cleared by accident).
+    private func commit() {
+        let value = text.trimmingCharacters(in: .whitespaces)
+        text = ""
+        guard !value.isEmpty else { return }
+        model.saveSetting("fints.product_id", value)
+    }
+
+    /// After a rejected registration the alert sends the user here.
+    private func focusIfAsked() {
+        guard model.focusOwnProductID else { return }
+        model.focusOwnProductID = false
+        focused = true
     }
 }

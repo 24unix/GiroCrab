@@ -139,6 +139,12 @@ struct ConnectionEditSheet: View {
 
     /// Global setting keys relevant for this connector.
     private var keys: [String] {
+        let all = allKeys
+        // With GiroCrab's own registration built in, it is chosen in Settings, not per bank.
+        return model.fintsBuiltinAvailable ? all.filter { $0 != "fints.product_id" } : all
+    }
+
+    private var allKeys: [String] {
         switch connection.connector {
         case .volksbankKasselGoettingen: return ["fints.url.52090000", "fints.product_id", "fints.product_version"]
         case .direkt1822: return ["fints.url.50050201", "fints.product_id", "fints.product_version"]

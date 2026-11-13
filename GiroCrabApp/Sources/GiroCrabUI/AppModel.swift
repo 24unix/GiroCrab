@@ -559,12 +559,27 @@ public final class AppModel {
     var toast: String?
     /// Text of the error alert. Clearing it also clears title and retry.
     var errorMessage: String? {
-        didSet { if errorMessage == nil { errorTitle = nil; errorRetry = nil } }
+        didSet { if errorMessage == nil { errorTitle = nil; errorRetry = nil; errorAlternatives = [] } }
     }
     /// Alert title naming what failed (HIG: specific, not "something went wrong").
     var errorTitle: String?
     /// Optional "Erneut versuchen" action of the error alert.
     @ObservationIgnored var errorRetry: (@MainActor () -> Void)?
+    /// Extra actions of the error alert after the bank rejected the FinTS registration in use:
+    /// replace the own one, or switch to the other one.
+    @ObservationIgnored var errorAlternatives: [(title: String, action: @MainActor () -> Void)] = []
+
+    // MARK: FinTS product registration (GiroCrab's own vs. the user's)
+    /// This build carries GiroCrab's own registration (release builds only).
+    let fintsBuiltinAvailable = fintsBuiltinProductIdAvailable()
+    /// Stored choice: "builtin", "own" or "" (not decided yet).
+    var fintsProductIDMode = ""
+    /// Registration that would be sent now: "builtin", "own" or "" (none).
+    var fintsProductIDSource = ""
+    /// Existing user with their own ID after an upgrade: ask once which to use.
+    var offerProductIDChoice = false
+    /// Settings should put the cursor into the field for the own registration.
+    var focusOwnProductID = false
 
     /// Error alert with a specific title and, where it helps, a retry action.
     func showError(_ title: String, _ message: String, retry: (@MainActor () -> Void)? = nil) {
@@ -1707,6 +1722,29 @@ public final class AppModel {
             settings = try vault.listSettings()
             logoProvider = try vault.onlineLogoProvider()
         }
+        reloadProductIDState(vault)
+    }
+
+    /// Mirrors the core's FinTS registration choice. New users start with GiroCrab's
+    /// registration; users who already entered their own are asked once.
+    private func reloadProductIDState(_ vault: Vault) {
+        var mode = (try? vault.fintsProductIdMode()) ?? ""
+        let hasOwn = settingEntry("fints.product_id")?.hasValue == true
+        if fintsBuiltinAvailable, mode.isEmpty, !hasOwn, !isDemo {
+            try? vault.setFintsProductIdMode(mode: "builtin")
+            mode = "builtin"
+        }
+        fintsProductIDMode = mode
+        fintsProductIDSource = (try? vault.fintsProductIdSource()) ?? ""
+        offerProductIDChoice = fintsBuiltinAvailable && mode.isEmpty && hasOwn && !isDemo
+    }
+
+    /// Stores the choice. The user's own ID always stays in the vault.
+    func setFintsProductIDMode(_ mode: String) {
+        guard let vault else { return }
+        run { try vault.setFintsProductIdMode(mode: mode) }
+        offerProductIDChoice = false
+        reloadSettings()
     }
 
     private func scheduleSearch() {
@@ -2615,7 +2653,61 @@ public final class AppModel {
     func missingSettings(for connection: BankConnection) -> [String] {
         if Self.isMagicDemoLogin(connection.loginName) { return [] }
         guard let d = bankCatalog().first(where: { $0.kind == connection.connector }) else { return [] }
-        return d.requiredSettings.filter { key in !(settings.first { $0.key == key }?.hasValue ?? false) }
+        return d.requiredSettings.filter { key in
+            // A usable FinTS registration (GiroCrab's or the user's) satisfies this one.
+            if key == "fints.product_id", !fintsProductIDSource.isEmpty { return false }
+            return !(settings.first { $0.key == key }?.hasValue ?? false)
+        }
+    }
+
+    /// "Mit … erneut versuchen" after a bank rejected the FinTS registration in use.
+    /// The bank refused the FinTS product registration (9078, or 9010 as some banks answer).
+    /// The core reports the FIRST code of the reply (often 9050 "Nachricht enthält Fehler"),
+    /// so 9078/9010 are also looked for in the joined message.
+    nonisolated static func isProductIDRejection(_ error: Error) -> Bool {
+        guard let ce = error as? CoreError, case .Bank(let code, let message) = ce else { return false }
+        let codes = ["9010", "9078"]
+        return codes.contains(code) || codes.contains { message.contains($0) }
+    }
+
+    private func productIDAlternatives(for conn: BankConnection, error: Error, secret: String?) -> [(title: String, action: @MainActor () -> Void)] {
+        guard Self.isProductIDRejection(error),
+              bankCatalog().first(where: { $0.kind == conn.connector })?.requiredSettings.contains("fints.product_id") == true
+        else { return [] }
+        let hasOwn = settingEntry("fints.product_id")?.hasValue == true
+        var out: [(title: String, action: @MainActor () -> Void)] = []
+        switch fintsProductIDSource {
+        case "builtin":
+            // GiroCrab's registration was refused: the own one goes into Settings (no extra
+            // field here), then the account is fetched again by hand.
+            out.append((hasOwn ? String(localized: "Eigene Registrierung ersetzen …") : String(localized: "Eigene Registrierung eintragen …"),
+                        { [weak self] in self?.enterOwnProductID() }))
+        case "own":
+            // The own registration is wrong: replace it, or use GiroCrab's instead.
+            out.append((String(localized: "Eigene Registrierung ersetzen …"), { [weak self] in self?.enterOwnProductID() }))
+            if fintsBuiltinAvailable {
+                out.append((String(localized: "Mit GiroCrab-Registrierung erneut versuchen"), { [weak self] in
+                    self?.setFintsProductIDMode("builtin")
+                    guard let self, let c = self.connections.first(where: { $0.id == conn.id }) else { return }
+                    // Same login and PIN as the failed attempt: only the registration changes.
+                    if let secret, !secret.isEmpty, self.bankingGate(for: c) == nil {
+                        self.startSync(c, secret: secret)
+                    } else {
+                        self.requestSync(c)
+                    }
+                }))
+            }
+        default: break
+        }
+        return out
+    }
+
+    /// After a rejected registration: switch to the own one, open Settings › FinTS & API keys
+    /// and put the cursor into its field (no extra field in the alert).
+    func enterOwnProductID() {
+        setFintsProductIDMode("own")
+        focusOwnProductID = true
+        openSettings(.credentials)
     }
 
     func settingEntry(_ key: String) -> SettingEntry? { settings.first { $0.key == key } }
@@ -3209,6 +3301,9 @@ public final class AppModel {
                 self.handle(step, connection: connection)
             } catch {
                 if let started, self.activeSession !== started { return }
+                // Kept for the "use GiroCrab's registration" retry of a rejected product ID,
+                // so the login is not asked again; finishSync takes it and clears it.
+                if statementsFor == nil { self.failedSyncSecret = secret }
                 self.finishSync(error: error)
             }
         }
@@ -3349,8 +3444,12 @@ public final class AppModel {
     }
 
     private var syncingConnectionIDBeforeError: Int64?
+    /// PIN of the sync that just failed (memory only, cleared in `finishSync`).
+    private var failedSyncSecret: String?
 
     private func finishSync(error: Error) {
+        let retrySecret = failedSyncSecret
+        failedSyncSecret = nil
         if let quietID = quietSyncConnectionID {
             // scheduled sync: a notice instead of dialogs / login prompts
             quietSyncConnectionID = nil
@@ -3387,6 +3486,7 @@ public final class AppModel {
                 guard let self, let c = self.connections.first(where: { $0.id == conn.id }) else { return }
                 self.requestSync(c)
             }
+            errorAlternatives = productIDAlternatives(for: conn, error: error, secret: retrySecret)
         } else {
             showError(String(localized: "Abruf fehlgeschlagen"), describe(error))
         }
