@@ -2400,3 +2400,36 @@ fn database_locked_by_running_moneymoney_is_not_a_wrong_password() {
         .unwrap();
     assert_eq!(p.accounts.len(), 4);
 }
+
+/// Issue #94: MoneyMoney keeps closed accounts with the same IBAN; they must
+/// not all be merged into the one vault account that has this IBAN.
+#[test]
+fn accounts_sharing_an_iban_are_merged_into_different_vault_accounts() {
+    let v = vault();
+    let existing = {
+        let db = v.db().unwrap();
+        let gid = Vault::ensure_group(&db, "Giro & Tagesgeld", "building.columns", 1).unwrap();
+        db.execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, iban, currency, kind, balance_cents)
+             VALUES (NULL, ?1, 'abc-123', 'Mein Giro', 'DE89370400440532013000', 'EUR', 'checking', 0)",
+            params![gid],
+        )
+        .unwrap();
+        db.last_insert_rowid()
+    };
+    let path = temp("dup-iban.db").to_string_lossy().to_string();
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(SCHEMA).unwrap();
+    conn.execute_batch(
+        "INSERT INTO accounts (rowid, account, bankcode, iban, currency, name, kind, type, sort) VALUES
+           (1, '0532013000', '20041111', 'DE89 3704 0044 0532 0130 00', 'EUR', 'Sparbrief alt', 0, 0, 1),
+           (2, '0532013000', '20041111', 'DE89 3704 0044 0532 0130 00', 'EUR', 'Sparbrief neu', 0, 0, 2);",
+    )
+    .unwrap();
+    drop(conn);
+    let p = v
+        .preview_moneymoney_database(path, String::new(), None)
+        .unwrap();
+    let ids: Vec<Option<i64>> = p.accounts.iter().map(|a| a.existing_account_id).collect();
+    assert_eq!(ids, vec![Some(existing), None]);
+}

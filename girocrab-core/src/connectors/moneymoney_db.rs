@@ -1893,31 +1893,49 @@ impl Source {
 
 // ------------------------------------------------------------------ vault side
 
-fn find_existing_account(
+/// The vault account each MoneyMoney account is merged into, keyed by its
+/// MoneyMoney rowid. A vault account is claimed at most once: MoneyMoney keeps
+/// closed / duplicate accounts with the same IBAN (issue #94), and without this
+/// all of them would be merged into one account. Matches by `external_ref`
+/// (an earlier import) win over IBAN matches.
+fn find_existing_accounts(
     conn: &Connection,
-    ext: &str,
-    iban: &str,
-) -> CoreResult<Option<(i64, String)>> {
-    let by_ref: Option<(i64, String)> = conn
-        .query_row(
-            // includes soft-deleted rows: the import revives a deleted account
-            "SELECT id, name FROM accounts WHERE external_ref = ?1 ORDER BY id LIMIT 1",
-            [ext],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .optional()?;
-    if by_ref.is_some() || iban.is_empty() {
-        return Ok(by_ref);
+    accounts: &[SrcAccount],
+) -> CoreResult<HashMap<i64, (i64, String)>> {
+    let mut out: HashMap<i64, (i64, String)> = HashMap::new();
+    let mut claimed: HashSet<i64> = HashSet::new();
+    for a in accounts {
+        let by_ref: Option<(i64, String)> = conn
+            .query_row(
+                // includes soft-deleted rows: the import revives a deleted account
+                "SELECT id, name FROM accounts WHERE external_ref = ?1 ORDER BY id LIMIT 1",
+                [ext_ref(a)],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        if let Some(found) = by_ref {
+            claimed.insert(found.0);
+            out.insert(a.id, found);
+        }
     }
-    Ok(conn
-        .query_row(
+    for a in accounts.iter().filter(|a| !a.iban.is_empty()) {
+        if out.contains_key(&a.id) {
+            continue;
+        }
+        let mut st = conn.prepare(
             // includes soft-deleted rows
             "SELECT id, name FROM accounts WHERE upper(replace(iban, ' ', '')) = ?1
-             ORDER BY (connection_id IS NULL), id LIMIT 1",
-            [iban],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
-        .optional()?)
+             ORDER BY (connection_id IS NULL), id",
+        )?;
+        let candidates: Vec<(i64, String)> = st
+            .query_map([&a.iban], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+        if let Some(found) = candidates.into_iter().find(|c| !claimed.contains(&c.0)) {
+            claimed.insert(found.0);
+            out.insert(a.id, found);
+        }
+    }
+    Ok(out)
 }
 
 fn find_connection(
@@ -2043,11 +2061,12 @@ fn preview(
     let (mut total, mut pending, mut notes, mut parts) = (0u32, 0u32, 0u32, 0u32);
     let mut first: Option<String> = None;
     let mut last: Option<String> = None;
+    let mut existing_accounts = find_existing_accounts(conn, &src.accounts)?;
     for a in &src.accounts {
         let r = src.rows_for(a);
         let bank = src.bank(a.bank_key);
         let bank_name = bank.map(|b| b.name.clone()).unwrap_or_default();
-        let existing = find_existing_account(conn, &ext_ref(a), &a.iban)?;
+        let existing = existing_accounts.remove(&a.id);
         let f = r.rows.iter().map(|x| x.booking_date.clone()).min();
         let l = r.rows.iter().map(|x| x.booking_date.clone()).max();
         let n = r.rows.iter().filter(|x| !x.note.trim().is_empty()).count() as u32;
