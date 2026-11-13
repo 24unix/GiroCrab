@@ -69,7 +69,6 @@ struct SettingsView: View {
 /// Allgemein: app language (#93). Usable without an open vault.
 struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
-    @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
     @State private var showHelp = false
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
 
