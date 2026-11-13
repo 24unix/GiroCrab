@@ -191,6 +191,9 @@ struct SidebarView: View {
                 .contextMenu {
                     UserGroupMenu(group: group)
                 }
+                .popover(isPresented: model.iconColorBinding(.group(group.uuid)), arrowEdge: .trailing) {
+                    IconColorPopover(target: .group(group.uuid)).environment(model)
+                }
                 .modifier(DropHighlight(key: "g:" + group.uuid, target: $dropTarget))
                 .draggable(GroupDrag.group(group.uuid)) {
                     Label(group.name, systemImage: group.sfSymbol).padding(6)
@@ -212,7 +215,8 @@ struct SidebarView: View {
                 // offsets of the full list: a drop position counts hidden archived accounts too
                 ForEach(Array(group.accounts.enumerated()).filter { isShown($0.element) }, id: \.element.id) { i, account in
                     accountRow(account)
-                        .padding(.leading, indent)
+                        // one step right of their group, at every nesting level
+                        .padding(.leading, indent + 14)
                         .draggable(GroupDrag.account(account.id)) {
                             Label(account.name, systemImage: account.sfSymbol).padding(6)
                         }
@@ -260,6 +264,9 @@ struct SidebarView: View {
         AccountRow(account: account, syncing: model.syncingConnectionID != nil && model.syncingConnectionID == account.connectionId)
             .tag(SidebarItem.account(account.id))
             .contextMenu { accountMenu(account) }
+            .popover(isPresented: model.iconColorBinding(.account(account.id)), arrowEdge: .trailing) {
+                IconColorPopover(target: .account(account.id)).environment(model)
+            }
             #if os(iOS)
             .swipeActions(edge: .trailing) {
                 Button("Gruppe …", systemImage: "folder") { model.groupDialog = .moveAccount(account) }
@@ -270,10 +277,13 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func accountMenu(_ account: Account) -> some View {
-        ManualLoanAccountMenu(model: model, account: account)
+        // same order as a group's menu: rename, look, place – then what only
+        // accounts have – then archive / delete
+        Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .renameAccount(account) }
+        Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .account(account.id) }
         AccountGroupMenu(account: account)
-        AccountColorMenu(account: account)
         Divider()
+        ManualLoanAccountMenu(model: model, account: account)
         if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
             Button("\(conn.displayName) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
                 .disabled(model.bankingGate(for: conn) != nil)

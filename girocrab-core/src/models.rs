@@ -236,6 +236,8 @@ pub struct UserGroup {
     pub uuid: String,
     pub name: String,
     pub sf_symbol: String,
+    /// The group's colour (`#RRGGBB`); empty = none chosen.
+    pub color_hex: String,
     pub sort_order: i32,
     /// The group's own switch: its accounts count towards the overall total.
     pub include_in_total: bool,

@@ -310,6 +310,7 @@ fn english(de: &str) -> Option<&'static str> {
         // ------------------------------------------------------ user_groups.rs
         "Gruppe {0}" => "group {0}",
         "Ungültige Farbe: {0}" => "Invalid colour: {0}",
+        "Kein Symbol angegeben" => "No symbol given",
         "Ohne Gruppe" => "Ungrouped",
         "Nur archivierte Konten können gelöscht werden. Bitte das Konto zuerst archivieren." => "Only archived accounts can be deleted. Please archive the account first.",
         "Eine Gruppe kann nicht in sich selbst oder eine ihrer Untergruppen verschoben werden" => "A group can’t be moved into itself or one of its own subgroups",

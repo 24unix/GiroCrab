@@ -86,33 +86,36 @@ struct UserGroupHeader: View {
         HStack(spacing: 5) {
             Button(action: toggle) {
                 Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.bold))
+                    .font(.caption.weight(.bold))
                     .rotationEffect(.degrees(open ? 90 : 0))
-                    .frame(width: 12, height: 14)
+                    .frame(width: 12, height: 18)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .accessibilityLabel(open ? "Gruppe einklappen" : "Gruppe ausklappen")
             Image(systemName: group.sfSymbol)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 14)
+                .font(.body.weight(.semibold))
+                // the group's colour, like an account's icon (white when selected)
+                .foregroundStyle(selected || group.colorHex.isEmpty
+                                 ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.readable(hex: group.colorHex)))
+                .frame(width: 20)
             Text(group.name).lineLimit(1)
             if !group.inTotal {
                 Image(systemName: "eye.slash")
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .help("Nicht in der Gesamtsumme")
                     .accessibilityLabel("Nicht in der Gesamtsumme")
             }
             Spacer()
             Text(Money.format(group.balanceCents))
+                .font(.callout.weight(.semibold)) // same size as the account balances
                 .monospacedDigit()
                 .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(group.balanceCents < 0 ? Theme.negative : Theme.secondary))
                 .opacity(group.inTotal ? 1 : 0.6)
         }
-        .font(.caption.weight(.semibold))
+        .font(.body.weight(.semibold)) // as big as the account names
         .foregroundStyle(.secondary)
     }
 }
@@ -123,7 +126,8 @@ struct AccountGroupMenu: View {
     let account: Account
 
     var body: some View {
-        Menu("Gruppe", systemImage: "folder") {
+        // named like the group menu's entry, so both menus read the same
+        Menu("Verschieben nach", systemImage: "arrow.turn.down.right") {
             ForEach(model.namedUserGroups) { g in
                 Toggle(isOn: Binding(
                     get: { account.userGroupUuid == g.uuid },
@@ -144,10 +148,11 @@ struct AccountGroupMenu: View {
     }
 }
 
-/// "Farbe ▸" for an account: the core's palette as colour swatches.
-struct AccountColorMenu: View {
+/// "Symbol & Farbe …" of an account or group: colour palette and symbol
+/// grid in one popover, like MoneyMoney. A click applies immediately.
+struct IconColorPopover: View {
     @Environment(AppModel.self) private var model
-    let account: Account
+    let target: IconColorTarget
 
     private static let palette = accountColorPalette()
     private static let names: [String: LocalizedStringKey] = [
@@ -156,21 +161,78 @@ struct AccountColorMenu: View {
         "#C026D3": "Fuchsia", "#EA580C": "Orange", "#4F46E5": "Indigo", "#0D9488": "Petrol",
     ]
 
+    private var account: Account? {
+        if case .account(let id) = target { return model.account(for: id) }
+        return nil
+    }
+    private var group: UserGroup? {
+        if case .group(let uuid) = target { return model.userGroups.first { $0.uuid == uuid } }
+        return nil
+    }
+    private var colorHex: String { (account?.colorHex ?? group?.colorHex ?? "").uppercased() }
+    private var symbol: String { account?.sfSymbol ?? group?.sfSymbol ?? "" }
+
+    private func setColor(_ hex: String?) {
+        if let account { model.setAccountColor(account.id, hex: hex) }
+        if let group { model.setUserGroupColor(group, hex: hex) }
+    }
+    private func setSymbol(_ s: String) {
+        if let account { model.setAccountSymbol(account.id, symbol: s) }
+        if let group { model.updateUserGroup(group, symbol: s) }
+    }
+
     var body: some View {
-        Menu("Farbe", systemImage: "paintpalette") {
-            Picker("Farbe", selection: Binding(
-                get: { account.colorHex.uppercased() },
-                set: { model.setAccountColor(account.id, hex: $0) }
-            )) {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Farbe").font(.headline)
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(26), spacing: 6), count: 7), spacing: 6) {
                 ForEach(Self.palette, id: \.self) { hex in
-                    Label(Self.names[hex] ?? LocalizedStringKey(hex), systemImage: "circle.fill")
-                        .tint(Color.readable(hex: hex))
-                        .tag(hex)
+                    Button { setColor(hex) } label: {
+                        Circle().fill(Color.readable(hex: hex))
+                            .frame(width: 20, height: 20)
+                            .overlay(Circle().strokeBorder(.primary, lineWidth: colorHex == hex ? 2 : 0).padding(-3))
+                    }
+                    .buttonStyle(.plain)
+                    .focusEffectDisabled() // no focus ring on the first swatch
+                    .help(Self.names[hex].map { Text($0) } ?? Text(verbatim: hex))
+                }
+                Button { setColor(nil) } label: {
+                    Image(systemName: "arrow.uturn.backward.circle")
+                        .font(.title3)
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .focusEffectDisabled()
+                .help(account != nil ? Text("Standardfarbe") : Text("Keine Farbe"))
+            }
+            Divider()
+            Text("Symbol").font(.headline)
+            // icon and name, two columns: easier to find than icons alone
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 2), spacing: 2) {
+                ForEach(GroupSymbols.named, id: \.symbol) { item in
+                    Button { setSymbol(item.symbol) } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: item.symbol)
+                                .font(.system(size: 13, weight: .semibold))
+                                .frame(width: 22)
+                            Text(item.name).lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(item.symbol == symbol ? Theme.accent.opacity(0.25) : Color.clear)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .focusEffectDisabled()
                 }
             }
-            .pickerStyle(.palette)
-            Button("Standardfarbe", systemImage: "arrow.uturn.backward") { model.setAccountColor(account.id, hex: nil) }
         }
+        .padding(14)
+        .frame(width: 340)
     }
 }
 
@@ -184,23 +246,10 @@ struct UserGroupMenu: View {
         Button("Gruppenübersicht", systemImage: "list.bullet.rectangle") { model.interactiveSidebarSelection = .userGroup(group.uuid) }
         #endif
         if !group.isUngrouped {
+            // same order as an account's menu: rename, look, place – then
+            // what only groups have – then delete
             Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .rename(group) }
-            Menu("Symbol", systemImage: group.sfSymbol) {
-                ForEach(GroupSymbols.named, id: \.symbol) { item in
-                    Toggle(isOn: Binding(
-                        get: { item.symbol == group.sfSymbol },
-                        set: { _ in model.updateUserGroup(group, symbol: item.symbol) }
-                    )) {
-                        Label(item.name, systemImage: item.symbol)
-                    }
-                }
-            }
-            Toggle(isOn: Binding(
-                get: { group.includeInTotal },
-                set: { model.updateUserGroup(group, includeInTotal: $0) }
-            )) {
-                Label("In Gesamtsumme einbeziehen", systemImage: "sum")
-            }
+            Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .group(group.uuid) }
             Menu("Verschieben nach", systemImage: "arrow.turn.down.right") {
                 Toggle(isOn: Binding(
                     get: { group.parentUuid == nil },
@@ -218,14 +267,14 @@ struct UserGroupMenu: View {
                     }
                 }
             }
-        }
-        Divider()
-        Button("Neue Gruppe …", systemImage: "folder.badge.plus") { model.groupDialog = .create() }
-        if !group.isUngrouped {
+            Divider()
+            Toggle(isOn: Binding(
+                get: { group.includeInTotal },
+                set: { model.updateUserGroup(group, includeInTotal: $0) }
+            )) {
+                Label("In Gesamtsumme einbeziehen", systemImage: "sum")
+            }
             Button("Neue Untergruppe …", systemImage: "folder.badge.plus") { model.groupDialog = .create(parent: group) }
-        }
-        Button("Gruppen bearbeiten …", systemImage: "slider.horizontal.3") { model.openGroupSettings() }
-        if !group.isUngrouped {
             Divider()
             Button("Gruppe löschen …", systemImage: "trash", role: .destructive) { model.groupDialog = .delete(group) }
         }
@@ -286,7 +335,7 @@ struct AccountGroupDialogs: ViewModifier {
                     }
                 case .merge(let from, let into):
                     Button("Zusammenführen") { model.mergeUserGroups(from, into: into) }
-                case .create, .rename:
+                case .create, .rename, .renameAccount:
                     EmptyView()
                 }
                 Button("Abbrechen", role: .cancel) {}
@@ -309,6 +358,7 @@ struct AccountGroupDialogs: ViewModifier {
         case .rename(let g):
             // after the alert has closed
             if let next = model.renameUserGroup(g, to: name) { DispatchQueue.main.async { dialog = next } }
+        case .renameAccount(let a): model.renameAccount(a.id, to: name)
         case .delete, .moveAccount, .merge: break
         }
     }

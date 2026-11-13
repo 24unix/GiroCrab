@@ -497,6 +497,8 @@ public final class AppModel {
     var demoSettingsSheet: String?
     /// The one group dialog on screen (new / rename / delete / move account).
     var groupDialog: GroupDialog?
+    /// The account / group whose "Symbol & Farbe" popover is open.
+    var iconColorTarget: IconColorTarget?
     /// The "new category" name prompt on screen (sidebar, menu bar, ⌘K).
     var newCategoryRequest: NewCategoryRequest?
     var expandedCategories: Set<Int64> = []
@@ -2137,6 +2139,12 @@ public final class AppModel {
     func setAccountColor(_ accountId: Int64, hex: String?) {
         guard let vault else { return }
         run { try vault.setAccountColor(accountId: accountId, colorHex: hex) }
+        reloadAccounts()
+    }
+
+    func setAccountSymbol(_ accountId: Int64, symbol: String) {
+        guard let vault else { return }
+        run { try vault.setAccountSymbol(accountId: accountId, sfSymbol: symbol) }
         reloadAccounts()
     }
 

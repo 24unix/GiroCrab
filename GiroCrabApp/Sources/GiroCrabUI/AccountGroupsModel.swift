@@ -38,6 +38,8 @@ enum GroupDialog {
     /// with `parent`: "Neue Untergruppe …" of that group.
     case create(movingAccount: Int64? = nil, parent: UserGroup? = nil)
     case rename(UserGroup)
+    /// "Umbenennen …" of an account (same alert as for groups).
+    case renameAccount(Account)
     case delete(UserGroup)
     /// iOS swipe "Gruppe …".
     case moveAccount(Account)
@@ -47,7 +49,7 @@ enum GroupDialog {
     /// Text-input alert vs. confirmation dialog.
     var needsText: Bool {
         switch self {
-        case .create, .rename: true
+        case .create, .rename, .renameAccount: true
         case .delete, .moveAccount, .merge: false
         }
     }
@@ -57,6 +59,7 @@ enum GroupDialog {
         case .create(_, let parent?): Text("Neue Untergruppe in „\(parent.name)“")
         case .create: Text("Neue Gruppe")
         case .rename: Text("Gruppe umbenennen")
+        case .renameAccount: Text("Konto umbenennen")
         case .delete(let g): Text("Gruppe „\(g.name)“ löschen?")
         case .moveAccount(let a): Text("„\(a.name)“ verschieben nach")
         case .merge(_, let into): Text("Mit „\(into.name)“ zusammenführen?")
@@ -64,26 +67,40 @@ enum GroupDialog {
     }
 
     var isRename: Bool {
-        if case .rename = self { return true }
-        return false
+        switch self {
+        case .rename, .renameAccount: true
+        default: false
+        }
     }
 
     /// Prefilled text of the input alert.
     var initialText: String {
-        if case .rename(let g) = self { return g.name }
-        return ""
+        switch self {
+        case .rename(let g): g.name
+        case .renameAccount(let a): a.name
+        default: ""
+        }
     }
 }
 
-/// Symbols offered for groups (kept small on purpose).
+/// Symbols offered for accounts and groups – one list for both, the
+/// account types' own symbols first.
 enum GroupSymbols {
     static let named: [(symbol: String, name: LocalizedStringKey)] = [
-        ("folder", "Ordner"), ("person", "Person"), ("person.2", "Paar"),
+        ("building.columns", "Bank"), ("banknote", "Geld"), ("creditcard", "Kreditkarte"),
+        ("envelope.circle", "Bezahldienst"), ("chart.line.uptrend.xyaxis", "Depot"), ("eurosign.circle", "Bargeld"),
+        ("house", "Haus"), ("folder", "Ordner"), ("person", "Person"), ("person.2", "Paar"),
         ("figure.and.child.holdinghands", "Familie"), ("briefcase", "Beruf"), ("building.2", "Firma"),
-        ("house", "Haus"), ("heart", "Herz"), ("graduationcap", "Ausbildung"),
-        ("airplane", "Reisen"), ("chart.pie", "Vermögen"), ("banknote", "Geld"),
+        ("heart", "Herz"), ("graduationcap", "Ausbildung"), ("airplane", "Reisen"),
+        ("chart.pie", "Vermögen"), ("wallet.bifold", "Geldbörse"), ("bitcoinsign.circle", "Krypto"),
     ]
     static var all: [String] { named.map(\.symbol) }
+}
+
+/// What the "Symbol & Farbe" popover edits.
+enum IconColorTarget: Equatable {
+    case account(Int64)
+    case group(String)
 }
 
 extension AppModel {
@@ -210,6 +227,34 @@ extension AppModel {
         } catch {
             errorMessage = describe(error)
         }
+    }
+
+    func setUserGroupColor(_ g: UserGroup, hex: String?) {
+        guard let vault, !g.isUngrouped else { return }
+        do {
+            try vault.setUserGroupColor(uuid: g.uuid, colorHex: hex)
+            afterGroupChange()
+        } catch {
+            errorMessage = describe(error)
+        }
+    }
+
+    func renameAccount(_ accountId: Int64, to name: String) {
+        guard let vault else { return }
+        do {
+            try vault.renameAccount(accountId: accountId, name: name)
+            reloadAccounts()
+        } catch {
+            errorMessage = describe(error)
+        }
+    }
+
+    /// Popover binding for one row: shown while `iconColorTarget` is it.
+    func iconColorBinding(_ target: IconColorTarget) -> Binding<Bool> {
+        Binding(
+            get: { self.iconColorTarget == target },
+            set: { if !$0, self.iconColorTarget == target { self.iconColorTarget = nil } }
+        )
     }
 
     func deleteUserGroup(_ g: UserGroup) {

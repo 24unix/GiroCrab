@@ -87,6 +87,8 @@ const ACCOUNT_COLUMNS: &[(&str, &str)] = &[
     ("name_ms", "INTEGER NOT NULL DEFAULT 0"),
     ("color_hex", "TEXT"),
     ("color_ms", "INTEGER NOT NULL DEFAULT 0"),
+    // the user's own symbol (`sf_symbol` itself is part of the base table)
+    ("symbol_ms", "INTEGER NOT NULL DEFAULT 0"),
     // archived accounts (GiroCrab/GiroCrab#43): time of archiving, NULL = active
     ("archived_unix", "INTEGER"),
     ("archived_ms", "INTEGER NOT NULL DEFAULT 0"),
@@ -102,6 +104,9 @@ const GROUP_COLUMNS: &[(&str, &str)] = &[
     // nested groups (GiroCrab/GiroCrab#58)
     ("parent_uuid", "TEXT"),
     ("parent_ms", "INTEGER NOT NULL DEFAULT 0"),
+    // group colour (like the account colour); NULL = none chosen
+    ("color_hex", "TEXT"),
+    ("color_ms", "INTEGER NOT NULL DEFAULT 0"),
 ];
 
 /// Group fields that merge independently, each with its own stamp.
@@ -111,6 +116,7 @@ const GROUP_FIELDS: &[(&str, &str)] = &[
     ("include_in_total", "total_ms"),
     ("sort_order", "order_ms"),
     ("parent_uuid", "parent_ms"),
+    ("color_hex", "color_ms"),
 ];
 
 /// Account colours (the palette of GiroCrab/GiroCrab#26), readable in light
@@ -357,22 +363,26 @@ pub(crate) fn merge_attached(
     #[allow(clippy::type_complexity)]
     let rows: Vec<(
         (i64, Option<String>, i64, i64, String, i64, Option<String>, i64),
-        (Option<i64>, i64),
+        (Option<i64>, i64, String, i64),
     )> = tx
         .prepare(
             // includes soft-deleted rows (vault merge)
             "SELECT id, user_group_uuid, user_sort_order, placement_ms, name, name_ms, color_hex, color_ms,
-                    archived_unix, archived_ms
+                    archived_unix, archived_ms, sf_symbol, symbol_ms
              FROM other.accounts",
         )?
         .query_map([], |r| {
             Ok((
                 (r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?),
-                (r.get(8)?, r.get(9)?),
+                (r.get(8)?, r.get(9)?, r.get(10)?, r.get(11)?),
             ))
         })?
         .collect::<Result<_, _>>()?;
-    for ((oid, uuid, order, placed, name, named, color, colored), (archived, archived_ms)) in rows {
+    for (
+        (oid, uuid, order, placed, name, named, color, colored),
+        (archived, archived_ms, symbol, symbol_ms),
+    ) in rows
+    {
         let Some(&id) = acc_map.get(&oid) else {
             continue;
         };
@@ -393,6 +403,11 @@ pub(crate) fn merge_attached(
         changed += tx.execute(
             "UPDATE accounts SET archived_unix = ?2, archived_ms = ?3 WHERE id = ?1 AND (?4 OR archived_ms < ?3)",
             params![id, archived, archived_ms, fresh],
+        )? as u32;
+        // only a user's choice travels; the type's default stays local
+        changed += tx.execute(
+            "UPDATE accounts SET sf_symbol = ?2, symbol_ms = ?3 WHERE id = ?1 AND symbol_ms < ?3",
+            params![id, symbol, symbol_ms],
         )? as u32;
     }
     changed += combine_same_names(tx)?;
@@ -684,14 +699,21 @@ impl Vault {
             let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
             rows.collect::<Result<_, _>>()?
         };
-        let groups: Vec<(String, String, String, i32, bool)> = {
+        let groups: Vec<(String, String, String, i32, bool, Option<String>)> = {
             let db = self.db()?;
             let mut stmt = db.prepare(
-                "SELECT uuid, name, sf_symbol, sort_order, include_in_total FROM user_groups
+                "SELECT uuid, name, sf_symbol, sort_order, include_in_total, color_hex FROM user_groups
                  WHERE deleted_ms IS NULL ORDER BY sort_order, name COLLATE NOCASE",
             )?;
             let rows = stmt.query_map([], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
             })?;
             rows.collect::<Result<_, _>>()?
         };
@@ -737,7 +759,7 @@ impl Vault {
             .map(|v| v.iter().rev().map(|i| (*i, 0)).collect())
             .unwrap_or_default();
         while let Some((i, depth)) = stack.pop() {
-            let (uuid, name, sf_symbol, sort_order, include_in_total) = &groups[i];
+            let (uuid, name, sf_symbol, sort_order, include_in_total, color) = &groups[i];
             let accs = members(Some(uuid));
             if let Some(kids) = children.get(&Some(uuid.as_str())) {
                 stack.extend(kids.iter().rev().map(|k| (*k, depth + 1)));
@@ -747,6 +769,7 @@ impl Vault {
                 uuid: uuid.clone(),
                 name: name.clone(),
                 sf_symbol: sf_symbol.clone(),
+                color_hex: color.clone().unwrap_or_default(),
                 sort_order: *sort_order,
                 include_in_total: *include_in_total,
                 in_total: !excluded.contains(uuid),
@@ -773,6 +796,7 @@ impl Vault {
                 uuid: String::new(),
                 name: tr("Ohne Gruppe").into(),
                 sf_symbol: "tray".into(),
+                color_hex: String::new(),
                 sort_order: i32::MAX,
                 include_in_total: true,
                 in_total: true,
@@ -981,27 +1005,54 @@ impl Vault {
         Ok(())
     }
 
+    /// Sets an account's SF Symbol (chosen by the user instead of the one
+    /// from its account type); syncs like the colour, the newer choice wins.
+    pub fn set_account_symbol(&self, account_id: i64, sf_symbol: String) -> Result<(), CoreError> {
+        let symbol = sf_symbol.trim();
+        if symbol.is_empty() {
+            return Err(CoreError::InvalidInput {
+                message: tr("Kein Symbol angegeben").into(),
+            });
+        }
+        let n = self.db()?.execute(
+            "UPDATE accounts SET sf_symbol = ?2, symbol_ms = ?3 WHERE id = ?1",
+            params![account_id, symbol, now_ms()],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound {
+                what: trf("Konto {0}", &[&account_id]),
+            });
+        }
+        Ok(())
+    }
+
+    /// Sets a group's colour (`#RRGGBB`); `None` = none. Syncs like the
+    /// account colour: the newer choice wins.
+    pub fn set_user_group_color(
+        &self,
+        uuid: String,
+        color_hex: Option<String>,
+    ) -> Result<(), CoreError> {
+        let hex = valid_color(color_hex)?;
+        let db = self.db()?;
+        if !group_exists(&db, &uuid)? {
+            return Err(not_found(&uuid));
+        }
+        let now = now_ms();
+        db.execute(
+            "UPDATE user_groups SET color_hex = ?2, color_ms = ?3, updated_ms = ?3 WHERE uuid = ?1",
+            params![uuid, hex, now],
+        )?;
+        Ok(())
+    }
+
     /// Sets an account's colour (`#RRGGBB`); `None` = back to its default.
     pub fn set_account_color(
         &self,
         account_id: i64,
         color_hex: Option<String>,
     ) -> Result<(), CoreError> {
-        let hex = match color_hex.map(|h| h.trim().to_uppercase()) {
-            Some(h)
-                if h.len() == 7
-                    && h.starts_with('#')
-                    && h[1..].chars().all(|c| c.is_ascii_hexdigit()) =>
-            {
-                Some(h)
-            }
-            Some(h) => {
-                return Err(CoreError::InvalidInput {
-                    message: trf("Ungültige Farbe: {0}", &[&h]),
-                })
-            }
-            None => None,
-        };
+        let hex = valid_color(color_hex)?;
         let n = self.db()?.execute(
             "UPDATE accounts SET color_hex = ?2, color_ms = ?3 WHERE id = ?1",
             params![account_id, hex, now_ms()],
@@ -1067,3 +1118,20 @@ fn renumber(tx: &Connection, ids: &[i64]) -> CoreResult<()> {
 
 #[cfg(test)]
 mod tests;
+
+/// A colour as `#RRGGBB` (upper case); `None` stays `None`.
+fn valid_color(color_hex: Option<String>) -> Result<Option<String>, CoreError> {
+    match color_hex.map(|h| h.trim().to_uppercase()) {
+        Some(h)
+            if h.len() == 7
+                && h.starts_with('#')
+                && h[1..].chars().all(|c| c.is_ascii_hexdigit()) =>
+        {
+            Ok(Some(h))
+        }
+        Some(h) => Err(CoreError::InvalidInput {
+            message: trf("Ungültige Farbe: {0}", &[&h]),
+        }),
+        None => Ok(None),
+    }
+}

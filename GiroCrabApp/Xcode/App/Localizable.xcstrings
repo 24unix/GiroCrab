@@ -1,6 +1,17 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "Bezahldienst" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Payment service"
+          }
+        }
+      }
+    },
     "Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8,6 +19,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "A selected transaction counts as reviewed after this time – like a read email. Never with multiple selection."
+          }
+        }
+      }
+    },
+    "Geldbörse" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wallet"
+          }
+        }
+      }
+    },
+    "Keine Farbe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Colour"
+          }
+        }
+      }
+    },
+    "Konto umbenennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename Account"
+          }
+        }
+      }
+    },
+    "Krypto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crypto"
           }
         }
       }
@@ -52,6 +107,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Immediately"
+          }
+        }
+      }
+    },
+    "Symbol & Farbe …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Icon & Colour…"
           }
         }
       }

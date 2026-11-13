@@ -422,6 +422,86 @@ fn account_colors_default_stable_and_sync() {
 }
 
 #[test]
+fn group_color_syncs_newer_wins_and_resets() {
+    let dir = temp_dir("groupcolor");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    seed(&a);
+    seed(&b);
+    let g = a
+        .create_user_group("Privat".into(), "person".into())
+        .unwrap();
+    let color = |v: &Vault| {
+        v.list_user_groups()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.uuid == g)
+            .unwrap()
+            .color_hex
+    };
+    assert_eq!(color(&a), "", "no colour until one is chosen");
+    assert!(a
+        .set_user_group_color(g.clone(), Some("blue".into()))
+        .is_err());
+    assert!(a
+        .set_user_group_color("nope".into(), Some("#123456".into()))
+        .is_err());
+    a.set_user_group_color(g.clone(), Some("#abcdef".into()))
+        .unwrap();
+    assert_eq!(color(&a), "#ABCDEF");
+    tick();
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    assert_eq!(color(&b), "#ABCDEF");
+    // a newer choice on the other device wins, also back to none
+    b.set_user_group_color(g.clone(), None).unwrap();
+    tick();
+    a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    assert_eq!(color(&a), "");
+    let ungrouped = a
+        .list_user_groups()
+        .unwrap()
+        .into_iter()
+        .find(|x| x.is_ungrouped);
+    assert!(ungrouped.is_none_or(|u| u.color_hex.is_empty()));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn account_symbol_choice_syncs_newer_wins() {
+    let dir = temp_dir("symbols");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let ia = seed(&a);
+    seed(&b);
+    let giro = |v: &Vault| {
+        v.list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.name == "Giro")
+            .unwrap()
+    };
+    assert!(a.set_account_symbol(ia[0], " ".into()).is_err());
+    assert!(a.set_account_symbol(999, "house".into()).is_err());
+    a.set_account_symbol(ia[0], "house".into()).unwrap();
+    assert_eq!(giro(&a).sf_symbol, "house");
+    tick();
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    assert_eq!(giro(&b).sf_symbol, "house");
+    // a later choice on the other device wins back
+    let gb = giro(&b).id;
+    b.set_account_symbol(gb, "briefcase".into()).unwrap();
+    tick();
+    a.merge_other_vault(b.file_path(), key.clone()).unwrap();
+    assert_eq!(giro(&a).sf_symbol, "briefcase");
+    // merging the older state again changes nothing
+    b.merge_other_vault(a.file_path(), key).unwrap();
+    assert_eq!(giro(&b).sf_symbol, "briefcase");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn default_colors_distinct_up_to_twelve_and_respect_choices() {
     let dir = temp_dir("colors12");
     let v = open(&dir, "a.db");
