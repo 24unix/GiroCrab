@@ -700,6 +700,7 @@ struct WindowTitle: ViewModifier {
 /// added; every command is also in the menu bar. iOS: unchanged.
 struct MainToolbar: ViewModifier {
     @Environment(AppModel.self) private var model
+    @AppStorage(ViewLayout.inspectorKey) private var showInspector = true
 
     func body(content: Content) -> some View {
         #if os(iOS)
@@ -740,6 +741,10 @@ struct MainToolbar: ViewModifier {
                 Button { model.requestSyncAll() } label: { Label("Abrufen", systemImage: "arrow.triangle.2.circlepath") }
                     .help(model.bankingBlocksAll ? (BankingPolicy.shared.gate?.message ?? "") : String(localized: "Alle Konten abrufen (⌘R)"))
                     .disabled(model.bankingBlocksAll)
+            }
+            ToolbarItem(id: "inspector", placement: .primaryAction) {
+                Button { showInspector.toggle() } label: { Label("Informationen", systemImage: "sidebar.trailing") }
+                    .help(showInspector ? String(localized: "Informationen ausblenden (⌥⌘I)") : String(localized: "Informationen einblenden (⌥⌘I)"))
             }
             ToolbarItem(id: "palette", placement: .primaryAction, showsByDefault: false) {
                 Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }
