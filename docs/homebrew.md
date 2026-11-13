@@ -13,6 +13,7 @@ no beta or nightly release exists yet. Homebrew handles both formats the same wa
 
 ```bash
 brew tap girocrab/tap https://github.com/GiroCrab/GiroCrab   # once
+brew trust girocrab/tap                                      # once (newer Homebrew versions)
 brew install --cask girocrab/tap/girocrab           # stable
 brew install --cask girocrab/tap/girocrab@beta      # beta (pre-release)
 brew install --cask girocrab/tap/girocrab@nightly   # nightly build
@@ -132,6 +133,7 @@ Then validate against a local tap and commit the changed cask to this repo:
 
 ```bash
 brew tap girocrab/tap "$PWD"         # local checkout as the tap (use `brew untap girocrab/tap` afterwards)
+brew trust girocrab/tap
 brew style --cask girocrab/tap/girocrab
 brew audit --cask --online --strict girocrab/tap/girocrab
 ```
@@ -171,5 +173,6 @@ change the caveat text to "is never deleted by Homebrew".
 ```markdown
 ### Homebrew
 brew tap girocrab/tap https://github.com/GiroCrab/GiroCrab
+brew trust girocrab/tap
 brew install --cask girocrab/tap/girocrab
 ```
