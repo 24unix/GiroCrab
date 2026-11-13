@@ -209,6 +209,12 @@ public struct GiroCrabScenes: Scene {
             AnnouncementsListView()
         }
         .defaultSize(width: 460, height: 360)
+        Window("Abruf-Protokoll", id: "sync-log") {
+            SyncLogView()
+                .environment(model)
+        }
+        .defaultSize(width: 900, height: 520)
+
         Window("GiroCrab-Hilfe", id: "help") {
             NavigationStack { HelpView() }
         }

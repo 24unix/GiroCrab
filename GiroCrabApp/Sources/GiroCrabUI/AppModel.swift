@@ -593,6 +593,8 @@ public final class AppModel {
     private var activeSession: SyncSession?
     private var activeTransfer: TransferSession?
     var showTransferSheet = false
+    /// Bumped whenever a sync wrote a row to the Abrufprotokoll (#238); the log window reloads on it.
+    var syncLogVersion = 0
     var csvExport = CSVFileDocument(data: Data())
     var showCSVExporter = false
     /// Print dialog (GitHub #53).
@@ -3384,6 +3386,8 @@ public final class AppModel {
         if quietSyncConnectionID == connection.id {
             switch step {
             case .needsChallenge, .stillWaiting:
+                logSync(connectionID: connection.id, source: .automatic, outcome: .cancelled,
+                        message: String(localized: "Automatischer Abruf übersprungen: Die Bank verlangt eine neue Freigabe."))
                 quietSyncConnectionID = nil
                 let s = activeSession
                 activeSession = nil
@@ -3408,6 +3412,8 @@ public final class AppModel {
             }
             schedulePoll(connection: connection, interval: c.pollIntervalSeconds)
         case .finished(let s):
+            logSync(connectionID: connection.id, source: syncLogSource(for: connection.id), outcome: .ok,
+                    imported: Int(s.transactionsImported))
             activeChallenge = nil
             syncingConnectionID = nil
             activeSession = nil
@@ -3502,6 +3508,10 @@ public final class AppModel {
             return
         }
         let s = activeSession
+        if s != nil, let id = syncingConnectionID {
+            logSync(connectionID: id, source: syncLogSource(for: id), outcome: .cancelled,
+                    message: String(localized: "Vom Benutzer abgebrochen"))
+        }
         activeSession = nil
         activeChallenge = nil
         pendingLogin = nil
@@ -3517,6 +3527,8 @@ public final class AppModel {
     private var failedSyncSecret: String?
 
     private func finishSync(error: Error) {
+        let failedID = quietSyncConnectionID ?? syncingConnectionID
+        logSync(connectionID: failedID, source: syncLogSource(for: failedID), outcome: .error, message: describe(error))
         let retrySecret = failedSyncSecret
         failedSyncSecret = nil
         if let quietID = quietSyncConnectionID {

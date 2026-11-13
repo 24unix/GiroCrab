@@ -11,7 +11,9 @@ The vault is a SQLCipher database. Its schema is versioned with
 | 1 | `BASELINE`: the complete schema of a new vault |
 | 2–8 | empty – vaults from before #206 carry these numbers, reached through probes |
 | 9 | `repair_to_v8`: the old probe-based setup, run once, so every vault ends up identical |
-| 10+ | future changes |
+| 10 | opening balances (#212) |
+| 11 | `sync_log`: the Abrufprotokoll (#238), local to the device |
+| 12+ | future changes |
 
 **Changing the schema**
 
