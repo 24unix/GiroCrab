@@ -92,3 +92,17 @@ whenever `README.md`, `docs/screenshots/**`, `docs/assets/**` or a release chang
 - The script aborts if `Cargo.toml` differs from the tag (override: `ALLOW_VERSION_MISMATCH=1`) or if those README headings lack the tag version.
 - It sets `MARKETING_VERSION` in `project.pbxproj` and `Aktuelle Version: **v…**` / `Current version: **v…**` in `README.md` (stable tags only), then verifies both. Commit those changes afterwards.
 
+
+## Release / nightly commands (`scripts/notarize.sh`)
+- Mac only (nightly on GitHub): `./scripts/notarize.sh --nightly`
+- Mac (nightly on GitHub) + iPhone (TestFlight upload incl. automatic build bump): `./scripts/notarize.sh --nightly --ios`
+- Official release (Mac on GitHub + iPhone to TestFlight): `./scripts/notarize.sh --upload vX.Y.Z --ios`
+- `--ios` increments `CURRENT_PROJECT_VERSION` in `project.pbxproj` by +1 (working tree only, NOT committed: commit it afterwards),
+  runs `./build-xcframework.sh`, archives and uploads. `MARKETING_VERSION` is taken from the project unless
+  `IOS_MARKETING_VERSION=x.y.z` is set (pins only the iOS archive; a changed version triggers a 24 h TestFlight beta review,
+  a new build under an approved version does not). Example: `IOS_MARKETING_VERSION=0.6.1 ./scripts/notarize.sh --nightly --ios`.
+- Check the TestFlight version/build before running; a build number must be higher than any already uploaded for that version.
+
+## Data tables
+`girocrab-core/data/*.tsv` are embedded at compile time and parsed by `src/data_tables.rs`: `bic_directory.tsv` (BIC),
+`fints_directory.tsv` (FinTS endpoints), `merchants.tsv` (merchant dictionary). Never read them whole; `grep -n` a key instead.
