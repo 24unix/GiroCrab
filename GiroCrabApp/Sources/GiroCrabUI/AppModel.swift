@@ -281,6 +281,8 @@ public final class AppModel {
     /// Manual loans (GitHub #36), see ManualLoansUI.swift.
     @ObservationIgnored let loanStore = ManualLoanStore()
     var vaultState: VaultState = .locked
+    /// The vault is open and the lock screen shows the crab's unlock hop for a moment.
+    var unlockCelebrating = false
 
     // Data
     var groups: [AccountGroup] = [] {
@@ -980,6 +982,12 @@ public final class AppModel {
                 let v = try Vault.open(path: Self.vaultURL.path, key: key)
                 _ = try v.seedStarterCategories()
                 self.ownVault = v
+                // Let the crab's unlock hop play on the lock screen before the main view replaces it.
+                if !Motion.reduced {
+                    self.unlockCelebrating = true
+                    try? await Task.sleep(for: .milliseconds(320))
+                }
+                defer { self.unlockCelebrating = false }
                 if try v.accountCount() == 0 && self.connectionsExist(v) == false {
                     // Nothing synced yet: show demo bookings so the UI can be judged.
                     UserDefaults.standard.set(false, forKey: Self.realDataKey)
