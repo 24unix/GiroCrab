@@ -530,6 +530,9 @@ public final class AppModel {
     var demoImportPreview: MoneyMoneyImportPreview?
     /// (demo, `--demo-sheet moneymoney-db`) canned database preview with invented data.
     var demoDbPreview: MoneyMoneyDbPreview?
+    /// (demo, `--demo-sheet add-bank[:search:<text> | :bank:<name>[:setup]]`)
+    /// opens "Bank hinzufügen" on that step, for PR screenshots.
+    var demoAddBank: String?
     var pendingLogin: PendingLogin?
     var setupRequest: SetupRequest?
     /// Trade Republic in-app browser login (WKWebView).
@@ -724,6 +727,12 @@ public final class AppModel {
                 result: result, enteredName: "Stadtwerke Muenchen", iban: "DE89370400440532013000",
                 bankName: result == .closeMatch ? "Stadtwerke München GmbH" : nil, reason: nil,
                 notice: result == .noMatch ? "Wenn Sie die Überweisung trotzdem freigeben, kann das Geld an einen anderen Empfänger gehen." : nil))
+        case let n where n == "add-bank" || n.hasPrefix("add-bank:"):
+            // the original spelling (LaunchOptions lowercases --demo-sheet): "Sparkasse Köln"
+            let args = CommandLine.arguments
+            let raw = args.firstIndex(of: "--demo-sheet").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? n
+            demoAddBank = String(raw.dropFirst("add-bank".count)).trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+            showAddBank = true
         case "moneymoney-db":
             #if os(macOS)
             demoDbPreview = Self.demoMoneyMoneyDbPreview(existingGiro: allAccounts.first { $0.kind == .checking })

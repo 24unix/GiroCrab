@@ -192,21 +192,18 @@ struct MoneyMoneyDatabaseImportView: View {
                             .opacity(0)
                             .accessibilityHidden(true))
             default:
-                Button("Abbrechen") { password = ""; dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                if loading { ProgressView().controlSize(.small) }
-                if step != .source {
-                    Button("Zurück") { back() }
-                        .keyboardShortcut("[", modifiers: .command) // the system's "Back"
+                AssistantFooter(
+                    cancel: { password = ""; dismiss() },
+                    back: step != .source ? { back() } : nil,
+                    nextTitle: isLastStep ? "Importieren" : "Fortfahren",
+                    nextDisabled: !canContinue,
+                    busy: loading,
+                    next: { next() }
+                ) {
+                    if step == .enableBanking {
+                        Button("Später einrichten") { runImport() }
+                    }
                 }
-                if step == .enableBanking {
-                    Button("Später einrichten") { runImport() }
-                }
-                Button(isLastStep ? "Importieren" : "Fortfahren") { next() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canContinue)
             }
         }
     }

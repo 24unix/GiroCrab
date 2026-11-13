@@ -44,6 +44,49 @@ struct MoneyMoneyImportSheet: View {
     }
 }
 
+/// Bottom row of every assistant (import, "Bank hinzufügen"): Abbrechen on the
+/// left, then Zurück (⌘[) and the default button (Return). Esc cancels.
+struct AssistantFooter<Extra: View>: View {
+    var cancelDisabled = false
+    let cancel: () -> Void
+    var back: (() -> Void)? = nil
+    var backDisabled = false
+    let nextTitle: LocalizedStringKey
+    var nextDisabled = false
+    var busy = false
+    let next: () -> Void
+    @ViewBuilder var extra: () -> Extra
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button("Abbrechen", action: cancel)
+                .keyboardShortcut(.cancelAction)
+                .disabled(cancelDisabled)
+            Spacer()
+            if busy { ProgressView().controlSize(.small) }
+            if let back {
+                Button("Zurück", action: back)
+                    .keyboardShortcut("[", modifiers: .command) // the system's "Back"
+                    .disabled(backDisabled)
+            }
+            extra()
+            Button(nextTitle, action: next)
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(nextDisabled)
+        }
+    }
+}
+
+extension AssistantFooter where Extra == EmptyView {
+    init(cancelDisabled: Bool = false, cancel: @escaping () -> Void, back: (() -> Void)? = nil,
+         backDisabled: Bool = false, nextTitle: LocalizedStringKey, nextDisabled: Bool = false,
+         busy: Bool = false, next: @escaping () -> Void) {
+        self.init(cancelDisabled: cancelDisabled, cancel: cancel, back: back, backDisabled: backDisabled,
+                  nextTitle: nextTitle, nextDisabled: nextDisabled, busy: busy, next: next, extra: { EmptyView() })
+    }
+}
+
 /// First section of both import assistants: where the data comes from, as
 /// radio buttons with a short explanation each (HIG: a small set of mutually
 /// exclusive choices that need a description → radio group, not a segmented
@@ -313,25 +356,15 @@ struct MoneyMoneyExportImportView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack(spacing: 8) {
-            Button("Abbrechen") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-                .disabled(importing)
-            Spacer()
-            if importing { ProgressView().controlSize(.small) }
-            if step == .options {
-                Button("Zurück") { error = nil; step = .file }
-                    .keyboardShortcut("[", modifiers: .command) // the system's "Back"
-                    .disabled(importing)
-            }
-            Button(step == .file ? "Fortfahren" : (importing ? "Importiere …" : "Importieren")) {
-                if step == .file { error = nil; step = .options } else { runImport() }
-            }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
-            .disabled(step == .file
-                      ? (preview == nil || loading)
-                      : (importing || (preview?.totalRows ?? 0) == 0))
+        AssistantFooter(
+            cancelDisabled: importing, cancel: { dismiss() },
+            back: step == .options ? { error = nil; step = .file } : nil,
+            backDisabled: importing,
+            nextTitle: step == .file ? "Fortfahren" : (importing ? "Importiere …" : "Importieren"),
+            nextDisabled: step == .file ? (preview == nil || loading) : (importing || (preview?.totalRows ?? 0) == 0),
+            busy: importing
+        ) {
+            if step == .file { error = nil; step = .options } else { runImport() }
         }
     }
 

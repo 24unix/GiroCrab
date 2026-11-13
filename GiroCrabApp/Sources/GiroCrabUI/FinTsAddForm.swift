@@ -1,7 +1,8 @@
 import SwiftUI
 import GiroCrabCore
 
-/// Preset picker + manual BLZ / FinTS URL for "Andere FinTS-Bank".
+/// FinTS login form of the "Bank hinzufügen" assistant; for "Andere FinTS-Bank"
+/// with preset picker and manual BLZ / FinTS URL.
 /// Any FinTS 3.0 PIN/TAN bank works: pick a preset, search for it, or type an
 /// 8-digit BLZ (or paste a German IBAN) – name and FinTS URL are then filled in
 /// from the built-in bank directory. The URL stays editable for custom banks.
@@ -10,6 +11,8 @@ struct FinTsAddForm: View {
     /// Bank chosen in the search picker (pre-fills BLZ, name and URL).
     var prefill: BankSearchResult? = nil
     var onAdded: () -> Void = {}
+    /// Inside the "Bank hinzufügen" assistant: no own button (see `AddBankSubmit`).
+    var submit: AddBankSubmit? = nil
 
     @State private var presets = fintsPresets()
     @State private var presetID = "custom"
@@ -35,66 +38,121 @@ struct FinTsAddForm: View {
     }
     private var canAdd: Bool { blzValid && urlValid && !login.trimmingCharacters(in: .whitespaces).isEmpty }
 
+    /// Opened by the user, or because the address was changed.
+    @State private var showAdvanced = false
+
+    /// The bank came from the search: BLZ and address are fixed by the directory.
+    private var known: Bool { prefill != nil && found != nil }
+
+    /// Sections of their own (the assistant does not wrap this form):
+    /// known bank – "Bank" (read-only), "Anmeldung", collapsible "Erweitert";
+    /// "Andere FinTS-Bank" – "Bank" with BLZ and address to fill in, "Anmeldung".
     var body: some View {
-        Picker("Bank", selection: $presetID) {
-            ForEach(presets, id: \.id) { Text($0.name).tag($0.id) }
-        }
-        .onChange(of: presetID) { _, _ in
-            guard let p = preset else { return }
-            bankName = p.id == "custom" ? "" : p.name
-            urlEdited = false
-            autoURL = p.url
-            url = p.url
-            blz = p.blz
-            lookup()
-        }
-        TextField("BLZ (8 Ziffern) oder IBAN", text: $blz)
-            .autocorrectionDisabled()
-            .onChange(of: blz) { _, _ in
-                // a pasted German IBAN becomes its BLZ (characters 5–12)
-                if let b = blzFromBankInput(input: blz), b != blz { blz = b; return }
-                lookup()
+        Section {
+            if known {
+                LabeledContent("Bankleitzahl", value: blz)
+                LabeledContent("Verfahren", value: String(localized: "FinTS 3.0 mit PIN und TAN"))
+            } else {
+                if presets.count > 1 {
+                    Picker("Vorlage", selection: $presetID) {
+                        ForEach(presets, id: \.id) { Text($0.name).tag($0.id) }
+                    }
+                    .onChange(of: presetID) { _, _ in
+                        guard let p = preset else { return }
+                        bankName = p.id == "custom" ? "" : p.name
+                        urlEdited = false
+                        autoURL = p.url
+                        url = p.url
+                        blz = p.blz
+                        lookup()
+                    }
+                }
+                TextField("Bankleitzahl", text: $blz, prompt: Text("8 Ziffern oder IBAN"))
+                    .autocorrectionDisabled()
+                    .onChange(of: blz) { _, _ in
+                        // a pasted German IBAN becomes its BLZ (characters 5–12)
+                        if let b = blzFromBankInput(input: blz), b != blz { blz = b; return }
+                        lookup()
+                    }
+                if let f = found { LabeledContent("Bank", value: f.name) }
+                urlField
             }
-        if let f = found {
-            Label(f.name, systemImage: "checkmark.seal")
-                .font(.caption).foregroundStyle(.secondary)
-        } else if blzValid {
-            Label("BLZ nicht im Verzeichnis – bitte FinTS-URL selbst eintragen.", systemImage: "questionmark.circle")
-                .font(.caption).foregroundStyle(.secondary)
+        } header: {
+            Text("Bank")
+        } footer: {
+            if !known { bankFooter }
         }
-        TextField("FinTS-URL (https://…)", text: $url)
-            .autocorrectionDisabled()
-            .onChange(of: url) { _, new in if new != autoURL { urlEdited = true } }
-        if model.demoActive || blz == "99999999" { DemoHintBanner(style: .credentials) { login = "demo" } }
-        TextField("Anmeldename / VR-NetKey / Kontonummer", text: $login).autocorrectionDisabled()
-        TextField("TAN-Medium / Gerätename (optional, z. B. bei Postbank BestSign)", text: $tanMedium)
-            .autocorrectionDisabled()
-        if isPostbank {
-            Label("Postbank: Als Anmeldename die Postbank ID verwenden (nicht die Kontonummer).", systemImage: "info.circle")
-                .font(.caption).foregroundStyle(.secondary)
-        }
-        if needsMediumHint {
-            Text("Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie hier den Gerätenamen aus der BestSign-/App-Verwaltung ein, z. B. SO:Gerätename.")
-                .font(.caption).foregroundStyle(.secondary)
-        }
-        if let n = preset?.note, !n.isEmpty {
-            Text(n).font(.caption).foregroundStyle(.secondary)
-        }
-        if (!blz.isEmpty && !blzValid) || (!url.isEmpty && !urlValid) {
-            Label("BLZ: genau 8 Ziffern · URL: muss mit https:// beginnen", systemImage: "exclamationmark.triangle")
-                .font(.caption).foregroundStyle(.orange)
-        }
-        Button("Bank hinzufügen") {
-            let name = bankName.trimmingCharacters(in: .whitespaces)
-            model.addFinTsConnection(name: name.isEmpty ? "FinTS-Bank \(blz)" : name, blz: blz, url: url, login: login, tanMedium: tanMedium)
-            login = ""
-            tanMedium = ""
-            onAdded()
-        }
-        .keyboardShortcut(.defaultAction)
-        .disabled(!canAdd)
         .onAppear { apply(prefill) }
         .onChange(of: prefill?.id) { _, _ in apply(prefill) }
+        .onChange(of: canAdd, initial: true) { _, ok in submit?.update(ok, commit) }
+
+        Section {
+            if model.demoActive || blz == "99999999" { DemoHintBanner(style: .credentials) { login = "demo" } }
+            TextField("Anmeldename", text: $login, prompt: Text(isPostbank ? "Postbank ID" : "z. B. VR-NetKey oder Kontonummer"))
+                .autocorrectionDisabled()
+            TextField("TAN-Medium", text: $tanMedium, prompt: Text("Optional"))
+                .autocorrectionDisabled()
+            if submit == nil {
+                Button("Bank hinzufügen") { commit() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canAdd)
+            }
+        } header: {
+            Text("Anmeldung")
+        } footer: {
+            AddFormFooter(lines: [
+                isPostbank ? String(localized: "Postbank: Als Anmeldename die Postbank ID verwenden, nicht die Kontonummer.") : "",
+                needsMediumHint
+                    ? String(localized: "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein, z. B. SO:Gerätename.")
+                    : String(localized: "Das TAN-Medium brauchen Sie nur, wenn die Bank danach fragt."),
+            ])
+        }
+
+        if known {
+            Section(isExpanded: $showAdvanced) {
+                LabeledContent {
+                    urlField.labelsHidden()
+                } label: {
+                    Text("FinTS-Adresse")
+                    Text("Aus dem Bankverzeichnis der Deutschen Kreditwirtschaft. Nur ändern, wenn Ihre Bank eine andere angibt.")
+                }
+            } header: {
+                Text("Erweitert")
+            }
+        }
+    }
+
+    /// "Andere FinTS-Bank": what is wrong, or where the address comes from.
+    @ViewBuilder private var bankFooter: some View {
+        Group {
+            if (!blz.isEmpty && !blzValid) || (!url.isEmpty && !urlValid) {
+                Label("Bankleitzahl: genau 8 Ziffern · FinTS-Adresse: beginnt mit https://", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+            } else if blzValid, found == nil {
+                Text("Diese Bankleitzahl steht nicht im Verzeichnis. Tragen Sie die FinTS-Adresse Ihrer Bank selbst ein.")
+                    .foregroundStyle(.secondary)
+            } else if let n = preset?.note, !n.isEmpty {
+                Text(n).foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var urlField: some View {
+        TextField("FinTS-Adresse", text: $url, prompt: Text("https://…"))
+            .autocorrectionDisabled()
+            .onChange(of: url) { _, new in
+                if new != autoURL { urlEdited = true; showAdvanced = true }
+            }
+    }
+
+    private func commit() {
+        let name = bankName.trimmingCharacters(in: .whitespaces)
+        model.addFinTsConnection(name: name.isEmpty ? "FinTS-Bank \(blz)" : name, blz: blz, url: url, login: login, tanMedium: tanMedium)
+        login = ""
+        tanMedium = ""
+        onAdded()
     }
 
     private func apply(_ r: BankSearchResult?) {

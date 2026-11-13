@@ -77,9 +77,9 @@ public struct GiroCrabScenes: Scene {
                     .keyboardShortcut("p", modifiers: .command)
                     .disabled(model.vault == nil)
             }
+            // "Bank hinzufügen …" lives in Ablage with the other "create" commands
+            // (HIG: one command, one menu – Help search otherwise lists it twice).
             CommandMenu("Konten") {
-                Button("Bank hinzufügen …") { model.showAddBank = true }
-                    .disabled(model.vault == nil)
                 Button("Alle Konten abrufen") { model.requestSyncAll() }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(model.vault == nil || model.bankingBlocksAll)

@@ -1689,17 +1689,6 @@
         }
       }
     },
-    "Andere FinTS-Bank (BLZ + URL manuell)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Other FinTS bank (enter bank code + URL manually)"
-          }
-        }
-      }
-    },
     "Andere Quelle …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1795,17 +1784,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Login %@"
-          }
-        }
-      }
-    },
-    "Anmeldename / VR-NetKey / Kontonummer" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Login name / VR-NetKey / account number"
           }
         }
       }
@@ -2317,39 +2295,6 @@
         }
       }
     },
-    "BLZ (8 Ziffern) oder IBAN" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bank code (8 digits) or IBAN"
-          }
-        }
-      }
-    },
-    "BLZ nicht im Verzeichnis – bitte FinTS-URL selbst eintragen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bank code not in the directory – please enter the FinTS URL yourself."
-          }
-        }
-      }
-    },
-    "BLZ: genau 8 Ziffern · URL: muss mit https:// beginnen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bank code: exactly 8 digits · URL: must start with https://"
-          }
-        }
-      }
-    },
     "Bank" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2786,17 +2731,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enter Amount"
-          }
-        }
-      }
-    },
-    "Bezeichnung (optional)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Label (optional)"
           }
         }
       }
@@ -3737,17 +3671,6 @@
         }
       }
     },
-    "Eigene API" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Own API"
-          }
-        }
-      }
-    },
     "Eigene Domain für das Logo eintragen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4254,17 +4177,6 @@
         }
       }
     },
-    "FinTS-URL (https://…)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "FinTS URL (https://…)"
-          }
-        }
-      }
-    },
     "Firma" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4294,17 +4206,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fixed Costs Due"
-          }
-        }
-      }
-    },
-    "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie hier den Gerätenamen aus der BestSign-/App-Verwaltung ein, z. B. SO:Gerätename." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "If the bank asks for a TAN medium (error 9210), enter the device name from your BestSign/app settings here, e.g. SO:DeviceName."
           }
         }
       }
@@ -5735,17 +5636,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "None (Top Level)"
-          }
-        }
-      }
-    },
-    "Keine Bank gefunden. Prüfen Sie die Schreibweise oder geben Sie die BLZ ein." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No bank found. Check the spelling or enter the bank code."
           }
         }
       }
@@ -7803,17 +7693,6 @@
         }
       }
     },
-    "PSD2" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "PSD2"
-          }
-        }
-      }
-    },
     "PSD2 (via Enable Banking)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7953,17 +7832,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Positions"
-          }
-        }
-      }
-    },
-    "Postbank: Als Anmeldename die Postbank ID verwenden (nicht die Kontonummer)." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Postbank: use your Postbank ID as the login name (not the account number)."
           }
         }
       }
@@ -8978,17 +8846,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TAN / code"
-          }
-        }
-      }
-    },
-    "TAN-Medium / Gerätename (optional, z. B. bei Postbank BestSign)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "TAN medium / device name (optional, e.g. for Postbank BestSign)"
           }
         }
       }
@@ -11051,17 +10908,6 @@
         }
       }
     },
-    "z. B. Sparkasse, ING, N26, Revolut, bunq – oder die 8-stellige BLZ / Ihre IBAN" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "e.g. Sparkasse, ING, N26, Revolut, bunq – or the 8-digit bank code / your IBAN"
-          }
-        }
-      }
-    },
     "z. B. enbw.com" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12626,17 +12472,6 @@
         }
       }
     },
-    "Suche löschen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clear Search"
-          }
-        }
-      }
-    },
     "Vorlage „%@“ löschen?" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13717,28 +13552,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Insert PIN 12345"
-          }
-        }
-      }
-    },
-    "Demo-Bank hinzufügen (Test & Vorschau)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Add demo bank (test & preview)"
-          }
-        }
-      }
-    },
-    "Kennung: demo, PIN: 12345, beliebige TAN – ohne echte Bank und ohne Netzwerk." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Login: demo, PIN: 12345, any TAN – no real bank, no network."
           }
         }
       }
@@ -15257,6 +15070,435 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Occasional news, independent of updates. For this, GiroCrab downloads a signed text file from GitHub – without an identifier and without tracking. Announcements never appear as a pop-up window and can be dismissed at any time. Security warnings are independent of this."
+          }
+        }
+      }
+    },
+    "Andere FinTS-Bank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other FinTS Bank"
+          }
+        }
+      }
+    },
+    "Suchen Sie Ihre Bank nach Name, Bankleitzahl oder IBAN." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search for your bank by name, bank code or IBAN."
+          }
+        }
+      }
+    },
+    "Wie GiroCrab die Umsätze abruft. PIN und TAN fragt GiroCrab erst beim ersten Abruf ab." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How GiroCrab retrieves the transactions. GiroCrab asks for PIN and TAN only on the first retrieval."
+          }
+        }
+      }
+    },
+    "Diese Angaben braucht GiroCrab einmalig, danach gelten sie für alle Banken dieser Art." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab needs this once; afterwards it applies to all banks of this kind."
+          }
+        }
+      }
+    },
+    "Verbindung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection"
+          }
+        }
+      }
+    },
+    "GiroCrab empfiehlt FinTS: direkt zur Bank, ohne Anmeldung bei Dritten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab recommends FinTS: directly to the bank, without signing up with third parties."
+          }
+        }
+      }
+    },
+    "FinTS-Programme brauchen eine kostenlose Produktregistrierung bei der Deutschen Kreditwirtschaft. Sie dauert meist einige Tage." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FinTS programs need a free product registration with the Deutsche Kreditwirtschaft. It usually takes a few days."
+          }
+        }
+      }
+    },
+    "Produktregistrierung öffnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Product Registration"
+          }
+        }
+      }
+    },
+    "Bankleitzahl und FinTS-Adresse selbst eingeben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter bank code and FinTS address yourself"
+          }
+        }
+      }
+    },
+    "Nicht gefunden?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not Found?"
+          }
+        }
+      }
+    },
+    "Demo-Bank ausprobieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try the Demo Bank"
+          }
+        }
+      }
+    },
+    "Von MoneyMoney umsteigen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch from MoneyMoney …"
+          }
+        }
+      }
+    },
+    "Ohne echte Bank: Kennung „demo“, PIN 12345, beliebige TAN" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No real bank: login “demo”, PIN 12345, any TAN"
+          }
+        }
+      }
+    },
+    "Beliebte Banken" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Popular Banks"
+          }
+        }
+      }
+    },
+    "über FinTS" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "via FinTS"
+          }
+        }
+      }
+    },
+    "über die eigene Schnittstelle der Bank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "via the bank’s own interface"
+          }
+        }
+      }
+    },
+    "über Enable Banking" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "via Enable Banking"
+          }
+        }
+      }
+    },
+    "Erweitert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanced"
+          }
+        }
+      }
+    },
+    "Bankleitzahl" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank Code"
+          }
+        }
+      }
+    },
+    "8 Ziffern oder IBAN" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "8 digits or IBAN"
+          }
+        }
+      }
+    },
+    "FinTS-Adresse" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FinTS Address"
+          }
+        }
+      }
+    },
+    "https://…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "https://…"
+          }
+        }
+      }
+    },
+    "z. B. VR-NetKey oder Kontonummer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "e.g. VR-NetKey or account number"
+          }
+        }
+      }
+    },
+    "TAN-Medium" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAN Medium"
+          }
+        }
+      }
+    },
+    "Optional" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional"
+          }
+        }
+      }
+    },
+    "Das TAN-Medium brauchen Sie nur, wenn die Bank danach fragt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You only need the TAN medium if the bank asks for it."
+          }
+        }
+      }
+    },
+    "Bezeichnung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        }
+      }
+    },
+    "Bankleitzahl: genau 8 Ziffern · FinTS-Adresse: beginnt mit https://" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank code: exactly 8 digits · FinTS address: starts with https://"
+          }
+        }
+      }
+    },
+    "Jede Sparkasse und Volksbank ist eine eigene Bank. Suchen Sie sie über ihren Namen (meist mit Ort), die Bankleitzahl oder Ihre IBAN." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every savings bank and cooperative bank is a bank of its own. Search for it by its name (usually with the town), the bank code or your IBAN."
+          }
+        }
+      }
+    },
+    "FinTS 3.0 mit PIN und TAN" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FinTS 3.0 with PIN and TAN"
+          }
+        }
+      }
+    },
+    "Vorlage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Template"
+          }
+        }
+      }
+    },
+    "Postbank ID" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Postbank ID"
+          }
+        }
+      }
+    },
+    "Postbank: Als Anmeldename die Postbank ID verwenden, nicht die Kontonummer." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Postbank: use the Postbank ID as user name, not the account number."
+          }
+        }
+      }
+    },
+    "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein, z. B. SO:Gerätename." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If the bank asks for a TAN medium (error 9210), enter the device name from the BestSign or app management, e.g. SO:DeviceName."
+          }
+        }
+      }
+    },
+    "Aus dem Bankverzeichnis der Deutschen Kreditwirtschaft. Nur ändern, wenn Ihre Bank eine andere angibt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From the Deutsche Kreditwirtschaft bank directory. Only change it if your bank states a different one."
+          }
+        }
+      }
+    },
+    "Diese Bankleitzahl steht nicht im Verzeichnis. Tragen Sie die FinTS-Adresse Ihrer Bank selbst ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This bank code isn’t in the directory. Enter your bank’s FinTS address yourself."
+          }
+        }
+      }
+    },
+    "Suche löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear Search"
+          }
+        }
+      }
+    },
+    "API-Zugangsdaten bei comdirect erstellen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create API Credentials at comdirect"
+          }
+        }
+      }
+    },
+    "Die Zugangsdaten erstellen Sie einmalig bei Ihrer Bank. GiroCrab speichert sie verschlüsselt im Tresor." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You create these credentials once at your bank. GiroCrab stores them encrypted in the vault."
           }
         }
       }
