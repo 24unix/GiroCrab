@@ -162,6 +162,8 @@ pub struct EnableBankingConnector {
     client: Option<reqwest::Client>,
     jwt: String,
     expected_state: String,
+    /// Sanitized `/auth` context (matched ASPSP + request), for error messages.
+    auth_diag: String,
     st: PsdState,
 }
 
@@ -433,7 +435,65 @@ fn consent_valid_until(now: chrono::DateTime<chrono::Utc>, max_secs: Option<i64>
         None => DEFAULT_CONSENT_DAYS * 86_400,
     }
     .max(3600);
-    (now + chrono::Duration::seconds(secs)).to_rfc3339()
+    // Whole seconds and a "Z" suffix: some banks (Revolut) reject fractions.
+    (now + chrono::Duration::seconds(secs)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+/// Revolut grants at most 90 days: never ask for more, whatever the list says.
+fn is_revolut(name: &str) -> bool {
+    name.to_lowercase().contains("revolut")
+}
+
+fn effective_max_secs(name: &str, max: Option<i64>) -> Option<i64> {
+    let cap = 90 * 86_400;
+    if is_revolut(name) {
+        Some(max.map_or(cap, |m| m.min(cap)))
+    } else {
+        max
+    }
+}
+
+/// Matched `/aspsps` entry and the `/auth` request, without the `state`.
+fn auth_diagnostics(list: &Value, name: &str, body: &Value) -> String {
+    let entry = list["aspsps"]
+        .as_array()
+        .and_then(|a| {
+            a.iter().find(|b| {
+                b["name"]
+                    .as_str()
+                    .is_some_and(|n| n.eq_ignore_ascii_case(name))
+            })
+        })
+        .map(|b| {
+            json!({
+                "name": b["name"],
+                "country": b["country"],
+                "psu_types": b["psu_types"],
+                "maximum_consent_validity": b["maximum_consent_validity"],
+            })
+        })
+        .unwrap_or(Value::Null);
+    let mut req = body.clone();
+    if let Some(o) = req.as_object_mut() {
+        if o.contains_key("state") {
+            o.insert("state".into(), json!("<redacted>"));
+        }
+    }
+    format!("aspsp={entry} auth_request={req}")
+}
+
+/// Appends the `/auth` context to a consent error and logs it.
+fn with_auth_diag(e: CoreError, diag: &str) -> CoreError {
+    if diag.is_empty() {
+        return e;
+    }
+    crate::depot_debug::log(&format!("enable_banking consent error: {e} [{diag}]"));
+    match e {
+        CoreError::Authentication { message } => CoreError::Authentication {
+            message: format!("{message} [{diag}]"),
+        },
+        other => other,
+    }
 }
 
 /// Balance of a bank account (not a card): booked balances first, the sign
@@ -569,6 +629,7 @@ impl EnableBankingConnector {
             client: None,
             jwt: String::new(),
             expected_state: String::new(),
+            auth_diag: String::new(),
             st: PsdState::default(),
         }
     }
@@ -583,6 +644,7 @@ impl EnableBankingConnector {
             client: None,
             jwt: String::new(),
             expected_state: String::new(),
+            auth_diag: String::new(),
             st: PsdState::default(),
         }
     }
@@ -928,16 +990,42 @@ pub(crate) fn pick_aspsp_name(list: &Value, wanted: &str) -> Option<String> {
     if w.is_empty() {
         return None;
     }
-    let names: Vec<String> = parse_aspsps(list).into_iter().map(|(n, _)| n).collect();
-    if let Some(n) = names.iter().find(|n| n.to_lowercase() == w) {
+    // (name, supports personal accounts); no `psu_types` counts as personal.
+    let entries: Vec<(String, bool)> = list["aspsps"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|b| {
+                    let personal = b["psu_types"]
+                        .as_array()
+                        .is_none_or(|t| t.iter().any(|x| x.as_str() == Some("personal")));
+                    Some((b["name"].as_str()?.to_string(), personal))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let exact: Vec<&(String, bool)> = entries
+        .iter()
+        .filter(|(n, _)| n.eq_ignore_ascii_case(wanted.trim()))
+        .collect();
+    if let Some((n, _)) = exact.iter().find(|(_, p)| *p).or(exact.first()) {
         return Some(n.clone());
     }
-    let mut fuzzy = names.iter().filter(|n| {
-        let l = n.to_lowercase();
-        l.contains(&w) || w.contains(&l)
-    });
-    match (fuzzy.next(), fuzzy.next()) {
-        (Some(n), None) => Some(n.clone()),
+    let fuzzy: Vec<&(String, bool)> = entries
+        .iter()
+        .filter(|(n, _)| {
+            let l = n.to_lowercase();
+            l.contains(&w) || w.contains(&l)
+        })
+        .collect();
+    let personal: Vec<&&(String, bool)> = fuzzy.iter().filter(|(_, p)| *p).collect();
+    let pool: Vec<&String> = if personal.is_empty() {
+        fuzzy.iter().map(|(n, _)| n).collect()
+    } else {
+        personal.iter().map(|(n, _)| n).collect()
+    };
+    match pool.as_slice() {
+        [n] => Some((*n).clone()),
         _ => None,
     }
 }
@@ -1067,6 +1155,7 @@ impl BankConnector for EnableBankingConnector {
             }
         }
         self.expected_state = uuid::Uuid::new_v4().to_string();
+        self.auth_diag.clear();
         let configured = ctx
             .setting_or(self.aspsp_setting, &self.aspsp_default)
             .to_string();
@@ -1119,8 +1208,8 @@ impl BankConnector for EnableBankingConnector {
                     "psu_type": "personal",
                 })
             } else {
-                let max = max_consent_secs(&aspsp_list, name);
-                json!({
+                let max = effective_max_secs(name, max_consent_secs(&aspsp_list, name));
+                let mut body = json!({
                     "access": {
                         "valid_until": consent_valid_until(chrono::Utc::now(), max),
                         "balances": true,
@@ -1130,9 +1219,16 @@ impl BankConnector for EnableBankingConnector {
                     "state": self.expected_state,
                     "redirect_url": ctx.setting("enablebanking.redirect_url")?,
                     "psu_type": psu_type_for(&aspsp_list, name),
-                    "language": language,
-                })
+                });
+                // Revolut's OAuth server gets the leanest request: no language.
+                if !is_revolut(name) {
+                    body["language"] = json!(language);
+                }
+                body
             };
+            if !self.card_mode() {
+                self.auth_diag = auth_diagnostics(&aspsp_list, name, &body);
+            }
             match self.call(reqwest::Method::POST, "/auth", Some(body)).await {
                 Ok(r) => {
                     v = r;
@@ -1141,9 +1237,14 @@ impl BankConnector for EnableBankingConnector {
                 }
                 // 4xx other than auth errors: probably unknown ASPSP name -> try the next one
                 Err(CoreError::Bank { code, message }) if code.starts_with('4') => {
+                    let diag = if self.auth_diag.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [{}]", self.auth_diag)
+                    };
                     last_err = Some(CoreError::Bank {
                         code,
-                        message: trf("ASPSP „{0}“: {1}", &[&name, &message]),
+                        message: format!("{}{diag}", trf("ASPSP „{0}“: {1}", &[&name, &message])),
                     });
                 }
                 Err(e) => return Err(e),
@@ -1182,7 +1283,8 @@ impl BankConnector for EnableBankingConnector {
                 message: tr("Bitte die Weiterleitungsadresse einfügen").into(),
             });
         };
-        let code = extract_code(input.expose(), &self.expected_state)?;
+        let code = extract_code(input.expose(), &self.expected_state)
+            .map_err(|e| with_auth_diag(e, &self.auth_diag))?;
         let v = self
             .call(
                 reqwest::Method::POST,
@@ -2300,6 +2402,68 @@ mod tests {
             None
         );
         assert_eq!(super::pick_aspsp_name(&json!({}), "N26"), None);
+    }
+
+    #[test]
+    fn consent_valid_until_has_whole_seconds_and_z() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-11T00:00:00.123456789+00:00")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        for max in [None, Some(7_776_000), Some(31_536_000)] {
+            let v = consent_valid_until(now, max);
+            assert!(
+                v.ends_with('Z') && !v.contains('.') && !v.contains('+'),
+                "{v}"
+            );
+        }
+        // Revolut never exceeds 90 days, with or without a list entry
+        assert_eq!(effective_max_secs("Revolut", None), Some(90 * 86_400));
+        assert_eq!(
+            effective_max_secs("Revolut", Some(180 * 86_400)),
+            Some(90 * 86_400)
+        );
+        assert_eq!(effective_max_secs("N26", None), None);
+    }
+
+    #[test]
+    fn exact_aspsp_beats_business_variant() {
+        let list = json!({"aspsps": [
+            {"name": "Revolut Business", "country": "LT", "psu_types": ["business"]},
+            {"name": "Revolut", "country": "LT", "psu_types": ["personal"]}
+        ]});
+        assert_eq!(
+            pick_aspsp_name(&list, "revolut").as_deref(),
+            Some("Revolut")
+        );
+        // partial match prefers the personal bank over the business-only one
+        assert_eq!(
+            pick_aspsp_name(&list, "Revolut Bank").as_deref(),
+            Some("Revolut")
+        );
+    }
+
+    #[test]
+    fn callback_error_carries_sanitized_auth_context() {
+        let list = json!({"aspsps": [{"name": "Revolut", "country": "LT",
+            "psu_types": ["personal"], "maximum_consent_validity": 7776000}]});
+        let body = json!({"state": "secret-state", "aspsp": {"name": "Revolut", "country": "LT"}});
+        let diag = auth_diagnostics(&list, "Revolut", &body);
+        assert!(
+            diag.contains("7776000") && diag.contains("<redacted>"),
+            "{diag}"
+        );
+        assert!(!diag.contains("secret-state"), "{diag}");
+        let e = extract_code(
+            "https://localhost/cb?error=server_error&error_description=boom",
+            "",
+        )
+        .map_err(|e| with_auth_diag(e, &diag))
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains("boom") && e.contains("auth_request") && e.contains("Revolut"),
+            "{e}"
+        );
     }
 
     #[test]

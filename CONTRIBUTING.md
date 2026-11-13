@@ -25,8 +25,12 @@ Database schema changes are a new migration step plus a fixture vault, see
    and implement `begin` (login / challenge), `respond` (TAN/poll) and `fetch` (accounts + bookings).
    Amounts are `i64` cents, debits negative; `external_id` must be stable for de-duplication.
 2. **Register it.** Add a variant to `ConnectorKind` (`models.rs`), a `BankDescriptor` in
-   `descriptor()` and a line in `make_connector()` (`connectors/catalog.rs`), plus `pub mod <bank>;`
-   in `connectors/mod.rs`.
+   `descriptor()` and a line in `make_connector()` (both in `connectors/catalog.rs`), plus
+   `pub mod <bank>;` in `connectors/mod.rs`. The `BankConnector` trait and its DTOs (`Phase`,
+   `Challenge`, `FetchResult`, …) live in `connectors/types.rs`; the sync/transfer state machines are
+   in `sync_session.rs` / `transfer_session.rs`, and storing fetched data is `persist.rs`.
+   File importers (MoneyMoney, CSV/CAMT/MT940, portal imports) are not connectors: see
+   `girocrab-core/src/importers/`.
    Add the Swift display name/colour in `GiroCrabUI/Formatting.swift`.
 3. **Test it with fake data.** Unit-test your parser with invented fixtures, then check the UI via
    `GIROCRAB_DEMO_SEED=1`. Run `cargo fmt`, `cargo clippy` and `cargo test -p girocrab-core`.
@@ -34,8 +38,9 @@ Database schema changes are a new migration step plus a fixture vault, see
    and warns after a checkout, pull or rebase when the xcframework in `generated/` no longer matches
    the Rust core (`./build-xcframework.sh --check`).
 
-Open a *New bank request* issue first if unsure – ING, N26, Scalable Capital, Consorsbank and
-Santander are wanted.
+Unsure where to start? Pick one of the open `[Bank]` issues labelled
+[`help wanted`](https://github.com/GiroCrab/GiroCrab/issues?q=is%3Aopen+label%3A%22help+wanted%22+%22%5BBank%5D%22),
+or open a new `[Bank]` issue first.
 
 ## UI strings
 
@@ -47,16 +52,20 @@ catalogs per key instead of per line; the hooks in `.githooks` register it autom
 
 ## Adding merchants
 
-Edit `girocrab-core/src/merchants.rs`: add an entry with `e("key", "Display Name", &["needle", …],
-"domain.de", "#RRGGBB", "sf.symbol", Kind)` (or `etf(...)` for funds with ISIN/WKN). Needles are
-matched against the normalised counterparty, so use lower-case fragments. Add a assertion to the
-tests at the bottom of the file. Private persons (first name + surname) automatically get a monogram,
-never a logo.
+Edit `girocrab-core/data/merchants.tsv` (parsed by `src/data_tables.rs`, matching logic in
+`src/merchants.rs`). One merchant per line, tab-separated: `key`, `name`, `needles` (`|`-separated),
+`kind` (a `MerchantKind` variant), `symbol` (SF Symbol), `color` (`#RRGGBB`), `domain`, and optionally
+`isin`, `wkn` for funds. Rows are matched top to bottom, the first hit wins. Needles are matched
+against the normalised, lower-case counterparty; short brand names carry spaces (`" dm "`) to avoid
+false hits. Validate with `cargo test -q -p girocrab-core --lib data_tables` and `--lib merchants`
+(unique keys, lower-case needles, valid colours). Private persons (first name + surname)
+automatically get a monogram, never a logo.
 
 ## Testing with demo data
 
 `GIROCRAB_DEMO_SEED=1 cargo run` (or `cargo run -- --demo-seed`) opens a throw-away vault with
-5 fictional accounts and exactly 50 invented bookings (`girocrab-core/src/demo.rs`). Change the data
+5 fictional accounts, exactly 52 invented bookings and 2 ETF depot positions
+(`girocrab-core/src/demo.rs`). Change the data
 there only with invented names and amounts.
 
 ## Picking up an issue
