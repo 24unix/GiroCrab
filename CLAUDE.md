@@ -71,6 +71,10 @@ whenever `README.md`, `docs/screenshots/**`, `docs/assets/**` or a release chang
 - Social preview: `og:image`/`twitter:image` use the square `og-logo-v2.png` (512×512, from `icon-1024.png`; `twitter:card=summary`). Regenerate it when the icon changes.
 - Commit + push both repos in the same session. `scripts/notarize.sh` warns if the site lacks the new version.
 
+## Third-party notices (dependencies)
+- **Rule:** whenever dependencies in `Cargo.toml` (any workspace crate), `Cargo.lock` or `GiroCrabApp/Package.swift` are added, removed or upgraded (and before every release), `THIRD_PARTY_NOTICES.md` MUST be updated in the same commit/PR (name, version, exact license, repository).
+- Check: `scripts/check-third-party-notices.sh` fails if a direct crate or Swift package is missing from the notices (also runs in CI). Run it before pushing and before `scripts/notarize.sh`.
+
 ## Release checklist (`scripts/notarize.sh --upload vX.Y.Z`)
 - Before running: update `../girocrab.de` + icon/buttons/screenshots in lockstep (see above); bump `version` in `Cargo.toml`, and in `README.md` rename `### ✨ Neu in v…` / `### ✨ What's new in v…` to the new version with updated highlights (DE + EN).
 - The script aborts if `Cargo.toml` differs from the tag (override: `ALLOW_VERSION_MISMATCH=1`) or if those README headings lack the tag version.
