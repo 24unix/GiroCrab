@@ -54,3 +54,9 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 - The local xcframework is whatever branch last ran `./build-xcframework.sh`. After a rebase or
   branch switch with Rust changes, rebuild before trusting `swift build` errors.
 - `Localizable.xcstrings` is not sorted: append keys, never re-sort (a sort is a 4k-line diff).
+
+## Release checklist (`scripts/notarize.sh --upload vX.Y.Z`)
+- Before running: bump `version` in `Cargo.toml`, and in `README.md` rename `### ✨ Neu in v…` / `### ✨ What's new in v…` to the new version with updated highlights (DE + EN).
+- The script aborts if `Cargo.toml` differs from the tag (override: `ALLOW_VERSION_MISMATCH=1`) or if those README headings lack the tag version.
+- It sets `MARKETING_VERSION` in `project.pbxproj` and `Aktuelle Version: **v…**` / `Current version: **v…**` in `README.md` (stable tags only), then verifies both. Commit those changes afterwards.
+

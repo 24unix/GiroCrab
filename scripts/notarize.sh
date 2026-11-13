@@ -180,14 +180,45 @@ if [ -n "$UPLOAD_TAG" ]; then
   if [ "$BUILD_VER" = "$BASE_VER" ]; then CHANNEL="stable"; else CHANNEL="beta"; fi
   export GIROCRAB_VERSION="$CLEAN_VER" GIROCRAB_BUILD_VERSION="$BUILD_VER"
   CARGO_VER="$(sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1)"
+  # Version consistency: Cargo.toml must match the tag (set ALLOW_VERSION_MISMATCH=1 to
+  # override, e.g. for a re-upload of an old tag).
   if [ "$CARGO_VER" != "$BASE_VER" ]; then
-    echo "warning: Cargo.toml version is ${CARGO_VER:-<none>}, release tag is $UPLOAD_TAG;" \
-      "the app is built as $CLEAN_VER ($BUILD_VER)" >&2
+    if [ "${ALLOW_VERSION_MISMATCH:-0}" = "1" ]; then
+      echo "warning: Cargo.toml version is ${CARGO_VER:-<none>}, release tag is $UPLOAD_TAG;" \
+        "the app is built as $CLEAN_VER ($BUILD_VER)" >&2
+    else
+      echo "error: Cargo.toml version is ${CARGO_VER:-<none>} but the release tag is $UPLOAD_TAG." \
+        "Bump [workspace.package] version to $BASE_VER first (or ALLOW_VERSION_MISMATCH=1)." >&2
+      exit 2
+    fi
   fi
   PBXPROJ="GiroCrabApp/Xcode/GiroCrab.xcodeproj/project.pbxproj"
   if [ "$CHANNEL" = "stable" ] && [ -f "$PBXPROJ" ]; then
     echo "==> Setting MARKETING_VERSION = ${CLEAN_VER} in project.pbxproj"
     sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = ${CLEAN_VER};/g" "$PBXPROJ"
+    # Verify every MARKETING_VERSION now equals the tag version.
+    BAD_MV="$(grep -o 'MARKETING_VERSION = [^;]*;' "$PBXPROJ" | grep -vxF "MARKETING_VERSION = ${CLEAN_VER};" || true)"
+    if [ -n "$BAD_MV" ]; then
+      echo "error: project.pbxproj still has MARKETING_VERSION != ${CLEAN_VER}: $BAD_MV" >&2
+      exit 2
+    fi
+  fi
+  # README: keep the "current version" lines in step with the stable tag.
+  if [ "$CHANNEL" = "stable" ] && [ -f README.md ]; then
+    # The release-notes headings must have been written for this version by hand.
+    if ! grep -q "^### ✨ Neu in v${CLEAN_VER}\$" README.md \
+      || ! grep -q "^### ✨ What's new in v${CLEAN_VER}\$" README.md; then
+      echo "error: README.md has no '### ✨ Neu in v${CLEAN_VER}' / '### ✨ What's new in v${CLEAN_VER}' section." \
+        "Update the highlights (DE + EN) for this release first." >&2
+      exit 2
+    fi
+    echo "==> Setting README version to v${CLEAN_VER}"
+    sed -i '' -E "s/(Aktuelle Version: \*\*)v[0-9][^*]*(\*\*)/\1v${CLEAN_VER}\2/; s/(Current version: \*\*)v[0-9][^*]*(\*\*)/\1v${CLEAN_VER}\2/" README.md
+    if ! grep -q "Aktuelle Version: \*\*v${CLEAN_VER}\*\*" README.md \
+      || ! grep -q "Current version: \*\*v${CLEAN_VER}\*\*" README.md; then
+      echo "error: README.md lacks 'Aktuelle Version: **v${CLEAN_VER}**' / 'Current version: **v${CLEAN_VER}**'" >&2
+      exit 2
+    fi
   fi
 fi
 
