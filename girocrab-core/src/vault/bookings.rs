@@ -59,11 +59,14 @@ pub(crate) fn enrich(t: &mut Booking) {
     t.recurrence_key = crate::recurring::series_key(t);
 }
 
-#[uniffi::export]
 impl Vault {
-    pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
-        let db = self.db()?;
-        let paths = Self::category_paths(&db)?;
+    /// WHERE clause (plus optional CTE, bound arguments and the KPI share
+    /// expression) of a `BookingFilter`; shared by the list and bulk updates.
+    #[allow(clippy::type_complexity)]
+    fn filter_clauses(
+        db: &rusqlite::Connection,
+        filter: &BookingFilter,
+    ) -> Result<(String, String, Vec<Box<dyn ToSql>>, String), CoreError> {
         let mut wh: Vec<String> = vec!["t.deleted_ms IS NULL AND a.deleted_ms IS NULL".into()];
         let mut args: Vec<Box<dyn ToSql>> = vec![];
         let mut cte = String::new();
@@ -197,8 +200,94 @@ impl Vault {
             }
             wh.push(ors.join(" AND "));
         }
-        let loan_links = crate::loans::link_map(&db)?;
         let where_sql = wh.join(" AND ");
+        Ok((cte, where_sql, args, share_sql))
+    }
+
+    fn set_checked_ids(
+        tx: &rusqlite::Connection,
+        ids: &[i64],
+        checked: bool,
+    ) -> Result<(), CoreError> {
+        let now = crate::user_groups::now_ms();
+        for chunk in ids.chunks(500) {
+            let ph = vec!["?"; chunk.len()].join(",");
+            let sql =
+                format!("UPDATE transactions SET checked = ?1, checked_ms = ?2 WHERE id IN ({ph})");
+            let mut owned: Vec<Box<dyn ToSql>> = vec![Box::new(checked as i64), Box::new(now)];
+            owned.extend(chunk.iter().map(|id| Box::new(*id) as Box<dyn ToSql>));
+            tx.execute(&sql, params_from_iter(owned.iter().map(|b| b.as_ref())))?;
+        }
+        Ok(())
+    }
+}
+
+#[uniffi::export]
+impl Vault {
+    /// Marks every booking matching `filter` as checked / unchecked in one
+    /// SQL update (GitHub #236; with a scope or merchant filter the ids come
+    /// from the enriched list first). Returns the ids that actually changed,
+    /// so the caller can undo exactly those.
+    pub fn set_checked_for_filter(
+        &self,
+        filter: BookingFilter,
+        checked: bool,
+    ) -> Result<Vec<i64>, CoreError> {
+        // Scope (Alltag / Sparpläne) and merchant depend on the enriched booking, not
+        // on SQL columns: `list_transactions` applies them after the query. Take
+        // the ids from it, so the update touches exactly what the list shows.
+        if !matches!(filter.scope, BookingScope::All) || filter.merchant_key.is_some() {
+            let page = self.list_transactions(BookingFilter {
+                limit: 0,
+                offset: 0,
+                whole_days: false,
+                ..filter
+            })?;
+            let ids: Vec<i64> = page
+                .transactions
+                .iter()
+                .filter(|b| b.checked != checked)
+                .map(|b| b.id)
+                .collect();
+            self.set_checked_for_ids(ids.clone(), checked)?;
+            return Ok(ids);
+        }
+        let mut db = self.db()?;
+        let (cte, where_sql, args, _) = Self::filter_clauses(&db, &filter)?;
+        let tx = db.transaction()?;
+        let ids: Vec<i64> = {
+            let sql = format!(
+                "{cte}SELECT t.id FROM transactions t JOIN accounts a ON a.id = t.account_id \
+                 LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL \
+                 WHERE {where_sql} AND (t.checked != 0) != ?{}",
+                args.len() + 1
+            );
+            let mut stmt = tx.prepare(&sql)?;
+            let mut all: Vec<&dyn ToSql> = args.iter().map(|b| b.as_ref()).collect();
+            let flag = checked as i64;
+            all.push(&flag);
+            let rows = stmt.query_map(all.as_slice(), |r| r.get::<_, i64>(0))?;
+            rows.collect::<Result<_, _>>()?
+        };
+        Self::set_checked_ids(&tx, &ids, checked)?;
+        tx.commit()?;
+        Ok(ids)
+    }
+
+    /// Sets `checked` for explicit ids (undo of `set_checked_for_filter`).
+    pub fn set_checked_for_ids(&self, ids: Vec<i64>, checked: bool) -> Result<(), CoreError> {
+        let mut db = self.db()?;
+        let tx = db.transaction()?;
+        Self::set_checked_ids(&tx, &ids, checked)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
+        let db = self.db()?;
+        let paths = Self::category_paths(&db)?;
+        let (cte, where_sql, args, share_sql) = Self::filter_clauses(&db, &filter)?;
+        let loan_links = crate::loans::link_map(&db)?;
         // a deleted category or rule reads as none (what the old SET NULL did)
         let from_sql = "FROM transactions t JOIN accounts a ON a.id = t.account_id
              LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL
@@ -566,6 +655,127 @@ mod paging_tests {
             })
             .unwrap();
         assert!(past.transactions.is_empty());
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn mark_all_checked_by_filter_and_undo() {
+        let (v, p) = demo();
+        let unchecked = BookingFilter {
+            checked: Some(false),
+            ..Default::default()
+        };
+        let before = v.list_transactions(unchecked.clone()).unwrap().total_count;
+        assert!(before > 1);
+        let ids = v.set_checked_for_filter(unchecked.clone(), true).unwrap();
+        assert_eq!(ids.len() as u32, before);
+        assert_eq!(
+            v.list_transactions(unchecked.clone()).unwrap().total_count,
+            0
+        );
+        // a second run changes nothing
+        assert!(v
+            .set_checked_for_filter(unchecked.clone(), true)
+            .unwrap()
+            .is_empty());
+        // undo restores exactly the touched bookings
+        v.set_checked_for_ids(ids, false).unwrap();
+        assert_eq!(v.list_transactions(unchecked).unwrap().total_count, before);
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn mark_all_checked_respects_search_category_and_period() {
+        let (v, p) = demo();
+        v.set_checked_for_filter(BookingFilter::default(), false)
+            .unwrap();
+        let all = v.list_transactions(BookingFilter::default()).unwrap();
+        let cat = all.transactions.iter().find_map(|b| b.category_id).unwrap();
+        let mid = all.transactions[all.transactions.len() / 2]
+            .booking_date
+            .clone();
+        let filters = [
+            BookingFilter {
+                search: Some("rewe".into()),
+                ..Default::default()
+            },
+            BookingFilter {
+                category_id: Some(cat),
+                include_subcategories: true,
+                ..Default::default()
+            },
+            BookingFilter {
+                date_from: Some(mid.clone()),
+                direction: BookingDirection::Expense,
+                ..Default::default()
+            },
+        ];
+        for f in filters {
+            v.set_checked_for_filter(BookingFilter::default(), false)
+                .unwrap();
+            let shown = v
+                .list_transactions(BookingFilter {
+                    checked: Some(false),
+                    ..f.clone()
+                })
+                .unwrap()
+                .total_count;
+            assert!(
+                shown > 0 && shown < all.total_count,
+                "filter must narrow: {shown}"
+            );
+            let ids = v
+                .set_checked_for_filter(
+                    BookingFilter {
+                        checked: Some(false),
+                        ..f
+                    },
+                    true,
+                )
+                .unwrap();
+            assert_eq!(ids.len() as u32, shown);
+            let left = v
+                .list_transactions(BookingFilter {
+                    checked: Some(false),
+                    ..Default::default()
+                })
+                .unwrap()
+                .total_count;
+            assert_eq!(left, all.total_count - shown);
+        }
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn mark_all_checked_respects_scope() {
+        let (v, p) = demo();
+        // start with everything new
+        v.set_checked_for_filter(BookingFilter::default(), false)
+            .unwrap();
+        let count = |scope: BookingScope| {
+            v.list_transactions(BookingFilter {
+                checked: Some(false),
+                scope,
+                ..Default::default()
+            })
+            .unwrap()
+            .total_count
+        };
+        let (all, everyday) = (count(BookingScope::All), count(BookingScope::Everyday));
+        assert!(everyday < all, "demo has investments");
+        let ids = v
+            .set_checked_for_filter(
+                BookingFilter {
+                    checked: Some(false),
+                    scope: BookingScope::Everyday,
+                    ..Default::default()
+                },
+                true,
+            )
+            .unwrap();
+        assert_eq!(ids.len() as u32, everyday);
+        // what is outside the scope stays new
+        assert_eq!(count(BookingScope::All), all - everyday);
         let _ = std::fs::remove_file(p);
     }
 

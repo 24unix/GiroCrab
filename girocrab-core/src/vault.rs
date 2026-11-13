@@ -425,7 +425,7 @@ mod upgrade_tests {
                  ALTER TABLE transactions DROP COLUMN gvc;
                  ALTER TABLE transactions DROP COLUMN salary_flag;
                  ALTER TABLE booking_documents DROP COLUMN exported_at;
-                 DROP TABLE recurring_series;
+                 DROP TABLE recurring_series; DROP TABLE sync_log;
                  PRAGMA user_version = 8; -- written by a probe-based build (before #206)",
             )
             .unwrap();

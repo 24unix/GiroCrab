@@ -12,6 +12,7 @@
 //!   with the same schema whatever its history (no-op on a new vault).
 //! - 10: opening balances (#212): table `opening_balances` and
 //!   `accounts.balance_derived`.
+//! - 11: sync log (#238): table `sync_log`, local to the device.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -39,7 +40,24 @@ const STEPS: &[Step] = &[
     Step::Sql(""),
     Step::Hook(repair_to_v8),     // 9
     Step::Hook(opening_balances), // 10
+    Step::Sql(SYNC_LOG),          // 11
 ];
+
+/// Step 11 (#238): the Abrufprotokoll. No foreign key: the log outlives a
+/// deleted connection (its name is kept in the row). Not part of a vault merge.
+const SYNC_LOG: &str = "
+CREATE TABLE sync_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts_ms           INTEGER NOT NULL,
+    connection_id   INTEGER,
+    connection_name TEXT    NOT NULL DEFAULT '',
+    source          TEXT    NOT NULL DEFAULT 'manual', -- manual | auto | statements
+    outcome         TEXT    NOT NULL,                  -- ok | error | cancelled
+    message         TEXT    NOT NULL DEFAULT '',       -- scrubbed, see sync_log.rs
+    imported        INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX sync_log_ts ON sync_log(ts_ms);
+";
 
 /// Schema version of a vault written by this build.
 pub(crate) const SCHEMA_VERSION: i64 = STEPS.len() as i64;
@@ -467,7 +485,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 10);
+        assert_eq!(SCHEMA_VERSION, 11);
     }
 
     #[test]

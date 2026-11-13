@@ -254,6 +254,7 @@ fn half_migrated_v8_vault_is_repaired() {
              DROP TABLE loan_terms;
              DROP TABLE merchant_logo_cache;
              DROP TABLE opening_balances;
+             DROP TABLE sync_log;
              ALTER TABLE accounts DROP COLUMN balance_derived;
              PRAGMA user_version = 8;",
         )

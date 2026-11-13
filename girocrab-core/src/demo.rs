@@ -1149,6 +1149,75 @@ impl Vault {
             )?;
             conn_ids.insert(kind, tx.last_insert_rowid());
         }
+        // A few fetch-log rows so the Abruf-Protokoll window is not empty in the demo (#238).
+        {
+            let now_ms = chrono::Utc::now().timestamp_millis();
+            let hour = 3_600_000_i64;
+            let rows: [(ConnectorKind, &str, i64, &str, &str, &str, i64); 6] = [
+                (
+                    ConnectorKind::VolksbankKasselGoettingen,
+                    "demo-musterbank",
+                    1,
+                    "manual",
+                    "ok",
+                    "",
+                    12,
+                ),
+                (
+                    ConnectorKind::TradeRepublic,
+                    "demo-depot",
+                    3,
+                    "automatic",
+                    "ok",
+                    "",
+                    0,
+                ),
+                (
+                    ConnectorKind::AmericanExpress,
+                    "demo-visa",
+                    6,
+                    "manual",
+                    "error",
+                    "Zeitüberschreitung beim Verbindungsaufbau zur Bank.",
+                    0,
+                ),
+                (
+                    ConnectorKind::VolksbankKasselGoettingen,
+                    "demo-musterbank",
+                    27,
+                    "automatic",
+                    "cancelled",
+                    "Automatischer Abruf übersprungen: Die Bank verlangt eine neue Freigabe.",
+                    0,
+                ),
+                (
+                    ConnectorKind::TradeRepublic,
+                    "demo-depot",
+                    50,
+                    "manual",
+                    "error",
+                    "Anmeldung abgelehnt (HTTP 401). Bitte Zugangsdaten prüfen.",
+                    0,
+                ),
+                (
+                    ConnectorKind::VolksbankKasselGoettingen,
+                    "demo-musterbank",
+                    74,
+                    "manual",
+                    "ok",
+                    "",
+                    31,
+                ),
+            ];
+            for (kind, _, hours_ago, source, outcome, message, imported) in rows {
+                let d = descriptor(kind);
+                tx.execute(
+                    "INSERT INTO sync_log(ts_ms, connection_id, connection_name, source, outcome, message, imported)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![now_ms - hours_ago * hour, conn_ids[&kind], d.name, source, outcome, message, imported],
+                )?;
+            }
+        }
         let today = Local::now().date_naive();
         let txs = generate(today);
         for g in [
