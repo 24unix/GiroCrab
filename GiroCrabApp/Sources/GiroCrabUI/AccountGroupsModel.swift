@@ -312,10 +312,13 @@ extension AppModel {
 
     /// Accounts that can be added to group `uuid`: those without a group
     /// first, then the members of every other group in sidebar order.
+    /// Archived (closed) accounts are left out – they stay where they are.
     func addableAccounts(for uuid: String) -> [AddableAccounts] {
-        let others = userGroups.filter { $0.uuid != uuid && !$0.accounts.isEmpty }
-        return (others.filter(\.isUngrouped) + others.filter { !$0.isUngrouped }).map {
-            AddableAccounts(id: $0.uuid, title: $0.isUngrouped ? String(localized: "Ohne Gruppe") : $0.name, accounts: $0.accounts)
+        let others = userGroups.filter { $0.uuid != uuid }
+        return (others.filter(\.isUngrouped) + others.filter { !$0.isUngrouped }).compactMap {
+            let active = $0.accounts.filter { !$0.isArchived }
+            guard !active.isEmpty else { return nil }
+            return AddableAccounts(id: $0.uuid, title: $0.isUngrouped ? String(localized: "Ohne Gruppe") : $0.name, accounts: active)
         }
     }
 

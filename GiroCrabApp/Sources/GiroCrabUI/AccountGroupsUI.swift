@@ -647,19 +647,32 @@ private struct GroupAccountsList: View {
         selected = a.id
     }
 
-    /// Accounts of other groups and "Ohne Gruppe", one section each.
+    /// "Ohne Gruppe" first and inline (the likeliest candidates), then one
+    /// submenu per group: the menu grows with the groups, not the accounts
+    /// (HIG: be mindful of menu length; one submenu level).
     @ViewBuilder
     private var addMenuItems: some View {
-        ForEach(model.addableAccounts(for: group.uuid)) { section in
-            Section(section.title) {
-                ForEach(section.accounts) { a in
-                    // the same name comes up often ("Girokonto"): IBAN or number below
-                    Button { add(a) } label: {
-                        Text(a.name)
-                        Text(accountDetail(a))
-                    }
-                }
+        let sections = model.addableAccounts(for: group.uuid)
+        let ungrouped = sections.first { $0.id.isEmpty }
+        if let ungrouped {
+            Section(ungrouped.title) {
+                ForEach(ungrouped.accounts) { a in addButton(a) }
             }
+        }
+        let others = sections.filter { !$0.id.isEmpty }
+        if ungrouped != nil, !others.isEmpty { Divider() }
+        ForEach(others) { section in
+            Menu(section.title) {
+                ForEach(section.accounts) { a in addButton(a) }
+            }
+        }
+    }
+
+    /// The same name comes up often ("Girokonto"): IBAN or number below.
+    private func addButton(_ a: Account) -> some View {
+        Button { add(a) } label: {
+            Text(a.name)
+            Text(accountDetail(a))
         }
     }
 

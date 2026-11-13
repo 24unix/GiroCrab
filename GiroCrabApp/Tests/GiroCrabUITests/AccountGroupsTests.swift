@@ -282,6 +282,14 @@ final class AccountGroupsTests: XCTestCase {
         XCTAssertEqual(section.id, g)
     }
 
+    func testAddableAccountsLeaveOutArchived() throws {
+        let g = try XCTUnwrap(model.createUserGroup(name: "Ziel (229)"))
+        let a = try XCTUnwrap(model.allAccounts.first { !$0.isArchived })
+        model.setAccountArchived(a, true)
+        XCTAssertTrue(try XCTUnwrap(model.allAccounts.first { $0.id == a.id }).isArchived)
+        XCTAssertFalse(model.addableAccounts(for: g).flatMap(\.accounts).contains { $0.id == a.id })
+    }
+
     func testReorderAccountsInGroup() throws {
         let g = try XCTUnwrap(groups.first { $0.accounts.count >= 2 })
         let reversed = Array(g.accounts.map(\.id).reversed())
