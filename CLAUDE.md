@@ -27,3 +27,30 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 - Generated bindings: `generated/**/girocrab_core.swift` (6k lines), the xcframework, `target/`, `.build/`.
 - Data/large tables: `girocrab-core/src/merchant_dict.rs`, icon/merchant SVG/JSON, `feed.json`, `craft.json`, `*.log`, `agent-session.jsonl`.
 - For any file > 200 lines use `grep -n` or `Read` with `offset`/`limit`; never read it whole.
+
+## Tests
+- Swift: `cd GiroCrabApp && swift test -q --filter <Suite>`; whole suite ~30 s. `AppModel` tests
+  run against a demo vault: `AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))`,
+  pattern in `Tests/GiroCrabUITests/SelectionLoadTests.swift`. Run them before pushing.
+- Rust: `cargo test -q -p girocrab-core --lib <module>` for one module; whole run ~50 s.
+- Perf: `COPIES=600 cargo run --release -q -p girocrab-core --example category_perf` times the core
+  calls behind a category change on ~31k bookings (reference numbers in the file). Measure before
+  claiming a speed-up; `limit` on `list_transactions` does not reduce core work.
+
+## Architecture rules of thumb
+- Every core call from Swift is synchronous and holds the vault mutex. Anything over ~16 ms goes
+  through `AppModel.offMain` and checks `listGeneration` / vault identity before publishing.
+- `vault.list_transactions` enriches every row in the filter (merchant, flow, sums); `limit`/`offset`
+  only trim the result. Never call it for a count or a sum – add a SQL aggregate.
+- An edit must either reload synchronously or declare what it invalidates (`rulesStale`,
+  `dashboardStale`, `categoryRefreshTask`). A cancelled background load must never be the only
+  thing that would have refreshed a view.
+- Schema and index changes go in `sync_merge::migrate` (runs after the base schema, once per open).
+  Counts filter `deleted_ms IS NULL`: indexes they use must cover that column.
+
+## Workflow
+- Branch from `upstream/main`, push to `origin` (fork), PR against `GiroCrab/GiroCrab`. PR title
+  and description in German, conventional-commit prefix (`feat:`, `fix:`, `perf:`, `ci:`, `docs:`).
+- The local xcframework is whatever branch last ran `./build-xcframework.sh`. After a rebase or
+  branch switch with Rust changes, rebuild before trusting `swift build` errors.
+- `Localizable.xcstrings` is not sorted: append keys, never re-sort (a sort is a 4k-line diff).
