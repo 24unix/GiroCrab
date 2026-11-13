@@ -104,6 +104,9 @@ public final class VaultKeyManager: @unchecked Sendable {
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
             throw KeyError.biometryUnavailable(err?.localizedDescription ?? String(localized: "kein Gerätecode eingerichtet"))
         }
+        #if os(macOS)
+        await Self.bringAppToFront()
+        #endif
         do {
             let ok = try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
             if !ok { throw KeyError.cancelled }
@@ -120,6 +123,20 @@ public final class VaultKeyManager: @unchecked Sendable {
         try store(key)
         return key
     }
+
+    #if os(macOS)
+    /// The Touch ID sheet only receives sensor focus when the app is frontmost;
+    /// right after launch (`swift run`) it often is not yet, and the finger is
+    /// ignored until the user clicks the dialog.
+    @MainActor
+    private static func bringAppToFront() async {
+        let app = NSApplication.shared
+        if app.activationPolicy() != .regular { app.setActivationPolicy(.regular) }
+        guard !app.isActive else { return }
+        app.activate(ignoringOtherApps: true)
+        try? await Task.sleep(for: .milliseconds(80))
+    }
+    #endif
 
     /// Key as Base64 for manual transfer to another device (after authentication).
     public func exportKeyBase64() async throws -> String {
