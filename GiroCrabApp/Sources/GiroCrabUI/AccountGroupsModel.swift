@@ -87,6 +87,29 @@ enum GroupDialog {
     }
 }
 
+/// One section of a group's "+" menu (#229): the accounts of another group,
+/// or of "Ohne Gruppe" (`id` "").
+struct AddableAccounts: Identifiable {
+    let id: String
+    let title: String
+    let accounts: [Account]
+}
+
+/// What tells accounts of the same name apart (several "Girokonto"): the
+/// IBAN, else the account number (depots), else the bank – marked when the
+/// account is archived (closed), so it doesn't pass for an active one.
+func accountDetail(_ a: Account) -> String {
+    let id = accountIdentity(a)
+    return a.isArchived ? String(localized: "Archiviert · \(id)") : id
+}
+
+/// IBAN, else account number, else bank.
+func accountIdentity(_ a: Account) -> String {
+    if !a.iban.isEmpty { return formatIBAN(a.iban) }
+    if !a.accountNumber.isEmpty { return String(localized: "Konto \(a.accountNumber)") }
+    return a.bankName
+}
+
 /// What the "Symbol & Farbe" popover edits.
 enum IconColorTarget: Equatable {
     case account(Int64)
@@ -277,6 +300,15 @@ extension AppModel {
         }
     }
 
+    /// Accounts that can be added to group `uuid`: those without a group
+    /// first, then the members of every other group in sidebar order.
+    func addableAccounts(for uuid: String) -> [AddableAccounts] {
+        let others = userGroups.filter { $0.uuid != uuid && !$0.accounts.isEmpty }
+        return (others.filter(\.isUngrouped) + others.filter { !$0.isUngrouped }).map {
+            AddableAccounts(id: $0.uuid, title: $0.isUngrouped ? String(localized: "Ohne Gruppe") : $0.name, accounts: $0.accounts)
+        }
+    }
+
     /// `uuid` nil or empty = "Ohne Gruppe"; `index` nil = at the end.
     func moveAccount(_ accountID: Int64, to uuid: String?, at index: Int? = nil) {
         guard let vault else { return }
@@ -329,6 +361,14 @@ extension AppModel {
     func canDropGroup(_ uuid: String, on target: UserGroup, into: Bool) -> Bool {
         guard !uuid.isEmpty, !userGroupSubtree(uuid).contains(where: { $0.uuid == target.uuid }) else { return false }
         return !(into && target.isUngrouped)
+    }
+
+    /// List `.onMove` for the accounts of group `uuid` (settings, #229).
+    func moveAccounts(in uuid: String, from: IndexSet, to: Int) {
+        guard let g = userGroups.first(where: { $0.uuid == uuid }) else { return }
+        var ids = g.accounts.map(\.id)
+        ids.move(fromOffsets: from, toOffset: to)
+        reorderAccounts(in: uuid, ids: ids)
     }
 
     /// List `.onMove` for groups (indices into `namedUserGroups`).

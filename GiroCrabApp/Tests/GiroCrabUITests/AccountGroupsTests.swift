@@ -210,6 +210,61 @@ final class AccountGroupsTests: XCTestCase {
         XCTAssertTrue(model.canDropGroup(sub, on: try group(a), into: false))
     }
 
+    func testAddableAccountsExcludeMembersUngroupedFirst() throws {
+        let g = try XCTUnwrap(groups.first { !$0.accounts.isEmpty })
+        let outsider = try XCTUnwrap(model.allAccounts.first { $0.userGroupUuid != g.uuid })
+        model.moveAccount(outsider.id, to: nil)
+        let sections = model.addableAccounts(for: g.uuid)
+        XCTAssertEqual(sections.first?.id, "", "Ohne Gruppe first")
+        XCTAssertTrue(sections.first?.accounts.contains { $0.id == outsider.id } ?? false)
+        XCTAssertFalse(sections.flatMap(\.accounts).contains { $0.userGroupUuid == g.uuid })
+        XCTAssertFalse(sections.contains { $0.id == g.uuid })
+        XCTAssertFalse(sections.contains { $0.accounts.isEmpty })
+    }
+
+    func testAddableAccountsListsSubgroupMembersUnderTheirGroup() throws {
+        let parent = try XCTUnwrap(model.createUserGroup(name: "Eltern (229)"))
+        let sub = try XCTUnwrap(model.createUserGroup(name: "Kind (229)", parent: parent))
+        let a = try XCTUnwrap(model.allAccounts.first)
+        model.moveAccount(a.id, to: sub)
+        let section = try XCTUnwrap(model.addableAccounts(for: parent).first { $0.id == sub })
+        XCTAssertEqual(section.title, "Kind (229)")
+        XCTAssertEqual(section.accounts.map(\.id), [a.id])
+    }
+
+    func testAddableAccountsEmptyWhenAllMembers() throws {
+        let g = try XCTUnwrap(model.createUserGroup(name: "Alle (229)"))
+        for a in model.allAccounts { model.moveAccount(a.id, to: g) }
+        XCTAssertTrue(model.addableAccounts(for: g).isEmpty)
+        assertConsistent()
+    }
+
+    func testMoveAccountsInGroupByOffsets() throws {
+        let g = try XCTUnwrap(groups.first { $0.accounts.count >= 2 })
+        let ids = g.accounts.map(\.id)
+        model.moveAccounts(in: g.uuid, from: IndexSet(integer: 0), to: ids.count)
+        XCTAssertEqual(try members(g.uuid), Array(ids.dropFirst()) + [ids[0]])
+        assertConsistent()
+    }
+
+    func testAccountDetailTellsSameNamedAccountsApart() throws {
+        var a = try XCTUnwrap(model.allAccounts.first)
+        a.iban = "DE12500105170648489890"
+        a.accountNumber = "648489890"
+        XCTAssertEqual(accountDetail(a), "DE12 5001 0517 0648 4898 90", "IBAN first, grouped")
+        a.iban = ""
+        XCTAssertEqual(accountDetail(a), String(localized: "Konto \("648489890")"), "no IBAN: account number")
+        a.accountNumber = ""
+        XCTAssertEqual(accountDetail(a), a.bankName, "neither: the bank")
+    }
+
+    func testAccountDetailMarksArchivedAccounts() throws {
+        var a = try XCTUnwrap(model.allAccounts.first { !$0.isArchived })
+        a.iban = "DE12500105170648489890"
+        a.archivedUnix = 1_700_000_000
+        XCTAssertEqual(accountDetail(a), String(localized: "Archiviert · \("DE12 5001 0517 0648 4898 90")"))
+    }
+
     func testReorderAccountsInGroup() throws {
         let g = try XCTUnwrap(groups.first { $0.accounts.count >= 2 })
         let reversed = Array(g.accounts.map(\.id).reversed())

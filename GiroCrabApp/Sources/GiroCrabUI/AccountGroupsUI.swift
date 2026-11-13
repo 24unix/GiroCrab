@@ -594,6 +594,135 @@ func accountCountText(_ n: Int) -> String {
     }
 }
 
+/// The "Konten" of a group in its settings (#229): only its own accounts,
+/// "+" (a menu of all others) and "−" (back to "Ohne Gruppe") like the
+/// group list beside it, and drag to reorder.
+private struct GroupAccountsList: View {
+    @Environment(AppModel.self) private var model
+    let group: UserGroup
+    @State private var selected: Int64?
+
+    /// Still in this group (it may have moved via the sidebar or sync).
+    private var selectedAccount: Account? {
+        selected.flatMap { id in group.accounts.first { $0.id == id } }
+    }
+
+    private func row(_ a: Account) -> some View {
+        HStack(spacing: 9) {
+            AccountSignet(account: a, size: 22, color: model.accountColor(a.id))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(a.name).foregroundStyle(Theme.text)
+                Text(rowDetail(a)).font(.caption2).foregroundStyle(Theme.secondary)
+            }
+        }
+    }
+
+    /// Bank and IBAN/number (just the bank when that is all there is),
+    /// marked when archived.
+    private func rowDetail(_ a: Account) -> String {
+        let id = accountIdentity(a)
+        let detail = id == a.bankName ? id : [a.bankName, id].filter { !$0.isEmpty }.joined(separator: " · ")
+        return a.isArchived ? String(localized: "Archiviert · \(detail)") : detail
+    }
+
+    /// Adds the account and selects it, so it is visible (scrolled to) and
+    /// "−" undoes a mis-click at once.
+    private func add(_ a: Account) {
+        model.moveAccount(a.id, to: group.uuid)
+        selected = a.id
+    }
+
+    /// Accounts of other groups and "Ohne Gruppe", one section each.
+    @ViewBuilder
+    private var addMenuItems: some View {
+        ForEach(model.addableAccounts(for: group.uuid)) { section in
+            Section(section.title) {
+                ForEach(section.accounts) { a in
+                    // the same name comes up often ("Girokonto"): IBAN or number below
+                    Button { add(a) } label: {
+                        Text(a.name)
+                        Text(accountDetail(a))
+                    }
+                }
+            }
+        }
+    }
+
+    private var nothingToAdd: Bool { model.addableAccounts(for: group.uuid).isEmpty }
+
+    #if os(macOS)
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                List(selection: $selected) {
+                    ForEach(group.accounts) { a in row(a).tag(a.id).id(a.id) }
+                        .onMove { model.moveAccounts(in: group.uuid, from: $0, to: $1) }
+                }
+                .onChange(of: selected) { _, id in
+                    if let id { withAnimation { proxy.scrollTo(id) } }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .overlay {
+                if group.accounts.isEmpty {
+                    Text("Noch keine Konten – mit + hinzufügen")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Divider()
+            // the same square buttons as beneath the group list
+            HStack(spacing: 0) {
+                Menu {
+                    addMenuItems
+                } label: {
+                    Image(systemName: "plus").frame(width: 26, height: 22).contentShape(Rectangle())
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .disabled(nothingToAdd)
+                .help("Konto hinzufügen")
+                .accessibilityLabel("Konto hinzufügen")
+                Divider().frame(height: 16)
+                Button { if let a = selectedAccount { model.moveAccount(a.id, to: nil) } } label: {
+                    Image(systemName: "minus").frame(width: 26, height: 22).contentShape(Rectangle())
+                }
+                .disabled(selectedAccount == nil)
+                .help("Aus Gruppe entfernen")
+                .accessibilityLabel("Aus Gruppe entfernen")
+                Spacer()
+            }
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 2)
+        }
+        .frame(height: 200)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)))
+    }
+    #else
+    var body: some View {
+        ForEach(group.accounts) { a in
+            row(a)
+                // not the system "Löschen": the account only leaves the group
+                .swipeActions {
+                    Button("Aus Gruppe entfernen", systemImage: "minus.circle") { model.moveAccount(a.id, to: nil) }
+                        .tint(.orange)
+                }
+        }
+        .onMove { model.moveAccounts(in: group.uuid, from: $0, to: $1) }
+        Menu {
+            addMenuItems
+        } label: {
+            Label("Konto hinzufügen", systemImage: "plus.circle")
+        }
+        .disabled(nothingToAdd)
+    }
+    #endif
+}
+
 /// One group: name, symbol, total switch and which accounts belong to it.
 struct GroupDetailEditor: View {
     @Environment(AppModel.self) private var model
@@ -657,30 +786,7 @@ struct GroupDetailEditor: View {
                          : "Ausgeschaltet zählen die Konten dieser Gruppe und ihrer Untergruppen nicht zu „Verfügbar“ und zum Saldoverlauf der Übersicht – z. B. für Geschäfts- oder Kinderkonten.")
                 }
                 Section {
-                    ForEach(model.allAccounts) { a in
-                        let member = a.userGroupUuid == g.uuid
-                        Button {
-                            model.moveAccount(a.id, to: member ? nil : g.uuid)
-                        } label: {
-                            HStack(spacing: 9) {
-                                AccountSignet(account: a, size: 22, color: model.accountColor(a.id))
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(a.name).foregroundStyle(Theme.text)
-                                    if !member, let other = model.userGroup(of: a) {
-                                        Text("Jetzt in „\(other.name)“").font(.caption2).foregroundStyle(Theme.secondary)
-                                    } else {
-                                        Text(a.bankName).font(.caption2).foregroundStyle(Theme.secondary)
-                                    }
-                                }
-                                Spacer()
-                                Image(systemName: member ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(member ? Theme.accent : Theme.tertiary)
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(member ? .isSelected : [])
-                    }
+                    GroupAccountsList(group: g)
                 } header: {
                     Text("Konten")
                 } footer: {

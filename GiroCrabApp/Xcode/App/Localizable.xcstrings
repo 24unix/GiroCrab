@@ -17350,6 +17350,50 @@
           }
         }
       }
+    },
+    "Konto hinzufügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Account"
+          }
+        }
+      }
+    },
+    "Aus Gruppe entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove from Group"
+          }
+        }
+      }
+    },
+    "Noch keine Konten – mit + hinzufügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No accounts yet – add with +"
+          }
+        }
+      }
+    },
+    "Archiviert · %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archived · %@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
