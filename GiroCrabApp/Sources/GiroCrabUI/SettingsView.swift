@@ -13,7 +13,7 @@ struct SettingsView: View {
         @Bindable var model = model
         TabView(selection: $model.settingsTab) {
             GeneralSettings()
-                .settingsPane(height: 380)   // "Sprache" + "Mitteilungen" + "Buchungen" + "Demo"
+                .settingsPane(height: 600)   // "Sprache" … "Händler-Logos" + "Demo": scrolls
                 .tabItem { Label("Allgemein", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
             BankConnectionsSettings()
@@ -21,11 +21,6 @@ struct SettingsView: View {
                 .disabled(model.vault == nil)
                 .tabItem { Label("Banken", systemImage: "building.columns") }
                 .tag(SettingsTab.banks)
-            LogoSettings()
-                .settingsPane(height: 460)
-                .disabled(model.vault == nil)
-                .tabItem { Label("Händler-Logos", systemImage: "photo.on.rectangle") }
-                .tag(SettingsTab.logos)
             #if os(macOS)
             DocumentFolderSettings()
                 .settingsPane(height: 420)
@@ -85,6 +80,7 @@ struct GeneralSettings: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             BalanceChartSettingsSection()
+            MerchantLogoSettingsSection()
             Section("Demo") {
                 Button {
                     model.loadDemoData()
@@ -124,7 +120,7 @@ struct BalanceChartSettingsSection: View {
 
 /// Tabs of the settings window (macOS) / sheet (iOS).
 enum SettingsTab: Hashable {
-    case general, banks, logos, documents, security, updates
+    case general, banks, documents, security, updates
 
     /// `--demo-settings <name>` (screenshots).
     init?(demoName: String) {
@@ -132,7 +128,7 @@ enum SettingsTab: Hashable {
         case "general": self = .general
         case "banks": self = .banks
         case "credentials": self = .banks   // FinTS registration now lives under "Banken"
-        case "logos": self = .logos
+        case "logos": self = .general   // merchant logos are a section of "Allgemein"
         case "documents": self = .documents
         case "security": self = .security
         case "updates": self = .updates
@@ -271,31 +267,30 @@ struct BankConnectionsSettings: View {
     }
 }
 
-struct LogoSettings: View {
+/// Merchant logos from the internet (GitHub #33); needs an open vault.
+struct MerchantLogoSettingsSection: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Form {
-            Section {
-                Picker("Logos aus dem Internet laden", selection: Binding(
-                    get: { model.logoProvider },
-                    set: { model.logoProvider = $0; model.saveSettingInBackground("merchants.online_logos", $0) }
-                )) {
-                    Text("Aus").tag("off")
-                    Text("DuckDuckGo").tag("duckduckgo")
-                    Text("Google").tag("google")
-                }
-                Button("Logo-Cache leeren") { model.clearLogoCache() }
-            } header: {
-                Text("Händler-Logos")
-            } footer: {
-                Text("Ohne Anbieter zeigt GiroCrab mitgelieferte Markenzeichen, sonst Monogramme und Kategorie-Symbole. Mit Anbieter werden Favicons geladen und verschlüsselt im Tresor zwischengespeichert. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .leadingFooter()
+        Section {
+            Picker("Logos aus dem Internet laden", selection: Binding(
+                get: { model.logoProvider },
+                set: { model.logoProvider = $0; model.saveSettingInBackground("merchants.online_logos", $0) }
+            )) {
+                Text("Aus").tag("off")
+                Text("DuckDuckGo").tag("duckduckgo")
+                Text("Google").tag("google")
             }
+            Button("Logo-Cache leeren") { model.clearLogoCache() }
+        } header: {
+            Text("Händler-Logos")
+        } footer: {
+            Text("Ohne Anbieter zeigt GiroCrab mitgelieferte Markenzeichen, sonst Monogramme und Kategorie-Symbole. Mit Anbieter werden Favicons geladen und verschlüsselt im Tresor zwischengespeichert. Übertragen wird nur die Händler-Domain (z. B. lidl.de) – keine Beträge, keine Kontodaten.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .leadingFooter()
         }
-        .formStyle(.grouped)
+        .disabled(model.vault == nil)
     }
 }
 

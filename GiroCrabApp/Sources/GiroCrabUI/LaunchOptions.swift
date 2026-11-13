@@ -20,7 +20,7 @@ import Foundation
 ///               categorizer|payee-match|payee-close|payee-nomatch|error|rule-edit|icon-color|category|icon-color-category
 ///                         (demo) open that sheet pre-filled with fictional data,
 ///                         for README / PR screenshots
-///  --demo-settings general|banks|groups|logos|documents|security[:edit|:add|:remove]
+///  --demo-settings general|banks|groups|documents|security[:edit|:add|:remove]
 ///                         (demo) open the Settings window on that tab (`groups` opens the
 ///                         group editor sheet instead), optionally with
 ///                         the first bank's edit sheet or the "add bank" sheet;

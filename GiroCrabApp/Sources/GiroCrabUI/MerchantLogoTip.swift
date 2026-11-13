@@ -56,7 +56,7 @@ struct MerchantLogoTipView: View {
                 model.saveSetting("merchants.online_logos", "duckduckgo")
                 tip.invalidate(reason: .actionPerformed)
             case MerchantLogoTip.ActionID.settings:
-                model.openSettings(.logos)
+                model.openSettings(.general)
             default:
                 break
             }
