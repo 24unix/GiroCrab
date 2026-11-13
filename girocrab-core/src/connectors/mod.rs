@@ -14,7 +14,6 @@
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::trf;
 
-pub mod amazon_orders;
 pub mod bank_directory;
 pub mod bunq;
 pub mod comdirect;
@@ -26,10 +25,7 @@ pub mod fints_directory;
 pub mod fints_presets;
 pub mod fnz;
 pub mod ibkr;
-pub mod moneymoney_db;
-pub mod moneymoney_import;
 pub mod paypal;
-pub mod portal_import;
 pub mod scalable;
 pub mod template;
 pub mod trade_republic;

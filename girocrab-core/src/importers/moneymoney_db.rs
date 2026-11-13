@@ -43,12 +43,10 @@ use rusqlite::types::Value;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
 use zeroize::Zeroizing;
 
+use super::moneymoney_import::{find_or_create_category, fingerprint, merge_rows, MmRow, Stats};
 use crate::connectors::bank_directory::{match_psd2_bank, psd2_catalog, Psd2Bank};
 use crate::connectors::fints::sepa;
 use crate::connectors::group_for;
-use crate::connectors::moneymoney_import::{
-    find_or_create_category, fingerprint, merge_rows, MmRow, Stats,
-};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, ConnectorKind, Holding};
@@ -762,7 +760,7 @@ fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
         "20041111" | "20041133" | "20041144" | "20041155" => return Some(ConnectorKind::Comdirect),
         // bunq's German branch code; GiroCrab talks to the bunq Public API.
         BUNQ_DE_BLZ => return Some(ConnectorKind::Bunq),
-        c if c.len() == 8 && super::fints_presets::known_fints_blz(c) => {
+        c if c.len() == 8 && crate::connectors::fints_presets::known_fints_blz(c) => {
             return Some(ConnectorKind::FinTsGeneric)
         }
         _ => {}

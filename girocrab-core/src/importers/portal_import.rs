@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use super::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
+use crate::connectors::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
 use crate::error::CoreError;
 use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, ConnectorKind};
@@ -799,7 +799,7 @@ fn to_fetch(
         kind.as_str().replace(':', "-"),
         connection_id
     );
-    let today = super::today();
+    let today = crate::connectors::today();
     let mut seen: HashMap<(String, i64, String), u32> = HashMap::new();
     let mut transactions = Vec::new();
     let mut ids_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -846,7 +846,7 @@ fn to_fetch(
 }
 
 impl Vault {
-    pub(super) fn portal_connection(
+    pub(crate) fn portal_connection(
         &self,
         connection_id: i64,
     ) -> Result<(ConnectorKind, String), CoreError> {

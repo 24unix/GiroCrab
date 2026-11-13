@@ -17,7 +17,7 @@ use regex::Regex;
 use serde::Deserialize;
 
 use super::portal_import::parse_amount;
-use super::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
+use crate::connectors::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
 use crate::error::CoreError;
 use crate::i18n::tr;
 use crate::models::{AccountKind, ConnectorKind};
@@ -269,7 +269,7 @@ fn to_fetch(connection_id: i64, name: &str, bookings: Vec<Booking>) -> FetchResu
             currency: "EUR".into(),
             kind: AccountKind::PaymentService,
             balance_cents: 0,
-            balance_date: super::today(),
+            balance_date: crate::connectors::today(),
         }],
         transactions,
         state: None,
@@ -284,27 +284,27 @@ fn to_fetch(connection_id: i64, name: &str, bookings: Vec<Booking>) -> FetchResu
 pub struct WebOnlyConnector;
 
 #[async_trait::async_trait]
-impl super::BankConnector for WebOnlyConnector {
+impl crate::connectors::BankConnector for WebOnlyConnector {
     async fn begin(
         &mut self,
-        _ctx: &super::ConnectContext,
-    ) -> crate::error::CoreResult<super::Phase> {
+        _ctx: &crate::connectors::ConnectContext,
+    ) -> crate::error::CoreResult<crate::connectors::Phase> {
         Err(CoreError::BrowserLoginRequired {
             message: tr("Bitte im Browser-Fenster bei Amazon anmelden.").into(),
         })
     }
     async fn respond(
         &mut self,
-        _ctx: &super::ConnectContext,
-        _response: super::ChallengeResponse,
-    ) -> crate::error::CoreResult<super::Phase> {
+        _ctx: &crate::connectors::ConnectContext,
+        _response: crate::connectors::ChallengeResponse,
+    ) -> crate::error::CoreResult<crate::connectors::Phase> {
         Err(CoreError::BrowserLoginRequired {
             message: tr("Bitte im Browser-Fenster bei Amazon anmelden.").into(),
         })
     }
     async fn fetch(
         &mut self,
-        _ctx: &super::ConnectContext,
+        _ctx: &crate::connectors::ConnectContext,
     ) -> crate::error::CoreResult<FetchResult> {
         Err(CoreError::BrowserLoginRequired {
             message: tr("Bitte im Browser-Fenster bei Amazon anmelden.").into(),
