@@ -134,7 +134,8 @@ struct SyncFolder: Sendable {
                 if let modified { result.failed[name] = modified }
                 continue
             } catch {
-                result.errors.append("\(name): \(error.localizedDescription)")
+                // e.g. a peer written by a newer app version (`SchemaTooNew`)
+                result.errors.append("\(name): \(describe(error))")
                 continue
             }
             if let modified { result.seen[name] = modified }

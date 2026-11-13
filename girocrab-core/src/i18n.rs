@@ -264,6 +264,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Protokollfehler: {0}" => "Protocol error: {0}",
         "Browser-Anmeldung nötig: {0}" => "Browser sign-in required: {0}",
         "Dieser Abruf ist nicht mehr aktiv" => "This sync is no longer active",
+        "Dieser Tresor wurde mit einer neueren GiroCrab-Version gespeichert. Bitte die App aktualisieren." => "This vault was saved by a newer version of GiroCrab. Please update the app.",
         // ------------------------------------------------------------ connectors/mod.rs
         "VR-NetKey oder Alias" => "VR-NetKey or alias",
         "Online-Banking-PIN" => "Online banking PIN",

@@ -40,6 +40,7 @@ pub mod planning;
 pub mod recurring;
 pub mod rules;
 pub mod salary;
+mod schema;
 pub mod search_expr;
 pub mod secret;
 mod sync_merge;
