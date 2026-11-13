@@ -136,12 +136,14 @@ struct StreamHeaderCard: View {
                 depotRow
             } else {
                 if model.scope != .investments {
+                    // iOS: 44 pt = HIG minimum hit region (the chart is tappable);
+                    // macOS: room for the min/max/0 axis labels (GitHub #203).
                     #if os(iOS)
                     BalanceChart(points: model.history) { model.jumpToDay($0) }
-                        .frame(height: 28)
+                        .frame(height: 44)
                     #else
                     BalanceChart(points: model.history) { model.jumpToDay($0) }
-                        .frame(height: 56)
+                        .frame(height: 72)
                     #endif
                 }
 
@@ -335,10 +337,12 @@ struct KPI: View {
     var disclosure = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        // Title and amount sit at a fixed distance and the title keeps to one line, so the
+        // amounts of all tiles line up (HIG: align elements, consistent spacing).
+        VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 3) {
                 Text(title).font(.caption.weight(.medium)).foregroundStyle(Theme.secondary)
-                    .lineLimit(2, reservesSpace: true)
+                    .lineLimit(1).minimumScaleFactor(0.85)
                 if disclosure {
                     Image(systemName: "chevron.right")
                         .font(.caption2.weight(.bold)).imageScale(.small)
@@ -346,12 +350,11 @@ struct KPI: View {
                         .accessibilityHidden(true)
                 }
             }
-            Spacer(minLength: 4)
             Text(value).font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(tint)
                 .lineLimit(1).minimumScaleFactor(0.75)
-            Spacer(minLength: 4)
+            Spacer(minLength: 2)
             Text(subtitle).font(.caption2).foregroundStyle(Theme.tertiary)
-                .lineLimit(2, reservesSpace: true)
+                .lineLimit(2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 10)
@@ -370,15 +373,13 @@ struct BalanceChart: View {
     var onSelect: ((Date) -> Void)? = nil
     /// Day under the mouse pointer (hover readout: date + balance).
     @State private var hovered: Point?
+    /// Bar under the mouse pointer (bar style: month/day + average balance).
+    @State private var hoveredBar: BalanceBucket?
+    @AppStorage(BalanceChartStyle.defaultsKey) private var style: BalanceChartStyle = .line
+    @AppStorage(BalanceBarUnit.defaultsKey) private var barUnit: BalanceBarUnit = .automatic
 
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    private var tickDays: Int { sizeClass == .compact ? 14 : 7 }
-    private var tickMonths: Int { sizeClass == .compact ? 2 : 1 }
-    #else
-    private var tickDays: Int { 7 }
-    private var tickMonths: Int { 1 }
-    #endif
+    /// Width of the chart: the x-axis spaces its labels by it (no overlapping years).
+    @State private var chartWidth: CGFloat = 600
 
     private struct Point: Identifiable, Equatable {
         let id: Int
@@ -389,7 +390,9 @@ struct BalanceChart: View {
 
     /// The chart's first render compiles Metal shaders (gradient + mask, ~1 s on a cold start),
     /// so it is mounted one run-loop tick + a short delay after the list and cards are shown.
-    @State private var mounted = false
+    /// Only the first time: a chart rebuilt later (e.g. depot -> giro) shows at once.
+    @State private var mounted = BalanceChart.shadersWarm
+    @MainActor private static var shadersWarm = false
 
     var body: some View {
         Group {
@@ -400,6 +403,7 @@ struct BalanceChart: View {
             try? await Task.sleep(nanoseconds: 250_000_000)
             StartupClock.mark("BalanceChart mounting")
             mounted = true
+            Self.shadersWarm = true
         }
     }
 
@@ -409,11 +413,22 @@ struct BalanceChart: View {
         }
     }
 
-    /// Keyboard: ←/→ walk the days (the hover readout follows), Return jumps
-    /// to the day's bookings, Esc ends. VoiceOver: summary, adjustable by day.
+    private var buckets: [BalanceBucket] { BalanceBuckets.make(points, unit: barUnit) }
+
+    private var resolvedBarUnit: BalanceBarUnit { barUnit.resolved(dayCount: points.count) }
+
+    /// Keyboard: ←/→ walk the days (bars: the months), the hover readout follows; Return jumps
+    /// to the bookings, Esc ends. VoiceOver: summary, adjustable by day / bar.
     @FocusState private var chartFocused: Bool
 
     private func step(_ delta: Int) {
+        if style == .bars {
+            let all = buckets
+            guard !all.isEmpty else { return }
+            let current = hoveredBar.map(\.id) ?? (delta > 0 ? -1 : all.count)
+            hoveredBar = all[min(max(current + delta, 0), all.count - 1)]
+            return
+        }
         let all = pts
         guard !all.isEmpty else { return }
         let current = hovered.flatMap { h in all.firstIndex { $0.id == h.id } } ?? (delta > 0 ? -1 : all.count)
@@ -431,16 +446,119 @@ struct BalanceChart: View {
     }
 
     private var currentValue: String {
+        if style == .bars, let b = hoveredBar {
+            return String(localized: "\(barTitle(b)): Ø \(Money.format(b.averageCents)), Ende \(Money.format(b.closingCents))")
+        }
         guard let h = hovered else { return summary }
         return "\(h.date.formatted(.dateTime.weekday(.wide).day().month(.wide))): \(Money.format(h.cents))"
     }
 
+    private func barTitle(_ b: BalanceBucket) -> String {
+        switch resolvedBarUnit {
+        case .year: b.start.formatted(.dateTime.year())
+        case .month: b.start.formatted(.dateTime.month(.wide).year())
+        case .day, .automatic: b.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year())
+        }
+    }
+
+    /// Long histories label years, otherwise months; the year separators mark each January 1st.
+    private func spanDays(_ first: Date?, _ last: Date?) -> Double {
+        guard let first, let last else { return 0 }
+        return last.timeIntervalSince(first) / 86_400
+    }
+
+    private func clearHover() { hovered = nil; hoveredBar = nil }
+
+    /// Jumps to the bookings of the hovered day / bar; false if nothing is hovered.
+    @discardableResult private func selectHovered() -> Bool {
+        guard let onSelect else { return false }
+        switch style {
+        case .bars:
+            guard let b = hoveredBar else { return false }
+            onSelect(b.last)
+        case .line:
+            guard let h = hovered else { return false }
+            onSelect(h.date)
+        }
+        return true
+    }
+
     @ViewBuilder private var chartBody: some View {
+        interactiveChart
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Saldoverlauf")
+            .accessibilityValue(currentValue)
+            .accessibilityHint(onSelect == nil ? "" : String(localized: "Pfeiltasten wählen einen Tag, Eingabe zeigt seine Buchungen."))
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: step(1)
+                case .decrement: step(-1)
+                @unknown default: break
+                }
+            }
+            .accessibilityAction(named: "Buchungen dieses Tages zeigen") { selectHovered() }
+            .accessibilityChartDescriptor(BalanceChartDescriptor(points: pts.map { ($0.date, $0.euros) }))
+    }
+
+    @ViewBuilder private var interactiveChart: some View {
+        Group {
+            switch style {
+            case .line: lineChart
+            case .bars: barChart
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { chartWidth = $0 }
+        .onChange(of: points.first?.date) { _, _ in clearHover() }
+        .onChange(of: points.count) { _, _ in clearHover() }
+        .onChange(of: style) { _, _ in clearHover() }
+        .onChange(of: barUnit) { _, _ in hoveredBar = nil }
+        .contextMenu { styleMenu }
+        #if os(macOS)
+        .focusable(interactions: .edit)
+        .focused($chartFocused)
+        .onKeyPress(.leftArrow) { step(-1); return .handled }
+        .onKeyPress(.rightArrow) { step(1); return .handled }
+        .onKeyPress(.return) { selectHovered() ? .handled : .ignored }
+        .onKeyPress(.escape) {
+            guard hovered != nil || hoveredBar != nil else { return .ignored }
+            clearHover()
+            return .handled
+        }
+        .onChange(of: chartFocused) { _, focused in
+            if !focused { clearHover() }
+            model.chartHasKeyboardFocus = focused
+        }
+        #endif
+    }
+
+    /// Right click (long press on iOS): switch between line and bars right at the chart.
+    @ViewBuilder private var styleMenu: some View {
+        Picker("Darstellung", selection: $style) {
+            ForEach(BalanceChartStyle.allCases) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.inline)
+        if style == .bars {
+            Picker("Balken je", selection: $barUnit) {
+                ForEach(BalanceBarUnit.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.inline)
+        }
+    }
+
+    // MARK: line
+
+    @ViewBuilder private var lineChart: some View {
         let pts = self.pts
         let minV = pts.map(\.euros).min() ?? 0
         let maxV = pts.map(\.euros).max() ?? 1
         let pad = max((maxV - minV) * 0.15, 1)
+        let years = pts.first.flatMap { f in pts.last.map { BalanceBuckets.yearStarts(from: f.date, to: $0.date) } } ?? []
         Chart {
+            ForEach(years, id: \.self) { y in
+                RuleMark(x: .value("Jahr", y))
+                    .foregroundStyle(Theme.tertiary.opacity(0.5))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
+            }
             ForEach(pts) { p in
                 AreaMark(x: .value("Tag", p.date, unit: .day), yStart: .value("Min", minV - pad), yEnd: .value("Saldo", p.euros))
                     .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.14), Theme.accent.opacity(0.01)], startPoint: .top, endPoint: .bottom))
@@ -458,45 +576,13 @@ struct BalanceChart: View {
                     .foregroundStyle(Theme.secondary.opacity(0.45))
                     .lineStyle(StrokeStyle(lineWidth: 1))
                     .annotation(position: h.id * 2 > pts.count ? .topLeading : .topTrailing, spacing: 4, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
-                        VStack(spacing: 1) {
-                            Text(h.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated).year())
-                                .font(.caption2)
-                                .foregroundStyle(Theme.secondary)
-                            Text(Money.format(h.cents))
-                                .font(.caption.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(h.cents < 0 ? Theme.outflow : Theme.text)
-                        }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+                        readout(h.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year()), cents: h.cents)
                     }
             }
         }
         .chartYScale(domain: (minV - pad)...(maxV + pad))
-        .chartYAxis(.hidden)
-        .chartXAxis {
-            // long periods: one label per year, otherwise per month
-            if let first = pts.first?.date, let last = pts.last?.date,
-               last.timeIntervalSince(first) > 400 * 86_400 {
-                AxisMarks(values: .stride(by: .year)) { _ in
-                    AxisValueLabel(format: .dateTime.year())
-                        .foregroundStyle(Theme.tertiary)
-                }
-            } else if let first = pts.first?.date, let last = pts.last?.date,
-                      last.timeIntervalSince(first) < 62 * 86_400 {
-                // short periods (this/last month): weekly day labels
-                AxisMarks(values: .stride(by: .day, count: tickDays)) { _ in
-                    AxisValueLabel(format: .dateTime.day().month(.abbreviated))
-                        .foregroundStyle(Theme.tertiary)
-                }
-            } else {
-                AxisMarks(values: .stride(by: .month, count: tickMonths)) { _ in
-                    AxisValueLabel(format: .dateTime.month(.abbreviated))
-                        .foregroundStyle(Theme.tertiary)
-                }
-            }
-        }
+        .chartYAxis { yAxis(min: minV, max: maxV, domain: (minV - pad)...(maxV + pad)) }
+        .chartXAxis { xAxis(span: spanDays(pts.first?.date, pts.last?.date)) }
         .chartOverlay { proxy in
             GeometryReader { geo in
                 Rectangle().fill(.clear).contentShape(Rectangle())
@@ -521,39 +607,176 @@ struct BalanceChart: View {
                     }
             }
         }
-        .onChange(of: points.first?.date) { _, _ in hovered = nil }
-        .onChange(of: points.count) { _, _ in hovered = nil }
-        #if os(macOS)
-        .focusable(interactions: .edit)
-        .focused($chartFocused)
-        .onKeyPress(.leftArrow) { step(-1); return .handled }
-        .onKeyPress(.rightArrow) { step(1); return .handled }
-        .onKeyPress(.return) {
-            guard let h = hovered, let onSelect else { return .ignored }
-            onSelect(h.date)
-            return .handled
+    }
+
+    // MARK: bars
+
+    @ViewBuilder private var barChart: some View {
+        let bars = self.buckets
+        let barUnit = resolvedBarUnit
+        let unit = barUnit.calendarComponent
+        let xLabel: LocalizedStringKey = switch barUnit {
+        case .year: "Jahr"
+        case .month: "Monat"
+        case .day, .automatic: "Tag"
         }
-        .onKeyPress(.escape) { guard hovered != nil else { return .ignored }; hovered = nil; return .handled }
-        .onChange(of: chartFocused) { _, focused in
-            if !focused { hovered = nil }
-            model.chartHasKeyboardFocus = focused
-        }
-        #endif
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Saldoverlauf")
-        .accessibilityValue(currentValue)
-        .accessibilityHint(onSelect == nil ? "" : String(localized: "Pfeiltasten wählen einen Tag, Eingabe zeigt seine Buchungen."))
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: step(1)
-            case .decrement: step(-1)
-            @unknown default: break
+        let lo = min(0, bars.map(\.euros).min() ?? 0)
+        let hi = max(0, bars.map(\.euros).max() ?? 1)
+        let pad = max((hi - lo) * 0.08, 1)
+        // yearly bars: every gap is already a turn of the year
+        let years = barUnit == .year ? []
+            : bars.first.flatMap { f in bars.last.map { BalanceBuckets.yearStarts(from: f.start, to: $0.last) } } ?? []
+        Chart {
+            ForEach(bars) { b in
+                BarMark(x: .value(xLabel, b.start, unit: unit), y: .value("Ø Saldo", b.euros))
+                    .foregroundStyle(b.averageCents < 0 ? Theme.outflow : Theme.accent)
+                    .opacity(hoveredBar == nil || hoveredBar?.id == b.id ? 0.85 : 0.35)
+                    .cornerRadius(1.5)
+            }
+            // Plain date (no unit): the rule sits on the boundary between December and January.
+            ForEach(years, id: \.self) { y in
+                RuleMark(x: .value("Jahr", y))
+                    .foregroundStyle(Theme.tertiary.opacity(0.6))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
+            }
+            if let h = hoveredBar {
+                RuleMark(x: .value(xLabel, h.start, unit: unit))
+                    .foregroundStyle(.clear)
+                    .annotation(position: h.id * 2 > bars.count ? .topLeading : .topTrailing, spacing: 4, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+                        readout(barTitle(h), prefix: "Ø ", cents: h.averageCents)
+                    }
             }
         }
-        .accessibilityAction(named: "Buchungen dieses Tages zeigen") {
-            if let h = hovered, let onSelect { onSelect(h.date) }
+        .chartYScale(domain: (lo - (lo < 0 ? pad : 0))...(hi + pad))
+        .chartYAxis {
+            yAxis(min: bars.map(\.euros).min() ?? 0, max: bars.map(\.euros).max() ?? 0,
+                  domain: (lo - (lo < 0 ? pad : 0))...(hi + pad))
         }
-        .accessibilityChartDescriptor(BalanceChartDescriptor(points: pts.map { ($0.date, $0.euros) }))
+        .chartXAxis { xAxis(span: spanDays(bars.first?.start, bars.last?.last), centered: barUnit != .day) }
+        .chartOverlay { proxy in
+            GeometryReader { geo in
+                Rectangle().fill(.clear).contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            guard let plot = proxy.plotFrame,
+                                  let date: Date = proxy.value(atX: location.x - geo[plot].origin.x) else { return }
+                            let hit = bar(at: date, in: bars, unit: unit)
+                            if hit != hoveredBar { hoveredBar = hit }
+                        case .ended:
+                            hoveredBar = nil
+                        }
+                    }
+                    .onTapGesture { location in
+                        guard let onSelect, let plot = proxy.plotFrame,
+                              let date: Date = proxy.value(atX: location.x - geo[plot].origin.x),
+                              let hit = bar(at: date, in: bars, unit: unit)
+                        else { return }
+                        onSelect(hit.last)
+                    }
+            }
+        }
+    }
+
+    /// The bar whose month (or day) contains `date`, else the nearest one.
+    private func bar(at date: Date, in bars: [BalanceBucket], unit: Calendar.Component) -> BalanceBucket? {
+        let cal = Calendar.current
+        if let exact = bars.first(where: { cal.isDate($0.start, equalTo: date, toGranularity: unit) }) { return exact }
+        return bars.min { abs($0.start.timeIntervalSince(date)) < abs($1.start.timeIntervalSince(date)) }
+    }
+
+    // MARK: shared
+
+    /// Minimum, maximum and zero on a slim trailing axis (zero only if it lies in the shown
+    /// range). Labels closer than a fifth of the height to one already placed are left out,
+    /// so the 56 pt chart never stacks two labels on top of each other.
+    @AxisContentBuilder private func yAxis(min lo: Double, max hi: Double, domain: ClosedRange<Double>) -> some AxisContent {
+        let values = Self.axisValues(min: lo, max: hi, domain: domain)
+        AxisMarks(position: .trailing, values: values) { v in
+            let isZero = v.as(Double.self) == 0
+            AxisGridLine(stroke: StrokeStyle(lineWidth: isZero ? 0.75 : 0.5, dash: isZero ? [] : [2, 3]))
+                .foregroundStyle(Theme.tertiary.opacity(isZero ? 0.7 : 0.45))
+            AxisValueLabel {
+                if let d = v.as(Double.self) {
+                    // fixed minimum width: changing values never shift the plot sideways
+                    Text(verbatim: Self.compactEuros(d))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(Theme.tertiary)
+                        .frame(minWidth: axisLabelWidth, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    /// Fits "-88.800 €" in Caption 2; longer labels (millions) widen it only then.
+    @ScaledMetric(relativeTo: .caption2) private var axisLabelWidth: CGFloat = 50
+
+    /// Zero first (the reference), then max and min, each only if it keeps its distance.
+    static func axisValues(min lo: Double, max hi: Double, domain: ClosedRange<Double>) -> [Double] {
+        let gap = (domain.upperBound - domain.lowerBound) * 0.2
+        var out: [Double] = []
+        for v in [0, hi, lo] where domain.contains(v) && out.allSatisfy({ abs($0 - v) >= gap }) {
+            out.append(v)
+        }
+        return out
+    }
+
+    /// "4.820 €", "-850 €", "0 €", "1,2 Mio. €": three significant digits, short enough for the
+    /// slim axis. German compact notation only abbreviates from millions on (and then drops
+    /// the thousands separator below), so smaller amounts use the grouped number style.
+    static func compactEuros(_ euros: Double) -> String {
+        let digits = FloatingPointFormatStyle<Double>.number.precision(.significantDigits(1...3))
+        // compact currency notation needs macOS 15; the compact number style is older
+        let text = abs(euros) < 1_000_000 ? euros.formatted(digits) : euros.formatted(digits.notation(.compactName))
+        return text + " €"
+    }
+
+    /// Every how many units (years, months, days) the x-axis gets a label: the smallest
+    /// of `steps` for which all labels fit into `width` (each needs `labelWidth`).
+    static func axisStride(units: Double, width: CGFloat, labelWidth: CGFloat, steps: [Int]) -> Int {
+        let fit = max(Double(width / labelWidth), 1)
+        return steps.first { units / Double($0) <= fit } ?? steps.last ?? 1
+    }
+
+    /// `centered`: bar mode puts a year/month label under the middle of its bar, not its start.
+    @AxisContentBuilder private func xAxis(span: Double, centered: Bool = false) -> some AxisContent {
+        if span > 400 {
+            // long periods: years, every 1/2/5/10 so the labels never crowd
+            let years = Self.axisStride(units: span / 365.25, width: chartWidth, labelWidth: 64, steps: [1, 2, 5, 10, 20])
+            AxisMarks(values: .stride(by: .year, count: years)) { _ in
+                // centred = midway to the next label: only right if that is the next year
+                AxisValueLabel(format: .dateTime.year(), centered: centered && years == 1)
+                    .foregroundStyle(Theme.tertiary)
+            }
+        } else if span < 62 {
+            // short periods (this/last month): weekly day labels
+            let days = Self.axisStride(units: span, width: chartWidth, labelWidth: 64, steps: [7, 14, 28])
+            AxisMarks(values: .stride(by: .day, count: days)) { _ in
+                AxisValueLabel(format: .dateTime.day().month(.abbreviated))
+                    .foregroundStyle(Theme.tertiary)
+            }
+        } else {
+            let months = Self.axisStride(units: span / 30.44, width: chartWidth, labelWidth: 44, steps: [1, 2, 3, 6])
+            AxisMarks(values: .stride(by: .month, count: months)) { _ in
+                AxisValueLabel(format: .dateTime.month(.abbreviated), centered: centered && months == 1)
+                    .foregroundStyle(Theme.tertiary)
+            }
+        }
+    }
+
+    private func readout(_ title: String, prefix: String = "", cents: Int64) -> some View {
+        VStack(spacing: 1) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(Theme.secondary)
+            Text(verbatim: prefix + Money.format(cents))
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(cents < 0 ? Theme.outflow : Theme.text)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
     }
 }
 

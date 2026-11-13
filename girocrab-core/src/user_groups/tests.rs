@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use rusqlite::params;
 
+use crate::models::AccountKind;
 use crate::vault::Vault;
 
 fn temp_dir(tag: &str) -> std::path::PathBuf {
@@ -573,6 +574,37 @@ fn account_symbol_choice_syncs_newer_wins() {
     // merging the older state again changes nothing
     b.merge_other_vault(a.file_path(), key).unwrap();
     assert_eq!(giro(&b).sf_symbol, "briefcase");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn account_symbol_reset_returns_to_kind_symbol_and_syncs() {
+    // #169 on top of #183: the choice lives in `sf_symbol` + `symbol_ms`
+    let dir = temp_dir("symbol-reset");
+    let key = vec![7u8; 32];
+    let a = open(&dir, "a.db");
+    let b = open(&dir, "b.db");
+    let ia = seed(&a);
+    seed(&b);
+    let giro = |v: &Vault| {
+        v.list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.name == "Giro")
+            .unwrap()
+    };
+    assert!(a.reset_account_symbol(999).is_err());
+    a.set_account_symbol(ia[0], "car".into()).unwrap();
+    tick();
+    b.merge_other_vault(a.file_path(), key.clone()).unwrap();
+    assert_eq!(giro(&b).sf_symbol, "car");
+    // back to the kind's symbol on B – and A follows
+    let gb = giro(&b).id;
+    b.reset_account_symbol(gb).unwrap();
+    assert_eq!(giro(&b).sf_symbol, AccountKind::Checking.sf_symbol());
+    tick();
+    a.merge_other_vault(b.file_path(), key).unwrap();
+    assert_eq!(giro(&a).sf_symbol, AccountKind::Checking.sf_symbol());
     let _ = std::fs::remove_dir_all(dir);
 }
 

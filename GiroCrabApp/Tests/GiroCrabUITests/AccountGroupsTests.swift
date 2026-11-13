@@ -199,6 +199,41 @@ final class AccountGroupsTests: XCTestCase {
         assertConsistent()
     }
 
+    /// Sidebar drag & drop of a group: into another group, before one, and
+    /// back to the top level – never into its own subtree.
+    func testDropGroupIntoBeforeAndOut() throws {
+        let (a, b, c) = (groups[0].uuid, groups[1].uuid, groups[2].uuid)
+        let g = { (u: String) in self.model.userGroups.first { $0.uuid == u }! }
+
+        // middle of a row: B becomes a subgroup of A
+        XCTAssertTrue(model.dropUserGroup(b, onto: g(a), before: false))
+        XCTAssertEqual(g(b).parentUuid, a)
+        XCTAssertEqual(g(b).depth, 1)
+
+        // A into its own subgroup B: refused, nothing changes
+        XCTAssertFalse(model.dropUserGroup(a, onto: g(b), before: false))
+        XCTAssertNil(g(a).parentUuid)
+
+        // another main group: B moves from A into C
+        XCTAssertTrue(model.dropUserGroup(b, onto: g(c), before: false))
+        XCTAssertEqual(g(b).parentUuid, c)
+
+        // top edge of A: B leaves C and sits right above A, at the top level
+        XCTAssertTrue(model.dropUserGroup(b, onto: g(a), before: true))
+        XCTAssertNil(g(b).parentUuid)
+        XCTAssertEqual(groups.map(\.uuid).prefix(2), [b, a])
+
+        // onto "Ohne Gruppe": top level, at the end
+        XCTAssertTrue(model.dropUserGroup(c, onto: g(a), before: false))
+        let ungrouped = UserGroup(uuid: "", name: "", sfSymbol: "", colorHex: "", sortOrder: 0, includeInTotal: true,
+                                  inTotal: true, isUngrouped: true, parentUuid: nil, depth: 0,
+                                  balanceCents: 0, accounts: [])
+        XCTAssertTrue(model.dropUserGroup(c, onto: ungrouped, before: false))
+        XCTAssertNil(g(c).parentUuid)
+        XCTAssertEqual(groups.last?.uuid, c)
+        assertConsistent()
+    }
+
     // MARK: edit
 
     func testRenameAndChangeSymbol() throws {
@@ -391,7 +426,7 @@ final class AccountGroupsTests: XCTestCase {
             switch rng.next() % 6 {
             case 0 where groups.count < 6:
                 created += 1
-                model.createUserGroup(name: "G\(created)", symbol: GroupSymbols.all[Int(rng.next() % 12)])
+                model.createUserGroup(name: "G\(created)", symbol: SymbolCatalog.sections.flatMap { $0.items.map(\.symbol) }[Int(rng.next() % 12)])
             case 1 where !groups.isEmpty:
                 let a = accounts[Int(rng.next() % UInt64(accounts.count))]
                 let g = groups[Int(rng.next() % UInt64(groups.count))]

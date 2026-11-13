@@ -1081,7 +1081,8 @@ pub(crate) fn store_fetch(
                         let (group, sym, order) = group_for(acc.kind);
                         let gid = Vault::ensure_group(&tx, group, sym, order)?;
                         tx.execute(
-                            "UPDATE accounts SET kind = ?1, sf_symbol = ?2, group_id = ?3 WHERE id = ?4 AND kind <> ?1",
+                            // a symbol the user picked (symbol_ms > 0) stays
+                            "UPDATE accounts SET kind = ?1, sf_symbol = CASE WHEN symbol_ms > 0 THEN sf_symbol ELSE ?2 END, group_id = ?3 WHERE id = ?4 AND kind <> ?1",
                             params![acc.kind.as_str(), acc.kind.sf_symbol(), gid, id],
                         )?;
                     }

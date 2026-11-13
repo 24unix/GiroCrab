@@ -148,6 +148,15 @@ struct AccountGroupMenu: View {
     }
 }
 
+/// Names of the account colour palette (tooltips, accessibility).
+enum AccountColorNames {
+    static let names: [String: LocalizedStringKey] = [
+        "#2563EB": "Blau", "#D97706": "Bernstein", "#059669": "Grün", "#DB2777": "Pink",
+        "#7C3AED": "Violett", "#0891B2": "Cyan", "#DC2626": "Rot", "#65A30D": "Limette",
+        "#C026D3": "Fuchsia", "#EA580C": "Orange", "#4F46E5": "Indigo", "#0D9488": "Petrol",
+    ]
+}
+
 /// "Symbol & Farbe …" of an account or group: colour palette and symbol
 /// grid in one popover, like MoneyMoney. A click applies immediately.
 struct IconColorPopover: View {
@@ -155,11 +164,7 @@ struct IconColorPopover: View {
     let target: IconColorTarget
 
     private static let palette = accountColorPalette()
-    private static let names: [String: LocalizedStringKey] = [
-        "#2563EB": "Blau", "#D97706": "Bernstein", "#059669": "Grün", "#DB2777": "Pink",
-        "#7C3AED": "Violett", "#0891B2": "Cyan", "#DC2626": "Rot", "#65A30D": "Limette",
-        "#C026D3": "Fuchsia", "#EA580C": "Orange", "#4F46E5": "Indigo", "#0D9488": "Petrol",
-    ]
+    private static let names = AccountColorNames.names
 
     private var account: Account? {
         if case .account(let id) = target { return model.account(for: id) }
@@ -207,29 +212,31 @@ struct IconColorPopover: View {
             }
             Divider()
             Text("Symbol").font(.headline)
-            // icon and name, two columns: easier to find than icons alone
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 2), spacing: 2) {
-                ForEach(GroupSymbols.named, id: \.symbol) { item in
-                    Button { setSymbol(item.symbol) } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: item.symbol)
-                                .font(.system(size: 13, weight: .semibold))
-                                .frame(width: 22)
-                            Text(item.name).lineLimit(1)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .contentShape(Rectangle())
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(item.symbol == symbol ? Theme.accent.opacity(0.25) : Color.clear)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .focusEffectDisabled()
+            // the searchable picker (#167) in its own sheet
+            Button {
+                let t = target
+                model.iconColorTarget = nil
+                switch t {
+                case .account(let id): model.symbolSheet = .account(id)
+                case .group(let uuid): model.symbolSheet = .group(uuid)
                 }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: SymbolCatalog.exists(symbol) ? symbol : "questionmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 22)
+                    (SymbolCatalog.name(of: symbol).map { Text($0) } ?? Text("Symbol wählen"))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.accent.opacity(0.12)))
             }
+            .buttonStyle(.plain)
+            .focusEffectDisabled()
         }
         .padding(14)
         .frame(width: 340)
@@ -567,25 +574,12 @@ struct GroupDetailEditor: View {
                     TextField("Name", text: $name)
                         .onSubmit { commitName() }
                 }
-                Section("Symbol") {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 40), spacing: 8)], spacing: 8) {
-                        ForEach(GroupSymbols.all, id: \.self) { s in
-                            Button { model.updateUserGroup(g, symbol: s) } label: {
-                                Image(systemName: s)
-                                    .font(.title3)
-                                    .frame(width: 38, height: 38)
-                                    .background(RoundedRectangle(cornerRadius: 8).fill(s == g.sfSymbol ? Theme.accent.opacity(0.18) : Color.clear))
-                                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(s == g.sfSymbol ? Theme.accent : Theme.tertiary.opacity(0.3)))
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(s == g.sfSymbol ? Theme.accent : Theme.secondary)
-                            .accessibilityLabel(GroupSymbols.named.first { $0.symbol == s }.map { Text($0.name) } ?? Text(verbatim: s))
-                            .help(GroupSymbols.named.first { $0.symbol == s }.map { Text($0.name) } ?? Text(verbatim: s))
-                            .accessibilityAddTraits(s == g.sfSymbol ? .isSelected : [])
-                        }
-                    }
-                    .padding(.vertical, 4)
+                Section {
+                    // shared picker for groups, accounts and categories (#167)
+                    SymbolPickerButton(selection: Binding(
+                        get: { g.sfSymbol },
+                        set: { model.updateUserGroup(g, symbol: $0) }
+                    ))
                 }
                 Section {
                     Picker("Übergeordnete Gruppe", selection: Binding(

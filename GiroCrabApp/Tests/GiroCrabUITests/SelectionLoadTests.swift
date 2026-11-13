@@ -9,6 +9,8 @@ final class SelectionLoadTests: XCTestCase {
 
     override func setUp() async throws {
         model = AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))
+        // placeholder at once, so the loading state can be checked deterministically
+        model.selectionPlaceholderDelay = .zero
         XCTAssertEqual(model.vaultState, .open)
         XCTAssertNil(model.errorMessage)
     }
@@ -61,6 +63,33 @@ final class SelectionLoadTests: XCTestCase {
         XCTAssertFalse(model.isLoadingSelection)
         XCTAssertTrue(model.bookings.allSatisfy { $0.accountId == account.id })
         XCTAssertNil(model.errorMessage)
+        try assertMatchesSynchronousLoad()
+    }
+
+    /// Default grace period: a fast load swaps old for new data in one step,
+    /// without the empty list / chart / "–" tiles in between (no flicker).
+    func testFastLoadKeepsPreviousDataUntilItPublishes() async throws {
+        model.selectionPlaceholderDelay = .seconds(30)
+        let before = model.bookings.map(\.id)
+        let history = model.history.map(\.balanceCents)
+        XCTAssertFalse(before.isEmpty)
+        let account = try XCTUnwrap(model.allAccounts.first { $0.kind == .checking })
+
+        model.interactiveSidebarSelection = .account(account.id)
+        XCTAssertFalse(model.isLoadingSelection)
+        XCTAssertEqual(model.bookings.map(\.id), before)
+        XCTAssertEqual(model.history.map(\.balanceCents), history)
+        XCTAssertFalse(model.hasMoreBookings, "no paging into the previous selection while loading")
+
+        let expected = try expectedIDs()
+        var sawEmpty = false
+        for _ in 0..<300 where model.bookings.map(\.id) != expected {
+            sawEmpty = sawEmpty || model.bookings.isEmpty || model.isLoadingSelection
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertEqual(model.bookings.map(\.id), expected)
+        XCTAssertFalse(sawEmpty)
+        XCTAssertFalse(model.isLoadingSelection)
         try assertMatchesSynchronousLoad()
     }
 

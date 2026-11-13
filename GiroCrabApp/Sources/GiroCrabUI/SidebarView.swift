@@ -149,6 +149,18 @@ struct SidebarView: View {
             }
         }
         .sheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
+        .sheet(item: $model.symbolSheet) { target in SymbolSheet(target: target).environment(model) }
+        .task { // screenshots: --demo-sheet group-symbol / account-symbol
+            switch model.options.demoSheet {
+            case "group-symbol":
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                if let g = model.namedUserGroups.first { model.symbolSheet = .group(g.uuid) }
+            case "account-symbol":
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                if let a = model.allAccounts.first { model.symbolSheet = .account(a.id) }
+            default: break
+            }
+        }
     }
 
     /// "Nach Kontoart": the fixed kind sections.
@@ -199,9 +211,11 @@ struct SidebarView: View {
                 .draggable(GroupDrag.group(group.uuid)) {
                     Label(group.name, systemImage: group.sfSymbol).padding(6)
                 }
-                .dropDestination(for: String.self) { items, _ in
-                    handleDrop(items, into: group, at: nil)
-                } isTargeted: { dropTarget = $0 ? "g:" + group.uuid : (dropTarget == "g:" + group.uuid ? nil : dropTarget) }
+                // middle of the row: into this group; top edge: before it
+                // (insertion line) – like mailboxes in Mail
+                .modifier(GroupHeaderDrop(group: group, target: $dropTarget) { items, before in
+                    handleDrop(items, into: group, at: nil, before: before)
+                })
             if open {
                 if group.accounts.isEmpty && !group.isUngrouped && model.userGroupSubtree(group.uuid).count == 1 {
                     Text(emptyHint)
@@ -239,18 +253,21 @@ struct SidebarView: View {
     }
 
     /// Account dropped on a row/header → move there; group dropped on a header → reorder.
-    private func handleDrop(_ items: [String], into group: UserGroup, at index: Int?) -> Bool {
+    /// A drop onto a group row. Accounts join the group. A dragged group goes
+    /// into the target group (becomes its subgroup), or – `before` – next to
+    /// it, as a sibling right above it; onto "Ohne Gruppe" it moves to the
+    /// top level, at the end.
+    @discardableResult
+    private func handleDrop(_ items: [String], into group: UserGroup, at index: Int?, before: Bool = false) -> Bool {
         var handled = false
         for item in items {
             if let id = GroupDrag.accountID(item) {
                 model.moveAccount(id, to: group.uuid, at: index)
                 handled = true
-            } else if let uuid = GroupDrag.groupUUID(item), uuid != group.uuid, !uuid.isEmpty {
-                var order = model.namedUserGroups.map(\.uuid).filter { $0 != uuid }
-                let at = group.isUngrouped ? order.count : (order.firstIndex(of: group.uuid) ?? order.count)
-                order.insert(uuid, at: at)
-                model.reorderUserGroups(order)
-                handled = true
+            } else if index == nil, let uuid = GroupDrag.groupUUID(item) {
+                // groups only land on group rows (and the empty-group hint),
+                // not on account rows
+                handled = model.dropUserGroup(uuid, onto: group, before: before) || handled
             }
         }
         return handled
@@ -331,6 +348,8 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func categoryMenu(_ category: GiroCrabCore.Category) -> some View {
+        Button("Bearbeiten …", systemImage: "pencil") { model.newCategoryRequest = NewCategoryRequest(parent: category.parentId, editing: category.id) }
+        Divider()
         Button("Neue Unterkategorie …", systemImage: "plus") { model.newCategoryRequest = NewCategoryRequest(parent: category.id) }
         Button("Neue Hauptkategorie …", systemImage: "plus.square") { model.newCategoryRequest = NewCategoryRequest(parent: nil) }
         Button("Monatsbudget festlegen …", systemImage: "gauge.with.dots.needle.67percent") { budgetCategory = IDBox(id: category.id) }
@@ -361,13 +380,18 @@ struct SectionHeader: View {
             .foregroundStyle(.secondary)
             .accessibilityLabel(open ? "„\(group.name)“ einklappen" : "„\(group.name)“ ausklappen")
             .accessibilityValue(open ? "Ausgeklappt" : "Eingeklappt")
+            // same size as the account rows below and the "Gruppen" headers (#171)
+            Image(systemName: group.sfSymbol)
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+                .accessibilityHidden(true)
             Text(group.name)
             Spacer()
             Text(Money.format(group.balanceCents))
                 .monospacedDigit()
                 .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(group.balanceCents < 0 && isLoanGroup ? Theme.loan : (group.balanceCents < 0 ? Theme.negative : Theme.secondary)))
         }
-        .font(.caption.weight(.semibold))
+        .font(.body.weight(.semibold))
         .foregroundStyle(.secondary)
     }
 }
@@ -409,12 +433,17 @@ struct AccountRow: View {
                     }
                 }
                 if let repaid {
-                    ProgressView(value: repaid)
-                        .progressViewStyle(.linear)
-                        .tint(Theme.loan.opacity(0.7))
-                        .controlSize(.mini)
-                        .frame(maxWidth: 110)
-                        .help("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
+                    // in a line as tall as the bank name of other accounts, so
+                    // loan rows don't sit higher than their neighbours (#171)
+                    ZStack(alignment: .leading) {
+                        Text(verbatim: " ").font(.caption2).hidden()
+                        ProgressView(value: repaid)
+                            .progressViewStyle(.linear)
+                            .tint(Theme.loan.opacity(0.7))
+                            .controlSize(.mini)
+                            .frame(maxWidth: 110)
+                    }
+                    .help("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
                 } else if let date = account.archivedDate {
                     Text("Archiviert \(date.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)))")
                         .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
@@ -486,6 +515,82 @@ private struct DropHighlight: ViewModifier {
                 .opacity(target == key ? 1 : 0)
                 .padding(-3)
         )
+    }
+}
+
+/// Drop zone of a group row: the top edge means "before this group"
+/// (insertion line, key `b:<uuid>`), the rest "into this group" (outline,
+/// key `g:<uuid>`). `dropDestination` can't tell the two apart while
+/// hovering, so this uses a DropDelegate with the pointer position.
+private struct GroupHeaderDrop: ViewModifier {
+    let group: UserGroup
+    @Binding var target: String?
+    let perform: (_ items: [String], _ before: Bool) -> Void
+    @State private var height: CGFloat = 24
+
+    func body(content: Content) -> some View {
+        content
+            .background(GeometryReader { g in
+                Color.clear
+                    .onAppear { height = g.size.height }
+                    .onChange(of: g.size.height) { _, h in height = h }
+            })
+            .overlay(alignment: .top) {
+                Capsule()
+                    .fill(Theme.accent)
+                    .frame(height: 2)
+                    .offset(y: -4)
+                    .opacity(target == "b:" + group.uuid ? 1 : 0)
+                    .allowsHitTesting(false)
+            }
+            .onDrop(of: [.plainText], delegate: Delegate(group: group, height: height, target: $target, perform: perform))
+    }
+
+    private struct Delegate: DropDelegate {
+        let group: UserGroup
+        let height: CGFloat
+        @Binding var target: String?
+        let perform: (_ items: [String], _ before: Bool) -> Void
+
+        /// Upper third: before the group ("Ohne Gruppe" only takes "into").
+        private func isBefore(_ info: DropInfo) -> Bool {
+            !group.isUngrouped && info.location.y < height / 3
+        }
+
+        func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.plainText]) }
+
+        func dropUpdated(info: DropInfo) -> DropProposal? {
+            target = (isBefore(info) ? "b:" : "g:") + group.uuid
+            return DropProposal(operation: .move)
+        }
+
+        func dropExited(info: DropInfo) {
+            if target == "b:" + group.uuid || target == "g:" + group.uuid { target = nil }
+        }
+
+        func performDrop(info: DropInfo) -> Bool {
+            let before = isBefore(info)
+            target = nil
+            let providers = info.itemProviders(for: [.plainText])
+            guard !providers.isEmpty else { return false }
+            Task { @MainActor in
+                var items: [String] = []
+                for p in providers {
+                    if let s = try? await p.loadTransferable(type: String.self) { items.append(s) }
+                }
+                if !items.isEmpty { perform(items, before) }
+            }
+            return true
+        }
+    }
+}
+
+private extension NSItemProvider {
+    /// async wrapper of `loadTransferable` (not async on macOS 14).
+    func loadTransferable<T: Transferable & Sendable>(type: T.Type) async throws -> T {
+        try await withCheckedThrowingContinuation { cont in
+            _ = loadTransferable(type: type) { cont.resume(with: $0) }
+        }
     }
 }
 

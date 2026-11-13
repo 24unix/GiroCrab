@@ -83,20 +83,6 @@ enum GroupDialog {
     }
 }
 
-/// Symbols offered for accounts and groups – one list for both, the
-/// account types' own symbols first.
-enum GroupSymbols {
-    static let named: [(symbol: String, name: LocalizedStringKey)] = [
-        ("building.columns", "Bank"), ("banknote", "Geld"), ("creditcard", "Kreditkarte"),
-        ("envelope.circle", "Bezahldienst"), ("chart.line.uptrend.xyaxis", "Depot"), ("eurosign.circle", "Bargeld"),
-        ("house", "Haus"), ("folder", "Ordner"), ("person", "Person"), ("person.2", "Paar"),
-        ("figure.and.child.holdinghands", "Familie"), ("briefcase", "Beruf"), ("building.2", "Firma"),
-        ("heart", "Herz"), ("graduationcap", "Ausbildung"), ("airplane", "Reisen"),
-        ("chart.pie", "Vermögen"), ("wallet.bifold", "Geldbörse"), ("bitcoinsign.circle", "Krypto"),
-    ]
-    static var all: [String] { named.map(\.symbol) }
-}
-
 /// What the "Symbol & Farbe" popover edits.
 enum IconColorTarget: Equatable {
     case account(Int64)
@@ -296,6 +282,27 @@ extension AppModel {
         } catch {
             errorMessage = describe(error)
         }
+    }
+
+    /// A group dropped onto a group row in the sidebar: into `target` (as its
+    /// subgroup), or – `before` – right above it as its sibling; onto "Ohne
+    /// Gruppe" it moves to the top level, at the end. Refuses moving a group
+    /// into itself or its own subgroups. Returns whether anything happened.
+    @discardableResult
+    func dropUserGroup(_ uuid: String, onto target: UserGroup, before: Bool) -> Bool {
+        guard !uuid.isEmpty, uuid != target.uuid,
+              let moving = userGroups.first(where: { $0.uuid == uuid }),
+              !userGroupSubtree(uuid).contains(where: { $0.uuid == target.uuid })
+        else { return false }
+        let parent: String? = target.isUngrouped ? nil : (before ? target.parentUuid : target.uuid)
+        if moving.parentUuid != parent { setUserGroupParent(moving, parent: parent) }
+        if target.isUngrouped || before {
+            var order = namedUserGroups.map(\.uuid).filter { $0 != uuid }
+            let at = target.isUngrouped ? order.count : (order.firstIndex(of: target.uuid) ?? order.count)
+            order.insert(uuid, at: at)
+            reorderUserGroups(order)
+        }
+        return true
     }
 
     func reorderUserGroups(_ uuids: [String]) {

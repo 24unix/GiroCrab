@@ -1033,6 +1033,33 @@ impl Vault {
         Ok(())
     }
 
+    /// Back to the symbol of the account's kind (the "Standardsymbol" button).
+    /// Syncs like a choice: the newer change wins.
+    pub fn reset_account_symbol(&self, account_id: i64) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let kind: Option<String> = db
+            .query_row(
+                "SELECT kind FROM accounts WHERE id = ?1 AND deleted_ms IS NULL",
+                [account_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(kind) = kind else {
+            return Err(CoreError::NotFound {
+                what: trf("Konto {0}", &[&account_id]),
+            });
+        };
+        db.execute(
+            "UPDATE accounts SET sf_symbol = ?2, symbol_ms = ?3 WHERE id = ?1",
+            params![
+                account_id,
+                crate::models::AccountKind::from_str(&kind).sf_symbol(),
+                now_ms()
+            ],
+        )?;
+        Ok(())
+    }
+
     /// Sets a group's colour (`#RRGGBB`); `None` = none. Syncs like the
     /// account colour: the newer choice wins.
     pub fn set_user_group_color(

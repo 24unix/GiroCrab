@@ -499,6 +499,8 @@ public final class AppModel {
     var groupDialog: GroupDialog?
     /// The account / group whose "Symbol & Farbe" popover is open.
     var iconColorTarget: IconColorTarget?
+    /// "Symbol …" sheet: the searchable symbol picker (#167).
+    var symbolSheet: SymbolSheetTarget?
     /// The "new category" name prompt on screen (sidebar, menu bar, ⌘K).
     var newCategoryRequest: NewCategoryRequest?
     /// "Belege & PostBox" filtered to one account (#172); nil = all accounts.
@@ -605,8 +607,14 @@ public final class AppModel {
     private var searchTask: Task<Void, Never>?
     private var scopeLoadTask: Task<Void, Never>?
     @ObservationIgnored private var selectionLoadTask: Task<Void, Never>?
-    /// A selection made in the UI is loading: list and chart are empty meanwhile.
+    /// A selection load has run longer than `selectionPlaceholderDelay`: list and chart are
+    /// empty and show the loading placeholder until it publishes.
     private(set) var isLoadingSelection = false
+    /// Grace period before a running selection load clears the previous data. Loads that
+    /// finish sooner (most) swap list, chart and tiles in one step: no empty flash.
+    /// Slower ones never leave the old figures under the new title for longer than this.
+    @ObservationIgnored var selectionPlaceholderDelay: Duration = .milliseconds(200)
+    @ObservationIgnored private var selectionPlaceholderTask: Task<Void, Never>?
     @ObservationIgnored private var loadsSelectionInBackground = false
     @ObservationIgnored private var merchantStatsTask: Task<Void, Never>?
     @ObservationIgnored private var merchantStatsCache: [String: MerchantStats] = [:]
@@ -679,6 +687,11 @@ public final class AppModel {
     /// Screenshot helper: open a sheet pre-filled with fictional data.
     private func presentDemoSheet(_ name: String) {
         switch name {
+        case "category":
+            // edit sheet of the first sub-category (#168)
+            if let c = categories.first(where: { $0.depth > 0 }) {
+                newCategoryRequest = NewCategoryRequest(parent: c.parentId, editing: c.id)
+            }
         case "print":
             // Print dialog (GitHub #53) on last month's demo bookings.
             period = .lastMonth
@@ -1090,9 +1103,7 @@ public final class AppModel {
         scopeLoadTask?.cancel()
         categoryRefreshTask?.cancel()
         dashboardTask?.cancel()
-        selectionLoadTask?.cancel()
-        selectionLoadTask = nil
-        isLoadingSelection = false
+        endSelectionLoad()
         dropPendingPage()
         merchantStatsTask?.cancel()
         merchantStatsCache = [:]
@@ -1278,7 +1289,8 @@ public final class AppModel {
 
     /// More bookings match the current filter than are loaded (list limit reached).
     var hasMoreBookings: Bool {
-        guard let total = page?.totalCount else { return false }
+        // the previous selection's page may still show during a selection load
+        guard selectionLoadTask == nil, let total = page?.totalCount else { return false }
         return UInt32(bookings.count) < total
     }
 
@@ -1571,10 +1583,8 @@ public final class AppModel {
     /// drop that load and bring everything it would have delivered up to date
     /// now, so its older result can never overwrite fresher data.
     private func settlePendingSelectionLoad() {
-        guard let task = selectionLoadTask else { return }
-        task.cancel()
-        selectionLoadTask = nil
-        isLoadingSelection = false
+        guard selectionLoadTask != nil else { return }
+        endSelectionLoad()
         refreshSalaryCycle()
         refreshRecurring()
         reloadCategories()
@@ -1591,20 +1601,47 @@ public final class AppModel {
         return try await withTaskCancellationHandler { try await job.value } onCancel: { job.cancel() }
     }
 
+    /// Stops a running selection load and its placeholder timer (no data is touched).
+    private func endSelectionLoad() {
+        selectionLoadTask?.cancel()
+        selectionLoadTask = nil
+        selectionPlaceholderTask?.cancel()
+        selectionPlaceholderTask = nil
+        isLoadingSelection = false
+    }
+
+    /// The load is slow: empty list and chart, so nothing of the previous
+    /// selection stays under the new title.
+    private func showSelectionPlaceholder() {
+        isLoadingSelection = true
+        page = nil
+        bookings = []
+        history = []
+    }
+
     /// Everything a selection change needs, loaded off the main thread and
-    /// published in one go; until then list and chart are empty, so nothing of
-    /// the previous selection shows under the new title.
+    /// published in one go. The previous data stays until then, at most for
+    /// `selectionPlaceholderDelay`; after that list and chart show the placeholder.
     private func startSelectionLoad() {
+        selectionPlaceholderTask?.cancel()
+        selectionPlaceholderTask = nil
         selectionLoadTask?.cancel()
         scopeLoadTask?.cancel()
         dropPendingPage()
         guard let vault else { return }
         let ids = selectionAccountIDs
         let month = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: Date())
-        isLoadingSelection = true
-        page = nil
-        bookings = []
-        history = []
+        if selectionPlaceholderDelay <= .zero || isLoadingSelection {
+            showSelectionPlaceholder()
+        } else {
+            let delay = selectionPlaceholderDelay
+            selectionPlaceholderTask = Task { [weak self] in
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled, let self, self.selectionLoadTask != nil else { return }
+                self.selectionPlaceholderTask = nil
+                self.showSelectionPlaceholder()
+            }
+        }
         let task = Task { [weak self] in
             let load = Perf.signposter.beginInterval("selectionLoad")
             defer { Perf.signposter.endInterval("selectionLoad", load) }
@@ -1631,7 +1668,7 @@ public final class AppModel {
                 // A newer selection or a synchronous reload cancelled this request.
                 guard !Task.isCancelled else { return }
                 self.selectionLoadTask = nil
-                self.isLoadingSelection = false
+                self.endSelectionLoad()
                 let publish = Perf.signposter.beginInterval("publishSelection")
                 self.publish(loaded.page)
                 self.selectionFlow = (loaded.flow.consumptionCents, loaded.flow.investedCents, loaded.flow.incomeCents)
@@ -1645,7 +1682,7 @@ public final class AppModel {
             } catch {
                 guard !Task.isCancelled, let self else { return }
                 self.selectionLoadTask = nil
-                self.isLoadingSelection = false
+                self.endSelectionLoad()
                 self.errorMessage = describe(error)
             }
         }
@@ -2162,6 +2199,13 @@ public final class AppModel {
         reloadAccounts()
     }
 
+    /// Back to the symbol of the account kind; a bank sync keeps a chosen symbol.
+    func resetAccountSymbol(_ accountId: Int64) {
+        guard let vault else { return }
+        run { try vault.resetAccountSymbol(accountId: accountId) }
+        reloadAccounts()
+    }
+
     func setAccountSymbol(_ accountId: Int64, symbol: String) {
         guard let vault else { return }
         run { try vault.setAccountSymbol(accountId: accountId, sfSymbol: symbol) }
@@ -2348,6 +2392,17 @@ public final class AppModel {
         guard let vault else { return }
         run { _ = try vault.createCategory(name: name, parentId: parent, sfSymbol: symbol, colorHex: color) }
         reloadCategories()
+    }
+
+    /// Name, parent, symbol and colour of an existing category (#168).
+    func updateCategory(_ category: GiroCrabCore.Category, name: String, parent: Int64?, symbol: String, color: String) {
+        guard let vault else { return }
+        run {
+            try vault.updateCategory(id: category.id, name: name, parentId: parent,
+                                     sfSymbol: symbol, colorHex: color)
+        }
+        reloadCategories()
+        reloadBookings()
     }
 
     /// "Hauptkategorie › Unterkategorie" for a category id (nil = top level).
