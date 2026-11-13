@@ -48,7 +48,7 @@ jobs:
       - name: Test String-Catalog-Merge-Driver
         run: python3 -m unittest scripts/test_xcstrings.py
       - name: Test FNZ portal browser scripts
-        run: node --test scripts/test-fnz-portal.cjs
+        run: node --test scripts/test-fnz-portal.cjs scripts/test-quirion-portal.cjs
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 

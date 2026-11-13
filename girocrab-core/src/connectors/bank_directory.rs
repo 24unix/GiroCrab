@@ -140,6 +140,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
         ),
         (ConnectorKind::Fnz, "FNZ Bank", "fnz bank ebase finvesto"),
         (
+            ConnectorKind::Quirion,
+            "quirion",
+            "quirion quirin privatbank depot",
+        ),
+        (
             ConnectorKind::ScalableCapital,
             "Scalable Capital",
             "scalable capital depot broker overnight festgeld",
@@ -240,6 +245,8 @@ pub fn search(
     if let Some(blz) = fints_directory::blz_from_input(query) {
         if COMDIRECT_BLZ.contains(&blz.as_str()) {
             out.push(own_result(ConnectorKind::Comdirect, "comdirect"));
+        } else if blz == "10110600" {
+            out.push(own_result(ConnectorKind::Quirion, "quirion"));
         } else if let Some(b) = fints_directory::lookup(&blz) {
             out.push(fints_result(b));
         } else if blz == "70013000" {
@@ -573,6 +580,20 @@ mod tests {
         let r = search("20041111", vec![], 10);
         assert_eq!(ids(&r), vec!["api:comdirect"]);
         assert_eq!(r[0].mode, BankAccessMode::OwnApi);
+    }
+
+    #[test]
+    fn quirion_routes_names_blz_and_iban_to_browser() {
+        for query in [
+            "quirion",
+            "Quirin Privatbank",
+            "10110600",
+            "DE98101106000000000000",
+        ] {
+            let r = search(query, vec![], 20);
+            assert_eq!(ids(&r), vec!["api:quirion"], "{query}");
+            assert_eq!(r[0].connector, Some(ConnectorKind::Quirion));
+        }
     }
 
     #[test]

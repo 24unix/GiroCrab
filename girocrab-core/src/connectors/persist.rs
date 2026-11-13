@@ -393,6 +393,12 @@ pub(crate) fn store_fetch(
             }
         };
         let mut by_account: HashMap<i64, Vec<&crate::models::Holding>> = HashMap::new();
+        // An explicitly empty inventory must remove stale positions too.
+        for account_ref in &data.holdings_fetched {
+            if let Some(id) = account_ids.get(account_ref) {
+                by_account.entry(*id).or_default();
+            }
+        }
         let mut unresolved = 0usize;
         for h in &data.holdings {
             if let Some(id) = resolve(&h.account_ref) {

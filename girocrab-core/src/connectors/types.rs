@@ -383,6 +383,8 @@ pub struct FetchResult {
     pub transactions: Vec<RemoteTransaction>,
     /// Depot positions; replace the stored holdings of each listed account.
     pub holdings: Vec<RemoteHolding>,
+    /// Explicitly fetched complete inventories, including empty depots.
+    pub holdings_fetched: Vec<String>,
     /// Updated connector state to persist.
     pub state: Option<serde_json::Value>,
     /// Keep stored balances and add newly imported bookings to them

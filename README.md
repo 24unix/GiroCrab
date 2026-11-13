@@ -177,11 +177,14 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 |---|---|---|
 | Volksbanken & Sparda-Banken (Atruvia) / Postbank / DKB / 1822direkt – oder jede FinTS-3.0-Bank per BLZ + URL | FinTS 3.0 PIN/TAN (HKCAZ/camt, HKKAZ/MT940, Darlehen) | ✅ Unterstützt |
 | comdirect | Offizielle REST-API | ✅ Unterstützt |
+| quirion / Quirin Privatbank | Browser-Anmeldung, interne Portal-API | ✅ Depot, Positionen inkl. berechneter GuV, Konten, Umsatzhistorie und PDF-Archiv |
 | bunq | Offizielle API, persönlicher API-Schlüssel | ✅ Unterstützt |
 | PayPal | Transaction-Search-API | ✅ Unterstützt |
 | Trade Republic | WebSocket (inoffiziell) | ⚠️ Unterstützt, kann brechen |
 | American Express / Amazon Visa | PSD2 via Enable Banking | ✅ Unterstützt |
 | ING, N26, Scalable Capital, Consorsbank, Santander | – | 🙋 **Help Wanted** |
+
+quirion: Einrichtung, technische Details und geprüfter Umfang stehen in [docs/quirion-connector.md](docs/quirion-connector.md).
 
 Eine neue Bank anzubinden dauert meist unter 100 Zeilen: siehe
 [`connectors/template.rs`](girocrab-core/src/connectors/template.rs) und [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -359,6 +362,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 |---|---|---|
 | Volksbanken & Sparda-Banken (Atruvia) / Postbank / DKB / 1822direkt – or any FinTS 3.0 bank via bank code + URL | FinTS 3.0 PIN/TAN (camt, MT940, loans) | ✅ Supported |
 | comdirect | Official REST API | ✅ Supported |
+| quirion / Quirin Privatbank | Browser login, internal portal API | ✅ Portfolio, positions with calculated unrealized gains, accounts, transaction history and PDF archive |
 | bunq | Official API, personal API key | ✅ Supported |
 | PayPal | Transaction Search API | ✅ Supported |
 | Trade Republic | WebSocket (unofficial) | ⚠️ Supported, may break |

@@ -631,6 +631,17 @@
         }
       }
     },
+    "%lld PDFs nicht abrufbar. Ein erneuter Abruf lädt nur fehlende Dokumente." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld PDFs could not be retrieved. Retrying downloads only missing documents."
+          }
+        }
+      }
+    },
     "%lld PDFs nicht abrufbar. Erfolgreiche Downloads bleiben gespeichert; ein erneuter Abruf lädt nur fehlende Dokumente." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2258,6 +2269,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Other folder …"
+          }
+        }
+      }
+    },
+    "Angemeldet – Depot, Konten und Historie können abgerufen werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signed in — portfolio, accounts and history are ready to fetch."
           }
         }
       }
@@ -4903,6 +4925,17 @@
         }
       }
     },
+    "Depot und Konten abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch portfolio and accounts"
+          }
+        }
+      }
+    },
     "Depot: Positionen statt Buchungen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4921,6 +4954,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Securities Positions"
+          }
+        }
+      }
+    },
+    "Depotpositionen und Umsatzhistorie abrufen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetching positions and transaction history…"
           }
         }
       }
@@ -8006,6 +8050,17 @@
         }
       }
     },
+    "GuV (berechnet): %@ (%@ %)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gain/loss (calculated): %1$@ (%2$@ %)"
+          }
+        }
+      }
+    },
     "Gutschein" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10630,6 +10685,17 @@
         }
       }
     },
+    "Melden Sie sich bei quirion an und bestätigen Sie gegebenenfalls die Anmeldung." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to quirion and approve the login if requested."
+          }
+        }
+      }
+    },
     "Melden Sie sich im Browser-Fenster mit Ihrem normalen Benutzernamen, Passwort und 2FA an. GiroCrab liest die Umsätze direkt aus dem Portal – es sind keine API-Schlüssel nötig. Die Sitzung bleibt für spätere Abrufe erhalten." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12639,6 +12705,17 @@
         }
       }
     },
+    "PDF-Postbox inkl. Archiv" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF mailbox including archive"
+          }
+        }
+      }
+    },
     "PDF-Postkorb inkl. Archiv" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12987,6 +13064,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Postbank: use the Postbank ID as user name, not the account number."
+          }
+        }
+      }
+    },
+    "Postbox und Archiv auflisten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listing mailbox and archive…"
           }
         }
       }
@@ -17264,6 +17352,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "per month"
+          }
+        }
+      }
+    },
+    "quirion: %u Konten/Depots aktualisiert, %u neue Buchungen, %lld neue PDFs." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "quirion: %1$u accounts/portfolios updated, %2$u new transactions, %3$lld new PDFs."
+          }
+        }
+      }
+    },
+    "quirion: Die Portalantwort konnte nicht gelesen werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "quirion: The portal response could not be read."
           }
         }
       }

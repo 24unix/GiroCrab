@@ -37,6 +37,8 @@ pub enum ConnectorKind {
     Fnz,
     /// Interactive Brokers via the Flex Web Service (token + query id).
     Ibkr,
+    /// quirion portal API, authenticated inside the embedded browser.
+    Quirion,
 }
 
 impl ConnectorKind {
@@ -56,6 +58,7 @@ impl ConnectorKind {
             ConnectorKind::AmazonOrders => "amazon-orders",
             ConnectorKind::Fnz => "fnz",
             ConnectorKind::Ibkr => "ibkr",
+            ConnectorKind::Quirion => "quirion",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -103,6 +106,7 @@ impl ConnectorKind {
             ConnectorKind::AmazonOrders,
             ConnectorKind::Fnz,
             ConnectorKind::Ibkr,
+            ConnectorKind::Quirion,
         ]
     }
 }
