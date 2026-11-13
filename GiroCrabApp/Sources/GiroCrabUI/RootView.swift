@@ -151,8 +151,16 @@ public struct GiroCrabScenes: Scene {
             // `Group`: a CommandsBuilder takes at most 10 children (older Xcode in CI).
             Group {
                 // Hilfe › Mitteilungen …: ellipsis because a window opens.
-                CommandGroup(after: .help) {
+                // Replaces the default Help menu ("Help isn't available for …").
+                CommandGroup(replacing: .help) {
+                    Button("GiroCrab-Hilfe") { openWindow(id: "help") }
+                        .keyboardShortcut("?", modifiers: .command)
+                    Divider()
                     Button("Mitteilungen …") { openWindow(id: "announcements") }
+                    Divider()
+                    Link("Webseite & Dokumentation (girocrab.de)", destination: HelpLinks.website)
+                    Link("Fehler melden / Issue erstellen (GitHub)", destination: HelpLinks.issues)
+                    Link("Community & Diskussionen (GitHub)", destination: HelpLinks.discussions)
                 }
                 // Bearbeiten › Suchen …: focuses the toolbar search field.
                 CommandGroup(after: .pasteboard) {
@@ -197,6 +205,10 @@ public struct GiroCrabScenes: Scene {
             AnnouncementsListView()
         }
         .defaultSize(width: 460, height: 360)
+        Window("GiroCrab-Hilfe", id: "help") {
+            NavigationStack { HelpView() }
+        }
+        .defaultSize(width: 640, height: 720)
         Settings {
             // HIG: the Settings window fits each tab (SettingsView sizes them).
             SettingsView()
@@ -289,11 +301,16 @@ struct LockView: View {
     /// Keychain prompt the user hasn't noticed (behind the window, other screen).
     @State private var waitingLong = false
 
+    private var crabPhase: AnimatedCrabLogoView.Phase {
+        if model.unlockCelebrating { return .unlocked }
+        if error != nil { return .failed }
+        if case .unlocking = model.vaultState { return .unlocking }
+        return .idle
+    }
+
     var body: some View {
         VStack(spacing: 18) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(Theme.accent)
+            AnimatedCrabLogoView(size: 120, phase: crabPhase)
             Text("GiroCrab ist gesperrt")
                 .font(.title.bold())
             Text("Ihre Buchungen liegen in einem verschlüsselten Tresor.\nDer Schlüssel verlässt nie den Schlüsselbund dieses Geräts.")
@@ -553,18 +570,16 @@ struct MainSplitView: View {
     }
 }
 
-/// The launch-screen logo (asset `LaunchLogo`, 120 pt, centred).
+/// The launch-screen logo (asset `LaunchLogo`, 120 pt, centred), continued as the animated crab.
+/// Same 360-pt artwork grid and backdrop as the launch image, so the hand-off has no jump.
 private struct StartLogo: View {
     var body: some View {
-        #if os(iOS)
-        if let img = UIImage(named: "LaunchLogo") {
-            Image(uiImage: img).resizable().frame(width: 120, height: 120)
-        } else {
-            Image(systemName: "lock.shield.fill").font(.system(size: 54)).foregroundStyle(Theme.accent)
+        // Square #263040 like the launch image (no squircle corners), crab on top.
+        ZStack {
+            Rectangle().fill(Color(red: 0x26 / 255, green: 0x30 / 255, blue: 0x40 / 255))
+            AnimatedCrabLogoView(size: 120, phase: .idle, showBackgroundSquircle: false)
         }
-        #else
-        Image(systemName: "lock.shield.fill").font(.system(size: 54)).foregroundStyle(Theme.accent)
-        #endif
+        .frame(width: 120, height: 120)
     }
 }
 
