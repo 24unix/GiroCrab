@@ -375,6 +375,7 @@ extension ConnectorKind {
         case .amazonOrders: return "Amazon Bestellungen"
         case .fnz: return "FNZ Bank"
         case .ibkr: return "Interactive Brokers (IBKR)"
+        case .quirion: return "quirion"
         }
     }
 
@@ -395,6 +396,7 @@ extension ConnectorKind {
         case .amazonOrders: return "#B45F06"
         case .fnz: return "#265B55"
         case .ibkr: return "#D81222"
+        case .quirion: return "#D4005A"
         }
     }
 
@@ -422,6 +424,7 @@ extension ConnectorKind {
         case .amazonOrders: return "AZ"
         case .fnz: return "FNZ"
         case .ibkr: return "IB"
+        case .quirion: return "Q"
         }
     }
 }

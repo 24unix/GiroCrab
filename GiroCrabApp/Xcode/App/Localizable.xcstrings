@@ -1,6 +1,116 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "GuV (berechnet): %@ (%@ %)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gain/loss (calculated): %1$@ (%2$@ %)"
+          }
+        }
+      }
+    },
+    "Angemeldet – Depot, Konten und Historie können abgerufen werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signed in — portfolio, accounts and history are ready to fetch."
+          }
+        }
+      }
+    },
+    "Melden Sie sich bei quirion an und bestätigen Sie gegebenenfalls die Anmeldung." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to quirion and approve the login if requested."
+          }
+        }
+      }
+    },
+    "PDF-Postbox inkl. Archiv" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF mailbox including archive"
+          }
+        }
+      }
+    },
+    "Depot und Konten abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch portfolio and accounts"
+          }
+        }
+      }
+    },
+    "Depotpositionen und Umsatzhistorie abrufen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetching positions and transaction history…"
+          }
+        }
+      }
+    },
+    "Postbox und Archiv auflisten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listing mailbox and archive…"
+          }
+        }
+      }
+    },
+    "quirion: %u Konten/Depots aktualisiert, %u neue Buchungen, %lld neue PDFs." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "quirion: %1$u accounts/portfolios updated, %2$u new transactions, %3$lld new PDFs."
+          }
+        }
+      }
+    },
+    "%lld PDFs nicht abrufbar. Ein erneuter Abruf lädt nur fehlende Dokumente." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld PDFs could not be retrieved. Retrying downloads only missing documents."
+          }
+        }
+      }
+    },
+    "quirion: Die Portalantwort konnte nicht gelesen werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "quirion: The portal response could not be read."
+          }
+        }
+      }
+    },
     "Bezahldienst" : {
       "extractionState" : "manual",
       "localizations" : {

@@ -102,6 +102,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("Herausgeber: Open Bank S.A. (Zinia). Anmeldung im eingebetteten Browser – keine API-Schlüssel nötig. Optional: eigene PSD2-/Enable-Banking-API unter „Erweitert“.").into(),
         },
+        ConnectorKind::Quirion => BankDescriptor {
+            kind,
+            name: "quirion".into(),
+            protocol: tr("Direkt-Login (Web-Session)").into(),
+            bank_code: "10110600".into(),
+            sf_symbol: "chart.pie".into(),
+            login_label: tr("E-Mail (nur Anzeige)").into(),
+            secret_label: tr("(Anmeldung im Browser-Fenster)").into(),
+            required_settings: vec![],
+            note: tr("quirion: Depotpositionen, Liquiditätskonto, Verrechnungskonto und gebuchte Umsätze. Anmeldung im Browserfenster. Interne Portal-API; Änderungen sind möglich.").into(),
+        },
         ConnectorKind::Fnz => BankDescriptor {
             kind,
             name: "FNZ Bank".into(),
@@ -209,6 +220,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::AmazonOrders => Box::new(amazon_orders::WebOnlyConnector),
         ConnectorKind::Fnz => Box::new(fnz::WebOnlyConnector),
         ConnectorKind::Ibkr => Box::new(ibkr::IbkrConnector::new()),
+        ConnectorKind::Quirion => Box::new(quirion::WebOnlyConnector),
         ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {

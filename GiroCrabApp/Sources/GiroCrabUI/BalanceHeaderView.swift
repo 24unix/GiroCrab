@@ -22,7 +22,14 @@ struct HoldingsCard: View {
                             .font(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
                     }
                     Spacer()
-                    Text(Money.format(h.valueCents)).monospacedDigit()
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(Money.format(h.valueCents)).monospacedDigit()
+                        if let gain = Self.calculatedGain(h) {
+                            Text("GuV (berechnet): \(Money.format(gain.cents)) (\(gain.percent.formatted(.number.precision(.fractionLength(2)))) %)")
+                                .font(.caption2).monospacedDigit()
+                                .foregroundStyle(gain.cents < 0 ? Color.red : Color.green)
+                        }
+                    }
                 }
                 .font(.callout)
                 .contextMenu {
@@ -40,6 +47,17 @@ struct HoldingsCard: View {
 }
 
 extension HoldingsCard {
+    /// Derived from existing holdings fields; missing cost prices stay unknown.
+    static func calculatedGain(_ holding: Holding) -> (cents: Int64, percent: Double)? {
+        guard holding.quantity.isFinite, holding.quantity > 0,
+              holding.purchasePriceCents > 0, holding.valueCents >= 0 else { return nil }
+        let cost = (holding.quantity * Double(holding.purchasePriceCents)).rounded()
+        guard cost.isFinite, cost >= 1, cost < Double(Int64.max) else { return nil }
+        let (gain, overflow) = holding.valueCents.subtractingReportingOverflow(Int64(cost))
+        guard !overflow else { return nil }
+        return (gain, Double(gain) / cost * 100)
+    }
+
     /// One position as plain text: name, ISIN/WKN, quantity, price, value.
     static func line(_ h: Holding) -> String {
         let id = h.isin.isEmpty ? h.wkn : h.isin

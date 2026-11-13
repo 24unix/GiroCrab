@@ -13,7 +13,7 @@ extension AppModel {
     /// PSD2 banks such as C24 and must not move the cards off the web login.
     func usesPortal(_ c: BankConnection) -> Bool {
         if Self.isMagicDemoLogin(c.loginName) { return false }
-        if !isDemo, (c.connector == .amazonOrders || c.connector == .fnz) { return true }
+        if !isDemo, (c.connector == .amazonOrders || c.connector == .fnz || c.connector == .quirion) { return true }
         guard !isDemo, c.connector == .americanExpress || c.connector == .amazonVisa else { return false }
         return !Self.cardUsesEnableBanking(
             optIn: settingEntry(Self.enableBankingOptInKey(c.connector))?.value,
@@ -82,6 +82,7 @@ extension ConnectorKind {
         // Amazon Visa customer portal (Open Bank / Zinia); www.openbank.de is
         // Open Bank's general site without the card login.
         case .amazonVisa: return URL(string: "https://kunden.openbankpay.com/amazon/login")
+        case .quirion: return URL(string: "https://banking.quirion.de/login/")
         case .fnz: return URL(string: "https://portal.fnz.de/")
         case .amazonOrders: return URL(string: "https://www.amazon.de/gp/css/order-history")
         default: return nil
@@ -101,6 +102,7 @@ extension ConnectorKind {
         case .amazonVisa: return ["openbankpay.com", "openbank.de", "openbank.com", "zinia.de", "zinia.com"]
         case .amazonOrders: return ["amazon.de", "amazon.com"]
         case .fnz: return ["portal.fnz.de"]
+        case .quirion: return ["banking.quirion.de"]
         default: return []
         }
     }
@@ -254,7 +256,7 @@ final class PortalBrowser {
 
     /// `captureTraffic: false` leaves the page untouched (no injected fetch/XHR hook) and
     /// identifies as desktop Safari – used for Amazon, whose sign-in is picky about both.
-    init(url: URL, domains: PortalDomains, captureTraffic: Bool = true) {
+    init(url: URL, domains: PortalDomains, captureTraffic: Bool = true, userScript: String? = nil) {
         self.domains = domains
         navigationGuard = PortalNavigationGuard()
         let cfg = WKWebViewConfiguration()
@@ -262,6 +264,9 @@ final class PortalBrowser {
         let ucc = WKUserContentController()
         if captureTraffic {
             ucc.addUserScript(WKUserScript(source: Self.hook, injectionTime: .atDocumentStart, forMainFrameOnly: false))
+        }
+        if let userScript {
+            ucc.addUserScript(WKUserScript(source: userScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         cfg.userContentController = ucc
         webView = WKWebView(frame: .zero, configuration: cfg)

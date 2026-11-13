@@ -30,6 +30,7 @@ pub mod moneymoney_db;
 pub mod moneymoney_import;
 pub mod paypal;
 pub mod portal_import;
+pub mod quirion;
 pub mod scalable;
 pub mod template;
 pub mod trade_republic;

@@ -44,7 +44,7 @@ jobs:
       - name: Kein Vault-Zugriff aus Views (nur über AppModel)
         run: scripts/lint-vault-access.sh
       - name: Test FNZ portal browser scripts
-        run: node --test scripts/test-fnz-portal.cjs
+        run: node --test scripts/test-fnz-portal.cjs scripts/test-quirion-portal.cjs
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 

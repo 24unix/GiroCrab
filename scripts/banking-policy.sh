@@ -209,7 +209,7 @@ PY
   verify_pair "$1"
 }
 
-KNOWN_CONNECTORS="fints comdirect paypal traderepublic enablebanking bunq scalable amazon-orders fnz"
+KNOWN_CONNECTORS="fints comdirect paypal traderepublic enablebanking bunq scalable amazon-orders fnz quirion"
 warn_unknown_connectors() {
   local id base
   for id in ${1//,/ }; do
