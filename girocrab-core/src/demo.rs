@@ -2,7 +2,7 @@
 //! (`--demo-seed` / `GIROCRAB_DEMO_SEED=1`). Deterministic and relative to
 //! today so screenshots are reproducible. Nothing in here is real data.
 
-use chrono::{Duration, Local, NaiveDate};
+use chrono::{Datelike, Duration, Local, NaiveDate};
 use rusqlite::{params, Connection};
 
 use crate::connectors::{descriptor, group_for};
@@ -1258,6 +1258,21 @@ impl Vault {
                 n += 1;
             }
         }
+        // Startsaldo (#212): the card reports no balance; it is computed from the
+        // bookings, starting with the statement balance at the start of the
+        // month three months ago, calibrated to today's balance of the spec.
+        let visa = acc_ids["demo-visa"];
+        tx.execute(
+            "UPDATE accounts SET balance_derived = 1 WHERE id = ?1",
+            [visa],
+        )?;
+        let since = (today - Duration::days(90)).with_day(1).unwrap_or(today);
+        crate::opening_balance::store(&tx, visa, Some(0), &since.format("%Y-%m-%d").to_string())?;
+        let card = DEMO_ACCOUNTS
+            .iter()
+            .find(|s| s.external_ref == "demo-visa")
+            .map_or(0, |s| s.opening_cents);
+        crate::opening_balance::calibrate_in(&tx, visa, card)?;
         Vault::apply_rules_inner(&tx, true)?;
         demo_documents(&tx, today, acc_ids["demo-giro"])?;
         tx.commit()?;
@@ -1341,6 +1356,16 @@ mod tests {
             .find(|a| a.name == "Musterbank Girokonto")
             .unwrap();
         assert_eq!(giro.balance_cents, 4_280_50);
+        assert!(!giro.balance_derived);
+        // #212: the card's balance is computed from a Startsaldo plus bookings
+        let visa = accounts
+            .iter()
+            .find(|a| a.name == "Visa Gold Kreditkarte")
+            .unwrap();
+        assert!(visa.balance_derived);
+        assert_eq!(visa.balance_cents, -642_80);
+        assert!(visa.opening_balance_date.ends_with("-01"));
+        assert!(visa.opening_balance_cents.is_some());
         // Loan view also shows the Giro's instalments (linked via the account number).
         let page = v
             .list_transactions(BookingFilter {

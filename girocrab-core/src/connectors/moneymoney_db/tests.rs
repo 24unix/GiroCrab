@@ -433,6 +433,27 @@ fn import_categories_splits_pending_notes_and_balance() {
     let usd = account_by_name(&v, "Dollar-Konto");
     assert_eq!(usd.currency, "USD");
     assert_eq!(bookings(&v, usd.id)[0].amount_cents, 2526);
+
+    // #212: MoneyMoney's opening balances carry over and keep driving the balance
+    assert!(giro.balance_derived);
+    assert_eq!(
+        (
+            giro.opening_balance_cents,
+            giro.opening_balance_date.as_str()
+        ),
+        (Some(10_000), "2020-01-01")
+    );
+    assert_eq!(
+        (usd.opening_balance_cents, usd.opening_balance_date.as_str()),
+        (Some(1050), "")
+    );
+    assert_eq!(usd.balance_cents, 1050 + 2526);
+    assert_eq!(visa.opening_balance_cents, None);
+    assert_eq!(account_by_name(&v, "Depot").opening_balance_cents, None);
+    v.calibrate_account_opening_balance(giro.id, 0).unwrap();
+    let giro = account_by_name(&v, "Girokonto");
+    assert_eq!(giro.opening_balance_cents, Some(4567 + 1230 + 10_000));
+    assert_eq!(giro.balance_cents, 0);
 }
 
 #[test]
@@ -1564,6 +1585,13 @@ fn shown_balance_also_wins_for_checking_accounts() {
     assert_eq!(acc.balance_cents, 123_456);
     // balance date = max(newest booking, balance timestamp)
     assert_eq!(acc.balance_date, "2026-03-08");
+    // #212: the opening balance is calibrated to MoneyMoney's own balance,
+    // its date kept, so later bookings continue from the shown value
+    assert_eq!(acc.opening_balance_date, "2020-01-01");
+    assert_eq!(
+        acc.opening_balance_cents,
+        Some(123_456 + 4567 + 1230 + 10_000)
+    );
 }
 
 #[test]

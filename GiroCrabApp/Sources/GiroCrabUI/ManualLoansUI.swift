@@ -50,7 +50,7 @@ extension AppModel {
         loanStore.linkByBooking[booking.id]
     }
 
-    private var windowUndoManager: UndoManager? {
+    var windowUndoManager: UndoManager? {
         #if os(macOS)
         // The main window's manager, also when saving from one of its sheets
         // (a sheet's own undo stack would vanish with the sheet).
@@ -488,7 +488,7 @@ struct LoanEditorSheet: View {
 }
 
 /// Section footer, leading-aligned like the rest of the form.
-private struct FormFooter: View {
+struct FormFooter: View {
     let text: LocalizedStringKey
     init(_ text: LocalizedStringKey) { self.text = text }
     var body: some View {

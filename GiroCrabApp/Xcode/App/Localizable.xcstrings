@@ -16987,6 +16987,149 @@
           }
         }
       }
+    },
+    "Startsaldo …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opening Balance …"
+          }
+        }
+      }
+    },
+    "Startsaldo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opening Balance"
+          }
+        }
+      }
+    },
+    "Ab Stichtag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From a date"
+          }
+        }
+      }
+    },
+    "Der Kontostand zu Beginn des Stichtags, z. B. aus dem ältesten vorhandenen Kontoauszug. Umsätze ab dem Stichtag werden addiert, ältere nicht. Ohne Stichtag zählen alle Umsätze." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The balance at the start of the date, e.g. from the oldest statement you have. Bookings from that date on are added, older ones are not. Without a date, all bookings count."
+          }
+        }
+      }
+    },
+    "Kalibrieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calibrate"
+          }
+        }
+      }
+    },
+    "Trägt den Startsaldo ein, mit dem der Kontostand diesem Betrag entspricht, z. B. dem Saldo auf dem letzten Kontoauszug. Gespeichert wird erst mit „Speichern“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fills in the opening balance that makes the account balance match this amount, e.g. the balance on your latest statement. Nothing is stored until you save."
+          }
+        }
+      }
+    },
+    "Startsaldo entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove Opening Balance"
+          }
+        }
+      }
+    },
+    "Startsaldo ändern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change Opening Balance"
+          }
+        }
+      }
+    },
+    "Kontostand bisher" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance Now"
+          }
+        }
+      }
+    },
+    "Kontostand danach" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance After"
+          }
+        }
+      }
+    },
+    "Umsätze ab Stichtag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bookings from the date"
+          }
+        }
+      }
+    },
+    "Ältere Umsätze (im Startsaldo enthalten)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Older bookings (included in the opening balance)"
+          }
+        }
+      }
+    },
+    "Vorschau erscheint, sobald ein Startsaldo eingetragen ist." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The preview appears once an opening balance is entered."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

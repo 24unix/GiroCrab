@@ -36,6 +36,7 @@ pub mod loans;
 pub mod merchants;
 pub mod models;
 pub mod money;
+pub mod opening_balance;
 pub mod planning;
 pub mod recurring;
 pub mod rules;

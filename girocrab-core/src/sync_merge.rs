@@ -57,6 +57,8 @@ const COLUMNS: &[(&str, &str, &str)] = &[
     ("bank_connections", "deleted_ms", "INTEGER"),
     ("accounts", "created_ms", "INTEGER NOT NULL DEFAULT 0"),
     ("accounts", "deleted_ms", "INTEGER"),
+    // #212: balance computed from bookings (connector reports none)
+    ("accounts", "balance_derived", "INTEGER NOT NULL DEFAULT 0"),
 ];
 
 /// Schema v8 – idempotent, also for vaults that skipped versions.
@@ -1555,10 +1557,10 @@ pub(crate) fn merge_accounts(
                     conn.execute(
                         "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner,
                              iban, account_number, currency, kind, balance_cents, balance_date, sf_symbol,
-                             sort_order, initial_balance_cents, created_ms, deleted_ms)
+                             sort_order, initial_balance_cents, balance_derived, created_ms, deleted_ms)
                          SELECT ?2, ?3, external_ref, name, bank_name, owner, iban, account_number, currency,
                              kind, balance_cents, balance_date, sf_symbol, sort_order, initial_balance_cents,
-                             created_ms, deleted_ms
+                             balance_derived, created_ms, deleted_ms
                            FROM other.accounts WHERE id = ?1",
                         params![oid, con, grp],
                     )?;

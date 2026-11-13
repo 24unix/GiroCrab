@@ -1153,6 +1153,16 @@ pub(crate) fn store_fetch(
                 revoked_accounts.push(name);
             }
         }
+        // #212: a connector without balances accumulates the bookings; such an
+        // account's balance can start from an opening balance.
+        for acc in &data.accounts {
+            if let Some(&id) = account_ids.get(&acc.external_ref) {
+                tx.execute(
+                    "UPDATE accounts SET balance_derived = ?1 WHERE id = ?2",
+                    params![data.adjust_balances, id],
+                )?;
+            }
+        }
         // Credit cards without a connector balance: derive the open amount.
         if !data.adjust_balances {
             for acc in data.accounts.iter().filter(|a| a.balance_cents == 0) {

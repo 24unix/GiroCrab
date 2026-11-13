@@ -381,6 +381,7 @@ struct MainSplitView: View {
         .accountGroupDialogs($model.groupDialog)
         .newCategoryDialog()
         .manualLoanSheets(model)
+        .openingBalanceSheet(model)
         #if os(macOS)
         // AppModel.openSettings(_:), e.g. "Gruppen bearbeiten …" → Settings › Kontogruppen
         .onChange(of: model.settingsRequested) { _, requested in

@@ -415,6 +415,8 @@ impl Vault {
         crate::sync_merge::migrate(conn)?;
         // manual loans (#36) – idempotent
         conn.execute_batch(crate::loans::LOAN_SCHEMA)?;
+        // opening balances (#212) – idempotent
+        conn.execute_batch(crate::opening_balance::SCHEMA)?;
         // after all column migrations: the indexes need the newest columns
         conn.execute_batch(PERF_INDEXES)?;
         if version < SCHEMA_VERSION {
@@ -508,6 +510,8 @@ impl Vault {
         let changed = Self::categorise_by_rules(conn, only_uncategorised, None)?;
         // manual loans (#36): link new bookings by expression, refresh balances
         crate::loans::apply_loan_rules(conn)?;
+        // opening balances (#212): balance = opening + bookings since
+        crate::opening_balance::refresh_all(conn)?;
         Ok(changed)
     }
 
@@ -826,6 +830,7 @@ impl Vault {
         // bookings and splits (newest edit per field wins, deletions stay)
         crate::sync_merge::merge_bookings(&tx, &acc_map, &cat_map, &rule_map, &mut st)?;
         crate::loans::merge_attached(&tx, &acc_map)?;
+        crate::opening_balance::merge_attached(&tx, &acc_map)?;
         tx.commit()?;
         Ok(st)
     }
@@ -1292,7 +1297,7 @@ impl Vault {
 
     pub fn list_accounts(&self) -> Result<Vec<Account>, CoreError> {
         let db = self.db()?;
-        let mut stmt = db.prepare(
+        let mut stmt = db.prepare(&format!(
             "SELECT a.id, a.connection_id, c.connector, a.group_id, a.name, a.bank_name, a.owner, a.iban, a.account_number,
                     a.currency, a.kind, a.balance_cents, a.balance_date, a.sf_symbol, a.sort_order,
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.deleted_ms IS NULL),
@@ -1305,12 +1310,15 @@ impl Vault {
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0 AND t.deleted_ms IS NULL),
                     a.initial_balance_cents, g.uuid, IFNULL(g.include_in_total, 1) AND a.archived_unix IS NULL,
                     a.color_hex, IFNULL(c.connector, ''), IFNULL(c.bank_code, ''), IFNULL(c.login_name, ''), a.external_ref,
-                    a.archived_unix, a.access_revoked
+                    a.archived_unix, a.access_revoked,
+                    o.opening_cents, IFNULL(o.opening_date, ''), {derived}
              FROM accounts a LEFT JOIN bank_connections c ON c.id = a.connection_id
              LEFT JOIN user_groups g ON g.uuid = a.user_group_uuid AND g.deleted_ms IS NULL
+             LEFT JOIN opening_balances o ON o.account_id = a.id
              WHERE a.deleted_ms IS NULL
              ORDER BY a.sort_order, a.id",
-        )?;
+            derived = crate::opening_balance::DERIVED_SQL
+        ))?;
         let mut color_hashes: HashMap<i64, u64> = HashMap::new();
         let rows = stmt.query_map([], |r| {
             Ok(Account {
@@ -1358,6 +1366,9 @@ impl Vault {
                 },
                 archived_unix: r.get(26)?,
                 access_revoked: r.get::<_, i64>(27)? != 0,
+                opening_balance_cents: r.get(28)?,
+                opening_balance_date: r.get(29)?,
+                balance_derived: r.get(30)?,
             })
         })?;
         let mut accounts = rows.collect::<Result<Vec<_>, _>>()?;
@@ -1376,7 +1387,10 @@ impl Vault {
         crate::user_groups::assign_default_colors(&mut accounts, &color_hashes);
         // Credit cards stored with balance 0: derive the open amount from bookings.
         for a in accounts.iter_mut().filter(|a| {
-            a.kind == AccountKind::CreditCard && a.balance_cents == 0 && a.transaction_count > 0
+            a.kind == AccountKind::CreditCard
+                && a.balance_cents == 0
+                && a.transaction_count > 0
+                && a.opening_balance_cents.is_none()
         }) {
             let mut st = db.prepare(
                 "SELECT booking_date, amount_cents, counterparty || ' ' || purpose || ' ' || booking_text

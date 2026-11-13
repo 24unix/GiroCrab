@@ -216,6 +216,14 @@ pub struct Account {
     /// The bank / PSD2 consent no longer grants access (e.g. not included in a
     /// renewed Enable Banking consent). Kept with its bookings, not synced.
     pub access_revoked: bool,
+    /// Opening balance ("Startsaldo", #212): the balance at the start of
+    /// `opening_balance_date` (`""` = before the first booking). Only used for
+    /// accounts with `balance_derived`.
+    pub opening_balance_cents: Option<i64>,
+    pub opening_balance_date: String,
+    /// The balance is computed from the bookings (imports, connectors without
+    /// a reported balance), not delivered by the bank; depots and loans never.
+    pub balance_derived: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

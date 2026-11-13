@@ -290,6 +290,7 @@ struct SidebarView: View {
         AccountGroupMenu(account: account)
         Divider()
         ManualLoanAccountMenu(model: model, account: account)
+        OpeningBalanceMenuItem(model: model, account: account)
         if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
             Button("\(conn.displayName) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
                 .disabled(model.bankingGate(for: conn) != nil)

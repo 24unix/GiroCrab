@@ -497,6 +497,8 @@ public final class AppModel {
     var demoSettingsSheet: String?
     /// The one group dialog on screen (new / rename / delete / move account).
     var groupDialog: GroupDialog?
+    /// The account whose Startsaldo sheet is open (#212).
+    var openingBalanceRequest: OpeningBalanceRequest?
     /// The account / group whose "Symbol & Farbe" popover is open.
     var iconColorTarget: IconColorTarget?
     /// The "new category" name prompt on screen (sidebar, menu bar, ⌘K).

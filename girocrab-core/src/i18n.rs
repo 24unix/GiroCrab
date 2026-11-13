@@ -232,6 +232,8 @@ fn default_name_en(de: &str) -> Option<&'static str> {
 fn english(de: &str) -> Option<&'static str> {
     Some(match de {
         "Zugangsbezeichnung" => "Connection label",
+        "Der Saldo dieses Kontos kommt von der Bank. Ein Startsaldo gilt nur für Konten, deren Saldo GiroCrab aus den Umsätzen berechnet." => "This account's balance comes from the bank. An opening balance only applies to accounts whose balance GiroCrab computes from the bookings.",
+        "Ungültiges Datum: {0}" => "Invalid date: {0}",
         "FNZ Bank / ebase / finvesto: Kontosalden, Depotwerte und PDF-Postkorb einschließlich Archiv. Anmeldung im Browserfenster mit FNZsecure-Freigabe. Die PIN wird nicht gespeichert." => "FNZ Bank / ebase / finvesto: account balances, depot values and PDF mailbox including the archive. Sign in in the browser window and approve with FNZsecure. Your PIN is not stored.",
         "Bitte bei FNZ anmelden und in FNZsecure freigeben." => "Please sign in to FNZ and approve with FNZsecure.",
         "Bitte im FNZ-Browserfenster abrufen." => "Please fetch data in the FNZ browser window.",

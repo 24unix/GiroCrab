@@ -1598,6 +1598,9 @@ struct AccountRows {
     balance_shown: bool,
     balance_source: String,
     balance_date: String,
+    /// MoneyMoney's opening balance ("Startsaldo"): (cents, date it applies
+    /// from, "" = all bookings). Carried over as the account's opening balance.
+    opening: Option<(i64, String)>,
 }
 
 impl Source {
@@ -1763,6 +1766,7 @@ impl Source {
             balance_shown: false,
             balance_source: String::new(),
             balance_date: String::new(),
+            opening: None,
         };
         // (date, cents) of the booked bookings that count for the balance:
         // parents (not their parts), account currency only.
@@ -1841,6 +1845,15 @@ impl Source {
             .map(|r| r.booking_date.clone())
             .max()
             .unwrap_or_default();
+        // the newest balance-history row, else the account's own initial balance
+        out.opening = match self.balances.get(&(a.id, a.currency.clone())) {
+            Some((ts, v)) => real_to_cents(*v).map(|c| (c, unix_to_date(*ts).unwrap_or_default())),
+            None => a
+                .initial_balance
+                .filter(|v| *v != 0.0)
+                .and_then(real_to_cents)
+                .map(|c| (c, String::new())),
+        };
         if let Some((cents, cur)) = &a.shown_balance {
             if cur.is_empty() || *cur == a.currency {
                 let d = a.balance_ts.and_then(unix_to_date).unwrap_or_default();
@@ -2513,6 +2526,20 @@ fn import(
             )?;
             if kind == AccountKind::Loan {
                 Vault::derive_initial_balance(conn, account_id)?;
+            }
+            // #212: MoneyMoney's opening balance becomes the account's. When
+            // MoneyMoney showed a balance of its own, that stays the balance:
+            // the opening amount is calibrated to it (date kept).
+            if let (Some((cents, date)), false) = (
+                &r.opening,
+                matches!(kind, AccountKind::Brokerage | AccountKind::Loan),
+            ) {
+                crate::opening_balance::store(conn, account_id, Some(*cents), date)?;
+                if r.balance_shown {
+                    crate::opening_balance::calibrate_in(conn, account_id, r.balance_cents)?;
+                } else {
+                    crate::opening_balance::refresh(conn, account_id)?;
+                }
             }
             // Positions are a snapshot: always replace, so a depot whose positions
             // were all sold in MoneyMoney ends up empty here too.
