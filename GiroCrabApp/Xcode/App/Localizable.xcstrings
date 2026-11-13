@@ -17351,35 +17351,112 @@
         }
       }
     },
-    "Alle als gelesen markieren" : {
+    "GiroCrab-Hilfe" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mark All as Read"
+            "value" : "GiroCrab Help"
+          }
+        }
+      }
+    },
+    "Hilfe & FAQ" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Help & FAQ"
+          }
+        }
+      }
+    },
+    "In der Hilfe suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search Help"
+          }
+        }
+      }
+    },
+    "Support" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support"
+          }
+        }
+      }
+    },
+    "Webseite & Dokumentation (girocrab.de)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Website & Documentation (girocrab.de)"
+          }
+        }
+      }
+    },
+    "Fehler melden / Issue erstellen (GitHub)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report a Bug / Open an Issue (GitHub)"
+          }
+        }
+      }
+    },
+    "Community & Diskussionen (GitHub)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Community & Discussions (GitHub)"
+          }
+        }
+      }
+    },
+    "Alle als gelesen markieren" : {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mark All as Read"
           }
         }
       }
     },
     "Keine neuen Umsätze" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No new bookings"
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No new bookings"
           }
         }
       }
     },
     "%lld Umsätze als gelesen markiert" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld bookings marked as read"
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld bookings marked as read"
           }
         }
       }
