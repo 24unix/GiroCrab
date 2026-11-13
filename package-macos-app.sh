@@ -31,8 +31,14 @@ fi
 # items are filtered by Sparkle channel in the app.
 SPARKLE_FEED_URL="${GIROCRAB_SPARKLE_FEED_URL:-https://github.com/GiroCrab/GiroCrab/releases/latest/download/appcast.xml}"
 
-echo "==> Building Rust core + UniFFI bindings (release)"
-./build-xcframework.sh --macos-only
+# Skip the Rust build when generated/ already matches sources, release profile and
+# FinTS product ID (e.g. notarize.sh --ios built it just before).
+if ./build-xcframework.sh --check --strict-env 2>/dev/null; then
+  echo "==> XCFramework is up to date — skipping rebuild"
+else
+  echo "==> Building Rust core + UniFFI bindings (release)"
+  ./build-xcframework.sh --macos-only
+fi
 
 echo "==> Building Swift app (release)"
 (cd GiroCrabApp && swift build -c release --product GiroCrabMac)

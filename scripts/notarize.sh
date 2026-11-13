@@ -303,6 +303,26 @@ else
   echo "warning: building WITHOUT GiroCrab's FinTS product ID ($CHANNEL): users must enter their own." >&2
 fi
 
+# iOS: bump the build number and make sure the XCFramework exists BEFORE either
+# job starts (no race on generated/ or project.pbxproj; package-macos-app.sh
+# then finds a current XCFramework and skips its own build).
+if [ "$BUILD_IOS" -eq 1 ]; then
+  PBXPROJ="GiroCrabApp/Xcode/GiroCrab.xcodeproj/project.pbxproj"
+  CURRENT_BUILD="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \([0-9][0-9]*\);.*/\1/p' "$PBXPROJ" | head -1)"
+  [ -n "$CURRENT_BUILD" ] || { echo "error: no numeric CURRENT_PROJECT_VERSION in $PBXPROJ" >&2; exit 1; }
+  NEXT_BUILD=$((CURRENT_BUILD + 1))
+  echo "==> Bumping iOS CURRENT_PROJECT_VERSION: ${CURRENT_BUILD} -> ${NEXT_BUILD}"
+  sed -i '' "s/CURRENT_PROJECT_VERSION = ${CURRENT_BUILD};/CURRENT_PROJECT_VERSION = ${NEXT_BUILD};/g" "$PBXPROJ"
+
+  # Release/TestFlight needs macOS + iOS device only: skip the simulator slice.
+  if ./build-xcframework.sh --check --strict-env --need-ios 2>/dev/null; then
+    echo "==> XCFramework is up to date — skipping rebuild"
+  else
+    echo "==> Building XCFramework (macOS + iOS device, no simulator)"
+    ./build-xcframework.sh --no-sim
+  fi
+fi
+
 echo "==> Build (xcframework + swift release + bundle) via package-macos-app.sh"
 ./package-macos-app.sh
 
@@ -313,6 +333,10 @@ APP="build/GiroCrab.app"; ZIP="build/GiroCrab-macOS.zip"
 echo "==> Signing (hardened runtime, inside-out incl. Sparkle)"
 scripts/sign-app.sh "$IDENTITY" "$APP"
 
+# Everything from the notarization submit to the GitHub upload. With --ios it runs in
+# the background (Apple's servers take minutes) while the iOS archive builds.
+# Body deliberately not indented: it contains multi-line strings.
+macos_release_pipeline() {
 echo "==> Zip + notarize (app)"
 ditto -c -k --keepParent "$APP" "$ZIP"
 xcrun notarytool submit "$ZIP" --keychain-profile "$PROFILE" --wait
@@ -510,21 +534,13 @@ elif [ "$NIGHTLY" -eq 1 ]; then
     upload_feed_to_latest_stable
   fi
 fi
+}
 
-if [ "$BUILD_IOS" -eq 1 ]; then
-  PBXPROJ="GiroCrabApp/Xcode/GiroCrab.xcodeproj/project.pbxproj"
-  CURRENT_BUILD="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \([0-9][0-9]*\);.*/\1/p' "$PBXPROJ" | head -1)"
-  [ -n "$CURRENT_BUILD" ] || { echo "error: no numeric CURRENT_PROJECT_VERSION in $PBXPROJ" >&2; exit 1; }
-  NEXT_BUILD=$((CURRENT_BUILD + 1))
-  echo "==> Bumping iOS CURRENT_PROJECT_VERSION: ${CURRENT_BUILD} -> ${NEXT_BUILD}"
-  sed -i '' "s/CURRENT_PROJECT_VERSION = ${CURRENT_BUILD};/CURRENT_PROJECT_VERSION = ${NEXT_BUILD};/g" "$PBXPROJ"
-
+ios_pipeline() {
   IOS_ARCHIVE="build/GiroCrab-iOS.xcarchive"
   IOS_EXPORT="build/ios-export"
   IOS_PLIST="build/ExportOptions-upload.plist"
   rm -rf "$IOS_ARCHIVE" "$IOS_EXPORT"
-
-  ./build-xcframework.sh
 
   # TestFlight: a changed MARKETING_VERSION triggers a 24 h external beta
   # review, a new build number under an approved version does not. With
@@ -556,6 +572,42 @@ if [ "$BUILD_IOS" -eq 1 ]; then
     -allowProvisioningUpdates
 
   echo "==> iOS Build ${NEXT_BUILD} uploaded to TestFlight${IOS_MARKETING_VERSION:+ (MARKETING_VERSION ${IOS_MARKETING_VERSION})}"
+}
+
+if [ "$BUILD_IOS" -eq 1 ]; then
+  # Notarization + GitHub upload (background) run in parallel with the iOS archive + TestFlight
+  # upload (foreground). Neither failure may leave the other half-reported.
+  MAC_STATUS_FILE="$(mktemp)"; rm -f "$MAC_STATUS_FILE"
+  echo "==> macOS notarization + release runs in the background ([macOS] lines); iOS archive starts now"
+  (
+    set +e
+    ( set -e; macos_release_pipeline ) 2>&1
+    echo $? > "$MAC_STATUS_FILE"
+  ) | while IFS= read -r line; do printf '[macOS] %s\n' "$line"; done &
+  MAC_JOB=$!
+
+  set +e
+  ( set -e; ios_pipeline )
+  IOS_RC=$?
+  echo "==> iOS finished (exit $IOS_RC); waiting for the macOS notarization/release job"
+  wait "$MAC_JOB"
+  MAC_RC="$(cat "$MAC_STATUS_FILE" 2>/dev/null || echo 1)"; rm -f "$MAC_STATUS_FILE"
+  set -e
+
+  if [ "$MAC_RC" -ne 0 ] || [ "$IOS_RC" -ne 0 ]; then
+    [ "$MAC_RC" -eq 0 ] || echo "error: macOS notarization/release FAILED (exit $MAC_RC) – see the [macOS] lines above" >&2
+    [ "$IOS_RC" -eq 0 ] || echo "error: iOS archive/TestFlight upload FAILED (exit $IOS_RC)" >&2
+    echo "note: CURRENT_PROJECT_VERSION in project.pbxproj was already bumped to ${NEXT_BUILD}." >&2
+    exit 1
+  fi
+else
+  macos_release_pipeline
+fi
+
+if [ "$BUILD_IOS" -eq 1 ]; then
+  echo ""
+  echo "==> iOS build number was bumped to ${NEXT_BUILD} in the working tree (not committed). Don't forget:"
+  echo "    git commit -m \"chore: bump iOS build number to ${NEXT_BUILD}\" -- \"$PBXPROJ\" && git push"
 fi
 
 echo "==> Done"

@@ -11,9 +11,15 @@
 #   ./build-xcframework.sh               # macOS (arm64) + iOS device + iOS simulator
 #   ./build-xcframework.sh --macos-only  # quick local build (used by `cargo build`)
 #   ./build-xcframework.sh --ios         # force iOS device + simulator slices (also with --macos-only)
+#   ./build-xcframework.sh --no-sim      # macOS + iOS device only (skips aarch64-apple-ios-sim;
+#                                        # enough for archive/TestFlight, not for the iOS simulator)
 #   ./build-xcframework.sh --debug       # unoptimised libraries
 #   ./build-xcframework.sh --check       # only compare generated/.stamp with the
 #                                        # current core sources; exit 1 if stale
+#       --check --need-ios               # also require an iOS device slice
+#       --check --strict-env             # also require profile=release and the same
+#                                        # GIROCRAB_FINTS_PRODUCT_ID as at build time
+#                                        # (used by notarize.sh to skip redundant rebuilds)
 #
 # Every build writes generated/.stamp with a fingerprint of everything that
 # goes into the library and the bindings (girocrab-core sources, uniffi-bindgen,
@@ -33,6 +39,9 @@ CARGO="${CARGO:-cargo}"
 MACOS_ONLY=0
 FORCE_IOS=0
 CHECK_ONLY=0
+NO_SIM=0
+NEED_IOS=0
+STRICT_ENV=0
 PROFILE=release
 for arg in "$@"; do
   case "$arg" in
@@ -40,7 +49,10 @@ for arg in "$@"; do
     --ios) FORCE_IOS=1 ;;
     --debug) PROFILE=debug ;;
     --check) CHECK_ONLY=1 ;;
-    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
+    --no-sim) NO_SIM=1 ;;
+    --need-ios) NEED_IOS=1 ;;
+    --strict-env) STRICT_ENV=1 ;;
+    -h|--help) sed -n '2,31p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -74,6 +86,16 @@ sources_fingerprint() {
 lock_fingerprint() { shasum -a 256 < "$ROOT/Cargo.lock" 2>/dev/null | cut -d' ' -f1; }
 combine_fingerprint() { printf '%s\n%s\n' "$1" "$2" | shasum -a 256 | cut -d' ' -f1; }
 
+# Hash (never the value) of the FinTS product ID compiled in by build.rs, so a
+# library built without it is not mistaken for a release build.
+env_fingerprint() {
+  if [[ -n "${GIROCRAB_FINTS_PRODUCT_ID:-}" ]]; then
+    printf '%s' "$GIROCRAB_FINTS_PRODUCT_ID" | shasum -a 256 | cut -d' ' -f1
+  else
+    echo none
+  fi
+}
+
 stamp_value() { sed -n "s/^$1=//p" "$STAMP" 2>/dev/null | head -1; }
 
 if [[ $CHECK_ONLY -eq 1 ]]; then
@@ -92,6 +114,21 @@ if [[ $CHECK_ONLY -eq 1 ]]; then
     echo "         (built from $(stamp_value commit); girocrab-core, uniffi-bindgen or Cargo.* changed since)." >&2
     echo "         swift build may fail with misleading errors – rebuild: $hint" >&2
     exit 1
+  fi
+  # Strict checks (notarize.sh) only; plain --check stays as the hooks know it.
+  if [[ $NEED_IOS -eq 1 && "$(stamp_value slices)" != *ios* ]]; then
+    echo "note: xcframework has no iOS device slice" >&2
+    exit 1
+  fi
+  if [[ $STRICT_ENV -eq 1 ]]; then
+    if [[ "$(stamp_value profile)" != "release" ]]; then
+      echo "note: xcframework was not built with the release profile" >&2
+      exit 1
+    fi
+    if [[ "$(stamp_value env)" != "$(env_fingerprint)" ]]; then
+      echo "note: xcframework was built with a different GIROCRAB_FINTS_PRODUCT_ID" >&2
+      exit 1
+    fi
   fi
   exit 0
 fi
@@ -115,7 +152,8 @@ export IPHONEOS_DEPLOYMENT_TARGET=17.0
 
 TARGETS=(aarch64-apple-darwin)
 if [[ $MACOS_ONLY -eq 0 || $FORCE_IOS -eq 1 ]]; then
-  TARGETS+=(aarch64-apple-ios aarch64-apple-ios-sim)
+  TARGETS+=(aarch64-apple-ios)
+  [[ $NO_SIM -eq 1 ]] || TARGETS+=(aarch64-apple-ios-sim)
 fi
 
 # OpenSSL's iOS cross configs call `makedepend` (only to write dependency
@@ -161,18 +199,29 @@ XCF_ARGS=(-library "$MAC_LIB" -headers "$GEN/Headers")
 IOS_LIB="$TARGET_DIR/aarch64-apple-ios/$PROFILE/lib$CRATE.a"
 SIM_LIB="$TARGET_DIR/aarch64-apple-ios-sim/$PROFILE/lib$CRATE.a"
 INCLUDE_IOS=$(( MACOS_ONLY == 0 || FORCE_IOS == 1 ))
-# Fingerprint of the sources the iOS slices in $TARGET_DIR were built from.
+INCLUDE_SIM=$(( INCLUDE_IOS == 1 && NO_SIM == 0 ))
+# Fingerprints of the sources the iOS slices in $TARGET_DIR were built from
+# (device + simulator, resp. device only).
 IOS_STAMP="$TARGET_DIR/ios-slices-$PROFILE.fingerprint"
-if [[ $INCLUDE_IOS -eq 1 ]]; then
+IOS_DEVICE_STAMP="$TARGET_DIR/ios-device-$PROFILE.fingerprint"
+if [[ $INCLUDE_SIM -eq 1 ]]; then
   echo "$FINGERPRINT" > "$IOS_STAMP"
+  echo "$FINGERPRINT" > "$IOS_DEVICE_STAMP"
+elif [[ $INCLUDE_IOS -eq 1 ]]; then
+  echo "$FINGERPRINT" > "$IOS_DEVICE_STAMP"
 elif [[ -f "$IOS_LIB" && -f "$SIM_LIB" && "$(cat "$IOS_STAMP" 2>/dev/null)" == "$FINGERPRINT" ]]; then
   # Keep iOS slices from an earlier full build of exactly these sources
   # (stale slices would fail UniFFI's checksums).
-  INCLUDE_IOS=1
+  INCLUDE_IOS=1; INCLUDE_SIM=1
   echo "    (keeping up-to-date iOS slices from the last full build)"
+elif [[ -f "$IOS_LIB" && "$(cat "$IOS_DEVICE_STAMP" 2>/dev/null)" == "$FINGERPRINT" ]]; then
+  INCLUDE_IOS=1
+  echo "    (keeping up-to-date iOS device slice from the last build)"
 fi
 if [[ $INCLUDE_IOS -eq 1 ]]; then
   XCF_ARGS+=(-library "$IOS_LIB" -headers "$GEN/Headers")
+fi
+if [[ $INCLUDE_SIM -eq 1 ]]; then
   XCF_ARGS+=(-library "$SIM_LIB" -headers "$GEN/Headers")
 fi
 xcodebuild -create-xcframework "${XCF_ARGS[@]}" -output "$OUT/$FFI_MODULE.xcframework" >/dev/null
@@ -207,13 +256,15 @@ let package = Package(
 SWIFT
 
 SLICES=macos
-[[ $INCLUDE_IOS -eq 1 ]] && SLICES=macos,ios
+[[ $INCLUDE_IOS -eq 1 ]] && SLICES=macos,ios-device
+[[ $INCLUDE_SIM -eq 1 ]] && SLICES=macos,ios
 {
   echo "# Written by build-xcframework.sh; checked by ./build-xcframework.sh --check"
   echo "fingerprint=$FINGERPRINT"
   echo "commit=$BUILT_FROM"
   echo "slices=$SLICES"
   echo "profile=$PROFILE"
+  echo "env=$(env_fingerprint)"
 } > "$STAMP"
 
 echo "==> Done: $OUT"
