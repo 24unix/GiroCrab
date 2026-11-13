@@ -26,6 +26,8 @@ use crate::money::json_number_to_cents;
 use crate::secret::SecretString;
 
 const BASE: &str = "https://api.comdirect.de";
+/// Provisional (not yet booked) bookings; removed once the bank no longer lists them.
+const HOLD_PREFIX: &str = "pending-hold-comdirect-";
 
 pub struct ComdirectConnector {
     client: Option<reqwest::Client>,
@@ -245,32 +247,46 @@ impl Default for ComdirectConnector {
 }
 
 fn strip_line_numbers(info: &str) -> String {
-    // comdirect sends fixed-width lines prefixed "01", "02", ...
+    // comdirect sends fixed-width lines (35 characters) prefixed "01", "02", ...
+    // A line shorter than that is padded with spaces, a full one is directly
+    // followed by the next number ("…Re02chnungsnummer …").
+    const LINE: usize = 35;
     if !info.starts_with("01") {
         return info.trim().to_string();
     }
-    let mut parts: Vec<&str> = Vec::new();
+    let chars: Vec<char> = info.chars().collect();
+    let mut out = String::new();
     let mut pos = 2;
     let mut n = 2;
     loop {
-        let marker = format!(" {n:02}");
-        match info[pos..].find(&marker) {
-            Some(off) => {
-                parts.push(info[pos..pos + off].trim());
-                pos += off + marker.len();
-                n += 1;
-            }
-            None => {
-                parts.push(info[pos..].trim());
+        let marker: Vec<char> = format!("{n:02}").chars().collect();
+        let rest = &chars[pos..];
+        // a space followed by the next number ends a padded line ...
+        let spaced =
+            (0..rest.len()).find(|&i| rest[i] == ' ' && rest[i + 1..].starts_with(&marker));
+        // ... a full line is directly followed by it and may end mid-word
+        let full = (rest.len() >= LINE + marker.len() && rest[LINE..].starts_with(&marker))
+            .then_some(LINE);
+        let (end, skip, is_full) = match (spaced, full) {
+            (Some(i), Some(f)) if i < f => (i, 1 + marker.len(), false),
+            (_, Some(f)) => (f, marker.len(), true),
+            (Some(i), None) => (i, 1 + marker.len(), false),
+            (None, None) => {
+                out.extend(rest);
                 break;
             }
+        };
+        let line: String = rest[..end].iter().collect();
+        if is_full {
+            out.push_str(&line); // the line breaks are arbitrary: join without a gap
+        } else {
+            out.push_str(line.trim_end());
+            out.push(' ');
         }
+        pos += end + skip;
+        n += 1;
     }
-    parts
-        .into_iter()
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[async_trait]
@@ -406,6 +422,7 @@ impl BankConnector for ComdirectConnector {
 
     async fn fetch(&mut self, ctx: &ConnectContext) -> CoreResult<FetchResult> {
         let mut out = FetchResult::default();
+        let mut holds_ok = true;
         let balances = self
             .get("/api/banking/clients/user/v2/accounts/balances")
             .await?;
@@ -457,30 +474,7 @@ impl BankConnector for ComdirectConnector {
                     .await?;
                 let values = page["values"].as_array().cloned().unwrap_or_default();
                 for t in &values {
-                    let amount = json_number_to_cents(&t["amount"]["value"]).unwrap_or(0);
-                    let party = if amount < 0 {
-                        &t["creditor"]
-                    } else {
-                        &t["remitter"]
-                    };
-                    let mut rt = RemoteTransaction {
-                        account_ref: id.clone(),
-                        external_id: t["reference"].as_str().unwrap_or_default().to_string(),
-                        booking_date: t["bookingDate"].as_str().unwrap_or_default().to_string(),
-                        value_date: t["valutaDate"].as_str().unwrap_or_default().to_string(),
-                        amount_cents: amount,
-                        currency: t["amount"]["unit"].as_str().unwrap_or("EUR").to_string(),
-                        counterparty: party["holderName"].as_str().unwrap_or_default().to_string(),
-                        counterparty_iban: party["iban"].as_str().unwrap_or_default().to_string(),
-                        purpose: strip_line_numbers(
-                            t["remittanceInfo"].as_str().unwrap_or_default(),
-                        ),
-                        booking_text: t["transactionType"]["text"]
-                            .as_str()
-                            .unwrap_or_default()
-                            .to_string(),
-                        ..Default::default()
-                    };
+                    let mut rt = map_transaction(t, &id);
                     if rt.external_id.is_empty() {
                         rt.external_id = ids.next(&rt);
                     }
@@ -491,6 +485,33 @@ impl BankConnector for ComdirectConnector {
                 if values.is_empty() || index >= total {
                     break;
                 }
+            }
+            // Not yet booked (card holds, pending transfers). Best effort: an error or a
+            // missing right just means no holds; the booked bookings stay untouched.
+            if let Ok(page) = self
+                .get(&format!(
+                    "/api/banking/v1/accounts/{id}/transactions?transactionState=NOTBOOKED&paging-first=0&paging-count=500"
+                ))
+                .await
+            {
+                let mut hold_ids = super::ContentIds::default();
+                for t in page["values"].as_array().cloned().unwrap_or_default() {
+                    let mut rt = map_transaction(&t, &id);
+                    if rt.booking_date.is_empty() {
+                        rt.booking_date = if rt.value_date.is_empty() {
+                            super::today()
+                        } else {
+                            rt.value_date.clone()
+                        };
+                    }
+                    if rt.booking_text.is_empty() {
+                        rt.booking_text = tr("Vorgemerkt").into();
+                    }
+                    rt.external_id = format!("{HOLD_PREFIX}{}", hold_ids.next(&rt));
+                    out.transactions.push(rt);
+                }
+            } else {
+                holds_ok = false;
             }
         }
         // PostBox documents (optional, errors are ignored)
@@ -552,6 +573,11 @@ impl BankConnector for ComdirectConnector {
                 });
             }
         }
+        // Claim the hold list as complete only when every NOTBOOKED request worked;
+        // otherwise the stored holds stay as they are.
+        if holds_ok {
+            out.hold_prefix = Some(HOLD_PREFIX.into());
+        }
         Ok(out)
     }
 
@@ -566,6 +592,31 @@ impl BankConnector for ComdirectConnector {
             }
         }
         self.token = SecretString::default();
+    }
+}
+
+/// Maps one `/accounts/{id}/transactions` entry. Not yet booked entries have no
+/// `reference` and often no `bookingDate`; the caller fills in an id and date.
+fn map_transaction(t: &Value, account_ref: &str) -> RemoteTransaction {
+    let amount = json_number_to_cents(&t["amount"]["value"]).unwrap_or(0);
+    let party = if amount < 0 {
+        &t["creditor"]
+    } else {
+        &t["remitter"]
+    };
+    let text = |v: &Value| v.as_str().unwrap_or_default().to_string();
+    RemoteTransaction {
+        account_ref: account_ref.to_string(),
+        external_id: text(&t["reference"]),
+        booking_date: text(&t["bookingDate"]),
+        value_date: text(&t["valutaDate"]),
+        amount_cents: amount,
+        currency: t["amount"]["unit"].as_str().unwrap_or("EUR").to_string(),
+        counterparty: text(&party["holderName"]),
+        counterparty_iban: text(&party["iban"]),
+        purpose: strip_line_numbers(t["remittanceInfo"].as_str().unwrap_or_default()),
+        booking_text: text(&t["transactionType"]["text"]),
+        ..Default::default()
     }
 }
 
@@ -669,5 +720,30 @@ mod tests {
             "Miete Januar Wohnung 3"
         );
         assert_eq!(super::strip_line_numbers("Kartenzahlung"), "Kartenzahlung");
+        // full 35-character lines carry no padding before the next number
+        assert_eq!(
+            super::strip_line_numbers(
+                "01easybell.de Kundennummer 4077068 Re02chnungsnummer R2026003619640 03End-to-End-Ref.: 04R2026003619640 05CORE / Mandatsref.: 06MND-2841562-1 07Gläubiger-ID: 08DE74ZZZ00000150248"
+            ),
+            "easybell.de Kundennummer 4077068 Rechnungsnummer R2026003619640 End-to-End-Ref.: R2026003619640 CORE / Mandatsref.: MND-2841562-1 Gläubiger-ID: DE74ZZZ00000150248"
+        );
+    }
+
+    #[test]
+    fn maps_not_booked_transaction_without_reference() {
+        let j: serde_json::Value = serde_json::from_str(
+            r#"{"bookingDate":null,"valutaDate":"2026-11-12",
+                "amount":{"value":"-12.50","unit":"EUR"},
+                "creditor":{"holderName":"REWE"},
+                "remittanceInfo":"01Kartenzahlung",
+                "transactionType":{"key":"CARD","text":"Kartenumsatz"}}"#,
+        )
+        .unwrap();
+        let t = super::map_transaction(&j, "acc1");
+        assert_eq!(t.amount_cents, -1250);
+        assert_eq!(t.counterparty, "REWE");
+        assert_eq!(t.booking_date, "");
+        assert_eq!(t.value_date, "2026-11-12");
+        assert!(t.external_id.is_empty());
     }
 }

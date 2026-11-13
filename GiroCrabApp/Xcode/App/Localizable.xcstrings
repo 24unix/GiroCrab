@@ -4463,6 +4463,39 @@
         }
       }
     },
+    "Vorgemerkt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending"
+          }
+        }
+      }
+    },
+    "Vorgemerkt – noch nicht gebucht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending – not booked yet"
+          }
+        }
+      }
+    },
+    "Die comdirect-Schnittstelle (REST) kann keine Überweisungen ausführen. Verbinden Sie das Konto zusätzlich per FinTS, um direkt zu überweisen. Sonst erhalten Sie am Ende einen GiroCode zum Scannen in der comdirect-App." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The comdirect interface (REST) can’t send transfers. Also connect the account via FinTS to transfer directly. Otherwise you’ll get a GiroCode at the end to scan in the comdirect app."
+          }
+        }
+      }
+    },
     "Geprüft" : {
       "extractionState" : "manual",
       "localizations" : {

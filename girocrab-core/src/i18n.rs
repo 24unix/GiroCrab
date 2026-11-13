@@ -366,6 +366,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Scannen Sie die Grafik mit der photoTAN-App und geben Sie die TAN ein." => "Scan the image with the photoTAN app and enter the TAN.",
         "Eine TAN wurde an {0} gesendet." => "A TAN was sent to {0}.",
         "Ihr Telefon" => "your phone",
+        "Vorgemerkt" => "Pending",
         // ------------------------------------------------------------ connectors/scalable.rs
         "OAuth-Geräteanmeldung + GraphQL-API der offiziellen CLI" => "OAuth device login + GraphQL API of the official CLI",
         "(nicht nötig – Anmeldung im Browser)" => "(not needed – sign in in the browser)",

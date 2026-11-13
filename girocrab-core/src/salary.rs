@@ -237,6 +237,7 @@ mod tests {
             salary_flag: None,
             is_salary: false,
             recurrence_key: String::new(),
+            is_pending: false,
         }
     }
 

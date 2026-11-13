@@ -437,6 +437,14 @@ struct BookingRow: View {
     var body: some View {
         HStack(spacing: 12) {
             MerchantSignet(merchant: booking.merchant, categorySymbol: booking.categorySymbol, showNewDot: !booking.checked)
+                .opacity(booking.isPending ? 0.7 : 1)
+                .overlay {
+                    // not booked yet: dashed outline instead of a solid tile
+                    if booking.isPending {
+                        RoundedRectangle(cornerRadius: 36 * 0.28, style: .continuous)
+                            .strokeBorder(Theme.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                    }
+                }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(booking.merchant.name.isEmpty ? booking.bookingText : booking.merchant.name)
@@ -485,9 +493,23 @@ struct BookingRow: View {
                     .foregroundStyle(Theme.tertiary)
                     .help("Geprüft")
             }
+            if booking.isPending {
+                Image(systemName: "clock")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.tertiary)
+                    .help("Vorgemerkt – noch nicht gebucht")
+                    .accessibilityLabel("Vorgemerkt")
+            }
             AmountLabel(cents: booking.amountCents)
                 .lineLimit(1)
                 .fixedSize()
+                .padding(.horizontal, booking.isPending ? 6 : 0)
+                .padding(.vertical, booking.isPending ? 2 : 0)
+                .overlay {
+                    if booking.isPending {
+                        Capsule().strokeBorder(Theme.secondary, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    }
+                }
         }
         .frame(minHeight: 44)
         .padding(.horizontal, 14)

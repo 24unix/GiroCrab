@@ -139,6 +139,12 @@ struct TransferSheetView: View {
                         .font(.caption).foregroundStyle(Theme.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, 152)
+                } else if account?.connector == .comdirect {
+                    // The comdirect REST API has no payment endpoint; FinTS has.
+                    Label("Die comdirect-Schnittstelle (REST) kann keine Überweisungen ausführen. Verbinden Sie das Konto zusätzlich per FinTS, um direkt zu überweisen. Sonst erhalten Sie am Ende einen GiroCode zum Scannen in der comdirect-App.", systemImage: "qrcode")
+                        .font(.caption).foregroundStyle(Theme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 152)
                 } else {
                     Label("Von diesem Konto kann GiroCrab nicht direkt überweisen. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank.", systemImage: "qrcode")
                         .font(.caption).foregroundStyle(Theme.secondary)

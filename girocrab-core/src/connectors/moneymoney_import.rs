@@ -945,7 +945,7 @@ fn find_twin(
     purpose: &str,
 ) -> CoreResult<Option<i64>> {
     let mut stmt = conn.prepare(
-        "SELECT id, counterparty, counterparty_iban FROM transactions
+        "SELECT id, counterparty, counterparty_iban, purpose FROM transactions
           WHERE account_id = ?1 AND external_id LIKE 'mm-%' AND amount_cents = ?2
             AND deleted_ms IS NULL AND id != ?3 AND abs(julianday(booking_date) - julianday(?4)) <= 2",
     )?;
@@ -956,13 +956,14 @@ fn find_twin(
                 r.get::<_, i64>(0)?,
                 r.get::<_, String>(1)?,
                 r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
             ))
         },
     )?;
     let (n_iban, n_name, n_purpose) = (norm(iban), norm(name), norm(purpose));
     let mut hits = Vec::new();
     for row in rows {
-        let (id, mm_name, mm_iban) = row?;
+        let (id, mm_name, mm_iban, mm_purpose) = row?;
         let (m_iban, m_name) = (norm(&mm_iban), norm(&mm_name));
         let ok = if !n_iban.is_empty() && !m_iban.is_empty() {
             n_iban == m_iban
@@ -970,12 +971,21 @@ fn find_twin(
             let long = n_name.len() >= 3 && m_name.len() >= 3;
             (long && (n_name.contains(&m_name) || m_name.contains(&n_name)))
                 || (m_name.len() >= 3 && (n_purpose.contains(&m_name) || n_name.contains(&m_name)))
+                // the bank sends no counterparty (comdirect REST, some debits): the
+                // purposes still start the same (reference numbers, invoice text)
+                || purposes_alike(&n_purpose, &norm(&mm_purpose))
         };
         if ok {
             hits.push(id);
         }
     }
     Ok(if hits.len() == 1 { Some(hits[0]) } else { None })
+}
+
+/// Two normalised purposes that share a long common start (≥ 24 characters).
+fn purposes_alike(a: &str, b: &str) -> bool {
+    const MIN: usize = 24;
+    a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count() >= MIN
 }
 
 /// A FinTS/API booking arrives that was already imported from MoneyMoney:
@@ -1147,6 +1157,7 @@ fn sample(r: &MmRow, i: i64, account_id: i64) -> Booking {
         salary_flag: None,
         is_salary: false,
         recurrence_key: String::new(),
+        is_pending: false,
     };
     enrich(&mut b);
     b.is_salary = crate::salary::salary_signal(&b);
@@ -1546,6 +1557,43 @@ mod tests {
         assert_eq!(cp, "Stadtwerke Köln");
         // out of the ±2 day window: no adoption
         assert!(!adopt_import(&db, acc, "f3", "2026-06-01", -1250, "", "REWE", "x", "").unwrap());
+    }
+
+    #[test]
+    fn adopt_import_matches_by_purpose_when_bank_sends_no_counterparty() {
+        let (_dir, v) = vault();
+        let acc = mm_acct(
+            &v,
+            "10.11.2026;Easybell GmbH;easybell.de Kundennummer 4077068 Rechnungsnummer R2026003619640 MREF: MND-2841562-1 CRED: DE74ZZZ00000150248;-1,80;Telekom;n1\n",
+        );
+        let db = v.db().unwrap();
+        // comdirect REST: no creditor name, the purpose carries the text
+        assert!(adopt_import(
+            &db,
+            acc,
+            "c1",
+            "2026-11-10",
+            -180,
+            "",
+            "",
+            "easybell.de Kundennummer 4077068 Rechnungsnummer R2026003619640 End-to-End-Ref.: R2026003619640 CORE / Mandatsref.: MND-2841562-1",
+            "Buchung"
+        )
+        .unwrap());
+        assert_eq!(ext_ids(&db, acc), vec!["c1"]);
+        // a different short purpose with the same amount is not adopted
+        assert!(!adopt_import(
+            &db,
+            acc,
+            "c2",
+            "2026-11-10",
+            -180,
+            "",
+            "",
+            "Kartenzahlung",
+            "Buchung"
+        )
+        .unwrap());
     }
 
     #[test]

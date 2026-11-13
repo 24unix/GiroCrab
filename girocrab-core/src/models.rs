@@ -333,6 +333,9 @@ pub struct Booking {
     pub is_salary: bool,
     /// Series key for recurring bookings (see `list_recurring`); "" = none.
     pub recurrence_key: String,
+    /// Not booked yet (card hold, pending transfer): the bank still reports it
+    /// as open, so it can change or disappear. The list shows it dashed.
+    pub is_pending: bool,
 }
 
 /// Dry-run result of a MoneyMoney import (nothing stored).

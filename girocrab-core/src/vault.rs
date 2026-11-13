@@ -1912,7 +1912,8 @@ impl Vault {
             "{cte}SELECT t.id, t.account_id, a.name, t.booking_date, t.value_date, t.amount_cents, t.currency, t.counterparty,
                     t.counterparty_iban, t.purpose, t.booking_text, cat.id, t.category_source, r.id, t.checked, a.kind,
                     (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note,
-                    t.purpose_code, t.gvc, t.salary_flag, {share_sql}
+                    t.purpose_code, t.gvc, t.salary_flag, {share_sql},
+                    (t.external_id LIKE 'pending-%')
              {from_sql} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC"
         );
         let mut stmt = db.prepare(&sql)?;
@@ -1962,6 +1963,7 @@ impl Vault {
                     salary_flag: r.get::<_, Option<i64>>(20)?.map(|f| f != 0),
                     is_salary: false,
                     recurrence_key: String::new(),
+                    is_pending: r.get::<_, i64>(22)? != 0,
                 },
             ))
         })?;
