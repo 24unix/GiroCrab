@@ -446,6 +446,12 @@ public final class BankingPolicy {
         // Test hooks for throwaway keys and a local server. Not compiled into
         // release builds, so nobody can redirect or disable the check there.
         let env = ProcessInfo.processInfo.environment
+        // Unit tests never touch the keychain: the unsigned xctest process falls
+        // back to the login keychain, where the item belongs to the signed app,
+        // and every `AppModel` would raise a keychain access dialog.
+        if NSClassFromString("XCTestCase") != nil || env["XCTestConfigurationFilePath"] != nil {
+            store = MemoryBankingPolicyStore()
+        }
         if let k = env["GIROCRAB_BANKING_POLICY_KEY"], !k.isEmpty {
             keys = [k]
             // Test keys never touch the real keychain item: a file (to test
