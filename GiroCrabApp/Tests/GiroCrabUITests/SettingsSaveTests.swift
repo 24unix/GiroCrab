@@ -40,4 +40,21 @@ final class SettingsSaveTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(model.vault).onlineLogoProvider(), "duckduckgo")
         XCTAssertEqual(model.logoProvider, "duckduckgo")
     }
+
+    #if os(macOS)
+    func testDocumentFolderIsCreatedOffMainAndSwitchOffClears() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("girocrab-mirror-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: url) }
+        model.setDocumentMirror(url)
+        XCTAssertEqual(model.documentMirrorPath, url.path)  // the switch reacts at once
+        for _ in 0..<300 where !FileManager.default.fileExists(atPath: url.path) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertNil(model.errorMessage)
+        model.setDocumentMirror(nil)
+        XCTAssertNil(model.documentMirrorPath)
+    }
+    #endif
 }

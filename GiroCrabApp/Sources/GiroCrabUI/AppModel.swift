@@ -1871,11 +1871,25 @@ public final class AppModel {
     /// Turns the document folder on (all documents are copied once) or off.
     func setDocumentMirror(_ url: URL?) {
         if let url {
-            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
             documentMirrorPath = url.path
             UserDefaults.standard.set(url.path, forKey: Self.mirrorDirKey)
-            if let vault { run { try vault.resetDocumentMirror() } }
-            mirrorDocumentsIfEnabled()
+            // Creating the folder (iCloud Drive can be slow) and resetting the
+            // copy markers (vault mutex) stay off the main thread. `mirrorRunning`
+            // keeps syncs from starting a copy in between.
+            let vault = self.vault
+            mirrorRunning = true
+            Task { @MainActor [weak self] in
+                let failure: Error? = await Task.detached(priority: .userInitiated) { () -> Error? in
+                    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+                    do { try vault?.resetDocumentMirror(); return nil } catch { return error }
+                }.value
+                guard let self else { return }
+                mirrorRunning = false
+                if let failure { errorMessage = describe(failure) }
+                // Switched off or changed again while resetting: nothing to copy here.
+                guard documentMirrorPath == url.path else { return }
+                mirrorDocumentsIfEnabled()
+            }
         } else {
             documentMirrorPath = nil
             documentMirrorStatus = nil
