@@ -37,6 +37,14 @@ Database schema changes are a new migration step plus a fixture vault, see
 Open a *New bank request* issue first if unsure – ING, N26, Scalable Capital, Consorsbank and
 Santander are wanted.
 
+## UI strings
+
+The String Catalogs (`GiroCrabApp/Xcode/App/*.xcstrings`) are sorted by key so that parallel PRs
+don't collide at the end of the file. Add keys with `GiroCrabApp/Tools/update-localizations.sh` or
+by hand, then run `scripts/xcstrings.py format` (CI checks it).
+`git config merge.xcstrings.driver 'scripts/xcstrings.py merge %O %A %B'` makes git merge the
+catalogs per key instead of per line; the hooks in `.githooks` register it automatically.
+
 ## Adding merchants
 
 Edit `girocrab-core/src/merchants.rs`: add an entry with `e("key", "Display Name", &["needle", …],

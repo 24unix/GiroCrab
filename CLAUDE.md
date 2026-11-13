@@ -66,7 +66,9 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 - The local xcframework is whatever branch last ran `./build-xcframework.sh`. Before trusting
   `swift build` errors, run `./build-xcframework.sh --check` (silent + exit 0 = bindings match the
   core sources; the hooks in `.githooks` run it after checkout/merge/rebase) and rebuild if it warns.
-- `Localizable.xcstrings` is not sorted: append keys, never re-sort (a sort is a 4k-line diff).
+- `Localizable.xcstrings` is sorted by key (CI: `scripts/xcstrings.py check`): never append at the end. After adding
+  keys run `scripts/xcstrings.py format` (`GiroCrabApp/Tools/update-localizations.sh` writes the same form).
+  Merge driver for conflicts, once per clone: `git config merge.xcstrings.driver 'scripts/xcstrings.py merge %O %A %B'`.
 
 ## Lockstep: README, screenshots, releases, website
 `GiroCrab/girocrab.de` (clone next to this repo as `../girocrab.de`) and the newest icon from

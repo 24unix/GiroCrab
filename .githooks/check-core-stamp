@@ -2,6 +2,8 @@
 # Shared by post-checkout, post-merge and post-rewrite: warn (never fail) when
 # generated/ no longer matches the Rust core after a branch switch, pull or
 # rebase. Silent if generated/ was never built in this worktree.
+# Also registers the merge driver for the String Catalogs (.gitattributes) once per clone.
+git config merge.xcstrings.driver >/dev/null || git config merge.xcstrings.driver 'scripts/xcstrings.py merge %O %A %B'
 [ -d generated/GiroCrabCorePackage ] || exit 0
 ./build-xcframework.sh --check || true
 exit 0
