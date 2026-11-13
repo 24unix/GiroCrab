@@ -194,6 +194,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
 | Weitere Banken per PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen |
+| Alte Leipziger (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ✅ Verifiziert |
 | Amazon Bestellungen | Web-Portal | ✓ | – | – | – | – | – | 🧪 Test gesucht |
 | easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Test gesucht |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
@@ -398,6 +399,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
 | More banks via PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Limited |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
+| Alte Leipziger (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ✅ Verified |
 | Amazon orders | Web-Portal | ✓ | – | – | – | – | – | 🧪 Testing wanted |
 | easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Testing wanted |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |

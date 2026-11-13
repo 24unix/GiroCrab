@@ -166,7 +166,7 @@ struct ConnectionEditSheet: View {
         case .americanExpress, .amazonVisa: return []
         case .bunq: return ["bunq.environment"]
         case .enableBanking: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
-        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank: return []
+        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger: return []
         }
     }
 
@@ -230,7 +230,7 @@ struct ConnectionEditSheet: View {
     }
     @State private var showAdvanced = false
 
-    private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq, .ibkr, .easybank].contains(connection.connector) }
+    private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq, .ibkr, .easybank, .alteLeipziger].contains(connection.connector) }
     private var isTR: Bool { connection.connector == .tradeRepublic }
 
     var body: some View {
@@ -259,9 +259,9 @@ struct ConnectionEditSheet: View {
                         LabeledContent("BLZ", value: blz)
                     }
                     if usesPin {
-                        Toggle(isRah10 ? "Passwort im Tresor speichern" : connection.connector == .bunq ? "API-Schlüssel im Tresor speichern" : connection.connector == .ibkr ? "Flex-Query-ID im Tresor speichern" : connection.connector == .easybank ? "Passwort im Tresor speichern" : "PIN im Tresor speichern", isOn: $storePin)
+                        Toggle(isRah10 ? "Passwort im Tresor speichern" : connection.connector == .bunq ? "API-Schlüssel im Tresor speichern" : connection.connector == .ibkr ? "Flex-Query-ID im Tresor speichern" : [.easybank, .alteLeipziger].contains(connection.connector) ? "Passwort im Tresor speichern" : "PIN im Tresor speichern", isOn: $storePin)
                         if storePin {
-                            SecureField(isRah10 ? "Passwort der Schlüsseldatei (leer = unverändert)" : status?.hasPin == true ? "Gespeicherte PIN (leer = unverändert)" : (connection.connector == .ibkr ? "Flex-Query-ID" : connection.connector == .easybank ? "Passwort" : "PIN"), text: $pin)
+                            SecureField(isRah10 ? "Passwort der Schlüsseldatei (leer = unverändert)" : status?.hasPin == true ? "Gespeicherte PIN (leer = unverändert)" : (connection.connector == .ibkr ? "Flex-Query-ID" : [.easybank, .alteLeipziger].contains(connection.connector) ? "Passwort" : "PIN"), text: $pin)
                         }
                     }
                     if isFinTs {
@@ -412,6 +412,7 @@ struct ConnectionEditSheet: View {
         case .payPal: return "PayPal REST-App"
         case .bunq: return "bunq API"
         case .ibkr: return "Interactive Brokers Flex Web Service"
+        case .alteLeipziger: return "fin4u"
         default: return "Enable Banking (PSD2)"
         }
     }

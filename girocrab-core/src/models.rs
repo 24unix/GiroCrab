@@ -42,6 +42,8 @@ pub enum ConnectorKind {
     Quirion,
     /// easybank (formerly Barclays Deutschland) credit cards and statements, see #209.
     Easybank,
+    /// Alte Leipziger (Bauspar) via the fin4u customer portal API
+    AlteLeipziger,
 }
 
 impl ConnectorKind {
@@ -63,6 +65,7 @@ impl ConnectorKind {
             ConnectorKind::Ibkr => "ibkr",
             ConnectorKind::Quirion => "quirion",
             ConnectorKind::Easybank => "easybank",
+            ConnectorKind::AlteLeipziger => "fin4u",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -113,6 +116,7 @@ impl ConnectorKind {
             ConnectorKind::Ibkr,
             ConnectorKind::Quirion,
             ConnectorKind::Easybank,
+            ConnectorKind::AlteLeipziger,
         ]
     }
 }

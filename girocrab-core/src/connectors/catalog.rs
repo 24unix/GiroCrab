@@ -124,6 +124,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("easybank (ehemals Barclays Deutschland): Kreditkarten und Umsätze der letzten zwei Jahre. Beim ersten Abruf fragt easybank eine SMS-TAN ab, danach erkennt die Bank GiroCrab wieder. Interne Portal-API; Änderungen sind möglich.").into(),
         },
+        ConnectorKind::AlteLeipziger => BankDescriptor {
+            kind,
+            name: "Alte Leipziger".into(),
+            protocol: tr("fin4u-Kundenportal (app.fin4u.de)").into(),
+            bank_code: "50012800".into(),
+            sf_symbol: "house.circle".into(),
+            login_label: tr("fin4u-Benutzername (E-Mail)").into(),
+            secret_label: tr("fin4u-Passwort").into(),
+            required_settings: vec![],
+            note: tr("Bausparverträge und Darlehen der Alte Leipziger über die Schnittstelle des fin4u-Portals. Inoffizielle Nutzung – kann sich ändern.").into(),
+        },
         ConnectorKind::Fnz => BankDescriptor {
             kind,
             name: "FNZ Bank".into(),
@@ -449,6 +460,19 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[],
     },
     MatrixEntry {
+        name: "Alte Leipziger (Bausparen)",
+        kind: Some(ConnectorKind::AlteLeipziger),
+        interface: Interface::WebPortal,
+        official: Some(false),
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Documents,
+        ],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
         name: "Trade Republic",
         kind: Some(ConnectorKind::TradeRepublic),
         interface: Interface::WebPortal,
@@ -536,6 +560,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::Quirion => Box::new(quirion::WebOnlyConnector),
         ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),
         ConnectorKind::Easybank => Box::new(easybank::EasybankConnector::new()),
+        ConnectorKind::AlteLeipziger => Box::new(fin4u::Fin4uConnector::new()),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {
             let (country, aspsp) = ConnectorKind::enable_banking_target(key).unwrap_or(("DE", ""));

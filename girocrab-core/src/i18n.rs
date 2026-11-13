@@ -820,6 +820,20 @@ fn english(de: &str) -> Option<&'static str> {
         }
         "Die Antwort von bunq ist nicht korrekt signiert." => "The response from bunq is not correctly signed.",
         "Bitte den bunq-API-Schlüssel eingeben." => "Please enter your bunq API key.",
+        // ------------------------------------------------------------ fin4u
+        "fin4u-Kundenportal (app.fin4u.de)" => "fin4u customer portal (app.fin4u.de)",
+        "fin4u-Benutzername (E-Mail)" => "fin4u username (e-mail)",
+        "fin4u-Passwort" => "fin4u password",
+        "Bausparverträge und Darlehen der Alte Leipziger über die Schnittstelle des fin4u-Portals. Inoffizielle Nutzung – kann sich ändern." => {
+            "Alte Leipziger building savings contracts and loans via the fin4u portal API. Unofficial use – may change."
+        }
+        "fin4u-Sitzung abgelaufen. Bitte erneut abrufen." => "fin4u session expired. Please sync again.",
+        "Benutzername (E-Mail) und Passwort für fin4u erforderlich" => "fin4u username (e-mail) and password required",
+        "Anmeldung bei fin4u fehlgeschlagen. Bitte Zugangsdaten prüfen." => "fin4u login failed. Please check your credentials.",
+        "fin4u hat kein Zugriffstoken geliefert" => "fin4u returned no access token",
+        "fin4u hat unerwartet geantwortet ({0}). Wahrscheinlich wurde die Portal-Schnittstelle geändert; bitte GiroCrab aktualisieren." => {
+            "fin4u answered unexpectedly ({0}). The portal interface has probably changed; please update GiroCrab."
+        }
         "Sparen" => "Savings",
         "Rückbuchung" => "Reversal",
         "Abhebung" => "Withdrawal",
