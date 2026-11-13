@@ -4562,13 +4562,13 @@
         }
       }
     },
-    "GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server, kein Tracking und keine Cloud-Synchronisation. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht." : {
+    "GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server und kein Tracking. Nur wenn Sie den iCloud-Sync oben einschalten, liegt der verschlüsselte Tresor in Ihrem iCloud Drive. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "GiroCrab connects to your banks directly from this device. There is no GiroCrab server, no tracking and no cloud sync. PINs and TANs are only kept in memory for a single fetch and deleted afterwards."
+            "value" : "GiroCrab connects to your banks directly from this device. There is no GiroCrab server and no tracking. Only if you turn on iCloud sync above is the encrypted vault stored in your iCloud Drive. PINs and TANs are only kept in memory for a single fetch and deleted afterwards."
           }
         }
       }

@@ -2632,6 +2632,43 @@ public final class AppModel {
         reloadSettings()
     }
 
+    /// Last queued background settings write; the next one waits for it, so
+    /// two quick edits reach the vault in the order they were made.
+    @ObservationIgnored private var settingsWriteTask: Task<Void, Never>?
+
+    /// Same as `saveSetting`, but the write and the list reload run off the main
+    /// thread (they hold the vault mutex). For edits made in the Settings window,
+    /// where nothing right after depends on the value being stored; flows that
+    /// continue with the vault straight away (add-bank, import) keep `saveSetting`.
+    func saveSettingInBackground(_ key: String, _ value: String) {
+        guard let vault else { return }
+        let previous = settingsWriteTask
+        settingsWriteTask = Task { @MainActor [weak self] in
+            await previous?.value
+            do {
+                let result: SettingsSnapshot = try await Self.offMain { () throws -> SettingsSnapshot in
+                    try vault.setSetting(key: key, value: value)
+                    let entries = try vault.listSettings()
+                    let provider = try vault.onlineLogoProvider()
+                    return SettingsSnapshot(entries: entries, logoProvider: provider)
+                }
+                // The vault may have been switched or locked meanwhile.
+                guard let self, self.vault === vault else { return }
+                self.settings = result.entries
+                self.logoProvider = result.logoProvider
+                self.reloadProductIDState(vault)
+            } catch {
+                guard let self else { return }
+                self.errorMessage = describe(error)
+            }
+        }
+    }
+
+    private struct SettingsSnapshot: Sendable {
+        let entries: [SettingEntry]
+        let logoProvider: String
+    }
+
     /// Adds a bank login. While demo data is shown, the login goes into the
     /// personal vault (switching to it), then setup / PIN entry starts.
     func addConnection(_ kind: ConnectorKind, login: String) {

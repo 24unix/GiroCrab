@@ -356,7 +356,7 @@ struct SettingField: View {
 
     private func save() {
         if !entry.isSecret && text == entry.value { return }
-        model.saveSetting(entry.key, text)
+        model.saveSettingInBackground(entry.key, text)
         if entry.isSecret { text = ""; editing = false }
     }
 
@@ -376,7 +376,7 @@ struct LogoSettings: View {
                 LabeledContent("Stufe 1b – simple-icons", value: String(localized: "Vektor-Markenzeichen (CC0-Datensatz) für bekannte Marken"))
                 Picker("Händler-Logos laden", selection: Binding(
                     get: { model.logoProvider },
-                    set: { model.saveSetting("merchants.online_logos", $0) }
+                    set: { model.logoProvider = $0; model.saveSettingInBackground("merchants.online_logos", $0) }
                 )) {
                     Text("Aus").tag("off")
                     Text("DuckDuckGo").tag("duckduckgo")
@@ -489,7 +489,7 @@ struct SecuritySettings: View {
             ICloudSyncSection()
             BankingPolicySection()
             Section("Datenschutz") {
-                Text("GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server, kein Tracking und keine Cloud-Synchronisation. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht.")
+                Text("GiroCrab verbindet sich direkt von diesem Gerät mit Ihren Banken. Es gibt keinen GiroCrab-Server und kein Tracking. Nur wenn Sie den iCloud-Sync oben einschalten, liegt der verschlüsselte Tresor in Ihrem iCloud Drive. PINs und TANs liegen nur für einen Abruf im Speicher und werden danach gelöscht.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             if model.hasOwnVault && !model.isDemo {
@@ -809,7 +809,7 @@ struct OwnProductIDField: View {
         let value = text.trimmingCharacters(in: .whitespaces)
         text = ""
         guard !value.isEmpty else { return }
-        model.saveSetting("fints.product_id", value)
+        model.saveSettingInBackground("fints.product_id", value)
     }
 
     /// After a rejected registration the alert sends the user here.
