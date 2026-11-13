@@ -942,23 +942,78 @@ pub(crate) fn pick_aspsp_name(list: &Value, wanted: &str) -> Option<String> {
     }
 }
 
+/// The consent went through, but Enable Banking returned no account.
+fn no_linked_accounts() -> CoreError {
+    CoreError::Bank {
+        code: "EB_NO_ACCOUNTS".into(),
+        message: tr("Die Bank hat die Freigabe erteilt, Enable Banking liefert aber keine Konten. Bei einer Anwendung im eingeschränkten Modus müssen die Konten zuerst auf enablebanking.com mit der Anwendung verknüpft werden („Linked accounts“). Danach die Freigabe erneut starten.").into(),
+    }
+}
+
+/// The exact ASPSP name for a generic bank from the live list. When the list
+/// has banks but none fits, the bank isn't offered through Enable Banking in
+/// that country: say so instead of letting `POST /auth` fail with
+/// "Wrong ASPSP name provided". An empty / unreadable list gives `None`
+/// (then the configured name is tried as it is).
+pub(crate) fn resolve_generic_aspsp(
+    list: &Value,
+    wanted: &str,
+    country: &str,
+) -> CoreResult<Option<String>> {
+    if let Some(exact) = pick_aspsp_name(list, wanted) {
+        return Ok(Some(exact));
+    }
+    if parse_aspsps(list).is_empty() {
+        return Ok(None);
+    }
+    Err(CoreError::Bank {
+        code: "EB_UNKNOWN_ASPSP".into(),
+        message: trf(
+            "„{0}“ ist über Enable Banking ({1}) nicht verfügbar. Für diese Bank gibt es in GiroCrab derzeit keinen Abruf.",
+            &[&wanted, &country],
+        ),
+    })
+}
+
+/// The `error` of a consent redirect (OAuth 2.0 codes), in words: only
+/// `access_denied` means the user said no; `server_error` and
+/// `temporarily_unavailable` are failures at the bank or Enable Banking.
+fn consent_error(code: &str, description: &str) -> CoreError {
+    let detail = if description.trim().is_empty() {
+        code.to_string()
+    } else {
+        format!("{code}: {}", description.trim())
+    };
+    let message = match code {
+        "access_denied" => trf("Die Freigabe wurde bei der Bank abgelehnt ({0}).", &[&detail]),
+        "server_error" | "temporarily_unavailable" => trf(
+            "Die Bank hat die Freigabe mit einem Fehler auf ihrer Seite beendet ({0}). Das liegt nicht an Ihren Angaben – bitte später erneut versuchen, gegebenenfalls mit weniger ausgewählten Konten.",
+            &[&detail],
+        ),
+        _ => trf("Die Freigabe ist fehlgeschlagen ({0}).", &[&detail]),
+    };
+    CoreError::Authentication { message }
+}
+
 /// Accepts a full redirect URL ("https://…/callback?code=…&state=…") or a bare code.
 fn extract_code(input: &str, expected_state: &str) -> CoreResult<String> {
     let input = input.trim();
     if let Ok(u) = url::Url::parse(input) {
         let mut code = None;
         let mut state = None;
+        let mut error = None;
+        let mut description = String::new();
         for (k, v) in u.query_pairs() {
             match k.as_ref() {
                 "code" => code = Some(v.to_string()),
                 "state" => state = Some(v.to_string()),
-                "error" => {
-                    return Err(CoreError::Authentication {
-                        message: trf("Zustimmung verweigert: {0}", &[&v]),
-                    })
-                }
+                "error" => error = Some(v.to_string()),
+                "error_description" => description = v.to_string(),
                 _ => {}
             }
+        }
+        if let Some(e) = error {
+            return Err(consent_error(&e, &description));
         }
         if let Some(s) = state {
             if !expected_state.is_empty() && s != expected_state {
@@ -1032,7 +1087,7 @@ impl BankConnector for EnableBankingConnector {
                 )
                 .await
             {
-                if let Some(exact) = pick_aspsp_name(&list, &configured) {
+                if let Some(exact) = resolve_generic_aspsp(&list, &configured, &country)? {
                     if exact != configured {
                         names.insert(0, exact);
                     }
@@ -1141,6 +1196,12 @@ impl BankConnector for EnableBankingConnector {
             .unwrap_or_default()
             .to_string();
         let mut accounts = self.parse_accounts(&v);
+        if !self.card_mode() && accounts.is_empty() {
+            // A restricted application (activated by linking accounts) only
+            // sees accounts linked to it: the bank's consent then yields an
+            // empty list instead of an error.
+            return Err(no_linked_accounts());
+        }
         if !self.card_mode() {
             // New consent: keep the vault accounts of the previous session.
             let renames = carry_over(&self.st.accounts, &mut accounts);
@@ -2203,6 +2264,41 @@ mod tests {
         assert_eq!(super::pick_aspsp_name(&list, "Santander"), None);
         assert_eq!(super::pick_aspsp_name(&list, "Nope"), None);
         assert_eq!(super::pick_aspsp_name(&list, " "), None);
+        // consent errors: only access_denied means "refused"
+        let e = super::extract_code(
+            "https://localhost/girocrab/callback?state=s&error=server_error",
+            "s",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains("Fehler auf ihrer Seite") && !e.contains("abgelehnt"),
+            "{e}"
+        );
+        let e = super::extract_code(
+            "https://localhost/girocrab/callback?error=access_denied&error_description=User+cancelled",
+            "",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains("abgelehnt") && e.contains("User cancelled"),
+            "{e}"
+        );
+        // a bank the live list doesn't have: a clear error, not a 422 later
+        let err = super::resolve_generic_aspsp(&list, "Advanzia", "DE").unwrap_err();
+        assert!(err.to_string().contains("nicht verfügbar"), "{err}");
+        assert_eq!(
+            super::resolve_generic_aspsp(&list, "N26", "DE")
+                .unwrap()
+                .as_deref(),
+            Some("N26 Bank")
+        );
+        // no list (network error, empty answer): try the name as it is
+        assert_eq!(
+            super::resolve_generic_aspsp(&serde_json::Value::Null, "Advanzia", "DE").unwrap(),
+            None
+        );
         assert_eq!(super::pick_aspsp_name(&json!({}), "N26"), None);
     }
 

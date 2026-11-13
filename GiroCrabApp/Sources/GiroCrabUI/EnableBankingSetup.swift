@@ -127,11 +127,33 @@ struct EnableBankingSetupSection: View {
             }
             .padding(.leading, 22)
             step(2, "Bei der Anwendung „Activate by linking accounts“ wählen und alle Konten verknüpfen, die GiroCrab sehen soll – nicht verknüpfte Konten liefert die Bank nicht.")
+            if !model.psd2LinkHints.isEmpty { importedAccounts }
             step(3, "Hier die heruntergeladene .pem-Datei wählen. GiroCrab übernimmt Schlüssel und Application-ID und prüft die Anwendung.")
             Link("enablebanking.com/cp/applications öffnen", destination: URL(string: "https://enablebanking.com/cp/applications")!)
                 .font(.caption)
                 .padding(.leading, 22)
         }
+    }
+
+    /// The accounts the MoneyMoney import attached to Enable Banking
+    /// connections – the ones to link while activating the application.
+    private var importedAccounts: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Aus Ihrem MoneyMoney-Import:").font(.caption.weight(.medium))
+            ForEach(model.psd2LinkHints, id: \.connectionId) { c in
+                Text(c.bankName).font(.caption.weight(.medium)).padding(.top, 2)
+                ForEach(Array(c.accounts.enumerated()), id: \.offset) { _, a in
+                    Text([a.name, a.iban.isEmpty ? (a.accountNumber.isEmpty ? nil : String(localized: "Konto \(a.accountNumber)")) : formatIBAN(a.iban)]
+                        .compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption.monospacedDigit()).foregroundStyle(Theme.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.canvas))
+        .padding(.leading, 22)
     }
 
     private func step(_ n: Int, _ text: LocalizedStringKey) -> some View {

@@ -349,6 +349,9 @@ pub struct MoneyMoneyImportPreview {
     pub detected_categories: Vec<String>,
     pub sample_bookings: Vec<Booking>,
     pub suggested_account_name: String,
+    /// Existing account the file most likely belongs to (statement IBAN,
+    /// matching bookings or the file name), to preselect as target.
+    pub suggested_account_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

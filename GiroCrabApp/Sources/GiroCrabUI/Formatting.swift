@@ -245,27 +245,102 @@ extension Color {
         #endif
     }
 
-    /// Brand colours used as text: too light for the light theme (yellow, pink)
-    /// get a dark fallback, too dark for the dark theme (near-black brands) get
-    /// lightened towards white.
+    /// Brand / category colours used as text or icons: too light for the light
+    /// theme (yellow, pink) get a dark fallback; too dark for the dark theme
+    /// are lightened just enough for text contrast – hue and saturation stay,
+    /// so a muted blue stays blue instead of turning grey (as in MoneyMoney).
     static func readable(hex: String) -> Color {
-        var s = hex
-        if s.hasPrefix("#") { s.removeFirst() }
+        let s = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
         var v: UInt64 = 0
         Scanner(string: s).scanHexInt64(&v)
         let r = Double((v >> 16) & 0xFF), g = Double((v >> 8) & 0xFF), b = Double(v & 0xFF)
         let lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
         let light = lum > 0.72 ? "#0F172A" : "#" + s
-        let dark: String
-        if lum < 0.45 {
-            // mix with white so the hue survives but contrast on #1E293B is enough
-            let t = 0.55
-            let mix = { (c: Double) in Int((c + (255 - c) * t).rounded()) }
-            dark = String(format: "#%02X%02X%02X", mix(r), mix(g), mix(b))
-        } else {
-            dark = "#" + s
+        return Color(
+            light: light,
+            dark: ReadableColor.onDark(hex: s, minContrast: 4.5),
+            darkHighContrast: ReadableColor.onDark(hex: s, minContrast: 7)
+        )
+    }
+}
+
+/// Contrast helpers for `Color.readable` (pure, testable).
+enum ReadableColor {
+    /// The lightest dark-theme surface (`Theme.card`) – the worst case.
+    static let darkSurface = "1E293B"
+
+    /// WCAG relative luminance of `#RRGGBB` / `RRGGBB`.
+    static func luminance(hex: String) -> Double {
+        let (r, g, b) = rgb(hex)
+        func lin(_ c: Double) -> Double { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+        return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    }
+
+    /// WCAG contrast ratio of two colours (1…21).
+    static func contrast(_ a: String, _ b: String) -> Double {
+        let (x, y) = (luminance(hex: a), luminance(hex: b))
+        return (max(x, y) + 0.05) / (min(x, y) + 0.05)
+    }
+
+    /// `hex` with its HSL lightness raised (hue and saturation unchanged)
+    /// until it reaches `minContrast` against `darkSurface`; unchanged when it
+    /// already does. Returns `#RRGGBB`.
+    static func onDark(hex: String, minContrast: Double) -> String {
+        let (r, g, b) = rgb(hex)
+        let (h, s, l0) = hsl(r, g, b)
+        var l = l0
+        var out = hexString(r, g, b)
+        while contrast(out, darkSurface) < minContrast && l < 1 {
+            l = min(1, l + 0.01)
+            let c = rgbFromHSL(h, s, l)
+            out = hexString(c.0, c.1, c.2)
         }
-        return Color(light: light, dark: dark)
+        return out
+    }
+
+    // MARK: - conversions (components 0…1)
+
+    static func rgb(_ hex: String) -> (Double, Double, Double) {
+        let s = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        var v: UInt64 = 0
+        Scanner(string: s).scanHexInt64(&v)
+        return (Double((v >> 16) & 0xFF) / 255, Double((v >> 8) & 0xFF) / 255, Double(v & 0xFF) / 255)
+    }
+
+    static func hexString(_ r: Double, _ g: Double, _ b: Double) -> String {
+        func byte(_ c: Double) -> Int { Int((min(1, max(0, c)) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", byte(r), byte(g), byte(b))
+    }
+
+    static func hsl(_ r: Double, _ g: Double, _ b: Double) -> (Double, Double, Double) {
+        let mx = max(r, g, b), mn = min(r, g, b), l = (mx + mn) / 2
+        guard mx != mn else { return (0, 0, l) }
+        let d = mx - mn
+        let s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn)
+        var h: Double
+        switch mx {
+        case r: h = (g - b) / d + (g < b ? 6 : 0)
+        case g: h = (b - r) / d + 2
+        default: h = (r - g) / d + 4
+        }
+        h /= 6
+        return (h, s, l)
+    }
+
+    static func rgbFromHSL(_ h: Double, _ s: Double, _ l: Double) -> (Double, Double, Double) {
+        guard s > 0 else { return (l, l, l) }
+        let q = l < 0.5 ? l * (1 + s) : l + s - l * s
+        let p = 2 * l - q
+        func hue(_ t0: Double) -> Double {
+            var t = t0
+            if t < 0 { t += 1 }
+            if t > 1 { t -= 1 }
+            if t < 1 / 6 { return p + (q - p) * 6 * t }
+            if t < 1 / 2 { return q }
+            if t < 2 / 3 { return p + (q - p) * (2 / 3 - t) * 6 }
+            return p
+        }
+        return (hue(h + 1 / 3), hue(h), hue(h - 1 / 3))
     }
 }
 

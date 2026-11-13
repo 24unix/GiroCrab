@@ -524,7 +524,8 @@ struct WebLoginSheet: View {
             .macFrame(minWidth: 720, minHeight: 620)
             Divider()
             // "Alle abrufen": cancelling skips this login (see SyncPromptButtons)
-            SyncPromptButtons(cancel: { model.cancelWebLogin(); dismiss() }) {
+            // no dismiss(): see the setup sheet – the next login's sheet may be open already
+            SyncPromptButtons(cancel: { model.cancelWebLogin() }) {
                 Button {
                     if let c = found { model.applyBrowserSession(connection, cookies: c) }
                     dismiss()

@@ -84,7 +84,7 @@ impl MmRow {
         }
     }
 
-    fn fp(&self) -> String {
+    pub(crate) fn fp(&self) -> String {
         fingerprint(
             &self.booking_date,
             self.amount_cents,
@@ -474,10 +474,66 @@ pub(crate) struct Stats {
 
 struct Existing {
     id: i64,
+    /// Exact fingerprint (date, amount, counterparty, purpose).
+    fp: String,
+    /// Without the purpose: MoneyMoney's exports append the SEPA references
+    /// to the purpose (CSV ", Mandatsref: …", camt "EREF+… SVWZ+…"), while
+    /// the database keeps them apart.
+    weak: String,
+    /// Date, amount and name only: the database import fills in the own IBAN
+    /// for transfers that MoneyMoney only knows by account number (#94), the
+    /// export leaves it empty.
+    named: String,
     category_source: String,
     note: String,
     /// Soft-deleted: counts as present, but is never updated.
     deleted: bool,
+}
+
+/// For each row the existing booking it duplicates (index into `existing`).
+/// Both passes count as multisets – every existing booking is used once, so
+/// two identical coffees on one day stay two rows:
+/// 1. exact fingerprint,
+/// 2. rows still unmatched: same date, amount and counterparty (purpose
+///    ignored), in order,
+/// 3. rows without counterparty IBAN: same date, amount and name.
+fn match_existing(rows: &[MmRow], existing: &[Existing]) -> Vec<Option<usize>> {
+    let mut by_fp: HashMap<&str, std::collections::VecDeque<usize>> = HashMap::new();
+    for (j, e) in existing.iter().enumerate() {
+        by_fp.entry(e.fp.as_str()).or_default().push_back(j);
+    }
+    let mut used = vec![false; existing.len()];
+    let mut out: Vec<Option<usize>> = rows
+        .iter()
+        .map(|r| {
+            let j = by_fp.get_mut(r.fp().as_str())?.pop_front()?;
+            used[j] = true;
+            Some(j)
+        })
+        .collect();
+    let mut by_weak: HashMap<&str, std::collections::VecDeque<usize>> = HashMap::new();
+    for (j, e) in existing.iter().enumerate().filter(|(j, _)| !used[*j]) {
+        by_weak.entry(e.weak.as_str()).or_default().push_back(j);
+    }
+    for (r, m) in rows.iter().zip(out.iter_mut()).filter(|(_, m)| m.is_none()) {
+        let weak = fingerprint(&r.booking_date, r.amount_cents, &r.iban, &r.name, "");
+        if let Some(j) = by_weak.get_mut(weak.as_str()).and_then(|q| q.pop_front()) {
+            used[j] = true;
+            *m = Some(j);
+        }
+    }
+    let mut by_name: HashMap<&str, std::collections::VecDeque<usize>> = HashMap::new();
+    for (j, e) in existing.iter().enumerate().filter(|(j, _)| !used[*j]) {
+        by_name.entry(e.named.as_str()).or_default().push_back(j);
+    }
+    for (r, m) in rows.iter().zip(out.iter_mut()) {
+        if m.is_some() || !r.iban.trim().is_empty() || r.name.trim().is_empty() {
+            continue;
+        }
+        let key = fingerprint(&r.booking_date, r.amount_cents, "", &r.name, "");
+        *m = by_name.get_mut(key.as_str()).and_then(|q| q.pop_front());
+    }
+    out
 }
 
 pub(crate) fn find_or_create_category(
@@ -527,6 +583,129 @@ pub(crate) fn find_or_create_category(
     parent.ok_or_else(|| CoreError::InvalidInput {
         message: "empty category".into(),
     })
+}
+
+/// The own account of a single-account statement file: camt.053 `<Acct>`
+/// (IBAN + currency) or MT940 `:25:` when it holds an IBAN. Files with
+/// several statements name no single account.
+fn statement_account(text: &str) -> Option<(String, String)> {
+    use crate::connectors::fints::sepa;
+    if text.contains("BkToCstmr") {
+        let stmt = Regex::new(r"<(?:\w+:)?Stmt>").unwrap();
+        if stmt.find_iter(text).count() != 1 {
+            return None;
+        }
+        let acct = Regex::new(r"(?s)<(?:\w+:)?Acct>(.*?)</(?:\w+:)?Acct>").unwrap();
+        let block = acct.captures(text)?.get(1)?.as_str();
+        let iban = Regex::new(r"<(?:\w+:)?IBAN>\s*([^<]+?)\s*<").unwrap();
+        let ccy = Regex::new(r"<(?:\w+:)?Ccy>\s*([^<]+?)\s*<").unwrap();
+        let i = sepa::normalize_iban(iban.captures(block)?.get(1)?.as_str());
+        let c = ccy
+            .captures(block)
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().to_uppercase())
+            .unwrap_or_default();
+        return sepa::validate_iban(&i).then_some((i, c));
+    }
+    let f25 = Regex::new(r"(?m)^:25:(.+)$").unwrap();
+    let mut it = f25.captures_iter(text);
+    let first = sepa::normalize_iban(it.next()?.get(1)?.as_str().trim());
+    if it.any(|c| sepa::normalize_iban(c[1].trim()) != first) {
+        return None;
+    }
+    sepa::validate_iban(&first).then(|| (first, String::new()))
+}
+
+/// The existing account an export most likely belongs to, so the assistant
+/// can preselect it instead of creating a second archive account:
+/// 1. the statement's own IBAN (+ currency when several accounts share it),
+/// 2. the account already holding most of the bookings (date + amount; at
+///    least half the rows and clearly ahead of the next one),
+/// 3. an account named like the file ("Girokonto.csv" → "Girokonto").
+pub(crate) fn suggest_account(
+    conn: &Connection,
+    text: &str,
+    rows: &[MmRow],
+    file_name: &str,
+) -> CoreResult<Option<i64>> {
+    use crate::connectors::fints::sepa;
+    let mut accounts: Vec<(i64, String, String, String)> = Vec::new();
+    {
+        let mut q = conn.prepare(
+            "SELECT id, iban, currency, name FROM accounts WHERE deleted_ms IS NULL ORDER BY id",
+        )?;
+        for a in q.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))? {
+            accounts.push(a?);
+        }
+    }
+    if let Some((iban, ccy)) = statement_account(text) {
+        let same: Vec<_> = accounts
+            .iter()
+            .filter(|a| sepa::normalize_iban(&a.1) == iban)
+            .collect();
+        let pick: Vec<_> = if same.len() > 1 && !ccy.is_empty() {
+            same.iter()
+                .filter(|a| a.2.eq_ignore_ascii_case(&ccy))
+                .collect()
+        } else {
+            same.iter().collect()
+        };
+        if pick.len() == 1 {
+            return Ok(Some(pick[0].0));
+        }
+    }
+    let dates = rows.iter().map(|r| r.booking_date.as_str());
+    if let (Some(from), Some(to)) = (dates.clone().min(), dates.max()) {
+        let mut have: HashMap<i64, HashMap<(String, i64), u32>> = HashMap::new();
+        let mut q = conn.prepare(
+            "SELECT t.account_id, t.booking_date, t.amount_cents FROM transactions t
+               JOIN accounts a ON a.id = t.account_id
+              WHERE a.deleted_ms IS NULL AND t.booking_date BETWEEN ?1 AND ?2",
+        )?;
+        for r in q.query_map(params![from, to], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
+        })? {
+            let (a, d, c) = r?;
+            *have.entry(a).or_default().entry((d, c)).or_default() += 1;
+        }
+        let mut score: Vec<(u32, i64)> = have
+            .into_iter()
+            .map(|(a, mut m)| {
+                let hits = rows
+                    .iter()
+                    .filter(|r| {
+                        m.get_mut(&(r.booking_date.clone(), r.amount_cents))
+                            .filter(|n| **n > 0)
+                            .map(|n| *n -= 1)
+                            .is_some()
+                    })
+                    .count() as u32;
+                (hits, a)
+            })
+            .collect();
+        score.sort_by(|x, y| y.cmp(x));
+        if let Some(&(best, a)) = score.first() {
+            let next = score.get(1).map_or(0, |s| s.0);
+            if best as usize * 2 >= rows.len() && best > next.saturating_mul(2) {
+                return Ok(Some(a));
+            }
+        }
+    }
+    let stem = account_name_from_file(file_name);
+    let stem = stem
+        .strip_suffix(" (MoneyMoney)")
+        .unwrap_or(&stem)
+        .trim()
+        .to_lowercase();
+    let named: Vec<_> = accounts
+        .iter()
+        .filter(|a| a.3.trim().to_lowercase() == stem)
+        .collect();
+    Ok((named.len() == 1).then(|| named[0].0))
 }
 
 fn account_name_from_file(file_name: &str) -> String {
@@ -634,47 +813,42 @@ pub(crate) fn merge_rows(
     cat_cache: &mut HashMap<String, i64>,
     st: &mut Stats,
 ) -> CoreResult<()> {
-    // Existing bookings of the account, bucketed by fingerprint (multiset: two
-    // identical coffees on one day stay two rows).
-    let mut existing: HashMap<String, Vec<Existing>> = HashMap::new();
+    // Existing bookings of the account (incl. soft-deleted ones: a deleted
+    // booking is matched, never re-imported), with their exact fingerprint and
+    // a weak key without the purpose.
+    let mut existing: Vec<Existing> = Vec::new();
     {
         let mut q = conn.prepare(
-            // includes soft-deleted rows: a deleted booking is matched, never re-imported
             "SELECT id, booking_date, amount_cents, counterparty_iban, counterparty, purpose,
                     import_fp, category_source, note, deleted_ms IS NOT NULL
              FROM transactions WHERE account_id = ?1 ORDER BY id",
         )?;
         let it = q.query_map([st.account_id], |r| {
+            let (date, cents, iban, name, purpose): (String, i64, String, String, String) =
+                (r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?);
             let fp: String = r.get(6)?;
-            let fp = if fp.is_empty() {
-                fingerprint(
-                    &r.get::<_, String>(1)?,
-                    r.get(2)?,
-                    &r.get::<_, String>(3)?,
-                    &r.get::<_, String>(4)?,
-                    &r.get::<_, String>(5)?,
-                )
-            } else {
-                fp
-            };
-            Ok((
-                fp,
-                Existing {
-                    id: r.get(0)?,
-                    category_source: r.get(7)?,
-                    note: r.get(8)?,
-                    deleted: r.get(9)?,
+            Ok(Existing {
+                id: r.get(0)?,
+                fp: if fp.is_empty() {
+                    fingerprint(&date, cents, &iban, &name, &purpose)
+                } else {
+                    fp
                 },
-            ))
+                weak: fingerprint(&date, cents, &iban, &name, ""),
+                named: fingerprint(&date, cents, "", &name, ""),
+                category_source: r.get(7)?,
+                note: r.get(8)?,
+                deleted: r.get(9)?,
+            })
         })?;
         for e in it {
-            let (fp, e) = e?;
-            existing.entry(fp).or_default().push(e);
+            existing.push(e?);
         }
     }
+    let match_of = match_existing(rows, &existing);
 
     let mut seen: HashMap<String, usize> = HashMap::new();
-    for r in rows {
+    for (i, r) in rows.iter().enumerate() {
         let fp = r.fp();
         let k = {
             let n = seen.entry(fp.clone()).or_insert(0);
@@ -698,7 +872,7 @@ pub(crate) fn merge_rows(
             None
         };
         let note = if preserve_notes { r.note.as_str() } else { "" };
-        if let Some(e) = existing.get(&fp).and_then(|v| v.get(k)) {
+        if let Some(e) = match_of[i].map(|j| &existing[j]) {
             st.duplicates += 1;
             if e.deleted {
                 continue;
@@ -993,6 +1167,8 @@ impl Vault {
         let rows = parse_export(&data)?;
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
+        // before the dry run, which may add a provisional archive account
+        let suggested_account_id = suggest_account(&tx, &decode(&data), &rows, &file_name)?;
         let st = run(&tx, &rows, &file_name, target_account_id, true, true)?;
         let mut cats: Vec<String> = rows
             .iter()
@@ -1016,6 +1192,7 @@ impl Vault {
                 .map(|(i, r)| sample(r, i as i64, target_account_id.unwrap_or(0)))
                 .collect(),
             suggested_account_name: account_name_from_file(&file_name),
+            suggested_account_id,
         };
         drop(tx); // rollback: this was only a dry run
         Ok(preview)
@@ -1163,6 +1340,56 @@ mod tests {
             .find(|a| a.id == res.account_id)
             .unwrap();
         assert_eq!(acc.balance_cents, 76_544);
+    }
+
+    /// MoneyMoney's exports append the SEPA references to the purpose, the
+    /// database keeps them apart: an export over a database import must not
+    /// duplicate (seen with a real 1,522-booking account). Still a multiset.
+    #[test]
+    fn export_with_sepa_references_matches_bookings_without_them() {
+        let (_dir, v) = vault();
+        let head = "\"Datum\";\"Wertstellung\";\"Kategorie\";\"Name\";\"Verwendungszweck\";\"Konto\";\"Bank\";\"Betrag\";\"Währung\"\n";
+        let row = |purpose: &str| {
+            format!("\"02.01.2026\";\"\";\"\";\"Stadtwerke\";\"{purpose}\";\"DE02120300000000202051\";\"\";\"-50,00\";\"EUR\"\n")
+        };
+        // as from the database: two payments, references not in the purpose
+        let db = format!(
+            "{head}{}{}",
+            row("Abschlag Januar"),
+            row("Abschlag Nachzahlung")
+        );
+        let a = v
+            .import_moneymoney_data(db.into_bytes(), "Giro.csv".into(), None, true, true)
+            .unwrap();
+        assert_eq!(a.imported, 2);
+        // the export: references appended, plus one booking more
+        let export = format!(
+            "{head}{}{}{}",
+            row("Abschlag Januar, Mandatsref: M-1, Gläubiger: DE98ZZZ09999999999"),
+            row("Abschlag Nachzahlung, Mandatsref: M-1, Gläubiger: DE98ZZZ09999999999"),
+            row("Abschlag Februar, Mandatsref: M-1, Gläubiger: DE98ZZZ09999999999"),
+        );
+        let p = v
+            .preview_moneymoney_import(export.into_bytes(), "Giro.csv".into(), Some(a.account_id))
+            .unwrap();
+        assert_eq!((p.new_bookings, p.duplicates_skipped_or_enriched), (1, 2));
+
+        // own transfer: the database import filled in the IBAN, the export has none
+        let own = |iban: &str| {
+            format!("{head}\"05.01.2026\";\"\";\"\";\"Tagesgeld\";\"Umbuchung\";\"{iban}\";\"\";\"-100,00\";\"EUR\"\n")
+        };
+        v.import_moneymoney_data(
+            own("DE89370400440532013000").into_bytes(),
+            "Giro.csv".into(),
+            Some(a.account_id),
+            true,
+            true,
+        )
+        .unwrap();
+        let p = v
+            .preview_moneymoney_import(own("").into_bytes(), "Giro.csv".into(), Some(a.account_id))
+            .unwrap();
+        assert_eq!((p.new_bookings, p.duplicates_skipped_or_enriched), (0, 1));
     }
 
     #[test]
@@ -1437,6 +1664,52 @@ mod tests {
   </Ntry>
  </Stmt></BkToCstmrStmt>
 </Document>"#;
+
+    /// The assistant preselects the account a file belongs to.
+    #[test]
+    fn preview_suggests_the_matching_account() {
+        let (_dir, v) = vault();
+        let set = |id: i64, name: &str, iban: &str| {
+            v.db()
+                .unwrap()
+                .execute(
+                    "UPDATE accounts SET name = ?2, iban = ?3 WHERE id = ?1",
+                    params![id, name, iban],
+                )
+                .unwrap();
+        };
+        // 1. bookings already in an account
+        let a = v
+            .import_moneymoney_data(CSV.as_bytes().to_vec(), "a.csv".into(), None, true, true)
+            .unwrap();
+        let p = v
+            .preview_moneymoney_import(CSV.as_bytes().to_vec(), "Export.csv".into(), None)
+            .unwrap();
+        assert_eq!(p.suggested_account_id, Some(a.account_id));
+
+        // 2. camt: the statement IBAN wins, even without matching bookings
+        let camt = CAMT053.replace("DE44520900000012345601", "DE89370400440532013000");
+        let b = v
+            .import_moneymoney_data(CSV.as_bytes().to_vec(), "b.csv".into(), None, true, true)
+            .unwrap();
+        set(b.account_id, "Tagesgeld", "DE89 3704 0044 0532 0130 00");
+        let p = v
+            .preview_moneymoney_import(camt.clone().into_bytes(), "x.xml".into(), None)
+            .unwrap();
+        assert_eq!(p.suggested_account_id, Some(b.account_id));
+
+        // 3. nothing in common: the file name names the account
+        set(a.account_id, "Girokonto", "");
+        let other = "\"Datum\";\"Betrag\"\n\"01.01.2001\";\"1,00\"\n";
+        let p = v
+            .preview_moneymoney_import(other.as_bytes().to_vec(), "Girokonto.csv".into(), None)
+            .unwrap();
+        assert_eq!(p.suggested_account_id, Some(a.account_id));
+        let p = v
+            .preview_moneymoney_import(other.as_bytes().to_vec(), "Unbekannt.csv".into(), None)
+            .unwrap();
+        assert_eq!(p.suggested_account_id, None);
+    }
 
     #[test]
     fn export_detection_camt053() {

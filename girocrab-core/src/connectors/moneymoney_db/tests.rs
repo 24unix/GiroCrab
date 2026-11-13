@@ -128,7 +128,19 @@ pub(crate) fn options_from(
         import_groups: true,
         import_statements: true,
         statements_dir: None,
+        bank_choices: vec![],
     }
+}
+
+/// The Enable Banking option the preview offers for a bank, if any.
+fn eb_option(p: &MoneyMoneyDbPreview, bank: i64) -> Option<MoneyMoneyDbConnectionOption> {
+    p.banks
+        .iter()
+        .find(|b| b.mm_id == bank)?
+        .connection_options
+        .iter()
+        .find(|o| o.via == MoneyMoneyDbConnectionVia::EnableBanking)
+        .cloned()
 }
 
 fn bookings(v: &Vault, account_id: i64) -> Vec<crate::models::Booking> {
@@ -213,11 +225,37 @@ fn unencrypted_database_opens_with_empty_password() {
         .preview_moneymoney_database(path.clone(), String::new(), None)
         .unwrap();
     assert_eq!(p.accounts.len(), 4);
-    // an encrypted file must not open without a password
+    // a password typed for an unencrypted file is ignored, not "wrong"
+    let p = v
+        .preview_moneymoney_database(path, PW.into(), None)
+        .unwrap();
+    assert_eq!(p.accounts.len(), 4);
+}
+
+#[test]
+fn encrypted_database_without_password_explains_moneymoney_key() {
+    // MoneyMoney encrypts with a key of its own when no database password
+    // is set; an empty password must say so instead of "wrong password".
     let enc = fake_db();
-    assert!(v
+    let err = vault()
         .preview_moneymoney_database(enc, String::new(), None)
-        .is_err());
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Authentication { .. }));
+    let msg = err.to_string();
+    assert!(msg.contains("Einstellungen → Sicherheit"), "{msg}");
+    assert!(!msg.contains("Falsches Passwort"), "{msg}");
+}
+
+#[test]
+fn plain_sqlite_header_detection() {
+    let plain = fake_db_unencrypted();
+    assert!(is_plain_sqlite(&plain));
+    assert!(!is_plain_sqlite(&fake_db()));
+    // too short / missing files are not plain SQLite
+    let short = temp("short.sqlite");
+    std::fs::write(&short, b"SQLite").unwrap();
+    assert!(!is_plain_sqlite(&short.to_string_lossy()));
+    assert!(!is_plain_sqlite("/nonexistent/MoneyMoney.sqlite"));
 }
 
 #[test]
@@ -900,6 +938,94 @@ fn starter_categories_are_replaced_in_an_empty_vault() {
 }
 
 #[test]
+fn category_colors_are_taken_over_without_overwriting_own_ones() {
+    let v = vault();
+    let path = fake_db_with(
+        false,
+        "UPDATE category_groups SET color = '#ff9500' WHERE rowid = 1;  -- Haushalt
+         UPDATE category_groups SET color = '#0a0' WHERE rowid = 2;     -- Wohnen (#rgb)
+         UPDATE categories SET color = '#34C759ff' WHERE rowid = 2;     -- Supermarkt (#rrggbbaa)
+         UPDATE categories SET color = '''#ff3b30''' WHERE rowid = 4;   -- Strom (quoted)
+         UPDATE categories SET color = 'blau' WHERE rowid = 3;          -- Gehalt (invalid)
+         INSERT INTO category_groups (rowid, name, group_key, sort, color)
+           VALUES (9, 'Leer', 0, 9, '#123456');                         -- no categories",
+    );
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    let color = |name: &str| {
+        v.list_categories(None, None)
+            .unwrap()
+            .into_iter()
+            .find(|c| c.name == name)
+            .map(|c| c.color_hex)
+    };
+    assert_eq!(color("Haushalt").as_deref(), Some("#FF9500"));
+    assert_eq!(color("Wohnen").as_deref(), Some("#00AA00"));
+    assert_eq!(color("Supermarkt").as_deref(), Some("#34C759"));
+    assert_eq!(color("Strom").as_deref(), Some("#FF3B30"));
+    {
+        // taken-over colours are stamped for the sync merge, grey ones not touched
+        let db = v.db().unwrap();
+        let ms = |name: &str| -> i64 {
+            db.query_row(
+                "SELECT color_ms FROM categories WHERE name = ?1 AND deleted_ms IS NULL",
+                [name],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert!(
+            ms("Strom") >= ms("Gehalt"),
+            "colour stamp not older than creation"
+        );
+        assert!(ms("Strom") > 0);
+    }
+    assert_eq!(color("Gehalt").as_deref(), Some(DEFAULT_CATEGORY_COLOR));
+    assert_eq!(
+        color("Nebenkosten").as_deref(),
+        Some(DEFAULT_CATEGORY_COLOR)
+    );
+    assert_eq!(color("Leer"), None, "empty groups are not created");
+
+    // a colour chosen in GiroCrab survives a second import
+    let strom = v
+        .list_categories(None, None)
+        .unwrap()
+        .into_iter()
+        .find(|c| c.name == "Strom")
+        .unwrap();
+    v.update_category(
+        strom.id,
+        strom.name,
+        strom.parent_id,
+        strom.sf_symbol,
+        "#5856D6".into(),
+    )
+    .unwrap();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!(color("Strom").as_deref(), Some("#5856D6"));
+    assert_eq!(color("Haushalt").as_deref(), Some("#FF9500"));
+}
+
+#[test]
+fn mm_color_formats() {
+    assert_eq!(mm_color("#ff9500").as_deref(), Some("#FF9500"));
+    assert_eq!(mm_color(" '#FF9500' ").as_deref(), Some("#FF9500"));
+    assert_eq!(mm_color("#abc").as_deref(), Some("#AABBCC"));
+    assert_eq!(mm_color("#11223344").as_deref(), Some("#112233"));
+    for bad in ["", "ff9500", "#ff95", "#gg9500", "rot", "#"] {
+        assert_eq!(mm_color(bad), None, "{bad:?}");
+    }
+}
+
+#[test]
 fn starter_categories_stay_when_the_vault_has_bookings() {
     let v = vault();
     let starter = v.seed_starter_categories().unwrap() as usize;
@@ -1293,6 +1419,7 @@ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, bic, 
         assert!(!v.connection_status(c.id).unwrap().has_pin);
     }
     assert_eq!(r.banks_skipped_unsupported, 1); // only the Sparkasse
+    assert_eq!(r.banks_skipped_names.len(), 1);
 }
 
 #[test]
@@ -1965,4 +2092,280 @@ fn reimport_revives_deleted_account_with_its_cascade_bookings_only() {
         total - 1,
         "individually deleted booking stays deleted"
     );
+}
+
+#[test]
+fn account_checks_confirm_a_complete_import() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    assert_eq!(r.account_checks.len(), 4);
+    for c in &r.account_checks {
+        assert!(c.ok, "{c:?}");
+        assert_eq!(c.found_bookings, c.mm_bookings, "{c:?}");
+        assert_eq!((c.deleted_bookings, c.other_bookings), (0, 0), "{c:?}");
+        assert_eq!(c.girocrab_balance_cents, c.mm_balance_cents, "{c:?}");
+    }
+    let giro = r
+        .account_checks
+        .iter()
+        .find(|c| c.name == "Girokonto")
+        .unwrap();
+    assert_eq!(giro.mm_bookings, 5);
+    let total: u32 = r.account_checks.iter().map(|c| c.mm_bookings).sum();
+    assert_eq!(total, r.bookings_new);
+
+    // a booking deleted in GiroCrab stays deleted – and still counts as there
+    v.db()
+        .unwrap()
+        .execute(
+            "UPDATE transactions SET deleted_ms = 1 WHERE id = (SELECT min(id) FROM transactions WHERE account_id = ?1)",
+            [giro.account_id],
+        )
+        .unwrap();
+    let r = v
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .unwrap();
+    let giro = r
+        .account_checks
+        .iter()
+        .find(|c| c.name == "Girokonto")
+        .unwrap();
+    assert!(giro.ok, "{giro:?}");
+    assert_eq!((giro.found_bookings, giro.deleted_bookings), (4, 1));
+}
+
+#[test]
+fn account_check_flags_missing_bookings_and_a_wrong_balance() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .unwrap();
+    let giro = r
+        .account_checks
+        .iter()
+        .find(|c| c.name == "Girokonto")
+        .unwrap()
+        .clone();
+    // something went wrong behind the import's back: a booking vanished,
+    // the balance is off
+    {
+        let db = v.db().unwrap();
+        db.execute(
+            "DELETE FROM transactions WHERE id = (SELECT min(id) FROM transactions WHERE account_id = ?1)",
+            [giro.account_id],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE accounts SET balance_cents = balance_cents + 1 WHERE id = ?1",
+            [giro.account_id],
+        )
+        .unwrap();
+    }
+    let src = read_source(&path, &SecretString::new(PW.into()), false).unwrap();
+    let a = src.accounts.iter().find(|a| a.id == giro.mm_id).unwrap();
+    let db = v.db().unwrap();
+    let c = check_account(
+        &db,
+        a,
+        "Girokonto",
+        giro.account_id,
+        &src.rows_for(a),
+        false,
+    )
+    .unwrap();
+    assert!(!c.ok);
+    assert_eq!((c.mm_bookings, c.found_bookings), (5, 4));
+    assert_eq!(c.girocrab_balance_cents, c.mm_balance_cents + 1);
+    // a bank-synced account keeps the bank's balance: only the bookings count
+    let c = check_account(&db, a, "Girokonto", giro.account_id, &src.rows_for(a), true).unwrap();
+    assert!(!c.ok, "a missing booking is still flagged");
+}
+
+#[test]
+fn banks_without_own_connector_are_set_up_through_enable_banking() {
+    let v = vault();
+    let path = fake_db_with(
+        false,
+        "INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, systemid, local_storage)
+           VALUES (30, 'DE', '50024024', 'c24-login', '', 'GEHEIM-30', 'C24 Bank', 'SYS', 'LS');
+         INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, currency, name, owner, kind, type, sort, initial_balance, group_key, cred)
+           VALUES (30, 30, '1234567890', '50024024', 0, 'DE02 5002 4024 1234 5678 90', 'EUR', 'C24 Smartkonto', 'Max Mustermann', 0, 0, 30, 0, 0, 'GEHEIM'),
+                  (31, 30, '0987654321', '50024024', 0, '', 'EUR', 'C24 Pocket', 'Max Mustermann', 0, 0, 31, 0, 0, 'GEHEIM');",
+    );
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let c24 = p.banks.iter().find(|b| b.mm_id == 30).unwrap();
+    assert_eq!(c24.connector, None);
+    assert_eq!(c24.connection_options.len(), 1);
+    let eb = eb_option(&p, 30).expect("C24 is in the PSD2 catalogue");
+    let psd2 = eb.psd2_bank.clone().unwrap();
+    assert_eq!((psd2.aspsp.as_str(), psd2.country.as_str()), ("C24", "DE"));
+    assert_eq!(eb.key, "enablebanking:DE:C24");
+    // the Sparkasse stays unsupported: neither FinTS-known here nor PSD2
+    let spk = p.banks.iter().find(|b| b.mm_id == 3).unwrap();
+    assert!(spk.connection_options.is_empty());
+
+    let mut o = options_from(&p, true, false);
+    o.bank_choices = vec![MoneyMoneyDbBankChoice {
+        mm_bank_id: 30,
+        connection: Some(eb),
+    }];
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), o.clone())
+        .unwrap();
+    assert_eq!(r.psd2_connections.len(), 1);
+    let pc = &r.psd2_connections[0];
+    assert!(pc.created);
+    assert_eq!(pc.bank_name, "C24 Bank");
+    let mut names: Vec<&str> = pc.accounts.iter().map(|a| a.name.as_str()).collect();
+    names.sort();
+    assert_eq!(names, ["C24 Pocket", "C24 Smartkonto"]);
+    assert!(pc
+        .accounts
+        .iter()
+        .any(|a| a.iban.replace(' ', "") == "DE02500240241234567890"));
+    let conn = v
+        .list_bank_connections()
+        .unwrap()
+        .into_iter()
+        .find(|c| c.id == pc.connection_id)
+        .unwrap();
+    assert_eq!(conn.connector, ConnectorKind::EnableBanking);
+    // Sparkasse: no choice → still skipped, by name
+    assert_eq!(r.banks_skipped_unsupported, 1);
+    assert_eq!(r.banks_skipped_names.len(), 1);
+    assert!(!r
+        .psd2_connections
+        .iter()
+        .any(|p| r.banks_skipped_names.contains(&p.bank_name)));
+
+    // second run: the same connection, nothing new
+    let r = v.import_moneymoney_database(path, PW.into(), o).unwrap();
+    assert_eq!(r.psd2_connections.len(), 1);
+    assert!(!r.psd2_connections[0].created);
+    assert_eq!(r.psd2_connections[0].connection_id, pc.connection_id);
+    let eb = v
+        .list_bank_connections()
+        .unwrap()
+        .into_iter()
+        .filter(|c| c.connector == ConnectorKind::EnableBanking)
+        .count();
+    assert_eq!(eb, 1);
+}
+
+#[test]
+fn psd2_choice_without_create_connections_does_nothing() {
+    let v = vault();
+    let path = fake_db_with(
+        false,
+        "INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, systemid, local_storage)
+           VALUES (30, 'DE', '50024024', 'c24-login', '', 'GEHEIM-30', 'C24 Bank', 'SYS', 'LS');",
+    );
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let mut o = options_from(&p, false, false);
+    o.bank_choices = vec![MoneyMoneyDbBankChoice {
+        mm_bank_id: 30,
+        connection: eb_option(&p, 30),
+    }];
+    let r = v.import_moneymoney_database(path, PW.into(), o).unwrap();
+    assert!(r.psd2_connections.is_empty());
+    assert!(v.list_bank_connections().unwrap().is_empty());
+}
+
+#[test]
+fn connection_priority_fints_then_own_api_then_enable_banking() {
+    let v = vault();
+    let path = fake_db_with(
+        false,
+        "INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, systemid, local_storage) VALUES
+           (40, 'DE', '12030000', 'hb-login', '', 'X', 'Hanseatic Bank', 'SYS', 'LS'),
+           (41, 'DE', '50024024', 'c24-login', '', 'X', 'C24 Bank', 'SYS', 'LS'),
+           (42, 'DE', '', 'pp-login', '', 'X', 'PayPal', 'SYS', 'LS');",
+    );
+    let p = v
+        .preview_moneymoney_database(path, PW.into(), None)
+        .unwrap();
+    let bank = |id: i64| p.banks.iter().find(|b| b.mm_id == id).unwrap();
+    // 1. FinTS wins: the bank code is FinTS-known, although the name is in
+    //    the PSD2 catalogue too
+    assert_eq!(bank(40).connector, Some(ConnectorKind::FinTsGeneric));
+    let vias: Vec<_> = bank(40).connection_options.iter().map(|o| o.via).collect();
+    assert_eq!(
+        vias,
+        [
+            MoneyMoneyDbConnectionVia::FinTs,
+            MoneyMoneyDbConnectionVia::EnableBanking
+        ]
+    );
+    // 2. own API: comdirect (no FinTS entry on purpose), PayPal
+    assert_eq!(bank(1).connector, Some(ConnectorKind::Comdirect));
+    assert_eq!(bank(42).connector, Some(ConnectorKind::PayPal));
+    assert_eq!(
+        bank(42).connection_options[0].via,
+        MoneyMoneyDbConnectionVia::OwnApi
+    );
+    // 3. Enable Banking only without either
+    assert_eq!(bank(41).connector, None);
+    assert_eq!(
+        eb_option(&p, 41).and_then(|o| o.psd2_bank).map(|b| b.aspsp),
+        Some("C24".to_string())
+    );
+}
+
+#[test]
+fn a_bank_can_be_switched_to_enable_banking_or_left_out() {
+    let v = vault();
+    // Hanseatic Bank: FinTS-known code, but also in the PSD2 catalogue
+    let path = fake_db_with(
+        false,
+        "INSERT INTO banks (rowid, country, bankcode, username, customer, credential, name, systemid, local_storage) VALUES
+           (40, 'DE', '12030000', 'hb-login', '', 'X', 'Hanseatic Bank', 'SYS', 'LS');
+         INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, currency, name, owner, kind, type, sort, initial_balance, group_key, cred)
+           VALUES (40, 40, '1234567890', '12030000', 0, 'DE02 1203 0000 1234 5678 90', 'EUR', 'Hanseatic Giro', 'Max', 0, 0, 40, 0, 0, 'X');",
+    );
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let mut o = options_from(&p, true, false);
+    o.bank_choices = vec![
+        // FinTS bank → Enable Banking instead
+        MoneyMoneyDbBankChoice {
+            mm_bank_id: 40,
+            connection: eb_option(&p, 40),
+        },
+        // comdirect → not connected at all
+        MoneyMoneyDbBankChoice {
+            mm_bank_id: 1,
+            connection: None,
+        },
+    ];
+    let r = v.import_moneymoney_database(path, PW.into(), o).unwrap();
+    let conns = v.list_bank_connections().unwrap();
+    assert!(conns
+        .iter()
+        .all(|c| c.connector != ConnectorKind::Comdirect));
+    assert!(conns.iter().all(
+        |c| c.connector != ConnectorKind::FinTsGeneric || !c.display_name.contains("Hanseatic")
+    ));
+    assert_eq!(r.psd2_connections.len(), 1);
+    assert_eq!(r.psd2_connections[0].bank_name, "Hanseatic Bank");
+    assert_eq!(r.psd2_connections[0].accounts.len(), 1);
+    // the comdirect accounts are still imported, just without a login
+    assert!(r
+        .account_checks
+        .iter()
+        .any(|c| c.name == "Girokonto" && c.ok));
 }

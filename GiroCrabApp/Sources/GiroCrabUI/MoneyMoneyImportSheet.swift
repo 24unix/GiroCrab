@@ -3,7 +3,9 @@ import UniformTypeIdentifiers
 import GiroCrabCore
 
 /// "Aus MoneyMoney importieren …": either reads MoneyMoney's own database
-/// (recommended, everything in one go) or a per-account CSV/XML export.
+/// (recommended, everything in one go) or a per-account CSV/XML export. Both
+/// are assistants with the same frame (title, steps, Back / Continue), so
+/// switching the source doesn't change the sheet.
 struct MoneyMoneyImportSheet: View {
     @Environment(AppModel.self) private var model
 
@@ -19,35 +21,20 @@ struct MoneyMoneyImportSheet: View {
     @State private var importRunning = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
-                Image(systemName: "square.and.arrow.down.on.square").font(.title2).foregroundStyle(Theme.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Aus MoneyMoney importieren").font(.headline)
-                    Text("Komplette Historie, Kategorien und Notizen – ohne Duplikate bei späteren Abrufen.")
-                        .font(.caption).foregroundStyle(Theme.secondary)
-                }
-            }
+        Group {
             #if os(macOS)
-            Picker("Quelle", selection: $source) {
-                Text("MoneyMoney-Datenbank (empfohlen)").tag(Source.database)
-                Text("Export-Datei (CSV/XML)").tag(Source.export)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            // switching would drop the view of a running import
-            .disabled(importRunning)
             switch source {
-            case .database: MoneyMoneyDatabaseImportView(running: $importRunning)
-            case .export: MoneyMoneyExportImportView(running: $importRunning)
+            case .database: MoneyMoneyDatabaseImportView(running: $importRunning, source: $source)
+            case .export: MoneyMoneyExportImportView(running: $importRunning, source: $source)
             }
             #else
-            MoneyMoneyExportImportView(running: $importRunning)
+            MoneyMoneyExportImportView(running: $importRunning, source: nil)
             #endif
         }
         .padding(20)
-        .macFrame(width: source == .database ? 900 : 560)
-        .background(Theme.card)
+        .macFrame(width: 860)
+        // the system sheet background: grouped forms then sit on it like in
+        // System Settings instead of forming a box inside a coloured card
         .onAppear {
             if model.demoImportPreview != nil { source = .export }
             #if os(macOS)
@@ -57,19 +44,125 @@ struct MoneyMoneyImportSheet: View {
     }
 }
 
-/// Per-account CSV/XML export (one account at a time).
+/// First section of both import assistants: where the data comes from, as
+/// radio buttons with a short explanation each (HIG: a small set of mutually
+/// exclusive choices that need a description → radio group, not a segmented
+/// control). Identical on both sides, so switching keeps the layout.
+struct ImportSourceSection: View {
+    @Binding var source: MoneyMoneyImportSheet.Source
+
+    var body: some View {
+        Section {
+            Picker("Quelle", selection: $source) {
+                option("MoneyMoney-Datenbank",
+                       "Alle Konten mit Kategorien, Regeln, Bankzugängen und Kontoauszügen – empfohlen beim Umstieg.")
+                    .tag(MoneyMoneyImportSheet.Source.database)
+                option("Exportdatei eines Kontos",
+                       "CSV, camt.053 oder MT940 – um einzelne Konten zu ergänzen.")
+                    .tag(MoneyMoneyImportSheet.Source.export)
+            }
+            #if os(macOS)
+            .pickerStyle(.radioGroup)
+            #else
+            .pickerStyle(.inline)
+            #endif
+            .labelsHidden()
+        } header: {
+            Text("Quelle")
+        }
+    }
+
+    private func option(_ title: LocalizedStringKey, _ detail: LocalizedStringKey) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            Text(detail).font(.caption).foregroundStyle(Theme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// The chosen file or folder in a form row: its Finder icon and name, or
+/// "Keine Auswahl"; the button opens the panel.
+struct ImportFileRow: View {
+    let title: LocalizedStringKey
+    let url: URL?
+    let name: String
+    var loading = false
+    let choose: () -> Void
+
+    var body: some View {
+        LabeledContent(title) {
+            HStack(spacing: 8) {
+                if loading { ProgressView().controlSize(.small) }
+                if name.isEmpty {
+                    Text("Keine Auswahl").foregroundStyle(Theme.tertiary)
+                } else {
+                    HStack(spacing: 5) {
+                        #if os(macOS)
+                        if let url {
+                            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                                .resizable().frame(width: 16, height: 16)
+                                .accessibilityHidden(true)
+                        }
+                        #endif
+                        Text(name).lineLimit(1).truncationMode(.middle)
+                    }
+                    .help(url?.path ?? name)
+                }
+                Button(name.isEmpty ? "Auswählen …" : "Ändern …", action: choose)
+            }
+        }
+    }
+}
+
+/// Title row of the import assistants: symbol, step title and subtitle. No
+/// "Schritt n von m" – Apple's assistants name each step by its title.
+struct ImportAssistantHeader: View {
+    let title: String
+    let subtitle: String
+    var symbol = "square.and.arrow.down.on.square"
+    var tint: Color = Theme.accent
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol).font(.title).foregroundStyle(tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.title3.weight(.semibold))
+                if !subtitle.isEmpty {
+                    Text(subtitle).font(.callout).foregroundStyle(Theme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 12)
+        }
+    }
+}
+
+/// Per-account CSV/XML export (one account at a time), as a two-step
+/// assistant: 1. the file, 2. target account and what to take over.
 struct MoneyMoneyExportImportView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    /// Tells the sheet that an import is running (it locks the source tabs).
+    /// Tells the sheet that an import is running (it locks the source switch).
     @Binding var running: Bool
+    /// Database or export file (macOS); nil = no switch (iOS).
+    var source: Binding<MoneyMoneyImportSheet.Source>?
 
+    enum Step: Hashable { case file, options }
+
+    @State private var step: Step = .file
     @State private var picking = false
     @State private var targeted = false
     @State private var fileName = ""
     @State private var fileData: Data?
+    @State private var fileURL: URL?
     /// nil = "Neues Konto aus Datei anlegen"
     @State private var target: Int64?
+    /// The core's account suggestion is applied once per file; afterwards the
+    /// user's choice (including "Neues Konto") stays.
+    @State private var suggestionApplied = false
     @State private var preview: MoneyMoneyImportPreview?
     @State private var error: String?
     @State private var loading = false
@@ -82,35 +175,25 @@ struct MoneyMoneyExportImportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            guide
-            Text("Auch möglich: Kontoauszüge als CAMT.053 (XML) oder MT940 (.sta / .mt940).")
-                .font(.caption).foregroundStyle(Theme.secondary)
-            // nothing can be changed while the import runs
+            ImportAssistantHeader(
+                title: step == .file ? String(localized: "Aus MoneyMoney importieren") : String(localized: "Übernahme"),
+                subtitle: subtitle)
             Group {
-                dropZone
-                if fileData != nil {
-                    Picker("Zielkonto", selection: $target) {
-                        Text("Neues Konto aus Datei anlegen").tag(Int64?.none)
-                        ForEach(model.allAccounts) { a in Text("\(a.name) · \(a.bankName)").tag(Int64?.some(a.id)) }
-                    }
-                    Toggle("Kategorien übernehmen", isOn: $keepCategories).toggleStyle(.switch).controlSize(.small)
-                    Toggle("Notizen übernehmen", isOn: $keepNotes).toggleStyle(.switch).controlSize(.small)
+                switch step {
+                case .file: fileStep
+                case .options: optionsStep
                 }
             }
-            .disabled(importing)
-            if loading { ProgressView().controlSize(.small) }
-            if importing { ProgressView().progressViewStyle(.linear) }
-            if let preview { previewCard(preview) }
-            if let error { Label(error, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(Theme.warning) }
-            HStack {
-                Spacer()
-                Button("Abbrechen") { dismiss() }.keyboardShortcut(.cancelAction)
-                    .disabled(importing)
-                Button(importing ? "Importiere …" : "Importieren") { runImport() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(preview == nil || importing || (preview?.totalRows ?? 0) == 0)
+            #if os(macOS)
+            .frame(maxWidth: .infinity, minHeight: 470, maxHeight: 470, alignment: .top)
+            #endif
+            if let error {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.callout).foregroundStyle(Theme.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            footer
         }
         .interactiveDismissDisabled(importing)
         .onChange(of: importing) { _, now in running = now }
@@ -128,35 +211,45 @@ struct MoneyMoneyExportImportView: View {
         }
     }
 
-    // MARK: - Pieces
-
-    private var guide: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ForEach(Array([String(localized: "Konto wählen"), String(localized: "⌘A (alle Umsätze markieren)"), String(localized: "Umsätze exportieren … → XML oder CSV")].enumerated()), id: \.offset) { i, text in
-                HStack(alignment: .top, spacing: 8) {
-                    Text("\(i + 1)").font(.caption.weight(.bold)).foregroundStyle(Theme.accent)
-                        .frame(width: 20, height: 20).background(Circle().fill(Theme.selection))
-                    Text(text).font(.caption).foregroundStyle(Theme.text).fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+    private var subtitle: String {
+        switch step {
+        case .file:
+            return String(localized: "Wählen Sie, woher die Daten kommen. MoneyMoney und seine Daten bleiben unverändert.")
+        case .options:
+            guard let p = preview else { return fileName }
+            return [fileName, String(localized: "\(p.newBookings.formatted()) neue Buchungen"), yearSpan(p)]
+                .compactMap { $0 }.joined(separator: " · ")
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.canvas))
     }
 
-    private var dropZone: some View {
-        VStack(spacing: 6) {
-            Image(systemName: fileData == nil ? "tray.and.arrow.down" : "doc.text").font(.title)
-                .foregroundStyle(targeted ? Theme.accent : Theme.secondary)
-            Text(fileData == nil ? String(localized: ".xml- oder .csv-Datei hierher ziehen") : fileName).font(.callout.weight(.medium))
-            Button(fileData == nil ? "Datei auswählen …" : "Andere Datei …") { picking = true }
-                .controlSize(.small)
+    // MARK: - 1. File
+
+    private var fileStep: some View {
+        Form {
+            if let source { ImportSourceSection(source: source).disabled(importing) }
+            Section {
+                ImportFileRow(title: "Exportdatei", url: fileURL, name: fileData == nil ? "" : fileName,
+                              loading: loading) { picking = true }
+            } header: {
+                Text("Datei")
+            } footer: {
+                Text("In MoneyMoney ein einzelnes Konto wählen, alle Umsätze markieren (⌘A) und „Umsätze exportieren …“. Nur CSV enthält auch die Kategorien. Sie können die Datei auch hierher ziehen.")
+                    .font(.caption).foregroundStyle(Theme.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 18)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(targeted ? Theme.selection : Color.clear))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(targeted ? Theme.accent : Theme.border, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])))
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden) // flush with the sheet, like System Settings
+        .scrollDisabled(true)
+        .overlay {
+            // the whole step takes a dropped file; outlined while one hovers
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Theme.accent, lineWidth: 2)
+                .opacity(targeted ? 1 : 0)
+                .allowsHitTesting(false)
+        }
         .dropDestination(for: URL.self) { urls, _ in
             guard let url = urls.first else { return false }
             load(url)
@@ -164,35 +257,88 @@ struct MoneyMoneyExportImportView: View {
         } isTargeted: { targeted = $0 }
     }
 
-    private func previewCard(_ p: MoneyMoneyImportPreview) -> some View {
-        let span = [p.dateRangeStart, p.dateRangeEnd].compactMap { $0.map { String($0.prefix(4)) } }
-        let years = span.count == 2 ? (span[0] == span[1] ? span[0] : "\(span[0]) – \(span[1])") : "–"
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 18) {
-                stat(years, "Zeitraum")
-                stat(p.newBookings.formatted(.number.locale(.autoupdatingCurrent)), "neue Buchungen")
-                stat("\(p.notesCount)", "Notizen")
-                stat("\(p.duplicatesSkippedOrEnriched)", "bereits vorhanden")
+    // MARK: - 2. Options
+
+    private var optionsStep: some View {
+        Form {
+            Section {
+                Picker("Zielkonto", selection: $target) {
+                    Text("Neues Konto aus der Datei").tag(Int64?.none)
+                    ForEach(model.allAccounts) { a in Text("\(a.name) · \(a.bankName)").tag(Int64?.some(a.id)) }
+                }
+                Toggle("Kategorien übernehmen", isOn: $keepCategories)
+                Toggle("Notizen übernehmen", isOn: $keepNotes)
+            } footer: {
+                if target == nil, let p = preview {
+                    footerText(String(localized: "Neues Archivkonto „\(p.suggestedAccountName)“ – der Saldo ist die Summe der Umsätze."))
+                } else if let t = target, t == preview?.suggestedAccountId {
+                    footerText(String(localized: "Vorgewählt, weil die Datei zu diesem Konto passt. Bereits vorhandene Buchungen werden nicht doppelt übernommen."))
+                }
             }
-            if !p.detectedCategories.isEmpty {
-                let list = p.detectedCategories.prefix(6).joined(separator: ", ") + (p.detectedCategories.count > 6 ? " …" : "")
-                Text("\(p.detectedCategories.count) Kategorien: \(list)")
-                    .font(.caption).foregroundStyle(Theme.secondary).lineLimit(2)
-            }
-            if target == nil { Text("Neues Archivkonto: „\(p.suggestedAccountName)“ – Saldo = Summe der Umsätze.").font(.caption).foregroundStyle(Theme.secondary) }
-            if p.duplicatesSkippedOrEnriched > 0 {
-                Text("Bereits vorhandene Buchungen werden nicht doppelt angelegt; sie erhalten nur Kategorie und Notiz.")
-                    .font(.caption).foregroundStyle(Theme.secondary)
+            if let p = preview {
+                Section {
+                    LabeledContent("Neue Buchungen", value: p.newBookings.formatted())
+                    if p.duplicatesSkippedOrEnriched > 0 {
+                        LabeledContent("Bereits vorhanden", value: p.duplicatesSkippedOrEnriched.formatted())
+                    }
+                    LabeledContent("Notizen", value: p.notesCount.formatted())
+                    if !p.detectedCategories.isEmpty {
+                        LabeledContent("Kategorien") {
+                            Text(p.detectedCategories.prefix(6).joined(separator: ", ") + (p.detectedCategories.count > 6 ? " …" : ""))
+                                .lineLimit(2).multilineTextAlignment(.trailing)
+                        }
+                    }
+                } header: {
+                    Text("Vorschau")
+                } footer: {
+                    if p.duplicatesSkippedOrEnriched > 0 {
+                        footerText(String(localized: "Vorhandene Buchungen werden nicht doppelt angelegt, sie erhalten nur Kategorie und Notiz."))
+                    }
+                }
             }
         }
-        .card()
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden) // flush with the sheet, like System Settings
+        .disabled(importing)
     }
 
-    private func stat(_ value: String, _ label: LocalizedStringKey) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(value).font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(Theme.text)
-            Text(label).font(.caption2).foregroundStyle(Theme.secondary)
+    private func footerText(_ text: String) -> some View {
+        Text(text)
+            .font(.caption).foregroundStyle(Theme.secondary)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Footer
+
+    private var footer: some View {
+        HStack(spacing: 8) {
+            Button("Abbrechen") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .disabled(importing)
+            Spacer()
+            if importing { ProgressView().controlSize(.small) }
+            if step == .options {
+                Button("Zurück") { error = nil; step = .file }
+                    .keyboardShortcut("[", modifiers: .command) // the system's "Back"
+                    .disabled(importing)
+            }
+            Button(step == .file ? "Fortfahren" : (importing ? "Importiere …" : "Importieren")) {
+                if step == .file { error = nil; step = .options } else { runImport() }
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+            .disabled(step == .file
+                      ? (preview == nil || loading)
+                      : (importing || (preview?.totalRows ?? 0) == 0))
         }
+    }
+
+    private func yearSpan(_ p: MoneyMoneyImportPreview) -> String? {
+        let span = [p.dateRangeStart, p.dateRangeEnd].compactMap { $0.map { String($0.prefix(4)) } }
+        guard span.count == 2 else { return nil }
+        return span[0] == span[1] ? span[0] : "\(span[0])–\(span[1])"
     }
 
     // MARK: - Actions
@@ -203,7 +349,9 @@ struct MoneyMoneyExportImportView: View {
         do {
             fileData = try Data(contentsOf: url)
             fileName = url.lastPathComponent
-            refreshPreview()
+            fileURL = url
+            suggestionApplied = false
+            if target != nil { target = nil } else { refreshPreview() } // onChange(of: target) refreshes
         } catch {
             self.error = describe(error)
         }
@@ -219,7 +367,16 @@ struct MoneyMoneyExportImportView: View {
             }.value
             loading = false
             switch result {
-            case .success(let p): preview = p
+            case .success(let p):
+                if !suggestionApplied {
+                    suggestionApplied = true
+                    // preselect the account the file belongs to; onChange(of: target) refreshes
+                    if target == nil, let s = p.suggestedAccountId, model.allAccounts.contains(where: { $0.id == s }) {
+                        target = s
+                        return
+                    }
+                }
+                preview = p
             case .failure(let e):
                 preview = nil
                 if case CoreError.InvalidInput = e {

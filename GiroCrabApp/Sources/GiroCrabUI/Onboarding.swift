@@ -184,7 +184,10 @@ struct BankSetupSheet: View {
             }
             // "Alle abrufen": cancelling skips this login (see SyncPromptButtons)
             SyncPromptButtons(
-                cancel: { model.cancelSetupRequest(); dismiss() },
+                // no dismiss(): clearing the request closes this sheet, and in
+                // "Alle abrufen" the next login may already have opened its own –
+                // a dismiss() here would close that one and stall the batch.
+                cancel: { model.cancelSetupRequest() },
                 leading: nil
             ) {
                 Button { model.completeSetup(request, values: values) } label: {

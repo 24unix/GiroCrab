@@ -287,6 +287,17 @@
         }
       }
     },
+    "Kein Datenbank-Passwort in MoneyMoney? Dann vorher eines festlegen (Einstellungen → Sicherheit)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No database password in MoneyMoney? Set one first (Settings → Security)."
+          }
+        }
+      }
+    },
     "Kontosalden und Depotwerte abrufen …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1982,17 +1993,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Type"
-          }
-        }
-      }
-    },
-    "Auch möglich: Kontoauszüge als CAMT.053 (XML) oder MT940 (.sta / .mt940)." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Also supported: statements as CAMT.053 (XML) or MT940 (.sta / .mt940)."
           }
         }
       }
@@ -6806,13 +6806,13 @@
         }
       }
     },
-    "MoneyMoney-Passwort (leer, wenn unverschlüsselt)" : {
+    "MoneyMoney-Datenbank-Passwort" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "MoneyMoney password (empty if unencrypted)"
+            "value" : "MoneyMoney database password"
           }
         }
       }
@@ -13739,6 +13739,1315 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Load demo data & demo banks (login: demo / PIN: 12345)"
+          }
+        }
+      }
+    },
+    "%lld Buchungen fehlen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld transactions missing"
+          }
+        }
+      }
+    },
+    "%lld von %lld Konten weichen von MoneyMoney ab" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld of %2$lld accounts differ from MoneyMoney"
+          }
+        }
+      }
+    },
+    "%u in GiroCrab gelöscht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u deleted in GiroCrab"
+          }
+        }
+      }
+    },
+    "%u weitere von der Bank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u more from the bank"
+          }
+        }
+      }
+    },
+    "Alle %lld Konten stimmen mit MoneyMoney überein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All %lld accounts match MoneyMoney."
+          }
+        }
+      }
+    },
+    "Bitte prüfen Sie diese Konten. Ein erneuter Import ergänzt fehlende Buchungen, ohne Duplikate anzulegen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please check these accounts. Importing again adds missing transactions without creating duplicates."
+          }
+        }
+      }
+    },
+    "Das Konto stimmt mit MoneyMoney überein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The account matches MoneyMoney."
+          }
+        }
+      }
+    },
+    "MoneyMoney-Saldo berechnet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MoneyMoney balance computed"
+          }
+        }
+      }
+    },
+    "Saldo GiroCrab" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab balance"
+          }
+        }
+      }
+    },
+    "Saldo MoneyMoney" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MoneyMoney balance"
+          }
+        }
+      }
+    },
+    "Saldo von der Bank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "balance from the bank"
+          }
+        }
+      }
+    },
+    "Stimmt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Matches"
+          }
+        }
+      }
+    },
+    "Weicht ab" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Differs"
+          }
+        }
+      }
+    },
+    "Anwendungen auf enablebanking.com öffnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open applications on enablebanking.com"
+          }
+        }
+      }
+    },
+    "Freigabe starten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start consent"
+          }
+        }
+      }
+    },
+    "Noch zu tun: Freigabe über Enable Banking" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Still to do: consent through Enable Banking"
+          }
+        }
+      }
+    },
+    "wird angelegt (PSD2)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "will be added (PSD2)"
+          }
+        }
+      }
+    },
+    "Über Enable Banking (PSD2): %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Through Enable Banking (PSD2): %@"
+          }
+        }
+      }
+    },
+    "Über Enable Banking (PSD2): %@ – Enable Banking wird bei der ersten Freigabe eingerichtet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Through Enable Banking (PSD2): %@ – Enable Banking is set up at the first consent"
+          }
+        }
+      }
+    },
+    "Starten Sie die Freigabe bei der Bank. Im eingeschränkten Modus sieht Ihre Enable-Banking-Anwendung nur verknüpfte Konten – falls diese Konten noch nicht verknüpft sind, holen Sie das auf enablebanking.com nach." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start the consent at the bank. In restricted mode your Enable Banking application only sees linked accounts – if these accounts are not linked yet, do that on enablebanking.com."
+          }
+        }
+      }
+    },
+    "Aus Ihrem MoneyMoney-Import:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From your MoneyMoney import:"
+          }
+        }
+      }
+    },
+    "Für diese Banken braucht GiroCrab eine kostenlose Enable-Banking-Anwendung. Sie wird bei der ersten Freigabe eingerichtet: Verknüpfen Sie beim Aktivieren der Anwendung alle unten aufgeführten Konten auf einmal – GiroCrab zeigt sie dabei noch einmal an. Danach starten Sie die Freigabe je Bank." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "For these banks GiroCrab needs a free Enable Banking application. It is set up at the first consent: when activating the application, link all accounts listed below at once – GiroCrab shows them again there. Then start the consent for each bank."
+          }
+        }
+      }
+    },
+    "%@ Buchungen aus %u Konten übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ transactions imported from %2$u accounts"
+          }
+        }
+      }
+    },
+    "%lld von %lld Konten ausgewählt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld of %2$lld accounts selected"
+          }
+        }
+      }
+    },
+    "%u Bankzugänge angelegt, %u bereits vorhanden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$u bank logins added, %2$u already there"
+          }
+        }
+      }
+    },
+    "%u Bankzugänge nicht verfügbar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u bank logins not available"
+          }
+        }
+      }
+    },
+    "%u Buchungen waren bereits vorhanden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u transactions were already there"
+          }
+        }
+      }
+    },
+    "%u Depotpositionen übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u holdings imported"
+          }
+        }
+      }
+    },
+    "%u Dokumente ausgelassen (nicht gefunden, beschädigt oder größer als 25 MB)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u documents left out (not found, damaged or larger than 25 MB)"
+          }
+        }
+      }
+    },
+    "%u Kategorien angelegt, %u Notizen übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$u categories added, %2$u notes imported"
+          }
+        }
+      }
+    },
+    "%u Konten neu, %u ergänzt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$u accounts new, %2$u added to"
+          }
+        }
+      }
+    },
+    "%u Kontoauszüge und Dokumente übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u statements and documents imported"
+          }
+        }
+      }
+    },
+    "%u Kontogruppen angelegt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u account groups added"
+          }
+        }
+      }
+    },
+    "%u PDFs liegen nicht bei dieser Datenbank. Wählen Sie den Ordner, falls Sie sie gesichert haben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u PDFs aren't next to this database. Choose their folder if you saved them."
+          }
+        }
+      }
+    },
+    "%u PINs im Tresor gespeichert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u PINs stored in the vault"
+          }
+        }
+      }
+    },
+    "%u Regeln übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u rules imported"
+          }
+        }
+      }
+    },
+    "%u Regeln übernommen, %u davon ausgeschaltet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$u rules imported, %2$u of them turned off"
+          }
+        }
+      }
+    },
+    "%u von %u PDFs gefunden, die übrigen werden ausgelassen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$u of %2$u PDFs found, the others are left out."
+          }
+        }
+      }
+    },
+    "%u vorgemerkte Buchungen ausgelassen – die Bank liefert sie gebucht erneut" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u pending transactions left out – the bank delivers them again once booked"
+          }
+        }
+      }
+    },
+    "Abgleich mit MoneyMoney" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check against MoneyMoney"
+          }
+        }
+      }
+    },
+    "Alle abwählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deselect all"
+          }
+        }
+      }
+    },
+    "Anderer Ordner …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other folder …"
+          }
+        }
+      }
+    },
+    "Außerdem übernehmen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Also import"
+          }
+        }
+      }
+    },
+    "Bitte warten Sie, bis der Import fertig ist." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please wait until the import has finished."
+          }
+        }
+      }
+    },
+    "Die Enable-Banking-Anwendung wird bei der ersten Freigabe eingerichtet. Verknüpfen Sie dabei alle Konten dieser Banken auf einmal." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Enable Banking application is set up at the first consent. Link all accounts of these banks at once while doing so."
+          }
+        }
+      }
+    },
+    "Die Konten erscheinen unter ihrem Bankzugang. Der erste Abruf übernimmt sie, ohne Duplikate anzulegen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The accounts appear under their bank login. The first fetch takes them over without creating duplicates."
+          }
+        }
+      }
+    },
+    "Die PINs aus MoneyMoney kommen verschlüsselt in den GiroCrab-Tresor. Ohne diese Option werden sie nicht gelesen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The PINs from MoneyMoney are stored encrypted in the GiroCrab vault. Without this option they aren't read."
+          }
+        }
+      }
+    },
+    "Enable Banking" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking"
+          }
+        }
+      }
+    },
+    "Enable Banking einrichten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set up Enable Banking"
+          }
+        }
+      }
+    },
+    "Enable Banking richten Sie im nächsten Schritt ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You set up Enable Banking in the next step."
+          }
+        }
+      }
+    },
+    "Ersetzt die GiroCrab-Startkategorien – Ihr Tresor enthält noch keine Buchungen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Replaces the GiroCrab starter categories – your vault has no transactions yet."
+          }
+        }
+      }
+    },
+    "Für %@ braucht GiroCrab eine kostenlose Enable-Banking-Anwendung." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "For %@ GiroCrab needs a free Enable Banking application."
+          }
+        }
+      }
+    },
+    "Import läuft" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importing"
+          }
+        }
+      }
+    },
+    "Kategorien und Regeln (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Categories and rules (%lld)"
+          }
+        }
+      }
+    },
+    "Konten und Daten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accounts and data"
+          }
+        }
+      }
+    },
+    "Kontoauszüge und Dokumente (%u, %@)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statements and documents (%1$u, %2$@)"
+          }
+        }
+      }
+    },
+    "Kontogruppen (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account groups (%lld)"
+          }
+        }
+      }
+    },
+    "Nicht verbinden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Don't connect"
+          }
+        }
+      }
+    },
+    "Nicht verfügbar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not available"
+          }
+        }
+      }
+    },
+    "Notizen (%u)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notes (%u)"
+          }
+        }
+      }
+    },
+    "Nächster Schritt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next step"
+          }
+        }
+      }
+    },
+    "Online-Banking (FinTS)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Online banking (FinTS)"
+          }
+        }
+      }
+    },
+    "Schnittstelle der Bank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank's own interface"
+          }
+        }
+      }
+    },
+    "Schritt %lld von %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Step %1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "Später einrichten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set up later"
+          }
+        }
+      }
+    },
+    "Starten Sie die Freigabe bei der Bank. Konten, die noch nicht mit Ihrer Enable-Banking-Anwendung verknüpft sind, verknüpfen Sie auf enablebanking.com." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start the consent at the bank. Link accounts that aren't linked to your Enable Banking application yet on enablebanking.com."
+          }
+        }
+      }
+    },
+    "Verbindung für %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection for %@"
+          }
+        }
+      }
+    },
+    "Was wurde übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What was imported"
+          }
+        }
+      }
+    },
+    "Wie GiroCrab künftig Umsätze abruft. Vorausgewählt ist jeweils die beste Verbindung." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How GiroCrab fetches transactions from now on. The best connection is preselected."
+          }
+        }
+      }
+    },
+    "„Import abbrechen“ verwirft alles – es wird dann nichts übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Cancel import” discards everything – nothing is imported then."
+          }
+        }
+      }
+    },
+    "%@ neue Buchungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ new transactions"
+          }
+        }
+      }
+    },
+    "Bereits vorhanden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already there"
+          }
+        }
+      }
+    },
+    "Exportdatei" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export file"
+          }
+        }
+      }
+    },
+    "Neue Buchungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New transactions"
+          }
+        }
+      }
+    },
+    "Neues Archivkonto „%@“ – der Saldo ist die Summe der Umsätze." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New archive account “%@” – its balance is the sum of the transactions."
+          }
+        }
+      }
+    },
+    "Neues Konto aus der Datei" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New account from the file"
+          }
+        }
+      }
+    },
+    "Vorhandene Buchungen werden nicht doppelt angelegt, sie erhalten nur Kategorie und Notiz." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Existing transactions aren't created twice; they only get category and note."
+          }
+        }
+      }
+    },
+    "Übernahme" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import options"
+          }
+        }
+      }
+    },
+    "Daten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data"
+          }
+        }
+      }
+    },
+    "Die Kategorien ersetzen die GiroCrab-Startkategorien – Ihr Tresor enthält noch keine Buchungen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The categories replace the GiroCrab starter categories – your vault has no transactions yet."
+          }
+        }
+      }
+    },
+    "Fortfahren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continue"
+          }
+        }
+      }
+    },
+    "Ordner mit Kontoauszügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Folder with statements"
+          }
+        }
+      }
+    },
+    "Was GiroCrab außerdem übernimmt und wie es künftig Umsätze abruft." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What else GiroCrab imports and how it fetches transactions from now on."
+          }
+        }
+      }
+    },
+    "Freigabe wird übernommen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taking over the consent …"
+          }
+        }
+      }
+    },
+    "%@ Buchungen aus %u Konten übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ bookings from %2$u accounts imported."
+          }
+        }
+      }
+    },
+    "%lld von %lld Konten weichen von MoneyMoney ab." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld of %2$lld accounts differ from MoneyMoney."
+          }
+        }
+      }
+    },
+    "Freigeben …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authorize …"
+          }
+        }
+      }
+    },
+    "Bankfreigaben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank Authorizations"
+          }
+        }
+      }
+    },
+    "Konten, die noch nicht mit Ihrer Enable-Banking-Anwendung verknüpft sind, verknüpfen Sie auf enablebanking.com." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link accounts that aren't yet linked to your Enable Banking application on enablebanking.com."
+          }
+        }
+      }
+    },
+    "Übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imported"
+          }
+        }
+      }
+    },
+    "%u bestehende ergänzt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u existing ones completed"
+          }
+        }
+      }
+    },
+    "%@ waren bereits vorhanden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ already existed"
+          }
+        }
+      }
+    },
+    "%u davon ausgeschaltet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u of them turned off"
+          }
+        }
+      }
+    },
+    "%u bereits vorhanden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u already existed"
+          }
+        }
+      }
+    },
+    "Kontoauszüge und Dokumente" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statements and Documents"
+          }
+        }
+      }
+    },
+    "Depotpositionen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Securities Positions"
+          }
+        }
+      }
+    },
+    "PINs im Tresor" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PINs in the Vault"
+          }
+        }
+      }
+    },
+    "Kein Abruf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Retrieval"
+          }
+        }
+      }
+    },
+    "Dokumente ausgelassen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documents Skipped"
+          }
+        }
+      }
+    },
+    "Nicht gefunden, beschädigt oder größer als 25 MB" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not found, damaged or larger than 25 MB"
+          }
+        }
+      }
+    },
+    "Vorgemerkte Buchungen ausgelassen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending Bookings Skipped"
+          }
+        }
+      }
+    },
+    "Die Bank liefert sie gebucht erneut" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The bank delivers them again once booked"
+          }
+        }
+      }
+    },
+    "Nicht übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not Imported"
+          }
+        }
+      }
+    },
+    "Für diese Banken hat GiroCrab noch keinen Zugang. Ihre Konten und Buchungen sind übernommen, werden aber nicht automatisch aktualisiert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab can't connect to these banks yet. Their accounts and bookings were imported but won't be updated automatically."
+          }
+        }
+      }
+    },
+    "Das Konto stimmt überein" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The account matches"
+          }
+        }
+      }
+    },
+    "Alle %lld Konten stimmen überein" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All %lld accounts match"
+          }
+        }
+      }
+    },
+    "Bitte prüfen Sie die markierten Konten. Ein erneuter Import ergänzt fehlende Buchungen, ohne Duplikate anzulegen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please check the marked accounts. Importing again adds missing bookings without creating duplicates."
+          }
+        }
+      }
+    },
+    "Vorgewählt, weil die Datei zu diesem Konto passt. Bereits vorhandene Buchungen werden nicht doppelt übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preselected because the file belongs to this account. Bookings already present aren't imported twice."
+          }
+        }
+      }
+    },
+    "MoneyMoney-Datenbank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MoneyMoney Database"
+          }
+        }
+      }
+    },
+    "Exportdatei eines Kontos" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export File of One Account"
+          }
+        }
+      }
+    },
+    "Alle Konten mit Kategorien, Regeln, Bankzugängen und Kontoauszügen – empfohlen beim Umstieg." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All accounts with categories, rules, bank logins and statements – recommended when switching."
+          }
+        }
+      }
+    },
+    "CSV, camt.053 oder MT940 – um einzelne Konten zu ergänzen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CSV, camt.053 or MT940 – to add to individual accounts."
+          }
+        }
+      }
+    },
+    "Keine Auswahl" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None Selected"
+          }
+        }
+      }
+    },
+    "Erforderlich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Required"
+          }
+        }
+      }
+    },
+    "MoneyMoney-Daten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MoneyMoney Data"
+          }
+        }
+      }
+    },
+    "Datenbank-Passwort" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Database Password"
+          }
+        }
+      }
+    },
+    "Wählen Sie, woher die Daten kommen. MoneyMoney und seine Daten bleiben unverändert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose where the data comes from. MoneyMoney and its data stay unchanged."
+          }
+        }
+      }
+    },
+    "In MoneyMoney ein einzelnes Konto wählen, alle Umsätze markieren (⌘A) und „Umsätze exportieren …“. Nur CSV enthält auch die Kategorien. Sie können die Datei auch hierher ziehen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In MoneyMoney, choose a single account, select all transactions (⌘A) and “Export transactions …”. Only CSV also contains the categories. You can also drag the file here."
+          }
+        }
+      }
+    },
+    "Wählen Sie den MoneyMoney-Ordner, damit auch die Kontoauszüge übernommen werden. Eine einzelne Datei (MoneyMoney.sqlite), etwa aus einem Backup, geht auch." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the MoneyMoney folder so the statements are imported as well. A single file (MoneyMoney.sqlite), e.g. from a backup, works too."
           }
         }
       }

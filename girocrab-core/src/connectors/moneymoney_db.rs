@@ -43,9 +43,12 @@ use rusqlite::types::Value;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
 use zeroize::Zeroizing;
 
+use crate::connectors::bank_directory::{match_psd2_bank, psd2_catalog, Psd2Bank};
 use crate::connectors::fints::sepa;
 use crate::connectors::group_for;
-use crate::connectors::moneymoney_import::{find_or_create_category, merge_rows, MmRow, Stats};
+use crate::connectors::moneymoney_import::{
+    find_or_create_category, fingerprint, merge_rows, MmRow, Stats,
+};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, ConnectorKind, Holding};
@@ -110,6 +113,60 @@ pub struct MoneyMoneyDbBank {
     pub has_saved_pin: bool,
     pub existing_connection_id: Option<i64>,
     pub account_count: u32,
+    /// Every way GiroCrab can connect to this bank, best first: FinTS, then
+    /// the bank's own API, then Enable Banking (from the PSD2 catalogue; the
+    /// app may add one from the live list, `match_psd2_bank_by_name`). The
+    /// first entry is the default. Empty = not supported.
+    pub connection_options: Vec<MoneyMoneyDbConnectionOption>,
+}
+
+/// How a bank login is connected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum MoneyMoneyDbConnectionVia {
+    FinTs,
+    /// The bank's own API (comdirect, bunq, PayPal, Trade Republic, …).
+    OwnApi,
+    /// PSD2 through the user's Enable Banking application.
+    EnableBanking,
+}
+
+/// One way to connect a bank login.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MoneyMoneyDbConnectionOption {
+    pub via: MoneyMoneyDbConnectionVia,
+    pub connector: ConnectorKind,
+    /// Connector key as stored (`fints:<blz>`, `comdirect`,
+    /// `enablebanking:<CC>:<bank>`).
+    pub key: String,
+    /// The Enable Banking bank (only for `EnableBanking`).
+    pub psd2_bank: Option<Psd2Bank>,
+}
+
+impl MoneyMoneyDbConnectionOption {
+    fn direct(kind: ConnectorKind, key: String) -> Self {
+        let via = match kind {
+            ConnectorKind::FinTsGeneric
+            | ConnectorKind::VolksbankKasselGoettingen
+            | ConnectorKind::Direkt1822 => MoneyMoneyDbConnectionVia::FinTs,
+            ConnectorKind::EnableBanking => MoneyMoneyDbConnectionVia::EnableBanking,
+            _ => MoneyMoneyDbConnectionVia::OwnApi,
+        };
+        Self {
+            via,
+            connector: kind,
+            key,
+            psd2_bank: None,
+        }
+    }
+
+    fn enable_banking(bank: Psd2Bank) -> Self {
+        Self {
+            via: MoneyMoneyDbConnectionVia::EnableBanking,
+            connector: ConnectorKind::EnableBanking,
+            key: ConnectorKind::enable_banking_key(&bank.country, &bank.aspsp),
+            psd2_bank: Some(bank),
+        }
+    }
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -168,6 +225,71 @@ pub struct MoneyMoneyDbImportOptions {
     /// Folder with the PDFs, for a database without MoneyMoney's folder
     /// around it (backup). `None` = `Statements` in the MoneyMoney folder.
     pub statements_dir: Option<String>,
+    /// How to connect each bank login (only with `create_connections`). A
+    /// bank without an entry gets its default (FinTS / own API; never
+    /// Enable Banking unasked).
+    pub bank_choices: Vec<MoneyMoneyDbBankChoice>,
+}
+
+/// The connection chosen for one MoneyMoney bank login.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MoneyMoneyDbBankChoice {
+    pub mm_bank_id: i64,
+    /// `None` = don't set up a connection for this login.
+    pub connection: Option<MoneyMoneyDbConnectionOption>,
+}
+
+/// An Enable Banking connection the import set up, with the accounts that
+/// must be linked to the user's Enable Banking application before the
+/// first consent (restricted applications only see linked accounts).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MoneyMoneyDbPsd2Connection {
+    pub connection_id: i64,
+    pub bank_name: String,
+    /// `false`: the connection existed already (an earlier import or set up
+    /// by hand).
+    pub created: bool,
+    pub accounts: Vec<MoneyMoneyDbPsd2Account>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MoneyMoneyDbPsd2Account {
+    pub name: String,
+    pub iban: String,
+    pub account_number: String,
+}
+
+/// Check of one imported account after the import: does GiroCrab now hold
+/// what MoneyMoney showed? Read back from the vault, independent of the
+/// import's own counting.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MoneyMoneyDbAccountCheck {
+    pub mm_id: i64,
+    pub account_id: i64,
+    pub name: String,
+    pub currency: String,
+    /// Booked bookings MoneyMoney has for the account (split parts instead
+    /// of their parents) – what the import had to bring over.
+    pub mm_bookings: u32,
+    /// Of those, found in the GiroCrab account.
+    pub found_bookings: u32,
+    /// Of those, found but deleted in GiroCrab earlier (they stay deleted).
+    pub deleted_bookings: u32,
+    /// Bookings in the GiroCrab account that MoneyMoney doesn't have (e.g.
+    /// fetched from the bank before) – informational.
+    pub other_bookings: u32,
+    /// Balance as MoneyMoney shows it (or computed, see `mm_balance_shown`).
+    pub mm_balance_cents: i64,
+    /// `mm_balance_cents` is MoneyMoney's own displayed balance; `false` =
+    /// computed from opening balance + bookings.
+    pub mm_balance_shown: bool,
+    pub girocrab_balance_cents: i64,
+    /// The account is synced with a bank in GiroCrab, which keeps the
+    /// bank's balance – a difference is expected then.
+    pub balance_from_bank: bool,
+    /// Every MoneyMoney booking is there and the balances agree (or the
+    /// balance comes from the bank).
+    pub ok: bool,
 }
 
 #[derive(Debug, Clone, Default, uniffi::Record)]
@@ -187,6 +309,9 @@ pub struct MoneyMoneyDbImportResult {
     pub connections_existing: u32,
     pub pins_stored: u32,
     pub banks_skipped_unsupported: u32,
+    /// Names of those bank logins (MoneyMoney's bank name), same order as
+    /// in the database.
+    pub banks_skipped_names: Vec<String>,
     /// PDF statements / documents newly stored in the document archive.
     pub documents_imported: u32,
     /// Already in the archive from an earlier run.
@@ -208,6 +333,10 @@ pub struct MoneyMoneyDbImportResult {
     /// Of those, switched off: unsupported fields, account restriction or
     /// invalid syntax.
     pub rules_disabled: u32,
+    /// One check per imported account, in import order.
+    pub account_checks: Vec<MoneyMoneyDbAccountCheck>,
+    /// Enable Banking connections set up for banks without own connector.
+    pub psd2_connections: Vec<MoneyMoneyDbPsd2Connection>,
 }
 
 /// Where a running import is, for a progress bar.
@@ -348,6 +477,8 @@ struct Source {
     categories: HashMap<i64, Vec<String>>,
     /// all category paths in MoneyMoney order
     category_order: Vec<Vec<String>>,
+    /// (category or category-group path, `#RRGGBB`) – groups first
+    category_colors: Vec<(Vec<String>, String)>,
     /// (category path, rule expression, restricted to certain accounts), in
     /// MoneyMoney order; only categories with a non-blank rule
     category_rules: Vec<(Vec<String>, String, bool)>,
@@ -423,6 +554,55 @@ pub(crate) fn real_to_cents(x: f64) -> Option<i64> {
 /// MoneyMoney dates are Unix seconds at 12:00 UTC → `YYYY-MM-DD` (UTC).
 pub(crate) fn unix_to_date(ts: i64) -> Option<String> {
     chrono::DateTime::from_timestamp(ts, 0).map(|d| d.date_naive().format("%Y-%m-%d").to_string())
+}
+
+/// GiroCrab's colour for categories nobody has given one.
+const DEFAULT_CATEGORY_COLOR: &str = "#8E8E93";
+
+/// MoneyMoney colour (`#rrggbb`, also `#rgb` / `#rrggbbaa`, optionally
+/// quoted) → `#RRGGBB`; `None` when empty or not a colour.
+fn mm_color(s: &str) -> Option<String> {
+    let hex = s
+        .trim()
+        .trim_matches(['\'', '"'])
+        .trim()
+        .strip_prefix('#')?;
+    if !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let rgb: String = match hex.len() {
+        3 => hex.chars().flat_map(|c| [c, c]).collect(),
+        6 | 8 => hex[..6].to_string(),
+        _ => return None,
+    };
+    Some(format!("#{}", rgb.to_ascii_uppercase()))
+}
+
+/// Gives imported categories MoneyMoney's colours – only where the category
+/// still has GiroCrab's default grey, so colours chosen in GiroCrab stay.
+/// Paths missing in the tree (e.g. empty category groups) are skipped.
+fn apply_category_colors(
+    conn: &Connection,
+    src: &Source,
+    cache: &HashMap<String, i64>,
+) -> CoreResult<()> {
+    // the colour is a field edit: stamp it, so a sync merge keeps it
+    // ("newest edit wins") instead of reverting it to another device's grey
+    let now = crate::user_groups::now_ms();
+    for (path, color) in &src.category_colors {
+        let key: String = path
+            .iter()
+            .map(|p| format!("\u{1}{}", p.to_lowercase()))
+            .collect();
+        if let Some(id) = cache.get(&key) {
+            conn.execute(
+                "UPDATE categories SET color_hex = ?1, color_ms = ?4
+                 WHERE id = ?2 AND upper(color_hex) = ?3 AND deleted_ms IS NULL",
+                params![color, id, DEFAULT_CATEGORY_COLOR, now],
+            )?;
+        }
+    }
+    Ok(())
 }
 
 /// `11:4094.320000,3:EUR,` (length-prefixed fields) → (cents, currency).
@@ -566,6 +746,14 @@ fn connector_key_for(bankcode: &str, name: &str) -> Option<(ConnectorKind, Strin
     Some((kind, key))
 }
 
+/// GiroCrab connector for a MoneyMoney bank login, in this order of
+/// preference:
+///  1. FinTS – the bank code is in GiroCrab's FinTS directory (incl. the
+///     dedicated FinTS connectors Volksbank Kassel Göttingen, 1822direkt);
+///  2. the bank's own API, where GiroCrab has a connector (comdirect – not in
+///     the FinTS directory on purpose –, bunq, PayPal, Trade Republic, …);
+///  3. otherwise `None`: the preview then suggests Enable Banking (PSD2)
+///     from the catalogue (`MoneyMoneyDbBank::psd2_bank`).
 fn connector_for_inner(bankcode: &str, name: &str) -> Option<ConnectorKind> {
     let code: String = bankcode.chars().filter(|c| c.is_ascii_digit()).collect();
     match code.as_str() {
@@ -654,6 +842,25 @@ fn wrong_password() -> CoreError {
     }
 }
 
+/// MoneyMoney encrypts its database even when no database password is set
+/// (with a key of its own that GiroCrab cannot know). Such a file can only
+/// be read after the user sets a password in MoneyMoney.
+fn encrypted_without_password() -> CoreError {
+    CoreError::Authentication {
+        message: tr("MoneyMoney verschlüsselt diese Datenbank mit einem eigenen Schlüssel, weil dort kein Datenbank-Passwort festgelegt ist. Legen Sie in MoneyMoney unter Einstellungen → Sicherheit eines fest, beenden Sie MoneyMoney und geben Sie es hier ein.").into(),
+    }
+}
+
+/// True if the file starts with the plain SQLite header, i.e. is not
+/// encrypted (SQLCipher files start with a random salt instead).
+fn is_plain_sqlite(path: &str) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; 16];
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .is_ok_and(|_| &head == b"SQLite format 3\0")
+}
+
 // ------------------------------------------------------------------ reading
 
 /// Opens the MoneyMoney database read-only and unlocks it. The password is
@@ -664,9 +871,15 @@ fn open_source(path: &str, password: &SecretString) -> CoreResult<Connection> {
             what: tr("MoneyMoney-Datenbank").into(),
         });
     }
-    // MoneyMoney databases can be unencrypted: an empty password opens the
-    // file without a key (an encrypted file then fails the schema check below).
-    if password.is_empty() {
+    // Older MoneyMoney databases can be unencrypted: such a file is opened
+    // without a key, whatever was typed into the password field. An
+    // encrypted file without a password is MoneyMoney's own key (no database
+    // password set in MoneyMoney) – say so instead of "wrong password".
+    let plain = is_plain_sqlite(path);
+    if password.is_empty() && !plain {
+        return Err(encrypted_without_password());
+    }
+    if plain {
         let conn = Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -914,22 +1127,53 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
 
     // categories (+ nested groups)
     {
-        let mut groups: HashMap<i64, (String, i64)> = HashMap::new();
+        // rowid -> (name, parent group rowid or 0, colour)
+        let mut groups: HashMap<i64, (String, i64, Option<String>)> = HashMap::new();
         if have.contains("category_groups") {
             let sql = select(
                 &conn,
                 "category_groups",
-                &["rowid", "name", "group_key"],
+                &["rowid", "name", "group_key", "color"],
                 "",
             )?;
             let mut st = conn.prepare(&sql)?;
             let rows = st.query_map([], |r| {
                 Ok((
                     vint(get(r, 0)?).unwrap_or_default(),
-                    (vtext(get(r, 1)?), vint(get(r, 2)?).unwrap_or(0)),
+                    (
+                        vtext(get(r, 1)?),
+                        vint(get(r, 2)?).unwrap_or(0),
+                        mm_color(&vtext(get(r, 3)?)),
+                    ),
                 ))
             })?;
             groups = rows.collect::<Result<_, _>>()?;
+        }
+        // names of a group and its parents, outermost first
+        let group_path = |mut g: i64| -> Vec<String> {
+            let mut path = Vec::new();
+            let mut guard = 0;
+            while g > 0 && guard < 32 {
+                guard += 1;
+                let Some((gname, parent, _)) = groups.get(&g) else {
+                    break;
+                };
+                if !gname.is_empty() {
+                    path.push(gname.clone());
+                }
+                g = *parent;
+            }
+            path.reverse();
+            path
+        };
+        let mut group_ids: Vec<&i64> = groups.keys().collect();
+        group_ids.sort();
+        for g in group_ids {
+            if let (Some(color), path) = (&groups[g].2, group_path(*g)) {
+                if !path.is_empty() {
+                    src.category_colors.push((path, color.clone()));
+                }
+            }
         }
         let sql = select(
             &conn,
@@ -941,6 +1185,7 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
                 "group_key",
                 "rules",
                 "apply_to_account",
+                "color",
             ],
             "ORDER BY group_key, sort, rowid",
         )?;
@@ -953,33 +1198,25 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
                 vint(get(r, 3)?).unwrap_or(0),
                 vtext(get(r, 4)?),
                 vtext(get(r, 5)?),
+                mm_color(&vtext(get(r, 6)?)),
             ))
         })?;
         for row in rows {
-            let (id, name, typ, group, rules, apply_to_account) = row?;
+            let (id, name, typ, group, rules, apply_to_account, color) = row?;
             // rowid 1 / type 0 / empty name = "Ohne Kategorie"
             if name.is_empty() || typ == Some(0) {
                 continue;
             }
-            let mut path = vec![name];
-            let mut g = group;
-            let mut guard = 0;
-            while g > 0 && guard < 32 {
-                guard += 1;
-                let Some((gname, parent)) = groups.get(&g) else {
-                    break;
-                };
-                if !gname.is_empty() {
-                    path.push(gname.clone());
-                }
-                g = *parent;
-            }
-            path.reverse();
+            let mut path = group_path(group);
+            path.push(name);
             let rules = rules.trim();
             if !rules.is_empty() {
                 let restricted = !apply_to_account.trim().is_empty();
                 src.category_rules
                     .push((path.clone(), rules.to_string(), restricted));
+            }
+            if let Some(color) = color {
+                src.category_colors.push((path.clone(), color));
             }
             src.category_order.push(path.clone());
             src.categories.insert(id, path);
@@ -1320,6 +1557,8 @@ struct AccountRows {
     pending: u32,
     split_parts: u32,
     balance_cents: i64,
+    /// `balance_cents` is MoneyMoney's displayed balance (not computed).
+    balance_shown: bool,
     balance_source: String,
     balance_date: String,
 }
@@ -1484,6 +1723,7 @@ impl Source {
             pending: 0,
             split_parts: 0,
             balance_cents: 0,
+            balance_shown: false,
             balance_source: String::new(),
             balance_date: String::new(),
         };
@@ -1568,6 +1808,7 @@ impl Source {
             if cur.is_empty() || *cur == a.currency {
                 let d = a.balance_ts.and_then(unix_to_date).unwrap_or_default();
                 out.balance_cents = *cents;
+                out.balance_shown = true;
                 out.balance_source = if d.is_empty() {
                     tr("Saldo laut MoneyMoney").into()
                 } else {
@@ -1737,6 +1978,24 @@ fn replaces_starter_categories(conn: &Connection, src: &Source) -> CoreResult<bo
     Ok(bookings == 0)
 }
 
+/// Every way to connect a MoneyMoney bank login, best first (FinTS, own
+/// API, Enable Banking – see `connector_for_inner`).
+fn connection_options(
+    src: &Source,
+    b: &SrcBank,
+    catalog: &[Psd2Bank],
+) -> Vec<MoneyMoneyDbConnectionOption> {
+    let mut out: Vec<MoneyMoneyDbConnectionOption> = src
+        .connector_key(b)
+        .map(|(kind, key)| MoneyMoneyDbConnectionOption::direct(kind, key))
+        .into_iter()
+        .collect();
+    if let Some(bank) = match_psd2_bank(&b.name, catalog) {
+        out.push(MoneyMoneyDbConnectionOption::enable_banking(bank));
+    }
+    out
+}
+
 fn preview(
     conn: &Connection,
     src: &Source,
@@ -1799,6 +2058,7 @@ fn preview(
         });
     }
     let mut banks = Vec::new();
+    let catalog = psd2_catalog();
     for b in &src.banks {
         let connector = src.connector(b);
         banks.push(MoneyMoneyDbBank {
@@ -1824,6 +2084,7 @@ fn preview(
                 .iter()
                 .filter(|a| a.bank_key == Some(b.id))
                 .count() as u32,
+            connection_options: connection_options(src, b, &catalog),
         });
     }
     let known: HashSet<i64> = src.accounts.iter().map(|a| a.id).collect();
@@ -1983,6 +2244,83 @@ fn import_category_rules(
     Ok(())
 }
 
+/// Reads an imported account back from the vault and compares it with
+/// MoneyMoney: every booking matched by its fingerprint (as a multiset, like
+/// the import itself), and the balance.
+fn check_account(
+    conn: &Connection,
+    a: &SrcAccount,
+    name: &str,
+    account_id: i64,
+    r: &AccountRows,
+    balance_from_bank: bool,
+) -> CoreResult<MoneyMoneyDbAccountCheck> {
+    // fingerprint -> deleted flags of the account's bookings
+    let mut have: HashMap<String, Vec<bool>> = HashMap::new();
+    {
+        let mut q = conn.prepare(
+            "SELECT booking_date, amount_cents, counterparty_iban, counterparty, purpose,
+                    import_fp, deleted_ms IS NOT NULL
+             FROM transactions WHERE account_id = ?1 ORDER BY id",
+        )?;
+        let rows = q.query_map([account_id], |row| {
+            let fp: String = row.get(5)?;
+            let fp = if fp.is_empty() {
+                fingerprint(
+                    &row.get::<_, String>(0)?,
+                    row.get(1)?,
+                    &row.get::<_, String>(2)?,
+                    &row.get::<_, String>(3)?,
+                    &row.get::<_, String>(4)?,
+                )
+            } else {
+                fp
+            };
+            Ok((fp, row.get::<_, bool>(6)?))
+        })?;
+        for row in rows {
+            let (fp, deleted) = row?;
+            have.entry(fp).or_default().push(deleted);
+        }
+    }
+    let live_total = have.values().flatten().filter(|d| !**d).count() as u32;
+    let (mut found, mut deleted) = (0u32, 0u32);
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    for row in &r.rows {
+        let fp = row.fp();
+        let k = seen.entry(fp.clone()).or_insert(0);
+        match have.get(&fp).and_then(|v| v.get(*k)) {
+            Some(true) => deleted += 1,
+            Some(false) => found += 1,
+            None => {}
+        }
+        *k += 1;
+    }
+    let girocrab_balance_cents: i64 = conn.query_row(
+        "SELECT balance_cents FROM accounts WHERE id = ?1",
+        [account_id],
+        |row| row.get(0),
+    )?;
+    let mm_bookings = r.rows.len() as u32;
+    let complete = found + deleted == mm_bookings;
+    let balance_ok = balance_from_bank || girocrab_balance_cents == r.balance_cents;
+    Ok(MoneyMoneyDbAccountCheck {
+        mm_id: a.id,
+        account_id,
+        name: name.to_string(),
+        currency: a.currency.clone(),
+        mm_bookings,
+        found_bookings: found,
+        deleted_bookings: deleted,
+        other_bookings: live_total.saturating_sub(found),
+        mm_balance_cents: r.balance_cents,
+        mm_balance_shown: r.balance_shown,
+        girocrab_balance_cents,
+        balance_from_bank,
+        ok: complete && balance_ok,
+    })
+}
+
 fn import(
     conn: &Connection,
     src: &Source,
@@ -2037,6 +2375,7 @@ fn import(
         for path in &src.category_order {
             find_or_create_category(conn, path, &mut cat_cache, &mut res.categories_created)?;
         }
+        apply_category_colors(conn, src, &cat_cache)?;
         import_category_rules(conn, src, &mut cat_cache, &mut res)?;
     }
     let mut to_link: Vec<(i64, i64)> = Vec::new();
@@ -2191,6 +2530,14 @@ fn import(
                 report.emit()?;
             }
         }
+        res.account_checks.push(check_account(
+            conn,
+            a,
+            &src.account_name(a),
+            account_id,
+            &r,
+            !owned,
+        )?);
         if let (true, Some(bank)) = (owned, a.bank_key) {
             to_link.push((account_id, bank));
         }
@@ -2228,14 +2575,45 @@ fn import(
     }
 
     let mut bank_connection: HashMap<i64, i64> = HashMap::new();
+    // Enable Banking connections set up here: (connection id, MoneyMoney bank)
+    let mut psd2_created: Vec<(i64, &SrcBank, bool)> = Vec::new();
     for b in &src.banks {
-        let Some((kind, key)) = src.connector_key(b) else {
+        let default = src
+            .connector_key(b)
+            .map(|(kind, key)| MoneyMoneyDbConnectionOption::direct(kind, key));
+        if default.is_none() {
+            // counted unless the user connects it through Enable Banking below
             res.banks_skipped_unsupported += 1;
-            continue;
-        };
+            res.banks_skipped_names.push(b.name.clone());
+        }
         if !options.create_connections {
             continue;
         }
+        let chosen = match options.bank_choices.iter().find(|c| c.mm_bank_id == b.id) {
+            Some(c) => c.connection.clone(),
+            None => default,
+        };
+        let Some(chosen) = chosen else { continue };
+        if chosen.via == MoneyMoneyDbConnectionVia::EnableBanking {
+            let Some(bank) = chosen.psd2_bank.as_ref() else {
+                continue;
+            };
+            if let Some((id, created)) = psd2_connection(conn, b, &bank.aspsp, &bank.country)? {
+                if created {
+                    res.connections_created += 1;
+                } else {
+                    res.connections_existing += 1;
+                }
+                if src.connector_key(b).is_none() {
+                    res.banks_skipped_unsupported -= 1;
+                    res.banks_skipped_names.pop();
+                }
+                bank_connection.insert(b.id, id);
+                psd2_created.push((id, b, created));
+            }
+            continue;
+        }
+        let (kind, key) = (chosen.connector, chosen.key.clone());
         let id = match find_connection(conn, kind, &key, &b.username)? {
             Some(id) => {
                 res.connections_existing += 1;
@@ -2259,7 +2637,7 @@ fn import(
             }
         };
         bank_connection.insert(b.id, id);
-        if options.import_pins {
+        if options.import_pins && pin_usable(kind) {
             if let Some(pin) = src.pins.get(&b.id) {
                 let stored: bool = conn
                     .query_row(
@@ -2287,8 +2665,73 @@ fn import(
             )?;
         }
     }
+    for (id, b, created) in psd2_created {
+        let mut st = conn.prepare(
+            "SELECT name, iban, account_number FROM accounts
+             WHERE connection_id = ?1 AND deleted_ms IS NULL ORDER BY sort_order, id",
+        )?;
+        let accounts = st
+            .query_map([id], |r| {
+                Ok(MoneyMoneyDbPsd2Account {
+                    name: r.get(0)?,
+                    iban: r.get(1)?,
+                    account_number: r.get(2)?,
+                })
+            })?
+            .collect::<Result<_, _>>()?;
+        res.psd2_connections.push(MoneyMoneyDbPsd2Connection {
+            connection_id: id,
+            bank_name: b.name.clone(),
+            created,
+            accounts,
+        });
+    }
     Vault::apply_rules_inner(conn, true)?;
     Ok(res)
+}
+
+/// Enable Banking connection for a MoneyMoney bank without own connector:
+/// the existing one for that ASPSP, else a new one. `None` when the banking
+/// lock blocks the bank or the choice is invalid (the bank is skipped).
+fn psd2_connection(
+    conn: &Connection,
+    b: &SrcBank,
+    aspsp: &str,
+    country: &str,
+) -> CoreResult<Option<(i64, bool)>> {
+    let aspsp = aspsp.trim();
+    let country = country.trim().to_uppercase();
+    let key = ConnectorKind::enable_banking_key(&country, aspsp);
+    if aspsp.is_empty() || ConnectorKind::enable_banking_target(&key).is_none() {
+        return Ok(None);
+    }
+    if crate::banking_gate::check_connector(&key).is_err() {
+        return Ok(None);
+    }
+    let existing: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM bank_connections WHERE connector = ?1 AND deleted_ms IS NULL ORDER BY id LIMIT 1",
+            [&key],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(id) = existing {
+        return Ok(Some((id, false)));
+    }
+    let display = if b.name.trim().is_empty() {
+        aspsp.to_string()
+    } else {
+        b.name.clone()
+    };
+    let (id, created) = Vault::add_bank_connection_keyed(
+        conn,
+        ConnectorKind::EnableBanking,
+        &key,
+        None,
+        display,
+        aspsp.to_string(),
+    )?;
+    Ok(Some((id, created)))
 }
 
 #[uniffi::export]

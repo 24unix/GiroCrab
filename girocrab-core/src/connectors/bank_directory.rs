@@ -111,7 +111,6 @@ pub fn psd2_catalog() -> Vec<Psd2Bank> {
         psd2("Amazon Visa (Zinia)", "DE", "Open Bank", Some(AmazonVisa)),
         psd2("Barclays", "DE", "Barclays", None),
         psd2("Hanseatic Bank", "DE", "Hanseatic Bank", None),
-        psd2("Advanzia Bank", "DE", "Advanzia", None),
         psd2("Santander", "DE", "Santander", None),
         psd2("Commerzbank", "DE", "Commerzbank", None),
         psd2("Raiffeisen Bank (Österreich)", "AT", "Raiffeisen", None),
@@ -365,6 +364,72 @@ impl Vault {
     }
 }
 
+/// Bank name for matching: lower case, letters/digits only, without legal
+/// forms and the word "bank" ("C24 Bank AG" → "c24").
+fn match_key(s: &str) -> String {
+    s.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .filter(|w| {
+            !matches!(
+                *w,
+                "bank" | "ag" | "se" | "sa" | "gmbh" | "eg" | "kg" | "nv" | "plc" | "ltd"
+            )
+        })
+        .collect()
+}
+
+/// The generic PSD2 bank (Enable Banking, no own connector) for a bank as
+/// another program names it, e.g. MoneyMoney's "C24 Bank": the same name
+/// or ASPSP (German entries first), else the single entry whose name
+/// contains it or is contained in it. `None` when nothing or more than one
+/// bank fits – then the user picks the bank by hand.
+pub(crate) fn match_psd2_bank(bank_name: &str, candidates: &[Psd2Bank]) -> Option<Psd2Bank> {
+    let want = match_key(bank_name);
+    if want.len() < 2 {
+        return None;
+    }
+    let generic: Vec<&Psd2Bank> = candidates
+        .iter()
+        .filter(|b| b.connector.is_none())
+        .collect();
+    let keys = |b: &Psd2Bank| [match_key(&b.name), match_key(&b.aspsp)];
+    let pick = |hits: Vec<&Psd2Bank>| -> Option<Psd2Bank> {
+        // one bank can be listed in several countries: prefer Germany
+        let de: Vec<&&Psd2Bank> = hits.iter().filter(|b| b.country == "DE").collect();
+        match (de.as_slice(), hits.as_slice()) {
+            ([one], _) => Some((**one).clone()),
+            ([], [one]) => Some((*one).clone()),
+            _ => None,
+        }
+    };
+    let exact: Vec<&Psd2Bank> = generic
+        .iter()
+        .copied()
+        .filter(|b| keys(b).contains(&want))
+        .collect();
+    if !exact.is_empty() {
+        return pick(exact);
+    }
+    let fuzzy: Vec<&Psd2Bank> = generic
+        .iter()
+        .copied()
+        .filter(|b| {
+            keys(b)
+                .iter()
+                .any(|k| k.len() >= 3 && (k.contains(&want) || want.contains(k.as_str())))
+        })
+        .collect();
+    pick(fuzzy)
+}
+
+/// `match_psd2_bank` for the app: matches a MoneyMoney bank name against the
+/// live Enable Banking list (`list_enable_banking_aspsps`).
+#[uniffi::export]
+pub fn match_psd2_bank_by_name(bank_name: String, candidates: Vec<Psd2Bank>) -> Option<Psd2Bank> {
+    match_psd2_bank(&bank_name, &candidates)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -372,6 +437,39 @@ mod tests {
 
     fn ids(r: &[BankSearchResult]) -> Vec<String> {
         r.iter().map(|b| b.id.clone()).collect()
+    }
+
+    #[test]
+    fn advanzia_is_not_offered_through_enable_banking() {
+        // Enable Banking answers 422 "Wrong ASPSP name provided" for
+        // Advanzia (Mastercard Gold) – verified with a real account.
+        assert!(psd2_catalog().iter().all(|b| !b.name.contains("Advanzia")));
+        assert_eq!(match_psd2_bank("Advanzia Bank", &psd2_catalog()), None);
+    }
+
+    #[test]
+    fn psd2_match_by_bank_name() {
+        let cat = psd2_catalog();
+        let m = |n: &str| match_psd2_bank(n, &cat).map(|b| b.aspsp);
+        assert_eq!(m("C24 Bank").as_deref(), Some("C24"));
+        assert_eq!(m("C24 Bank GmbH").as_deref(), Some("C24"));
+        assert_eq!(m("n26").as_deref(), Some("N26"));
+        // own connectors (Amex, Amazon Visa) are not generic PSD2 banks
+        assert_eq!(m("American Express"), None);
+        assert_eq!(m("Sparkasse Musterstadt"), None);
+        assert_eq!(m(""), None);
+        // ambiguous: several banks fit → no guess
+        let two = vec![
+            psd2("Muster Bank Nord", "DE", "Muster Nord", None),
+            psd2("Muster Bank Süd", "DE", "Muster Süd", None),
+        ];
+        assert_eq!(match_psd2_bank("Muster", &two), None);
+        // the same bank in several countries: Germany wins
+        let multi = vec![
+            psd2("Revolut", "LT", "Revolut", None),
+            psd2("Revolut", "DE", "Revolut", None),
+        ];
+        assert_eq!(match_psd2_bank("Revolut", &multi).unwrap().country, "DE");
     }
 
     #[test]
@@ -387,7 +485,6 @@ mod tests {
             "American Express",
             "Barclays",
             "Hanseatic",
-            "Advanzia",
             "Santander",
             "Commerzbank",
             "Raiffeisen",

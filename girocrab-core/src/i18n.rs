@@ -443,7 +443,6 @@ fn english(de: &str) -> Option<&'static str> {
         "Status stimmt nicht überein – bitte die Zustimmung neu starten" => "State mismatch – please start the consent again",
         "Kein „code“ in der eingefügten Adresse" => "No “code” in the pasted address",
         "Bitte die Adresse einfügen, auf die Sie weitergeleitet wurden" => "Paste the address you were redirected to",
-        "Zustimmung verweigert: {0}" => "Consent refused: {0}",
         "ASPSP „{0}“: {1}" => "ASPSP “{0}”: {1}",
         // ------------------------------------------------------------ connectors/demo.rs
         "Demo: Eine Push-Nachricht wurde „gesendet“. Die Freigabe wird nach wenigen Sekunden simuliert." => "Demo: a push notification was “sent”. Approval is simulated after a few seconds.",
@@ -461,6 +460,7 @@ fn english(de: &str) -> Option<&'static str> {
         // ------------------------------------------------------------ connectors/moneymoney_db.rs
 "Import abgebrochen – es wurde nichts übernommen." => "Import cancelled – nothing was imported.",
                 "Falsches Passwort oder keine MoneyMoney-Datenbank." => "Wrong password or not a MoneyMoney database.",
+        "MoneyMoney verschlüsselt diese Datenbank mit einem eigenen Schlüssel, weil dort kein Datenbank-Passwort festgelegt ist. Legen Sie in MoneyMoney unter Einstellungen → Sicherheit eines fest, beenden Sie MoneyMoney und geben Sie es hier ein." => "MoneyMoney encrypts this database with a key of its own because no database password is set there. Set one in MoneyMoney under Settings → Security, quit MoneyMoney and enter it here.",
         "MoneyMoney-Datenbank" => "MoneyMoney database",
         "Anfangssaldo laut MoneyMoney-Saldenverlauf ({0}) + Umsätze" => {
             "Opening balance from MoneyMoney balance history ({0}) + transactions"
@@ -589,6 +589,11 @@ fn english(de: &str) -> Option<&'static str> {
         "Muss in Ihrer Enable-Banking-Anwendung freigegeben sein." => "Must be allowed in your Enable Banking application.",
         "ASPSP-Name American Express" => "ASPSP name American Express",
         "Exakter Name aus GET /aspsps." => "Exact name from GET /aspsps.",
+        "Die Freigabe wurde bei der Bank abgelehnt ({0})." => "The consent was declined at the bank ({0}).",
+        "Die Bank hat die Freigabe mit einem Fehler auf ihrer Seite beendet ({0}). Das liegt nicht an Ihren Angaben – bitte später erneut versuchen, gegebenenfalls mit weniger ausgewählten Konten." => "The bank ended the consent with an error on its side ({0}). It isn't caused by your input – please try again later, if needed with fewer accounts selected.",
+        "Die Freigabe ist fehlgeschlagen ({0})." => "The consent failed ({0}).",
+        "„{0}“ ist über Enable Banking ({1}) nicht verfügbar. Für diese Bank gibt es in GiroCrab derzeit keinen Abruf." => "“{0}” isn't available through Enable Banking ({1}). GiroCrab can't fetch this bank at the moment.",
+        "Die Bank hat die Freigabe erteilt, Enable Banking liefert aber keine Konten. Bei einer Anwendung im eingeschränkten Modus müssen die Konten zuerst auf enablebanking.com mit der Anwendung verknüpft werden („Linked accounts“). Danach die Freigabe erneut starten." => "The bank granted access, but Enable Banking returns no accounts. With an application in restricted mode, the accounts must first be linked to the application on enablebanking.com (“Linked accounts”). Then start the consent again.",
         "Land American Express" => "Country American Express",
         "American Express per Enable Banking abrufen" => "Sync American Express via Enable Banking",
         "Amazon Visa per Enable Banking abrufen" => "Sync Amazon Visa via Enable Banking",
