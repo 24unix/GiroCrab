@@ -17438,6 +17438,39 @@
           }
         }
       }
+    },
+    "Auswertungen anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Analytics"
+          }
+        }
+      }
+    },
+    "Auswertungen in der Übersicht anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show analytics in the overview"
+          }
+        }
+      }
+    },
+    "Blendet Saldoverlauf, Cashflow und Budgets über der Buchungsliste aus. Auch im Menü Ansicht umschaltbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hides the balance history, cash flow and budgets above the booking list. Also available in the View menu."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

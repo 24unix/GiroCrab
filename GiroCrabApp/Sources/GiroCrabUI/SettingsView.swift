@@ -70,6 +70,7 @@ struct SettingsView: View {
 struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
     @State private var showHelp = false
+    @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
 
     var body: some View {
         @Bindable var model = model
@@ -81,6 +82,11 @@ struct GeneralSettings: View {
             }
             LanguageSettingsSection()
             AnnouncementsSettingsSection()
+            Section("Ansicht") {
+                Toggle("Auswertungen in der Übersicht anzeigen", isOn: $showStatistics)
+                Text("Blendet Saldoverlauf, Cashflow und Budgets über der Buchungsliste aus. Auch im Menü Ansicht umschaltbar.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Buchungen") {
                 Picker("Als geprüft markieren", selection: $model.autoReviewDelay) {
                     ForEach(AutoReviewDelay.allCases) { Text($0.title).tag($0) }
