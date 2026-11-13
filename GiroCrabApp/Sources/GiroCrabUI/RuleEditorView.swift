@@ -144,21 +144,47 @@ struct RuleForm: View {
                             Text("IBAN").tag(RuleField.counterpartyIban)
                         }
                     }
-                    Picker("Muster", selection: $rule.matchKind) {
+                    Picker("Art", selection: $rule.matchKind) {
                         Text("Stichwörter").tag(MatchKind.keyword)
                         Text("Regulärer Ausdruck").tag(MatchKind.regex)
                         Text("Suchausdruck").tag(MatchKind.expression)
                     }
                     .pickerStyle(.segmented)
-                    TextField(placeholder, text: $rule.pattern)
-                        .font(.body.monospaced())
-                        .autocorrectionDisabled()
-                    if rule.matchKind == .expression {
-                        Text("Mit AND, OR, NOT, Klammern, „Wortgruppen“, * und ?, /Regex/, Feldern wie name: oder purpose: und Beträgen wie amount<0.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
+                    if rule.matchKind != .expression {
                         Toggle("Groß-/Kleinschreibung beachten", isOn: $rule.caseSensitive)
                     }
+                }
+                // The pattern gets its own full-width, multi-line field so long
+                // patterns wrap instead of scrolling sideways; the example is
+                // the footer, apart from the input (#179). A vertical
+                // TextField, not a TextEditor: no smart-quote substitution.
+                Section {
+                    TextField("Muster", text: $rule.pattern, prompt: Text(placeholder), axis: .vertical)
+                        .labelsHidden()
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3...10)
+                        .font(.body.monospaced())
+                        .autocorrectionDisabled()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } header: {
+                    Text("Muster")
+                } footer: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Beispiel: \(Text(verbatim: placeholder).font(.caption.monospaced()))")
+                            .textSelection(.enabled)
+                        if rule.matchKind == .expression {
+                            Text("Mit AND, OR, NOT, Klammern, „Wortgruppen“, * und ?, /Regex/, Feldern wie name: oder purpose: und Beträgen wie amount<0.")
+                        } else if rule.matchKind == .keyword {
+                            #if os(macOS)
+                            Text("Stichwörter mit | trennen oder eines pro Zeile (neue Zeile mit ⌥↩).")
+                            #else
+                            Text("Stichwörter mit | trennen oder eines pro Zeile.")
+                            #endif
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
                 Section("Betrag") {
                     Picker("Richtung", selection: $direction) {

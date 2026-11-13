@@ -15084,6 +15084,39 @@
           }
         }
       }
+    },
+    "Beispiel: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Example: %@"
+          }
+        }
+      }
+    },
+    "Stichwörter mit | trennen oder eines pro Zeile (neue Zeile mit ⌥↩)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Separate keywords with | or put one per line (new line with ⌥↩)."
+          }
+        }
+      }
+    },
+    "Stichwörter mit | trennen oder eines pro Zeile." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Separate keywords with | or put one per line."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

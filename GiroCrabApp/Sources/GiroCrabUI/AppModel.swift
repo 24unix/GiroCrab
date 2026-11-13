@@ -701,6 +701,10 @@ public final class AppModel {
         case "rules":
             ruleDraft = nil
             showRuleEditor = true
+        case "rule-edit":
+            // a rule opened in the editor (#179 pattern field)
+            ruleDraft = rules.first
+            showRuleEditor = true
         case "palette":
             showCommandPalette = true
         case "categorizer":

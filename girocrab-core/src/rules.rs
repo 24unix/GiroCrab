@@ -58,7 +58,8 @@ impl CompiledRule {
             MatchKind::Keyword => {
                 let words: Vec<String> = rule
                     .pattern
-                    .split(['|', ','])
+                    // one keyword per line works too (multi-line field, #179)
+                    .split(['|', ',', '\n', '\r'])
                     .map(|w| w.trim())
                     .filter(|w| !w.is_empty())
                     .map(regex::escape)
@@ -218,6 +219,22 @@ mod tests {
             "max amount 0 excludes income"
         );
         assert_eq!(set.categorise(&input("Lidl", -100)), None);
+    }
+
+    #[test]
+    fn keywords_one_per_line() {
+        // the multi-line pattern field (#179): a line break separates keywords
+        let set =
+            RuleSet::new(vec![rule("REWE\nEdeka\r\n  Lidl  \n", MatchKind::Keyword)]).unwrap();
+        assert_eq!(
+            set.categorise(&input("Edeka Center Kassel", -2350)),
+            Some((1, 7))
+        );
+        assert_eq!(
+            set.categorise(&input("LIDL sagt danke", -100)),
+            Some((1, 7))
+        );
+        assert_eq!(set.categorise(&input("Aldi Süd", -100)), None);
     }
 
     #[test]
