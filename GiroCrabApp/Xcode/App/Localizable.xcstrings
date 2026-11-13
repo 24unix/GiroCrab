@@ -17351,6 +17351,127 @@
         }
       }
     },
+    "GiroCrab-Hilfe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab Help"
+          }
+        }
+      }
+    },
+    "Hilfe & FAQ" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Help & FAQ"
+          }
+        }
+      }
+    },
+    "In der Hilfe suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search Help"
+          }
+        }
+      }
+    },
+    "Support" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Support"
+          }
+        }
+      }
+    },
+    "Webseite & Dokumentation (girocrab.de)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Website & Documentation (girocrab.de)"
+          }
+        }
+      }
+    },
+    "Fehler melden / Issue erstellen (GitHub)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report a Bug / Open an Issue (GitHub)"
+          }
+        }
+      }
+    },
+    "Community & Diskussionen (GitHub)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Community & Discussions (GitHub)"
+          }
+        }
+      }
+    },
+    "Auswertungen anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Analytics"
+          }
+        }
+      }
+    },
+    "Auswertungen in der Übersicht anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show analytics in the overview"
+          }
+        }
+      }
+    },
+    "Blendet Saldoverlauf, Cashflow und Budgets über der Buchungsliste aus. Auch im Menü Ansicht umschaltbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hides the balance history, cash flow and budgets above the booking list. Also available in the View menu."
+          }
+        }
+      }
+    },
+    "Beim Entsperren %@ verlangen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Require %@ on Unlock"
+          }
+        }
+      }
+    },
     "Konto hinzufügen" : {
       "extractionState" : "manual",
       "localizations" : {
