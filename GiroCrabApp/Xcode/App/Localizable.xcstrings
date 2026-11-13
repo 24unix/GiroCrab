@@ -15502,6 +15502,17 @@
           }
         }
       }
+    },
+    "Konten abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch Accounts"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

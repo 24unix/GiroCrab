@@ -268,6 +268,7 @@ struct UserGroupMenu: View {
                 }
             }
             Divider()
+            fetchButton
             Toggle(isOn: Binding(
                 get: { group.includeInTotal },
                 set: { model.updateUserGroup(group, includeInTotal: $0) }
@@ -277,7 +278,15 @@ struct UserGroupMenu: View {
             Button("Neue Untergruppe …", systemImage: "folder.badge.plus") { model.groupDialog = .create(parent: group) }
             Divider()
             Button("Gruppe löschen …", systemImage: "trash", role: .destructive) { model.groupDialog = .delete(group) }
+        } else {
+            fetchButton
         }
+    }
+
+    /// Fetches every login behind the group's accounts, like "Alle abrufen".
+    private var fetchButton: some View {
+        Button("Konten abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSyncGroup(group) }
+            .disabled(model.syncingConnectionID != nil || model.groupSyncConnections(group).allSatisfy { model.bankingGate(for: $0) != nil })
     }
 }
 

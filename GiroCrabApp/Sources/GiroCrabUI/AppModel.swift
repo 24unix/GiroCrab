@@ -2856,12 +2856,29 @@ public final class AppModel {
     }
 
     func requestSyncAll() {
+        // portal connections need an interactive login – not part of "sync all"
+        // logins whose accounts are all archived are not asked at all
+        requestSyncBatch { [self] in connections.filter { !usesPortal($0) && !$0.allAccountsArchived } }
+    }
+
+    /// "Konten abrufen" in a group's menu: the logins behind the group's
+    /// accounts, subgroups included, each once – as "Alle abrufen" would.
+    func groupSyncConnections(_ group: UserGroup) -> [BankConnection] {
+        let ids = Set(userGroupSubtree(group.uuid).flatMap(\.accounts)
+            .filter { !$0.isArchived }.compactMap(\.connectionId))
+        return connections.filter { ids.contains($0.id) && !usesPortal($0) }
+    }
+
+    func requestSyncGroup(_ group: UserGroup) {
+        requestSyncBatch { [self] in groupSyncConnections(group) }
+    }
+
+    /// Runs `logins` one after another; read once the banking policy is fresh.
+    private func requestSyncBatch(_ logins: @escaping @MainActor () -> [BankConnection]) {
         guard syncingConnectionID == nil else { return }
         withFreshBankingPolicy { [self] in
             guard syncingConnectionID == nil else { return }
-            // portal connections need an interactive login – not part of "sync all"
-            // logins whose accounts are all archived are not asked at all
-            let batch = connections.filter { !usesPortal($0) && !$0.allAccountsArchived }
+            let batch = logins()
             // Logins the banking policy blocks are skipped and named at the end.
             let blocked = batch.filter { bankingGate(for: $0) != nil }
             let allowed = batch.filter { bankingGate(for: $0) == nil }
