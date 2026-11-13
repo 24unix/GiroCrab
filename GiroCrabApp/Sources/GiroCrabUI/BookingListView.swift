@@ -157,6 +157,8 @@ struct BookingStreamView: View {
                 }
             }
         }
+        // Pull-to-refresh (iOS): iCloud merge + bank sync of the current selection
+        .refreshable { await model.refreshCurrentView() }
         .focusable()
         .focusEffectDisabled()
         .focused($focused)

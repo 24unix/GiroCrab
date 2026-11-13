@@ -17130,6 +17130,17 @@
           }
         }
       }
+    },
+    "Dieser Tresor wurde mit einer neueren GiroCrab-Version gespeichert. Bitte die App aktualisieren." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This vault was saved by a newer version of GiroCrab. Please update the app."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

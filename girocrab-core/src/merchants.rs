@@ -925,7 +925,7 @@ static TABLE: &[Entry] = &[
     e(
         "sparkasse",
         "Sparkasse",
-        &["sparkasse"],
+        &["sparkasse", "stadtsparkasse", "kreissparkasse"],
         "sparkasse.de",
         "#FF0000",
         "building.columns",
@@ -1081,6 +1081,32 @@ fn stock_confirmed(e: &Entry, text: &str, ctx: &str) -> bool {
     })
 }
 
+/// True when `needle` occurs in `text` at the start of a word. "Bausparkasse"
+/// must not match the needle "sparkasse"; "telekoms" still matches "telekom"
+/// (the right edge stays open for plurals and genitives).
+fn needle_in(text: &str, needle: &str) -> bool {
+    text.match_indices(needle).any(|(i, _)| {
+        needle.starts_with(|c: char| !c.is_alphanumeric())
+            || text[..i]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !c.is_alphanumeric())
+    })
+}
+
+/// Sub-brands that the counterparty only shows under the parent company's legal
+/// entity ("Fraenk - eine Marke der Telekom Deutschland GmbH"). When the
+/// counterparty or purpose names the sub-brand, it wins over the parent.
+const SUB_BRANDS: &[(&str, &[&str])] = &[("telekom", &["fraenk", "congstar"])];
+
+fn entry_by_key(key: &str) -> Option<&'static Entry> {
+    PRIORITY
+        .iter()
+        .chain(TABLE.iter())
+        .chain(GERMAN.iter())
+        .find(|e| e.key == key)
+}
+
 /// Like `find`, but skips stock entries without securities evidence.
 fn find_checked(text: &str, ctx: &str) -> Option<&'static Entry> {
     PRIORITY
@@ -1088,7 +1114,7 @@ fn find_checked(text: &str, ctx: &str) -> Option<&'static Entry> {
         .chain(TABLE.iter())
         .chain(GERMAN.iter())
         .find(|e| {
-            e.needles.iter().any(|n| text.contains(n))
+            e.needles.iter().any(|n| needle_in(text, n))
                 && (e.kind != K::Stock || stock_confirmed(e, text, ctx))
         })
 }
@@ -1622,6 +1648,15 @@ impl MerchantResolver {
                     return to_info(real);
                 }
             }
+            if let Some((_, subs)) = SUB_BRANDS.iter().find(|(parent, _)| *parent == entry.key) {
+                if let Some(sub) = subs
+                    .iter()
+                    .filter_map(|k| entry_by_key(k))
+                    .find(|sub| sub.needles.iter().any(|n| needle_in(&ctx, n)))
+                {
+                    return to_info(sub);
+                }
+            }
             return to_info(entry);
         }
         if let Some(entry) = find_checked(&pu, &ctx).filter(|e| {
@@ -2106,6 +2141,38 @@ mod tests {
             "private persons get no domain"
         );
         assert!(heuristic_domains("Eigenes Konto").is_empty());
+    }
+
+    #[test]
+    fn needles_match_at_word_start_only() {
+        let name = |cp: &str, pu: &str| resolve_merchant(cp.into(), pu.into()).name;
+        // "Bausparkasse" is not a Sparkasse (#204).
+        assert_eq!(
+            name("Dt. Bausparkasse Badenia AG", ""),
+            "Dt. Bausparkasse Badenia"
+        );
+        assert_eq!(name("Stadtsparkasse Muenchen", ""), "Sparkasse");
+        assert_eq!(name("Kreissparkasse Koeln", ""), "Sparkasse");
+        assert_eq!(name("Sparkasse Hannover", ""), "Sparkasse");
+    }
+
+    #[test]
+    fn sub_brand_in_purpose_beats_parent_counterparty() {
+        let name = |cp: &str, pu: &str| resolve_merchant(cp.into(), pu.into()).name;
+        assert_eq!(
+            name("Telekom Deutschland GmbH", "Rechnung fraenk Mobilfunk"),
+            "fraenk"
+        );
+        assert_eq!(
+            name("Telekom Deutschland GmbH", "congstar Mobilfunk"),
+            "congstar"
+        );
+        assert_eq!(name("Telekom Deutschland GmbH", "Festnetz"), "Telekom");
+        // Real booking (#204): the counterparty itself names both brands.
+        assert_eq!(
+            name("Fraenk - eine Marke der Telekom Deu tschland GmbH", ""),
+            "fraenk"
+        );
     }
 
     #[test]

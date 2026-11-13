@@ -10,6 +10,7 @@ generated/CashCrabCorePackage/
 
 # --- Your money data (encrypted or not, never commit it) ---
 *.girocrab
+!girocrab-core/tests/fixtures/*.girocrab
 *.girocrab-wal
 *.girocrab-shm
 *.cashcrab

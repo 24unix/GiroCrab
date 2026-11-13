@@ -296,6 +296,7 @@ impl BankConnector for DemoConnector {
         // Balances are not re-reported by the simulated bank; the vault adds
         // the new bookings to the stored balances instead.
         out.adjust_balances = true;
+        out.simulated = true;
         Ok(out)
     }
 }

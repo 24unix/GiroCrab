@@ -335,4 +335,39 @@ mod tests {
         assert!(sparda.iter().all(|b| b.url == ATRUVIA));
         assert!(!HOSTS.iter().any(|h| h.contains("bankingonline.de")));
     }
+
+    /// All 19 PSD head offices of the Bundesbank Bankleitzahlendatei (names
+    /// containing "PSD", main entries) – checked against the file on 2026-11-13.
+    /// 75090900 is the VR Bank Niederbayern-Oberpfalz (merged PSD), not a PSD.
+    const PSD_BLZ: [&str; 19] = [
+        "10090900", "20090900", "21090900", "25090900", "27090900", "29090900", "30060992",
+        "37060993", "40090900", "44090920", "50090900", "57090900", "58590900", "59090900",
+        "60090900", "66090900", "68090900", "72090900", "76090900",
+    ];
+
+    #[test]
+    fn every_psd_bank_is_listed_once_and_findable() {
+        let mut names = std::collections::HashSet::new();
+        for blz in PSD_BLZ {
+            let b = lookup(blz).unwrap_or_else(|| panic!("{blz} missing"));
+            assert!(b.name.starts_with("PSD Bank"), "{blz}: {}", b.name);
+            assert!(names.insert(b.name.clone()), "duplicate name: {}", b.name);
+            assert!(search(&b.name, 50).iter().any(|r| r.blz == blz), "{blz}");
+            assert!(
+                BICS.binary_search_by(|e| e.0.cmp(blz)).is_ok(),
+                "{blz}: no BIC"
+            );
+        }
+        // no further bank named PSD in the directory
+        let psd = search("psd", 200);
+        let all: Vec<_> = psd
+            .iter()
+            .filter(|b| fold(&b.name).starts_with("psd"))
+            .collect();
+        assert_eq!(all.len(), PSD_BLZ.len());
+        assert!(search("psd west", 5).iter().any(|b| b.blz == "37060993"));
+        assert!(search("psd stuttgart", 5)
+            .iter()
+            .any(|b| b.blz == "60090900"));
+    }
 }

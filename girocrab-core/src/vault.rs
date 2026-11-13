@@ -71,7 +71,7 @@ pub(crate) fn enrich(t: &mut Booking) {
 }
 
 /// Securities positions of depot accounts (replaced on every sync).
-const HOLDINGS_SCHEMA: &str = "
+pub(crate) const HOLDINGS_SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS holdings (
     id                   INTEGER PRIMARY KEY,
     account_id           INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -95,14 +95,18 @@ CREATE INDEX IF NOT EXISTS holdings_account ON holdings(account_id);
 ///   `deleted_ms` and are defined in `sync_merge::COVERING_INDEXES`.
 /// - `tx_salary_marked`: the user-marked salary bookings, looked up on every
 ///   booking list, without scanning all bookings.
-const PERF_INDEXES: &str = "
+pub(crate) const PERF_INDEXES: &str = "
 DROP INDEX IF EXISTS tx_date;
 CREATE INDEX IF NOT EXISTS tx_date_id ON transactions(booking_date DESC, id DESC);
 CREATE INDEX IF NOT EXISTS tx_salary_marked ON transactions(counterparty_iban) WHERE salary_flag = 1;
 ";
 
-const SCHEMA_VERSION: i64 = 8;
+pub(crate) use crate::schema::SCHEMA_VERSION;
 
+/// Base schema before #206 (`version == 0` branch of the probe-based setup):
+/// no sync, group or salary columns. Tests build old vaults from it; new vaults
+/// get `schema::BASELINE`.
+#[cfg(test)]
 pub(crate) const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS bank_connections (
     id              INTEGER PRIMARY KEY,
@@ -290,139 +294,18 @@ impl Vault {
             .unwrap_or(false)
     }
 
-    fn migrate(conn: &Connection) -> CoreResult<()> {
+    fn migrate(conn: &mut Connection) -> CoreResult<()> {
         // Fails with NotADatabase if the key is wrong.
         conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
             r.get::<_, i64>(0)
         })?;
+        // A vault from a newer build stays untouched (not even the pragmas below).
+        crate::schema::check_not_too_new(conn)?;
         // Connection settings first: neither pragma takes effect inside a transaction.
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
-        // All schema steps in one transaction (SQLite DDL is transactional): an
+        // All pending steps in one transaction (SQLite DDL is transactional): an
         // aborted run leaves the old schema and `user_version`, never half of it.
-        let tx = conn.unchecked_transaction()?;
-        Self::migrate_schema(&tx)?;
-        tx.commit()?;
-        Ok(())
-    }
-
-    fn has_column(conn: &Connection, table: &str, col: &str) -> CoreResult<bool> {
-        let n: i64 = conn.query_row(
-            "SELECT count(*) FROM pragma_table_info(?1) WHERE name = ?2",
-            [table, col],
-            |r| r.get(0),
-        )?;
-        Ok(n > 0)
-    }
-
-    /// Schema steps of [`Self::migrate`]; each one is idempotent, so also a
-    /// vault left half-migrated by an older version opens.
-    fn migrate_schema(conn: &Connection) -> CoreResult<()> {
-        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version == 0 {
-            conn.execute_batch(SCHEMA)?;
-        } else {
-            if version <= 4 && !Self::has_column(conn, "accounts", "initial_balance_cents")? {
-                if Self::has_column(conn, "accounts", "loan_principal_cents")? {
-                    // v5: loan_principal_cents -> initial_balance_cents
-                    conn.execute_batch("ALTER TABLE accounts RENAME COLUMN loan_principal_cents TO initial_balance_cents;")?;
-                } else {
-                    // v1 had neither column
-                    conn.execute_batch(
-                        "ALTER TABLE accounts ADD COLUMN initial_balance_cents INTEGER;",
-                    )?;
-                }
-            }
-            if version <= 2 {
-                // v3: merchant_logo_cache(domain, image_bytes, updated_at)
-                conn.execute_batch(
-                    "DROP TABLE IF EXISTS merchant_logo_cache;
-                     CREATE TABLE merchant_logo_cache (domain TEXT PRIMARY KEY, image_bytes BLOB,
-                        updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), source TEXT NOT NULL DEFAULT '');",
-                )?;
-            }
-        }
-        // v6: user notes + import fingerprint (idempotent, also for pre-v5 files)
-        if version > 0 && version < 6 {
-            let has: i64 = conn.query_row(
-                "SELECT count(*) FROM pragma_table_info('transactions') WHERE name = 'note'",
-                [],
-                |r| r.get(0),
-            )?;
-            if has == 0 {
-                conn.execute_batch(
-                    "ALTER TABLE transactions ADD COLUMN note TEXT NOT NULL DEFAULT '';
-                     ALTER TABLE transactions ADD COLUMN import_fp TEXT NOT NULL DEFAULT '';
-                     CREATE INDEX IF NOT EXISTS tx_import_fp ON transactions(account_id, import_fp) WHERE import_fp != '';",
-                )?;
-            }
-        }
-        // accounts.access_revoked (PSD2 access withdrawn) – idempotent
-        if version > 0 {
-            let has: i64 = conn.query_row(
-                "SELECT count(*) FROM pragma_table_info('accounts') WHERE name = 'access_revoked'",
-                [],
-                |r| r.get(0),
-            )?;
-            if has == 0 {
-                conn.execute_batch(
-                    "ALTER TABLE accounts ADD COLUMN access_revoked INTEGER NOT NULL DEFAULT 0;",
-                )?;
-            }
-        }
-        // transactions.purpose_code / gvc / salary_flag (salary detection) – idempotent
-        if version > 0 {
-            for (col, ddl) in [
-                (
-                    "purpose_code",
-                    "ALTER TABLE transactions ADD COLUMN purpose_code TEXT NOT NULL DEFAULT '';",
-                ),
-                (
-                    "gvc",
-                    "ALTER TABLE transactions ADD COLUMN gvc TEXT NOT NULL DEFAULT '';",
-                ),
-                (
-                    "salary_flag",
-                    "ALTER TABLE transactions ADD COLUMN salary_flag INTEGER;",
-                ),
-            ] {
-                let has: i64 = conn.query_row(
-                    "SELECT count(*) FROM pragma_table_info('transactions') WHERE name = ?1",
-                    [col],
-                    |r| r.get(0),
-                )?;
-                if has == 0 {
-                    conn.execute_batch(ddl)?;
-                }
-            }
-        }
-        // v4: encrypted documents (Beleg-Abruf & PostBox) – idempotent
-        conn.execute_batch(crate::documents::DOC_SCHEMA)?;
-        let has_export: i64 = conn.query_row(
-            "SELECT count(*) FROM pragma_table_info('booking_documents') WHERE name = 'exported_at'",
-            [],
-            |r| r.get(0),
-        )?;
-        if has_export == 0 {
-            conn.execute_batch("ALTER TABLE booking_documents ADD COLUMN exported_at INTEGER;")?;
-        }
-        conn.execute_batch(crate::insights::OVERRIDE_SCHEMA)?;
-        conn.execute_batch(HOLDINGS_SCHEMA)?;
-        conn.execute_batch(crate::planning::PLANNING_SCHEMA)?;
-        conn.execute_batch(crate::recurring::RECURRING_SCHEMA)?;
-        // v7: user-defined account groups – idempotent
-        crate::user_groups::migrate(conn)?;
-        // v8: sync keys, per-field edit stamps and soft deletes – idempotent
-        crate::sync_merge::migrate(conn)?;
-        // manual loans (#36) – idempotent
-        conn.execute_batch(crate::loans::LOAN_SCHEMA)?;
-        // opening balances (#212) – idempotent
-        conn.execute_batch(crate::opening_balance::SCHEMA)?;
-        // after all column migrations: the indexes need the newest columns
-        conn.execute_batch(PERF_INDEXES)?;
-        if version < SCHEMA_VERSION {
-            conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))?;
-        }
-        Ok(())
+        crate::schema::migrate(conn)
     }
 
     /// Fills `initial_balance_cents` from the largest historical absolute
@@ -865,14 +748,14 @@ impl Vault {
         let mut opened: Option<Connection> = None;
         let mut first_err: Option<CoreError> = None;
         for compat in [None, Some(4u8), Some(3u8)] {
-            let conn = Connection::open(&path)?;
+            let mut conn = Connection::open(&path)?;
             Self::apply_key(&conn, &key)?;
             if let Some(c) = compat {
                 let _ = conn.query_row(&format!("PRAGMA cipher_compatibility = {c};"), [], |_| {
                     Ok(())
                 });
             }
-            match Self::migrate(&conn) {
+            match Self::migrate(&mut conn) {
                 Ok(()) => {
                     if compat.is_some() {
                         tried.push("ok");
@@ -914,6 +797,9 @@ impl Vault {
             ));
             return Err(first_err.unwrap_or(CoreError::WrongKey));
         };
+        // categories/rules without a sync key (rows written outside the app's own
+        // paths); used to happen as part of the per-open schema probes
+        let _ = crate::sync_merge::fill_missing_uuids(&conn);
         // merge duplicate bank logins left by older versions (keeps bookings)
         let _ = crate::connections::deduplicate(&conn);
         // repair "MÃ¼ller" -> "Müller" stored by older versions
@@ -1002,7 +888,7 @@ impl Vault {
         // Validate key and bring the other file up to the current schema;
         // a file from a v7 build has no uuids before that.
         let legacy = {
-            let o = Connection::open(&other_path)?;
+            let mut o = Connection::open(&other_path)?;
             Self::apply_key(&o, &key)?;
             let has_uuid: bool = o
                 .query_row(
@@ -1011,7 +897,8 @@ impl Vault {
                     |r| r.get(0),
                 )
                 .unwrap_or(true);
-            Self::migrate(&o)?;
+            Self::migrate(&mut o)?;
+            crate::sync_merge::fill_missing_uuids(&o)?;
             !has_uuid
         };
         let conn = self.db()?;
@@ -2726,7 +2613,8 @@ mod upgrade_tests {
                  ALTER TABLE transactions DROP COLUMN gvc;
                  ALTER TABLE transactions DROP COLUMN salary_flag;
                  ALTER TABLE booking_documents DROP COLUMN exported_at;
-                 DROP TABLE recurring_series;",
+                 DROP TABLE recurring_series;
+                 PRAGMA user_version = 8; -- written by a probe-based build (before #206)",
             )
             .unwrap();
         }

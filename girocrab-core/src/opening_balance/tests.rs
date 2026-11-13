@@ -163,7 +163,7 @@ fn calibrate_hits_the_target_and_keeps_the_date() {
 }
 
 #[test]
-fn cleared_opening_balance_keeps_the_balance() {
+fn cleared_opening_balance_falls_back_to_the_booking_sum() {
     let v = vault("ob-clear");
     let id = imported(&v, "A", &[("2026-01-15", -1000)]);
     v.set_account_opening_balance(id, Some(5000), String::new())
@@ -172,10 +172,11 @@ fn cleared_opening_balance_keeps_the_balance() {
         .unwrap();
     let a = account(&v, id);
     assert_eq!(a.opening_balance_cents, None);
-    assert_eq!(a.balance_cents, 4000);
-    // a later rule run leaves it alone too
+    // back to the pure sum of the bookings (5000 - 1000 before)
+    assert_eq!(a.balance_cents, -1000);
+    // a later rule run leaves it alone
     Vault::apply_rules_inner(&v.db().unwrap(), true).unwrap();
-    assert_eq!(account(&v, id).balance_cents, 4000);
+    assert_eq!(account(&v, id).balance_cents, -1000);
 }
 
 #[test]
@@ -276,5 +277,39 @@ fn merge_takes_the_newer_opening_balance() {
         )
         .unwrap();
     a.merge_other_vault(b.file_path(), vec![7u8; 32]).unwrap();
-    assert_eq!(account(&a, ia).opening_balance_cents, None);
+    let cleared = account(&a, ia);
+    assert_eq!(cleared.opening_balance_cents, None);
+    // a removal arriving by merge also falls back to the booking sum
+    assert_eq!(cleared.balance_cents, -1000);
+}
+
+#[test]
+fn simulated_bank_sync_does_not_mark_accounts_derived() {
+    use crate::connectors::{store_fetch, FetchResult, RemoteAccount};
+    use crate::models::ConnectorKind;
+    let v = vault("ob-simulated");
+    let c = v
+        .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap();
+    let fetch = |simulated: bool| FetchResult {
+        accounts: vec![RemoteAccount {
+            external_ref: "DE1".into(),
+            name: "Demo".into(),
+            owner: String::new(),
+            iban: String::new(),
+            account_number: String::new(),
+            currency: "EUR".into(),
+            kind: crate::models::AccountKind::Checking,
+            balance_cents: 0,
+            balance_date: "2026-11-10".into(),
+        }],
+        adjust_balances: true,
+        simulated,
+        ..Default::default()
+    };
+    store_fetch(&v, ConnectorKind::Comdirect, c, fetch(true)).unwrap();
+    assert!(!v.list_accounts().unwrap()[0].balance_derived);
+    // a real connector without balances still marks it
+    store_fetch(&v, ConnectorKind::Comdirect, c, fetch(false)).unwrap();
+    assert!(v.list_accounts().unwrap()[0].balance_derived);
 }

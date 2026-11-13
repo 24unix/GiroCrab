@@ -44,6 +44,12 @@ pub enum CoreError {
     BankingBlocked {
         message: String,
     },
+    /// The vault was written by a newer GiroCrab (schema `vault_version`,
+    /// this build knows up to `app_version`). It is left untouched.
+    SchemaTooNew {
+        vault_version: i64,
+        app_version: i64,
+    },
 }
 
 impl From<rusqlite::Error> for CoreError {
@@ -55,6 +61,27 @@ impl From<rusqlite::Error> for CoreError {
         }
         CoreError::Database {
             message: e.to_string(),
+        }
+    }
+}
+
+impl From<rusqlite_migration::Error> for CoreError {
+    fn from(e: rusqlite_migration::Error) -> Self {
+        use rusqlite_migration::{Error, MigrationDefinitionError};
+        match e {
+            // keeps `WrongKey` (NotADatabase) recognisable
+            Error::RusqliteError { err, .. } => err.into(),
+            Error::MigrationDefinition(MigrationDefinitionError::DatabaseTooFarAhead) => {
+                // `schema::migrate` checks first and knows the real number
+                let app_version = crate::schema::SCHEMA_VERSION;
+                CoreError::SchemaTooNew {
+                    vault_version: app_version + 1,
+                    app_version,
+                }
+            }
+            other => CoreError::Database {
+                message: other.to_string(),
+            },
         }
     }
 }
@@ -112,6 +139,10 @@ impl fmt::Display for CoreError {
             }
             CoreError::SessionClosed => tr("Dieser Abruf ist nicht mehr aktiv").to_string(),
             CoreError::BankingBlocked { message } => message.clone(),
+            CoreError::SchemaTooNew { .. } => tr(
+                "Dieser Tresor wurde mit einer neueren GiroCrab-Version gespeichert. Bitte die App aktualisieren.",
+            )
+            .to_string(),
         };
         f.write_str(&text)
     }

@@ -204,7 +204,8 @@ pub fn account_color_palette() -> Vec<String> {
         .collect()
 }
 
-/// Idempotent schema setup (also for brand-new vaults).
+/// Idempotent schema setup of schema 7.
+/// Repair step up to schema 9 (`schema::repair_to_v8`); new changes go in `schema.rs`.
 pub(crate) fn migrate(conn: &Connection) -> CoreResult<()> {
     conn.execute_batch(SCHEMA)?;
     for (col, def) in ACCOUNT_COLUMNS {

@@ -16,6 +16,9 @@ cargo run -- --demo-seed               # or GIROCRAB_DEMO_SEED=1
 
 Swift-only changes: `cd GiroCrabApp && swift build -q` (no core rebuild needed).
 
+Database schema changes are a new migration step plus a fixture vault, see
+[Schema & migrations](docs/ARCHITECTURE.md#schema--migrations).
+
 ## Adding a bank in 3 steps
 
 1. **Copy the template.** `cp girocrab-core/src/connectors/template.rs girocrab-core/src/connectors/<bank>.rs`

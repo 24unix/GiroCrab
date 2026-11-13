@@ -2971,6 +2971,80 @@ public final class AppModel {
         requestSyncBatch { [self] in groupSyncConnections(group) }
     }
 
+    /// What a pull-to-refresh starts besides the iCloud merge.
+    enum RefreshSyncAction: Equatable {
+        case none
+        case connection(Int64)
+        case group(String)
+        case all
+    }
+
+    /// Context-aware bank sync of the current sidebar selection. Import-only
+    /// and portal accounts (interactive login) need no bank sync: the iCloud
+    /// merge and reload cover them.
+    func refreshSyncAction() -> RefreshSyncAction {
+        switch sidebarSelection {
+        case .account(let id):
+            guard let cid = allAccounts.first(where: { $0.id == id })?.connectionId,
+                  let c = connections.first(where: { $0.id == cid }),
+                  !usesPortal(c), !c.allAccountsArchived else { return .none }
+            return .connection(cid)
+        case .userGroup(let uuid) where !uuid.isEmpty:
+            return .group(uuid)
+        case .documents:
+            return .none
+        default:
+            return .all
+        }
+    }
+
+    /// Hook for tests: runs the action's sync instead of the real one.
+    @ObservationIgnored var refreshSyncOverride: ((RefreshSyncAction) -> Void)?
+
+    /// Pull-to-refresh: merges the iCloud snapshots first (bookings synced on
+    /// the Mac), then syncs what the current selection shows. Returns when the
+    /// work is done, so the native spinner stays up. While a sync runs it only
+    /// waits for it instead of starting a second one.
+    func refreshCurrentView() async {
+        if let v = ownVault, CloudSyncManager.shared.isEnabled {
+            await CloudSyncManager.shared.sync(vault: v)
+            reloadAll()
+        }
+        guard syncingConnectionID == nil else {
+            await awaitSyncSettled()
+            return
+        }
+        let action = refreshSyncAction()
+        guard action != .none else { return }
+        if let hook = refreshSyncOverride { hook(action); return }
+        switch action {
+        case .none: return
+        case .connection(let id):
+            guard let c = connections.first(where: { $0.id == id }) else { return }
+            requestSync(c)
+        case .group(let uuid):
+            guard let g = userGroups.first(where: { $0.uuid == uuid }) else { return }
+            requestSyncGroup(g)
+        case .all:
+            requestSyncAll()
+        }
+        await awaitSyncSettled()
+    }
+
+    /// Waits until the running sync (batch included) is over, or stops at a
+    /// PIN / TAN / setup prompt, which only the user can answer.
+    private func awaitSyncSettled() async {
+        var waited = 0
+        // the banking policy check may delay the start a moment
+        try? await Task.sleep(for: .milliseconds(150))
+        while !Task.isCancelled, waited < 600 {
+            let prompting = pendingLogin != nil || setupRequest != nil || webLoginConnection != nil || activeChallenge != nil
+            if prompting || (syncingConnectionID == nil && syncQueue.isEmpty) { return }
+            try? await Task.sleep(for: .milliseconds(200))
+            waited += 1
+        }
+    }
+
     /// Runs `logins` one after another; read once the banking policy is fresh.
     private func requestSyncBatch(_ logins: @escaping @MainActor () -> [BankConnection]) {
         guard syncingConnectionID == nil else { return }
@@ -3559,6 +3633,7 @@ func describe(_ error: Error) -> String {
     case .SessionClosed: return String(localized: "Dieser Abruf ist nicht mehr aktiv.")
     case .BrowserLoginRequired(let m): return m
     case .BankingBlocked(let m): return m
+    case .SchemaTooNew: return String(localized: "Dieser Tresor wurde mit einer neueren GiroCrab-Version gespeichert. Bitte die App aktualisieren.")
     }
 }
 

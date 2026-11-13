@@ -26,14 +26,6 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::vault::Vault;
 
-pub(crate) const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS opening_balances (
-    account_id    INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
-    opening_date  TEXT    NOT NULL DEFAULT '', -- YYYY-MM-DD, start of the day; '' = before the first booking
-    opening_cents INTEGER,                     -- i64 cents; NULL = cleared
-    updated_ms    INTEGER NOT NULL DEFAULT 0   -- newest edit wins in a vault merge
-);";
-
 /// Accounts whose balance is computed from bookings (SQL condition on `a`).
 pub(crate) const DERIVED_SQL: &str = "a.deleted_ms IS NULL AND a.kind NOT IN ('brokerage', 'loan')
      AND (a.connection_id IS NULL OR a.balance_derived = 1)";
@@ -150,6 +142,20 @@ pub(crate) fn refresh(conn: &Connection, account_id: i64) -> CoreResult<()> {
     Ok(())
 }
 
+/// After removing the opening balance: balance = Σ of all bookings. Applied
+/// once on removal, not on every refresh, so later bank-less balances stay.
+fn reset_to_sum(conn: &Connection, account_id: i64) -> CoreResult<()> {
+    if !is_derived(conn, account_id)? {
+        return Ok(());
+    }
+    let (sum, last) = sum_from(conn, account_id, "")?;
+    conn.execute(
+        "UPDATE accounts SET balance_cents = ?1, balance_date = max(balance_date, ?2) WHERE id = ?3",
+        params![sum, last, account_id],
+    )?;
+    Ok(())
+}
+
 /// Refreshes every account with an opening balance. Called after every import
 /// and booking change (via `apply_rules_inner`) and after vault merges.
 pub(crate) fn refresh_all(conn: &Connection) -> CoreResult<()> {
@@ -221,13 +227,17 @@ pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> 
             .collect::<Result<_, _>>()?;
         for (oid, date, cents, ms) in rows {
             if let Some(id) = acc_map.get(&oid) {
-                conn.execute(
+                let changed = conn.execute(
                     "INSERT INTO opening_balances(account_id, opening_date, opening_cents, updated_ms)
                      VALUES (?1, ?2, ?3, ?4)
                      ON CONFLICT(account_id) DO UPDATE SET opening_date = ?2, opening_cents = ?3, updated_ms = ?4
                       WHERE excluded.updated_ms > opening_balances.updated_ms",
                     params![id, date, cents, ms],
                 )?;
+                // a newer removal from the other vault: back to the booking sum
+                if changed > 0 && cents.is_none() {
+                    reset_to_sum(conn, *id)?;
+                }
             }
         }
     }
@@ -253,7 +263,12 @@ impl Vault {
         }
         let tx = db.unchecked_transaction()?;
         store(&tx, account_id, cents, &date)?;
-        refresh(&tx, account_id)?;
+        if cents.is_some() {
+            refresh(&tx, account_id)?;
+        } else {
+            // removed: back to the pure sum of the bookings
+            reset_to_sum(&tx, account_id)?;
+        }
         tx.commit()?;
         Ok(())
     }

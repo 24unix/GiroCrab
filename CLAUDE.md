@@ -6,6 +6,7 @@ Rust core (`girocrab-core`, UniFFI) + SwiftUI app (`GiroCrabApp`). Root = this d
 - `girocrab-core/src/lib.rs` – crate root, UniFFI exports
 - `girocrab-core/src/models.rs` – domain types
 - `girocrab-core/src/vault.rs` – encrypted storage
+- `girocrab-core/src/schema.rs` – versioned schema migrations (see `docs/ARCHITECTURE.md`)
 - `girocrab-core/src/connectors/mod.rs` – bank connector trait/dispatch (impls alongside: `fints/`, `comdirect.rs`, `trade_republic.rs`, …)
 - `girocrab-core/src/connectors/` – all connector impls: `fints/`, `comdirect.rs`, `trade_republic.rs`, `enable_banking.rs`, `paypal.rs`, `portal_import.rs` (Amex/Amazon Visa web + CSV/PDF import)
 - `girocrab-core/src/merchants.rs` – merchant matching
@@ -47,7 +48,9 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 - An edit must either reload synchronously or declare what it invalidates (`rulesStale`,
   `dashboardStale`, `categoryRefreshTask`). A cancelled background load must never be the only
   thing that would have refreshed a view.
-- Schema and index changes go in `sync_merge::migrate` (runs after the base schema, once per open).
+- Schema and index changes are a new entry at the end of `STEPS` in `girocrab-core/src/schema.rs`
+  (never edit an existing entry). Bump = run `cargo run -q -p girocrab-core --example make_fixture_vault`
+  and commit the new fixture (+ the `schema-v{N}.sql` the fixture test writes).
   Counts filter `deleted_ms IS NULL`: indexes they use must cover that column.
 
 ## Workflow

@@ -182,7 +182,7 @@ fn v7_vault_upgrades_and_keeps_rows() {
     let version: i64 = db
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 8);
+    assert_eq!(version, crate::vault::SCHEMA_VERSION);
     let n = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
     assert_eq!(
         n("SELECT count(*) FROM categories WHERE uuid IS NOT NULL"),

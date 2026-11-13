@@ -622,6 +622,9 @@ pub struct FetchResult {
     /// Keep stored balances and add newly imported bookings to them
     /// (for sources that don't report a balance).
     pub adjust_balances: bool,
+    /// The balances are simulated (demo bank): `adjust_balances` applies, but
+    /// the accounts do not count as "balance computed from bookings" (#212).
+    pub simulated: bool,
     /// Accounts (external refs) whose statements were fetched automatically.
     pub statements_fetched: Vec<String>,
     /// PDFs fetched from the bank (trade confirmations, PostBox, statements).
@@ -1155,12 +1158,14 @@ pub(crate) fn store_fetch(
         }
         // #212: a connector without balances accumulates the bookings; such an
         // account's balance can start from an opening balance.
-        for acc in &data.accounts {
-            if let Some(&id) = account_ids.get(&acc.external_ref) {
-                tx.execute(
-                    "UPDATE accounts SET balance_derived = ?1 WHERE id = ?2",
-                    params![data.adjust_balances, id],
-                )?;
+        if !data.simulated {
+            for acc in &data.accounts {
+                if let Some(&id) = account_ids.get(&acc.external_ref) {
+                    tx.execute(
+                        "UPDATE accounts SET balance_derived = ?1 WHERE id = ?2",
+                        params![data.adjust_balances, id],
+                    )?;
+                }
             }
         }
         // Credit cards without a connector balance: derive the open amount.

@@ -25,6 +25,12 @@ struct HoldingsCard: View {
                     Text(Money.format(h.valueCents)).monospacedDigit()
                 }
                 .font(.callout)
+                .contextMenu {
+                    Button("Position kopieren", systemImage: "doc.on.doc") { copyToPasteboard(Self.line(h)) }
+                    Button("Alle Positionen kopieren", systemImage: "doc.on.doc.fill") {
+                        copyToPasteboard(holdings.map(Self.line).joined(separator: "\n"))
+                    }
+                }
             }
         }
         .task(id: "\(account.id)-\(account.balanceCents)-\(account.balanceDate)") {
@@ -33,7 +39,17 @@ struct HoldingsCard: View {
     }
 }
 
-/// Right-click menu on the header's account info: copies bank details,
+extension HoldingsCard {
+    /// One position as plain text: name, ISIN/WKN, quantity, price, value.
+    static func line(_ h: Holding) -> String {
+        let id = h.isin.isEmpty ? h.wkn : h.isin
+        let qty = h.quantity.formatted(.number.precision(.fractionLength(0...4)))
+        return [h.name, id, "\(qty) × \(Money.format(h.currentPriceCents))", Money.format(h.valueCents)]
+            .filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+}
+
+/// Right-click / long-press menu on the header's account info: copies bank details,
 /// IBAN or balance as plain text.
 struct AccountCopyMenu: View {
     let account: Account
@@ -53,7 +69,7 @@ struct AccountCopyMenu: View {
         }
     }
 
-    private func bankDetails(bic: String?) -> String {
+    func bankDetails(bic: String?) -> String {
         let bank: String
         switch (bic, account.bankName.isEmpty) {
         case (let b?, false): bank = "BIC: \(b) (\(account.bankName))"
@@ -108,6 +124,15 @@ struct StreamHeaderCard: View {
                 .contextMenu {
                     if let a = account { AccountCopyMenu(account: a) }
                 }
+                #if os(iOS)
+                // long-press is invisible on iPhone/iPad: show an explicit entry too
+                if let a = account {
+                    Menu { AccountCopyMenu(account: a) } label: {
+                        Image(systemName: "doc.on.doc").font(.caption).foregroundStyle(Theme.secondary)
+                    }
+                    .accessibilityLabel("In Zwischenablage kopieren")
+                }
+                #endif
                 Spacer()
                 if let hb = model.headerBalance {
                     VStack(alignment: .trailing, spacing: 2) {

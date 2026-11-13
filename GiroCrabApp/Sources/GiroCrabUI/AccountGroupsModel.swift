@@ -322,6 +322,15 @@ extension AppModel {
         reloadAccounts()
     }
 
+    /// Whether the sidebar may show a drop mark for group `uuid` over `target`
+    /// (see `dropUserGroup`): `into` = becomes its subgroup (lower half of the
+    /// header or the group's accounts), else the line above its header. Never
+    /// into itself or its own subgroups; "Ohne Gruppe" only takes groups above it.
+    func canDropGroup(_ uuid: String, on target: UserGroup, into: Bool) -> Bool {
+        guard !uuid.isEmpty, !userGroupSubtree(uuid).contains(where: { $0.uuid == target.uuid }) else { return false }
+        return !(into && target.isUngrouped)
+    }
+
     /// List `.onMove` for groups (indices into `namedUserGroups`).
     func moveUserGroups(from: IndexSet, to: Int) {
         var list = namedUserGroups.map(\.uuid)

@@ -57,11 +57,10 @@ const COLUMNS: &[(&str, &str, &str)] = &[
     ("bank_connections", "deleted_ms", "INTEGER"),
     ("accounts", "created_ms", "INTEGER NOT NULL DEFAULT 0"),
     ("accounts", "deleted_ms", "INTEGER"),
-    // #212: balance computed from bookings (connector reports none)
-    ("accounts", "balance_derived", "INTEGER NOT NULL DEFAULT 0"),
 ];
 
 /// Schema v8 – idempotent, also for vaults that skipped versions.
+/// Repair step up to schema 9 (`schema::repair_to_v8`); new changes go in `schema.rs`.
 pub(crate) fn migrate(conn: &Connection) -> CoreResult<()> {
     for (table, col, def) in COLUMNS {
         let has: i64 = conn.query_row(

@@ -48,7 +48,8 @@ final class OpeningBalanceTests: XCTestCase {
 
         try model.setOpeningBalance(id, cents: nil, date: "")
         XCTAssertNil(model.account(for: id)?.openingBalanceCents)
-        XCTAssertEqual(model.account(for: id)?.balanceCents, 500_00)
+        // removed: back to the pure sum of all bookings (20 € since, −50 € before)
+        XCTAssertEqual(model.account(for: id)?.balanceCents, -30_00)
     }
 
     func testDemoCardHasAComputedBalance() throws {
