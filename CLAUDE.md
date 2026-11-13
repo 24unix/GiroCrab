@@ -62,6 +62,8 @@ whenever `README.md`, `docs/screenshots/**`, `docs/assets/**` or a release chang
 - Icon: `docs/assets/app-icon.png` (256 px, cropped from `icon-1024.png`) and `GiroCrabApp/Assets/girocrab-icon.svg` mirror the appiconset; the website's `img/` icons too. Never reuse the old logo.
 - Download buttons `docs/assets/download-macos.svg` / `download-ios.svg` carry the version; the site hero must show the same version and links.
 - Marketing screenshots: `--screenshot` hides the demo banners; re-shoot, then copy to `../girocrab.de/img/screenshots/`.
+- Never remove from `../girocrab.de/index.html` the support section `#unterstuetzen` ("☕ Projekt unterstützen (Freiwillige Zuwendung)", paypal.me/aprinz) and its `THIRD_PARTY_NOTICES.md` link; keep it above the footer on every sync.
+- Social preview: `og:image`/`twitter:image` use the square `og-logo-v2.png` (512×512, from `icon-1024.png`; `twitter:card=summary`). Regenerate it when the icon changes.
 - Commit + push both repos in the same session. `scripts/notarize.sh` warns if the site lacks the new version.
 
 ## Release checklist (`scripts/notarize.sh --upload vX.Y.Z`)
