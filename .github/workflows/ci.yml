@@ -13,9 +13,18 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_TERM_COLOR: always
 
+# Neuer Push auf denselben PR bricht den laufenden Lauf ab (macOS-Runner sind knapp).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # `rust` und `swift` laufen bewusst parallel und unabhängig: ein roter
+  # fmt-/Clippy-/Rust-Test-Lauf darf den Swift-Build nicht verdecken und umgekehrt.
+  # Die Jobnamen bleiben unverändert, damit bestehende Required Checks weiter greifen.
   rust:
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,15 +36,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - run: cargo fmt --all -- --check
       - name: Test FNZ portal browser scripts
         run: node --test scripts/test-fnz-portal.cjs
-      - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
   swift:
     runs-on: macos-latest
-    needs: rust
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
