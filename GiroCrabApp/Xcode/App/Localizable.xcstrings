@@ -17537,6 +17537,39 @@
           }
         }
       }
+    },
+    "Alle als gelesen markieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark All as Read"
+          }
+        }
+      }
+    },
+    "Keine neuen Umsätze" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No new bookings"
+          }
+        }
+      }
+    },
+    "%lld Umsätze als gelesen markiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld bookings marked as read"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

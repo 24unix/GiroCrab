@@ -2423,6 +2423,62 @@ public final class AppModel {
         reloadBookings(); reloadAccounts()
     }
 
+    /// "Alle als gelesen markieren" (GitHub #236): everything new in the list as
+    /// filtered now, or – with `accountIDs`, from a sidebar entry – in those
+    /// accounts regardless of period, search and scope. One SQL update off the
+    /// main thread; undoable via Bearbeiten › Widerrufen.
+    /// The Buchung menu entry: nothing to do without new bookings, and not in
+    /// Belege (there the list would silently mean every account).
+    var canMarkAllChecked: Bool { vault != nil && newCount > 0 && sidebarSelection != .documents }
+
+    func markAllChecked(accountIDs: [Int64]? = nil) {
+        guard let vault else { return }
+        if accountIDs == nil, sidebarSelection == .documents { return }
+        var f = currentFilter
+        if let accountIDs {
+            f.accountIds = accountIDs; f.categoryId = nil; f.uncategorizedOnly = false
+            f.search = nil; f.dateFrom = nil; f.dateTo = nil; f.direction = .all
+            f.scope = .all; f.merchantKey = nil
+        }
+        f.checked = false; f.limit = 0; f.offset = 0; f.wholeDays = false
+        let filter = f
+        Task { [weak self] in
+            do {
+                let ids = try await Self.offMain { try vault.setCheckedForFilter(filter: filter, checked: true) }
+                guard let self, self.vault === vault else { return }
+                self.finishMarkChecked(ids)
+            } catch {
+                self?.errorMessage = describe(error)
+            }
+        }
+    }
+
+    private func finishMarkChecked(_ ids: [Int64]) {
+        guard !ids.isEmpty else {
+            toast = String(localized: "Keine neuen Umsätze")
+            return
+        }
+        if let um = windowUndoManager {
+            um.registerUndo(withTarget: self) { m in m.setChecked(ids, to: false) }
+            um.setActionName(String(localized: "Alle als gelesen markieren"))
+        }
+        toast = String(localized: "\(ids.count) Umsätze als gelesen markiert")
+        // With "Neu" / "Geprüft" active the bookings leave the list: keep the selected one in the inspector (like setChecked)
+        if statusFilter != .all, let b = selectedBooking, ids.contains(b.id) { stickyBooking = freshBooking(b) }
+        reloadBookings(); reloadAccounts()
+    }
+
+    /// Undo / redo of `markAllChecked` for exactly the bookings it changed.
+    private func setChecked(_ ids: [Int64], to checked: Bool) {
+        guard let vault else { return }
+        do { try vault.setCheckedForIds(ids: ids, checked: checked) } catch { errorMessage = describe(error); return }
+        if let um = windowUndoManager {
+            um.registerUndo(withTarget: self) { m in m.setChecked(ids, to: !checked) }
+            um.setActionName(String(localized: "Alle als gelesen markieren"))
+        }
+        reloadBookings(); reloadAccounts()
+    }
+
     func updateText(counterparty: String, purpose: String, for booking: Booking) {
         guard let vault else { return }
         run { try vault.updateTransactionText(transactionId: booking.id, counterparty: counterparty, purpose: purpose) }

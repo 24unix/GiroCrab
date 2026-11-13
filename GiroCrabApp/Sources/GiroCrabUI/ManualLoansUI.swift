@@ -54,7 +54,8 @@ extension AppModel {
         #if os(macOS)
         // The main window's manager, also when saving from one of its sheets
         // (a sheet's own undo stack would vanish with the sheet).
-        let w = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first { $0.isVisible && $0.canBecomeMain }
+        let app = NSApplication.shared
+        let w = app.keyWindow ?? app.mainWindow ?? app.windows.first { $0.isVisible && $0.canBecomeMain }
         return (w?.sheetParent ?? w)?.undoManager
         #else
         nil

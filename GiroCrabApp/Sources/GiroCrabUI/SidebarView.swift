@@ -20,6 +20,10 @@ struct SidebarView: View {
             }
             .badge(model.newCount) // system sidebar badge (hidden at 0)
             .tag(SidebarItem.allAccounts)
+            .contextMenu {
+                Button("Alle als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
+                    .disabled(model.newCount == 0)
+            }
             HStack(spacing: 8) {
                 Image(systemName: "doc.on.doc").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Belege & PostBox").fontWeight(.medium)
@@ -302,6 +306,7 @@ struct SidebarView: View {
         Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .account(account.id) }
         AccountGroupMenu(account: account)
         Divider()
+        Button("Alle als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: [account.id]) }
         ManualLoanAccountMenu(model: model, account: account)
         OpeningBalanceMenuItem(model: model, account: account)
         if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
