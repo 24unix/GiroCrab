@@ -374,6 +374,7 @@ extension ConnectorKind {
         case .scalableCapital: return "Scalable Capital"
         case .amazonOrders: return "Amazon Bestellungen"
         case .fnz: return "FNZ Bank"
+        case .ibkr: return "Interactive Brokers (IBKR)"
         }
     }
 
@@ -393,6 +394,7 @@ extension ConnectorKind {
         case .scalableCapital: return "#0E2A47"
         case .amazonOrders: return "#B45F06"
         case .fnz: return "#265B55"
+        case .ibkr: return "#D81222"
         }
     }
 
@@ -419,6 +421,7 @@ extension ConnectorKind {
         case .scalableCapital: return "SC"
         case .amazonOrders: return "AZ"
         case .fnz: return "FNZ"
+        case .ibkr: return "IB"
         }
     }
 }

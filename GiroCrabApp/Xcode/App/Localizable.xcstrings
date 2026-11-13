@@ -17955,6 +17955,50 @@
           }
         }
       }
+    },
+    "Flex-Query-ID im Tresor speichern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Store Flex Query ID in Vault"
+          }
+        }
+      }
+    },
+    "Flex-Query-ID" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flex Query ID"
+          }
+        }
+      }
+    },
+    "Flex-Token" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flex token"
+          }
+        }
+      }
+    },
+    "Interactive Brokers Flex Web Service" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interactive Brokers Flex Web Service"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

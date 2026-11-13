@@ -150,6 +150,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("Vorher auf scalable.capital unter Profil → Sicherheit → „Agentic Investing“ den CLI-Zugriff einschalten. Die Anmeldung läuft im Browser und muss alle 7 Tage erneuert werden. Nur Lesezugriff.").into(),
         },
+        ConnectorKind::Ibkr => BankDescriptor {
+            kind,
+            name: "Interactive Brokers (IBKR)".into(),
+            protocol: tr("Flex Web Service (Token + Flex Query)").into(),
+            bank_code: String::new(),
+            sf_symbol: "chart.line.uptrend.xyaxis".into(),
+            login_label: tr("Flex-Token").into(),
+            secret_label: tr("Flex-Query-ID").into(),
+            required_settings: vec![],
+            note: tr("Im IBKR Client Portal unter Performance & Reports → Flex Queries eine Activity Flex Query (XML) mit Kontoinformationen, Offenen Positionen, Cash-Transaktionen und Trades anlegen und unter Flex Web Service Configuration ein Token erzeugen. Nur Lesezugriff.").into(),
+        },
         ConnectorKind::Bunq => BankDescriptor {
             kind,
             name: "bunq".into(),
@@ -197,6 +208,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         )),
         ConnectorKind::AmazonOrders => Box::new(amazon_orders::WebOnlyConnector),
         ConnectorKind::Fnz => Box::new(fnz::WebOnlyConnector),
+        ConnectorKind::Ibkr => Box::new(ibkr::IbkrConnector::new()),
         ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {

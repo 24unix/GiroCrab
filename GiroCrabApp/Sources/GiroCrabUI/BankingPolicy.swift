@@ -167,6 +167,7 @@ public struct BankingGate: Equatable, Sendable {
         case "scalable": base = "Scalable Capital"
         case "amazon-orders": base = "Amazon"
         case "fnz": base = "FNZ Bank"
+        case "ibkr": base = "Interactive Brokers"
         default: base = parts.first ?? id
         }
         guard parts.count == 2 else { return base }

@@ -25,6 +25,7 @@ pub mod fints;
 pub mod fints_directory;
 pub mod fints_presets;
 pub mod fnz;
+pub mod ibkr;
 pub mod moneymoney_db;
 pub mod moneymoney_import;
 pub mod paypal;

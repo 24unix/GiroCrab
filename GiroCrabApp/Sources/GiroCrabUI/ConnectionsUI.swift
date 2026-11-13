@@ -155,7 +155,7 @@ struct ConnectionEditSheet: View {
         case .americanExpress, .amazonVisa: return []
         case .bunq: return ["bunq.environment"]
         case .enableBanking: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
-        case .scalableCapital, .amazonOrders, .fnz: return []
+        case .scalableCapital, .amazonOrders, .fnz, .ibkr: return []
         }
     }
 
@@ -213,7 +213,7 @@ struct ConnectionEditSheet: View {
     @State private var importingStatement = false
     @State private var showAdvanced = false
 
-    private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq].contains(connection.connector) }
+    private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq, .ibkr].contains(connection.connector) }
     private var isTR: Bool { connection.connector == .tradeRepublic }
 
     var body: some View {
@@ -241,9 +241,9 @@ struct ConnectionEditSheet: View {
                         LabeledContent("BLZ", value: blz)
                     }
                     if usesPin {
-                        Toggle(connection.connector == .bunq ? "API-Schlüssel im Tresor speichern" : "PIN im Tresor speichern", isOn: $storePin)
+                        Toggle(connection.connector == .bunq ? "API-Schlüssel im Tresor speichern" : connection.connector == .ibkr ? "Flex-Query-ID im Tresor speichern" : "PIN im Tresor speichern", isOn: $storePin)
                         if storePin {
-                            SecureField(status?.hasPin == true ? "Gespeicherte PIN (leer = unverändert)" : "PIN", text: $pin)
+                            SecureField(status?.hasPin == true ? "Gespeicherte PIN (leer = unverändert)" : (connection.connector == .ibkr ? "Flex-Query-ID" : "PIN"), text: $pin)
                         }
                     }
                 }
@@ -358,6 +358,7 @@ struct ConnectionEditSheet: View {
         case .comdirect: return "comdirect REST-API"
         case .payPal: return "PayPal REST-App"
         case .bunq: return "bunq API"
+        case .ibkr: return "Interactive Brokers Flex Web Service"
         default: return "Enable Banking (PSD2)"
         }
     }
