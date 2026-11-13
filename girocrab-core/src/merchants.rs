@@ -179,805 +179,82 @@ struct Entry {
     key: &'static str,
     name: &'static str,
     /// Lower-case needles matched against the normalised text.
-    needles: &'static [&'static str],
+    needles: Vec<&'static str>,
     domain: &'static str,
     color: &'static str,
     symbol: &'static str,
     kind: MerchantKind,
     isin: &'static str,
     wkn: &'static str,
-}
-
-const fn e(
-    key: &'static str,
-    name: &'static str,
-    needles: &'static [&'static str],
-    domain: &'static str,
-    color: &'static str,
-    symbol: &'static str,
-    kind: MerchantKind,
-) -> Entry {
-    Entry {
-        key,
-        name,
-        needles,
-        domain,
-        color,
-        symbol,
-        kind,
-        isin: "",
-        wkn: "",
-    }
-}
-
-const fn etf(
-    key: &'static str,
-    name: &'static str,
-    needles: &'static [&'static str],
-    domain: &'static str,
-    color: &'static str,
-    isin: &'static str,
-    wkn: &'static str,
-) -> Entry {
-    Entry {
-        key,
-        name,
-        needles,
-        domain,
-        color,
-        symbol: "chart.line.uptrend.xyaxis",
-        kind: MerchantKind::Etf,
-        isin,
-        wkn,
-    }
 }
 
 use MerchantKind as K;
 
-/// Tier 1 table. Order matters: investments first, then specific merchants,
-/// payment processors last (so "PayPal *Spotify" resolves to Spotify).
-/// ISIN/WKN are public reference data; please double-check before trading.
-static TABLE: &[Entry] = &[
-    // --- ETFs, crypto, stocks (savings plans) ---
-    etf(
-        "etf-core-msci-world",
-        "iShares Core MSCI World",
-        &["core msci world", "msci world usd"],
-        "ishares.com",
-        "#1A1A1A",
-        "IE00B4L5Y983",
-        "A0RPWH",
-    ),
-    etf(
-        "etf-core-msci-em-imi",
-        "iShares Core MSCI EM IMI",
-        &["core msci em imi", "msci em imi"],
-        "ishares.com",
-        "#1A1A1A",
-        "IE00BKM4GZ66",
-        "A111X9",
-    ),
-    etf(
-        "etf-core-stoxx-600",
-        "Amundi Core STOXX Europe 600",
-        &["core stoxx europe 600", "stoxx europe 600"],
-        "amundi.de",
-        "#0F2B5B",
-        "LU0908500753",
-        "LYX0Q0",
-    ),
-    etf(
-        "etf-ftse-india",
-        "Franklin FTSE India",
-        &["ftse india"],
-        "franklintempleton.de",
-        "#2A5CAA",
-        "IE00BHZRQZ17",
-        "A2PB5L",
-    ),
-    etf(
-        "etf-ai-big-data",
-        "Xtrackers AI & Big Data",
-        &[
-            "ai & big data",
-            "ai and big data",
-            "artificial intelligence & big data",
-        ],
-        "dws.com",
-        "#0B7FAB",
-        "IE00BGV5VN51",
-        "A2N6LC",
-    ),
-    etf(
-        "etf-ftse-all-world",
-        "Vanguard FTSE All-World",
-        &["ftse all-world", "ftse all world"],
-        "de.vanguard",
-        "#96151D",
-        "IE00BK5BQT80",
-        "A2PKXG",
-    ),
-    etf(
-        "etf-core-sp500",
-        "iShares Core S&P 500",
-        &["core s&p 500", "s&p 500"],
-        "ishares.com",
-        "#1A1A1A",
-        "IE00B5BMR087",
-        "A0YEDG",
-    ),
-    Entry {
-        key: "crypto-bitcoin",
-        name: "Bitcoin",
-        needles: &["bitcoin", " btc "],
-        domain: "bitcoin.org",
-        color: "#F7931A",
-        symbol: "bitcoinsign.circle",
-        kind: K::Crypto,
-        isin: "",
-        wkn: "",
-    },
-    Entry {
-        key: "crypto-ethereum",
-        name: "Ethereum",
-        needles: &["ethereum"],
-        domain: "ethereum.org",
-        color: "#627EEA",
-        symbol: "diamond",
-        kind: K::Crypto,
-        isin: "",
-        wkn: "",
-    },
-    Entry {
-        key: "stock-bayer",
-        name: "Bayer",
-        needles: &["bayer ", "de000bay0017", "bay001"],
-        domain: "bayer.com",
-        color: "#10384F",
-        symbol: "chart.bar",
-        kind: K::Stock,
-        isin: "DE000BAY0017",
-        wkn: "BAY001",
-    },
-    // --- ETF issuers / brokers ---
-    e(
-        "ishares",
-        "iShares",
-        &["ishares"],
-        "ishares.com",
-        "#1A1A1A",
-        "chart.line.uptrend.xyaxis",
-        K::EtfIssuer,
-    ),
-    e(
-        "blackrock",
-        "BlackRock",
-        &["blackrock"],
-        "blackrock.com",
-        "#000000",
-        "chart.line.uptrend.xyaxis",
-        K::EtfIssuer,
-    ),
-    e(
-        "xtrackers",
-        "Xtrackers",
-        &["xtrackers"],
-        "dws.com",
-        "#0B7FAB",
-        "chart.line.uptrend.xyaxis",
-        K::EtfIssuer,
-    ),
-    e(
-        "vanguard",
-        "Vanguard",
-        &["vanguard"],
-        "de.vanguard",
-        "#96151D",
-        "chart.line.uptrend.xyaxis",
-        K::EtfIssuer,
-    ),
-    e(
-        "amundi",
-        "Amundi",
-        &["amundi"],
-        "amundi.de",
-        "#0F2B5B",
-        "chart.line.uptrend.xyaxis",
-        K::EtfIssuer,
-    ),
-    e(
-        "trade-republic",
-        "Trade Republic",
-        &["trade republic"],
-        "traderepublic.com",
-        "#111111",
-        "chart.line.uptrend.xyaxis.circle",
-        K::Broker,
-    ),
-    // --- Supermarkets & food ---
-    e(
-        "rewe",
-        "REWE",
-        &["rewe"],
-        "rewe.de",
-        "#CC071E",
-        "cart",
-        K::Supermarket,
-    ),
-    e(
-        "edeka",
-        "EDEKA",
-        &["edeka"],
-        "edeka.de",
-        "#1A4C9C",
-        "cart",
-        K::Supermarket,
-    ),
-    e(
-        "lidl",
-        "Lidl",
-        &["lidl"],
-        "lidl.de",
-        "#0050AA",
-        "cart",
-        K::Supermarket,
-    ),
-    e(
-        "aldi-sued",
-        "ALDI SÜD",
-        &["aldi sud", "aldi süd", "aldi-sued", "aldi sued"],
-        "aldi-sued.de",
-        "#00005F",
-        "cart",
-        K::Supermarket,
-    ),
-    e(
-        "aldi-nord",
-        "ALDI Nord",
-        &["aldi nord", "aldi"],
-        "aldi-nord.de",
-        "#00005F",
-        "cart",
-        K::Supermarket,
-    ),
-    e(
-        "kaufland",
-        "Kaufland",
-        &["kaufland"],
-        "kaufland.de",
-        "#E10915",
-        "cart",
-        K::Supermarket,
-    ),
-    e(
-        "penny",
-        "PENNY",
-        &["penny"],
-        "penny.de",
-        "#CD1414",
-        "cart",
-        K::Supermarket,
-    ),
-    e(
-        "netto",
-        "Netto",
-        &["netto marken", "netto"],
-        "netto-online.de",
-        "#D7001E",
-        "cart",
-        K::Supermarket,
-    ),
-    e(
-        "metro",
-        "METRO",
-        &["metro"],
-        "metro.de",
-        "#002D72",
-        "cart",
-        K::Supermarket,
-    ),
-    e(
-        "tegut",
-        "tegut…",
-        &["tegut"],
-        "tegut.com",
-        "#E2001A",
-        "cart",
-        K::Supermarket,
-    ),
-    e(
-        "globus",
-        "Globus",
-        &["globus"],
-        "globus.de",
-        "#00704A",
-        "cart",
-        K::Supermarket,
-    ),
-    e(
-        "vinzenz-murr",
-        "Vinzenz Murr",
-        &["vinzenz murr", "vinzenzmurr"],
-        "vinzenzmurr.de",
-        "#8B1E2D",
-        "fork.knife",
-        K::Butcher,
-    ),
-    e(
-        "too-good-to-go",
-        "Too Good To Go",
-        &["too good to go", "toogoodtogo"],
-        "toogoodtogo.com",
-        "#00615F",
-        "leaf",
-        K::FoodRescue,
-    ),
-    e(
-        "lieferando",
-        "Lieferando",
-        &["lieferando"],
-        "lieferando.de",
-        "#FF8000",
-        "takeoutbag.and.cup.and.straw",
-        K::Delivery,
-    ),
-    e(
-        "wolt",
-        "Wolt",
-        &["wolt"],
-        "wolt.com",
-        "#009DE0",
-        "takeoutbag.and.cup.and.straw",
-        K::Delivery,
-    ),
-    e(
-        "dm",
-        "dm-drogerie markt",
-        &["dm-drogerie", "dm drogerie", "dm fil"],
-        "dm.de",
-        "#002878",
-        "cross.vial",
-        K::Drugstore,
-    ),
-    e(
-        "rossmann",
-        "Rossmann",
-        &["rossmann"],
-        "rossmann.de",
-        "#C3002D",
-        "cross.vial",
-        K::Drugstore,
-    ),
-    // --- Insurers ---
-    e(
-        "barmenia",
-        "Barmenia",
-        &["barmenia"],
-        "barmenia.de",
-        "#00468C",
-        "cross.case",
-        K::Insurance,
-    ),
-    e(
-        "allianz",
-        "Allianz",
-        &["allianz"],
-        "allianz.de",
-        "#003781",
-        "shield.lefthalf.filled",
-        K::Insurance,
-    ),
-    e(
-        "huk",
-        "HUK-COBURG",
-        &["huk-coburg", "huk coburg", "huk24"],
-        "huk.de",
-        "#1C5C9E",
-        "shield.lefthalf.filled",
-        K::Insurance,
-    ),
-    e(
-        "ergo",
-        "ERGO",
-        &["ergo versicherung", "ergo "],
-        "ergo.de",
-        "#BF1528",
-        "shield.lefthalf.filled",
-        K::Insurance,
-    ),
-    e(
-        "axa",
-        "AXA",
-        &["axa "],
-        "axa.de",
-        "#00008F",
-        "shield.lefthalf.filled",
-        K::Insurance,
-    ),
-    e(
-        "devk",
-        "DEVK",
-        &["devk"],
-        "devk.de",
-        "#006E3C",
-        "shield.lefthalf.filled",
-        K::Insurance,
-    ),
-    e(
-        "debeka",
-        "Debeka",
-        &["debeka"],
-        "debeka.de",
-        "#E2001A",
-        "shield.lefthalf.filled",
-        K::Insurance,
-    ),
-    e(
-        "haftpflichtkasse",
-        "Die Haftpflichtkasse",
-        &["haftpflichtkasse"],
-        "haftpflichtkasse.de",
-        "#00559F",
-        "shield.lefthalf.filled",
-        K::Insurance,
-    ),
-    // --- Mobility & fuel ---
-    e(
-        "deutsche-bahn",
-        "Deutsche Bahn",
-        &["db fernverkehr", "db vertrieb", "deutsche bahn", "bahn.de"],
-        "bahn.de",
-        "#EC0016",
-        "tram",
-        K::Mobility,
-    ),
-    e(
-        "nvv",
-        "NVV Deutschlandticket",
-        &["nvv", "deutschlandticket"],
-        "nvv.de",
-        "#00843D",
-        "tram",
-        K::Mobility,
-    ),
-    e(
-        "lufthansa",
-        "Lufthansa",
-        &["lufthansa"],
-        "lufthansa.com",
-        "#05164D",
-        "airplane",
-        K::Travel,
-    ),
-    e(
-        "eurowings",
-        "Eurowings",
-        &["eurowings"],
-        "eurowings.com",
-        "#A6005B",
-        "airplane",
-        K::Travel,
-    ),
-    e(
-        "uber",
-        "Uber",
-        &["uber "],
-        "uber.com",
-        "#000000",
-        "car",
-        K::Mobility,
-    ),
-    e(
-        "aral",
-        "Aral",
-        &["aral"],
-        "aral.de",
-        "#0066B2",
-        "fuelpump",
-        K::Fuel,
-    ),
-    e(
-        "shell",
-        "Shell",
-        &["shell"],
-        "shell.de",
-        "#DD1D21",
-        "fuelpump",
-        K::Fuel,
-    ),
-    e(
-        "esso",
-        "Esso",
-        &["esso"],
-        "esso.de",
-        "#003A8F",
-        "fuelpump",
-        K::Fuel,
-    ),
-    e(
-        "fixbike",
-        "Fixbike",
-        &["fixbike"],
-        "fixbike.de",
-        "#2E7D32",
-        "bicycle",
-        K::Mobility,
-    ),
-    // --- Streaming, telecom, utilities ---
-    e(
-        "spotify",
-        "Spotify",
-        &["spotify"],
-        "spotify.com",
-        "#1DB954",
-        "music.note",
-        K::Streaming,
-    ),
-    e(
-        "netflix",
-        "Netflix",
-        &["netflix"],
-        "netflix.com",
-        "#E50914",
-        "play.tv",
-        K::Streaming,
-    ),
-    e(
-        "disney-plus",
-        "Disney+",
-        &["disney plus", "disney+", "disneyplus"],
-        "disneyplus.com",
-        "#113CCF",
-        "play.tv",
-        K::Streaming,
-    ),
-    e(
-        "apple",
-        "Apple",
-        &["apple.com/bill", "apple media", "apple services"],
-        "apple.com",
-        "#333333",
-        "apple.logo",
-        K::Streaming,
-    ),
-    e(
-        "audible",
-        "Audible",
-        &["audible"],
-        "audible.de",
-        "#F7991C",
-        "headphones",
-        K::Streaming,
-    ),
-    e(
-        "telekom",
-        "Telekom",
-        &["telekom"],
-        "telekom.de",
-        "#E20074",
-        "antenna.radiowaves.left.and.right",
-        K::Telecom,
-    ),
-    e(
-        "vodafone",
-        "Vodafone",
-        &["vodafone"],
-        "vodafone.de",
-        "#E60000",
-        "antenna.radiowaves.left.and.right",
-        K::Telecom,
-    ),
-    e(
-        "o2",
-        "O2",
-        &["o2 ", "telefonica"],
-        "o2online.de",
-        "#0019A5",
-        "antenna.radiowaves.left.and.right",
-        K::Telecom,
-    ),
-    e(
-        "staedtische-werke",
-        "Städtische Werke Kassel",
-        &["städtische werke", "stadtische werke", "staedtische werke"],
-        "sw-kassel.de",
-        "#004F9F",
-        "bolt",
-        K::Utilities,
-    ),
-    // --- Shops & games ---
-    e(
-        "amazon",
-        "Amazon",
-        &["amzn", "amazon"],
-        "amazon.de",
-        "#FF9900",
-        "shippingbox",
-        K::OnlineShop,
-    ),
-    e(
-        "zalando",
-        "Zalando",
-        &["zalando"],
-        "zalando.de",
-        "#FF6900",
-        "bag",
-        K::OnlineShop,
-    ),
-    e(
-        "ebay",
-        "eBay",
-        &["ebay"],
-        "ebay.de",
-        "#E53238",
-        "bag",
-        K::OnlineShop,
-    ),
-    e(
-        "ikea",
-        "IKEA",
-        &["ikea"],
-        "ikea.com",
-        "#0058A3",
-        "sofa",
-        K::OnlineShop,
-    ),
-    e(
-        "mediamarkt",
-        "MediaMarkt",
-        &["mediamarkt", "media markt"],
-        "mediamarkt.de",
-        "#DF0000",
-        "desktopcomputer",
-        K::Electronics,
-    ),
-    e(
-        "cyberport",
-        "Cyberport",
-        &["cyberport"],
-        "cyberport.de",
-        "#004B93",
-        "desktopcomputer",
-        K::Electronics,
-    ),
-    e(
-        "steam",
-        "Steam",
-        &["steam"],
-        "steampowered.com",
-        "#1B2838",
-        "gamecontroller",
-        K::Games,
-    ),
-    e(
-        "nintendo",
-        "Nintendo",
-        &["nintendo"],
-        "nintendo.de",
-        "#E60012",
-        "gamecontroller",
-        K::Games,
-    ),
-    e(
-        "fitx",
-        "FitX",
-        &["fitx"],
-        "fitx.de",
-        "#E3000F",
-        "figure.run",
-        K::Fitness,
-    ),
-    e(
-        "booking-com",
-        "Booking.com",
-        &["booking.com"],
-        "booking.com",
-        "#003580",
-        "bed.double",
-        K::Travel,
-    ),
-    e(
-        "airbnb",
-        "Airbnb",
-        &["airbnb"],
-        "airbnb.de",
-        "#FF5A5F",
-        "bed.double",
-        K::Travel,
-    ),
-    // --- Banks ---
-    e(
-        "kasseler-bank",
-        "Kasseler Bank",
-        &["kasseler bank"],
-        "kasseler-bank.de",
-        "#0066B3",
-        "building.columns",
-        K::Bank,
-    ),
-    e(
-        "volksbank",
-        "Volksbank Kassel Göttingen",
-        &["volksbank", "vr bank", "raiffeisen"],
-        "vr.de",
-        "#0066B3",
-        "building.columns",
-        K::Bank,
-    ),
-    e(
-        "1822direkt",
-        "1822direkt",
-        &["1822direkt", "1822 direkt", "frankfurter sparkasse"],
-        "1822direkt.de",
-        "#E30613",
-        "building.columns",
-        K::Bank,
-    ),
-    e(
-        "comdirect",
-        "comdirect",
-        &["comdirect"],
-        "comdirect.de",
-        "#3C3C3C",
-        "building.columns",
-        K::Bank,
-    ),
-    e(
-        "sparkasse",
-        "Sparkasse",
-        &["sparkasse", "stadtsparkasse", "kreissparkasse"],
-        "sparkasse.de",
-        "#FF0000",
-        "building.columns",
-        K::Bank,
-    ),
-    e(
-        "ing",
-        "ING",
-        &["ing-diba", "ing diba", "ing bank"],
-        "ing.de",
-        "#FF6200",
-        "building.columns",
-        K::Bank,
-    ),
-    e(
-        "american-express",
-        "American Express",
-        &["american express", "amex"],
-        "americanexpress.com",
-        "#2E77BC",
-        "creditcard",
-        K::Bank,
-    ),
-    e(
-        "zinia",
-        "Zinia / Amazon Visa",
-        &["zinia", "open bank"],
-        "zinia.de",
-        "#3C2A7A",
-        "creditcard",
-        K::Bank,
-    ),
-    // --- Payment processors (last: look inside the purpose for the real merchant) ---
-    e(
-        "paypal",
-        "PayPal",
-        &["paypal"],
-        "paypal.com",
-        "#003087",
-        "p.circle",
-        K::PaymentService,
-    ),
-    e(
-        "klarna",
-        "Klarna",
-        &["klarna"],
-        "klarna.com",
-        "#FFA8CD",
-        "creditcard",
-        K::PaymentService,
-    ),
-];
+const MERCHANTS_TSV: &str = include_str!("../data/merchants.tsv");
+
+impl MerchantKind {
+    /// Variant by its Rust name, as written in `data/merchants.tsv`.
+    fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "Supermarket" => K::Supermarket,
+            "Butcher" => K::Butcher,
+            "FoodRescue" => K::FoodRescue,
+            "Restaurant" => K::Restaurant,
+            "Delivery" => K::Delivery,
+            "Drugstore" => K::Drugstore,
+            "Insurance" => K::Insurance,
+            "Mobility" => K::Mobility,
+            "Fuel" => K::Fuel,
+            "Streaming" => K::Streaming,
+            "Telecom" => K::Telecom,
+            "Utilities" => K::Utilities,
+            "OnlineShop" => K::OnlineShop,
+            "Electronics" => K::Electronics,
+            "Games" => K::Games,
+            "Fitness" => K::Fitness,
+            "Travel" => K::Travel,
+            "PaymentService" => K::PaymentService,
+            "Bank" => K::Bank,
+            "Broker" => K::Broker,
+            "EtfIssuer" => K::EtfIssuer,
+            "Etf" => K::Etf,
+            "Crypto" => K::Crypto,
+            "Stock" => K::Stock,
+            "Unknown" => K::Unknown,
+            _ => return None,
+        })
+    }
+}
+
+/// Stage A: the curated dictionary from `data/merchants.tsv` (~270 brands),
+/// in match order – priority list, main table, German dictionary.
+fn entries() -> &'static [Entry] {
+    static ENTRIES: OnceLock<Vec<Entry>> = OnceLock::new();
+    ENTRIES.get_or_init(|| {
+        crate::data_tables::rows(MERCHANTS_TSV)
+            .filter_map(
+                |[key, name, needles, kind, symbol, color, domain, isin, wkn]| {
+                    let needles: Vec<_> = needles.split('|').filter(|n| !n.is_empty()).collect();
+                    // `resolve` looks behind `needles[0]` of payment processors
+                    if needles.is_empty() {
+                        return None;
+                    }
+                    Some(Entry {
+                        key,
+                        name,
+                        needles,
+                        domain,
+                        color,
+                        symbol,
+                        kind: MerchantKind::from_name(kind)?,
+                        isin,
+                        wkn,
+                    })
+                },
+            )
+            .collect()
+    })
+}
 
 /// Calm palette for unknown merchants (deterministic by name).
 const FALLBACK_COLORS: [&str; 8] = [
@@ -1035,9 +312,6 @@ pub fn normalise(s: &str) -> String {
     s
 }
 
-include!("merchant_dict.rs");
-
-/// Stage A: priority list, built-in table, German dictionary (~260 brands).
 /// Words that mark a booking as a securities transaction.
 const SECURITIES_HINTS: &[&str] = &[
     "wp-abrechnung",
@@ -1100,31 +374,21 @@ fn needle_in(text: &str, needle: &str) -> bool {
 const SUB_BRANDS: &[(&str, &[&str])] = &[("telekom", &["fraenk", "congstar"])];
 
 fn entry_by_key(key: &str) -> Option<&'static Entry> {
-    PRIORITY
-        .iter()
-        .chain(TABLE.iter())
-        .chain(GERMAN.iter())
-        .find(|e| e.key == key)
+    entries().iter().find(|e| e.key == key)
 }
 
 /// Like `find`, but skips stock entries without securities evidence.
 fn find_checked(text: &str, ctx: &str) -> Option<&'static Entry> {
-    PRIORITY
-        .iter()
-        .chain(TABLE.iter())
-        .chain(GERMAN.iter())
-        .find(|e| {
-            e.needles.iter().any(|n| needle_in(text, n))
-                && (e.kind != K::Stock || stock_confirmed(e, text, ctx))
-        })
+    entries().iter().find(|e| {
+        e.needles.iter().any(|n| needle_in(text, n))
+            && (e.kind != K::Stock || stock_confirmed(e, text, ctx))
+    })
 }
 
 /// Every domain of the curated dictionary (whitelist for the logo cache).
 pub fn known_brand_domains() -> Vec<&'static str> {
-    PRIORITY
+    entries()
         .iter()
-        .chain(TABLE.iter())
-        .chain(GERMAN.iter())
         .map(|e| e.domain)
         .filter(|d| !d.is_empty())
         .collect()
@@ -1279,7 +543,7 @@ pub fn person_initials(raw: &str) -> String {
 
 /// Number of curated merchants.
 pub fn dictionary_size() -> usize {
-    PRIORITY.len() + TABLE.len() + GERMAN.len()
+    entries().len()
 }
 
 const PAYMENT_PREFIXES: &[&str] = &[
@@ -1905,6 +1169,32 @@ pub fn resolve_merchant(counterparty: String, purpose: String) -> MerchantInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dictionary_file_parses_completely() {
+        use crate::data_tables::malformed_rows;
+        assert_eq!(malformed_rows(MERCHANTS_TSV, 7, 9), Vec::<&str>::new());
+        // a row with an unknown kind or no needles would be dropped silently
+        assert_eq!(
+            entries().len(),
+            crate::data_tables::rows::<9>(MERCHANTS_TSV).count()
+        );
+        let mut keys = std::collections::HashSet::new();
+        for e in entries() {
+            assert!(keys.insert(e.key), "duplicate key {}", e.key);
+            assert!(!e.name.is_empty() && !e.needles.is_empty(), "{}", e.key);
+            for n in &e.needles {
+                assert!(!n.trim().is_empty(), "{}: empty needle", e.key);
+                assert_eq!(*n, n.to_lowercase(), "{}: needle not lower-case", e.key);
+            }
+            assert!(
+                e.color.len() == 7 && e.color.starts_with('#'),
+                "{}: {}",
+                e.key,
+                e.color
+            );
+        }
+    }
 
     #[test]
     fn private_surname_is_not_investment() {

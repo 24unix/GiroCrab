@@ -29,7 +29,7 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 
 ## Don't read into context
 - Generated bindings: `generated/**/girocrab_core.swift` (6k lines), the xcframework, `target/`, `.build/`.
-- Data/large tables: `girocrab-core/src/merchant_dict.rs`, icon/merchant SVG/JSON, `feed.json`, `craft.json`, `*.log`, `agent-session.jsonl`.
+- Data/large tables: `girocrab-core/data/*.tsv` (BIC/FinTS directories, merchant dictionary; parsed by `src/data_tables.rs`), icon/merchant SVG/JSON, `feed.json`, `craft.json`, `*.log`, `agent-session.jsonl`.
 - For any file > 200 lines use `grep -n` or `Read` with `offset`/`limit`; never read it whole.
 
 ## Tests

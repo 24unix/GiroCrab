@@ -26,6 +26,7 @@ uniffi::setup_scaffolding!();
 pub mod banking_gate;
 pub mod connections;
 pub mod connectors;
+mod data_tables;
 pub mod demo;
 pub mod depot_debug;
 pub mod documents;

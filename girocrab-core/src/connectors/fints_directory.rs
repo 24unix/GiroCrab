@@ -1,14 +1,32 @@
 //! BLZ -> (bank name, FinTS 3.0 PIN/TAN URL) directory (~2,000 German banks:
 //! Sparkassen, Volks-/Raiffeisenbanken, Sparda, PSD, Deutsche Bank, HVB, ING, …).
 //!
-//! The table lives in `fints_directory_data.rs` (generated from the CC0
-//! dataset `moay/fints-institute-db`, see the header there). Everything here
-//! is a binary search over that static table – no network, no allocation until
-//! a result is returned.
+//! The table lives in `data/fints_directory.tsv` (generated from the CC0
+//! dataset `moay/fints-institute-db`, see the header there) and is parsed once
+//! on first use. Lookups are a binary search over that table – no network and,
+//! after the first call, no allocation until a result is returned.
 
-use super::bic_directory_data::BICS;
+use std::sync::OnceLock;
+
 use super::fints::sepa;
-use super::fints_directory_data::{ENTRIES, HOSTS};
+use crate::data_tables::rows;
+
+const FINTS_TSV: &str = include_str!("../../data/fints_directory.tsv");
+const BIC_TSV: &str = include_str!("../../data/bic_directory.tsv");
+
+/// (BLZ, bank name, FinTS URL), sorted by BLZ.
+type Bank = (&'static str, &'static str, &'static str);
+
+fn banks() -> &'static [Bank] {
+    static BANKS: OnceLock<Vec<Bank>> = OnceLock::new();
+    BANKS.get_or_init(|| rows(FINTS_TSV).map(|[b, n, u]| (b, n, u)).collect())
+}
+
+/// (BLZ, BIC) from the Bundesbank BLZ list, sorted by BLZ.
+fn bics() -> &'static [(&'static str, &'static str)] {
+    static BICS: OnceLock<Vec<(&str, &str)>> = OnceLock::new();
+    BICS.get_or_init(|| rows(BIC_TSV).map(|[b, c]| (b, c)).collect())
+}
 
 /// Name and FinTS endpoint of a bank in the built-in directory.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -18,11 +36,11 @@ pub struct FinTsBankInfo {
     pub url: String,
 }
 
-fn info(entry: &(&str, &str, u16)) -> FinTsBankInfo {
+fn info(entry: &Bank) -> FinTsBankInfo {
     FinTsBankInfo {
         blz: entry.0.to_string(),
         name: entry.1.to_string(),
-        url: HOSTS[entry.2 as usize].to_string(),
+        url: entry.2.to_string(),
     }
 }
 
@@ -31,16 +49,17 @@ fn digits(s: &str) -> String {
     s.chars().filter(|c| c.is_ascii_digit()).collect()
 }
 
-fn find(blz: &str) -> Option<&'static (&'static str, &'static str, u16)> {
-    ENTRIES
+fn find(blz: &str) -> Option<&'static Bank> {
+    let banks = banks();
+    banks
         .binary_search_by(|e| e.0.cmp(blz))
         .ok()
-        .map(|i| &ENTRIES[i])
+        .map(|i| &banks[i])
 }
 
 /// Number of banks in the directory.
 pub fn directory_len() -> usize {
-    ENTRIES.len()
+    banks().len()
 }
 
 /// Directory entry for an exact 8-digit BLZ.
@@ -54,7 +73,7 @@ pub fn lookup(blz: &str) -> Option<FinTsBankInfo> {
 
 /// FinTS URL for a BLZ (used as fallback when a connection has no stored URL).
 pub fn url_for_blz(blz: &str) -> Option<&'static str> {
-    find(blz).map(|e| HOSTS[e.2 as usize])
+    find(blz).map(|e| e.2)
 }
 
 /// Lower-cases and folds German umlauts / ß so "Münchner" matches "muenchner".
@@ -87,7 +106,7 @@ pub fn search(query: &str, limit: usize) -> Vec<FinTsBankInfo> {
         if d.len() < 3 {
             return vec![];
         }
-        return ENTRIES
+        return banks()
             .iter()
             .filter(|e| e.0.starts_with(&d))
             .take(limit)
@@ -97,7 +116,7 @@ pub fn search(query: &str, limit: usize) -> Vec<FinTsBankInfo> {
     let words: Vec<&str> = q.split(' ').collect();
     let mut prefix = vec![];
     let mut rest = vec![];
-    for e in ENTRIES {
+    for e in banks() {
         let name = fold(e.1);
         if words.iter().all(|w| name.contains(w)) {
             if name.starts_with(&q) {
@@ -161,24 +180,33 @@ pub fn lookup_fints_bank_by_input(input: String) -> Option<FinTsBankInfo> {
 }
 
 /// BIC of a German IBAN's bank, from the Bundesbank BLZ list in
-/// `bic_directory_data.rs` ("INGDDEFF"). `None` for non-German or invalid IBANs.
+/// `data/bic_directory.tsv` ("INGDDEFF"). `None` for non-German or invalid IBANs.
 #[uniffi::export]
 pub fn bic_for_iban(iban: String) -> Option<String> {
     let blz = blz_from_german_iban(&iban)?;
-    BICS.binary_search_by(|e| e.0.cmp(blz.as_str()))
+    let bics = bics();
+    bics.binary_search_by(|e| e.0.cmp(blz.as_str()))
         .ok()
-        .map(|i| BICS[i].1.to_string())
+        .map(|i| bics[i].1.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::fints_presets::is_valid_fints_url;
     use super::*;
+    use crate::data_tables::malformed_rows;
+
+    #[test]
+    fn every_data_row_parses() {
+        assert_eq!(malformed_rows(BIC_TSV, 2, 2), Vec::<&str>::new());
+        assert_eq!(malformed_rows(FINTS_TSV, 3, 3), Vec::<&str>::new());
+    }
 
     #[test]
     fn bic_table_sorted_and_lookup_works() {
-        assert!(BICS.len() > 3000);
-        for w in BICS.windows(2) {
+        let bics = bics();
+        assert!(bics.len() > 3000);
+        for w in bics.windows(2) {
             assert!(w[0].0 < w[1].0, "{} !< {}", w[0].0, w[1].0);
         }
         assert_eq!(
@@ -192,18 +220,15 @@ mod tests {
     #[test]
     fn table_is_sorted_unique_and_https() {
         assert!(directory_len() > 1500);
-        for w in ENTRIES.windows(2) {
+        for w in banks().windows(2) {
             assert!(w[0].0 < w[1].0, "{} !< {}", w[0].0, w[1].0);
         }
-        for e in ENTRIES {
+        for e in banks() {
             assert_eq!(e.0.len(), 8, "{}", e.0);
             assert!(e.0.bytes().all(|b| b.is_ascii_digit()), "{}", e.0);
             assert!(!e.1.trim().is_empty(), "{}", e.0);
-            assert!((e.2 as usize) < HOSTS.len());
-        }
-        for h in HOSTS {
-            assert!(is_valid_fints_url(h), "{h}");
-            assert!(!h.contains('*'), "{h}");
+            assert!(is_valid_fints_url(e.2), "{}: {}", e.0, e.2);
+            assert!(!e.2.contains('*'), "{}: {}", e.0, e.2);
         }
     }
 
@@ -333,7 +358,7 @@ mod tests {
         assert!(sparda.len() >= 10);
         assert!(sparda.iter().all(|b| is_valid_fints_url(&b.url)));
         assert!(sparda.iter().all(|b| b.url == ATRUVIA));
-        assert!(!HOSTS.iter().any(|h| h.contains("bankingonline.de")));
+        assert!(!banks().iter().any(|e| e.2.contains("bankingonline.de")));
     }
 
     /// All 19 PSD head offices of the Bundesbank Bankleitzahlendatei (names
@@ -354,7 +379,7 @@ mod tests {
             assert!(names.insert(b.name.clone()), "duplicate name: {}", b.name);
             assert!(search(&b.name, 50).iter().any(|r| r.blz == blz), "{blz}");
             assert!(
-                BICS.binary_search_by(|e| e.0.cmp(blz)).is_ok(),
+                bics().binary_search_by(|e| e.0.cmp(blz)).is_ok(),
                 "{blz}: no BIC"
             );
         }
