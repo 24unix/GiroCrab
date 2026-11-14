@@ -281,7 +281,13 @@ pub(crate) fn map_transaction(
     if !typ.is_empty() {
         kinds.push(typ.as_str());
     }
-    let mut amount = json_number_to_cents(&item["amount"]).unwrap_or(0);
+    let mut amount = json_number_to_cents_rounded(&item["amount"]).unwrap_or(0);
+    // Depot transfers (non-trade security movements) carry the securities'
+    // value, but no cash moves: booking it would corrupt the clearing account.
+    let non_trade = str_of(&item["nonTradeSecurityTransactionType"]).to_ascii_uppercase();
+    if !non_trade.is_empty() && !non_trade.contains("DIVIDEND") {
+        amount = 0;
+    }
     if amount > 0 && is_outflow(&kinds, &side) {
         amount = -amount;
     }
@@ -414,7 +420,9 @@ pub(crate) fn map_security_transaction(
     .collect();
     let has = |w: &str| kinds.iter().any(|k| k.contains(w));
     let quantity = f64_of(&item["quantity"]).abs();
-    let value = json_number_to_cents(&item["amount"]).unwrap_or(0).abs();
+    let value = json_number_to_cents_rounded(&item["amount"])
+        .unwrap_or(0)
+        .abs();
     let kind_refs: Vec<&str> = kinds.iter().map(String::as_str).collect();
     let direction = if has("DIVIDEND") {
         SecurityDirection::Dividend
@@ -1601,6 +1609,28 @@ mod tests {
         let mut deposit = buy.clone();
         deposit["isin"] = json!("");
         assert!(map_security_transaction("d", &deposit, &none).is_none());
+    }
+
+    #[test]
+    fn rounds_long_trade_amounts_and_zeroes_depot_transfers() {
+        let names = std::collections::HashMap::new();
+        let buy = json!({
+            "id": "tx-9", "currency": "EUR", "type": "BUY", "status": "SETTLED",
+            "isCancellation": false, "lastEventDateTime": "2026-11-03T09:15:00Z",
+            "isin": "IE00BK5BQT80", "securityTransactionType": "BUY", "quantity": "1.5",
+            "amount": "150.2549", "side": "BUY"
+        });
+        let t = map_transaction("sc:cash:p1", &buy, &names).unwrap();
+        assert_eq!(t.amount_cents, -150_25);
+        let transfer = json!({
+            "__typename": "BrokerNonTradeSecurityTransactionSummary",
+            "id": "tx-10", "currency": "EUR", "type": "NON_TRADE", "status": "SETTLED",
+            "isCancellation": false, "lastEventDateTime": "2026-11-03T09:15:00Z",
+            "isin": "IE00BK5BQT80", "nonTradeSecurityTransactionType": "SECURITY_TRANSFER_IN",
+            "quantity": "3", "amount": "300.00"
+        });
+        let t = map_transaction("sc:cash:p1", &transfer, &names).unwrap();
+        assert_eq!(t.amount_cents, 0);
     }
 
     #[test]

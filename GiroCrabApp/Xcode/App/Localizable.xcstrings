@@ -8270,6 +8270,17 @@
         }
       }
     },
+    "Für „Privacy URL“ und „Terms URL“ genügt z. B. https://girocrab.de oder https://github.com/GiroCrab/GiroCrab." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "For “Privacy URL” and “Terms URL”, e.g. https://girocrab.de or https://github.com/GiroCrab/GiroCrab is enough."
+          }
+        }
+      }
+    },
     "Garten" : {
       "extractionState" : "manual",
       "localizations" : {

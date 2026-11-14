@@ -126,6 +126,11 @@ struct EnableBankingSetupSection: View {
                     .help("Redirect-URL kopieren")
             }
             .padding(.leading, 22)
+            Text("Für „Privacy URL“ und „Terms URL“ genügt z. B. https://girocrab.de oder https://github.com/GiroCrab/GiroCrab.")
+                .appFont(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .padding(.leading, 22)
             step(2, "Bei der Anwendung „Activate by linking accounts“ wählen und alle Konten verknüpfen, die GiroCrab sehen soll – nicht verknüpfte Konten liefert die Bank nicht.")
             if !model.psd2LinkHints.isEmpty { importedAccounts }
             step(3, "Hier die heruntergeladene .pem-Datei wählen. GiroCrab übernimmt Schlüssel und Application-ID und prüft die Anwendung.")

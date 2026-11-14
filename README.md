@@ -228,7 +228,7 @@ cargo test -p girocrab-core     # Tests
 
 Die Demo enthält fiktive Konten und erfundene Buchungen – keine echten Daten.
 
-*Intel-Mac?* Der Quellcode-Build funktioniert auch dort mit Swift/Xcode; nur die fertigen Release-Binaries gibt es ausschließlich für Apple Silicon.
+*Intel-Mac?* Der Quellcode-Build funktioniert auch dort mit Swift/Xcode; nur die fertigen Release-Binaries gibt es ausschließlich für Apple Silicon. Für `x86_64`: `rustup target add x86_64-apple-darwin`, in `build-xcframework.sh` das Ziel `aarch64-apple-darwin` durch `x86_64-apple-darwin` ersetzen (`TARGETS`, `MAC_LIB`), dann `./build-xcframework.sh --no-sim` und `swift build` in `GiroCrabApp/`.
 
 **iOS (iPhone / iPad):** Am einfachsten per [TestFlight](https://testflight.apple.com/join/KBmvKVpT). Die App wird (noch) nicht über den App Store verteilt; wer selbst bauen möchte:
 `GiroCrabApp/Xcode/GiroCrab.xcodeproj` in Xcode öffnen, Team (persönliche Apple-ID) unter *Signing & Capabilities* wählen und auf das Gerät installieren. Mit einer persönlichen Apple-ID signierte Apps laufen nur eine begrenzte Zeit und müssen danach neu installiert werden.
@@ -443,7 +443,7 @@ cargo test -p girocrab-core     # run the tests
 
 The demo ships fictional accounts and invented bookings – no real data.
 
-*Intel Mac?* Building from source with Swift/Xcode works there too; only the pre-built release binaries are Apple Silicon-only.
+*Intel Mac?* Building from source with Swift/Xcode works there too; only the pre-built release binaries are Apple Silicon-only. For `x86_64`: run `rustup target add x86_64-apple-darwin`, replace `aarch64-apple-darwin` with `x86_64-apple-darwin` in `build-xcframework.sh` (`TARGETS`, `MAC_LIB`), then `./build-xcframework.sh --no-sim` and `swift build` in `GiroCrabApp/`.
 
 **iOS (iPhone / iPad):** easiest via [TestFlight](https://testflight.apple.com/join/KBmvKVpT). The app is not (yet) in the App Store; to build it yourself:
 open `GiroCrabApp/Xcode/GiroCrab.xcodeproj` in Xcode, choose your team (personal Apple ID) under *Signing & Capabilities* and install on your device. Apps signed with a personal Apple ID expire after a limited time and have to be reinstalled.
