@@ -21,7 +21,7 @@ struct PinSheet: View {
         let d = bankCatalog().first { $0.kind == connection.connector }
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                SymbolTile(symbol: connection.sfSymbol, tint: connection.connector.tint, size: 34)
+                SymbolTile(symbol: connection.sfSymbol, tint: connection.tint, size: 34)
                 VStack(alignment: .leading) {
                     Text("Anmeldung bei \(connection.displayName)").appFont(.headline)
                     Text(d?.protocol ?? "").appFont(.caption).foregroundStyle(Theme.secondary)
@@ -219,7 +219,7 @@ struct ConnectionEditSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                SymbolTile(symbol: connection.sfSymbol, tint: connection.connector.tint, size: 34)
+                SymbolTile(symbol: connection.sfSymbol, tint: connection.tint, size: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(connection.displayName).appFont(.headline)
                     Text(descriptor?.protocol ?? "").appFont(.caption).foregroundStyle(Theme.secondary)

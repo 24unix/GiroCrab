@@ -48,7 +48,7 @@ struct SidebarView: View {
                 Section("Neue Bankzugänge") {
                 ForEach(pending) { c in
                     HStack(spacing: 9) {
-                        SymbolTile(symbol: c.sfSymbol, tint: c.connector.tint, size: 24)
+                        SymbolTile(symbol: c.sfSymbol, tint: c.tint, size: 24)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(c.displayName).lineLimit(1).appDefaultFont()
                             Text(model.missingSettings(for: c).isEmpty ? "Noch nicht abgerufen" : "Einrichtung fehlt")

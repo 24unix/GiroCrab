@@ -33,6 +33,9 @@ struct FinTsAddForm: View {
     /// Banks that use BestSign / need a TAN medium name and (Postbank) the Postbank ID.
     private var bankName_lc: String { (found?.name ?? bankName).lowercased() }
     private var isPostbank: Bool { bankName_lc.contains("postbank") }
+    /// Consorsbank (BLZ 76030080, former DAB 70120400): the FinTS login is the
+    /// account number + "001", not the web login.
+    private var isConsors: Bool { blz == "76030080" || blz == "70120400" || bankName_lc.contains("consors") }
     private var needsMediumHint: Bool {
         isPostbank || bankName_lc.contains("deutsche bank") || bankName_lc.contains("norisbank")
     }
@@ -88,7 +91,7 @@ struct FinTsAddForm: View {
 
         Section {
             if model.demoActive || blz == "99999999" { DemoHintBanner(style: .credentials) { login = "demo" } }
-            TextField("Anmeldename", text: $login, prompt: Text(isPostbank ? "Postbank ID" : "z. B. VR-NetKey oder Kontonummer"))
+            TextField("Anmeldename", text: $login, prompt: Text(isPostbank ? "Postbank ID" : isConsors ? "Kontonummer (10-stellig) + 001" : "z. B. VR-NetKey oder Kontonummer"))
                 .autocorrectionDisabled()
             TextField("TAN-Medium", text: $tanMedium, prompt: Text("Optional"))
                 .autocorrectionDisabled()
@@ -101,6 +104,8 @@ struct FinTsAddForm: View {
             Text("Anmeldung").appSectionHeader()
         } footer: {
             AddFormFooter(lines: [
+                isConsors ? String(localized: "Consorsbank: Als Anmeldename die 10-stellige Kontonummer des Verrechnungskontos (mit führenden Nullen) gefolgt von 001 verwenden, z. B. 0001234567001 – nicht den Anmeldenamen der Website. Ein falscher Anmeldename wird als „PIN ungültig“ gemeldet.") : "",
+                known ? (prefill?.tested ?? "") : "",
                 isPostbank ? String(localized: "Postbank: Als Anmeldename die Postbank ID verwenden, nicht die Kontonummer.") : "",
                 needsMediumHint
                     ? String(localized: "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein, z. B. SO:Gerätename.")

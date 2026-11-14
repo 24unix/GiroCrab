@@ -123,6 +123,9 @@ struct UpdAccount {
     allowed: HashSet<String>,
 }
 
+/// Consorsbank (BNP Paribas): see `docs/consorsbank-connector.md`.
+const CONSORSBANK_BLZ: &str = "76030080";
+
 fn kind_from_code(code: u32) -> AccountKind {
     // FinTS Kontoart: 1-9 Kontokorrent, 10-19 Sparkonto, 20-29 Festgeld,
     // 30-39 Depot, 40-49 Darlehen, 50-59 Kreditkarte, 60-69 Fonds-Depot,
@@ -288,6 +291,9 @@ pub struct FinTsConnector {
     /// TAN medium name entered by the user (e.g. Postbank BestSign `SO:Gerät`);
     /// wins over the HKTAB lookup.
     tan_medium_override: String,
+    /// The bank answered a statement request with 3997 ("nur teilweise
+    /// ausgeführt"): it delivered less than the requested period.
+    partial_statements: bool,
     /// The order was handed to the bank: from here on, an unclear reply or a
     /// lost connection means "result unknown", never "not executed".
     order_submitted: bool,
@@ -368,6 +374,7 @@ impl FinTsConnector {
             upd: Vec::new(),
             transferring: false,
             tan_medium_override: String::new(),
+            partial_statements: false,
             order_submitted: false,
             result: TransferResult::default(),
             order: None,
@@ -423,6 +430,18 @@ impl FinTsConnector {
         self.negotiated(tx).is_some()
     }
 
+    /// Security profile of HNSHK/HNVSK: version 1 for the one-step method
+    /// (security function 999, synchronisation dialog), version 2 for every
+    /// two-step TAN method. Strict banks (Consorsbank) reject a mismatch with
+    /// "9010 Ungültiger Signaturaufbau".
+    fn security_profile(sec_func: &str) -> &'static str {
+        if sec_func == "999" {
+            "PIN:1"
+        } else {
+            "PIN:2"
+        }
+    }
+
     /// Wraps payload segments (numbered from 3) into a signed, "encrypted"
     /// PIN/TAN message and returns the wire bytes.
     fn build_message(
@@ -435,10 +454,11 @@ impl FinTsConnector {
         let (date, time) = Self::now();
         let user = escape(&ctx.login_name);
         let ctrl_ref = format!("{}", rand::random::<u32>() % 9_000_000 + 1_000_000);
+        let profile = Self::security_profile(sec_func);
         let mut inner: Vec<u8> = Vec::new();
         inner.extend(
             SegmentBuilder::new("HNSHK", 2, 4)
-                .raw("PIN:2")
+                .raw(profile)
                 .raw(sec_func)
                 .raw(&ctrl_ref)
                 .raw("1")
@@ -469,7 +489,7 @@ impl FinTsConnector {
         );
 
         let hnvsk = SegmentBuilder::new("HNVSK", 998, 3)
-            .raw("PIN:2")
+            .raw(profile)
             .raw("998")
             .raw("1")
             .raw(&format!("1::{}", escape(self.system_id())))
@@ -558,6 +578,55 @@ impl FinTsConnector {
                 }
             }
         }
+        if crate::depot_debug::enabled() {
+            // Step trace: segment names and return codes only, no texts or data.
+            crate::depot_debug::log(&format!(
+                "fints msg: sec={} profile={} sent={:?} codes={:?}",
+                if sec_func == "999" {
+                    "one-step"
+                } else {
+                    "two-step"
+                },
+                Self::security_profile(sec_func),
+                payload
+                    .iter()
+                    .map(|p| {
+                        // "HKKAZ:3:7" – segment header only
+                        let head = crate::text::decode_bank_bytes(&p[..p.len().min(16)]);
+                        head.split(['+', '\''])
+                            .next()
+                            .unwrap_or_default()
+                            .to_string()
+                    })
+                    .collect::<Vec<_>>(),
+                codes
+                    .iter()
+                    .map(|c: &(String, Option<u32>, String, Vec<String>)| match c.1 {
+                        Some(n) => format!("{}@{n}", c.0),
+                        None => c.0.clone(),
+                    })
+                    .collect::<Vec<_>>()
+            ));
+            // Bank's wording for errors and unusual warnings (generic texts, no
+            // parameters). Routine codes (no SCA, BPD/UPD hints, TAN list) are skipped.
+            for c in codes.iter().filter(|c| {
+                c.0.starts_with('9')
+                    || (c.0.starts_with('3')
+                        && !matches!(c.0.as_str(), "3050" | "3060" | "3076" | "3920"))
+            }) {
+                crate::depot_debug::log(&format!(
+                    "fints {} {}: {} (params: {})",
+                    if c.0.starts_with('9') {
+                        "error"
+                    } else {
+                        "warning"
+                    },
+                    c.0,
+                    c.2.chars().take(160).collect::<String>(),
+                    c.3.len()
+                ));
+            }
+        }
         if let Some(h) = segments.iter().find(|s| s.id() == "HNHBK") {
             let did = h.get(3, 0);
             if !did.is_empty() && did != "0" {
@@ -584,6 +653,20 @@ impl FinTsConnector {
                 let v = self.st.versions.entry(tx).or_default();
                 if !v.contains(&s.version()) {
                     v.push(s.version());
+                }
+                if id == "HIKAZS" {
+                    // bank parameters only: storage period (days), flags
+                    let params: Vec<String> = s
+                        .elements
+                        .iter()
+                        .skip(4)
+                        .map(|el| el.iter().map(|v| v.text()).collect::<Vec<_>>().join(":"))
+                        .collect();
+                    crate::depot_debug::log(&format!(
+                        "fints BPD HIKAZS v{} params={}",
+                        s.version(),
+                        params.join("+")
+                    ));
                 }
                 if id == "HIEKAS" {
                     // bank parameters only (formats, flags) – no customer data
@@ -863,6 +946,14 @@ impl FinTsConnector {
         self.reset_dialog();
     }
 
+    /// Whether a business segment must be accompanied by HKTAN process 4:
+    /// what HIPINS says, plus banks whose HIPINS is wrong. Consorsbank lists
+    /// HKKAZ/HKSAL as not TAN-bound but rejects them without HKTAN (9075).
+    fn needs_hktan(&self, seg_id: &str) -> bool {
+        self.st.tan_required.get(seg_id) == Some(&true)
+            || (self.blz == CONSORSBANK_BLZ && matches!(seg_id, "HKKAZ" | "HKSAL"))
+    }
+
     /// Sends one business segment; adds HKTAN process 4 (referencing that
     /// segment) when the bank requires SCA for it (HIPINS), and waits for a
     /// decoupled approval (HKTAN process S polling) if the bank asks for one.
@@ -874,7 +965,7 @@ impl FinTsConnector {
     ) -> CoreResult<BankReply> {
         let sec = self.sec();
         let mut payload = vec![segment];
-        if sec != "999" && self.st.tan_required.get(seg_id) == Some(&true) {
+        if sec != "999" && self.needs_hktan(seg_id) {
             payload.push(self.hktan_process4(4, seg_id));
         }
         let mut reply = self.send(ctx, payload, &sec, None).await?;
@@ -1173,6 +1264,9 @@ impl FinTsConnector {
                 b = b.de(&[t]);
             }
             let r = self.request(ctx, "HKKAZ", b.build()).await?;
+            if r.has("3997") {
+                self.partial_statements = true;
+            }
             for s in r.all("HIKAZ") {
                 if let Some(b) = s.binary(1) {
                     data.extend_from_slice(b);
@@ -1714,7 +1808,19 @@ impl FinTsConnector {
     }
 
     /// KTI: IBAN:BIC, or (without IBAN, e.g. loans) ::Konto:Unterkonto:280:BLZ.
+    /// Consorsbank rejects the IBAN:BIC-only form ("9010 Fehler im
+    /// Segmentaufbau") and wants all of IBAN:BIC:Konto:Unterkonto:280:BLZ.
     fn kti(acc: &SepaAccount) -> String {
+        if acc.blz == CONSORSBANK_BLZ && !acc.iban.is_empty() && !acc.account_number.is_empty() {
+            return format!(
+                "{}:{}:{}:{}:{COUNTRY}:{}",
+                escape(&acc.iban),
+                escape(&acc.bic),
+                escape(&acc.account_number),
+                escape(&acc.sub_account),
+                acc.blz
+            );
+        }
         if acc.iban.is_empty() {
             format!(
                 "::{}:{}:{COUNTRY}:{}",
@@ -2266,6 +2372,12 @@ impl BankConnector for FinTsConnector {
                                 balance = closing;
                             }
                             ok_any = true;
+                            if std::mem::take(&mut self.partial_statements) {
+                                errors.push(trf(
+                                    "{0}: Die Bank hat nur einen Teil des angeforderten Zeitraums geliefert (Rückmeldung 3997).",
+                                    &[&label],
+                                ));
+                            }
                         }
                         Err(e) => {
                             errors.push(trf("{0}: Umsätze (HKKAZ/MT940) – {1}", &[&label, &e]))
@@ -2575,6 +2687,31 @@ mod tests {
         assert_eq!(segs[3].get(2, 0), "user:1", "login is escaped and restored");
         assert_eq!(segs[6].get(3, 0), "12345");
         assert_eq!(segs[7].number(), 7);
+        // Two-step method: security profile version 2 in HNVSK and HNSHK.
+        assert_eq!((segs[1].get(1, 0), segs[1].get(1, 1)), ("PIN", "2"));
+        assert_eq!((segs[2].get(1, 0), segs[2].get(1, 1)), ("PIN", "2"));
+
+        // One-step (999, synchronisation dialog): profile version 1. Consorsbank
+        // answers PIN:2 here with "9010 Ungültiger Signaturaufbau".
+        let sync = vec![c.hkidn(&ctx, 3), c.hkvvb(4)];
+        let msg = c.build_message(&ctx, &sync, "999", None);
+        let segs = syntax::parse_response(&msg).unwrap();
+        assert_eq!((segs[1].id(), segs[1].get(1, 1)), ("HNVSK", "1"));
+        assert_eq!((segs[2].id(), segs[2].get(1, 1)), ("HNSHK", "1"));
+        assert_eq!(segs[2].get(2, 0), "999");
+    }
+
+    #[test]
+    fn consorsbank_statements_always_carry_hktan() {
+        let mut c = FinTsConnector::new("76030080");
+        c.st.tan_required.insert("HKKAZ".into(), false);
+        assert!(c.needs_hktan("HKKAZ") && c.needs_hktan("HKSAL"));
+        assert!(!c.needs_hktan("HKSPA"));
+        // Other banks: HIPINS decides.
+        let mut c = FinTsConnector::new("52090000");
+        c.st.tan_required.insert("HKKAZ".into(), false);
+        c.st.tan_required.insert("HKSAL".into(), true);
+        assert!(!c.needs_hktan("HKKAZ") && c.needs_hktan("HKSAL"));
     }
 
     fn reply(raw: &[u8]) -> BankReply {
@@ -2641,6 +2778,19 @@ mod tests {
             blz: "52090000".into(),
         });
         assert_eq!(kti, "::0098765400::280:52090000");
+        // IBAN known: IBAN:BIC – except Consorsbank, which wants the full form.
+        let acc = |blz: &str| SepaAccount {
+            iban: "DE00".into(),
+            bic: "BICXDEXX".into(),
+            account_number: "0123456789".into(),
+            sub_account: String::new(),
+            blz: blz.into(),
+        };
+        assert_eq!(FinTsConnector::kti(&acc("52090000")), "DE00:BICXDEXX");
+        assert_eq!(
+            FinTsConnector::kti(&acc("76030080")),
+            "DE00:BICXDEXX:0123456789::280:76030080"
+        );
     }
 
     #[test]

@@ -22,7 +22,7 @@ struct TwoFactorSheet: View {
             let c = active.challenge
             VStack(spacing: 18) {
                 HStack(spacing: 10) {
-                    SymbolTile(symbol: active.connection.sfSymbol, tint: active.connection.connector.tint, size: 30)
+                    SymbolTile(symbol: active.connection.sfSymbol, tint: active.connection.tint, size: 30)
                     VStack(alignment: .leading, spacing: 0) {
                         Text(active.connection.displayName).appFont(.headline)
                         Text(c.methodName).appFont(.caption).foregroundStyle(.secondary)

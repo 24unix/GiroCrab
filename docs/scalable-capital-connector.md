@@ -14,9 +14,9 @@ layer. Nothing has been verified against the live Scalable backend yet.
 | 1 | DPoP signing + device-code login against the real endpoints | ✅ verified live 2026-11-11 |
 | 2 | Session persistence, refresh, 2FA-on-login | ✅ login + 2FA verified live; refresh/7-day re-login not yet observed |
 | 3 | Account discovery (broker portfolio, Overnight, Fixed-Term) | ✅ verified live (1 portfolio, 1 Overnight, 0 Fixed-Term) |
-| 4 | Transaction fetch + mapping, de-duplication | 🟡 12 bookings + 3 holdings imported; amounts/signs/dates awaiting user check |
+| 4 | Transaction fetch + mapping, de-duplication | ✅ verified live 2026-11-11 (full history, signs, transfers, holdings) |
 | 5 | Wiring: `ConnectorKind`, descriptor, Swift UI, demo data | ✅ done 2026-11-11 (demo seed left unchanged, see below) |
-| 6 | Tests, README/CONTRIBUTING update, release notes | ⬜ unit tests done; docs pending live verification |
+| 6 | Tests, README/CONTRIBUTING update, release notes | ✅ unit tests green; README/CONTRIBUTING list Scalable Capital as supported (2026-11-11); release notes with the next release |
 
 Blocking dependency for phases 1–4: a Scalable Capital account with
 **Profile → Security → Agentic Investing** enabled, to validate the flow live.
@@ -441,3 +441,4 @@ First live run on 2026-11-11 (macOS, GiroCrab debug build):
 - 2026-11-11 – Fix: trades titled with the security name and classified as investment via German booking text; internal transfers classified as Umbuchung; holding price fallback when the quote is missing.
 - 2026-11-11 – First sync loads the full history instead of the 90-day window.
 - 2026-11-11 – Fix: deposits/withdrawals classified as transfers via language-independent booking text.
+- 2026-11-11 – Connector merged upstream (#54). README (DE/EN) and CONTRIBUTING updated: Scalable Capital moved from "Help wanted" to supported (⚠️ unofficial client of the official CLI API, read-only, Agentic Investing required).

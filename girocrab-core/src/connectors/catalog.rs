@@ -306,8 +306,8 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Balances,
             Capability::Securities,
         ],
-        status: Status::TestingWanted,
-        issues: &[45],
+        status: Status::Verified,
+        issues: &[],
     },
     MatrixEntry {
         name: "comdirect",
@@ -536,7 +536,7 @@ mod matrix_tests {
 
     #[test]
     fn open_test_needs_and_limits_point_to_issues() {
-        for name in ["ING", "Consorsbank", "Revolut", "PayPal"] {
+        for name in ["ING", "Revolut", "PayPal"] {
             let e = BANK_MATRIX.iter().find(|e| e.name == name).expect(name);
             assert_ne!(e.status, Status::Verified, "{name}");
             assert!(!e.issues.is_empty(), "{name} needs a tracking issue");

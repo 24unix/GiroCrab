@@ -153,7 +153,7 @@ struct BankSetupSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 10) {
-                    SymbolTile(symbol: request.connection.sfSymbol, tint: request.connection.connector.tint, size: 34)
+                    SymbolTile(symbol: request.connection.sfSymbol, tint: request.connection.tint, size: 34)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(request.connection.displayName) einrichten").appFont(.headline)
                             .fixedSize(horizontal: false, vertical: true)

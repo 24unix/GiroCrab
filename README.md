@@ -184,7 +184,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | Bank | Schnittstelle | Umsätze | Salden | Depot | Überweisung | Dauerauftrag | PDF/Postfach | Status |
 |---|---|---|---|---|---|---|---|---|
 | 1822direkt | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verifiziert |
-| Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | 🧪 Test gesucht [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
+| Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | ✅ Verifiziert |
 | FinTS-Bank (BLZ + URL) | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verifiziert |
 | ING | FinTS 3.0 | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#313](https://github.com/GiroCrab/GiroCrab/issues/313) |
 | Volksbank Kassel Göttingen | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verifiziert |
@@ -394,7 +394,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | Bank | Interface | Transactions | Balances | Securities | Transfers | Standing orders | PDF/post box | Status |
 |---|---|---|---|---|---|---|---|---|
 | 1822direkt | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verified |
-| Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | 🧪 Testing wanted [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
+| Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | ✅ Verified |
 | FinTS bank (bank code + URL) | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verified |
 | ING | FinTS 3.0 | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#313](https://github.com/GiroCrab/GiroCrab/issues/313) |
 | Volksbank Kassel Göttingen | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verified |

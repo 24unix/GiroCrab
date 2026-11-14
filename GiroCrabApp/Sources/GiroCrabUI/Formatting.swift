@@ -364,6 +364,20 @@ enum ReadableColor {
     }
 }
 
+extension BankConnection {
+    /// Colour and monogram of well-known banks that run on the generic FinTS
+    /// connector (keyed by BLZ); everything else uses its connector's.
+    private var fintsBrand: (tintHex: String, monogram: String)? {
+        guard connector == .finTsGeneric else { return nil }
+        switch bankCode {
+        case "76030080", "70120400": return ("#0A7EA4", "CB") // Consorsbank
+        default: return nil
+        }
+    }
+    var tint: Color { fintsBrand.map { Color.readable(hex: $0.tintHex) } ?? connector.tint }
+    var monogram: String { fintsBrand?.monogram ?? connector.monogram }
+}
+
 extension ConnectorKind {
     var displayName: String {
         switch self {

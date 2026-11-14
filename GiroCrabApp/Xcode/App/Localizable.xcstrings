@@ -4925,6 +4925,17 @@
         }
       }
     },
+    "Consorsbank: Als Anmeldename die 10-stellige Kontonummer des Verrechnungskontos (mit führenden Nullen) gefolgt von 001 verwenden, z. B. 0001234567001 – nicht den Anmeldenamen der Website. Ein falscher Anmeldename wird als „PIN ungültig“ gemeldet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consorsbank: use the 10-digit account number of the settlement account (with leading zeros) followed by 001 as the login name, e.g. 0001234567001 – not the website login. A wrong login name is reported as “PIN invalid”."
+          }
+        }
+      }
+    },
     "Core-Version" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11539,6 +11550,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Account holder"
+          }
+        }
+      }
+    },
+    "Kontonummer (10-stellig) + 001" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account number (10 digits) + 001"
           }
         }
       }

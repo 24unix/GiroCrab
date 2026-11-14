@@ -357,6 +357,8 @@ fn english(de: &str) -> Option<&'static str> {
         "{0}: Depotbestand (HKWPD) – Wert einzelner Positionen fehlt" => "{0}: holdings (HKWPD) – value of some positions missing",
         "{0}: Umsätze (HKCAZ/camt.052) – {1}" => "{0}: transactions (HKCAZ/camt.052) – {1}",
         "{0}: Umsätze (HKKAZ/MT940) – {1}" => "{0}: transactions (HKKAZ/MT940) – {1}",
+        "Mit echtem Konto getestet: Verrechnungs-, Giro- und Tagesgeldkonto sowie Depotbestand; die Bank liefert per FinTS nur die Umsätze der letzten 90 Tage." => "Tested with a real account: settlement, current and savings accounts plus depot holdings; via FinTS the bank only provides the transactions of the last 90 days.",
+        "{0}: Die Bank hat nur einen Teil des angeforderten Zeitraums geliefert (Rückmeldung 3997)." => "{0}: the bank delivered only part of the requested period (return code 3997).",
         // ------------------------------------------------------------ connectors/fints transfer codes
         "Die Nachricht enthält Fehler." => "The message contains errors.",
         "Die Bank hat die Nachricht nicht verarbeitet." => "The bank didn’t process the message.",

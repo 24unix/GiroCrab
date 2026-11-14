@@ -182,8 +182,8 @@ struct BankConnectionsSettings: View {
                 ForEach(model.connections) { c in
                     HStack(spacing: 10) {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(c.connector.tint.opacity(0.12))
-                            .overlay(Text(c.connector.monogram).appFont(.caption, weight: .bold).foregroundStyle(c.connector.tint))
+                            .fill(c.tint.opacity(0.12))
+                            .overlay(Text(c.monogram).appFont(.caption, weight: .bold).foregroundStyle(c.tint))
                             .frame(width: 30, height: 30)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(c.displayName).fontWeight(.medium)

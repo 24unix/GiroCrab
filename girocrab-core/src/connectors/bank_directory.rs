@@ -164,17 +164,29 @@ fn matches_all(haystack: &str, words: &[&str]) -> bool {
     words.iter().all(|w| haystack.contains(w))
 }
 
+/// FinTS banks verified with a real account: BLZ → what was tested.
+fn fints_tested(blz: &str) -> String {
+    match blz {
+        "76030080" => tr("Mit echtem Konto getestet: Verrechnungs-, Giro- und Tagesgeldkonto sowie Depotbestand; die Bank liefert per FinTS nur die Umsätze der letzten 90 Tage.").into(),
+        _ => String::new(),
+    }
+}
+
+/// Extra search words for FinTS banks whose directory name lacks them
+/// (former names, parent company): (BLZ, words).
+const FINTS_ALIASES: &[(&str, &str)] = &[("76030080", "dab bnp paribas")];
+
 fn fints_result(b: FinTsBankInfo) -> BankSearchResult {
     BankSearchResult {
         id: format!("fints:{}", b.blz),
         name: b.name,
         mode: BankAccessMode::FinTs,
         country: "DE".into(),
+        tested: fints_tested(&b.blz),
         blz: b.blz,
         url: b.url,
         connector: None,
         aspsp: String::new(),
-        tested: String::new(),
     }
 }
 
@@ -261,6 +273,14 @@ pub fn search(
             .into_iter()
             .map(fints_result),
     );
+    for (blz, extra) in FINTS_ALIASES {
+        let hit = words.iter().all(|w| extra.split(' ').any(|x| x == *w));
+        if hit && !out.iter().any(|r| r.blz == *blz) {
+            if let Some(b) = fints_directory::lookup(blz) {
+                out.push(fints_result(b));
+            }
+        }
+    }
     for (kind, name, extra) in own_api() {
         if matches_all(&format!("{} {}", fold(name), extra), &words) {
             out.push(own_result(kind, name));
@@ -573,6 +593,17 @@ mod tests {
         assert_eq!(ids(&r), vec!["fints:50010517"]);
         // valid IBAN of a bank that is not in the directory: nothing to offer
         assert!(search("DE89 3704 0044 0532 0130 00", vec![], 10).is_empty());
+    }
+
+    #[test]
+    fn consorsbank_is_found_by_former_names_and_carries_its_test_note() {
+        for q in ["consors", "dab", "bnp paribas", "76030080"] {
+            let r = search(q, vec![], 12);
+            let c = r.iter().find(|b| b.blz == "76030080");
+            assert!(c.is_some_and(|b| b.tested.contains("90")), "{q}");
+        }
+        // other FinTS banks carry no note
+        assert!(search("10050000", vec![], 12)[0].tested.is_empty());
     }
 
     #[test]
