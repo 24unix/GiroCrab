@@ -29,13 +29,19 @@ pub(super) fn find<'a>(v: &'a Value, key: &str) -> &'a Value {
 pub(super) fn parse_account(item: &Value, today: &str) -> Option<(i64, RemoteAccount)> {
     let (wrapper, a) = item.as_object()?.iter().next()?;
     let id = a["id"].as_i64()?;
-    if matches!(a["status"].as_str(), Some("CANCELLED")) {
+    if matches!(
+        a["status"].as_str(),
+        Some("CANCELLED" | "CANCELLED_PENDING_SETTLEMENT")
+    ) {
         return None;
     }
     let iban_alias = a["alias"]
         .as_array()
         .and_then(|al| al.iter().find(|x| x["type"] == "IBAN"));
-    let kind = if wrapper == "MonetaryAccountSavings" {
+    let kind = if matches!(
+        wrapper.as_str(),
+        "MonetaryAccountSavings" | "MonetaryAccountExternalSavings"
+    ) {
         AccountKind::Savings
     } else {
         AccountKind::Checking
