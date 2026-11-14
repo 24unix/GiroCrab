@@ -13,6 +13,7 @@
 //! - 10: opening balances (#212): table `opening_balances` and
 //!   `accounts.balance_derived`.
 //! - 11: sync log (#238): table `sync_log`, local to the device.
+//! - 12: SEPA references on bookings: `end_to_end_id`, `mandate_id`, `creditor_id`.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -41,7 +42,22 @@ const STEPS: &[Step] = &[
     Step::Hook(repair_to_v8),     // 9
     Step::Hook(opening_balances), // 10
     Step::Sql(SYNC_LOG),          // 11
+    Step::Hook(sepa_refs),        // 12
 ];
+
+/// Step 12: SEPA references of a booking, bank-independent (end-to-end id,
+/// direct-debit mandate reference, creditor id). "" = unknown. Idempotent:
+/// a vault rewound by a test or a development build may carry the columns.
+fn sepa_refs(conn: &Connection) -> CoreResult<()> {
+    for col in ["end_to_end_id", "mandate_id", "creditor_id"] {
+        if !has_column(conn, "transactions", col)? {
+            conn.execute_batch(&format!(
+                "ALTER TABLE transactions ADD COLUMN {col} TEXT NOT NULL DEFAULT '';"
+            ))?;
+        }
+    }
+    Ok(())
+}
 
 /// Step 11 (#238): the Abrufprotokoll. No foreign key: the log outlives a
 /// deleted connection (its name is kept in the row). Not part of a vault merge.
@@ -485,7 +501,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 11);
+        assert_eq!(SCHEMA_VERSION, 12);
     }
 
     #[test]

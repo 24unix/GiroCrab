@@ -428,8 +428,9 @@ pub(crate) fn store_fetch(
         {
             let mut ins = tx.prepare(
                 "INSERT OR IGNORE INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency,
-                         counterparty, counterparty_iban, purpose, booking_text, purpose_code, gvc)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                         counterparty, counterparty_iban, purpose, booking_text, purpose_code, gvc,
+                         end_to_end_id, mandate_id, creditor_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             )?;
             for t in &data.transactions {
                 let Some(acc_id) = account_ids.get(&t.account_ref) else {
@@ -477,7 +478,10 @@ pub(crate) fn store_fetch(
                     t.purpose,
                     t.booking_text,
                     t.purpose_code,
-                    t.gvc
+                    t.gvc,
+                    t.end_to_end_id,
+                    t.mandate_id,
+                    t.creditor_id
                 ])? as u32;
                 if n > 0 && data.adjust_balances {
                     tx.execute(
@@ -518,6 +522,17 @@ pub(crate) fn store_fetch(
                                 "UPDATE transactions SET purpose_code = ?1, gvc = ?2
                                  WHERE id = ?3 AND purpose_code = '' AND gvc = ''",
                                 params![t.purpose_code, t.gvc, row_id],
+                            )?;
+                        }
+                        // Same for the SEPA references (bookings imported before step 12).
+                        if !t.end_to_end_id.is_empty()
+                            || !t.mandate_id.is_empty()
+                            || !t.creditor_id.is_empty()
+                        {
+                            tx.execute(
+                                "UPDATE transactions SET end_to_end_id = ?1, mandate_id = ?2, creditor_id = ?3
+                                 WHERE id = ?4 AND end_to_end_id = '' AND mandate_id = '' AND creditor_id = ''",
+                                params![t.end_to_end_id, t.mandate_id, t.creditor_id, row_id],
                             )?;
                         }
                         if bad(&cp) && good(&t.counterparty) {
