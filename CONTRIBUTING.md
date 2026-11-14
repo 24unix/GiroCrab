@@ -16,6 +16,10 @@ cargo run -- --demo-seed               # or GIROCRAB_DEMO_SEED=1
 
 Swift-only changes: `cd GiroCrabApp && swift build -q` (no core rebuild needed).
 
+Free disk space with `scripts/clean.sh [--deep]`: the default run removes `dist/`, `build/`, stray
+temp files, GiroCrab DerivedData, incremental Rust caches and merged local branches while keeping
+built dependencies and the xcframework; `--deep` also runs `cargo clean` and removes `GiroCrabApp/.build`.
+
 Database schema changes are a new migration step plus a fixture vault, see
 [Schema & migrations](docs/ARCHITECTURE.md#schema--migrations).
 
