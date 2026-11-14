@@ -1761,6 +1761,7 @@ fn pick_balance_typed(balances: &[Value]) -> (i64, Option<String>, Option<String
 /// Result of checking the user's Enable Banking application before the first
 /// bank login (`GET /application`).
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EnableBankingAppCheck {
     pub name: String,
     /// "PRODUCTION" or "SANDBOX".

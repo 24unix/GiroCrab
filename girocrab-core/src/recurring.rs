@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS recurring_series (
 const LOOKBACK_DAYS: i64 = 800;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RecurrenceInterval {
     Monthly,
     Quarterly,
@@ -84,6 +85,7 @@ impl RecurrenceInterval {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RecurringSource {
     /// Found automatically in the booking history.
     Detected,
@@ -92,6 +94,7 @@ pub enum RecurringSource {
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RecurringSeries {
     /// Identity of the series (for ignore / reset).
     pub series_key: String,
@@ -119,6 +122,7 @@ pub struct RecurringSeries {
 
 /// A series the user hid with "Nicht wiederkehrend" (can be shown again).
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IgnoredRecurring {
     pub series_key: String,
     pub name: String,
@@ -128,6 +132,7 @@ pub struct IgnoredRecurring {
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RecurringMonthItem {
     pub series: RecurringSeries,
     /// Due date in the month (expected, or actual booking date when booked).
@@ -141,6 +146,7 @@ pub struct RecurringMonthItem {
 /// Everything the recurring UI shows for one selection, from a single pass
 /// over the bookings.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RecurringSnapshot {
     pub series: Vec<RecurringSeries>,
     pub ignored: Vec<IgnoredRecurring>,
@@ -148,6 +154,7 @@ pub struct RecurringSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RecurringMonthOverview {
     pub year: i32,
     pub month: u32,

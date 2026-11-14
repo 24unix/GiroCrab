@@ -4,6 +4,7 @@
 /// The supported institutions. The connector implementation is picked
 /// from this value; endpoints/BLZ are listed in `bank_catalog()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ConnectorKind {
     /// Volksbank Kassel Göttingen, FinTS 3.0, BLZ 52090000
     VolksbankKasselGoettingen,
@@ -116,6 +117,7 @@ impl ConnectorKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AccountKind {
     Checking,
     Savings,
@@ -165,6 +167,7 @@ impl AccountKind {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BankConnection {
     pub id: i64,
     pub connector: ConnectorKind,
@@ -179,6 +182,7 @@ pub struct BankConnection {
 
 /// One securities position of a depot account.
 #[derive(Debug, Clone, PartialEq, Default, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Holding {
     pub isin: String,
     pub wkn: String,
@@ -209,6 +213,7 @@ pub struct Holding {
 
 /// What a securities transaction was (#314).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SecurityDirection {
     Buy,
     Sell,
@@ -247,6 +252,7 @@ impl SecurityDirection {
 /// category and no cash flow. Cents are in `currency`; `value_cents` is the
 /// gross amount (quantity × price) without fees, taxes and accrued interest.
 #[derive(Debug, Clone, PartialEq, Default, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SecurityTransaction {
     pub id: i64,
     pub account_id: i64,
@@ -271,6 +277,7 @@ pub struct SecurityTransaction {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Account {
     pub id: i64,
     pub connection_id: Option<i64>,
@@ -320,6 +327,7 @@ pub struct Account {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AccountGroup {
     pub id: i64,
     pub name: String,
@@ -332,6 +340,7 @@ pub struct AccountGroup {
 
 /// A user-defined sidebar group ("Nach Gruppe" view).
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UserGroup {
     /// Stable across devices. Empty for the "Ohne Gruppe" entry.
     pub uuid: String,
@@ -358,6 +367,7 @@ pub struct UserGroup {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Category {
     pub id: i64,
     pub parent_id: Option<i64>,
@@ -378,6 +388,7 @@ pub struct Category {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CategorySource {
     None,
     Rule,
@@ -385,6 +396,7 @@ pub enum CategorySource {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Booking {
     pub id: i64,
     pub account_id: i64,
@@ -441,6 +453,7 @@ pub struct Booking {
 
 /// Dry-run result of a MoneyMoney import (nothing stored).
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyImportPreview {
     pub total_rows: u32,
     pub new_bookings: u32,
@@ -459,6 +472,7 @@ pub struct MoneyMoneyImportPreview {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyImportResult {
     pub account_id: i64,
     pub account_created: bool,
@@ -475,6 +489,7 @@ pub struct MoneyMoneyImportResult {
 
 /// Top segmented control: everything / everyday life / savings plans & perks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BookingScope {
     #[default]
     All,
@@ -486,6 +501,7 @@ pub enum BookingScope {
 
 /// Income / expense filter of the booking list (GitHub #53).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BookingDirection {
     #[default]
     All,
@@ -496,6 +512,7 @@ pub enum BookingDirection {
 }
 
 #[derive(Debug, Clone, Default, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BookingFilter {
     /// Empty = all accounts.
     pub account_ids: Vec<i64>,
@@ -520,6 +537,7 @@ pub struct BookingFilter {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BookingPage {
     pub transactions: Vec<Booking>,
     pub total_count: u32,
@@ -538,6 +556,7 @@ pub struct BookingPage {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RuleField {
     /// Counterparty, purpose and booking text.
     Any,
@@ -569,6 +588,7 @@ impl RuleField {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MatchKind {
     /// Pipe-separated keywords, any of them matches ("REWE|EDEKA|ALDI").
     Keyword,
@@ -580,6 +600,7 @@ pub enum MatchKind {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Rule {
     /// 0 when creating a new rule.
     pub id: i64,
@@ -600,6 +621,7 @@ pub struct Rule {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SettingEntry {
     pub key: String,
     pub label: String,
@@ -615,6 +637,7 @@ pub struct SettingEntry {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PeriodSummary {
     pub income_cents: i64,
     pub expense_cents: i64,
@@ -622,12 +645,14 @@ pub struct PeriodSummary {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DailyBalance {
     pub date: String,
     pub balance_cents: i64,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MerchantStats {
     pub key: String,
     pub name: String,
@@ -641,6 +666,7 @@ pub struct MerchantStats {
 
 /// KPI tiles: flows of a selection (accounts + period), all positive.
 #[derive(Debug, Clone, Default, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SelectionFlow {
     /// Everyday spending.
     pub consumption_cents: i64,
@@ -715,6 +741,7 @@ mod kpi_tests {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PlanExecution {
     /// "2026-11"
     pub month: String,
@@ -723,6 +750,7 @@ pub struct PlanExecution {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SavingsPlan {
     pub merchant: crate::merchants::MerchantInfo,
     pub monthly_cents: i64,
@@ -734,6 +762,7 @@ pub struct SavingsPlan {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MonthFlow {
     pub month: String,
     pub consumption_cents: i64,
@@ -742,6 +771,7 @@ pub struct MonthFlow {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InvestmentDashboard {
     pub months: Vec<String>,
     pub plans: Vec<SavingsPlan>,
@@ -757,6 +787,7 @@ pub struct InvestmentDashboard {
 
 /// A single SEPA credit transfer ("Überweisung") to be sent via FinTS.
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SepaTransferRequest {
     pub account_id: i64,
     pub recipient_name: String,
@@ -774,6 +805,7 @@ pub struct SepaTransferRequest {
 
 /// Recipient suggested from past bookings (auto-completion).
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KnownRecipient {
     pub name: String,
     pub iban: String,
@@ -782,6 +814,7 @@ pub struct KnownRecipient {
 
 /// Budget progress of one category for one month.
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CategoryBudgetStatus {
     pub category_id: i64,
     pub name: String,
@@ -797,6 +830,7 @@ pub struct CategoryBudgetStatus {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TransactionSplit {
     pub id: i64,
     pub transaction_id: i64,
@@ -806,6 +840,7 @@ pub struct TransactionSplit {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TransactionSplitInput {
     pub category_id: Option<i64>,
     /// Same sign as the parent booking; all parts must add up to it.
@@ -814,6 +849,7 @@ pub struct TransactionSplitInput {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PeriodGranularity {
     Month,
     Quarter,
@@ -822,6 +858,7 @@ pub enum PeriodGranularity {
 
 /// Income vs. expenses of one period ("2025-03", "2025-Q1", "2025").
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PeriodCashflow {
     pub key: String,
     pub income_cents: i64,
@@ -830,6 +867,7 @@ pub struct PeriodCashflow {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TransferTemplate {
     /// 0 = not saved yet.
     pub id: i64,

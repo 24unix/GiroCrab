@@ -23,6 +23,7 @@ use crate::vault::Vault;
 
 /// How GiroCrab talks to a bank.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BankAccessMode {
     /// FinTS 3.0 / HBCI – direct, nothing to register.
     FinTs,
@@ -34,6 +35,7 @@ pub enum BankAccessMode {
 
 /// A bank reachable through Enable Banking.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Psd2Bank {
     /// Name shown to the user.
     pub name: String,
@@ -52,6 +54,7 @@ pub struct Psd2Bank {
 
 /// One row of the picker.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BankSearchResult {
     /// Stable id: `fints:<blz>`, `api:<connector>` or `psd2:<CC>:<aspsp>`.
     pub id: String,

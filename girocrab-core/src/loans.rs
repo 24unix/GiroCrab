@@ -45,6 +45,7 @@ const MAX_MONTHS: u32 = 1200;
 
 /// What the user configures for a manual loan.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoanSetup {
     pub name: String,
     /// Original loan amount (drives the progress bar); `None` = the anchor balance.
@@ -61,6 +62,7 @@ pub struct LoanSetup {
 
 /// Computed state of a manual loan.
 #[derive(Debug, Clone, PartialEq, Default, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoanStatus {
     /// Outstanding balance after all counted payments (positive, never below 0).
     pub remaining_cents: i64,
@@ -85,6 +87,7 @@ pub struct LoanStatus {
 
 /// A manual loan with its setup and current state.
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ManualLoan {
     pub account_id: i64,
     pub setup: LoanSetup,
@@ -93,6 +96,7 @@ pub struct ManualLoan {
 
 /// Live preview for the loan editor (nothing stored).
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoanPreview {
     pub status: LoanStatus,
     /// Bookings the expression links (newest first, at most `limit`).
@@ -102,6 +106,7 @@ pub struct LoanPreview {
 
 /// A booking linked to a manual loan.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoanLink {
     pub transaction_id: i64,
     pub loan_account_id: i64,

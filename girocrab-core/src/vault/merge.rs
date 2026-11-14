@@ -65,6 +65,7 @@ impl Vault {
 
 /// Result of [`Vault::merge_other_vault`].
 #[derive(Debug, Clone, Default, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MergeStats {
     pub accounts_added: u32,
     pub categories_added: u32,

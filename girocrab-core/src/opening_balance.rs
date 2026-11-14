@@ -99,6 +99,7 @@ fn sum_from(conn: &Connection, account_id: i64, date: &str) -> CoreResult<(i64, 
 /// What an opening balance at `date` would count, for the editor's preview
 /// and "Kalibrieren" (balance = opening + `sum_cents`).
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OpeningBalancePreview {
     /// Σ of the bookings on or after the date (account currency).
     pub sum_cents: i64,

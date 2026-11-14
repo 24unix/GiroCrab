@@ -28,6 +28,7 @@ const ROW_OVERHEAD: i64 = 64;
 
 /// Result of a sync.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SyncLogOutcome {
     Ok,
     Error,
@@ -54,6 +55,7 @@ impl SyncLogOutcome {
 
 /// What started the sync.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SyncLogSource {
     /// The user asked for it (Abrufen, Sammelabruf).
     Manual,
@@ -82,6 +84,7 @@ impl SyncLogSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SyncLogEntry {
     pub id: i64,
     /// Unix time in milliseconds.
@@ -98,6 +101,7 @@ pub struct SyncLogEntry {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SyncLogFilter {
     pub connection_id: Option<i64>,
     /// Only failed syncs.

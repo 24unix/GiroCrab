@@ -10,6 +10,7 @@ use crate::models::ConnectorKind;
 use crate::vault::Vault;
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConnectionStatus {
     pub connection_id: i64,
     /// A PIN is stored in the encrypted vault ("PIN im Tresor speichern").

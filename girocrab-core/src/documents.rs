@@ -44,6 +44,7 @@ CREATE INDEX IF NOT EXISTS booking_documents_info ON booking_documents(
 "#;
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentInfo {
     pub id: i64,
     pub booking_id: Option<i64>,
@@ -62,6 +63,7 @@ pub struct DocumentInfo {
 }
 
 #[derive(Debug, Clone, Default, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DocumentFilter {
     pub account_id: Option<i64>,
     pub doc_type: Option<String>,

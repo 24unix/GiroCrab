@@ -334,6 +334,7 @@ pub fn normalise_domain(input: &str) -> String {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MerchantLogo {
     pub domain: String,
     pub bytes: Vec<u8>,

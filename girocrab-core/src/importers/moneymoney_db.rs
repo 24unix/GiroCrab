@@ -60,6 +60,7 @@ const EXT_PREFIX: &str = "moneymoney-db:";
 
 /// One MoneyMoney account as found in the database.
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbAccount {
     pub mm_id: i64,
     pub name: String,
@@ -99,6 +100,7 @@ pub struct MoneyMoneyDbAccount {
 
 /// One bank login in MoneyMoney. Secrets are never part of this record.
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbBank {
     pub mm_id: i64,
     pub bank_code: String,
@@ -120,6 +122,7 @@ pub struct MoneyMoneyDbBank {
 
 /// How a bank login is connected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MoneyMoneyDbConnectionVia {
     FinTs,
     /// The bank's own API (comdirect, bunq, PayPal, Trade Republic, …).
@@ -130,6 +133,7 @@ pub enum MoneyMoneyDbConnectionVia {
 
 /// One way to connect a bank login.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbConnectionOption {
     pub via: MoneyMoneyDbConnectionVia,
     pub connector: ConnectorKind,
@@ -168,6 +172,7 @@ impl MoneyMoneyDbConnectionOption {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbPreview {
     pub accounts: Vec<MoneyMoneyDbAccount>,
     pub banks: Vec<MoneyMoneyDbBank>,
@@ -196,6 +201,7 @@ pub struct MoneyMoneyDbPreview {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbAccountChoice {
     pub mm_id: i64,
     pub import: bool,
@@ -205,6 +211,7 @@ pub struct MoneyMoneyDbAccountChoice {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbImportOptions {
     /// Accounts not listed here are not imported.
     pub accounts: Vec<MoneyMoneyDbAccountChoice>,
@@ -231,6 +238,7 @@ pub struct MoneyMoneyDbImportOptions {
 
 /// The connection chosen for one MoneyMoney bank login.
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbBankChoice {
     pub mm_bank_id: i64,
     /// `None` = don't set up a connection for this login.
@@ -241,6 +249,7 @@ pub struct MoneyMoneyDbBankChoice {
 /// must be linked to the user's Enable Banking application before the
 /// first consent (restricted applications only see linked accounts).
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbPsd2Connection {
     pub connection_id: i64,
     pub bank_name: String,
@@ -251,6 +260,7 @@ pub struct MoneyMoneyDbPsd2Connection {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbPsd2Account {
     pub name: String,
     pub iban: String,
@@ -261,6 +271,7 @@ pub struct MoneyMoneyDbPsd2Account {
 /// what MoneyMoney showed? Read back from the vault, independent of the
 /// import's own counting.
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbAccountCheck {
     pub mm_id: i64,
     pub account_id: i64,
@@ -291,6 +302,7 @@ pub struct MoneyMoneyDbAccountCheck {
 }
 
 #[derive(Debug, Clone, Default, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbImportResult {
     pub accounts_created: u32,
     pub accounts_merged: u32,
@@ -339,6 +351,7 @@ pub struct MoneyMoneyDbImportResult {
 
 /// Where a running import is, for a progress bar.
 #[derive(Debug, Clone, Default, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MoneyMoneyDbImportProgress {
     /// 0.0 ..= 1.0 over the whole import (bookings and documents weighted).
     pub fraction: f64,

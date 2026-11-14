@@ -175,6 +175,7 @@ const FRANKFURTER_URL: &str = "https://api.frankfurter.dev/v2/rates";
 
 /// Between two manual value points: keep the older value (step) or draw a line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AssetInterpolation {
     Step,
     Linear,
@@ -198,6 +199,7 @@ impl AssetInterpolation {
 
 /// What the user enters for an item.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AssetItemSetup {
     pub name: String,
     /// Price symbol (`"XAU"`) or `"manual"`.
@@ -222,6 +224,7 @@ pub struct AssetItemSetup {
 
 /// Quantity held from `date` on.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AssetQuantityPoint {
     pub date: String,
     pub quantity: f64,
@@ -229,6 +232,7 @@ pub struct AssetQuantityPoint {
 
 /// Manual value of one piece on `date`.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AssetValuePoint {
     pub date: String,
     pub value_cents: i64,
@@ -236,6 +240,7 @@ pub struct AssetValuePoint {
 
 /// An item with its setup, history and today's valuation.
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AssetItem {
     pub id: i64,
     pub account_id: i64,
@@ -256,6 +261,7 @@ pub struct AssetItem {
 
 /// A denomination ("Stückelung") the item editor offers.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AssetWeightPreset {
     pub label: String,
     pub grams: f64,
@@ -263,6 +269,7 @@ pub struct AssetWeightPreset {
 
 /// Result of [`Vault::refresh_asset_prices`].
 #[derive(Debug, Clone, Default, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AssetPriceRefresh {
     /// Whether the API was contacted at all (only with automatic items).
     pub requested: bool,

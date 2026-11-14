@@ -33,6 +33,7 @@ pub(crate) fn clear_resolve_cache() {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MerchantKind {
     Supermarket,
     Butcher,
@@ -63,6 +64,7 @@ pub enum MerchantKind {
 
 /// What a booking means for the household budget.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FlowKind {
     /// Everyday spending (Konsum) – the only kind counted as "Konsumausgaben".
     Consumption,
@@ -78,6 +80,7 @@ pub enum FlowKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MerchantInfo {
     /// Stable key ("rewe", "ishares-core-msci-world", "x:muster-gmbh").
     pub key: String,

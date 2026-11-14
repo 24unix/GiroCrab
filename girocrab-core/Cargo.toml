@@ -9,6 +9,11 @@ description = "GiroCrab core: encrypted ledger, categorisation rules and bank co
 name = "girocrab_core"
 crate-type = ["lib", "staticlib", "cdylib"]
 
+[features]
+# JSON (de)serialisation of the FFI records, for front ends without UniFFI
+# bindings (GiroCrabLinux). Off for the Swift app.
+serde = []
+
 [dependencies]
 uniffi = { version = "0.32", features = ["tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }

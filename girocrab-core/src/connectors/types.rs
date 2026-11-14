@@ -12,6 +12,7 @@ use crate::secret::SecretString;
 // ------------------------------------------------------------------ FFI types
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ChallengeKind {
     /// Approve in the bank's app (FinTS decoupled, comdirect P_TAN_PUSH).
     /// The UI shows a spinner and calls `poll()` every few seconds.
@@ -25,6 +26,7 @@ pub enum ChallengeKind {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Challenge {
     pub kind: ChallengeKind,
     pub title: String,
@@ -41,6 +43,7 @@ pub struct Challenge {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SyncSummary {
     pub accounts_updated: u32,
     pub transactions_imported: u32,
@@ -55,6 +58,7 @@ pub struct SyncSummary {
 }
 
 #[derive(Debug, Clone, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SyncStep {
     NeedsChallenge {
         challenge: Challenge,
@@ -70,6 +74,7 @@ pub enum SyncStep {
 
 /// Progress of a SEPA transfer (`TransferSession`).
 #[derive(Debug, Clone, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TransferStep {
     NeedsChallenge {
         challenge: Challenge,
@@ -105,6 +110,7 @@ pub enum TransferStep {
 
 /// Result of the recipient name check (Verification of Payee).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PayeeMatch {
     /// Name matches the account holder (RCVC).
     Match,
@@ -117,6 +123,7 @@ pub enum PayeeMatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PayeeCheck {
     pub result: PayeeMatch,
     /// Name as entered by the user.
@@ -132,6 +139,7 @@ pub struct PayeeCheck {
 
 /// How an executed transfer was sent.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TransferOutcome {
     /// true = accepted as SEPA Instant, false = regular SEPA transfer.
     pub instant: bool,
@@ -144,6 +152,7 @@ pub struct TransferOutcome {
 /// Everything except `Cancelled` leaves the order tracked: `cancel()` can be
 /// called again and re-checks the bank's status before anything is resent.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CancelOutcome {
     /// Confirmed: no order exists at the bank, or the bank reports it as
     /// rejected/cancelled/expired.
@@ -182,6 +191,7 @@ impl Default for TransferResult {
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BankDescriptor {
     pub kind: ConnectorKind,
     pub name: String,

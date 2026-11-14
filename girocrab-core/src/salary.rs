@@ -90,6 +90,7 @@ pub(crate) fn marked_salary_ibans(conn: &Connection) -> CoreResult<HashSet<Strin
 
 /// The user's current pay cycle, derived from the main salary inflow.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SalaryCycle {
     /// Booking date of the latest main salary (start of the current cycle, YYYY-MM-DD).
     pub last_date: String,

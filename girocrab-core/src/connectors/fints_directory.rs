@@ -30,6 +30,7 @@ fn bics() -> &'static [(&'static str, &'static str)] {
 
 /// Name and FinTS endpoint of a bank in the built-in directory.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FinTsBankInfo {
     pub blz: String,
     pub name: String,

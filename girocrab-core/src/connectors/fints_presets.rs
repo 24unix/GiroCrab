@@ -4,6 +4,7 @@
 /// A bank offered in the add-account sheet. Empty `blz` means the user must
 /// enter it (e.g. one of many Volksbanken); empty `url` means "enter manually".
 #[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FinTsPreset {
     pub id: String,
     pub name: String,

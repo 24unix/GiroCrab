@@ -55,7 +55,11 @@ jobs:
         run: python3 -m unittest tools/test_export_ai_provenance.py
       - name: Test FNZ portal browser scripts
         run: node --test scripts/test-fnz-portal.cjs scripts/test-quirion-portal.cjs
+      - name: FFI types carry the optional serde derive (front ends without UniFFI)
+        run: scripts/lint-serde-feature.sh
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: girocrab-core builds with the optional serde feature
+        run: cargo check -p girocrab-core --features serde
       - run: cargo test --workspace
 
   swift:
