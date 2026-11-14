@@ -8182,6 +8182,17 @@
         }
       }
     },
+    "Groß" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Large"
+          }
+        }
+      }
+    },
     "Groß-/Kleinschreibung beachten" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8365,6 +8376,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Group Overview"
+          }
+        }
+      }
+    },
+    "Größer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bigger"
           }
         }
       }
@@ -10059,6 +10081,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Clothing"
+          }
+        }
+      }
+    },
+    "Kleiner" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Smaller"
           }
         }
       }
@@ -13123,6 +13156,17 @@
         }
       }
     },
+    "Originalgröße" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actual Size"
+          }
+        }
+      }
+    },
     "PDF %lld von %lld …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14461,6 +14505,17 @@
         }
       }
     },
+    "Schriftgröße" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text size"
+          }
+        }
+      }
+    },
     "Schritt %lld von %lld" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14512,6 +14567,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Taking screenshot …"
+          }
+        }
+      }
+    },
+    "Sehr groß" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extra large"
           }
         }
       }
@@ -15068,6 +15134,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Set New Balance of “%@”"
+          }
+        }
+      }
+    },
+    "Standard" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard"
           }
         }
       }
@@ -16460,6 +16537,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Available (current, savings, cards)"
+          }
+        }
+      }
+    },
+    "Vergrößert die Schrift in der ganzen App. Auch im Menü Ansicht mit ⌘+ / ⌘− / ⌘0." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enlarges the text throughout the app. Also in the View menu with ⌘+ / ⌘− / ⌘0."
           }
         }
       }

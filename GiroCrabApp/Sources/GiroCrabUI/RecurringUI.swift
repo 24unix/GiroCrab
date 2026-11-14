@@ -120,7 +120,7 @@ struct RecurringCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Label("Wiederkehrend", systemImage: "repeat")
-                    .font(.subheadline.weight(.semibold))
+                    .appFont(.subheadline, weight: .semibold)
                     .foregroundStyle(series == nil ? Theme.text : Theme.accent)
                 Spacer()
                 Menu {
@@ -134,17 +134,17 @@ struct RecurringCard: View {
             }
             if let s = series {
                 Text("\(s.intervalText) · nächste am \(DateText.medium(s.nextDue))")
-                    .font(.callout)
+                    .appFont(.callout)
                     .foregroundStyle(Theme.text)
                 Text(s.source == .manual
                      ? "Manuell markiert · ca. \(Money.format(s.amountCents))"
                      : "Automatisch erkannt aus \(s.occurrences) Buchungen · ca. \(Money.format(s.amountCents))")
                     .sensitive()
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(Theme.secondary)
             } else {
                 Text("Nicht als wiederkehrend erkannt. Markieren Sie die Buchung, damit sie in den anstehenden Fixkosten erscheint.")
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(Theme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -165,9 +165,9 @@ struct CustomDatesSheet: View {
     var body: some View {
         let parsed = CustomDates.parse(text)
         VStack(alignment: .leading, spacing: 12) {
-            Text("Individueller Turnus").font(.headline)
+            Text("Individueller Turnus").appFont(.headline)
             Text("Tage im Jahr, an denen die Buchung fällig ist, z. B. „15.03., 15.08.“.")
-                .font(.callout)
+                .appFont(.callout)
                 .foregroundStyle(Theme.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             TextField("15.03., 15.08.", text: $text)
@@ -185,7 +185,7 @@ struct CustomDatesSheet: View {
                     Text(" ")
                 }
             }
-            .font(.caption)
+            .appFont(.caption)
             HStack {
                 Spacer()
                 Button("Abbrechen") { dismiss() }
@@ -218,7 +218,7 @@ struct RecurringSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Wiederkehrende Buchungen").font(.headline)
+                Text("Wiederkehrende Buchungen").appFont(.headline)
                 Spacer()
                 Button("Fertig") { dismiss() }
                     .keyboardShortcut(.defaultAction)
@@ -240,7 +240,7 @@ struct RecurringSheet: View {
                     } footer: {
                         Text("Noch offen: \(Money.format(-m.openExpenseCents)) Ausgaben, \(Money.format(m.openIncomeCents)) Einnahmen · bereits gebucht: \(Money.format(-m.bookedExpenseCents))")
                             .sensitive()
-                            .font(.caption)
+                            .appFont(.caption)
                             .foregroundStyle(Theme.secondary)
                             .leadingFooter()
                     }
@@ -286,7 +286,7 @@ struct RecurringSheet: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.series.name).lineLimit(1)
                 Text(item.booked ? "Gebucht am \(DateText.medium(item.dueDate))" : "Fällig am \(DateText.medium(item.dueDate))")
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(Theme.secondary)
             }
             Spacer()
@@ -317,7 +317,7 @@ struct RecurringSheet: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(s.name).lineLimit(1)
                 Text("\(s.intervalText) · nächste am \(DateText.medium(s.nextDue))")
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(Theme.secondary)
             }
             Spacer()
@@ -360,7 +360,7 @@ struct RecurringSheet: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(h.name).lineLimit(1).foregroundStyle(Theme.secondary)
                 Text("Zuletzt am \(DateText.medium(h.lastDate))")
-                    .font(.caption)
+                    .appFont(.caption)
                     .foregroundStyle(Theme.tertiary)
             }
             Spacer()

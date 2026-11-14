@@ -61,7 +61,7 @@ struct BugReportView: View {
             Section {
                 #if os(macOS)
                 Text("Ziehe mit der Maus Rechtecke über Stellen, die zusätzlich schwarz übermalt werden sollen.")
-                    .font(.callout)
+                    .appFont(.callout)
                     .foregroundStyle(.secondary)
                 #endif
                 screenshot
@@ -89,13 +89,13 @@ struct BugReportView: View {
                 Toggle("Abruf-Protokoll anhängen", isOn: $includeLog)
                 if let prepared {
                     Text(verbatim: BugReport.render(prepared.info, log: prepared.log))
-                        .font(.caption.monospaced())
+                        .appFont(.caption, design: .monospaced)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if prepared.logUnavailable {
                         Label("Das Abruf-Protokoll wird nicht angehängt: Es konnte nicht vollständig geladen und bereinigt werden.",
                               systemImage: "exclamationmark.triangle")
-                            .font(.caption)
+                            .appFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                 } else {
@@ -476,7 +476,7 @@ private struct MaskEditorScreen: View {
         NavigationStack {
             VStack(spacing: 12) {
                 Text("Ziehe Rechtecke über Stellen, die zusätzlich schwarz übermalt werden sollen.")
-                    .font(.callout)
+                    .appFont(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 MaskCanvas(image: image, masks: masks, onAdd: onAdd)
