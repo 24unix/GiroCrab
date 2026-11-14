@@ -549,6 +549,9 @@ struct ICloudSyncSection: View {
     @Environment(AppModel.self) private var model
     @State private var sync = CloudSyncManager.shared
     @State private var picking = false
+    #if os(iOS)
+    @State private var pendingFolder: URL?
+    #endif
     @State private var keychainSync = VaultKeyManager.shared.syncViaICloudKeychain
     @State private var showKeySheet = false
     @State private var keyCopied = false
@@ -568,6 +571,22 @@ struct ICloudSyncSection: View {
                 }
             if sync.isEnabled {
                 LabeledContent("Ordner", value: sync.folderName ?? "iCloud Drive / GiroCrab")
+                if sync.folderNotice {
+                    Text("Der Ordner „GiroCrab“ in iCloud Drive enthält bereits andere Dateien. Ihre bisherigen Daten bleiben unverändert im bisherigen Ordner und werden dort weiter synchronisiert.")
+                        .appFont(.caption).foregroundStyle(.orange)
+                }
+                if sync.legacyFolderWritten {
+                    Text("Ein anderes Gerät nutzt noch eine ältere GiroCrab-Version und schreibt in den alten Ordner. Bitte alle Geräte aktualisieren.")
+                        .appFont(.caption).foregroundStyle(.orange)
+                }
+                if sync.folderBothVaults {
+                    Text("Der bisherige Ordner und der Ordner „GiroCrab“ in iCloud Drive enthalten beide einen Tresor. GiroCrab wechselt nicht automatisch und nutzt weiter den bisherigen Ordner. Bitte prüfen Sie, welcher Tresor aktuell ist, bevor Sie Daten zusammenführen.")
+                        .appFont(.caption).foregroundStyle(.orange)
+                }
+                if sync.repickFolderHint {
+                    Label("Die Daten wurden in den Ordner „GiroCrab“ in iCloud Drive verschoben. Bitte wechseln Sie über „Ordner wählen …“ zu diesem Ordner, damit alle Geräte denselben Ordner nutzen.", systemImage: "exclamationmark.triangle.fill")
+                        .appFont(.callout).foregroundStyle(.orange)
+                }
                 // The app's own iCloud container is neither visible in Finder nor
                 // chosen by the user: only a plain folder gets these buttons.
                 if sync.location == .folder {
@@ -623,8 +642,24 @@ struct ICloudSyncSection: View {
         #if os(iOS)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { r in
             if case .success(let url) = r {
-                do { try sync.setFolder(url); model.syncNow() } catch { }
+                let scoped = url.startAccessingSecurityScopedResource()
+                let isNew = ICloudFolderMigration.needsNewVaultConfirmation(url)
+                if scoped { url.stopAccessingSecurityScopedResource() }
+                if isNew {
+                    pendingFolder = url
+                } else {
+                    do { try sync.setFolder(url); model.syncNow() } catch { }
+                }
             }
+        }
+        .alert("Neuen Tresor in diesem Ordner anlegen?", isPresented: Binding(get: { pendingFolder != nil }, set: { if !$0 { pendingFolder = nil } })) {
+            Button("Neuen Tresor anlegen") {
+                if let url = pendingFolder { do { try sync.setFolder(url); model.syncNow() } catch { } }
+                pendingFolder = nil
+            }
+            Button("Abbrechen", role: .cancel) { pendingFolder = nil }
+        } message: {
+            Text("Der gewählte Ordner enthält noch keinen GiroCrab-Tresor. Dort wird ein neuer Tresor angelegt. Erwarten Sie Ihre Daten in einem anderen Ordner, brechen Sie ab und wählen Sie diesen.")
         }
         #endif
     }
@@ -633,9 +668,7 @@ struct ICloudSyncSection: View {
     private func revealFolder() {
         let cloudDocs = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
-        let mm = cloudDocs.appendingPathComponent("moneymoney", isDirectory: true)
-        let gc = cloudDocs.appendingPathComponent("GiroCrab", isDirectory: true)
-        let url = SyncFolder.containsVault(mm) ? mm : gc
+        let url = ICloudFolderMigration.resolve(cloudDocs: cloudDocs, create: false, migratedByThisApp: CloudSyncManager.migratedByThisApp).url
         if FileManager.default.fileExists(atPath: url.path) {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } else {

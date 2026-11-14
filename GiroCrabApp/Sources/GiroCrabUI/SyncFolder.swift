@@ -20,12 +20,12 @@ struct SyncFolder: Sendable {
 
     /// Exact names only: iCloud's conflict copies ("tresor-… 2.girocrab")
     /// and anything else in the folder are left alone.
-    private static func isSnapshotName(_ name: String) -> Bool {
+    static func isSnapshotName(_ name: String) -> Bool {
         name == legacyName || name.range(of: devicePattern, options: .regularExpression) != nil
     }
 
     /// Name of the file an iCloud placeholder (`.name.icloud`) stands for.
-    private static func placeholderTarget(_ name: String) -> String? {
+    static func placeholderTarget(_ name: String) -> String? {
         guard name.hasPrefix("."), name.hasSuffix(".icloud") else { return nil }
         return String(name.dropFirst().dropLast(".icloud".count))
     }

@@ -5640,6 +5640,17 @@
         }
       }
     },
+    "Der Ordner „GiroCrab“ in iCloud Drive enthält bereits andere Dateien. Ihre bisherigen Daten bleiben unverändert im bisherigen Ordner und werden dort weiter synchronisiert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The “GiroCrab” folder in iCloud Drive already contains other files. Your existing data stays unchanged in its current folder and keeps syncing there."
+          }
+        }
+      }
+    },
     "Der Sachwert und sein Verlauf werden entfernt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5750,6 +5761,17 @@
         }
       }
     },
+    "Der bisherige Ordner und der Ordner „GiroCrab“ in iCloud Drive enthalten beide einen Tresor. GiroCrab wechselt nicht automatisch und nutzt weiter den bisherigen Ordner. Bitte prüfen Sie, welcher Tresor aktuell ist, bevor Sie Daten zusammenführen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The previous folder and the “GiroCrab” folder in iCloud Drive both contain a vault. GiroCrab does not switch automatically and keeps using the previous folder. Please check which vault is current before merging data."
+          }
+        }
+      }
+    },
     "Der eingegebene Name weicht vom Namen des Kontoinhabers ab. Übernehmen Sie den Namen, wenn das der richtige Empfänger ist." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5757,6 +5779,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The name you entered differs from the account holder's name. Use the holder's name if this is the right recipient."
+          }
+        }
+      }
+    },
+    "Der gewählte Ordner enthält noch keinen GiroCrab-Tresor. Dort wird ein neuer Tresor angelegt. Erwarten Sie Ihre Daten in einem anderen Ordner, brechen Sie ab und wählen Sie diesen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The selected folder does not contain a GiroCrab vault yet. A new vault will be created there. If you expect your data in another folder, cancel and choose that one."
           }
         }
       }
@@ -5884,6 +5917,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The bank still requires your explicit confirmation before it asks for the approval."
+          }
+        }
+      }
+    },
+    "Die Daten wurden in den Ordner „GiroCrab“ in iCloud Drive verschoben. Bitte wechseln Sie über „Ordner wählen …“ zu diesem Ordner, damit alle Geräte denselben Ordner nutzen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The data has been moved to the “GiroCrab” folder in iCloud Drive. Please switch to that folder via “Choose folder …” so all devices share the same folder."
           }
         }
       }
@@ -6869,6 +6913,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Another device saved a new Enable Banking application. It replaces the one set up here."
+          }
+        }
+      }
+    },
+    "Ein anderes Gerät nutzt noch eine ältere GiroCrab-Version und schreibt in den alten Ordner. Bitte alle Geräte aktualisieren." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Another device is still using an older GiroCrab version and writes to the old folder. Please update all devices."
           }
         }
       }
@@ -13394,6 +13449,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New Transfer…"
+          }
+        }
+      }
+    },
+    "Neuen Tresor anlegen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create new vault"
+          }
+        }
+      }
+    },
+    "Neuen Tresor in diesem Ordner anlegen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create a new vault in this folder?"
           }
         }
       }

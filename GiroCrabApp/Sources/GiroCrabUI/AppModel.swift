@@ -861,6 +861,9 @@ public final class AppModel {
     private func performSyncOrAutoAdopt(vault v: Vault) async {
         await CloudSyncManager.shared.sync(vault: v)
         CloudSyncManager.shared.startAutoSync(vault: v) { [weak self] in self?.reloadAll() }
+        if CloudSyncManager.shared.legacyFolderWritten {
+            self.toast = String(localized: "Ein anderes Gerät nutzt noch eine ältere GiroCrab-Version und schreibt in den alten Ordner. Bitte alle Geräte aktualisieren.")
+        }
         if ((try? v.accountCount()) ?? 0) > 0 || self.connectionsExist(v) {
             if self.demoActive {
                 self.useVault(v, demo: false)

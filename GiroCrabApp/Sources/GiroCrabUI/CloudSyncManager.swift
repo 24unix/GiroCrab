@@ -20,6 +20,8 @@ public final class CloudSyncManager {
         static let stats = "girocrab.sync.stats"
         static let seen = "girocrab.sync.seen"
         static let failed = "girocrab.sync.failed"
+        static let migrated = "girocrab.sync.folderMigrated"
+        static let migratedHashes = "girocrab.sync.folderMigratedHashes"
     }
     /// Legacy plaintext key file of v0.4.0. Never written anymore; removed on sync.
     private let legacyKeyFileName = "tresor.key"
@@ -44,6 +46,17 @@ public final class CloudSyncManager {
     }
     public var location: Location { didSet { defaults.set(location.rawValue, forKey: K.location) } }
     public private(set) var folderName: String?
+    /// "GiroCrab" in iCloud Drive holds foreign files: the previous folder keeps being used.
+    public private(set) var folderNotice = false
+    /// Another device still writes into the old folder after the migration (older app version).
+    public private(set) var legacyFolderWritten = false
+    /// iOS: the chosen folder is the former one; choosing "GiroCrab" again joins the new folder.
+    public private(set) var repickFolderHint = false
+    /// macOS: both folders hold a vault; the previous one stays in use.
+    public private(set) var folderBothVaults = false
+
+    /// Whether this app copied the data to "GiroCrab" (set at migration).
+    static var migratedByThisApp: Bool { UserDefaults.standard.object(forKey: K.migrated) != nil }
     public private(set) var lastSync: Date?
     public private(set) var lastStats: String?
     public private(set) var isSyncing = false
@@ -57,8 +70,18 @@ public final class CloudSyncManager {
         lastStats = defaults.string(forKey: K.stats)
         seen = defaults.dictionary(forKey: K.seen) as? [String: Double] ?? [:]
         failed = defaults.dictionary(forKey: K.failed) as? [String: Double] ?? [:]
-        if let url = try? resolveBookmark() {
-            folderName = url.lastPathComponent
+        let bookmarked = try? resolveBookmark()
+        #if os(macOS)
+        let legacyBookmark = bookmarked?.lastPathComponent == ICloudFolderMigration.legacyFolderName
+        #else
+        let legacyBookmark = false
+        #endif
+        if let url = bookmarked, !(isEnabled && legacyBookmark) {
+            folderName = ICloudFolderMigration.displayName(for: url)
+            #if os(iOS)
+            // iOS only sees the picked folder, not its siblings: it cannot migrate by itself.
+            repickFolderHint = isEnabled && Self.folderWasMoved(url)
+            #endif
         } else if isEnabled {
             // Only touch iCloud Drive when the user has actually enabled sync.
             #if os(macOS)
@@ -76,21 +99,51 @@ public final class CloudSyncManager {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let cloudDocs = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
         guard FileManager.default.fileExists(atPath: cloudDocs.path) else { return nil }
-        let mm = cloudDocs.appendingPathComponent("moneymoney", isDirectory: true)
-        if SyncFolder.containsVault(mm) { return mm }
-        let dir = cloudDocs.appendingPathComponent("GiroCrab", isDirectory: true)
         // Only reached once sync is enabled (init / isEnabled / sync call it gated).
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+        let r = ICloudFolderMigration.resolve(cloudDocs: cloudDocs, migratedByThisApp: defaults.object(forKey: K.migrated) != nil)
+        if folderBothVaults != r.bothHaveVault { folderBothVaults = r.bothHaveVault }
+        if r.didMigrate {
+            defaults.set(r.legacyHashes, forKey: K.migratedHashes)
+            defaults.set(Date(), forKey: K.migrated)
+        }
+        if folderNotice != r.conflict { folderNotice = r.conflict }
+        return r.url
+    }
+
+    private static var cloudDocsURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
     }
 
     private func ensureDefaultMacICloudFolder() {
         if let dir = defaultMacICloudURL {
             _ = try? setFolder(dir)
-            folderName = "iCloud Drive / " + dir.lastPathComponent
+            folderName = "iCloud Drive / " + ICloudFolderMigration.displayName(for: dir)
         }
     }
     #endif
+
+    /// Looks (read-only) for writes into the old folder after the migration.
+    public func refreshLegacyNotice() async {
+        #if os(macOS)
+        guard isEnabled, let since = defaults.object(forKey: K.migrated) as? Date else {
+            legacyFolderWritten = false
+            return
+        }
+        let docs = Self.cloudDocsURL
+        let hashes = defaults.dictionary(forKey: K.migratedHashes) as? [String: String] ?? [:]
+        legacyFolderWritten = await Task.detached {
+            ICloudFolderMigration.legacyChanged(cloudDocs: docs, since: since, hashes: hashes)
+        }.value
+        #endif
+    }
+
+    /// iOS: whether the marker lies in the (security-scoped) folder `url`.
+    nonisolated static func folderWasMoved(_ url: URL) -> Bool {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        return ICloudFolderMigration.hasMovedMarker(in: url)
+    }
 
     public func setFolder(_ url: URL) throws {
         let scoped = url.startAccessingSecurityScopedResource()
@@ -98,7 +151,12 @@ public final class CloudSyncManager {
         if let data = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
             defaults.set(data, forKey: K.bookmark)
         }
-        folderName = url.lastPathComponent
+        folderName = ICloudFolderMigration.displayName(for: url)
+        #if os(iOS)
+        repickFolderHint = ICloudFolderMigration.hasMovedMarker(in: url)
+        #else
+        repickFolderHint = false
+        #endif
         location = .folder
         lastError = nil
     }
@@ -130,6 +188,10 @@ public final class CloudSyncManager {
                 return (r, w)
             }.value
             record(result, written)
+            await refreshLegacyNotice()
+            #if os(iOS)
+            if location == .folder { repickFolderHint = ICloudFolderMigration.hasMovedMarker(in: dir) }
+            #endif
         } catch {
             lastError = error.localizedDescription
         }
@@ -225,6 +287,10 @@ public final class CloudSyncManager {
         isEnabled = false
         folderOverride = nil
         folderName = nil
+        folderNotice = false
+        legacyFolderWritten = false
+        repickFolderHint = false
+        folderBothVaults = false
         lastSync = nil
         lastStats = nil
         lastError = nil
@@ -442,7 +508,7 @@ public final class CloudSyncManager {
         if choice.location == .container {
             folderName = "iCloud (GiroCrab)"
         } else if choice.url == fallback {
-            folderName = "iCloud Drive / " + choice.url.lastPathComponent
+            folderName = "iCloud Drive / " + ICloudFolderMigration.displayName(for: choice.url)
         }
         return (choice.url, release)
     }
