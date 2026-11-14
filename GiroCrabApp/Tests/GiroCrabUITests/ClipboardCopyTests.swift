@@ -20,7 +20,7 @@ final class ClipboardCopyTests: XCTestCase {
     }
 
     func testHoldingLineHasNameIsinQuantityPriceAndValue() {
-        let line = HoldingsCard.line(holding())
+        let line = DepotPositionsView.line(holding())
         let qty = 12.5.formatted(.number.precision(.fractionLength(0...4)))
         XCTAssertEqual(line, [
             "MSCI World ETF", "IE00B4L5Y983",
@@ -29,14 +29,14 @@ final class ClipboardCopyTests: XCTestCase {
     }
 
     func testHoldingLineFallsBackToWknAndSkipsEmptyName() {
-        let line = HoldingsCard.line(holding(name: "", isin: ""))
+        let line = DepotPositionsView.line(holding(name: "", isin: ""))
         XCTAssertTrue(line.hasPrefix("A0RPWH · "))
         XCTAssertEqual(line.components(separatedBy: " · ").count, 3)
     }
 
     func testAllHoldingsAreOneLineEach() {
         let all = [holding(), holding(name: "Bond ETF", isin: "", wkn: "ABC123")]
-        let lines = all.map(HoldingsCard.line).joined(separator: "\n").components(separatedBy: "\n")
+        let lines = all.map(DepotPositionsView.line).joined(separator: "\n").components(separatedBy: "\n")
         XCTAssertEqual(lines.count, 2)
         XCTAssertTrue(lines[0].contains("IE00B4L5Y983"))
         XCTAssertTrue(lines[1].hasPrefix("Bond ETF · ABC123"))

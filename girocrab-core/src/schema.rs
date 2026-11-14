@@ -14,6 +14,7 @@
 //!   `accounts.balance_derived`.
 //! - 11: sync log (#238): table `sync_log`, local to the device.
 //! - 12: SEPA references on bookings: `end_to_end_id`, `mandate_id`, `creditor_id`.
+//! - 13: Sachwerte (#87): items, dated quantities and values, metal prices.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -42,6 +43,7 @@ const STEPS: &[Step] = &[
     Step::Hook(opening_balances), // 10
     Step::Sql(SYNC_LOG),          // 11
     Step::Hook(sepa_refs),        // 12
+    Step::Hook(tangible_assets),  // 13
 ];
 
 /// Step 12: SEPA references of a booking, bank-independent (end-to-end id,
@@ -56,6 +58,15 @@ fn sepa_refs(conn: &Connection) -> CoreResult<()> {
         }
     }
     Ok(())
+}
+
+/// Step 13 (#87): Sachwerte – items, dated quantities and values, metal
+/// prices. Idempotent: vaults of a development build of the feature already
+/// carry the tables, maybe without later columns. Those builds numbered
+/// this step 12, so such a vault never ran [`sepa_refs`]: run it here as well.
+fn tangible_assets(conn: &Connection) -> CoreResult<()> {
+    sepa_refs(conn)?;
+    crate::assets::migrate(conn)
 }
 
 /// Step 11 (#238): the Abrufprotokoll. No foreign key: the log outlives a
@@ -491,7 +502,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 12);
+        assert_eq!(SCHEMA_VERSION, 13);
     }
 
     #[test]

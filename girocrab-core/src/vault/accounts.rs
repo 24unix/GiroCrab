@@ -388,6 +388,10 @@ impl Vault {
 
     pub fn list_holdings(&self, account_id: i64) -> Result<Vec<Holding>, CoreError> {
         let db = self.db()?;
+        // Sachwerte (#87): the items, valued today, in the same shape
+        if crate::assets::is_tangible(&db, account_id)? {
+            return crate::assets::holdings(&db, account_id);
+        }
         let mut q = db.prepare(
             "SELECT isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents
              FROM holdings h WHERE account_id = ?1
@@ -412,6 +416,8 @@ impl Vault {
 
     pub fn list_accounts(&self) -> Result<Vec<Account>, CoreError> {
         let db = self.db()?;
+        // Sachwerte (#87): a stored value from an earlier day is recomputed first
+        crate::assets::refresh_balances_if_stale(&db)?;
         let mut stmt = db.prepare(&format!(
             "SELECT a.id, a.connection_id, c.connector, a.group_id, a.name, a.bank_name, a.owner, a.iban, a.account_number,
                     a.currency, a.kind, a.balance_cents, a.balance_date, a.sf_symbol, a.sort_order,
@@ -612,6 +618,13 @@ impl Vault {
                 per_day.insert(d, s);
             }
         }
+        // Sachwerte (#87): no bookings, their value moves with prices – the walk
+        // back keeps today's value, the daily valuation replaces it per day
+        let valuation = if ids.is_empty() {
+            None
+        } else {
+            crate::assets::value_series(&*self.db()?, &ids, start, today)?
+        };
         let mut out = Vec::with_capacity(days as usize);
         let mut day = today;
         while day >= start {
@@ -624,6 +637,12 @@ impl Vault {
             day -= chrono::Duration::days(1);
         }
         out.reverse();
+        if let Some(values) = valuation {
+            let now = values.last().copied().unwrap_or(0);
+            for (p, v) in out.iter_mut().zip(values) {
+                p.balance_cents += v - now;
+            }
+        }
         Ok(out)
     }
 

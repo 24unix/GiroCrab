@@ -64,6 +64,8 @@ public struct GiroCrabScenes: Scene {
                     .disabled(!model.isUnlocked)
                 Button("Neues Darlehen …") { model.openLoanEditor(.create) }
                     .disabled(!model.isUnlocked)
+                Button("Neues Sachwerte-Konto …") { model.createTangibleAccount() }
+                    .disabled(!model.isUnlocked)
                 Button("Neue Hauptkategorie …") { model.newCategoryRequest = NewCategoryRequest(parent: nil) }
                     .disabled(!model.isUnlocked)
             }
@@ -514,6 +516,7 @@ struct MainSplitView: View {
         .newCategoryDialog()
         .manualLoanSheets(model)
         .openingBalanceSheet(model)
+        .tangibleAssetSheets(model)
         #if os(macOS)
         // AppModel.openSettings(_:), e.g. the merchant-logo tip → Settings › Händler-Logos
         .onChange(of: model.settingsRequested) { _, requested in

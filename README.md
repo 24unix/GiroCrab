@@ -471,6 +471,10 @@ request is made for logos and everything stays 100 % local. **Never attach real 
 
 DE: Händler-Logos sind **standardmäßig deaktiviert** (Opt-in in den Einstellungen) – ohne Zustimmung werden keine Logos aus dem Netz geladen, alles bleibt zu 100 % lokal.
 
+Sachwerte (gold): only if gold items exist, GiroCrab fetches the daily `XAU/EUR` price from `api.frankfurter.dev` (at most one request a day; the request contains no personal data, quantities or values). Without gold items, no such request is made.
+
+DE: Nur wenn Gold-Sachwerte existieren, ruft GiroCrab den Tageskurs `XAU/EUR` von `api.frankfurter.dev` ab (höchstens eine Anfrage pro Tag; die Anfrage enthält keine persönlichen Daten, Mengen oder Werte). Ohne Gold-Sachwerte findet keine solche Anfrage statt.
+
 **Security lock for bank connections:** if a version turns out to endanger bank access (e.g. a vulnerability in a
 connector), the publisher can publish a signed `banking-policy.json`; older versions then stop contacting banks until
 they are updated – reading and exporting keep working. Once activated, the app downloads this small signed file from

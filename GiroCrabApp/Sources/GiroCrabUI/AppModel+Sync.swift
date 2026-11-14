@@ -151,6 +151,7 @@ extension AppModel {
     /// Runs `logins` one after another; read once the banking policy is fresh.
     private func requestSyncBatch(_ logins: @escaping @MainActor () -> [BankConnection]) {
         guard syncingConnectionID == nil else { return }
+        refreshAssetPrices()
         withFreshBankingPolicy { [self] in
             guard syncingConnectionID == nil else { return }
             let batch = logins()

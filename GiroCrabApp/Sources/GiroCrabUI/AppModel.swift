@@ -21,6 +21,8 @@ public final class AppModel {
     private(set) var vault: Vault?
     /// Manual loans (GitHub #36), see ManualLoansUI.swift.
     @ObservationIgnored let loanStore = ManualLoanStore()
+    /// Sachwerte (GitHub #87), see TangibleAssetsUI.swift.
+    @ObservationIgnored let assetStore = AssetStore()
     var vaultState: VaultState = .locked
     /// The vault is open and the lock screen shows the crab's unlock hop for a moment.
     var unlockCelebrating = false
@@ -463,6 +465,11 @@ public final class AppModel {
             if let q = options.pickBooking, let b = bookings.first(where: { $0.merchantName.lowercased().contains(q) || $0.counterparty.lowercased().contains(q) }) {
                 selectedBookingID = b.id
             }
+            // Sachwerte (#87): --pick also selects an item by name
+            if let q = options.pickBooking, case .account(let id) = sidebarSelection, isTangible(id),
+               let item = assetItems(id).first(where: { $0.setup.name.lowercased().contains(q) }) {
+                selectAssetItem(item.id)
+            }
             if let sheet = options.demoSheet {
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: 600_000_000)
@@ -658,6 +665,8 @@ public final class AppModel {
         selectedBookingID = nil
         sidebarSelection = .allAccounts
         reloadAll()
+        // Sachwerte: the demo's gold items load real prices from the API
+        refreshAssetPrices()
         #if os(macOS)
         selectedBookingID = (bookings.first(where: { $0.flow == .consumption && $0.documentCount > 0 }) ?? bookings.first(where: { $0.flow == .consumption }))?.id
         #endif
@@ -680,6 +689,7 @@ public final class AppModel {
             selectedBookingID = nil
             sidebarSelection = .allAccounts
             reloadAll()
+            refreshAssetPrices()
             #if os(macOS)
             // iPhone: a preselected booking would push the detail page over the list.
             selectedBookingID = (bookings.first(where: { $0.flow == .consumption && $0.documentCount > 0 }) ?? bookings.first(where: { $0.flow == .consumption }))?.id

@@ -106,6 +106,8 @@ extension AppModel {
               setupRequest == nil else { return }
         let hours = autoSyncHours
         guard hours > 0 else { return }
+        // Sachwerte: missing gold prices (at most one request a day, none without gold items)
+        refreshAssetPrices()
         guard let due = connections.first(where: {
             $0.connector == .enableBanking && bankingGate(for: $0) == nil
                 && PSD2Consent.autoSyncDue(lastSyncUnix: $0.lastSyncUnix, consentEnd: consentEnd($0), hours: hours, now: now)

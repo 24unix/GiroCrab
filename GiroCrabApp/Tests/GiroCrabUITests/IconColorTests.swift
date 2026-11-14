@@ -23,7 +23,7 @@ final class IconColorTests: XCTestCase {
         }
         // every kind's own symbol, not only those of the demo accounts
         for s in ["building.columns", "banknote", "creditcard", "envelope.circle",
-                  "chart.line.uptrend.xyaxis", "eurosign.circle", "house"] {
+                  "chart.line.uptrend.xyaxis", "eurosign.circle", "house", "diamond"] {
             XCTAssertTrue(offered.contains(s), "\(s) missing")
         }
         XCTAssertEqual(offered.count, all.count, "no duplicates")

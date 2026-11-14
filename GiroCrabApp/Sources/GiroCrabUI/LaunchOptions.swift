@@ -17,7 +17,8 @@ import Foundation
 ///                         e.g. 1822direkt, to see the setup form
 ///  --select <text>        (demo) preselect the account whose name contains <text>
 ///  --demo-sheet account-selection|transfer|moneymoney|moneymoney-db|recurring|print|rules|palette|
-///               categorizer|payee-match|payee-close|payee-nomatch|error|rule-edit|icon-color|category|icon-color-category
+///               categorizer|payee-match|payee-close|payee-nomatch|error|rule-edit|icon-color|category|icon-color-category|
+///               asset|asset-edit|asset-values|asset-quantities
 ///                         (demo) open that sheet pre-filled with fictional data,
 ///                         for README / PR screenshots
 ///  --demo-settings general|banks|groups|documents|security[:edit|:add|:remove|:select]

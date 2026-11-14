@@ -63,6 +63,10 @@ struct CommandPaletteView: View {
             model.afterPaletteDismiss = { model.newCategoryRequest = NewCategoryRequest(parent: nil) }
         })
         out.append(Item(title: String(localized: "Neues Darlehen"), subtitle: action, symbol: "car") { model.openLoanEditor(.create) })
+        out.append(Item(title: String(localized: "Neues Sachwerte-Konto"), subtitle: action, symbol: "diamond") { model.createTangibleAccount() })
+        if case .account(let id) = model.sidebarSelection, model.isTangible(id) {
+            out.append(Item(title: String(localized: "Sachwert hinzufügen"), subtitle: action, symbol: "plus") { model.openAssetEditor(accountId: id) })
+        }
         if case .account(let id) = model.sidebarSelection, let loan = model.manualLoan(id) {
             out.append(Item(title: String(localized: "Stand von „\(loan.setup.name)“ neu setzen"), subtitle: action, symbol: "calendar.badge.clock") { model.openLoanEditor(.anchor, accountId: id) })
         }

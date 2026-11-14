@@ -363,6 +363,9 @@ extension AppModel {
            let firstChange = points.indices.dropFirst().first(where: { points[$0].balanceCents != points[$0 - 1].balanceCents }) {
             // keep one point before the first change
             points = Array(points[(firstChange - 1)...])
+        } else if from == nil, points.count > 366 {
+            // nothing ever changed (e.g. a depot without bookings): the last year is enough
+            points = Array(points.suffix(366))
         }
         return points
     }
@@ -464,7 +467,7 @@ extension AppModel {
 
     var headerBalance: (label: String, cents: Int64)? {
         switch sidebarSelection {
-        case .account(let id): return allAccounts.first { $0.id == id }.map { (String(localized: "Kontostand"), $0.balanceCents) }
+        case .account(let id): return allAccounts.first { $0.id == id }.map { (isTangible(id) ? String(localized: "Wert heute") : String(localized: "Kontostand"), $0.balanceCents) }
         case .group(let id): return groups.first { $0.id == id }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .bank(let key): return bankGroup(for: key).map { (String(localized: "Summe"), $0.balanceCents) }
         case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }.map { (String(localized: "Summe"), $0.balanceCents) }
@@ -537,6 +540,7 @@ extension AppModel {
 
     func rebuildAccountIndex() {
         reloadLoans()
+        reloadAssets()
         let accounts = allAccounts
         accountsByID = Dictionary(accounts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         func base(_ a: Account) -> String { a.name.replacingOccurrences(of: " (MoneyMoney)", with: "") }

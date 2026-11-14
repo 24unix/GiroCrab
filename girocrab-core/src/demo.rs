@@ -1319,6 +1319,9 @@ impl Vault {
             },
         )?;
         acc_ids.insert("demo-autokredit", car);
+        // Sachwerte (#87): gold and a car; gold prices come from the API
+        let sachwerte = crate::assets::seed_demo(&tx, today)?;
+        acc_ids.insert("demo-sachwerte", sachwerte);
         // user groups for the "Nach Gruppe" sidebar view
         for (name, sym, refs) in [
             (
@@ -1329,7 +1332,7 @@ impl Vault {
             (
                 "Sparen & Vorsorge",
                 "chart.pie",
-                &["demo-tagesgeld", "demo-depot"][..],
+                &["demo-tagesgeld", "demo-depot", "demo-sachwerte"][..],
             ),
             ("Haus", "house", &["demo-darlehen"][..]),
         ] {
@@ -1456,12 +1459,12 @@ mod tests {
     }
 
     #[test]
-    fn demo_seed_has_six_accounts_and_exactly_fifty_two_bookings() {
+    fn demo_seed_has_seven_accounts_and_exactly_fifty_two_bookings() {
         let dir_dir = crate::test_support::TempDir::new("girocrab-test");
         let dir = dir_dir.join("v.db");
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
         assert_eq!(v.seed_demo_data().unwrap(), 52);
-        assert_eq!(v.account_count().unwrap(), 6);
+        assert_eq!(v.account_count().unwrap(), 7);
         let car = v.list_manual_loans().unwrap();
         assert_eq!(car.len(), 1);
         assert_eq!(car[0].status.payment_count, 2);

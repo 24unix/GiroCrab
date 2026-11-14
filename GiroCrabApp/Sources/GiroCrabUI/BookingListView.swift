@@ -80,15 +80,11 @@ struct BookingStreamView: View {
                             ProgressView().controlSize(.small)
                                 .frame(maxWidth: .infinity)
                                 .padding(.top, 40)
-                        } else if model.dayGroups.isEmpty && isDepot && model.searchText.isEmpty {
-                            ContentUnavailableView(
-                                "Keine Buchungen im Depot",
-                                systemImage: "chart.line.uptrend.xyaxis",
-                                description: Text("Ein Depot zeigt seine Positionen oben. Käufe, Verkäufe und Sparpläne stehen als Buchungen im Verrechnungskonto.")
-                            )
-                            .frame(maxWidth: .infinity)
-                            // fill the visible scroll area so the placeholder sits in its middle
-                            .containerRelativeFrame(.vertical, alignment: .center)
+                        } else if isDepot, case .account(let id)? = model.sidebarSelection, let a = model.account(for: id) {
+                            // depots: positions as cards (an empty depot explains itself there)
+                            DepotPositionsView(account: a)
+                        } else if model.dayGroups.isEmpty && isDepot {
+                            // no "Keine Buchungen" placeholder under the positions
                         } else if model.dayGroups.isEmpty && !(model.allAccounts.isEmpty && !model.demoActive) {
                             ContentUnavailableView(
                                 model.searchText.isEmpty ? "Keine Buchungen" : "Keine Treffer",
@@ -121,6 +117,16 @@ struct BookingStreamView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 18)
                     .frame(maxWidth: .infinity)
+                    // Sachwerte: a click on empty space (margins, gaps between the
+                    // cards) shows the whole account again; a background layer, so
+                    // clicks on rows never reach it
+                    .background {
+                        if model.assetStore.selected != nil {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture { model.deselectAssetItem() }
+                        }
+                    }
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
                 }
                 .frame(minHeight: 0, maxHeight: .infinity)
