@@ -182,6 +182,15 @@ public final class VaultKeyManager: @unchecked Sendable {
         return key
     }
 
+    /// Asks the device owner (Touch ID / device passcode) before a destructive
+    /// action such as „App zurücksetzen“. Dev runs with the keychain bypass skip the prompt.
+    public func authenticateOwner(reason: String) async throws {
+        let context = LAContext()
+        context.localizedCancelTitle = String(localized: "Abbrechen")
+        if Self.keychainBypassed && !Self.biometricsPromptInBypass { return }
+        try await authenticate(context: context, reason: reason)
+    }
+
     /// Runs the real `LAContext` check (Touch ID / passcode).
     private func authenticate(context: LAContext, reason: String) async throws {
         var err: NSError?

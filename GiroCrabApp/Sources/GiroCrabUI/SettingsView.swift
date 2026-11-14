@@ -382,6 +382,7 @@ struct SecuritySettings: View {
     @State private var requireBiometrics = VaultKeyManager.shared.requireBiometrics
     /// Read once per vault: the core call takes the vault mutex, so not in `body`.
     @State private var vaultPath = "–"
+    @State private var confirmReset = false
 
     var body: some View {
         Form {
@@ -419,9 +420,21 @@ struct SecuritySettings: View {
                     Button("Jetzt sperren", systemImage: "lock.fill") { model.lock() }
                 }
             }
+            Section {
+                Button("App zurücksetzen …", systemImage: "trash", role: .destructive) { confirmReset = true }
+                    .disabled(model.isResettingApp)
+                Text("Löscht Tresor, Schlüssel, Einstellungen und Zwischenspeicher auf diesem Gerät und beginnt neu. Das lässt sich nicht rückgängig machen.")
+                    .appFont(.callout).foregroundStyle(.secondary)
+            } header: { Text("Zurücksetzen").appSectionHeader() }
         }
         .formStyle(.grouped)
         .task(id: model.isDemo) { vaultPath = model.vaultFilePath ?? "–" }
+        .confirmationDialog("GiroCrab zurücksetzen?", isPresented: $confirmReset, titleVisibility: .visible) {
+            Button("Alles löschen", role: .destructive) { Task { await model.resetApp() } }
+            Button("Abbrechen", role: .cancel) {}
+        } message: {
+            Text("Der Tresor mit allen Konten und Buchungen, der Tresor-Schlüssel (auch im iCloud-Schlüsselbund und damit auf Ihren anderen Geräten, z. B. am Mac: dort angelegte Tresore und iCloud-Drive-Sicherungen sind dann nicht mehr lesbar), Ihr Enable-Banking-Zugang und alle Einstellungen werden gelöscht. Ohne eigenes Backup sind die Daten verloren. Zugriffe bei Ihren Banken und Dokumente in Ihrem Dokumentenordner bleiben bestehen. Zur Bestätigung werden Sie nach \(VaultKeyManager.shared.biometryName) oder Ihrem Gerätecode gefragt.")
+        }
     }
 }
 

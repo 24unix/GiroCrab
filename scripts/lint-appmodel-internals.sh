@@ -18,14 +18,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 INTERNAL="
-activeSession activeTransfer applyAccountGroups booking bookingIndexByID categoryRefreshTask
+activeSession activeTransfer bootstrapped applyAccountGroups booking bookingIndexByID categoryRefreshTask
 dashboardStale dashboardTask dropPendingPage enableBankingSettingSaved endSelectionLoad failedSyncSecret finishSync
 finishTransfer freshBooking handle handleTransfer historyRequest listGeneration loadBookings
 loadDashboard loadMerchantStats loadMoreTask loadsSelectionInBackground logoCache logoInflight
 merchantStatsCache merchantStatsKey merchantStatsTask mirrorRunning offMain periodDidChange
 pollTask productIDAlternatives pruneMultiSelection publish quickLookCleanupObserver reconcileEnableBankingKey
 rebuildAccountIndex rebuildBookingIndex recurringByKey reloadAssets reloadProductIDState reloadScopeBookings
-reloadSelection resetSyncBatch rulesStale runCore scheduleAutoReview schedulePoll
+reloadSelection releaseVaultState resetSyncBatch rulesStale runCore scheduleAutoReview schedulePoll
 scheduleSearch scopeLoadTask searchTask selectionAccountIDs selectionLoadTask
 selectionPlaceholderTask settingsWriteTask settlePendingSelectionLoad startSelectionLoad
 statementsCountBefore stickyBooking syncBatchSkipped syncBatchTotal syncGeneration

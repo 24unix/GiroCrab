@@ -2163,6 +2163,17 @@
         }
       }
     },
+    "Alles löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Everything"
+          }
+        }
+      }
+    },
     "Allgemein" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2808,6 +2819,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pharmacy"
+          }
+        }
+      }
+    },
+    "App zurücksetzen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset App…"
           }
         }
       }
@@ -5647,6 +5669,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The vault could not be unlocked (wrong key or damaged file)."
+          }
+        }
+      }
+    },
+    "Der Tresor mit allen Konten und Buchungen, der Tresor-Schlüssel (auch im iCloud-Schlüsselbund und damit auf Ihren anderen Geräten, z. B. am Mac: dort angelegte Tresore und iCloud-Drive-Sicherungen sind dann nicht mehr lesbar), Ihr Enable-Banking-Zugang und alle Einstellungen werden gelöscht. Ohne eigenes Backup sind die Daten verloren. Zugriffe bei Ihren Banken und Dokumente in Ihrem Dokumentenordner bleiben bestehen. Zur Bestätigung werden Sie nach %@ oder Ihrem Gerätecode gefragt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The vault with all accounts and transactions, the vault key (including in iCloud Keychain and thus on your other devices, e.g. your Mac: vaults and iCloud Drive backups made there become unreadable), your Enable Banking access and all settings will be deleted. Without your own backup the data is lost. Access granted at your banks and documents in your documents folder remain. To confirm, you will be asked for %@ or your device passcode."
           }
         }
       }
@@ -8750,6 +8783,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GiroCrab connects to your banks directly from this device. There is no GiroCrab server and no tracking. Only if you turn on iCloud sync above is the encrypted vault stored in your iCloud Drive. PINs and TANs are only kept in memory for a single fetch and deleted afterwards."
+          }
+        }
+      }
+    },
+    "GiroCrab wurde zurückgesetzt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab has been reset"
+          }
+        }
+      }
+    },
+    "GiroCrab zurücksetzen und alle Daten löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset GiroCrab and delete all data"
+          }
+        }
+      }
+    },
+    "GiroCrab zurücksetzen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset GiroCrab?"
           }
         }
       }
@@ -12111,6 +12177,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Delete …"
+          }
+        }
+      }
+    },
+    "Löscht Tresor, Schlüssel, Einstellungen und Zwischenspeicher auf diesem Gerät und beginnt neu. Das lässt sich nicht rückgängig machen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deletes the vault, key, settings and caches on this device and starts over. This cannot be undone."
           }
         }
       }
@@ -19474,6 +19551,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Back"
+          }
+        }
+      }
+    },
+    "Zurücksetzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset"
+          }
+        }
+      }
+    },
+    "Zurücksetzen fehlgeschlagen: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset failed: %@"
           }
         }
       }

@@ -217,6 +217,22 @@ public final class CloudSyncManager {
         startLoop()
     }
 
+    /// „App zurücksetzen“ (#241): forgets folder, state and bookmark of this device
+    /// (the UserDefaults domain is removed right after). Snapshots of other
+    /// devices in the folder are left alone.
+    public func resetForAppReset() {
+        stopAutoSync()
+        isEnabled = false
+        folderOverride = nil
+        folderName = nil
+        lastSync = nil
+        lastStats = nil
+        lastError = nil
+        keyMismatch = false
+        seen = [:]
+        failed = [:]
+    }
+
     /// Ends automatic sync; with `flushing`, a pending local change is
     /// written first (e.g. when the vault gets locked).
     public func stopAutoSync(flushing: Bool = false) {

@@ -35,7 +35,7 @@ struct KeychainEnableBankingKeyStore: EnableBankingKeyStore {
     private let service = "de.girocrab.enablebanking"
     private let account = "application"
 
-    private var query: [String: Any] {
+    fileprivate var query: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -67,6 +67,11 @@ struct KeychainEnableBankingKeyStore: EnableBankingKeyStore {
         guard status == errSecSuccess else {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
         }
+    }
+
+    /// „App zurücksetzen“ (#241): removes the stored application, here and in iCloud Keychain.
+    static func deleteStoredApplication() {
+        SecItemDelete(KeychainEnableBankingKeyStore().query as CFDictionary)
     }
 }
 
