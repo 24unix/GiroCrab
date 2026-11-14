@@ -86,6 +86,10 @@ struct FinTsState {
     /// Orders that need a name check first (HIVPPS), e.g. HKCCS, HKIPZ.
     #[serde(default)]
     vop_orders: Vec<String>,
+    /// The bank rejected the two-step dialog init (900 + HKTAN) with 9010; from then on
+    /// the dialog is opened with the one-step function 999 and without HKTAN.
+    #[serde(default)]
+    single_step: bool,
 }
 
 /// Versions of each business transaction this client implements.
@@ -1651,11 +1655,17 @@ impl FinTsConnector {
         // Authenticated dialog with strong customer authentication.
         self.reset_dialog();
         let sec = self.sec();
-        let mut payload = vec![self.hkidn(ctx, 3), self.hkvvb(4)];
-        if sec != "999" {
-            payload.push(self.hktan_process4(5, "HKIDN"));
+        let mut reply = self.send_dialog_init(ctx, &sec).await?;
+        // Some banks reject HKTAN in the dialog init as malformed (9010 without a
+        // PIN/TAN/system-id code): retry once one-step and remember it.
+        if sec != "999" && init_rejected_as_malformed(&reply) {
+            self.reset_dialog();
+            let retry = self.send_dialog_init(ctx, "999").await?;
+            if retry.check().is_ok() {
+                self.st.single_step = true;
+                reply = retry;
+            }
         }
-        let reply = self.send(ctx, payload, &sec, None).await?;
         self.learn_bpd(&reply);
         if let Err(e) = reply.check() {
             // Stale system ID / TAN method -> force re-sync next time.
@@ -1668,6 +1678,14 @@ impl FinTsConnector {
             return Ok(p);
         }
         Ok(Phase::Ready)
+    }
+
+    async fn send_dialog_init(&mut self, ctx: &ConnectContext, sec: &str) -> CoreResult<BankReply> {
+        let mut payload = vec![self.hkidn(ctx, 3), self.hkvvb(4)];
+        if sec != "999" {
+            payload.push(self.hktan_process4(5, "HKIDN"));
+        }
+        self.send(ctx, payload, sec, None).await
     }
 
     /// Whether the transfer document should be `pain.001.001.09` (true) or `.03` (false).
@@ -1688,7 +1706,7 @@ impl FinTsConnector {
     }
 
     fn sec(&self) -> String {
-        if self.st.sec_func.is_empty() {
+        if self.st.single_step || self.st.sec_func.is_empty() {
             "999".into()
         } else {
             self.st.sec_func.clone()
@@ -1730,6 +1748,12 @@ fn account_label(acc: &SepaAccount) -> String {
     } else {
         format!("{}-{}", acc.account_number, acc.sub_account)
     }
+}
+
+/// Dialog init refused with 9010 ("Ungültiger Signaturaufbau") that is not a stale
+/// system ID / TAN method (9931/9942).
+fn init_rejected_as_malformed(reply: &BankReply) -> bool {
+    reply.has("9010") && !reply.has("9931") && !reply.has("9942")
 }
 
 /// PIN/TAN/approval/SCA errors: the order was certainly not executed.
@@ -2350,6 +2374,127 @@ mod tests {
             since: "2025-01-01".into(),
             since_by_account: Default::default(),
         }
+    }
+
+    /// Mock FinTS endpoint: answers the n-th request with `replies[n]` (last one repeats)
+    /// and records which segment ids each request contained.
+    fn mock_bank(
+        replies: Vec<&'static str>,
+    ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<Vec<String>>>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "http://127.0.0.1:{}/fints",
+            listener.local_addr().unwrap().port()
+        );
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen2 = seen.clone();
+        std::thread::spawn(move || {
+            for (n, stream) in listener.incoming().enumerate() {
+                let Ok(mut s) = stream else { break };
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 8192];
+                let body = loop {
+                    let k = s.read(&mut chunk).unwrap_or(0);
+                    buf.extend_from_slice(&chunk[..k]);
+                    let text = String::from_utf8_lossy(&buf).to_string();
+                    if let Some(i) = text.find("\r\n\r\n") {
+                        let len = text[..i]
+                            .to_ascii_lowercase()
+                            .split("content-length:")
+                            .nth(1)
+                            .and_then(|v| v.lines().next()?.trim().parse::<usize>().ok())
+                            .unwrap_or(0);
+                        if buf.len() >= i + 4 + len || k == 0 {
+                            break text[i + 4..].to_string();
+                        }
+                    } else if k == 0 {
+                        break String::new();
+                    }
+                };
+                let raw = base64::engine::general_purpose::STANDARD
+                    .decode(body.trim())
+                    .unwrap_or_default();
+                let ids = syntax::parse_response(&raw)
+                    .map(|v| v.iter().map(|x| x.id().to_string()).collect())
+                    .unwrap_or_default();
+                seen2.lock().unwrap().push(ids);
+                let reply = replies[n.min(replies.len() - 1)];
+                let b64 = base64::engine::general_purpose::STANDARD.encode(reply);
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{b64}",
+                    b64.len()
+                );
+                let _ = s.write_all(resp.as_bytes());
+            }
+        });
+        (url, seen)
+    }
+
+    const REJECT_9010: &str = "HNHBK:1:3+000000000000+300+0+1'HIRMG:2:2+9800::Der Dialog wurde abgebrochen.'HIRMS:3:2:3+9010::Ungültiger Signaturaufbau: Fehler im Segmentaufbau.'";
+    const ACCEPT: &str =
+        "HNHBK:1:3+000000000000+300+DIALOG1+1'HIRMG:2:2+0010::Nachricht entgegengenommen.'";
+    const STALE_SYSTEM_ID: &str = "HNHBK:1:3+000000000000+300+0+1'HIRMG:2:2+9800::abgebrochen.'HIRMS:3:2:3+9931::Anmeldename falsch.'HIRMS:4:2:3+9010::Fehler.'";
+
+    fn two_step_connector(url: &str, state: serde_json::Value) -> FinTsConnector {
+        let mut c = FinTsConnector::new("50010517");
+        c.url = url.into();
+        c.product_id = "TESTPRODUCT".into();
+        c.product_version = "0.1".into();
+        c.st = serde_json::from_value(state).unwrap();
+        c
+    }
+
+    fn has_hktan(ids: &[String]) -> bool {
+        ids.iter().any(|i| i == "HKTAN")
+    }
+
+    #[tokio::test]
+    async fn dialog_init_9010_falls_back_to_single_step_and_persists() {
+        let (url, seen) = mock_bank(vec![REJECT_9010, ACCEPT]);
+        let state = serde_json::json!({"system_id": "123", "sec_func": "946", "tan_method_name": "", "tan_medium": "", "versions": {}, "tan_required": {}});
+        let mut c = two_step_connector(&url, state);
+        let phase = c.open_dialog(&test_ctx()).await.unwrap();
+        assert!(matches!(phase, Phase::Ready));
+        {
+            let seen = seen.lock().unwrap();
+            assert_eq!(seen.len(), 2);
+            assert!(has_hktan(&seen[0]), "first try is two-step: {:?}", seen[0]);
+            assert!(!has_hktan(&seen[1]), "retry is one-step: {:?}", seen[1]);
+        }
+        assert!(c.st.single_step);
+        let persisted = serde_json::to_value(&c.st).unwrap();
+        assert_eq!(persisted["single_step"], true);
+
+        // Next sync starts directly one-step.
+        let (url2, seen2) = mock_bank(vec![ACCEPT]);
+        let mut c2 = two_step_connector(&url2, persisted);
+        assert_eq!(c2.sec(), "999");
+        c2.open_dialog(&test_ctx()).await.unwrap();
+        let seen2 = seen2.lock().unwrap();
+        assert_eq!(seen2.len(), 1);
+        assert!(!has_hktan(&seen2[0]), "{:?}", seen2[0]);
+    }
+
+    #[tokio::test]
+    async fn dialog_init_9010_with_stale_system_id_does_not_fall_back() {
+        let (url, seen) = mock_bank(vec![STALE_SYSTEM_ID]);
+        let state = serde_json::json!({"system_id": "123", "sec_func": "946", "tan_method_name": "", "tan_medium": "", "versions": {}, "tan_required": {}});
+        let mut c = two_step_connector(&url, state);
+        assert!(c.open_dialog(&test_ctx()).await.is_err());
+        assert_eq!(seen.lock().unwrap().len(), 1);
+        assert!(!c.st.single_step);
+        assert!(c.st.system_id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn failed_single_step_retry_is_not_remembered() {
+        let (url, seen) = mock_bank(vec![REJECT_9010]);
+        let state = serde_json::json!({"system_id": "123", "sec_func": "946", "tan_method_name": "", "tan_medium": "", "versions": {}, "tan_required": {}});
+        let mut c = two_step_connector(&url, state);
+        assert!(c.open_dialog(&test_ctx()).await.is_err());
+        assert_eq!(seen.lock().unwrap().len(), 2);
+        assert!(!c.st.single_step);
     }
 
     #[test]
