@@ -406,6 +406,7 @@ struct LockView: View {
 
 struct MainSplitView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(EnableBankingKeySync.noticeSuppressedKey) private var enableBankingNoticeSuppressed = false
     #if os(macOS)
     @State private var columns: NavigationSplitViewVisibility = .all
     @AppStorage(ViewLayout.inspectorKey) private var showInspector = true
@@ -596,6 +597,19 @@ struct MainSplitView: View {
             Button("Meine eigene behalten") { model.setFintsProductIDMode("own") }
         } message: {
             Text("GiroCrab hat jetzt eine eigene FinTS-Produktregistrierung. Sie müssen dafür nichts mehr tun. Ihre eigene Registrierung bleibt gespeichert, und Sie können jederzeit in den Einstellungen wechseln.")
+        }
+        // own host view: the "don't show again" toggle must not reach other dialogs
+        .background {
+            Color.clear
+                .alert("Enable-Banking-Anwendung synchronisiert",
+                       isPresented: Binding(get: { model.enableBankingAdoptNotice != nil },
+                                            set: { if !$0 { model.enableBankingAdoptNotice = nil } }),
+                       presenting: model.enableBankingAdoptNotice) { _ in
+                    Button("OK") {}
+                } message: { notice in
+                    Text(notice.message)
+                }
+                .dialogSuppressionToggle(isSuppressed: $enableBankingNoticeSuppressed)
         }
         .overlay(alignment: .bottom) {
             if let toast = model.toast {

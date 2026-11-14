@@ -29,6 +29,7 @@ extension AppModel {
         guard let vault else { return }
         runCore { try vault.setSetting(key: key, value: value) }
         reloadSettings()
+        enableBankingSettingSaved(key)
     }
 
     /// Same as `saveSetting`, but the write and the list reload run off the main
@@ -52,6 +53,7 @@ extension AppModel {
                 self.settings = result.entries
                 self.logoProvider = result.logoProvider
                 self.reloadProductIDState(vault)
+                self.enableBankingSettingSaved(key)
             } catch {
                 guard let self else { return }
                 self.errorMessage = describe(error)

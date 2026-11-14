@@ -2515,6 +2515,17 @@
         }
       }
     },
+    "Anwendungs-ID: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Application ID: %@"
+          }
+        }
+      }
+    },
     "Anzeigen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5206,6 +5217,17 @@
         }
       }
     },
+    "Die Enable-Banking-Anwendung eines anderen Geräts wurde aus dem iCloud-Schlüsselbund übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Enable Banking application of another device was taken from iCloud Keychain."
+          }
+        }
+      }
+    },
     "Die Enable-Banking-Anwendung wird bei der ersten Freigabe eingerichtet. Verknüpfen Sie dabei alle Konten dieser Banken auf einmal." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6059,6 +6081,17 @@
         }
       }
     },
+    "Ein anderes Gerät hat eine neue Enable-Banking-Anwendung gespeichert. Sie ersetzt die bisher hier eingerichtete." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Another device saved a new Enable Banking application. It replaces the one set up here."
+          }
+        }
+      }
+    },
     "Einblenden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6330,6 +6363,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "You set up Enable Banking in the next step."
+          }
+        }
+      }
+    },
+    "Enable-Banking-Anwendung synchronisiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enable Banking application synced"
           }
         }
       }
@@ -16075,6 +16119,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Use"
+          }
+        }
+      }
+    },
+    "Verwendet von: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Used by: %@"
           }
         }
       }
