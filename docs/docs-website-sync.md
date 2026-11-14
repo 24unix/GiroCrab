@@ -12,6 +12,8 @@ stehen in `scripts/sync_docs.py` (Tests: `python3 -m unittest scripts/test_sync_
   Teststatus ✅ verifiziert / 🧪 Test gesucht / ⚠️ mit Einschränkungen, Issue-Links) plus Anzahl der Institute in
   `girocrab-core/data/fints_directory.tsv`. Neue oder geänderte Banken also in `BANK_MATRIX` pflegen (ein Test
   erzwingt eine Zeile pro `ConnectorKind`); die Website-Tabelle braucht kein JS und keine Inline-Styles (CSP).
+  Die Schnittstellen-Gruppen behalten die Katalogreihenfolge; innerhalb jeder Gruppe werden die angezeigten
+  Banknamen alphabetisch sortiert (ohne Unterscheidung zwischen Groß- und Kleinschreibung).
 - Alles andere (Prosa, Screenshots, „Neu in v…“) bleibt Handarbeit.
 
 ## Aufruf

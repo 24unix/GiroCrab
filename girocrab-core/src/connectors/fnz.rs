@@ -1,5 +1,5 @@
 //! Direct FNZ portal import. Requests run inside the logged-in web view;
-//! credentials/cookies never cross this bridge. Schema checked live 2026-11-11.
+//! credentials/cookies never cross this bridge. Snapshot checked live 2026-11-14.
 use std::{collections::HashSet, sync::Arc};
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -13,6 +13,8 @@ use crate::{
     models::{AccountKind, ConnectorKind},
     vault::Vault,
 };
+
+mod snapshot;
 
 fn invalid(message: &'static str) -> CoreError {
     CoreError::InvalidInput {
@@ -166,7 +168,19 @@ impl Vault {
         let mut pending = Vec::new();
         for doc in docs {
             let id = field(&doc, "/id")?;
-            document_account(&doc)?;
+            let account_ref = document_account(&doc)?;
+            let excluded: bool = db
+                .query_row(
+                    "SELECT archived_unix IS NOT NULL OR deleted_ms IS NOT NULL FROM accounts
+                 WHERE connection_id = ?1 AND external_ref = ?2",
+                    params![connection_id, account_ref],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .unwrap_or(false);
+            if excluded {
+                continue;
+            }
             if seen.insert(id.to_string())
                 && known
                     .query_row([document_source(connection_id, id)], |_| Ok(()))
@@ -209,10 +223,14 @@ impl Vault {
             .filter(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok())
             .unwrap_or_default();
         let db = self.db()?;
-        let account_id = db.query_row(
-            "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref = ?2",
-            params![connection_id, account_ref], |r| r.get::<_, i64>(0),
+        let (account_id, excluded) = db.query_row(
+            "SELECT id, archived_unix IS NOT NULL OR deleted_ms IS NOT NULL FROM accounts WHERE connection_id = ?1 AND external_ref = ?2",
+            params![connection_id, account_ref], |r| Ok((r.get::<_, i64>(0)?,r.get::<_, bool>(1)?)),
         ).optional()?.ok_or_else(|| invalid("FNZ: Zum Dokument gehört ein unbekanntes Konto oder Depot. Bitte zuerst die Salden abrufen."))?;
+        // Recheck after download in case the account was archived meanwhile.
+        if excluded {
+            return Ok(false);
+        }
         let source = document_source(connection_id, id);
         let name = format!("FNZ_{}.pdf", URL_SAFE_NO_PAD.encode(id));
         Ok(crate::documents::insert_doc(

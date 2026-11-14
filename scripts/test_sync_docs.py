@@ -71,6 +71,20 @@ class SyncDocs(unittest.TestCase):
         for banned in ("<script", " style=", " onclick=", "javascript:"):
             self.assertNotIn(banned, out)
 
+    def test_matrix_sorts_within_interface_groups_for_markdown_and_html(self):
+        matrix = sd.parse_matrix(CATALOG)
+        # Interleave interfaces to verify grouping, and use mixed case names.
+        extra = dict(matrix[0], name="alpha Bank")
+        matrix = [matrix[0], matrix[2], matrix[1], extra]
+        original_order = [e["name"] for e in matrix]
+        for fmt in ("md", "html"):
+            for lang in ("de", "en"):
+                out = sd.matrix_text(lang, matrix, 1, fmt)
+                names = ["alpha Bank", "ING", "Volksbank X", sd.NAMES[lang].get("Amazon Bestellungen", "Amazon Bestellungen")]
+                offsets = [out.index(name) for name in names]
+                self.assertEqual(offsets, sorted(offsets))
+        self.assertEqual([e["name"] for e in matrix], original_order)
+
     def test_fints_count_ignores_comments(self):
         self.assertEqual(sd.fints_count("# c\n\n1\ta\tu\n2\tb\tu\n"), 2)
 

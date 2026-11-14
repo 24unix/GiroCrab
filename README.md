@@ -183,24 +183,24 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 <!-- sync:connectors:start -->
 | Bank | Schnittstelle | Umsätze | Salden | Depot | Überweisung | Dauerauftrag | PDF/Postfach | Status |
 |---|---|---|---|---|---|---|---|---|
-| Volksbank Kassel Göttingen | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verifiziert |
 | 1822direkt | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verifiziert |
+| Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | 🧪 Test gesucht [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
 | FinTS-Bank (BLZ + URL) | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verifiziert |
 | ING | FinTS 3.0 | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#313](https://github.com/GiroCrab/GiroCrab/issues/313) |
-| Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | 🧪 Test gesucht [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
-| comdirect | REST-API | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
+| Volksbank Kassel Göttingen | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verifiziert |
 | bunq | REST-API | ✓ | ✓ | – | ✓ | – | ✓ | ✅ Verifiziert |
-| PayPal | REST-API | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen [#156](https://github.com/GiroCrab/GiroCrab/issues/156) |
+| comdirect | REST-API | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | Interactive Brokers (IBKR) | REST-API | ✓ | ✓ | ✓ | – | – | – | 🧪 Test gesucht |
+| PayPal | REST-API | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen [#156](https://github.com/GiroCrab/GiroCrab/issues/156) |
 | Scalable Capital | REST-API | ✓ | ✓ | ✓ | – | – | – | 🧪 Test gesucht [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
-| Weitere Banken per PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen |
-| Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
-| American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
 | Amazon Visa | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
-| Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Mit Einschränkungen |
-| quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
-| FNZ Bank | Web-Portal | – | ✓ | ✓ | – | – | ✓ | 🧪 Test gesucht |
+| American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
+| Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
+| Weitere Banken per PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen |
 | Amazon Bestellungen | Web-Portal | ✓ | – | – | – | – | – | 🧪 Test gesucht |
+| FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
+| quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
+| Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Mit Einschränkungen |
 
 Weitere deutsche Banken mit FinTS 3.0 (PIN/TAN) lassen sich über BLZ und FinTS-URL anbinden (2.010 Institute im FinTS-Verzeichnis); europäische PSD2-Banken über Enable Banking mit einer eigenen, kostenlosen Anwendung.
 
@@ -208,6 +208,8 @@ Weitere deutsche Banken mit FinTS 3.0 (PIN/TAN) lassen sich über BLZ und FinTS-
 <!-- sync:connectors:end -->
 
 quirion: Einrichtung, technische Details und geprüfter Umfang stehen in [docs/quirion-connector.md](docs/quirion-connector.md).
+
+FNZ Bank / ebase / finvesto: Einrichtung, Konto- und Depotumsätze, Fondspositionen, PDF-Archiv und Einschränkungen stehen in [docs/fnz-connector.md](docs/fnz-connector.md).
 
 Eine neue Bank anzubinden dauert meist unter 100 Zeilen: siehe
 [`connectors/template.rs`](girocrab-core/src/connectors/template.rs) und [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -391,24 +393,24 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 <!-- sync:connectors:start -->
 | Bank | Interface | Transactions | Balances | Securities | Transfers | Standing orders | PDF/post box | Status |
 |---|---|---|---|---|---|---|---|---|
-| Volksbank Kassel Göttingen | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verified |
 | 1822direkt | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verified |
+| Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | 🧪 Testing wanted [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
 | FinTS bank (bank code + URL) | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verified |
 | ING | FinTS 3.0 | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#313](https://github.com/GiroCrab/GiroCrab/issues/313) |
-| Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | 🧪 Testing wanted [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
-| comdirect | REST-API | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
+| Volksbank Kassel Göttingen | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verified |
 | bunq | REST-API | ✓ | ✓ | – | ✓ | – | ✓ | ✅ Verified |
-| PayPal | REST-API | ✓ | ✓ | – | – | – | – | ⚠️ Limited [#156](https://github.com/GiroCrab/GiroCrab/issues/156) |
+| comdirect | REST-API | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | Interactive Brokers (IBKR) | REST-API | ✓ | ✓ | ✓ | – | – | – | 🧪 Testing wanted |
+| PayPal | REST-API | ✓ | ✓ | – | – | – | – | ⚠️ Limited [#156](https://github.com/GiroCrab/GiroCrab/issues/156) |
 | Scalable Capital | REST-API | ✓ | ✓ | ✓ | – | – | – | 🧪 Testing wanted [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
+| Amazon Visa | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
+| American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
 | More banks via PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Limited |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
-| American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
-| Amazon Visa | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
-| Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Limited |
-| quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
-| FNZ Bank | Web-Portal | – | ✓ | ✓ | – | – | ✓ | 🧪 Testing wanted |
 | Amazon orders | Web-Portal | ✓ | – | – | – | – | – | 🧪 Testing wanted |
+| FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
+| quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
+| Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Limited |
 
 Further German banks with FinTS 3.0 (PIN/TAN) can be connected via bank code and FinTS URL (2,010 institutions in the FinTS directory); European PSD2 banks via Enable Banking with your own free application.
 

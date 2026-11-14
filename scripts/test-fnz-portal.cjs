@@ -79,3 +79,55 @@ test('PDF rejects expired-session HTML, HTTP errors and non-PDF bytes',async()=>
     await assert.rejects(run('pdf',async()=>({ok,headers:{get:()=>ct},arrayBuffer:async()=>Buffer.from(bytes)}),{id:'test'}),/FNZ:/);
   }
 });
+
+function snapshotPortal({repeat=false, changingTotal=false, unavailable=false}={}) {
+  const calls=[];
+  const account=(ref,id)=>({depotOrCashAccount:{externalDepotNumber:{externalDepotNumber:ref},depotOrCashAccountId:{depotId:{id}}}});
+  const group=id=>({investmentDepots:[account(`D${id}`,id)],cashAccounts:[account(`C${id}`,id)],managedDepots:[],stockDepots:[],preciousMetalDepots:[]});
+  const fetch=async(url,options)=>{
+    const path=url.split('eox/rest/')[1], body=options.body?JSON.parse(options.body):null;
+    calls.push({path,body,options});
+    if(path==='depot/getDepotOverviewDataForEndCustomer') return response({ownerGroups:[group('1'),group('2')]});
+    if(path.startsWith('depot-inventory/')) return response({resourceIsUnavailable:unavailable,investmentDepotInventories:[]});
+    if(path.includes('getMigratedAabTransactionOverview')) return response({migratedAabTransactions:[],totalTransactions:0});
+    const page=Number(body.pagination.page);
+    if(path.startsWith('cash-account-transaction/')) return response({cashAccountId:{id:body.cashAccountId},iban:{iban:'TEST'},cashAccountTransactions:[],totalCashAccountTransactions:0});
+    if(path.startsWith('order-transaction/')) return response({orderTransactions:[{orderTransactionId:{orderId:{orderDate:'2025-01-01',orderNumber:repeat?'same':String(page)},orderTransactionKindId:'1',optional:null,discriminator:''}}],totalOrderTransactions:changingTotal && page>0?3:2});
+    throw new Error(`Unexpected path ${path}`);
+  };
+  return {fetch,calls};
+}
+
+test('snapshot fetches every owner, cash and depot with complete history filters and pagination',async()=>{
+  const portal=snapshotPortal();
+  const result=JSON.parse(await run('snapshot',portal.fetch));
+  assert.equal(result.version,1);
+  assert.equal(result.details.length,4);
+  assert.equal(result.totalsOnly,0);
+  assert.deepEqual(result.details.map(d=>d.accountRef),['D1','C1','D2','C2']);
+  for(const d of result.details.filter(d=>d.kind==='investment')) {
+    assert.equal(d.transactions.length,2); assert.equal(d.historicalTransactions.length,0);
+  }
+  const transactions=portal.calls.filter(c=>c.body?.dateFrom);
+  assert.equal(transactions.length,6);
+  for(const {body,options} of transactions) {
+    assert.equal(body.dateFrom,'2000-01-01');
+    assert.match(body.dateTo,/^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(body.showIngoingTransactions,true); assert.equal(body.showOutgoingTransactions,true);
+    assert.equal(body.pagination.pageSize,'100');
+    assert.equal(options.method,'POST'); assert.equal(options.credentials,'include');
+    if(body.depotId) {
+      assert.equal(body.showTaxTransactions,true); assert.equal(body.showOtherTransactions,true);
+      assert.equal(body.includeCanceledTransactions,true); assert.equal(body.showTransactionsOnDepotLevel,true);
+    }
+  }
+  assert.equal(portal.calls.filter(c=>c.path.includes('getMigratedAab')).length,2);
+});
+
+test('snapshot refuses repeated pages, changed totals, unavailable inventories and HTTP errors',async()=>{
+  await assert.rejects(run('snapshot',snapshotPortal({repeat:true}).fetch),/Wiederholte/);
+  await assert.rejects(run('snapshot',snapshotPortal({changingTotal:true}).fetch),/Unvollständige/);
+  await assert.rejects(run('snapshot',snapshotPortal({unavailable:true}).fetch),/nicht verfügbar/);
+  await assert.rejects(run('snapshot',async()=>({ok:false,status:401})),/HTTP 401/);
+  await assert.rejects(run('snapshot',async()=>response({ownerGroups:[{}]})),/Unvollständige/);
+});

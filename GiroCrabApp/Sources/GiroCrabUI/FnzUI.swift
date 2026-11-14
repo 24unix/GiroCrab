@@ -29,6 +29,99 @@ enum FnzScripts {
     return JSON.stringify(data);
     """#
 
+    /// Read every available transaction page and the current investment-fund
+    /// inventory. No order creation, execution or document status changes.
+    static let snapshot = #"""
+    const base = location.origin + location.pathname + 'eox/rest/';
+    const headers = {'Accept':'application/json','content-type':'application/json',
+      'X-EOX-Session':'','X-EOX-CLIENT-VERSION':'26.4.01'};
+    const get = async (path, body) => {
+      const r = await fetch(base + path, {method:body === undefined ? 'GET' : 'POST', credentials:'include',
+        headers:{...headers,'X-Context-ID':crypto.randomUUID()},
+        ...(body === undefined ? {} : {body:JSON.stringify(body)})});
+      if (!r.ok) throw new Error('FNZ: Daten nicht abrufbar (HTTP ' + r.status + '). Bitte erneut anmelden.');
+      const data = await r.json();
+      if (!data || typeof data !== 'object') throw new Error('FNZ: Ungültige Portalantwort.');
+      if (data.resourceIsUnavailable === true) throw new Error('FNZ: Die angeforderten Daten sind derzeit nicht verfügbar.');
+      return data;
+    };
+    const hasId = value => typeof value === 'string' ? !!value.trim() :
+      value && typeof value === 'object' && !Array.isArray(value) && Object.values(value).some(hasId);
+    const stableId = (value, nested = false) => {
+      if (!nested && !hasId(value)) throw new Error('FNZ: Umsatz ohne Kennung.');
+      if (value === null) return 'null';
+      if (typeof value === 'string') {
+        return JSON.stringify(value);
+      }
+      if (typeof value !== 'object' || Array.isArray(value) || !Object.keys(value).length)
+        throw new Error('FNZ: Ungültige Umsatzkennung.');
+      return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' +
+        stableId(value[k], true)).join(',') + '}';
+    };
+    const pages = async (path, filter, arrayKey, totalKey, idKey) => {
+      const all = [], seen = new Set();
+      let total = null;
+      for (let page = 0; page < 1000; page++) {
+        const data = await get(path, {...filter,pagination:{page:String(page),pageSize:'100'}});
+        const rows = data[arrayKey], count = data[totalKey];
+        if (!Array.isArray(rows) || !Number.isSafeInteger(count) || count < 0 || count > 100000
+          || (total !== null && total !== count)) throw new Error('FNZ: Unvollständige Umsatzliste. Bitte erneut abrufen.');
+        total = count;
+        for (const row of rows) {
+          const id = stableId(row?.[idKey]);
+          if (seen.has(id)) throw new Error('FNZ: Wiederholte Umsatzseite.');
+          seen.add(id);
+          all.push(row);
+        }
+        if (all.length === total) return {rows:all,metadata:data};
+        if (!rows.length || all.length > total) throw new Error('FNZ: Unvollständige Umsatzliste.');
+      }
+      throw new Error('FNZ: Zu viele Umsatzseiten.');
+    };
+    const overview = await get('depot/getDepotOverviewDataForEndCustomer');
+    if (!Array.isArray(overview.ownerGroups)) throw new Error('FNZ: Keine Kontoübersicht erkannt.');
+    const now = new Date();
+    const dateTo = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0,10);
+    const filter = {dateFrom:'2000-01-01',dateTo,showIngoingTransactions:true,showOutgoingTransactions:true,sortOrder:'BOOKING_DATE_DESC'};
+    const details = [], refs = new Set();
+    let totalsOnly = 0;
+    for (const group of overview.ownerGroups) {
+      for (const kind of ['investmentDepots','managedDepots','stockDepots','preciousMetalDepots','cashAccounts']) {
+        if (!Array.isArray(group[kind])) throw new Error('FNZ: Unvollständige Kontoübersicht.');
+        for (const row of group[kind]) {
+          const account = row.depotOrCashAccount;
+          if (account?.closedFlag === true) continue;
+          const ref = account?.externalDepotNumber?.externalDepotNumber;
+          const depotId = account?.depotOrCashAccountId?.depotId;
+          if (typeof ref !== 'string' || !ref || typeof depotId?.id !== 'string' || !depotId.id)
+            throw new Error('FNZ: Konto ohne eindeutige Kennung.');
+          if (refs.has(ref)) continue;
+          refs.add(ref);
+          if (kind === 'cashAccounts') {
+            const data = await pages('cash-account-transaction/getCashAccountTransactionOverviewForEndCustomer',
+              {...filter,cashAccountId:ref,referenceFilter:''},'cashAccountTransactions','totalCashAccountTransactions','orderOrTransactionId');
+            details.push({accountRef:ref,kind:'cash',cashAccountId:data.metadata.cashAccountId,iban:data.metadata.iban,
+              transactions:data.rows});
+          } else if (kind === 'investmentDepots') {
+            const inventory = await get('depot-inventory/getEndCustomerDepotInventory/depotId/' + encodeURIComponent(depotId.id));
+            const data = await pages('order-transaction/getOrderTransactionOverviewForEndCustomer',
+              {...filter,depotId,showTransactionsOnDepotLevel:true,subDepotPos:null,showTaxTransactions:true,
+               showOtherTransactions:true,includeCanceledTransactions:true},'orderTransactions','totalOrderTransactions','orderTransactionId');
+            const historical = await pages('order-transaction/getMigratedAabTransactionOverview',{depotId},
+              'migratedAabTransactions','totalTransactions','migratedAabTransactionId');
+            details.push({accountRef:ref,kind:'investment',inventory,transactions:data.rows,historicalTransactions:historical.rows});
+          } else {
+            // Keep existing support for other FNZ depot families: their detail
+            // endpoints have different schemas and are not yet live validated.
+            details.push({accountRef:ref,kind:'totalsOnly'});
+            totalsOnly++;
+          }
+        }
+      }
+    }
+    return JSON.stringify({version:1,overview,details,totalsOnly});
+    """#
+
     static let documents = #"""
     const base = location.origin + location.pathname;
     const dateTo = new Date().toISOString().slice(0, 19);
@@ -100,7 +193,7 @@ struct FnzWebSheet: View {
                     else if let blocked = browser.blockedHost {
                         Text("Unsichere Seite blockiert (\(blocked)) – nur HTTPS-Seiten werden geöffnet.").font(.caption).foregroundStyle(.orange)
                     }
-                    else if ready { Text("Angemeldet – Kontosalden, Depotwerte und Postkorb können abgerufen werden.").font(.caption) }
+                    else if ready { Text("Angemeldet – Konten, Fondspositionen, Umsätze und Postkorb können abgerufen werden.").font(.caption) }
                     else { Text("Melden Sie sich bei FNZ an und bestätigen Sie in FNZsecure.").font(.caption) }
                 }
                 Spacer()
@@ -114,7 +207,7 @@ struct FnzWebSheet: View {
                     .keyboardShortcut(.cancelAction)
                 Toggle("PDF-Postkorb inkl. Archiv", isOn: $includeDocuments).disabled(running)
                 Spacer()
-                Button("Salden und Dokumente abrufen") { start() }
+                Button("Konten und Depot abrufen") { start() }
                     .buttonStyle(.borderedProminent).disabled(!ready || running)
             }.padding(12)
         }
@@ -157,9 +250,10 @@ struct FnzWebSheet: View {
             guard let pin = model.pinVault() else { running = false; return }
             let connectionId = connection.id
             do {
-                progress = String(localized: "Kontosalden und Depotwerte abrufen …")
-                let overview = try await run(FnzScripts.overview)
-                let summary = try await pin.run { try $0.importFnzOverview(connectionId: connectionId, overviewJson: overview) }
+                progress = String(localized: "Konten, Fondspositionen und Umsatzhistorie abrufen …")
+                let snapshot = try await run(FnzScripts.snapshot)
+                let summary = try await pin.run { try $0.importFnzSnapshot(connectionId: connectionId, snapshotJson: snapshot) }
+                let totalsOnly = snapshot.data(using: .utf8).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["totalsOnly"] as? Int ?? 0
                 var downloaded = 0
                 var failed = 0
                 if includeDocuments {
@@ -192,10 +286,14 @@ struct FnzWebSheet: View {
                         }
                     }
                 }
-                let message = String(localized: "FNZ: \(summary.accountsUpdated) Konten/Depots aktualisiert, \(downloaded) neue PDFs.")
+                let message = String(localized: "FNZ: \(summary.accountsUpdated) Konten/Depots aktualisiert, \(summary.transactionsImported) neue Buchungen, \(downloaded) neue PDFs.")
                 model.toast = message
-                if failed == 0 { close() }
-                else { notice = message + " " + String(localized: "\(failed) PDFs nicht abrufbar. Erfolgreiche Downloads bleiben gespeichert; ein erneuter Abruf lädt nur fehlende Dokumente.") }
+                if failed == 0 && totalsOnly == 0 { close() }
+                else {
+                    notice = message
+                    if failed > 0 { notice = (notice ?? "") + " " + String(localized: "\(failed) PDFs nicht abrufbar. Erfolgreiche Downloads bleiben gespeichert; ein erneuter Abruf lädt nur fehlende Dokumente.") }
+                    if totalsOnly > 0 { notice = (notice ?? "") + " " + String(localized: "Für \(totalsOnly) Depots sind derzeit nur Gesamtwerte und PDFs verfügbar.") }
+                }
             } catch is CancellationError {
             } catch {
                 notice = describe(error)

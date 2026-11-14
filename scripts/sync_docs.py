@@ -107,6 +107,10 @@ def _cells(lang, e, fmt):
 
 def matrix_text(lang, matrix, n_fints, fmt="md"):
     """Matrix + note for one marker block. fmt: 'md' (README) or 'html' (website, no inline JS/CSS)."""
+    # Keep the catalog's interface groups, alphabetize their displayed names.
+    groups = {interface: i for i, interface in enumerate(dict.fromkeys(e["interface"] for e in matrix))}
+    matrix = sorted(matrix, key=lambda e: (
+        groups[e["interface"]], NAMES[lang].get(e["name"], e["name"]).casefold()))
     t = TEXT[lang]
     n = f"{n_fints:,}" if lang == "en" else f"{n_fints:,}".replace(",", ".")
     more, legend = t["more"].format(n=n), t["legend"]

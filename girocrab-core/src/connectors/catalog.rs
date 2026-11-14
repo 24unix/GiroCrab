@@ -122,7 +122,7 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             login_label: tr("Zugangsbezeichnung").into(),
             secret_label: tr("(Anmeldung im Browser-Fenster)").into(),
             required_settings: vec![],
-            note: tr("FNZ Bank / ebase / finvesto: Kontosalden, Depotwerte und PDF-Postkorb einschließlich Archiv. Anmeldung im Browserfenster mit FNZsecure-Freigabe. Die PIN wird nicht gespeichert.").into(),
+            note: tr("FNZ Bank / ebase / finvesto: Kontosalden, Fondspositionen, Konto- und Depotumsätze sowie PDF-Postkorb einschließlich Archiv. Anmeldung im Browserfenster mit FNZsecure-Freigabe. Die PIN wird nicht gespeichert.").into(),
         },
         ConnectorKind::AmazonOrders => BankDescriptor {
             kind,
@@ -430,10 +430,11 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         interface: Interface::WebPortal,
         capabilities: &[
             Capability::Balances,
+            Capability::Transactions,
             Capability::Securities,
             Capability::Documents,
         ],
-        status: Status::TestingWanted,
+        status: Status::Verified,
         issues: &[],
     },
     MatrixEntry {
