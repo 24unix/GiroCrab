@@ -79,7 +79,7 @@ struct NewCategorySheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 420, minHeight: 280)
+        .desktopFrame(minWidth: 420, minHeight: 280)
         #endif
         .onAppear {
             // a sub-category starts with its main category's colour

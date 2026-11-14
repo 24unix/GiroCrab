@@ -243,23 +243,37 @@ public struct GiroCrabRootView: View {
         #endif
     }()
     @Environment(\.scenePhase) private var scenePhase
+    /// iOS cold start: keep the animated crab visible for ~1 s, even when the vault
+    /// is ready earlier. Only the view is held back; `bootstrap()` runs immediately.
+    #if os(iOS)
+    @State private var splashHold = true
+    #else
+    @State private var splashHold = false
+    #endif
 
     public init() {}
 
+    private var splash: some View {
+        ZStack {
+            Theme.canvas.ignoresSafeArea()
+            StartLogo()
+            ProgressView().offset(y: 96)
+        }
+    }
+
     public var body: some View {
         Group {
+            if splashHold && model.vaultState != .starting {
+                splash.transition(.opacity)
+            } else {
             switch model.vaultState {
             case .starting where languageQuestion == .chooseLanguage:
                 LanguagePromptView { languageQuestion = .none }
             case .starting:
                 // Same background + centred logo as the system launch screen (LaunchInfo.plist),
                 // so there is no visual jump between the two.
-                ZStack {
-                    Theme.canvas.ignoresSafeArea()
-                    StartLogo()
-                    ProgressView().offset(y: 96)
-                }
-                .onAppear { model.bootstrap() }
+                splash
+                    .onAppear { model.bootstrap() }
             case .open:
                 MainSplitView()
                     .onAppear { StartupClock.mark("MainSplitView appear") }
@@ -273,6 +287,13 @@ public struct GiroCrabRootView: View {
             case .failed(let message):
                 LockView(error: message)
             }
+            }
+        }
+        .animation(.easeOut(duration: 0.35), value: splashHold)
+        .task {
+            guard splashHold else { return }
+            try? await Task.sleep(for: .seconds(1.0))
+            splashHold = false
         }
         .onChange(of: scenePhase) { _, phase in CloudSyncManager.shared.sceneChanged(phase) }
     }
@@ -311,6 +332,14 @@ struct LockView: View {
     /// Keychain prompt the user hasn't noticed (behind the window, other screen).
     @State private var waitingLong = false
 
+    private var waitingHint: LocalizedStringKey {
+        #if os(iOS)
+        "Bitte bestätigen Sie die Abfrage auf Ihrem Gerät (Face ID oder Code)."
+        #else
+        "Bitte bestätigen Sie die Abfrage von macOS (Touch ID oder Schlüsselbund). Sie kann hinter diesem Fenster oder auf einem anderen Bildschirm liegen."
+        #endif
+    }
+
     private var crabPhase: AnimatedCrabLogoView.Phase {
         if model.unlockCelebrating { return .unlocked }
         if error != nil { return .failed }
@@ -338,10 +367,14 @@ struct LockView: View {
             if model.vaultState == .unlocking {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
+                    #if os(iOS)
+                    Text("Warten auf \(VaultKeyManager.shared.biometryName) …").foregroundStyle(Theme.secondary)
+                    #else
                     Text("Warte auf macOS …").foregroundStyle(Theme.secondary)
+                    #endif
                 }
                 if waitingLong {
-                    Label("Bitte bestätigen Sie die Abfrage von macOS (Touch ID oder Schlüsselbund). Sie kann hinter diesem Fenster oder auf einem anderen Bildschirm liegen.", systemImage: "exclamationmark.bubble")
+                    Label(waitingHint, systemImage: "exclamationmark.bubble")
                         .font(.callout)
                         .foregroundStyle(Theme.warning)
                         .multilineTextAlignment(.center)

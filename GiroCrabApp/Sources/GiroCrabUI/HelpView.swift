@@ -277,7 +277,7 @@ struct HelpView: View {
         .searchable(text: $query, prompt: "In der Hilfe suchen")
         .navigationTitle("Hilfe & FAQ")
         #if os(macOS)
-        .frame(minWidth: 480, minHeight: 420)
+        .desktopFrame(minWidth: 480, minHeight: 420)
         #endif
     }
 
@@ -301,7 +301,7 @@ struct HelpSheet: View {
                 }
         }
         #if os(macOS)
-        .frame(minWidth: 560, minHeight: 560)
+        .desktopFrame(minWidth: 560, minHeight: 560)
         #endif
     }
 }

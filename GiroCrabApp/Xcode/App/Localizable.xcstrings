@@ -4023,6 +4023,17 @@
         }
       }
     },
+    "Bitte bestätigen Sie die Abfrage auf Ihrem Gerät (Face ID oder Code)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please confirm the prompt on your device (Face ID or passcode)."
+          }
+        }
+      }
+    },
     "Bitte bestätigen Sie die Abfrage von macOS (Touch ID oder Schlüsselbund). Sie kann hinter diesem Fenster oder auf einem anderen Bildschirm liegen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16361,6 +16372,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Waiting for macOS…"
+          }
+        }
+      }
+    },
+    "Warten auf %@ …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for %@ …"
           }
         }
       }

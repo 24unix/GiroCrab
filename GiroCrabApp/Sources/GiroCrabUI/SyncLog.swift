@@ -174,7 +174,7 @@ struct SyncLogView: View {
         .fileExporter(isPresented: $exporting, document: export, contentType: .commaSeparatedText,
                       defaultFilename: "GiroCrab-Abrufprotokoll") { _ in }
         .navigationTitle("Abruf-Protokoll")
-        .frame(minWidth: 680, minHeight: 320)
+        .desktopFrame(minWidth: 680, minHeight: 320)
         .task(id: model.syncLogVersion) { reload() }
         .onChange(of: search) { _, _ in reload() }
         .onChange(of: onlyErrors) { _, _ in reload() }

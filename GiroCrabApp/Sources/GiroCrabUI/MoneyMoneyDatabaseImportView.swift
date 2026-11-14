@@ -516,7 +516,7 @@ struct MoneyMoneyDatabaseImportView: View {
                 .accessibilityHidden(true)
             ProgressView(value: p.fraction)
                 .progressViewStyle(.linear)
-                .frame(width: 380)
+                .desktopFrame(width: 380)
             VStack(spacing: 4) {
                 Text(progressStatus(p)).font(.callout).lineLimit(1).truncationMode(.middle)
                 if p.bookingsTotal > 0 || p.documentsTotal > 0 {

@@ -48,7 +48,7 @@ struct PrintSheet: View {
                 }
         }
         #if os(macOS)
-        .frame(minWidth: 880, idealWidth: 960, minHeight: 520, idealHeight: 640)
+        .desktopFrame(minWidth: 880, idealWidth: 960, minHeight: 520, idealHeight: 640)
         #endif
         .onAppear {
             report = model.printSource()
@@ -61,7 +61,7 @@ struct PrintSheet: View {
     private var content: some View {
         #if os(macOS)
         HStack(spacing: 0) {
-            optionsForm.frame(width: 360)
+            optionsForm.desktopFrame(width: 360)
             Divider()
             bookingList
         }

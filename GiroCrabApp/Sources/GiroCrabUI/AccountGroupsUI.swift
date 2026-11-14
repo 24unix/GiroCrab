@@ -446,7 +446,7 @@ struct GroupManagerSheet: View {
             }
             .padding(12)
         }
-        .frame(width: 680, height: 560)
+        .desktopFrame(width: 680, height: 560)
         #else
         NavigationStack {
             AccountGroupsSettings()

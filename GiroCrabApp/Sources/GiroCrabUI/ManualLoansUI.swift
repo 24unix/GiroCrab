@@ -325,7 +325,7 @@ struct LoanEditorSheet: View {
             }
             .padding(16)
         }
-        .frame(minWidth: 520, idealWidth: 560, minHeight: isAnchor ? 520 : 660)
+        .desktopFrame(minWidth: 520, idealWidth: 560, minHeight: isAnchor ? 520 : 660)
         .onAppear(perform: load)
         .task(id: previewKey) { await refreshPreview() }
         #else

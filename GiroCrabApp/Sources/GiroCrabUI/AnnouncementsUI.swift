@@ -106,7 +106,7 @@ struct AnnouncementSheet: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 380, idealWidth: 460, minHeight: 220, idealHeight: 320)
+        .desktopFrame(minWidth: 380, idealWidth: 460, minHeight: 220, idealHeight: 320)
         #if os(iOS)
         .presentationDetents([.medium, .large])
         #endif
@@ -146,7 +146,7 @@ struct AnnouncementsListView: View {
                 }
             }
         }
-        .frame(minWidth: 380, minHeight: 280)
+        .desktopFrame(minWidth: 380, minHeight: 280)
         .task { await center.refresh() }
     }
 }

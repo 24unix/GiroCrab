@@ -75,7 +75,7 @@ struct AccountDocumentsSheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 520, minHeight: 440)
+        .desktopFrame(minWidth: 520, minHeight: 440)
         #endif
         .sheet(item: $preview) { d in DocumentPreviewSheet(doc: d) }
     }
@@ -127,7 +127,7 @@ struct DocumentPreviewSheet: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 640, minHeight: 520)
+        .desktopFrame(minWidth: 640, minHeight: 520)
         #endif
         .task { data = model.documentData(doc) }
         .fileExporter(

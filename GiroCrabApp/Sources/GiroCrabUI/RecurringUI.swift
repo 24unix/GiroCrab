@@ -195,7 +195,7 @@ struct CustomDatesSheet: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 380)
+        .desktopFrame(minWidth: 380)
         .onAppear {
             text = initialDates.map(CustomDates.short).joined(separator: ", ")
             focused = true
@@ -265,7 +265,7 @@ struct RecurringSheet: View {
                 }
             }
         }
-        .frame(minWidth: 560, idealWidth: 600, minHeight: 520, idealHeight: 640)
+        .desktopFrame(minWidth: 560, idealWidth: 600, minHeight: 520, idealHeight: 640)
         #if os(macOS)
         .onExitCommand { dismiss() }
         #endif

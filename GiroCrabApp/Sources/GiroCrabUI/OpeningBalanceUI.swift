@@ -121,7 +121,7 @@ struct OpeningBalanceSheet: View {
             }
             .padding(16)
         }
-        .frame(minWidth: 500, idealWidth: 540, minHeight: 520)
+        .desktopFrame(minWidth: 500, idealWidth: 540, minHeight: 520)
         .onAppear(perform: load)
         .task(id: dateString) { await refreshPreview() }
         #else
