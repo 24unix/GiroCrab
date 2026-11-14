@@ -6020,6 +6020,17 @@
         }
       }
     },
+    "Die Teilbeträge müssen zusammen %@ ergeben, erst dann lässt sich speichern." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The parts must add up to %@ before you can save."
+          }
+        }
+      }
+    },
     "Die Untergruppen bleiben erhalten und rücken auf die oberste Ebene." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10092,6 +10103,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Every savings bank and cooperative bank is a bank of its own. Search for it by its name (usually with the town), the bank code or your IBAN."
+          }
+        }
+      }
+    },
+    "Jeder Teil braucht einen Betrag größer als 0." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each part needs an amount greater than 0."
           }
         }
       }

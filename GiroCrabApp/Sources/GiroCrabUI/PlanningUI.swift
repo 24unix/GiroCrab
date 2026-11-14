@@ -403,6 +403,13 @@ struct SplitSheet: View {
                     .appFont(.callout, monospacedDigit: true)
                     .foregroundStyle(remaining == 0 ? Theme.inflow : Theme.warning)
             }
+            // Why "Speichern" is greyed out (#383): say so instead of leaving it silent.
+            if !valid, !parts.isEmpty, error == nil {
+                Text(remaining != 0
+                    ? "Die Teilbeträge müssen zusammen \(Money.format(total)) ergeben, erst dann lässt sich speichern."
+                    : "Jeder Teil braucht einen Betrag größer als 0.")
+                    .appFont(.callout).foregroundStyle(Theme.secondary)
+            }
             if let error { Text(error).appFont(.callout).foregroundStyle(Theme.negative) }
             HStack {
                 if hasSplits {
