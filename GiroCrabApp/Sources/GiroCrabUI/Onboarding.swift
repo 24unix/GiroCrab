@@ -142,15 +142,27 @@ struct BankSetupSheet: View {
     @State private var values: [String: String] = [:]
 
     var body: some View {
+        #if os(iOS)
+        ScrollView { content.padding(20) }
+        #else
+        content.padding(24).macFrame(width: 520)
+        #endif
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
-                SymbolTile(symbol: request.connection.sfSymbol, tint: request.connection.connector.tint, size: 34)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(request.connection.displayName) einrichten").font(.headline)
-                    Text("Diese Angaben fehlen noch, bevor Buchungen abgerufen werden können.")
-                        .font(.caption).foregroundStyle(Theme.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    SymbolTile(symbol: request.connection.sfSymbol, tint: request.connection.connector.tint, size: 34)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(request.connection.displayName) einrichten").font(.headline)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Diese Angaben fehlen noch, bevor Buchungen abgerufen werden können.")
+                            .font(.caption).foregroundStyle(Theme.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer()
                 SyncBatchProgressLabel()
             }
             if request.keys.contains(where: { Self.enableBankingKeys.contains($0) }) {
@@ -202,8 +214,6 @@ struct BankSetupSheet: View {
                 .disabled(request.keys.contains { (values[$0] ?? "").trimmingCharacters(in: .whitespaces).isEmpty })
             }
         }
-        .padding(24)
-        .macFrame(width: 520)
     }
 
     private func binding(_ key: String) -> Binding<String> {

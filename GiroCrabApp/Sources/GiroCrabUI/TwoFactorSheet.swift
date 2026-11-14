@@ -232,6 +232,23 @@ struct SyncPromptButtons<Default: View>: View {
     @ViewBuilder let defaultButton: () -> Default
 
     var body: some View {
+        #if os(iOS)
+        // iPhone: stack the actions so nothing clips horizontally
+        VStack(spacing: 10) {
+            defaultButton()
+            if model.canSkipInSyncBatch {
+                Button(role: .cancel, action: cancel) {
+                    Text("Überspringen").frame(maxWidth: .infinity)
+                }
+                Button("Alle abbrechen") { model.cancelAllSync() }
+            } else {
+                Button("Abbrechen", role: .cancel, action: cancel)
+            }
+            if let leading { leading }
+        }
+        .frame(maxWidth: .infinity)
+        .interactiveDismissDisabled(model.syncBatchProgress != nil)
+        #else
         HStack {
             if model.canSkipInSyncBatch {
                 Button("Alle abbrechen") { model.cancelAllSync() }
@@ -257,6 +274,7 @@ struct SyncPromptButtons<Default: View>: View {
         // iOS: a swipe-down would bypass `cancel` and stall "Alle abrufen";
         // the preference reaches the sheet from here (PIN, setup, browser login)
         .interactiveDismissDisabled(model.syncBatchProgress != nil)
+        #endif
     }
 }
 

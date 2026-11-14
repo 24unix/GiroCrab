@@ -24,7 +24,6 @@ public struct AnimatedCrabLogoView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Animations-Zustände (normiert auf den 1024x1024 Canvas)
-    @State private var hoverOffsetY: CGFloat = 0
     @State private var hopOffsetY: CGFloat = 0
     @State private var coinOffsetY: CGFloat = 0
     @State private var coinFlipDegrees: Double = 0
@@ -47,10 +46,47 @@ public struct AnimatedCrabLogoView: View {
         self.showBackgroundSquircle = showBackgroundSquircle
     }
 
-    public var body: some View {
-        let scale = size / 1024.0
+    /// Hover height in canvas units for time `t` (sine, period 4.2 s, 0…-14).
+    /// Time-driven instead of `repeatForever`: UIKit layout passes (sheets,
+    /// navigation) cancel such animations on iOS.
+    private func hoverOffset(at date: Date) -> CGFloat {
+        guard !reduceMotion else { return 0 }
+        let t = date.timeIntervalSinceReferenceDate
+        return -14 * CGFloat(0.5 - 0.5 * cos(2 * .pi * t / 4.2))
+    }
 
-        ZStack {
+    public var body: some View {
+        TimelineView(.animation(paused: reduceMotion)) { context in
+            crab(hoverOffsetY: hoverOffset(at: context.date))
+        }
+        .frame(width: size, height: size)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            triggerCoinTossAndShimmer()
+        }
+        .onAppear {
+            startAnimations()
+        }
+        .onDisappear {
+            idleTask?.cancel()
+            idleTask = nil
+        }
+        .onChange(of: phase) { _, newPhase in
+            handlePhaseChange(newPhase)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("GiroCrab"))
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private func crab(hoverOffsetY: CGFloat) -> some View {
+        let scale = size / 1024.0
+        let totalLift = -(hoverOffsetY + hopOffsetY)
+        let clamped = max(-40, min(60, totalLift))
+        let shadowScale = max(0.78, 1.0 - (clamped / 260.0))
+        let shadowOpacity = Double(max(0.18, 0.35 - (clamped / 320.0)))
+
+        return ZStack {
             if showBackgroundSquircle {
                 RoundedRectangle(cornerRadius: 220 * scale, style: .continuous)
                     .fill(Color(hex: 0x263040))
@@ -110,49 +146,12 @@ public struct AnimatedCrabLogoView: View {
             }
             .offset(y: (hoverOffsetY + hopOffsetY) * scale)
         }
-        .frame(width: size, height: size)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            triggerCoinTossAndShimmer()
-        }
-        .onAppear {
-            startAnimations()
-        }
-        .onDisappear {
-            idleTask?.cancel()
-            idleTask = nil
-        }
-        .onChange(of: phase) { _, newPhase in
-            handlePhaseChange(newPhase)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("GiroCrab"))
-        .accessibilityAddTraits(.isButton)
-    }
-
-    private var totalLift: CGFloat {
-        -(hoverOffsetY + hopOffsetY)
-    }
-
-    private var shadowScale: CGFloat {
-        let clamped = max(-40, min(60, totalLift))
-        return max(0.78, 1.0 - (clamped / 260.0))
-    }
-
-    private var shadowOpacity: Double {
-        let clamped = max(-40, min(60, totalLift))
-        return Double(max(0.18, 0.35 - (clamped / 320.0)))
     }
 
     // MARK: - Animations-Abläufe
 
     private func startAnimations() {
         guard !reduceMotion else { return }
-
-        // Sanftes Atmen/Schweben
-        withAnimation(.easeInOut(duration: 2.1).repeatForever(autoreverses: true)) {
-            hoverOffsetY = -14
-        }
 
         // Initialer Münzwurf + Karten-Schimmer beim Erscheinen
         triggerCoinTossAndShimmer()
