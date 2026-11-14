@@ -323,6 +323,12 @@ pub struct RemoteTransaction {
     pub purpose_code: String,
     /// German Geschäftsvorfallcode (3 digits, e.g. `153`); "" = unknown.
     pub gvc: String,
+    /// SEPA end-to-end reference (`EndToEndId`); "" = unknown or `NOTPROVIDED`.
+    pub end_to_end_id: String,
+    /// SEPA direct-debit mandate reference; "" = unknown.
+    pub mandate_id: String,
+    /// SEPA creditor identifier (Gläubiger-ID) of a direct debit; "" = unknown.
+    pub creditor_id: String,
 }
 
 impl RemoteTransaction {

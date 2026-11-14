@@ -132,6 +132,8 @@ struct Entry {
     booking_text: String,
     end_to_end: String,
     mandate: String,
+    /// `CdtrSchmeId/Id/…/Id` (SEPA creditor identifier).
+    creditor_id: String,
     remittance: Vec<String>,
     debtor: String,
     creditor: String,
@@ -274,6 +276,12 @@ pub fn parse(xml: &str, account_ref: &str) -> (Vec<RemoteTransaction>, CamtRepor
                     e.end_to_end = text;
                 } else if ends_with(&stack, &["Refs", "MndtId"]) {
                     e.mandate = text;
+                } else if has(&stack, "CdtrSchmeId")
+                    && stack.last().map(|s| s == "Id").unwrap_or(false)
+                {
+                    if e.creditor_id.is_empty() {
+                        e.creditor_id = text.trim().to_string();
+                    }
                 } else if ends_with(&stack, &["Purp", "Cd"]) {
                     if e.purpose_code.is_empty() {
                         e.purpose_code = text.trim().to_ascii_uppercase();
@@ -360,6 +368,13 @@ pub fn parse(xml: &str, account_ref: &str) -> (Vec<RemoteTransaction>, CamtRepor
                 e.purpose_code.clone()
             },
             gvc: dk_gvc(&e.proprietary),
+            end_to_end_id: if e.end_to_end.trim().eq_ignore_ascii_case("NOTPROVIDED") {
+                String::new()
+            } else {
+                e.end_to_end.trim().to_string()
+            },
+            mandate_id: e.mandate.trim().to_string(),
+            creditor_id: e.creditor_id.clone(),
         };
         let key = format!(
             "{}{}{}{}",

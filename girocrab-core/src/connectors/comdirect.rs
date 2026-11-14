@@ -175,17 +175,34 @@ impl ComdirectConnector {
         since: &str,
     ) -> Vec<crate::documents::RemoteDocument> {
         let mut out = Vec::new();
-        let mut list = Value::Null;
-        for path in [
-            "/api/messages/clients/user/v2/documents?paging-first=0&paging-count=50",
-            "/api/messages/v1/documents?paging-first=0&paging-count=50",
-        ] {
-            if let Ok(v) = self.get(path).await {
-                list = v;
+        let mut entries: Vec<Value> = Vec::new();
+        // The v2 route may be missing for some contracts: the first page picks the route.
+        let mut route = None;
+        let mut first = 0usize;
+        for _ in 0..POSTBOX_MAX_PAGES {
+            let page = match route {
+                Some(r) => self.get(&postbox_path(r, first)).await.ok(),
+                None => {
+                    let mut found = None;
+                    for r in [POSTBOX_V2, POSTBOX_V1] {
+                        if let Ok(v) = self.get(&postbox_path(r, first)).await {
+                            route = Some(r);
+                            found = Some(v);
+                            break;
+                        }
+                    }
+                    found
+                }
+            };
+            let Some(page) = page else { break };
+            let got = page["values"].as_array().map_or(0, Vec::len);
+            entries.extend(page["values"].as_array().cloned().unwrap_or_default());
+            first += got;
+            if !has_more_pages(&page, first, got, POSTBOX_PAGE) {
                 break;
             }
         }
-        for d in list["values"].as_array().cloned().unwrap_or_default() {
+        for d in entries {
             let mime = d["mimeType"].as_str().unwrap_or("application/pdf");
             let date: String = d["dateCreation"]
                 .as_str()
@@ -463,12 +480,12 @@ impl BankConnector for ComdirectConnector {
                 balance_cents: json_number_to_cents(&item["balance"]["value"]).unwrap_or(0),
                 balance_date: super::today(),
             });
-            let mut index = 0u32;
+            let mut index = 0usize;
             let mut ids = super::ContentIds::default();
             loop {
                 let page = self
                     .get(&format!(
-                        "/api/banking/v1/accounts/{id}/transactions?transactionState=BOOKED&paging-first={index}&paging-count=500&min-bookingDate={}",
+                        "/api/banking/v1/accounts/{id}/transactions?transactionState=BOOKED&paging-first={index}&paging-count={TX_PAGE}&min-bookingDate={}",
                         ctx.since
                     ))
                     .await?;
@@ -481,8 +498,7 @@ impl BankConnector for ComdirectConnector {
                     out.transactions.push(rt);
                     index += 1;
                 }
-                let total = page["paging"]["matches"].as_u64().unwrap_or(0) as u32;
-                if values.is_empty() || index >= total {
+                if !has_more_pages(&page, index, values.len(), TX_PAGE) {
                     break;
                 }
             }
@@ -595,6 +611,40 @@ impl BankConnector for ComdirectConnector {
     }
 }
 
+const TX_PAGE: usize = 500;
+const POSTBOX_PAGE: usize = 50;
+/// Upper bound for PostBox listing pages (500 documents).
+const POSTBOX_MAX_PAGES: usize = 10;
+const POSTBOX_V2: &str = "/api/messages/clients/user/v2/documents";
+const POSTBOX_V1: &str = "/api/messages/v1/documents";
+
+fn postbox_path(route: &str, first: usize) -> String {
+    format!("{route}?paging-first={first}&paging-count={POSTBOX_PAGE}")
+}
+
+/// Whether another page follows. `fetched` = entries received so far, `got` = size
+/// of this page. Without `paging.matches` a full page means "maybe more" (the
+/// next request then ends with an empty page).
+fn has_more_pages(page: &Value, fetched: usize, got: usize, page_size: usize) -> bool {
+    if got == 0 {
+        return false;
+    }
+    match page["paging"]["matches"].as_u64() {
+        Some(total) => (fetched as u64) < total,
+        None => got >= page_size,
+    }
+}
+
+/// A SEPA reference; the placeholder `NOTPROVIDED` counts as "unknown".
+fn sepa_ref(v: &Value) -> String {
+    let s = v.as_str().unwrap_or_default().trim();
+    if s.eq_ignore_ascii_case("NOTPROVIDED") {
+        String::new()
+    } else {
+        s.to_string()
+    }
+}
+
 /// Maps one `/accounts/{id}/transactions` entry. Not yet booked entries have no
 /// `reference` and often no `bookingDate`; the caller fills in an id and date.
 fn map_transaction(t: &Value, account_ref: &str) -> RemoteTransaction {
@@ -616,6 +666,9 @@ fn map_transaction(t: &Value, account_ref: &str) -> RemoteTransaction {
         counterparty_iban: text(&party["iban"]),
         purpose: strip_line_numbers(t["remittanceInfo"].as_str().unwrap_or_default()),
         booking_text: text(&t["transactionType"]["text"]),
+        end_to_end_id: sepa_ref(&t["endToEndReference"]),
+        mandate_id: sepa_ref(&t["directDebitMandateId"]),
+        creditor_id: sepa_ref(&t["directDebitCreditorId"]),
         ..Default::default()
     }
 }
@@ -690,6 +743,40 @@ mod api_path_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn paging_continues_without_matches_only_on_full_page() {
+        let with = |m: u64| serde_json::json!({"paging": {"matches": m}});
+        assert!(super::has_more_pages(&with(1200), 500, 500, 500));
+        assert!(!super::has_more_pages(&with(500), 500, 500, 500));
+        let none = serde_json::json!({});
+        assert!(super::has_more_pages(&none, 500, 500, 500));
+        assert!(!super::has_more_pages(&none, 120, 120, 500));
+        assert!(!super::has_more_pages(&none, 500, 0, 500));
+    }
+
+    #[test]
+    fn postbox_path_pages_by_offset() {
+        assert_eq!(
+            super::postbox_path(super::POSTBOX_V2, 100),
+            "/api/messages/clients/user/v2/documents?paging-first=100&paging-count=50"
+        );
+    }
+
+    #[test]
+    fn maps_sepa_references_of_a_direct_debit() {
+        let j: serde_json::Value = serde_json::from_str(
+            r#"{"reference":"R1","bookingDate":"2026-01-05","amount":{"value":"-9.99","unit":"EUR"},
+            "creditor":{"holderName":"Stadtwerke"},
+            "endToEndReference":"NOTPROVIDED","directDebitMandateId":" M-123 ",
+            "directDebitCreditorId":"DE98ZZZ09999999999","remittanceInfo":"Strom"}"#,
+        )
+        .unwrap();
+        let t = super::map_transaction(&j, "acc");
+        assert_eq!(t.end_to_end_id, "");
+        assert_eq!(t.mandate_id, "M-123");
+        assert_eq!(t.creditor_id, "DE98ZZZ09999999999");
+    }
+
     #[test]
     fn parses_depot_positions() {
         let j: serde_json::Value = serde_json::from_str(
