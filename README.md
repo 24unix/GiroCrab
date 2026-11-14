@@ -54,9 +54,16 @@ zu Ihren Banken per **FinTS 3.0 / HBCI** und **PSD2 (Enable Banking)** – ohne 
 
 *Angaben zu Drittprodukten ohne Gewähr; GiroCrab ist unabhängig von diesen Anbietern. Auch als Alternative zu Banking4, Bank X oder Pecunia gedacht, die einen lokalen Mac-Client suchen.*
 
-### ✨ Neu in v0.6.2
+### ✨ Neu in v0.6.3
 
-*Aktuell als Beta `v0.6.2-beta.1` für Tester (Kanal „Beta“); die stabile Version bleibt v0.6.1.*
+- 🏦 **FinTS: Einschritt-Fallback bei Fehler 9010 (#313):** lehnt die Bank die Dialoginitialisierung mit TAN-Prozess 4 ab, versucht GiroCrab es einmalig im Einschritt-Verfahren 999 und merkt sich die Präferenz für die Verbindung.
+- 🧾 **SEPA-Referenzen werden gespeichert:** End-to-End-ID, Mandatsreferenz und Gläubiger-ID landen bankunabhängig am Umsatz (Schema 12) – befüllt von comdirect, FinTS/CAMT und Enable Banking (Mandatsreferenz). Die SEPA-Rohdaten sind in der Buchung aufklappbar (#320). Vor dem Testen eine Sicherungskopie des Tresors anlegen, falls ältere Versionen ihn wieder öffnen sollen.
+- 🔄 **comdirect-Paging korrigiert:** Kontoumsätze blättern bei voller Seite weiter, die PostBox lädt bis zu 500 statt 50 Dokumente.
+- 🪙 **bunq:** externe Sparkonten werden als Sparkonto erkannt, Konten in Auflösung übersprungen.
+- 🏷️ **Kategorien (#94):** eine manuell gesetzte Kategorie oder ein ETF-Sparplan hat Vorrang vor der Eigenkonto-IBAN-Heuristik; Umbuchungen bleiben nur bei unkategorisierten Buchungen automatisch erkannt.
+- 🛡️ **Weitere Korrekturen:** MoneyMoney-Passworthinweis (#321), Symlink-Schutz beim Kontoauszug-Import (#318), iOS-Entsperrtext, Sheet-Breiten auf dem iPhone und Mindestdauer des Krabben-Splash (#317) sowie Hinweise bei lang laufenden Tresor-Zugriffen mit Zählung per SQL-Aggregat (#266).
+
+**Highlights aus v0.6.2:**
 
 - 🧮 **Startsaldo für Konten mit berechnetem Saldo (#212, #227):** wie in MoneyMoney lässt sich ein Startsaldo mit optionalem Stichtag festlegen und per „Kalibrieren“ aus dem letzten Kontostand ableiten; der MoneyMoney-Datenbankimport übernimmt ihn. Entfernen setzt den Saldo auf die reine Umsatzsumme zurück.
 - 🗄️ **Versionierte Schema-Migrationen mit Downgrade-Schutz (#206, #232):** Tresore werden in nummerierten Schritten migriert; ein Tresor aus einer neueren Version wird nicht geöffnet. Diese Version hebt Tresore auf **Schema 10** – vor dem Testen eine Sicherungskopie anlegen, falls v0.6.1 den Tresor wieder öffnen soll.
@@ -256,9 +263,16 @@ recognition, savings-plan view, loan repayment progress and direct connections t
 
 *Information about third-party products without guarantee; GiroCrab is independent of these vendors.*
 
-### ✨ What's new in v0.6.2
+### ✨ What's new in v0.6.3
 
-*Currently available as beta `v0.6.2-beta.1` for testers (“Beta” channel); the stable version stays v0.6.1.*
+- 🏦 **FinTS: single-step fallback on error 9010 (#313):** if the bank rejects dialog initialisation with TAN process 4, GiroCrab retries once with single-step method 999 and remembers the preference for that connection.
+- 🧾 **SEPA references are stored:** end-to-end ID, mandate reference and creditor ID are kept per booking, independent of the bank (schema 12) – filled by comdirect, FinTS/CAMT and Enable Banking (mandate reference). Raw SEPA data can be expanded in the booking (#320). Make a vault backup first if you may want to open it in an older version again.
+- 🔄 **comdirect paging fixed:** account transactions keep paging on full pages, and the PostBox loads up to 500 instead of 50 documents.
+- 🪙 **bunq:** external savings accounts are recognised as savings accounts, accounts being closed are skipped.
+- 🏷️ **Categories (#94):** a manually set category or an ETF savings plan takes precedence over the own-account IBAN heuristic; transfers are still detected automatically for uncategorised bookings.
+- 🛡️ **More fixes:** MoneyMoney password hint (#321), symlink protection for statement import (#318), iOS unlock text, sheet widths on iPhone and minimum duration of the crab splash (#317), plus reporting of long-running vault accesses and counts via SQL aggregate (#266).
+
+**Highlights from v0.6.2:**
 
 - 🧮 **Opening balance for accounts with a computed balance (#212, #227):** as in MoneyMoney, set an opening balance with an optional cut-off date and derive it from the latest statement balance with “Calibrate”; the MoneyMoney database import picks it up. Removing it falls back to the plain sum of the bookings.
 - 🗄️ **Versioned schema migrations with downgrade protection (#206, #232):** vaults migrate in numbered steps; a vault written by a newer version is refused. This version upgrades vaults to **schema 10** – make a backup copy first if you may want to open the vault in v0.6.1 again.
