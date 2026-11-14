@@ -184,6 +184,10 @@ public final class AppModel {
     var allAccountsCollapsed: Bool = UserDefaults.standard.bool(forKey: AppModel.allAccountsCollapsedKey) {
         didSet { UserDefaults.standard.set(allAccountsCollapsed, forKey: AppModel.allAccountsCollapsedKey) }
     }
+    /// The sidebar's category tree, „Ohne Kategorie“ included, folded away under its header.
+    var categoriesCollapsed: Bool = UserDefaults.standard.bool(forKey: "sidebar.categoriesCollapsed") {
+        didSet { UserDefaults.standard.set(categoriesCollapsed, forKey: "sidebar.categoriesCollapsed") }
+    }
     var collapsedUserGroups: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "sidebar.collapsedUserGroups") ?? []) {
         didSet { UserDefaults.standard.set(Array(collapsedUserGroups), forKey: "sidebar.collapsedUserGroups") }
     }

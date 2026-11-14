@@ -71,28 +71,23 @@ struct SidebarView: View {
                 }
             }
 
-            Section {
-                HStack(spacing: 8) {
-                    Image(systemName: "questionmark.folder").foregroundStyle(Theme.warning).frame(width: 20)
-                    Text("Ohne Kategorie").appDefaultFont()
-                    Spacer()
-                }
-                .badge(model.uncategorizedCount)
-                .tag(SidebarItem.uncategorized)
-                categoryRows(model.categoryTree)
-            } header: {
-                HStack(spacing: 4) {
-                    Text("Kategorien").appFont(.caption, weight: .semibold)
-                    Spacer()
-                    Button { model.newCategoryRequest = NewCategoryRequest(parent: nil) } label: {
-                        Image(systemName: "plus").frame(width: 24, height: 18).contentShape(Rectangle())
+            // a plain row styled like the group headers (not a List section
+            // header, whose small caption style can't match them)
+            CategoriesHeader()
+                .padding(.top, 10)
+            if !model.categoriesCollapsed {
+                Group {
+                    HStack(spacing: 8) {
+                        Image(systemName: "questionmark.folder").foregroundStyle(Theme.warning).frame(width: 20)
+                        Text("Ohne Kategorie").appDefaultFont()
+                        Spacer()
                     }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(Theme.secondary)
-                    .help("Neue Hauptkategorie …")
-                    .accessibilityLabel("Neue Hauptkategorie")
-                    .disabled(!model.isUnlocked)
+                    .badge(model.uncategorizedCount)
+                    .tag(SidebarItem.uncategorized)
+                    categoryRows(model.categoryTree)
                 }
+                // one step right of their header, like the groups under „Alle Konten“
+                .padding(.leading, 14)
             }
         }
         .listStyle(.sidebar)
@@ -740,5 +735,46 @@ private struct CategoryIconColorPopover: ViewModifier {
         content.popover(isPresented: model.iconColorBinding(.category(id)), arrowEdge: .trailing) {
             IconColorPopover(target: .category(id)).environment(model)
         }
+    }
+}
+
+/// Header of the category tree: chevron, symbol and name like a group header
+/// (`UserGroupHeader`), the „+“ for a new main category on the right.
+private struct CategoriesHeader: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let open = !model.categoriesCollapsed
+        let toggle = { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { model.categoriesCollapsed.toggle() } }
+        HStack(spacing: 5) {
+            // folds the category tree away (rarely used, takes room)
+            Button(action: toggle) {
+                Image(systemName: "chevron.right")
+                    .appFont(.caption, weight: .bold)
+                    .rotationEffect(.degrees(open ? 90 : 0))
+                    .frame(width: 12, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(open ? "Kategorien einklappen" : "Kategorien ausklappen")
+            .accessibilityValue(open ? "Ausgeklappt" : "Eingeklappt")
+            Image(systemName: "tag")
+                .appFont(.body, weight: .semibold)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+            Text("Kategorien").lineLimit(1)
+            Spacer()
+            Button { model.newCategoryRequest = NewCategoryRequest(parent: nil) } label: {
+                Image(systemName: "plus").frame(width: 24, height: 18).contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .help("Neue Hauptkategorie …")
+            .accessibilityLabel("Neue Hauptkategorie")
+            .disabled(!model.isUnlocked)
+        }
+        .appFont(.body, weight: .semibold) // as big as the group headers
+        .foregroundStyle(.secondary)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggle)
     }
 }

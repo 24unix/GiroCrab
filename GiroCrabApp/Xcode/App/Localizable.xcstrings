@@ -10382,6 +10382,28 @@
         }
       }
     },
+    "Kategorien ausklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expand Categories"
+          }
+        }
+      }
+    },
+    "Kategorien einklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse Categories"
+          }
+        }
+      }
+    },
     "Kategorien und Regeln (%lld)" : {
       "extractionState" : "manual",
       "localizations" : {
