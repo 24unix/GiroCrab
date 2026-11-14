@@ -3,7 +3,7 @@
 # and optionally archive & upload the iOS build to TestFlight / App Store Connect.
 #
 # Usage: scripts/notarize.sh [--upload <TAG> [--critical | --critical-below X.Y.Z]
-#                             [--rotate-key <account> | --lost-key <account>] | --nightly] [--ios]
+#                             [--rotate-key <account> | --lost-key <account>] | --nightly] [--ios] [--no-sync]
 #   --upload <TAG>  create/update GitHub release <TAG> with structured changelog and upload the
 #                   signed + notarized macOS disk image (GiroCrab-macOS-arm64.dmg)
 #                   vX.Y.Z          stable release
@@ -21,6 +21,8 @@
 #                   the signing key is LOST: new key <account>, new public key, new feed.
 #                   Installed apps accept it only after Sparkle's 20-day grace period.
 #                   See docs/auto-updates.md ("Schlüsselwechsel").
+#   --no-sync       with --upload of a stable tag: skip the automatic
+#                   scripts/sync-docs-and-website.sh --push (README PR + girocrab.de commit)
 #   --nightly       move 'nightly' tag to HEAD, create/update rolling GitHub pre-release and upload the disk image
 #                   (bundle version <last v* tag's version>.<UTC timestamp>)
 # In-app updates: every run merges its item into the one signed appcast.xml on
@@ -51,6 +53,7 @@ NIGHTLY=0
 BUILD_IOS=0
 ROTATE_TO=""
 LOST_TO=""
+NO_SYNC=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --upload)
@@ -72,6 +75,9 @@ while [ $# -gt 0 ]; do
     --ios)
       BUILD_IOS=1
       shift ;;
+    --no-sync)
+      NO_SYNC=1
+      shift ;;
     --rotate-key)
       ROTATE_TO="${2:-}"
       [ -n "$ROTATE_TO" ] || { echo "error: --rotate-key needs a new keychain account name" >&2; exit 2; }
@@ -80,7 +86,7 @@ while [ $# -gt 0 ]; do
       LOST_TO="${2:-}"
       [ -n "$LOST_TO" ] || { echo "error: --lost-key needs a new keychain account name" >&2; exit 2; }
       shift 2 ;;
-    *) echo "usage: $0 [--upload <TAG> [--critical | --critical-below X.Y.Z] [--rotate-key <account> | --lost-key <account>] | --nightly] [--ios]" >&2; exit 2 ;;
+    *) echo "usage: $0 [--upload <TAG> [--critical | --critical-below X.Y.Z] [--rotate-key <account> | --lost-key <account>] | --nightly] [--ios] [--no-sync]" >&2; exit 2 ;;
   esac
 done
 
@@ -623,8 +629,16 @@ fi
 
 if [ -n "$UPLOAD_TAG" ] && [[ "$UPLOAD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo ""
-  echo "==> README + girocrab.de: the 'Release' workflow syncs them when the release is published (needs WEBSITE_DEPLOY_TOKEN)."
-  echo "    Locally / if the workflow was skipped: ./scripts/sync-docs-and-website.sh --push --version $UPLOAD_TAG"
+  if [ "$NO_SYNC" -eq 1 ]; then
+    echo "==> --no-sync: skipping README + girocrab.de sync."
+    echo "    Later: ./scripts/sync-docs-and-website.sh --push --version $UPLOAD_TAG"
+  else
+    echo "==> Syncing README + girocrab.de for $UPLOAD_TAG"
+    if ! ./scripts/sync-docs-and-website.sh --push --version "$UPLOAD_TAG"; then
+      echo "warning: README/website sync failed; the release itself is done. Retry:" >&2
+      echo "    ./scripts/sync-docs-and-website.sh --push --version $UPLOAD_TAG" >&2
+    fi
+  fi
 fi
 
 echo "==> Done"
