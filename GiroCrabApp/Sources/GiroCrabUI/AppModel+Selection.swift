@@ -210,7 +210,7 @@ extension AppModel {
 
     /// Default of the date dialog before the user ever picked a range: last month.
     static var defaultCustomPeriod: (from: String, to: String) {
-        let (from, to) = Period.lastMonth.range
+        let (from, to) = Period.previousMonth().range
         return (from ?? DateText.iso(Date()), to ?? DateText.iso(Date()))
     }
 

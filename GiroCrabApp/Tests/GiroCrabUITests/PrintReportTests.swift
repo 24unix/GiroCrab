@@ -152,7 +152,7 @@ final class PrintReportTests: XCTestCase {
         model.period = .all
         let source = try XCTUnwrap(model.printSource())
         XCTAssertEqual(source.rows.count, Int(model.page?.totalCount ?? 0))
-        model.period = .lastMonth
+        model.period = Period.previousMonth()
         let (from, to) = model.periodRange
         let month = try XCTUnwrap(model.printSource())
         XCTAssertTrue(month.rows.allSatisfy { $0.date >= from! && $0.date <= to! })

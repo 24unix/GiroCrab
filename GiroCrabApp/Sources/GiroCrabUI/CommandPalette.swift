@@ -39,8 +39,9 @@ struct CommandPaletteView: View {
         })
         out.append(Item(title: String(localized: "Wiederkehrende Buchungen"), subtitle: action, symbol: "repeat") { model.showRecurringSheet = true })
         out.append(Item(title: String(localized: "Zeitraum: Seit letztem Gehalt"), subtitle: String(localized: "Ansicht"), symbol: "banknote") { model.interactivePeriod = .sinceSalary })
-        out.append(Item(title: String(localized: "Zeitraum: Letzte 12 Monate"), subtitle: String(localized: "Ansicht"), symbol: "calendar") { model.interactivePeriod = .last12Months })
-        out.append(Item(title: String(localized: "Zeitraum: Letztes Jahr"), subtitle: String(localized: "Ansicht"), symbol: "calendar") { model.interactivePeriod = .lastYear })
+        out.append(Item(title: String(localized: "Zeitraum: 12 Monate"), subtitle: String(localized: "Ansicht"), symbol: "calendar") { model.interactivePeriod = .months12 })
+        let previousYear = Period.previousYear()
+        out.append(Item(title: String(localized: "Zeitraum: \(previousYear.title)"), subtitle: String(localized: "Ansicht"), symbol: "calendar") { model.interactivePeriod = previousYear })
         out.append(Item(title: String(localized: "Zeitraum: Benutzerdefiniert …"), subtitle: String(localized: "Ansicht"), symbol: "calendar.badge.clock") {
             // once the palette sheet is gone, so the popover can anchor
             model.afterPaletteDismiss = { model.showCustomPeriod = true }

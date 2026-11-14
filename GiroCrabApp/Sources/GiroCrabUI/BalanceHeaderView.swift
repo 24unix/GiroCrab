@@ -273,11 +273,14 @@ struct StreamHeaderCard: View {
         @Bindable var model = model
         return Group {
             Menu {
-                Picker("Zeitraum", selection: $model.interactivePeriod) {
-                    ForEach(Period.presets) { Text($0.title).tag($0) }
+                // MoneyMoney's sections (#382), each an inline picker on the same selection
+                ForEach(Array(Period.menu().enumerated()), id: \.offset) { _, section in
+                    Picker("Zeitraum", selection: $model.interactivePeriod) {
+                        ForEach(section) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                    Divider()
                 }
-                .pickerStyle(.inline)
-                Divider()
                 // A Toggle gives the native menu checkmark while the custom range is active;
                 // choosing it always opens the date dialog.
                 Toggle(isOn: Binding(get: { model.period == .custom }, set: { _ in model.showCustomPeriod = true })) {

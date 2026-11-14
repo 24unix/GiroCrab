@@ -518,7 +518,7 @@ public final class AppModel {
             }
         case "print":
             // Print dialog (GitHub #53) on last month's demo bookings.
-            period = .lastMonth
+            period = Period.previousMonth()
             showPrintSheet = true
         case "transfer", "transfer-confirm":
             if let a = transferAccounts.first { sidebarSelection = .account(a.id) }

@@ -664,6 +664,17 @@
         }
       }
     },
+    "%lld Tage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Days"
+          }
+        }
+      }
+    },
     "%lld Treffer" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -811,6 +822,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld."
+          }
+        }
+      }
+    },
+    "%lld. Quartal %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Q%lld %@"
           }
         }
       }
@@ -1510,6 +1532,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 match"
+          }
+        }
+      }
+    },
+    "12 Monate" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "12 Months"
           }
         }
       }
@@ -10026,6 +10059,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Year"
+          }
+        }
+      }
+    },
+    "Jahr %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Year %@"
           }
         }
       }
@@ -19155,6 +19199,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Period"
+          }
+        }
+      }
+    },
+    "Zeitraum: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Period: %@"
+          }
+        }
+      }
+    },
+    "Zeitraum: 12 Monate" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Period: 12 Months"
           }
         }
       }

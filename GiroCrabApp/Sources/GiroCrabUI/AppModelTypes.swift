@@ -17,35 +17,63 @@ enum SidebarItem: Hashable {
     case documents
 }
 
-enum Period: String, CaseIterable, Identifiable {
-    case all = "Gesamter Zeitraum"
-    case thisMonth = "Dieser Monat"
-    case lastMonth = "Letzter Monat"
-    case last3Months = "Letzte 3 Monate"
-    case last12Months = "Letzte 12 Monate"
-    case thisQuarter = "Dieses Quartal"
-    case thisYear = "Dieses Jahr"
-    case lastYear = "Letztes Jahr"
+/// Period of the booking list and its sums. The menu follows MoneyMoney
+/// (GitHub #382): rolling windows, then the latest months, quarters and years
+/// by name, counted back from today.
+enum Period: Hashable, Identifiable {
+    case all
+    /// Today and the `n − 1` days before.
+    case days(Int)
+    /// Rolling year: from the same day a year ago (exclusive) to today.
+    case months12
     /// Pay cycle: from the latest detected salary inflow (GitHub #37).
-    case sinceSalary = "Seit letztem Gehalt"
+    case sinceSalary
+    case month(Int, Int)
+    case quarter(Int, Int)
+    case year(Int)
     /// User-defined start and end date (GitHub #53); the dates live in `AppModel`.
-    case custom = "Benutzerdefiniert"
-    var id: String { rawValue }
+    case custom
+    var id: Self { self }
 
-    /// Fixed periods for the picker; `.custom` is chosen through the date dialog.
-    static var presets: [Period] { allCases.filter { $0 != .custom } }
+    private static var calendar: Calendar { Calendar(identifier: .gregorian) }
+
+    /// The menu sections; `.custom` is chosen through the date dialog.
+    static func menu(now: Date = Date()) -> [[Period]] {
+        let c = calendar.dateComponents([.year, .month], from: now)
+        let (y, m) = (c.year ?? 2000, c.month ?? 1)
+        let months = (0..<3).map { back -> Period in
+            let i = y * 12 + (m - 1) - back
+            return .month(i / 12, i % 12 + 1)
+        }
+        let quarters = (0..<3).map { back -> Period in
+            let i = y * 4 + (m - 1) / 3 - back
+            return .quarter(i / 4, i % 4 + 1)
+        }
+        return [
+            [.all],
+            [.days(30), .days(90), .months12, .sinceSalary],
+            months,
+            quarters,
+            (0..<3).map { .year(y - $0) },
+        ]
+    }
+
+    /// The month before the current one (default of the date dialog, demo print).
+    static func previousMonth(now: Date = Date()) -> Period { menu(now: now)[2][1] }
+    /// The year before the current one.
+    static func previousYear(now: Date = Date()) -> Period { menu(now: now)[4][1] }
 
     var title: String {
         switch self {
         case .all: return String(localized: "Gesamter Zeitraum")
-        case .thisMonth: return String(localized: "Dieser Monat")
-        case .lastMonth: return String(localized: "Letzter Monat")
-        case .last3Months: return String(localized: "Letzte 3 Monate")
-        case .last12Months: return String(localized: "Letzte 12 Monate")
-        case .thisQuarter: return String(localized: "Dieses Quartal")
-        case .thisYear: return String(localized: "Dieses Jahr")
-        case .lastYear: return String(localized: "Letztes Jahr")
+        case .days(let n): return String(localized: "\(n) Tage")
+        case .months12: return String(localized: "12 Monate")
         case .sinceSalary: return String(localized: "Seit letztem Gehalt")
+        case .month(let y, let m):
+            let date = Self.calendar.date(from: DateComponents(year: y, month: m, day: 1)) ?? Date()
+            return date.formatted(.dateTime.month(.wide).year())
+        case .quarter(let y, let q): return String(localized: "\(q). Quartal \(String(y))")
+        case .year(let y): return String(localized: "Jahr \(String(y))")
         case .custom: return String(localized: "Benutzerdefiniert")
         }
     }
@@ -54,29 +82,27 @@ enum Period: String, CaseIterable, Identifiable {
 
     /// ISO start/end (inclusive, `nil` = open) relative to `now`.
     func range(now: Date) -> (String?, String?) {
-        let cal = Calendar(identifier: .gregorian)
-        let startOfMonth = cal.date(from: cal.dateComponents([.year, .month], from: now))!
-        let startOfYear = cal.date(from: cal.dateComponents([.year], from: now))!
+        let cal = Self.calendar
+        let today = cal.startOfDay(for: now)
+        // first day of a month and the day before the first of `months` later
+        let span = { (y: Int, m: Int, months: Int) -> (String?, String?) in
+            let start = cal.date(from: DateComponents(year: y, month: m, day: 1))!
+            let end = cal.date(byAdding: DateComponents(month: months, day: -1), to: start)!
+            return (DateText.iso(start), DateText.iso(end))
+        }
         switch self {
         // `.custom` dates live in `AppModel.periodRange`.
         case .all, .custom: return (nil, nil)
+        case .days(let n): return (DateText.iso(cal.date(byAdding: .day, value: -(n - 1), to: today)!), nil)
+        case .months12:
+            let start = cal.date(byAdding: DateComponents(year: -1, day: 1), to: today)!
+            return (DateText.iso(start), nil)
         // The salary start date lives in `AppModel.periodRange`; calendar month as fallback.
-        case .thisMonth, .sinceSalary: return (DateText.iso(startOfMonth), nil)
-        case .lastMonth:
-            let start = cal.date(byAdding: .month, value: -1, to: startOfMonth)!
-            let end = cal.date(byAdding: .day, value: -1, to: startOfMonth)!
-            return (DateText.iso(start), DateText.iso(end))
-        case .last3Months: return (DateText.iso(cal.date(byAdding: .month, value: -2, to: startOfMonth)!), nil)
-        case .last12Months: return (DateText.iso(cal.date(byAdding: .month, value: -11, to: startOfMonth)!), nil)
-        case .thisQuarter:
-            let c = cal.dateComponents([.year, .month], from: now)
-            let qStart = cal.date(from: DateComponents(year: c.year, month: ((c.month ?? 1) - 1) / 3 * 3 + 1, day: 1))!
-            return (DateText.iso(qStart), nil)
-        case .thisYear: return (DateText.iso(startOfYear), nil)
-        case .lastYear:
-            let start = cal.date(byAdding: .year, value: -1, to: startOfYear)!
-            let end = cal.date(byAdding: .day, value: -1, to: startOfYear)!
-            return (DateText.iso(start), DateText.iso(end))
+        case .sinceSalary:
+            return (DateText.iso(cal.date(from: cal.dateComponents([.year, .month], from: now))!), nil)
+        case .month(let y, let m): return span(y, m, 1)
+        case .quarter(let y, let q): return span(y, (q - 1) * 3 + 1, 3)
+        case .year(let y): return span(y, 1, 12)
         }
     }
 }
