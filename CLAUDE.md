@@ -105,6 +105,23 @@ popovers, other windows and print output are never captured:
   terms; never paste raw log or bank text. New log/diagnostic fields get a test in `report_sanitizer.rs` or
   `BugReportTests`.
 
+## Git, AI Attribution & Process Reflection
+The PR card (`tools/export-ai-provenance.py`, `docs/ai-transparency.md`) reads only structured signals, so mark AI work like this:
+- Every AI-authored commit gets `AI-Orchestrator: <model that orchestrates the session>` and a matching
+  `Co-authored-by: <Model> <email>` trailer. Name the model that actually took part, never another one:
+  `Google Gemini` / `gemini@google.com` when the maintainer `@dr-prinz` drives the session through Gemini
+  (the default for the maintainer's sessions), otherwise the model the contributor names (`ChatGPT`, `Claude`,
+  `Cursor`, `GitHub Copilot`, …). A coding agent that writes code adds `AI-Agent: <tool>` or `AI-Model: <model>`.
+  Stage 1+2 (framing/orchestration) = `AI-Orchestrator`; stage 3 (code generation) = `Co-authored-by`, `AI-Agent`, `AI-Model`.
+- Every AI-authored PR body ends with this section (German is fine; the three labels stay as written):
+  ```
+  ### 🤖 AI Process Reflection
+  - **Human-Steering:** what the human specified or decided (architecture, security, scope)
+  - **AI-Agency:** what the AI decided on its own (names, structure, edge cases)
+  - **Review-Focus:** where a human reviewer should look first
+  ```
+- This is a self-report, shown on the card as unverified. Never put real financial data, IBANs or secrets in it.
+
 ## Workflow
 - Branch from `upstream/main`, push to `origin` (fork), PR against `GiroCrab/GiroCrab`. PR title
   and description in German, conventional-commit prefix (`feat:`, `fix:`, `perf:`, `ci:`, `docs:`).

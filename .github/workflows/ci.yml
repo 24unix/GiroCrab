@@ -51,6 +51,8 @@ jobs:
         run: scripts/xcstrings.py check
       - name: Test String-Catalog-Merge-Driver
         run: python3 -m unittest scripts/test_xcstrings.py scripts/test_sync_docs.py
+      - name: Test AI provenance classifier
+        run: python3 -m unittest tools/test_export_ai_provenance.py
       - name: Test FNZ portal browser scripts
         run: node --test scripts/test-fnz-portal.cjs scripts/test-quirion-portal.cjs
       - run: cargo clippy --workspace --all-targets -- -D warnings
