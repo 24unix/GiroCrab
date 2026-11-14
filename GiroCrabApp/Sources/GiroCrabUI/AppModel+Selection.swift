@@ -189,6 +189,7 @@ extension AppModel {
         switch sidebarSelection {
         case .account(let id): return [id]
         case .group(let gid): return groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
+        case .bank(let key): return bankGroup(for: key)?.accounts.map(\.id) ?? []
         case .userGroup(let uuid): return userGroupAccountIDs(uuid)
         default: return []
         }

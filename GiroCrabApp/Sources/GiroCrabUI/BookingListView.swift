@@ -212,7 +212,7 @@ struct BookingStreamView: View {
             }
             return .handled
         }
-        .searchable(text: $model.searchText, placement: .toolbar, prompt: "Händler, Zweck, IBAN, Betrag")
+        .searchable(text: $model.searchText, placement: .toolbar, prompt: "Händler, Zweck, IBAN / Kontonummer, Betrag")
         #if os(iOS)
         .modifier(MainToolbar())
         #endif

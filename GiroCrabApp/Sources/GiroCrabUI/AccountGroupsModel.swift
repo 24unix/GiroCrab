@@ -10,25 +10,181 @@ extension Account {
     /// Archived ("aufgelöst"): kept with all bookings, no syncs or rule runs.
     var isArchived: Bool { archivedUnix != nil }
     var archivedDate: Date? { archivedUnix.map { Date(timeIntervalSince1970: TimeInterval($0)) } }
+
+    /// IBAN and account number without spaces, for sidebar / list search.
+    var compactAccountIds: [String] {
+        [iban, accountNumber]
+            .map { $0.filter { !$0.isWhitespace }.lowercased() }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Name, Kontoinhaber, bank, IBAN or account number. Spaces in IBANs /
+    /// Kontonummern are ignored so "DE89 3704 …" finds the stored value.
+    func matchesSidebarSearch(_ raw: String) -> Bool {
+        let q = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return true }
+        let compactQ = q.filter { !$0.isWhitespace }.lowercased()
+        if compactQ.count >= 3, compactAccountIds.contains(where: { $0.contains(compactQ) }) {
+            return true
+        }
+        let terms = q.split(whereSeparator: \.isWhitespace).map { String($0).lowercased() }
+        let text = [name, owner, bankName].map { $0.lowercased() }
+        return terms.allSatisfy { term in
+            let compactTerm = term.filter { !$0.isWhitespace }
+            return text.contains { $0.contains(term) }
+                || (!compactTerm.isEmpty && compactAccountIds.contains { $0.contains(compactTerm) })
+        }
+    }
+}
+
+extension AppModel {
+    /// Non-empty sidebar account filter.
+    var isSidebarAccountSearching: Bool {
+        !sidebarAccountSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Active + not archived (unless shown) + matches the sidebar search.
+    func isSidebarAccountListed(_ account: Account) -> Bool {
+        (showArchivedAccounts || !account.isArchived) && account.matchesSidebarSearch(sidebarAccountSearch)
+    }
+
+    /// Shown in the sidebar while searching: name matches, or a listed account
+    /// lives in this group or a subgroup. Collapse is ignored so matches stay reachable.
+    func isUserGroupListed(_ g: UserGroup) -> Bool {
+        guard isSidebarAccountSearching else { return isUserGroupVisible(g) }
+        let q = sidebarAccountSearch
+        return userGroupSubtree(g.uuid).contains { node in
+            Self.sidebarTextMatches(node.name, query: q)
+                || node.accounts.contains(where: isSidebarAccountListed)
+        }
+    }
+
+    /// Kind-section open while searching, or according to the saved collapse set.
+    func isKindGroupOpen(_ groupID: Int64) -> Bool {
+        isSidebarAccountSearching || !collapsedGroups.contains(groupID)
+    }
+
+    /// Bank-section open while searching, or according to the saved collapse set.
+    func isBankGroupOpen(_ key: String) -> Bool {
+        isSidebarAccountSearching || !collapsedBankGroups.contains(key)
+    }
+
+    /// User-group open while searching, or according to the saved collapse set.
+    func isUserGroupOpen(_ g: UserGroup) -> Bool {
+        isSidebarAccountSearching || !collapsedUserGroups.contains(g.uuid)
+    }
+
+    /// Bank key for sidebar grouping: `bankName`, else the connection name.
+    func bankGroupKey(for account: Account) -> String {
+        let name = account.bankName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { return name }
+        if let cid = account.connectionId,
+           let conn = connections.first(where: { $0.id == cid }) {
+            let dn = conn.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !dn.isEmpty { return dn }
+        }
+        return ""
+    }
+
+    /// Accounts grouped by bank, sorted by display name ("Ohne Bank" last).
+    var bankGroups: [BankGroup] {
+        var buckets: [String: [Account]] = [:]
+        for a in allAccounts {
+            buckets[bankGroupKey(for: a), default: []].append(a)
+        }
+        return buckets.keys.sorted { a, b in
+            if a.isEmpty != b.isEmpty { return b.isEmpty }
+            return a.localizedCaseInsensitiveCompare(b) == .orderedAscending
+        }.map { key in
+            let accounts = buckets[key] ?? []
+            let balance = accounts
+                .filter { $0.currency == "EUR" && !$0.isArchived }
+                .reduce(Int64(0)) { $0 + $1.balanceCents }
+            let symbol: String = {
+                if let cid = accounts.first?.connectionId,
+                   let conn = connections.first(where: { $0.id == cid }) {
+                    return conn.sfSymbol
+                }
+                return accounts.first?.sfSymbol ?? "building.columns"
+            }()
+            return BankGroup(
+                id: key,
+                name: key.isEmpty ? String(localized: "Ohne Bank") : key,
+                sfSymbol: symbol,
+                balanceCents: balance,
+                accounts: accounts
+            )
+        }
+    }
+
+    func bankGroup(for key: String) -> BankGroup? {
+        bankGroups.first { $0.id == key }
+    }
+
+    func toggleCollapsedBank(_ key: String) {
+        if collapsedBankGroups.contains(key) { collapsedBankGroups.remove(key) }
+        else { collapsedBankGroups.insert(key) }
+    }
+
+    /// Group title matches every whitespace-separated term (case-insensitive).
+    static func sidebarTextMatches(_ text: String, query: String) -> Bool {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return true }
+        let hay = text.lowercased()
+        return q.split(whereSeparator: \.isWhitespace)
+            .map { String($0).lowercased() }
+            .allSatisfy { hay.contains($0) }
+    }
 }
 
 /// How the accounts section of the sidebar is organised.
 enum AccountSidebarMode: String, CaseIterable, Identifiable {
     case byGroup
+    case byBank
     case byKind
     var id: String { rawValue }
     var title: LocalizedStringKey {
         switch self {
         case .byGroup: "Nach Gruppe"
+        case .byBank: "Nach Bank"
         case .byKind: "Nach Kontoart"
         }
     }
     var symbol: String {
         switch self {
         case .byGroup: "folder"
+        case .byBank: "building.columns"
         case .byKind: "square.stack.3d.up"
         }
     }
+
+    /// Short label for the segmented control in the sidebar.
+    var shortTitle: LocalizedStringKey {
+        switch self {
+        case .byGroup: "Gruppen"
+        case .byBank: "Banken"
+        case .byKind: "Kontoart"
+        }
+    }
+
+    /// Command-palette / menu title for switching to this mode.
+    var switchTitle: String {
+        switch self {
+        case .byGroup: String(localized: "Konten nach Gruppe anzeigen")
+        case .byBank: String(localized: "Konten nach Bank anzeigen")
+        case .byKind: String(localized: "Konten nach Kontoart anzeigen")
+        }
+    }
+}
+
+/// Sidebar section when accounts are shown by bank name.
+struct BankGroup: Identifiable {
+    /// Stable key: trimmed `bankName`, else connection display name, else "".
+    var id: String
+    var name: String
+    var sfSymbol: String
+    var balanceCents: Int64
+    var accounts: [Account]
 }
 
 /// Group dialogs. One state for all of them, set from menus, ⇧⌘N, the

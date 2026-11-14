@@ -664,6 +664,17 @@
         }
       }
     },
+    "%lld Treffer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld matches"
+          }
+        }
+      }
+    },
     "%lld Umsätze als gelesen markiert" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1488,6 +1499,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 account"
+          }
+        }
+      }
+    },
+    "1 Treffer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 match"
           }
         }
       }
@@ -2746,6 +2768,17 @@
         }
       }
     },
+    "Auf Gruppe links ziehen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag onto a group on the left"
+          }
+        }
+      }
+    },
     "Auf enablebanking.com eine Anwendung registrieren: „Production“ wählen, den Schlüssel im Browser erzeugen lassen und diese Redirect-URL eintragen:" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3535,6 +3568,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Creating bank logins and groups…"
+          }
+        }
+      }
+    },
+    "Bankübersicht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank Overview"
           }
         }
       }
@@ -6257,6 +6301,17 @@
         }
       }
     },
+    "Ein Konto gehört zu höchstens einer Gruppe. Konten per Ziehen auf eine andere Gruppe links legen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An account belongs to at most one group. Drag accounts onto another group on the left."
+          }
+        }
+      }
+    },
     "Ein Update ist in Vorbereitung." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8336,6 +8391,17 @@
         }
       }
     },
+    "Gruppe, Konto, Kontoinhaber, IBAN …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Group, account, holder, IBAN…"
+          }
+        }
+      }
+    },
     "Gruppen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8365,6 +8431,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Edit Groups…"
+          }
+        }
+      }
+    },
+    "Gruppen und Konten suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search groups and accounts"
           }
         }
       }
@@ -8596,6 +8673,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Search merchant"
+          }
+        }
+      }
+    },
+    "Händler, Zweck, IBAN / Kontonummer, Betrag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merchant, purpose, IBAN / account number, amount"
           }
         }
       }
@@ -9678,6 +9766,17 @@
         }
       }
     },
+    "Kein Treffer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No match"
+          }
+        }
+      }
+    },
     "Kein Zugriff mehr: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9959,7 +10058,18 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No Results"
+            "value" : "No matches"
+          }
+        }
+      }
+    },
+    "Keine Treffer in dieser Gruppe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No matches in this group"
           }
         }
       }
@@ -10239,6 +10349,17 @@
         }
       }
     },
+    "Konten nach Bank anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Accounts by Bank"
+          }
+        }
+      }
+    },
     "Konten nach Gruppe anzeigen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10279,6 +10400,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Accounts without a group appear in the sidebar under “Ungrouped”."
+          }
+        }
+      }
+    },
+    "Konten ohne Gruppe stehen in der Seitenleiste unter „Ohne Gruppe“. Konten per Ziehen auf eine Gruppe links legen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accounts without a group appear in the sidebar under “Ungrouped”. Drag accounts onto a group on the left."
+          }
+        }
+      }
+    },
+    "Konten per Ziehen auf eine Gruppe legen, Reihenfolge per Ziehen ändern. Suche nach Name, Kontoinhaber oder IBAN." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag accounts onto a group, reorder by dragging. Search by name, account holder or IBAN."
+          }
+        }
+      }
+    },
+    "Konten suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search Accounts"
           }
         }
       }
@@ -11770,6 +11924,17 @@
         }
       }
     },
+    "Nach Bank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By Bank"
+          }
+        }
+      }
+    },
     "Nach Gruppe" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11920,6 +12085,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Name matches"
+          }
+        }
+      }
+    },
+    "Name, Kontoinhaber, IBAN …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name, account holder, IBAN…"
           }
         }
       }
@@ -12617,6 +12793,17 @@
         }
       }
     },
+    "Noch keine Konten – mit + hinzufügen oder hierher ziehen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No accounts yet – add with + or drag here"
+          }
+        }
+      }
+    },
     "Noch keine Raten seit dem Stichtag" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13002,6 +13189,17 @@
         }
       }
     },
+    "Ohne Bank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Bank"
+          }
+        }
+      }
+    },
     "Ohne Entsperren: Demo-Daten ansehen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13361,6 +13559,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Parking"
+          }
+        }
+      }
+    },
+    "Passendes Konto hinzufügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add matching account"
           }
         }
       }

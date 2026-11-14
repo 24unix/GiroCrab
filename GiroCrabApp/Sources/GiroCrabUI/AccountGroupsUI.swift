@@ -81,12 +81,42 @@ struct AccountsSectionHeader: View {
             .buttonStyle(.borderless)
             .foregroundStyle(Theme.secondary)
             Picker("Konten anzeigen nach", selection: $model.accountView) {
-                Text("Gruppen").tag(AccountSidebarMode.byGroup)
-                Text("Kontoart").tag(AccountSidebarMode.byKind)
+                ForEach(AccountSidebarMode.allCases) { mode in
+                    Text(mode.shortTitle).tag(mode)
+                }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .controlSize(.small)
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .appFont(.caption)
+                    .foregroundStyle(Theme.tertiary)
+                TextField("Name, Kontoinhaber, IBAN …", text: $model.sidebarAccountSearch)
+                    .textFieldStyle(.plain)
+                    .sensitive() // typed owner names / IBANs (#301)
+                    .appFont(.caption)
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    #endif
+                if !model.sidebarAccountSearch.isEmpty {
+                    Button {
+                        model.sidebarAccountSearch = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .appFont(.caption)
+                            .foregroundStyle(Theme.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Suche löschen")
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Theme.tertiary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Konten suchen")
         }
         .padding(.top, 12)
     }
@@ -448,7 +478,7 @@ struct GroupManagerSheet: View {
             }
             .padding(12)
         }
-        .desktopFrame(width: 680, height: 560)
+        .desktopFrame(width: 740, height: 620)
         #else
         NavigationStack {
             AccountGroupsSettings()
@@ -465,11 +495,40 @@ struct GroupManagerSheet: View {
 struct AccountGroupsSettings: View {
     @Environment(AppModel.self) private var model
     @State private var selection: String?
+    /// Filters groups and their accounts (name, Kontoinhaber, IBAN / number).
+    @State private var search = ""
     /// This window's own group dialog (not the main window's).
     @State private var dialog: GroupDialog?
 
     private var selectedGroup: UserGroup? {
         selection.flatMap { u in model.namedUserGroups.first { $0.uuid == u } }
+    }
+
+    private var isSearching: Bool {
+        !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Groups whose name or accounts match the search (order unchanged).
+    private var listedGroups: [UserGroup] {
+        guard isSearching else { return model.namedUserGroups }
+        return model.namedUserGroups.filter { groupMatchesSearch($0) }
+    }
+
+    private func groupMatchesSearch(_ g: UserGroup) -> Bool {
+        let q = search
+        if AppModel.sidebarTextMatches(g.name, query: q) { return true }
+        return g.accounts.contains { $0.matchesSidebarSearch(q) }
+    }
+
+    /// Drop an account (or several) onto a group row / "Ohne Gruppe".
+    private func acceptAccountDrop(_ items: [String], into uuid: String?) -> Bool {
+        var handled = false
+        for item in items {
+            guard let id = GroupDrag.accountID(item) else { continue }
+            model.moveAccount(id, to: uuid)
+            handled = true
+        }
+        return handled
     }
 
     var body: some View {
@@ -490,71 +549,123 @@ struct AccountGroupsSettings: View {
 
     private var footer: LocalizedStringKey {
         model.hasUserGroups
-            ? "Reihenfolge per Ziehen ändern, Untergruppen über „Übergeordnete Gruppe“. Konten ohne Gruppe erscheinen unter „Ohne Gruppe“."
+            ? "Konten per Ziehen auf eine Gruppe legen, Reihenfolge per Ziehen ändern. Suche nach Name, Kontoinhaber oder IBAN."
             : "Mit Gruppen trennen Sie z. B. private und geschäftliche Konten oder die Konten von Familienmitgliedern."
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .appFont(.caption)
+                .foregroundStyle(Theme.tertiary)
+            TextField("Gruppe, Konto, Kontoinhaber, IBAN …", text: $search)
+                .textFieldStyle(.plain)
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                #endif
+            if !search.isEmpty {
+                Button {
+                    search = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Theme.tertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Suche löschen")
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Theme.tertiary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Gruppen und Konten suchen")
     }
 
     #if os(macOS)
     private var content: some View {
-        HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
-                VStack(spacing: 0) {
-                    List(selection: $selection) {
-                        ForEach(model.namedUserGroups) { g in
-                            GroupListRow(group: g).tag(g.uuid)
+        VStack(alignment: .leading, spacing: 12) {
+            searchField
+            HStack(alignment: .top, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    VStack(spacing: 0) {
+                        List(selection: $selection) {
+                            ForEach(listedGroups) { g in
+                                GroupListRow(group: g, hitCount: isSearching ? g.accounts.filter { $0.matchesSidebarSearch(search) }.count : nil)
+                                    .tag(g.uuid)
+                                    .dropDestination(for: String.self) { items, _ in
+                                        acceptAccountDrop(items, into: g.uuid)
+                                    }
+                            }
+                            .onMove(perform: isSearching ? nil : { model.moveUserGroups(from: $0, to: $1) })
+                            // fixed at the end, like in the sidebar: where "−" puts accounts
+                            if model.hasUserGroups, !isSearching || model.ungroupedForSettings.accounts.contains(where: { $0.matchesSidebarSearch(search) }) {
+                                GroupListRow(
+                                    group: model.ungroupedForSettings,
+                                    hitCount: isSearching ? model.ungroupedForSettings.accounts.filter { $0.matchesSidebarSearch(search) }.count : nil
+                                )
+                                .tag("")
+                                .dropDestination(for: String.self) { items, _ in
+                                    acceptAccountDrop(items, into: nil)
+                                }
+                            }
                         }
-                        .onMove { model.moveUserGroups(from: $0, to: $1) }
-                        // fixed at the end, like in the sidebar: where "−" puts accounts
-                        if model.hasUserGroups {
-                            GroupListRow(group: model.ungroupedForSettings).tag("")
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .overlay {
+                            if isSearching, listedGroups.isEmpty,
+                               !(model.hasUserGroups && model.ungroupedForSettings.accounts.contains(where: { $0.matchesSidebarSearch(search) })) {
+                                Text("Keine Treffer")
+                                    .appFont(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        Divider()
+                        // add/remove square buttons beneath the list (HIG: Buttons › Square buttons)
+                        HStack(spacing: 0) {
+                            Button { dialog = .create() } label: {
+                                Image(systemName: "plus").frame(width: 26, height: 22).contentShape(Rectangle())
+                            }
+                            .help("Neue Gruppe …")
+                            .accessibilityLabel("Neue Gruppe")
+                            Divider().frame(height: 16)
+                            Button { if let g = selectedGroup { dialog = .delete(g) } } label: {
+                                Image(systemName: "minus").frame(width: 26, height: 22).contentShape(Rectangle())
+                            }
+                            .disabled(selectedGroup == nil)
+                            .help("Gruppe löschen …")
+                            .accessibilityLabel("Gruppe löschen")
+                            Spacer()
+                        }
+                        .buttonStyle(.borderless)
+                        .padding(.horizontal, 2)
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    Divider()
-                    // add/remove square buttons beneath the list (HIG: Buttons › Square buttons)
-                    HStack(spacing: 0) {
-                        Button { dialog = .create() } label: {
-                            Image(systemName: "plus").frame(width: 26, height: 22).contentShape(Rectangle())
-                        }
-                        .help("Neue Gruppe …")
-                        .accessibilityLabel("Neue Gruppe")
-                        Divider().frame(height: 16)
-                        Button { if let g = selectedGroup { dialog = .delete(g) } } label: {
-                            Image(systemName: "minus").frame(width: 26, height: 22).contentShape(Rectangle())
-                        }
-                        .disabled(selectedGroup == nil)
-                        .help("Gruppe löschen …")
-                        .accessibilityLabel("Gruppe löschen")
-                        Spacer()
-                    }
-                    .buttonStyle(.borderless)
-                    .padding(.horizontal, 2)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)))
+                    Text(footer)
+                        .appFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)))
-                Text(footer)
-                    .appFont(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(width: 240)
-            Group {
-                if selection == "" {
-                    UngroupedDetail()
-                } else if let uuid = selectedGroup?.uuid {
-                    GroupDetailEditor(uuid: uuid, ask: { dialog = $0 }, onGone: { selection = nil })
-                        .id(uuid)
-                } else {
-                    ContentUnavailableView {
-                        Label(model.hasUserGroups ? "Keine Gruppe ausgewählt" : "Noch keine Gruppen", systemImage: "folder")
-                    } description: {
-                        Text(model.hasUserGroups ? "Wählen Sie links eine Gruppe aus." : "Mit + legen Sie die erste Gruppe an.")
+                .frame(width: 260)
+                Group {
+                    if selection == "" {
+                        UngroupedDetail(search: search)
+                    } else if let uuid = selection, !uuid.isEmpty, model.namedUserGroups.contains(where: { $0.uuid == uuid }) {
+                        // Keep the detail even when the group is hidden by the search filter.
+                        GroupDetailEditor(uuid: uuid, search: search, ask: { dialog = $0 }, onGone: { selection = nil })
+                            .id(uuid)
+                    } else {
+                        ContentUnavailableView {
+                            Label(model.hasUserGroups ? "Keine Gruppe ausgewählt" : "Noch keine Gruppen", systemImage: "folder")
+                        } description: {
+                            Text(model.hasUserGroups ? "Wählen Sie links eine Gruppe aus." : "Mit + legen Sie die erste Gruppe an.")
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(20)
     }
@@ -562,13 +673,31 @@ struct AccountGroupsSettings: View {
     private var content: some View {
         List {
             Section {
-                ForEach(model.namedUserGroups) { g in
-                    NavigationLink(value: g.uuid) { GroupListRow(group: g) }
+                searchField
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+            }
+            Section {
+                ForEach(listedGroups) { g in
+                    NavigationLink(value: g.uuid) {
+                        GroupListRow(group: g, hitCount: isSearching ? g.accounts.filter { $0.matchesSidebarSearch(search) }.count : nil)
+                    }
+                    .dropDestination(for: String.self) { items, _ in
+                        acceptAccountDrop(items, into: g.uuid)
+                    }
                 }
-                .onMove { model.moveUserGroups(from: $0, to: $1) }
-                .onDelete { idx in dialog = idx.first.map { .delete(model.namedUserGroups[$0]) } }
-                if model.hasUserGroups {
-                    NavigationLink(value: "") { GroupListRow(group: model.ungroupedForSettings) }
+                .onMove(perform: isSearching ? nil : { model.moveUserGroups(from: $0, to: $1) })
+                .onDelete { idx in dialog = idx.first.map { .delete(listedGroups[$0]) } }
+                if model.hasUserGroups, !isSearching || model.ungroupedForSettings.accounts.contains(where: { $0.matchesSidebarSearch(search) }) {
+                    NavigationLink(value: "") {
+                        GroupListRow(
+                            group: model.ungroupedForSettings,
+                            hitCount: isSearching ? model.ungroupedForSettings.accounts.filter { $0.matchesSidebarSearch(search) }.count : nil
+                        )
+                    }
+                    .dropDestination(for: String.self) { items, _ in
+                        acceptAccountDrop(items, into: nil)
+                    }
                 }
             } footer: {
                 Text(footer).leadingFooter()
@@ -579,9 +708,9 @@ struct AccountGroupsSettings: View {
         }
         .navigationDestination(for: String.self) { uuid in
             if uuid.isEmpty {
-                UngroupedDetail()
+                UngroupedDetail(search: search)
             } else {
-                GroupDetailEditor(uuid: uuid, ask: { dialog = $0 })
+                GroupDetailEditor(uuid: uuid, search: search, ask: { dialog = $0 })
             }
         }
         .toolbar { ToolbarItem(placement: .topBarTrailing) { EditButton() } }
@@ -592,6 +721,8 @@ struct AccountGroupsSettings: View {
 /// A group in the settings list: symbol, name, account count, sum.
 struct GroupListRow: View {
     let group: UserGroup
+    /// While searching: how many accounts in this group match (nil = hide).
+    var hitCount: Int? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -599,7 +730,7 @@ struct GroupListRow: View {
                 .padding(.leading, CGFloat(group.depth) * 14)
             VStack(alignment: .leading, spacing: 1) {
                 Text(group.name).lineLimit(1)
-                Text(accountCountText(group.accounts.count))
+                Text(subtitle)
                     .appFont(.caption).foregroundStyle(Theme.secondary)
             }
             Spacer(minLength: 4)
@@ -608,6 +739,17 @@ struct GroupListRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+
+    private var subtitle: String {
+        if let hitCount {
+            switch hitCount {
+            case 0: return String(localized: "Kein Treffer")
+            case 1: return String(localized: "1 Treffer")
+            default: return String(localized: "\(hitCount) Treffer")
+            }
+        }
+        return accountCountText(group.accounts.count)
     }
 }
 
@@ -645,11 +787,21 @@ func accountCountText(_ n: Int) -> String {
 
 /// The "Konten" of a group in its settings (#229): only its own accounts,
 /// "+" (a menu of all others) and "−" (back to "Ohne Gruppe") like the
-/// group list beside it, and drag to reorder.
+/// group list beside it, and drag to reorder or onto another group.
 private struct GroupAccountsList: View {
     @Environment(AppModel.self) private var model
     let group: UserGroup
+    var search: String = ""
     @State private var selected: Int64?
+
+    private var isSearching: Bool {
+        !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var listedAccounts: [Account] {
+        guard isSearching else { return group.accounts }
+        return group.accounts.filter { $0.matchesSidebarSearch(search) }
+    }
 
     /// Still in this group (it may have moved via the sidebar or sync).
     private var selectedAccount: Account? {
@@ -664,6 +816,7 @@ private struct GroupAccountsList: View {
                 Text(rowDetail(a)).appFont(.caption2).foregroundStyle(Theme.secondary)
             }
         }
+        .draggable(GroupDrag.account(a.id))
     }
 
     /// Bank and IBAN/number (just the bank when that is all there is),
@@ -671,13 +824,18 @@ private struct GroupAccountsList: View {
     private func rowDetail(_ a: Account) -> String {
         let id = accountIdentity(a)
         let detail = id == a.bankName ? id : [a.bankName, id].filter { !$0.isEmpty }.joined(separator: " · ")
-        return a.isArchived ? String(localized: "Archiviert · \(detail)") : detail
+        let base = a.isArchived ? String(localized: "Archiviert · \(detail)") : detail
+        if isSearching, !a.owner.isEmpty, a.owner.localizedCaseInsensitiveContains(search.trimmingCharacters(in: .whitespacesAndNewlines))
+            || search.split(whereSeparator: \.isWhitespace).allSatisfy({ a.owner.localizedCaseInsensitiveContains($0) }) {
+            return [a.owner, base].filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+        return base
     }
 
     /// Adds the account and selects it, so it is visible (scrolled to) and
     /// "−" undoes a mis-click at once.
     private func add(_ a: Account) {
-        model.moveAccount(a.id, to: group.uuid)
+        model.moveAccount(a.id, to: group.isUngrouped ? nil : group.uuid)
         selected = a.id
     }
 
@@ -687,17 +845,26 @@ private struct GroupAccountsList: View {
     @ViewBuilder
     private var addMenuItems: some View {
         let sections = model.addableAccounts(for: group.uuid)
-        let ungrouped = sections.first { $0.id.isEmpty }
-        if let ungrouped {
-            Section(ungrouped.title) {
-                ForEach(ungrouped.accounts) { a in addButton(a) }
+        if isSearching {
+            let hits = sections.flatMap(\.accounts).filter { $0.matchesSidebarSearch(search) }
+            if hits.isEmpty {
+                Text("Keine Treffer")
+            } else {
+                ForEach(hits) { a in addButton(a) }
             }
-        }
-        let others = sections.filter { !$0.id.isEmpty }
-        if ungrouped != nil, !others.isEmpty { Divider() }
-        ForEach(others) { section in
-            Menu(section.title) {
-                ForEach(section.accounts) { a in addButton(a) }
+        } else {
+            let ungrouped = sections.first { $0.id.isEmpty }
+            if let ungrouped {
+                Section(ungrouped.title) {
+                    ForEach(ungrouped.accounts) { a in addButton(a) }
+                }
+            }
+            let others = sections.filter { !$0.id.isEmpty }
+            if ungrouped != nil, !others.isEmpty { Divider() }
+            ForEach(others) { section in
+                Menu(section.title) {
+                    ForEach(section.accounts) { a in addButton(a) }
+                }
             }
         }
     }
@@ -710,15 +877,22 @@ private struct GroupAccountsList: View {
         }
     }
 
-    private var nothingToAdd: Bool { model.addableAccounts(for: group.uuid).isEmpty }
+    private var addable: [AddableAccounts] { model.addableAccounts(for: group.uuid) }
+
+    private var nothingToAdd: Bool {
+        if isSearching {
+            return addable.flatMap(\.accounts).filter { $0.matchesSidebarSearch(search) }.isEmpty
+        }
+        return addable.isEmpty
+    }
 
     #if os(macOS)
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 List(selection: $selected) {
-                    ForEach(group.accounts) { a in row(a).tag(a.id).id(a.id) }
-                        .onMove { model.moveAccounts(in: group.uuid, from: $0, to: $1) }
+                    ForEach(listedAccounts) { a in row(a).tag(a.id).id(a.id) }
+                        .onMove(perform: isSearching ? nil : { model.moveAccounts(in: group.uuid, from: $0, to: $1) })
                 }
                 .onChange(of: selected) { _, id in
                     if let id { withAnimation { proxy.scrollTo(id) } }
@@ -727,10 +901,12 @@ private struct GroupAccountsList: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .overlay {
-                if group.accounts.isEmpty {
-                    Text(group.isUngrouped ? "Alle Konten sind in Gruppen." : "Noch keine Konten – mit + hinzufügen")
+                if listedAccounts.isEmpty {
+                    Text(emptyLabel)
                         .appFont(.caption)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
                 }
             }
             Divider()
@@ -745,7 +921,7 @@ private struct GroupAccountsList: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .disabled(nothingToAdd)
-                .help("Konto hinzufügen")
+                .help(isSearching ? "Passendes Konto hinzufügen" : "Konto hinzufügen")
                 .accessibilityLabel("Konto hinzufügen")
                 Divider().frame(height: 16)
                 Button { if let a = selectedAccount { model.moveAccount(a.id, to: nil) } } label: {
@@ -756,18 +932,24 @@ private struct GroupAccountsList: View {
                 .help("Aus Gruppe entfernen")
                 .accessibilityLabel("Aus Gruppe entfernen")
                 Spacer()
+                if isSearching {
+                    Text("Auf Gruppe links ziehen")
+                        .appFont(.caption2)
+                        .foregroundStyle(Theme.tertiary)
+                        .padding(.trailing, 8)
+                }
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, 2)
         }
-        .frame(height: 200)
+        .frame(height: 220)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)))
     }
     #else
     var body: some View {
-        ForEach(group.accounts) { a in
+        ForEach(listedAccounts) { a in
             row(a)
                 // not the system "Löschen": the account only leaves the group
                 .swipeActions {
@@ -777,15 +959,20 @@ private struct GroupAccountsList: View {
                     }
                 }
         }
-        .onMove { model.moveAccounts(in: group.uuid, from: $0, to: $1) }
+        .onMove(perform: isSearching ? nil : { model.moveAccounts(in: group.uuid, from: $0, to: $1) })
         Menu {
             addMenuItems
         } label: {
-            Label("Konto hinzufügen", systemImage: "plus.circle")
+            Label(isSearching ? "Passendes Konto hinzufügen" : "Konto hinzufügen", systemImage: "plus.circle")
         }
         .disabled(nothingToAdd)
     }
     #endif
+
+    private var emptyLabel: LocalizedStringKey {
+        if isSearching { return "Keine Treffer in dieser Gruppe" }
+        return group.isUngrouped ? "Alle Konten sind in Gruppen." : "Noch keine Konten – mit + hinzufügen oder hierher ziehen"
+    }
 }
 
 /// "Ohne Gruppe" in the settings (#229): only its accounts – it has no
@@ -793,15 +980,16 @@ private struct GroupAccountsList: View {
 /// out of its group.
 private struct UngroupedDetail: View {
     @Environment(AppModel.self) private var model
+    var search: String = ""
 
     var body: some View {
         Form {
             Section {
-                GroupAccountsList(group: model.ungroupedForSettings)
+                GroupAccountsList(group: model.ungroupedForSettings, search: search)
             } header: {
                 Text("Konten").appSectionHeader()
             } footer: {
-                Text("Konten ohne Gruppe stehen in der Seitenleiste unter „Ohne Gruppe“.")
+                Text("Konten ohne Gruppe stehen in der Seitenleiste unter „Ohne Gruppe“. Konten per Ziehen auf eine Gruppe links legen.")
             }
         }
         .formStyle(.grouped)
@@ -816,6 +1004,7 @@ struct GroupDetailEditor: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let uuid: String
+    var search: String = ""
     /// Shows a confirmation in the pane (delete, or merge on a name clash).
     var ask: (GroupDialog) -> Void
     /// Called when the group disappears (deleted here or via sync);
@@ -875,11 +1064,11 @@ struct GroupDetailEditor: View {
                     .leadingFooter()
                 }
                 Section {
-                    GroupAccountsList(group: g)
+                    GroupAccountsList(group: g, search: search)
                 } header: {
                     Text("Konten").appSectionHeader()
                 } footer: {
-                    Text("Ein Konto gehört zu höchstens einer Gruppe.").leadingFooter()
+                    Text("Ein Konto gehört zu höchstens einer Gruppe. Konten per Ziehen auf eine andere Gruppe links legen.").leadingFooter()
                 }
                 #if os(iOS)
                 Section {

@@ -31,6 +31,23 @@ fn is_own_transfer(t: &Booking, own_ibans: &std::collections::HashSet<String>) -
     !iban.is_empty() && own_ibans.contains(&iban)
 }
 
+/// Compact search text that is an IBAN (CCdd…) or a digit-only account number.
+fn is_account_number_query(compact: &str) -> bool {
+    if compact.len() < 6 || !compact.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return false;
+    }
+    let b = compact.as_bytes();
+    if b.len() >= 15
+        && b[0].is_ascii_uppercase()
+        && b[1].is_ascii_uppercase()
+        && b[2].is_ascii_digit()
+        && b[3].is_ascii_digit()
+    {
+        return true;
+    }
+    compact.chars().all(|c| c.is_ascii_digit())
+}
+
 /// WHERE clause "booking `t` belongs to the categories `cat_match`" (e.g. `= ?3`,
 /// `IS NULL`), split-aware like `planning::EFFECTIVE_SQL`: an unsplit booking by
 /// its own category, a split booking only by the categories of its parts.
@@ -184,30 +201,75 @@ impl Vault {
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
         {
-            let mut ors = Vec::new();
-            for term in q.split_whitespace() {
+            // Spaced IBANs / account numbers ("DE89 3704 …"): one compact match
+            // against counterparty and own-account numbers beats AND-of-fragments.
+            // Only IBAN-shaped (CCdd…) or digit-only queries – not "Miete 500".
+            let compact_all: String = q
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect::<String>()
+                .to_uppercase();
+            let account_like = is_account_number_query(&compact_all);
+            if account_like {
                 let like = format!(
                     "%{}%",
-                    term.replace('\\', "\\\\")
+                    compact_all
+                        .replace('\\', "\\\\")
                         .replace('%', "\\%")
                         .replace('_', "\\_")
                 );
                 args.push(Box::new(like));
                 let n = args.len();
-                let mut alt = format!(
-                    "(t.counterparty LIKE ?{n} ESCAPE '\\' OR t.purpose LIKE ?{n} ESCAPE '\\' OR t.booking_text LIKE ?{n} ESCAPE '\\' \
-                     OR t.counterparty_iban LIKE ?{n} ESCAPE '\\' OR cat.name LIKE ?{n} ESCAPE '\\' OR a.name LIKE ?{n} ESCAPE '\\'"
-                );
-                if term.chars().any(|c| c.is_ascii_digit()) {
-                    if let Ok(cents) = parse_cents(term) {
-                        args.push(Box::new(cents.abs()));
-                        alt.push_str(&format!(" OR ABS(t.amount_cents) = ?{}", args.len()));
+                wh.push(format!(
+                    "(REPLACE(UPPER(t.counterparty_iban), ' ', '') LIKE ?{n} ESCAPE '\\' \
+                     OR REPLACE(UPPER(IFNULL(a.iban, '')), ' ', '') LIKE ?{n} ESCAPE '\\' \
+                     OR REPLACE(UPPER(IFNULL(a.account_number, '')), ' ', '') LIKE ?{n} ESCAPE '\\')"
+                ));
+            } else {
+                let mut ors = Vec::new();
+                for term in q.split_whitespace() {
+                    let like = format!(
+                        "%{}%",
+                        term.replace('\\', "\\\\")
+                            .replace('%', "\\%")
+                            .replace('_', "\\_")
+                    );
+                    args.push(Box::new(like));
+                    let n = args.len();
+                    let mut alt = format!(
+                        "(t.counterparty LIKE ?{n} ESCAPE '\\' OR t.purpose LIKE ?{n} ESCAPE '\\' OR t.booking_text LIKE ?{n} ESCAPE '\\' \
+                         OR t.counterparty_iban LIKE ?{n} ESCAPE '\\' OR cat.name LIKE ?{n} ESCAPE '\\' OR a.name LIKE ?{n} ESCAPE '\\'"
+                    );
+                    let compact: String = term
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect::<String>()
+                        .to_uppercase();
+                    if compact.chars().any(|c| c.is_ascii_digit()) {
+                        let clike = format!(
+                            "%{}%",
+                            compact
+                                .replace('\\', "\\\\")
+                                .replace('%', "\\%")
+                                .replace('_', "\\_")
+                        );
+                        args.push(Box::new(clike));
+                        let c = args.len();
+                        alt.push_str(&format!(
+                            " OR REPLACE(UPPER(t.counterparty_iban), ' ', '') LIKE ?{c} ESCAPE '\\' \
+                             OR REPLACE(UPPER(IFNULL(a.iban, '')), ' ', '') LIKE ?{c} ESCAPE '\\' \
+                             OR REPLACE(UPPER(IFNULL(a.account_number, '')), ' ', '') LIKE ?{c} ESCAPE '\\'"
+                        ));
+                        if let Ok(cents) = parse_cents(term) {
+                            args.push(Box::new(cents.abs()));
+                            alt.push_str(&format!(" OR ABS(t.amount_cents) = ?{}", args.len()));
+                        }
                     }
+                    alt.push(')');
+                    ors.push(alt);
                 }
-                alt.push(')');
-                ors.push(alt);
+                wh.push(ors.join(" AND "));
             }
-            wh.push(ors.join(" AND "));
         }
         let where_sql = wh.join(" AND ");
         Ok((cte, where_sql, args, share_sql))
@@ -908,6 +970,43 @@ mod paging_tests {
         assert_eq!(ids.len() as u32, everyday);
         // what is outside the scope stays new
         assert_eq!(count(BookingScope::All), all - everyday);
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn search_finds_spaced_iban_and_own_account_number() {
+        let (v, p) = demo();
+        let accounts = v.list_accounts().unwrap();
+        let giro = accounts
+            .iter()
+            .find(|a| a.iban == "DE89370400440532013000")
+            .expect("demo giro");
+        let spaced = "DE89 3704 0044 0532 0130 00";
+        let by_iban = v
+            .list_transactions(BookingFilter {
+                search: Some(spaced.into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(
+            by_iban.total_count > 0,
+            "spaced IBAN should match the own account"
+        );
+        assert!(
+            by_iban.transactions.iter().all(|b| b.account_id == giro.id),
+            "hits must belong to the IBAN's account"
+        );
+        let by_number = v
+            .list_transactions(BookingFilter {
+                search: Some("0532 0130 00".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(by_number.total_count > 0);
+        assert!(by_number
+            .transactions
+            .iter()
+            .all(|b| b.account_id == giro.id));
         let _ = std::fs::remove_file(p);
     }
 

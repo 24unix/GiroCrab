@@ -48,6 +48,9 @@ extension AppModel {
         if case .userGroup(let u) = sidebarSelection, !userGroups.contains(where: { $0.uuid == u }) {
             sidebarSelection = .allAccounts
         }
+        if case .bank(let key) = sidebarSelection, bankGroup(for: key) == nil {
+            sidebarSelection = .allAccounts
+        }
         rebuildAccountIndex()
     }
 
@@ -195,6 +198,7 @@ extension AppModel {
         switch sidebarSelection {
         case .account(let id): accountIDs = [id]
         case .group(let gid): accountIDs = groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
+        case .bank(let key): accountIDs = bankGroup(for: key)?.accounts.map(\.id) ?? []
         case .userGroup(let uuid): accountIDs = userGroupAccountIDs(uuid)
         case .category(let id): category = id
         case .uncategorized: uncategorized = true
@@ -339,6 +343,7 @@ extension AppModel {
         case .account(let id): ids = [id]
         // same accounts as the group's sum in the header (#208)
         case .group(let gid): ids = groups.first(where: { $0.id == gid })?.accounts.filter { !$0.isArchived }.map(\.id) ?? []
+        case .bank(let key): ids = bankGroup(for: key)?.accounts.filter { !$0.isArchived }.map(\.id) ?? []
         case .userGroup(let uuid): ids = userGroupBalanceAccountIDs(uuid)
         default: ids = liquidAccounts.map(\.id)
         }
@@ -448,6 +453,7 @@ extension AppModel {
         switch sidebarSelection {
         case .allAccounts, .none: return String(localized: "Übersicht")
         case .group(let id): return groups.first { $0.id == id }?.name ?? String(localized: "Gruppe")
+        case .bank(let key): return bankGroup(for: key)?.name ?? String(localized: "Bank")
         case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }?.name ?? String(localized: "Gruppe")
         case .account(let id): return allAccounts.first { $0.id == id }?.name ?? String(localized: "Konto")
         case .category(let id): return categories.first { $0.id == id }?.path ?? String(localized: "Kategorie")
@@ -460,6 +466,7 @@ extension AppModel {
         switch sidebarSelection {
         case .account(let id): return allAccounts.first { $0.id == id }.map { (String(localized: "Kontostand"), $0.balanceCents) }
         case .group(let id): return groups.first { $0.id == id }.map { (String(localized: "Summe"), $0.balanceCents) }
+        case .bank(let key): return bankGroup(for: key).map { (String(localized: "Summe"), $0.balanceCents) }
         case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .allAccounts, .none: return (String(localized: "Verfügbar (Giro, Tagesgeld, Karten)"), liquidBalance)
         case .category(let id): return categories.first { $0.id == id }.map { (String(localized: "Summe im Zeitraum"), $0.totalCents) }
@@ -503,6 +510,7 @@ extension AppModel {
         switch sidebarSelection {
         case .account: false
         case .group(let id): (groups.first { $0.id == id }?.accounts.count ?? 0) > 1
+        case .bank(let key): (bankGroup(for: key)?.accounts.count ?? 0) > 1
         case .userGroup(let uuid): userGroupAccountIDs(uuid).count > 1
         default: accountMarkers.count > 1
         }

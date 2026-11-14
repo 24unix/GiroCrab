@@ -37,10 +37,10 @@ struct SidebarView: View {
             if !model.allAccounts.isEmpty {
                 AccountsSectionHeader()
             }
-            if model.accountView == .byGroup {
-                userGroupRows
-            } else {
-                kindGroupRows
+            switch model.accountView {
+            case .byGroup: userGroupRows
+            case .byBank: bankGroupRows
+            case .byKind: kindGroupRows
             }
 
             let pending = model.connections.filter { c in !model.allAccounts.contains { $0.connectionId == c.id } }
@@ -160,7 +160,10 @@ struct SidebarView: View {
     @ViewBuilder
     private var kindGroupRows: some View {
         ForEach(model.groups) { group in
-            let open = !model.collapsedGroups.contains(group.id)
+            let listed = group.accounts.filter(isShown)
+            // While searching, hide empty kind sections so only hits remain.
+            if !model.isSidebarAccountSearching || !listed.isEmpty {
+            let open = model.isKindGroupOpen(group.id)
             let toggle = {
                 withAnimation(Motion.animation(.easeInOut(duration: 0.15))) {
                     if open { model.collapsedGroups.insert(group.id) } else { model.collapsedGroups.remove(group.id) }
@@ -168,7 +171,12 @@ struct SidebarView: View {
             }
             // Plain rows instead of List sections: macOS would otherwise
             // restore its own saved collapse state for sidebar sections.
-            SectionHeader(group: group, open: open, toggle: toggle)
+            SectionHeader(
+                name: group.name, sfSymbol: group.sfSymbol, balanceCents: group.balanceCents,
+                selected: model.sidebarSelection == .group(group.id),
+                isLoanGroup: !group.accounts.isEmpty && group.accounts.allSatisfy { $0.kind == .loan },
+                open: open, toggle: toggle
+            )
                 .padding(.top, 10)
                 .groupHeaderTap(SidebarItem.group(group.id), toggle: toggle)
                 #if os(iOS)
@@ -176,8 +184,42 @@ struct SidebarView: View {
                     Button("Gruppenübersicht", systemImage: "list.bullet.rectangle") { model.interactiveSidebarSelection = .group(group.id) }
                 }
                 #endif
-            ForEach(open ? group.accounts.filter(isShown) : []) { account in
+            ForEach(open ? listed : []) { account in
                 accountRow(account)
+            }
+            }
+        }
+    }
+
+    /// "Nach Bank": one section per bank name / connection.
+    @ViewBuilder
+    private var bankGroupRows: some View {
+        ForEach(model.bankGroups) { group in
+            let listed = group.accounts.filter(isShown)
+            if !model.isSidebarAccountSearching || !listed.isEmpty {
+                let open = model.isBankGroupOpen(group.id)
+                let toggle = {
+                    withAnimation(Motion.animation(.easeInOut(duration: 0.15))) {
+                        model.toggleCollapsedBank(group.id)
+                    }
+                }
+                SectionHeader(
+                    name: group.name, sfSymbol: group.sfSymbol, balanceCents: group.balanceCents,
+                    selected: model.sidebarSelection == .bank(group.id),
+                    isLoanGroup: !group.accounts.isEmpty && group.accounts.allSatisfy { $0.kind == .loan },
+                    nameRedaction: [],
+                    open: open, toggle: toggle
+                )
+                .padding(.top, 10)
+                .groupHeaderTap(SidebarItem.bank(group.id), toggle: toggle)
+                #if os(iOS)
+                .contextMenu {
+                    Button("Bankübersicht", systemImage: "list.bullet.rectangle") { model.interactiveSidebarSelection = .bank(group.id) }
+                }
+                #endif
+                ForEach(open ? listed : []) { account in
+                    accountRow(account)
+                }
             }
         }
     }
@@ -186,8 +228,8 @@ struct SidebarView: View {
     @ViewBuilder
     private var userGroupRows: some View {
         // a flattened tree: subgroups follow their group, indented by depth
-        ForEach(model.userGroups.filter(model.isUserGroupVisible)) { group in
-            let open = !model.collapsedUserGroups.contains(group.uuid)
+        ForEach(model.userGroups.filter(model.isUserGroupListed)) { group in
+            let open = model.isUserGroupOpen(group)
             let toggle = { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { model.toggleCollapsed(group) } }
             let indent = CGFloat(group.depth) * 14
             UserGroupHeader(group: group, open: open, toggle: toggle)
@@ -212,7 +254,8 @@ struct SidebarView: View {
                 // no custom preview: the drag shows the row itself, like MoneyMoney
                 .draggable(GroupDrag.group(group.uuid))
             if open {
-                if group.accounts.isEmpty && !group.isUngrouped && model.userGroupSubtree(group.uuid).count == 1 {
+                if !model.isSidebarAccountSearching,
+                   group.accounts.isEmpty && !group.isUngrouped && model.userGroupSubtree(group.uuid).count == 1 {
                     Text(emptyHint)
                         .appFont(.caption)
                         .foregroundStyle(Theme.tertiary)
@@ -275,9 +318,10 @@ struct SidebarView: View {
         return handled
     }
 
-    /// Archived accounts can be hidden (they stay in their group either way).
+    /// Archived accounts can be hidden; the sidebar search filters by name,
+    /// Kontoinhaber, IBAN and account number (spaces ignored).
     private func isShown(_ account: Account) -> Bool {
-        model.showArchivedAccounts || !account.isArchived
+        model.isSidebarAccountListed(account)
     }
 
     /// `drop` sits inside the context menu (and the caller's drag), so its drop
@@ -385,11 +429,15 @@ struct SidebarView: View {
 }
 
 struct SectionHeader: View {
-    @Environment(AppModel.self) private var model
     /// Selected header: hierarchical styles so macOS can draw them light on the
     /// accent-coloured selection (fixed theme colours stay dark there).
-    private var selected: Bool { model.sidebarSelection == SidebarItem.group(group.id) }
-    let group: AccountGroup
+    let name: String
+    let sfSymbol: String
+    let balanceCents: Int64
+    var selected: Bool = false
+    var isLoanGroup: Bool = false
+    /// Bug report screenshot (#301): category-like group names hide on request, bank names stay visible.
+    var nameRedaction: ReportRedaction = .labels
     var open: Bool = true
     var toggle: () -> Void = {}
 
@@ -404,33 +452,28 @@ struct SectionHeader: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .accessibilityLabel(open ? "„\(group.name)“ einklappen" : "„\(group.name)“ ausklappen")
+            .accessibilityLabel(open ? "„\(name)“ einklappen" : "„\(name)“ ausklappen")
             .accessibilityValue(open ? "Ausgeklappt" : "Eingeklappt")
             // styled like the "Gruppen" headers (UserGroupHeader), so both
             // views read the same and no header is smaller than its accounts (#171)
-            Image(systemName: group.sfSymbol)
+            Image(systemName: sfSymbol)
                 .appFont(.body, weight: .semibold)
                 .foregroundStyle(.secondary)
                 .frame(width: 20)
                 .accessibilityHidden(true)
-            Text(group.name)
-                .sensitive(.labels)
+            Text(name)
+                .sensitive(nameRedaction)
             Spacer()
-            Text(Money.format(group.balanceCents))
+            Text(Money.format(balanceCents))
                 .sensitive()
                 .appFont(.callout, weight: .semibold) // same size as the account balances
                 .monospacedDigit()
-                .fixedSize()
-                .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(group.balanceCents < 0 && isLoanGroup ? Theme.loan : (group.balanceCents < 0 ? Theme.negative : Theme.secondary)))
+                .fixedSize() // the name truncates, never the balance (#343)
+                .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(balanceCents < 0 && isLoanGroup ? Theme.loan : (balanceCents < 0 ? Theme.negative : Theme.secondary)))
         }
         .appFont(.body, weight: .semibold) // as big as the account names
         .foregroundStyle(.secondary)
     }
-}
-
-extension SectionHeader {
-    /// Loan groups are recognised by their accounts, not by the (translated) group name.
-    var isLoanGroup: Bool { !group.accounts.isEmpty && group.accounts.allSatisfy { $0.kind == .loan } }
 }
 
 struct AccountRow: View {
@@ -481,7 +524,11 @@ struct AccountRow: View {
                         .appFont(.caption2).foregroundStyle(.secondary).lineLimit(1)
                         .help("Archiviert – wird nicht mehr abgerufen")
                 } else {
-                    Text(account.bankName).appFont(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Text(searchAwareSubtitle)
+                        .sensitive(searchAwareSubtitle == account.bankName ? [] : .personal) // owner / IBAN hits
+                        .appFont(.caption2, design: ibanSubtitle ? .monospaced : .default)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
             Spacer(minLength: 4)
@@ -501,6 +548,28 @@ struct AccountRow: View {
         }
         .padding(.vertical, 1)
         .opacity(account.isArchived ? 0.55 : 1)
+    }
+
+    /// While searching, prefer Kontoinhaber or IBAN so the hit is obvious.
+    private var searchAwareSubtitle: String {
+        guard model.isSidebarAccountSearching else { return account.bankName }
+        let q = model.sidebarAccountSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        let compact = q.filter { !$0.isWhitespace }.lowercased()
+        if !account.owner.isEmpty {
+            let terms = q.split(whereSeparator: \.isWhitespace)
+            if !terms.isEmpty, terms.allSatisfy({ account.owner.localizedCaseInsensitiveContains($0) }) {
+                return account.owner
+            }
+        }
+        if !compact.isEmpty, compact.count >= 3,
+           account.compactAccountIds.contains(where: { $0.contains(compact) }) {
+            return account.iban.isEmpty ? account.accountNumber : formatIBAN(account.iban)
+        }
+        return account.bankName
+    }
+
+    private var ibanSubtitle: Bool {
+        model.isSidebarAccountSearching && searchAwareSubtitle == formatIBAN(account.iban)
     }
 }
 

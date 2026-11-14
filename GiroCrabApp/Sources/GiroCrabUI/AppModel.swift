@@ -141,6 +141,8 @@ public final class AppModel {
         }
     }
     var searchText: String = "" { didSet { scheduleSearch() } }
+    /// Filters the accounts section of the sidebar (name, owner, IBAN / account number).
+    var sidebarAccountSearch: String = ""
     var selectedBookingID: Booking.ID? {
         didSet {
             if stickyBooking?.id != selectedBookingID { stickyBooking = nil }
@@ -176,6 +178,9 @@ public final class AppModel {
     }
     var collapsedUserGroups: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "sidebar.collapsedUserGroups") ?? []) {
         didSet { UserDefaults.standard.set(Array(collapsedUserGroups), forKey: "sidebar.collapsedUserGroups") }
+    }
+    var collapsedBankGroups: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "sidebar.collapsedBankGroups") ?? []) {
+        didSet { UserDefaults.standard.set(Array(collapsedBankGroups), forKey: "sidebar.collapsedBankGroups") }
     }
     /// Archived accounts stay in their group; this hides their sidebar rows.
     var showArchivedAccounts: Bool = UserDefaults.standard.object(forKey: "sidebar.showArchived") as? Bool ?? true {

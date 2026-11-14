@@ -67,7 +67,13 @@ struct CommandPaletteView: View {
             out.append(Item(title: String(localized: "Stand von „\(loan.setup.name)“ neu setzen"), subtitle: action, symbol: "calendar.badge.clock") { model.openLoanEditor(.anchor, accountId: id) })
         }
         for m in AccountSidebarMode.allCases where m != model.accountView {
-            out.append(Item(title: m == .byGroup ? String(localized: "Konten nach Gruppe anzeigen") : String(localized: "Konten nach Kontoart anzeigen"), subtitle: String(localized: "Ansicht"), symbol: m.symbol) { model.accountView = m })
+            out.append(Item(title: m.switchTitle, subtitle: String(localized: "Ansicht"), symbol: m.symbol) { model.accountView = m })
+        }
+        for b in model.bankGroups {
+            out.append(Item(title: b.name, subtitle: String(localized: "Bank · \(accountCountText(b.accounts.count))"), symbol: b.sfSymbol) {
+                model.accountView = .byBank
+                model.interactiveSidebarSelection = .bank(b.id)
+            })
         }
         for g in model.namedUserGroups {
             out.append(Item(title: g.name, subtitle: String(localized: "Gruppe · \(accountCountText(g.accounts.count))"), symbol: g.sfSymbol) {

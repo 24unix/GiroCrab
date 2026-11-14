@@ -6,6 +6,8 @@ import GiroCrabCore
 enum SidebarItem: Hashable {
     case allAccounts
     case group(Int64)
+    /// Accounts of one bank ("Nach Bank"); empty = "Ohne Bank".
+    case bank(String)
     /// User-defined group ("Nach Gruppe"); empty uuid = "Ohne Gruppe".
     case userGroup(String)
     case account(Int64)

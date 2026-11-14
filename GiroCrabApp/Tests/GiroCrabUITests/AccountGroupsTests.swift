@@ -7,7 +7,7 @@ import GiroCrabCore
 /// Platform-independent: runs on macOS and the iOS Simulator.
 @MainActor
 final class AccountGroupsTests: XCTestCase {
-    private static let defaultsKeys = ["sidebar.accountView", "sidebar.collapsedUserGroups", "sidebar.collapsedKindGroups"]
+    private static let defaultsKeys = ["sidebar.accountView", "sidebar.collapsedUserGroups", "sidebar.collapsedKindGroups", "sidebar.collapsedBankGroups"]
     private var model: AppModel!
 
     override func setUp() async throws {
@@ -561,6 +561,82 @@ final class AccountGroupsTests: XCTestCase {
         XCTAssertEqual(model.allAccounts.count, 6)
         let excluded = model.allAccounts.filter { !$0.inTotal }.map(\.id)
         XCTAssertTrue(model.liquidAccounts.allSatisfy { !excluded.contains($0.id) })
+    }
+
+    // MARK: sidebar search
+
+    func testSidebarSearchFindsOwnerAndSpacedIban() throws {
+        let giro = try account(.checking)
+        XCTAssertEqual(giro.owner, "Erika Mustermann")
+        XCTAssertFalse(giro.iban.isEmpty)
+
+        model.sidebarAccountSearch = "erika"
+        XCTAssertTrue(model.isSidebarAccountSearching)
+        let byOwner = model.allAccounts.filter(model.isSidebarAccountListed)
+        XCTAssertTrue(byOwner.contains(where: { $0.id == giro.id }))
+        XCTAssertGreaterThanOrEqual(byOwner.count, 5, "bank accounts share the demo owner")
+        XCTAssertFalse(
+            byOwner.contains(where: { $0.name == "Autokredit" }),
+            "manual loan has no Kontoinhaber"
+        )
+
+        model.sidebarAccountSearch = "DE89 3704 0044 0532 0130 00"
+        let byIban = model.allAccounts.filter(model.isSidebarAccountListed)
+        XCTAssertEqual(byIban.map(\.id), [giro.id], "spaced IBAN finds the stored value")
+
+        model.sidebarAccountSearch = "0532 013000"
+        XCTAssertEqual(
+            model.allAccounts.filter(model.isSidebarAccountListed).map(\.id),
+            [giro.id],
+            "account number with spaces"
+        )
+
+        model.sidebarAccountSearch = "Girokonto"
+        XCTAssertEqual(model.allAccounts.filter(model.isSidebarAccountListed).map(\.id), [giro.id])
+
+        model.sidebarAccountSearch = "xyz-gibt-es-nicht"
+        XCTAssertTrue(model.allAccounts.filter(model.isSidebarAccountListed).isEmpty)
+        XCTAssertTrue(model.userGroups.filter(model.isUserGroupListed).isEmpty)
+
+        model.sidebarAccountSearch = ""
+        XCTAssertFalse(model.isSidebarAccountSearching)
+        XCTAssertEqual(model.allAccounts.filter(model.isSidebarAccountListed).count, model.allAccounts.count)
+    }
+
+    func testSidebarSearchOpensCollapsedGroupsWithHits() throws {
+        let giro = try account(.checking)
+        let parent = try XCTUnwrap(model.userGroup(of: giro))
+        model.collapsedUserGroups.insert(parent.uuid)
+        XCTAssertFalse(model.isUserGroupOpen(parent))
+
+        model.sidebarAccountSearch = giro.iban
+        XCTAssertTrue(model.isUserGroupListed(parent))
+        XCTAssertTrue(model.isUserGroupOpen(parent), "search expands groups with hits")
+    }
+
+    // MARK: by bank
+
+    func testBankViewGroupsDemoAccounts() throws {
+        model.accountView = .byBank
+        XCTAssertEqual(model.accountView, .byBank)
+        let banks = model.bankGroups
+        XCTAssertEqual(banks.map(\.name), ["Musterbank", "Ohne Bank"])
+        let muster = try XCTUnwrap(banks.first { $0.id == "Musterbank" })
+        let orphan = try XCTUnwrap(banks.first { $0.id.isEmpty })
+        XCTAssertEqual(muster.accounts.count + orphan.accounts.count, model.allAccounts.count)
+        XCTAssertTrue(orphan.accounts.contains(where: { $0.name == "Autokredit" }), "manual loan has no bank name")
+
+        let giro = try account(.checking)
+        model.interactiveSidebarSelection = .bank(muster.id)
+        XCTAssertEqual(model.sidebarSelection, .bank("Musterbank"))
+        XCTAssertEqual(Set(model.selectionAccountIDs), Set(muster.accounts.map(\.id)))
+        XCTAssertEqual(model.title, "Musterbank")
+        XCTAssertEqual(model.bankGroupKey(for: giro), "Musterbank")
+
+        model.toggleCollapsedBank("Musterbank")
+        XCTAssertFalse(model.isBankGroupOpen("Musterbank"))
+        model.sidebarAccountSearch = "Girokonto"
+        XCTAssertTrue(model.isBankGroupOpen("Musterbank"), "search expands bank sections")
     }
 }
 

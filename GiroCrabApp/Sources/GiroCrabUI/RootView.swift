@@ -205,8 +205,9 @@ public struct GiroCrabScenes: Scene {
                     .disabled(!model.isUnlocked)
                 Divider()
                 Picker("Konten anzeigen", selection: Binding(get: { model.accountView }, set: { model.accountView = $0 })) {
-                    Text("Nach Gruppe").tag(AccountSidebarMode.byGroup)
-                    Text("Nach Kontoart").tag(AccountSidebarMode.byKind)
+                    ForEach(AccountSidebarMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
                 }
                 .disabled(!model.isUnlocked)
                 Button("Kontogruppen bearbeiten …") { model.openGroupManager() }
