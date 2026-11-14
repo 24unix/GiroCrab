@@ -248,6 +248,9 @@ pub struct MatrixEntry {
     /// The connector behind this row; `None` for presets of a generic connector.
     pub kind: Option<ConnectorKind>,
     pub interface: Interface,
+    /// Official interface of the bank/provider (`Some(false)`: unofficial, may conflict with
+    /// its terms of service); `None` = not yet checked. Source of the notice in `docs/*-connector.md`.
+    pub official: Option<bool>,
     pub capabilities: &'static [Capability],
     pub status: Status,
     /// GitHub issue numbers (feedback wanted / known limitation).
@@ -262,6 +265,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "Volksbank Kassel Göttingen",
         kind: Some(ConnectorKind::VolksbankKasselGoettingen),
         interface: Interface::Fints,
+        official: Some(true),
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
@@ -276,6 +280,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "1822direkt",
         kind: Some(ConnectorKind::Direkt1822),
         interface: Interface::Fints,
+        official: Some(true),
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
@@ -290,6 +295,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "FinTS-Bank (BLZ + URL)",
         kind: Some(ConnectorKind::FinTsGeneric),
         interface: Interface::Fints,
+        official: Some(true),
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
@@ -304,6 +310,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "ING",
         kind: None,
         interface: Interface::Fints,
+        official: Some(true),
         capabilities: &[Capability::Transactions, Capability::Balances],
         status: Status::TestingWanted,
         issues: &[313],
@@ -312,6 +319,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "Consorsbank",
         kind: None,
         interface: Interface::Fints,
+        official: Some(true),
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
@@ -324,6 +332,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "comdirect",
         kind: Some(ConnectorKind::Comdirect),
         interface: Interface::RestApi,
+        official: Some(true),
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
@@ -337,6 +346,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "bunq",
         kind: Some(ConnectorKind::Bunq),
         interface: Interface::RestApi,
+        official: Some(true),
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
@@ -350,6 +360,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "PayPal",
         kind: Some(ConnectorKind::PayPal),
         interface: Interface::RestApi,
+        official: Some(true),
         capabilities: &[Capability::Transactions, Capability::Balances],
         status: Status::Limited,
         issues: &[156],
@@ -358,6 +369,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "Interactive Brokers (IBKR)",
         kind: Some(ConnectorKind::Ibkr),
         interface: Interface::RestApi,
+        official: Some(true),
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
@@ -370,6 +382,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "Scalable Capital",
         kind: Some(ConnectorKind::ScalableCapital),
         interface: Interface::RestApi,
+        official: Some(false),
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
@@ -382,6 +395,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "Bank per PSD2 (Enable Banking)",
         kind: Some(ConnectorKind::EnableBanking),
         interface: Interface::EnableBanking,
+        official: Some(true),
         capabilities: &[Capability::Transactions, Capability::Balances],
         status: Status::Limited,
         issues: &[],
@@ -390,6 +404,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "Revolut",
         kind: None,
         interface: Interface::EnableBanking,
+        official: Some(true),
         capabilities: &[Capability::Transactions, Capability::Balances],
         status: Status::TestingWanted,
         issues: &[289],
@@ -398,6 +413,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "American Express",
         kind: Some(ConnectorKind::AmericanExpress),
         interface: Interface::EnableBanking,
+        official: Some(true),
         capabilities: &[Capability::Transactions, Capability::Balances],
         status: Status::Verified,
         issues: &[],
@@ -406,6 +422,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "Amazon Visa",
         kind: Some(ConnectorKind::AmazonVisa),
         interface: Interface::EnableBanking,
+        official: Some(true),
         capabilities: &[Capability::Transactions, Capability::Balances],
         status: Status::Verified,
         issues: &[],
@@ -414,6 +431,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "easybank (ehem. Barclays)",
         kind: Some(ConnectorKind::Easybank),
         interface: Interface::WebPortal,
+        official: Some(false),
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
@@ -426,6 +444,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "Trade Republic",
         kind: Some(ConnectorKind::TradeRepublic),
         interface: Interface::WebPortal,
+        official: Some(false),
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
@@ -438,6 +457,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "quirion",
         kind: Some(ConnectorKind::Quirion),
         interface: Interface::WebPortal,
+        official: Some(false),
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
@@ -451,6 +471,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "FNZ Bank",
         kind: Some(ConnectorKind::Fnz),
         interface: Interface::WebPortal,
+        official: Some(false),
         capabilities: &[
             Capability::Balances,
             Capability::Transactions,
@@ -464,6 +485,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "Amazon Bestellungen",
         kind: Some(ConnectorKind::AmazonOrders),
         interface: Interface::WebPortal,
+        official: Some(false),
         capabilities: &[Capability::Transactions],
         status: Status::TestingWanted,
         issues: &[],

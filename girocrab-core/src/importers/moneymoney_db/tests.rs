@@ -108,7 +108,6 @@ fn vault() -> Arc<Vault> {
 pub(crate) fn options_from(
     p: &MoneyMoneyDbPreview,
     connections: bool,
-    pins: bool,
 ) -> MoneyMoneyDbImportOptions {
     MoneyMoneyDbImportOptions {
         accounts: p
@@ -124,7 +123,6 @@ pub(crate) fn options_from(
         import_categories: true,
         import_notes: true,
         create_connections: connections,
-        import_pins: pins,
         import_groups: true,
         import_statements: true,
         statements_dir: None,
@@ -243,8 +241,7 @@ fn encrypted_database_without_password_explains_moneymoney_key() {
     assert!(matches!(err, CoreError::Authentication { .. }));
     let msg = err.to_string();
     assert!(
-        msg.contains("MoneyMoney (nicht in GiroCrab)")
-            && msg.contains("Einstellungen › Sicherheit"),
+        msg.contains("(nicht in GiroCrab)") && msg.contains("Datenbank-Passwort"),
         "{msg}"
     );
     assert!(!msg.contains("Falsches Passwort"), "{msg}");
@@ -280,9 +277,9 @@ fn source_file_bytes_unchanged_after_preview_and_import() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true, true))
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true))
         .unwrap();
-    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true, true))
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true))
         .unwrap();
     assert_eq!(std::fs::read(&path).unwrap(), before);
     assert_eq!(
@@ -349,7 +346,6 @@ fn preview_lists_accounts_banks_categories_and_totals() {
         Some(ConnectorKind::VolksbankKasselGoettingen)
     );
     assert_eq!(bank(3).connector, None);
-    assert!(bank(1).has_saved_pin);
     assert_eq!(bank(1).account_count, 3);
     // the preview never stores anything
     assert!(v.list_accounts().unwrap().is_empty());
@@ -364,7 +360,7 @@ fn import_categories_splits_pending_notes_and_balance() {
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let r = v
-        .import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!((r.accounts_created, r.accounts_merged), (4, 0));
     assert_eq!(
@@ -474,7 +470,7 @@ fn reimport_is_idempotent() {
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let first = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true, true))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true))
         .unwrap();
     let count = |v: &Vault| {
         let db = v.db().unwrap();
@@ -497,11 +493,11 @@ fn reimport_is_idempotent() {
         .iter()
         .all(|b| b.existing_connection_id.is_some()));
     let second = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p2, true, true))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p2, true))
         .unwrap();
     // … and a third one that still says "new account" everywhere
     let third = v
-        .import_moneymoney_database(path, PW.into(), options_from(&p, true, true))
+        .import_moneymoney_database(path, PW.into(), options_from(&p, true))
         .unwrap();
     for r in [&second, &third] {
         assert_eq!((r.accounts_created, r.accounts_merged), (0, 4));
@@ -510,7 +506,7 @@ fn reimport_is_idempotent() {
             (0, first.bookings_new)
         );
         assert_eq!((r.categories_created, r.connections_created), (0, 0));
-        assert_eq!((r.connections_existing, r.pins_stored), (2, 0));
+        assert_eq!(r.connections_existing, 2);
     }
     assert_eq!(count(&v), after_first);
     assert_eq!(
@@ -556,7 +552,7 @@ fn iban_match_merges_into_existing_synced_account() {
     assert_eq!(giro.existing_account_id, Some(existing));
     assert_eq!(giro.existing_account_name.as_deref(), Some("Mein Giro"));
     assert_eq!(p.banks[0].existing_connection_id, Some(conn_id));
-    let mut o = options_from(&p, true, false);
+    let mut o = options_from(&p, true);
     o.accounts.retain(|c| c.mm_id == 1);
     let r = v.import_moneymoney_database(path, PW.into(), o).unwrap();
     assert_eq!((r.accounts_created, r.accounts_merged), (0, 1));
@@ -588,7 +584,7 @@ fn first_bank_sync_adopts_imported_account_by_iban() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
         .unwrap();
     let giro = account_by_name(&v, "Girokonto");
     let conn_id = v.list_bank_connections().unwrap()[0].id;
@@ -637,7 +633,7 @@ fn adopting_wallets_sharing_an_iban_follows_the_currency() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
         .unwrap();
     let conn_id = v.list_bank_connections().unwrap()[0].id;
     let db = v.db().unwrap();
@@ -670,24 +666,16 @@ fn adopting_wallets_sharing_an_iban_follows_the_currency() {
 }
 
 #[test]
-fn connections_for_supported_banks_only_and_pins_on_request() {
+fn connections_for_supported_banks_only_and_never_a_pin() {
     let v = vault();
     let path = fake_db();
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    // without import_pins: connections, but no PIN
     let r = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true, false))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true))
         .unwrap();
-    assert_eq!(
-        (
-            r.connections_created,
-            r.banks_skipped_unsupported,
-            r.pins_stored
-        ),
-        (2, 1, 0)
-    );
+    assert_eq!((r.connections_created, r.banks_skipped_unsupported), (2, 1));
     let conns = v.list_bank_connections().unwrap();
     assert_eq!(conns.len(), 2);
     let comdirect = conns
@@ -703,25 +691,15 @@ fn connections_for_supported_banks_only_and_pins_on_request() {
     for c in &conns {
         assert!(!v.connection_status(c.id).unwrap().has_pin);
     }
-    // with import_pins: stored for the supported banks only
+    // a second run changes nothing and still stores no PIN
     let r = v
-        .import_moneymoney_database(path, PW.into(), options_from(&p, true, true))
+        .import_moneymoney_database(path, PW.into(), options_from(&p, true))
         .unwrap();
-    assert_eq!((r.connections_created, r.pins_stored), (0, 2));
+    assert_eq!(r.connections_created, 0);
     let db = v.db().unwrap();
-    let pin = |id: i64| -> String {
-        db.query_row(
-            "SELECT value FROM settings WHERE key = ?1 AND is_secret = 1",
-            [crate::connections::pin_key(id)],
-            |r| r.get(0),
-        )
-        .unwrap()
-    };
-    assert_eq!(pin(comdirect.id), "11111");
-    assert_eq!(pin(vb.id), "22222");
     let n: i64 = db
         .query_row(
-            "SELECT count(*) FROM settings WHERE value = '33333'",
+            "SELECT count(*) FROM settings WHERE key LIKE 'pin.conn.%' OR value IN ('11111', '22222', '33333')",
             [],
             |r| r.get(0),
         )
@@ -731,7 +709,7 @@ fn connections_for_supported_banks_only_and_pins_on_request() {
 
 /// Replaces the secret columns of `banks`, `accounts` and `pins.pin` by views
 /// whose secret columns raise an error when evaluated. The importer must still
-/// work – proving it never reads them (and `pins.pin` only on request).
+/// work – proving it never reads them (nor the `pins` table).
 const TRAP: &str = r#"
 ALTER TABLE banks RENAME TO banks_data;
 CREATE VIEW banks AS SELECT rowid, country, bankcode, username, customer, json('x') AS credential, name, server,
@@ -748,7 +726,7 @@ CREATE VIEW pins AS SELECT bank_key, json('x') AS pin FROM pins_data;
 "#;
 
 #[test]
-fn secret_columns_and_pins_are_never_read_unless_requested() {
+fn secret_columns_and_pins_are_never_read() {
     let path = fake_db_with(false, TRAP);
     // positive control: evaluating a trapped column fails
     let c = open_source(&path, &SecretString::new(PW.into())).unwrap();
@@ -765,16 +743,11 @@ fn secret_columns_and_pins_are_never_read_unless_requested() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    assert!(p.banks[0].has_saved_pin);
-    // connections without PINs, and PINs requested without connections: pin column untouched
-    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true, false))
+    // the pin column and the pins table stay untouched, with or without connections
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true))
         .unwrap();
-    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, true))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
-    // only now the (trapped) pin column is read
-    assert!(v
-        .import_moneymoney_database(path, PW.into(), options_from(&p, true, true))
-        .is_err());
 }
 
 #[test]
@@ -784,7 +757,7 @@ fn kind_override_on_reimport() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    let mut o = options_from(&p, false, false);
+    let mut o = options_from(&p, false);
     for c in &mut o.accounts {
         c.import = c.mm_id == 2;
         c.kind = AccountKind::Checking;
@@ -816,7 +789,7 @@ fn imported_accounts_are_linked_to_their_bank_login() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
         .unwrap();
     let comdirect = v.list_bank_connections().unwrap()[0].id;
     for name in ["Girokonto", "Visa-Karte", "Depot"] {
@@ -839,7 +812,7 @@ fn opening_balance_applies_to_accounts_linked_to_a_bank_login() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
         .unwrap();
     let giro = account_by_name(&v, "Girokonto");
     assert!(giro.connection_id.is_some());
@@ -865,7 +838,7 @@ fn accounts_stay_unlinked_without_bank_logins() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
     assert!(v
         .list_accounts()
@@ -881,7 +854,7 @@ fn first_bank_sync_adopts_imported_card_without_iban_by_kind() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
         .unwrap();
     let visa = account_by_name(&v, "Visa-Karte");
     let conn_id = v.list_bank_connections().unwrap()[0].id;
@@ -934,7 +907,7 @@ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, curre
     let bank = |id| p.banks.iter().find(|b| b.mm_id == id).unwrap().connector;
     assert_eq!(bank(20), Some(ConnectorKind::AmazonVisa));
     assert_eq!(bank(21), None);
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
         .unwrap();
     let conn = v
         .list_bank_connections()
@@ -972,7 +945,7 @@ fn starter_categories_are_replaced_in_an_empty_vault() {
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     assert!(p.replaces_starter_categories);
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
     let mut names: Vec<String> = v
         .list_categories(None, None)
@@ -1012,7 +985,7 @@ fn category_colors_are_taken_over_without_overwriting_own_ones() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     let color = |name: &str| {
         v.list_categories(None, None)
@@ -1067,7 +1040,7 @@ fn category_colors_are_taken_over_without_overwriting_own_ones() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!(color("Strom").as_deref(), Some("#5856D6"));
     assert_eq!(color("Haushalt").as_deref(), Some("#FF9500"));
@@ -1092,7 +1065,7 @@ fn starter_categories_stay_when_the_vault_has_bookings() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     // second run: the vault now has bookings, nothing is replaced
     let p = v
@@ -1100,7 +1073,7 @@ fn starter_categories_stay_when_the_vault_has_bookings() {
         .unwrap();
     assert!(!p.replaces_starter_categories);
     let before = v.list_categories(None, None).unwrap().len();
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!(v.list_categories(None, None).unwrap().len(), before);
 
@@ -1111,7 +1084,7 @@ fn starter_categories_stay_when_the_vault_has_bookings() {
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     // categories not wanted: the starter set stays
-    let mut o = options_from(&p, false, false);
+    let mut o = options_from(&p, false);
     o.import_categories = false;
     v.import_moneymoney_database(path, PW.into(), o).unwrap();
     assert_eq!(v.list_categories(None, None).unwrap().len(), starter);
@@ -1273,7 +1246,7 @@ fn statements_are_imported_from_the_moneymoney_folder() {
     assert_eq!(giro.statement_count, 3, "the deleted one is not counted");
 
     let r = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!(
         (
@@ -1313,10 +1286,10 @@ fn statements_are_imported_from_the_moneymoney_folder() {
 
     // again: nothing twice; and without the option nothing at all
     let r = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!((r.documents_imported, r.documents_existing), (0, 2));
-    let mut off = options_from(&p, false, false);
+    let mut off = options_from(&p, false);
     off.import_statements = false;
     let r = v.import_moneymoney_database(path, PW.into(), off).unwrap();
     assert_eq!(
@@ -1348,7 +1321,7 @@ fn statements_of_a_backup_come_from_a_separately_saved_folder() {
         (4, 0, None)
     );
     let r = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!((r.documents_imported, r.documents_missing), (0, 4));
 
@@ -1364,7 +1337,7 @@ fn statements_of_a_backup_come_from_a_separately_saved_folder() {
         .preview_moneymoney_database(path.clone(), PW.into(), Some(dir.clone()))
         .unwrap();
     assert_eq!((p.statement_count, p.statements_found), (4, 2));
-    let mut options = options_from(&p, false, false);
+    let mut options = options_from(&p, false);
     options.statements_dir = Some(dir);
     let r = v
         .import_moneymoney_database(path, PW.into(), options)
@@ -1406,7 +1379,6 @@ fn brand_banks_with_pseudo_bank_code_map_to_their_connector() {
     assert_eq!(connector_for("37019000", "bunq"), Some(ConnectorKind::Bunq));
     assert_eq!(connector_for("", "bunq"), Some(ConnectorKind::Bunq));
     assert_eq!(connector_for("BUNQNL2A", ""), Some(ConnectorKind::Bunq));
-    assert!(!pin_usable(ConnectorKind::Bunq));
 }
 
 #[test]
@@ -1462,7 +1434,7 @@ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, bic, 
         assert_eq!(b.connector, Some(ConnectorKind::Bunq), "bank {id}");
     }
     let r = v
-        .import_moneymoney_database(path, PW.into(), options_from(&p, true, true))
+        .import_moneymoney_database(path, PW.into(), options_from(&p, true))
         .unwrap();
     let bunq: Vec<_> = v
         .list_bank_connections()
@@ -1492,7 +1464,7 @@ fn depot_balance_from_shown_balance_and_holdings() {
     assert!(depot.is_portfolio);
     assert_eq!(depot.computed_balance_cents, 1_234_567);
     assert!(
-        depot.balance_source.contains("MoneyMoney"),
+        depot.balance_source.contains("Saldo laut Datenbank"),
         "{}",
         depot.balance_source
     );
@@ -1502,7 +1474,7 @@ fn depot_balance_from_shown_balance_and_holdings() {
     assert!(giro.balance_source.contains("Saldenverlauf"));
 
     let r = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!(r.holdings_imported, 2);
     let acc = account_by_name(&v, "Depot");
@@ -1530,7 +1502,7 @@ fn depot_balance_from_shown_balance_and_holdings() {
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let r2 = v
-        .import_moneymoney_database(path, PW.into(), options_from(&p2, false, false))
+        .import_moneymoney_database(path, PW.into(), options_from(&p2, false))
         .unwrap();
     assert_eq!(r2.holdings_imported, 2);
     assert_eq!(v.list_holdings(acc.id).unwrap().len(), 2);
@@ -1556,7 +1528,7 @@ fn reimport_of_emptied_depot_removes_stale_holdings() {
     let p = v
         .preview_moneymoney_database(fake_db(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(fake_db(), PW.into(), options_from(&p, false, false))
+    v.import_moneymoney_database(fake_db(), PW.into(), options_from(&p, false))
         .unwrap();
     let depot = account_by_name(&v, "Depot");
     assert_eq!(v.list_holdings(depot.id).unwrap().len(), 2);
@@ -1578,7 +1550,7 @@ fn reimport_of_emptied_depot_removes_stale_holdings() {
         "recognised by external ref"
     );
     let r = v
-        .import_moneymoney_database(sold, PW.into(), options_from(&p2, false, false))
+        .import_moneymoney_database(sold, PW.into(), options_from(&p2, false))
         .unwrap();
     assert_eq!(r.holdings_imported, 0);
     assert!(
@@ -1605,7 +1577,7 @@ fn shown_balance_also_wins_for_checking_accounts() {
     let giro = p.accounts.iter().find(|a| a.name == "Girokonto").unwrap();
     assert_eq!(giro.computed_balance_cents, 123_456);
     assert!(
-        giro.balance_source.contains("Saldo laut MoneyMoney"),
+        giro.balance_source.contains("Saldo laut Datenbank"),
         "{}",
         giro.balance_source
     );
@@ -1617,7 +1589,7 @@ fn shown_balance_also_wins_for_checking_accounts() {
         visa.balance_source
     );
 
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
     let acc = account_by_name(&v, "Girokonto");
     assert_eq!(acc.balance_cents, 123_456);
@@ -1641,7 +1613,7 @@ fn import_takes_over_moneymoney_groups() {
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let r = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!(r.groups_created, 1);
     let gs = v.list_user_groups().unwrap();
@@ -1665,7 +1637,7 @@ fn import_takes_over_moneymoney_groups() {
         .id;
     v.move_account_to_group(giro, None, None).unwrap();
     let r = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!(r.groups_created, 0);
     let gs = v.list_user_groups().unwrap();
@@ -1703,7 +1675,7 @@ fn import_takes_over_nested_groups_in_moneymoney_order() {
     assert_eq!(shown("Depot"), "Immobilien › ETW Neckarsulm");
     assert_eq!(shown("Girokonto"), "Privat");
     let r = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!(r.groups_created, 4);
     let tree = |v: &Vault| -> Vec<(String, u32, Vec<String>)> {
@@ -1738,7 +1710,7 @@ fn import_takes_over_nested_groups_in_moneymoney_order() {
     let heilbronn = groups[1].uuid.clone();
     v.set_user_group_parent(heilbronn, None).unwrap();
     let r = v
-        .import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!(r.groups_created, 0);
     let after = tree(&v);
@@ -1763,7 +1735,7 @@ fn imports_category_rules() {
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let r = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!((r.rules_created, r.rules_disabled), (5, 3));
 
@@ -1791,7 +1763,7 @@ fn imports_category_rules() {
     );
 
     let again = v
-        .import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!((again.rules_created, again.rules_disabled), (0, 0));
     assert_eq!(v.list_rules().unwrap().len(), rules.len());
@@ -1837,7 +1809,7 @@ fn import_reports_progress_and_can_be_cancelled() {
     let r = v.import_moneymoney_database_with_progress(
         path.clone(),
         PW.into(),
-        options_from(&p, true, false),
+        options_from(&p, true),
         stop.clone(),
     );
     assert!(matches!(r, Err(CoreError::InvalidInput { .. })));
@@ -1855,7 +1827,7 @@ fn import_reports_progress_and_can_be_cancelled() {
         .import_moneymoney_database_with_progress(
             path,
             PW.into(),
-            options_from(&p, false, false),
+            options_from(&p, false),
             all.clone(),
         )
         .unwrap();
@@ -1903,7 +1875,7 @@ fn transfers_between_own_accounts_are_neutral_in_kpis() {
         let p = v
             .preview_moneymoney_database(path.clone(), PW.into(), None)
             .unwrap();
-        v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
             .unwrap();
         let page = v.list_transactions(BookingFilter::default()).unwrap();
         (page.income_cents, page.expense_cents, page.total_count)
@@ -2049,7 +2021,7 @@ fn starter_wipe_on_import_soft_deletes_starter_categories() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
     let db = v.db().unwrap();
     let n = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
@@ -2081,7 +2053,7 @@ fn import_stamps_manual_category_and_note() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     {
         let db = v.db().unwrap();
@@ -2096,7 +2068,7 @@ fn import_stamps_manual_category_and_note() {
         // pretend the bookings existed without category and note: the re-import enriches them
         db.execute("UPDATE transactions SET category_id = NULL, category_source = 'none', note = '', category_ms = 0, note_ms = 0", []).unwrap();
     }
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
     let db = v.db().unwrap();
     let n = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
@@ -2116,7 +2088,7 @@ fn reimport_revives_deleted_account_with_its_cascade_bookings_only() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true, false))
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, true))
         .unwrap();
     let giro = account_by_name(&v, "Girokonto").id;
     let live = |v: &Vault| -> i64 {
@@ -2144,7 +2116,7 @@ fn reimport_revives_deleted_account_with_its_cascade_bookings_only() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    v.import_moneymoney_database(path, PW.into(), options_from(&p, true, false))
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, true))
         .unwrap();
     assert_eq!(
         v.list_accounts()
@@ -2169,7 +2141,7 @@ fn account_checks_confirm_a_complete_import() {
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let r = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     assert_eq!(r.account_checks.len(), 4);
     for c in &r.account_checks {
@@ -2196,7 +2168,7 @@ fn account_checks_confirm_a_complete_import() {
         )
         .unwrap();
     let r = v
-        .import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false))
         .unwrap();
     let giro = r
         .account_checks
@@ -2215,7 +2187,7 @@ fn account_check_flags_missing_bookings_and_a_wrong_balance() {
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
     let r = v
-        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false, false))
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
         .unwrap();
     let giro = r
         .account_checks
@@ -2238,7 +2210,7 @@ fn account_check_flags_missing_bookings_and_a_wrong_balance() {
         )
         .unwrap();
     }
-    let src = read_source(&path, &SecretString::new(PW.into()), false).unwrap();
+    let src = read_source(&path, &SecretString::new(PW.into())).unwrap();
     let a = src.accounts.iter().find(|a| a.id == giro.mm_id).unwrap();
     let db = v.db().unwrap();
     let c = check_account(
@@ -2283,7 +2255,7 @@ fn banks_without_own_connector_are_set_up_through_enable_banking() {
     let spk = p.banks.iter().find(|b| b.mm_id == 3).unwrap();
     assert!(spk.connection_options.is_empty());
 
-    let mut o = options_from(&p, true, false);
+    let mut o = options_from(&p, true);
     o.bank_choices = vec![MoneyMoneyDbBankChoice {
         mm_bank_id: 30,
         connection: Some(eb),
@@ -2342,7 +2314,7 @@ fn psd2_choice_without_create_connections_does_nothing() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    let mut o = options_from(&p, false, false);
+    let mut o = options_from(&p, false);
     o.bank_choices = vec![MoneyMoneyDbBankChoice {
         mm_bank_id: 30,
         connection: eb_option(&p, 30),
@@ -2406,7 +2378,7 @@ fn a_bank_can_be_switched_to_enable_banking_or_left_out() {
     let p = v
         .preview_moneymoney_database(path.clone(), PW.into(), None)
         .unwrap();
-    let mut o = options_from(&p, true, false);
+    let mut o = options_from(&p, true);
     o.bank_choices = vec![
         // FinTS bank → Enable Banking instead
         MoneyMoneyDbBankChoice {
@@ -2459,7 +2431,7 @@ fn database_locked_by_running_moneymoney_is_not_a_wrong_password() {
     assert!(started.elapsed() < std::time::Duration::from_secs(3));
     assert!(matches!(err, CoreError::Authentication { .. }));
     let msg = err.to_string();
-    assert!(msg.contains("noch geöffnet"), "{msg}");
+    assert!(msg.contains("geöffnet und gesperrt"), "{msg}");
     assert!(!msg.contains("Falsches Passwort"), "{msg}");
     drop(holder);
     let p = v

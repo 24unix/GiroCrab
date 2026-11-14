@@ -161,8 +161,8 @@ and documented rather than silent:
   to the Trash.
 - The vault key in the Keychain (service `de.girocrab.vault`) is **not** removed, so a
   restored vault can still be opened.
-- The optional iCloud Drive sync/mirror folder (`iCloud Drive/GiroCrab`, or
-  `iCloud Drive/moneymoney`) is **never** touched, because it may be the user's only
+- The optional iCloud Drive sync/mirror folder (`iCloud Drive/GiroCrab`, or an
+  existing older sync folder in iCloud Drive) is **never** touched, because it may be the user's only
   backup.
 
 If maintainers would rather never touch the vault, remove that one line from `zap` and

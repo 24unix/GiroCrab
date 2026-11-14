@@ -1,5 +1,10 @@
 # quirion browser connector
 
+<!-- sync:connector-note:start -->
+> **Hinweis / Note:** Dieser Connector ist ein unabhängiges Community-Projekt und steht in keiner Verbindung zur quirion. Schnittstelle: inoffiziell. Bei inoffiziellen Schnittstellen kann die Nutzung gegen die Nutzungsbedingungen der Bank verstoßen.
+> This connector is an independent community project and is not affiliated with quirion. Interface: unofficial. Using unofficial interfaces may violate the bank's terms of service.
+<!-- sync:connector-note:end -->
+
 Sign in through **Add bank → quirion** (also searchable as Quirin Privatbank,
 BLZ 10110600 or its German IBAN). Login and any approval happen in the embedded
 browser. After login, choose **Depot und Konten abrufen**. PDF archive downloads
@@ -95,4 +100,4 @@ node --test scripts/test-quirion-portal.cjs
 
 The archived [homebanking_data_importer](https://github.com/lkwg82/homebanking_data_importer)
 provided context for the browser approach. No source was copied from it; the
-connector uses the portal API observed in Safari and the supplied MoneyMoney log.
+connector uses the portal API observed in Safari and the supplied log of a third-party app.

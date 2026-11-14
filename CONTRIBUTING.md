@@ -33,7 +33,7 @@ Database schema changes are a new migration step plus a fixture vault, see
    `pub mod <bank>;` in `connectors/mod.rs`. The `BankConnector` trait and its DTOs (`Phase`,
    `Challenge`, `FetchResult`, …) live in `connectors/types.rs`; the sync/transfer state machines are
    in `sync_session.rs` / `transfer_session.rs`, and storing fetched data is `persist.rs`.
-   File importers (MoneyMoney, CSV/CAMT/MT940, portal imports) are not connectors: see
+   File importers (database, CSV/CAMT/MT940, portal imports) are not connectors: see
    `girocrab-core/src/importers/`.
    Add the Swift display name/colour in `GiroCrabUI/Formatting.swift`.
 3. **Test it with fake data.** Unit-test your parser with invented fixtures, then check the UI via
@@ -53,6 +53,33 @@ don't collide at the end of the file. Add keys with `GiroCrabApp/Tools/update-lo
 by hand, then run `scripts/xcstrings.py format` (CI checks it).
 `git config merge.xcstrings.driver 'scripts/xcstrings.py merge %O %A %B'` makes git merge the
 catalogs per key instead of per line; the hooks in `.githooks` register it automatically.
+
+## Texts and documentation
+
+User-visible texts (README, docs, website, app strings, release notes) do not name brands of other banking or
+finance software and contain no comparisons with other products. Describe GiroCrab's features factually and
+verifiably. Internal code identifiers (module, function, test and file names) are exempt; `scripts/lint-brand-names.sh`
+(CI) checks the documentation and string catalogs.
+
+Nutzersichtbare Texte (README, docs, Website, App-Strings, Release-Notes) nennen keine Marken anderer Banking- oder
+Finanzsoftware und enthalten keine Vergleiche mit Fremdprodukten. Funktionen von GiroCrab werden sachlich und
+belegbar beschrieben.
+
+## Markennamen und Quellen / Trademarks and sources
+
+**DE**
+- Andere Finanz- und Banking-Software (z. B. andere Banking-Apps) wird in nutzersichtbaren Texten nicht genannt: weder in README, Doku, Website, App-Texten noch in Release-Notes. Keine Vergleiche mit Fremdprodukten. Interne Code-Bezeichner sind davon ausgenommen. Der CI-Check `scripts/lint-brand-names.sh` prüft das.
+- Banken, Broker und Zahlungsdienste, die GiroCrab anbindet, dürfen sachlich genannt werden („Connector für Konten bei der X-Bank“). Nicht erlaubt: Formulierungen, die eine Partnerschaft oder offizielle Unterstützung nahelegen, sowie Logos von Banken in Doku und Website.
+- Inoffizielle Schnittstellen werden in Doku und Bank-Tabelle als „inoffiziell“ gekennzeichnet, mit Hinweis auf mögliche Verstöße gegen Nutzungsbedingungen.
+- Kein Kopieren aus proprietärer Dokumentation oder fremdem Code. Fremdcode nur mit GPL-kompatibler Lizenz und Quellenangabe (Projekt, Lizenz, Link). Technische Erkenntnisse in eigenen Worten beschreiben.
+- Funktionen von GiroCrab sachlich und belegbar beschreiben: keine absoluten Versprechen („verlustfrei“, „alle Banken“), keine Zeitangaben ohne Messgrundlage.
+
+**EN**
+- Other finance or banking software is not named in user-facing text (README, docs, website, app strings, release notes), and there are no comparisons with third-party products. Internal code identifiers are exempt. Enforced by `scripts/lint-brand-names.sh`.
+- Banks, brokers and payment services that GiroCrab connects to may be named factually ("connector for accounts at X Bank"). Do not imply a partnership or official support, and do not use bank logos in docs or on the website.
+- Mark unofficial interfaces as "unofficial" in docs and the bank table, noting possible terms-of-service issues.
+- Do not copy from proprietary documentation or third-party code. Third-party code only under a GPL-compatible licence with attribution (project, licence, link). Describe technical findings in your own words.
+- Describe GiroCrab's features factually and verifiably: no absolute claims ("lossless", "all banks"), no time claims without measurement.
 
 ## Adding merchants
 

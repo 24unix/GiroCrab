@@ -14,6 +14,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "Volksbank X",
         kind: Some(ConnectorKind::A),
         interface: Interface::Fints,
+        official: Some(true),
         capabilities: &[Capability::Transactions, Capability::Balances, Capability::Transfers],
         status: Status::Verified,
         issues: &[],
@@ -22,6 +23,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "ING",
         kind: None,
         interface: Interface::Fints,
+        official: Some(true),
         capabilities: &[Capability::Transactions],
         status: Status::TestingWanted,
         issues: &[313],
@@ -30,6 +32,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         name: "Amazon Bestellungen",
         kind: Some(ConnectorKind::C),
         interface: Interface::WebPortal,
+        official: Some(false),
         capabilities: &[Capability::Transactions],
         status: Status::Limited,
         issues: &[1, 2],
@@ -46,6 +49,17 @@ class SyncDocs(unittest.TestCase):
         self.assertEqual(m[0]["capabilities"], ["Transactions", "Balances", "Transfers"])
         self.assertEqual((m[1]["status"], m[1]["issues"]), ("TestingWanted", [313]))
         self.assertEqual(m[2]["issues"], [1, 2])
+
+    def test_official_and_connector_note(self):
+        m = sd.parse_matrix(CATALOG)
+        self.assertEqual([e["official"] for e in m], [True, True, False])
+        note = sd.connector_note("X", False)
+        self.assertIn("Schnittstelle: inoffiziell", note)
+        self.assertIn("Interface: unofficial", note)
+        self.assertIn("Interface: to be confirmed", sd.connector_note("X", None))
+        doc = sd.replace_connector_note("# T\n\nbody\n", note)
+        self.assertEqual(doc, sd.replace_connector_note(doc, note))  # idempotent
+        self.assertTrue(doc.startswith("# T\n\n" + sd.NOTE_START))
 
     def test_parse_matrix_rejects_unknown_values(self):
         with self.assertRaises(SystemExit):

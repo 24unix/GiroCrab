@@ -407,7 +407,7 @@ struct TransferSheetView: View {
         }
     }
 
-    // MARK: Sm@rtPaste / invoice drop
+    // MARK: clipboard / invoice drop
 
     private func pasteFromClipboard() {
         #if os(macOS)

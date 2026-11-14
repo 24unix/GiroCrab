@@ -782,24 +782,24 @@
         }
       }
     },
-    "%lld von %lld Konten weichen von MoneyMoney ab" : {
+    "%lld von %lld Konten weichen von den importierten Daten ab" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$lld of %2$lld accounts differ from MoneyMoney"
+            "value" : "%1$lld of %2$lld accounts differ from the imported data"
           }
         }
       }
     },
-    "%lld von %lld Konten weichen von MoneyMoney ab." : {
+    "%lld von %lld Konten weichen von den importierten Daten ab." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$lld of %2$lld accounts differ from MoneyMoney."
+            "value" : "%1$lld of %2$lld accounts differ from the imported data."
           }
         }
       }
@@ -1012,13 +1012,13 @@
         }
       }
     },
-    "%u Dateien stimmen nicht mit der Prüfsumme aus MoneyMoney überein und wurden nicht übernommen." : {
+    "%u Dateien stimmen nicht mit der Prüfsumme aus der Datenbank überein und wurden nicht übernommen." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%u files don’t match MoneyMoney’s checksum and were not imported."
+            "value" : "%u files don’t match the checksum from the database and were not imported."
           }
         }
       }
@@ -1205,13 +1205,13 @@
         }
       }
     },
-    "%u PDF-Dateien im Ordner kennt MoneyMoney nicht – sie gehören zu keinem Konto und wurden nicht übernommen." : {
+    "%u PDF-Dateien im Ordner kennt die Datenbank nicht – sie gehören zu keinem Konto und wurden nicht übernommen." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%u PDF files in the folder are unknown to MoneyMoney – they belong to no account and were not imported."
+            "value" : "%u PDF files in the folder are unknown to the database – they belong to no account and were not imported."
           }
         }
       }
@@ -1240,17 +1240,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%u PDFs aren't next to this database. Choose their folder if you saved them."
-          }
-        }
-      }
-    },
-    "%u PINs im Tresor gespeichert" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%u PINs stored in the vault"
           }
         }
       }
@@ -1459,17 +1448,6 @@
         }
       }
     },
-    ", %u PINs im Tresor gespeichert." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ", %u PINs stored in the vault."
-          }
-        }
-      }
-    },
     ", %u bereits vorhanden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1646,13 +1624,13 @@
         }
       }
     },
-    "Abgleich mit MoneyMoney" : {
+    "Abgleich mit den importierten Daten" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Check against MoneyMoney"
+            "value" : "Check against the imported data"
           }
         }
       }
@@ -1855,13 +1833,13 @@
         }
       }
     },
-    "Alle %lld Konten stimmen mit MoneyMoney überein." : {
+    "Alle %lld Konten stimmen mit den importierten Daten überein." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "All %lld accounts match MoneyMoney."
+            "value" : "All %lld accounts match the imported data."
           }
         }
       }
@@ -3043,35 +3021,13 @@
         }
       }
     },
-    "Aus Ihrem MoneyMoney-Import:" : {
+    "Aus Ihrem Datenimport:" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "From your MoneyMoney import:"
-          }
-        }
-      }
-    },
-    "Aus MoneyMoney importieren" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Import from MoneyMoney"
-          }
-        }
-      }
-    },
-    "Aus MoneyMoney importieren …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Import from MoneyMoney…"
+            "value" : "From your data import:"
           }
         }
       }
@@ -5178,13 +5134,13 @@
         }
       }
     },
-    "Das Konto stimmt mit MoneyMoney überein." : {
+    "Das Konto stimmt mit den importierten Daten überein." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The account matches MoneyMoney."
+            "value" : "The account matches the imported data."
           }
         }
       }
@@ -5211,13 +5167,13 @@
         }
       }
     },
-    "Das Passwort wird in der App MoneyMoney festgelegt, nicht in GiroCrab. Tragen Sie es hier im Feld oben ein." : {
+    "Das Passwort der Datenbank wurde nicht in GiroCrab festgelegt. Tragen Sie es hier im Feld oben ein." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The password is set in the MoneyMoney app, not in GiroCrab. Enter it in the field above."
+            "value" : "The database password was not set in GiroCrab. Enter it in the field above."
           }
         }
       }
@@ -5288,6 +5244,28 @@
         }
       }
     },
+    "Datenbank (empfohlen)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Database (recommended)"
+          }
+        }
+      }
+    },
+    "Datenbank wird gelesen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reading the database…"
+          }
+        }
+      }
+    },
     "Datenbank-Passwort" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5299,6 +5277,17 @@
         }
       }
     },
+    "Datenbank-Passwort (leer, wenn unverschlüsselt)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Database password (empty if unencrypted)"
+          }
+        }
+      }
+    },
     "Datenbankfehler: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5306,6 +5295,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Database error: %@"
+          }
+        }
+      }
+    },
+    "Datenimport" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data import"
           }
         }
       }
@@ -5866,6 +5866,17 @@
         }
       }
     },
+    "Die Datenbank verzeichnet %u PDF-Dokumente, die Dateien liegen aber nicht bei dieser Datenbank. Wenn Sie sie gesichert haben, wählen Sie den Ordner aus – sonst werden sie ausgelassen und lassen sich später nachholen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The database lists %u PDF documents, but the files are not next to this database. If you saved them, choose the folder – otherwise they are left out and can be added later."
+          }
+        }
+      }
+    },
     "Die Empfängerbank konnte den Namen nicht prüfen%@. Senden Sie nur, wenn Sie sich bei IBAN und Empfänger sicher sind." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5961,28 +5972,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The PIN is stored encrypted in the vault."
-          }
-        }
-      }
-    },
-    "Die PINs aus MoneyMoney kommen verschlüsselt in den GiroCrab-Tresor. Ohne diese Option werden sie nicht gelesen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The PINs from MoneyMoney are stored encrypted in the GiroCrab vault. Without this option they aren't read."
-          }
-        }
-      }
-    },
-    "Die PINs werden dann im verschlüsselten GiroCrab-Tresor gespeichert. Ohne diese Option werden sie nicht einmal gelesen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The PINs are then stored in the encrypted GiroCrab vault. Without this option they are not even read."
           }
         }
       }
@@ -7368,6 +7357,17 @@
         }
       }
     },
+    "Erwartet wird eine Exportdatei mit den Umsätzen eines Kontos (CSV, XML, camt.053 oder MT940). Kategorien werden übernommen, sofern die Datei sie enthält. Sie können die Datei auch hierher ziehen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expected: an export file with the transactions of one account (CSV, XML, camt.053 or MT940). Categories are imported if the file contains them. You can also drag the file here."
+          }
+        }
+      }
+    },
     "Erweitert" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8567,17 +8567,6 @@
         }
       }
     },
-    "Gespeicherte PINs übernehmen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Import saved PINs"
-          }
-        }
-      }
-    },
     "Gestern, %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9447,6 +9436,17 @@
         }
       }
     },
+    "Historie & Kategorien importieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import history & categories"
+          }
+        }
+      }
+    },
     "Hochformat" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9766,6 +9766,57 @@
         }
       }
     },
+    "Import: %u Buchungen importiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Import: %u transaction imported"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Import: %u transactions imported"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Import: %u Buchungen in %u Konten importiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import: %1$u Buchungen in %2$u Konten importiert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import: %1$u transactions imported into %2$u accounts"
+          }
+        }
+      }
+    },
+    "Importdaten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import data"
+          }
+        }
+      }
+    },
     "Importiere …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9817,28 +9868,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Include in Total"
-          }
-        }
-      }
-    },
-    "In MoneyMoney ein einzelnes Konto wählen, alle Umsätze markieren (⌘A) und „Umsätze exportieren …“. Nur CSV enthält auch die Kategorien. Sie können die Datei auch hierher ziehen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In MoneyMoney, choose a single account, select all transactions (⌘A) and “Export transactions …”. Only CSV also contains the categories. You can also drag the file here."
-          }
-        }
-      }
-    },
-    "In MoneyMoney ist eine PIN gespeichert" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A PIN is saved in MoneyMoney"
           }
         }
       }
@@ -9931,13 +9960,13 @@
         }
       }
     },
-    "In dieser Datei wurden keine MoneyMoney-Umsätze erkannt (erwartet: CSV mit Datum/Betrag oder XML <transactions>)." : {
+    "In dieser Datei wurden keine Umsätze erkannt (erwartet: CSV mit Datum/Betrag, XML <transactions>, camt.053 oder MT940)." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No MoneyMoney transactions were recognised in this file (expected: CSV with date/amount or XML <transactions>)."
+            "value" : "No transactions were recognised in this file (expected: CSV with date/amount, XML <transactions>, camt.053 or MT940)."
           }
         }
       }
@@ -10668,13 +10697,13 @@
         }
       }
     },
-    "Kein Datenbank-Passwort in MoneyMoney? Dann vorher eines festlegen (Einstellungen → Sicherheit)." : {
+    "Kein Datenbank-Passwort festgelegt? Legen Sie vorher eines in dem Programm fest, das die Datenbank erstellt hat." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No database password in MoneyMoney? Set one first (Settings → Security)."
+            "value" : "No database password set? Set one first in the program that created the database."
           }
         }
       }
@@ -12742,200 +12771,6 @@
         }
       }
     },
-    "MoneyMoney Historie & Kategorien importieren" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Import MoneyMoney History & Categories"
-          }
-        }
-      }
-    },
-    "MoneyMoney speichert alles in einer mit Ihrem MoneyMoney-Passwort verschlüsselten Datenbank. GiroCrab öffnet sie nur lesend – die Datei und MoneyMoney bleiben unverändert." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney keeps everything in a database encrypted with your MoneyMoney password. GiroCrab opens it read-only – the file and MoneyMoney stay unchanged."
-          }
-        }
-      }
-    },
-    "MoneyMoney verzeichnet %u PDF-Dokumente, die Dateien liegen aber nicht bei dieser Datenbank. Wenn Sie sie gesichert haben, wählen Sie den Ordner aus – sonst werden sie ausgelassen und lassen sich später nachholen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney lists %u PDF documents, but the files are not next to this database. If you saved them, choose the folder – otherwise they are left out and can be added later."
-          }
-        }
-      }
-    },
-    "MoneyMoney-Daten" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney Data"
-          }
-        }
-      }
-    },
-    "MoneyMoney-Datenbank" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney Database"
-          }
-        }
-      }
-    },
-    "MoneyMoney-Datenbank (empfohlen)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney database (recommended)"
-          }
-        }
-      }
-    },
-    "MoneyMoney-Datenbank wird gelesen …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reading the MoneyMoney database…"
-          }
-        }
-      }
-    },
-    "MoneyMoney-Datenbank-Passwort" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney database password"
-          }
-        }
-      }
-    },
-    "MoneyMoney-Import" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney Import"
-          }
-        }
-      }
-    },
-    "MoneyMoney-Ordner auswählen (mit Kontoauszügen) – oder eine einzelne Datenbank, z. B. ein Backup (MoneyMoney.sqlite)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose the MoneyMoney folder (with statements) – or a single database, e.g. a backup (MoneyMoney.sqlite)"
-          }
-        }
-      }
-    },
-    "MoneyMoney-Ordner oder MoneyMoney.sqlite auswählen …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose the MoneyMoney folder or MoneyMoney.sqlite…"
-          }
-        }
-      }
-    },
-    "MoneyMoney-Passwort" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney password"
-          }
-        }
-      }
-    },
-    "MoneyMoney-Passwort (leer, wenn unverschlüsselt)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney password (empty if unencrypted)"
-          }
-        }
-      }
-    },
-    "MoneyMoney-Saldo berechnet" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney balance computed"
-          }
-        }
-      }
-    },
-    "MoneyMoney: %u Buchungen importiert" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "MoneyMoney: %u transaction imported"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "MoneyMoney: %u transactions imported"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "MoneyMoney: %u Buchungen in %u Konten importiert" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney: %1$u Buchungen in %2$u Konten importiert"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MoneyMoney: %1$u transactions imported into %2$u accounts"
-          }
-        }
-      }
-    },
     "Motorrad" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14520,6 +14355,17 @@
         }
       }
     },
+    "Ordner mit Datenbank und Kontoauszügen auswählen – oder eine einzelne Datenbank, z. B. ein Backup (.sqlite)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the folder with the database and statements – or a single database, e.g. a backup (.sqlite)"
+          }
+        }
+      }
+    },
     "Ordner mit Kontoauszügen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14538,6 +14384,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Choose the folder with the saved statements (PDF) – subfolders are searched too"
+          }
+        }
+      }
+    },
+    "Ordner oder Datenbankdatei (.sqlite) auswählen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a folder or database file (.sqlite)…"
           }
         }
       }
@@ -14670,17 +14527,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Store PIN in Vault"
-          }
-        }
-      }
-    },
-    "PINs im Tresor" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "PINs in the Vault"
           }
         }
       }
@@ -15885,13 +15731,24 @@
         }
       }
     },
-    "Saldo MoneyMoney" : {
+    "Saldo aus Umsätzen berechnet" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "MoneyMoney balance"
+            "value" : "Balance computed from transactions"
+          }
+        }
+      }
+    },
+    "Saldo laut Import" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imported balance"
           }
         }
       }
@@ -18009,6 +17866,17 @@
         }
       }
     },
+    "Unterstützt wird eine verschlüsselte Datenbankdatei (.sqlite), die mit einem Datenbank-Passwort geschützt ist. GiroCrab öffnet sie nur lesend – die Datei bleibt unverändert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A password-protected, encrypted database file (.sqlite) is supported. GiroCrab opens it read-only – the file stays unchanged."
+          }
+        }
+      }
+    },
     "Update-Kanal" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18488,28 +18356,6 @@
         }
       }
     },
-    "Von MoneyMoney umsteigen …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Switch from MoneyMoney …"
-          }
-        }
-      }
-    },
-    "Von MoneyMoney wechseln" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Switch from MoneyMoney"
-          }
-        }
-      }
-    },
     "Von diesem Konto kann GiroCrab nicht direkt überweisen. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18616,6 +18462,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Existing transactions aren't created twice; they only get category and note."
+          }
+        }
+      }
+    },
+    "Vorhandene Daten importieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import existing data"
+          }
+        }
+      }
+    },
+    "Vorhandene Daten importieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import existing data …"
           }
         }
       }
@@ -19313,13 +19181,13 @@
         }
       }
     },
-    "Wählen Sie den MoneyMoney-Ordner, damit auch die Kontoauszüge übernommen werden. Eine einzelne Datei (MoneyMoney.sqlite), etwa aus einem Backup, geht auch." : {
+    "Wählen Sie den Ordner mit Datenbank und Kontoauszügen, damit auch die Kontoauszüge übernommen werden. Eine einzelne Datenbankdatei (.sqlite), etwa aus einem Backup, geht auch." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose the MoneyMoney folder so the statements are imported as well. A single file (MoneyMoney.sqlite), e.g. from a backup, works too."
+            "value" : "Choose the folder with the database and statements so the statements are imported as well. A single database file (.sqlite), e.g. from a backup, works too."
           }
         }
       }
@@ -19346,13 +19214,13 @@
         }
       }
     },
-    "Wählen Sie, woher die Daten kommen. MoneyMoney und seine Daten bleiben unverändert." : {
+    "Wählen Sie, woher die Daten kommen. Die Originaldaten bleiben unverändert." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose where the data comes from. MoneyMoney and its data stay unchanged."
+            "value" : "Choose where the data comes from. The original data stays unchanged."
           }
         }
       }

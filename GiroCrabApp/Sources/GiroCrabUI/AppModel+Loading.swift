@@ -574,7 +574,10 @@ extension AppModel {
         reloadAssets()
         let accounts = allAccounts
         accountsByID = Dictionary(accounts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        func base(_ a: Account) -> String { a.name.replacingOccurrences(of: " (MoneyMoney)", with: "") }
+        // " (MoneyMoney)": suffix that earlier versions appended to accounts created by a file import.
+        func base(_ a: Account) -> String {
+            a.name.replacingOccurrences(of: " (Import)", with: "").replacingOccurrences(of: " (MoneyMoney)", with: "")
+        }
         let nameCount = Dictionary(accounts.map { (base($0).lowercased(), 1) }, uniquingKeysWith: +)
         accountMarkers = Dictionary(accounts.map { a in
             var label = base(a)

@@ -264,7 +264,7 @@ struct AddBankSheet: View {
                 }
                 .help(String(localized: "Ohne echte Bank: Kennung „demo“, PIN 12345, beliebige TAN"))
                 #if os(macOS)
-                Button("Von MoneyMoney umsteigen …") {
+                Button("Vorhandene Daten importieren …") {
                     dismiss()
                     model.showMoneyMoneyImport = true
                 }

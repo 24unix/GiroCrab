@@ -61,23 +61,23 @@ enum HelpCatalog {
     static let topics: [HelpTopic] = [
         HelpTopic(
             id: "start", icon: "flag.checkered",
-            title: ["de": "Erste Schritte & MoneyMoney-Import", "en": "Getting started & MoneyMoney import"],
+            title: ["de": "Erste Schritte & Datenimport", "en": "Getting started & data import"],
             body: [
                 "de": """
                 Beim ersten Start legt GiroCrab einen **lokalen, verschlüsselten Tresor** an. Danach gibt es zwei Wege, Buchungen zu laden: Bank direkt verbinden (siehe „Banken verbinden“) oder bestehende Daten importieren.
 
-                **MoneyMoney-Import:** *Ablage › Aus MoneyMoney importieren …* liest die MoneyMoney-Datenbank (Konten, Buchungen, Kategorien) oder eine CSV-Datei. Der Import kann gefahrlos wiederholt werden, bereits vorhandene Buchungen werden nicht doppelt angelegt.
+                **Datenimport:** *Ablage › Vorhandene Daten importieren …* liest eine Datenbankdatei (Konten, Buchungen, Kategorien) oder eine Exportdatei (CSV, XML, camt.053, MT940). Der Import kann gefahrlos wiederholt werden, bereits vorhandene Buchungen werden nicht doppelt angelegt.
 
                 **Startsaldo & Kalibrieren:** Konten ohne Banksaldo (z. B. CSV-Import oder Kreditkarten-Portale) kennen nur die importierten Umsätze. Damit der Kontostand stimmt, trägst du bei „Startsaldo & Kalibrieren“ den echten Saldo zu einem Stichtag ein. GiroCrab rechnet den Anfangssaldo daraus zurück und hält den Verlauf danach konsistent.
                 """,
                 "en": """
                 On first launch GiroCrab creates a **local, encrypted vault**. You then have two ways to load bookings: connect a bank directly (see "Connecting banks") or import existing data.
 
-                **MoneyMoney import:** *File › Import from MoneyMoney …* reads the MoneyMoney database (accounts, bookings, categories) or a CSV file. Importing is safe to repeat; bookings that already exist are not duplicated.
+                **Data import:** *File › Import existing data …* reads a database file (accounts, bookings, categories) or an export file (CSV, XML, camt.053, MT940). Importing is safe to repeat; bookings that already exist are not duplicated.
 
                 **Opening balance & calibrate:** Accounts without a bank balance (e.g. CSV imports or card portals) only know the imported transactions. To get the right balance, enter the real balance for a date under "Opening balance & calibrate". GiroCrab derives the starting balance from it and keeps the history consistent afterwards.
                 """],
-            keywords: ["import", "csv", "moneymoney", "startsaldo", "opening balance", "kalibrieren", "calibrate"]),
+            keywords: ["import", "csv", "import", "startsaldo", "opening balance", "kalibrieren", "calibrate"]),
         HelpTopic(
             id: "fints", icon: "building.columns",
             title: ["de": "Banken verbinden: FinTS / HBCI", "en": "Connecting banks: FinTS / HBCI"],

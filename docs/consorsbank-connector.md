@@ -1,5 +1,10 @@
 # Consorsbank connector – research and plan
 
+<!-- sync:connector-note:start -->
+> **Hinweis / Note:** Dieser Connector ist ein unabhängiges Community-Projekt und steht in keiner Verbindung zur Consorsbank. Schnittstelle: offiziell. Bei inoffiziellen Schnittstellen kann die Nutzung gegen die Nutzungsbedingungen der Bank verstoßen.
+> This connector is an independent community project and is not affiliated with Consorsbank. Interface: official. Using unofficial interfaces may violate the bank's terms of service.
+<!-- sync:connector-note:end -->
+
 Living document. Update the **Status** table and the **Change log** whenever work
 on this connector advances.
 
@@ -29,7 +34,7 @@ three machine interfaces. Only one is usable for a local personal-finance app:
 | PSD2 XS2A (`xs2a.consorsbank.de`, NextGenPSD2, redirect SCA) | No | Requires a licensed TPP. Enable Banking coverage of Consorsbank could not be confirmed (bank list is JS-rendered). No depot data in any case. |
 | Trading API (REST/HAL, OAuth 2.0 FAPI, `api.consorsbank.de/trading/v1`) | No | Client registration with Consorsbank (certificate, signing key, redirect URI), mutual TLS on every token call, partner onboarding via `api-support@consorsbank.de`. Exposes depot positions, per-WKN position history, orders/executions, but **no cash-account bookings**. |
 | ActiveTrader gRPC API (protobuf, `Dokumentation Java.zip`) | No | Separate product for the ActiveTrader desktop application; login by shared secret; trading-oriented. |
-| Web scraping (kairichard/consorsbank) | No | Author states it stopped working after MFA was introduced. Not acceptable for GiroCrab anyway. |
+| Web scraping | No | Not acceptable for GiroCrab; the bank's login now uses multi-factor authentication. |
 
 **Decision:** Consorsbank = FinTS. No new connector module. The work is a live
 test of the existing FinTS connector plus bank-specific fixes and a proper
@@ -39,59 +44,50 @@ bank entry.
 
 ## FinTS facts
 
-Sources: Hibiscus wiki (changed 2026-10-25), python-fints PR #218 (June 2026,
-tested live), homebanking-hilfe.de threads 2022–2025, fino help page (Oct 2025),
-Banking4 bank table. Marked *(anecdotal)* where only one forum user reports it.
+Findings from the live tests (see Change log) and from the bank's own parameter data.
+Anything not marked as confirmed is unverified.
 
 ### Access data
 
 | Field | Value |
 | --- | --- |
-| BLZ | `76030080` (also `70120400` "BNP Paribas S.A. Niederlassung Deutschland-Consorsbank" in the directory – former DAB) |
-| URL | `https://brokerage-hbci.consorsbank.de/hbci` (the old `consors.de` host broke at Easter 2023) |
-| Version | FinTS 3.0 only ("HBCI 2.2 ist auf jeden Fall falsch") |
-| Benutzerkennung | **10-digit account number of the Verrechnungs-/Girokonto, zero-padded, + `001`**, e.g. `0001234567001` (Hibiscus wiki). fino says "9-digit account number + 3-digit user ID (usually 001)"; former DAB customers: 10-digit account number + 001. Zero-padding to 10 digits covers both. |
+| BLZ | `76030080` (the directory also lists `70120400` for the former DAB entity) |
+| URL | `https://brokerage-hbci.consorsbank.de/hbci` (the old `consors.de` host no longer works) |
+| Version | FinTS 3.0 |
+| Benutzerkennung | 10-digit account number of the Verrechnungs-/Girokonto, zero-padded, + `001`, e.g. `0001234567001` (confirmed live; other forms → `9942 PIN ungültig`) |
 | Kundenkennung | same as Benutzerkennung |
-| PIN | online-banking PIN (≥ 8 characters) |
-| Activation | No source says FinTS must be switched on in the portal (other banks' wiki sections do say so; Consors' does not). Banking4 only has the generic "ggf. explizite Freischaltung durch Ihre Bank". To be checked live. |
+| PIN | online-banking PIN |
+| Activation | Login worked without any switch in the portal (confirmed live). |
 
 ### TAN methods (HITANS)
 
-| Code | Name | Login | Orders / fetch |
-| --- | --- | --- | --- |
-| `901` | "Consorsbank/myPrivateBank App" (`zka_id` Decoupled) | **Typed 9-digit TAN generated in the app** – bank answers `0030` without `3955` (python-fints PR #218, live). Hibiscus wiki: "Push-TAN oder manuell generierte TAN per Consorsbank App". | Orders: decoupled push approval, bank returns **both `0030` and `3955`** on the order segment. |
-| `900` | "SecurePlus TAN Generator" (`zka_id` photoTAN, hardware device from KOBIL, 19,95 €) | No SCA, bank answers `3076`. | Order-bound photoTAN QR as `challenge_matrix` (MIME + image), user types TAN. |
-| – | SecurePlus **App** | Shut down (fino: replaced by the Consorsbank App since August 2025; PR #218: shut down 2026-04-25). Any TAN it produces is rejected with **`9941 TAN ungültig`**. | – |
-
-A Hibiscus user (Dec 2025) reported `9941 TAN ungültig (DialogInitSCA.TAN2Step6)` +
-`9050` during dialog init even though they could approve logins in the app.
-Unresolved; probably the wrong TAN source (old app). *(anecdotal)*
+| Code | Name | Behaviour |
+| --- | --- | --- |
+| `901` | Consorsbank app (decoupled) | Offered by the bank. All live logins so far were SCA-exempt (`3076`); a typed app TAN (`0030`) and order approval are not yet exercised. |
+| `900` | SecurePlus TAN generator (photoTAN) | Not tested. |
+| – | Former SecurePlus app | Discontinued by the bank; TANs from it are rejected (`9941 TAN ungültig`). |
 
 ### Business transactions
 
 | Segment | Works? | Notes |
 | --- | --- | --- |
-| HKSAL, HKKAZ on the Verrechnungskonto / Girokonto | Yes (several reports, PR #218 compared the result with hbci4j output) | **HIPINS says `HKKAZ:N`, but HKKAZ without HKTAN is rejected with `9075`**; python-fints forces HKTAN process 4 for `HKKAZ`, `HKSAL`, `HKCCS` at this bank. |
-| HKCAZ (camt) | Unknown | Not mentioned anywhere. |
-| Tagesgeldkonto | Contradictory | Hibiscus wiki: "Klappt sowohl mit dem Verrechnungskonto, Girokonto und Tagesgeldkonto" (but its account number differs and the user ID stays that of the Verrechnungskonto). Forum 2023: "nur das sog. Verrechnungskonto … (nicht z. B. das Tagesgeldkonto)". *(both anecdotal)* |
-| HKWPD depot holdings (MT535) | Probably | Banking4: "Depot: ja". UPD of the depot account allows `HKWPD` and `HKPRO` (python-fints issue #51, 2019). The failure in that issue (`9380 Keine Berechtigung für diese Auftragsart mit diesem Konto`) most likely came from sending HKWPD for the giro account instead of the depot. Hibiscus users report "Depot-Abrufe klappen nicht, noch nie", but Hibiscus needs a plugin for depots. |
-| Depot transaction history | **No** | FinTS has no such segment; GiroCrab shows holdings only (same as every FinTS depot). |
-| HKEKA electronic statements | No | Banking4: "Kontoauszüge: nein". |
-| Standing orders (HKCSB/HKCDB) | No | Hibiscus wiki: "Abrufen oder erstellen von Daueraufträgen funktioniert nicht." |
-| Credit card | No | Banking4: "Kreditkarte: nein". |
+| HKSAL, HKKAZ (Verrechnungskonto / Girokonto) | Yes (confirmed live) | HIPINS marks `HKKAZ` as not TAN-bound, yet the bank rejects it without HKTAN (`9075`), so HKTAN process 4 is always sent. History is limited to about 90 days (BPD `HIKAZS … 90:J:N`); older ranges end with `3997`. |
+| HKWPD depot holdings (MT535) | Yes (confirmed live, 1 position) | Must be sent for the depot account, not the giro account. |
+| Depot transaction history | No | FinTS has no such segment; GiroCrab shows holdings only. |
+| HKCAZ (camt) | Unknown | Not tested. |
+| Tagesgeldkonto | Unknown | Not tested. |
+| HKEKA electronic statements, standing orders, credit card | Not supported | Not offered via FinTS by this bank as far as known. |
 
-### Protocol quirks found by python-fints (PR #218, all confirmed live there)
+### Protocol quirks
 
-1. **Login SCA codes hang on HKIDN, not HKTAN.** The `0030`/`3955` reply to the
-   dialog-init HKTAN process 4 references the HKIDN segment. Clients that only
-   look at codes attached to HKTAN miss the challenge and then get `9800`/`9120`.
-2. **Decoupled = `3955` present, regardless of order.** Orders come back with
-   `0030` *and* `3955`; the first code is not decisive.
-3. **HNSHK security profile** must be `PIN:2` for two-step methods.
-4. **KTI must be complete**: IBAN, BIC *and* account number, sub-account and
-   bank identifier (country from BIC chars 4–6 + BLZ). Consorsbank rejected
-   the IBAN:BIC-only form.
-5. **`9075` on HKKAZ without HKTAN** although HIPINS lists it as not TAN-bound.
+1. **Login SCA codes can hang on the identification segment (HKIDN), not on HKTAN.**
+   The `0030`/`3955` reply to dialog-init HKTAN references HKIDN, so codes must be
+   evaluated across the whole reply, not per HKTAN segment.
+2. **Decoupled approval is signalled by `3955`**, regardless of whether `0030` is also present.
+3. **HNSHK security profile**: `PIN:1` for the one-step sync dialog (`999`), `PIN:2` for two-step methods.
+4. **KTI must be complete** (IBAN, BIC, account number, sub-account, country and BLZ);
+   the IBAN:BIC-only form is answered with `9050` + `9010` on the segment (confirmed live).
+5. **`9075` on HKKAZ without HKTAN**, see above.
 
 ---
 
@@ -101,9 +97,9 @@ Unresolved; probably the wrong TAN source (old app). *(anecdotal)*
 | --- | --- | --- |
 | 1. codes on HKIDN | `BankReply::has`/`code` match over **all** HIRMG/HIRMS codes, not per segment reference | none |
 | 2. 3955 + 0030 together | `request()` checks `3955`/`3956` **before** `0030`; `challenge_from` likewise | none |
-| 3. PIN:2 | **Was wrong for the sync dialog:** `PIN:2` was sent with security function `999` too. First live attempt (2026-11-14) failed with `9800` / `9010 Ungültiger Signaturaufbau: Fehler im Segmentaufbau` at message level. | ✅ `security_profile()`: `PIN:1` for `999`, `PIN:2` for two-step (as hbci4j does) |
+| 3. PIN:2 | **Was wrong for the sync dialog:** `PIN:2` was sent with security function `999` too. First live attempt (2026-11-14) failed with `9800` / `9010 Ungültiger Signaturaufbau: Fehler im Segmentaufbau` at message level. | ✅ `security_profile()`: `PIN:1` for `999`, `PIN:2` for two-step  |
 | 4. full KTI | `kti()` sends `IBAN:BIC` when an IBAN exists | ✅ `kti()` sends the full form `IBAN:BIC:Konto:Unterkonto:280:BLZ` for BLZ 76030080 only (other banks unchanged until verified). Live: HKKAZ+HKTAN with IBAN:BIC got `9050` + `9010` on the HKKAZ segment. |
-| 5. 9075 on HKKAZ | `request()` adds HKTAN process 4 only when `tan_required[seg] == true` from HIPINS | ✅ `needs_hktan()`: per-BLZ override `{HKKAZ, HKSAL}` for 76030080 (the set python-fints confirmed live). HKCAZ/HKWPD follow HIPINS until the live test says otherwise. |
+| 5. 9075 on HKKAZ | `request()` adds HKTAN process 4 only when `tan_required[seg] == true` from HIPINS | ✅ `needs_hktan()`: per-BLZ override `{HKKAZ, HKSAL}` for 76030080 (the set confirmed live). HKCAZ/HKWPD follow HIPINS until the live test says otherwise. |
 | Login with typed app TAN (`0030`, no image) | `challenge_from` builds a `Code` challenge | none, but UI wording: "TAN aus der Consorsbank App eingeben" |
 | **Fetch needs a typed TAN** (`0030` on HKKAZ with method 901) | `request()` returns an **error** on `0030` ("bitte Push-Verfahren verwenden") | **Open question.** If Consorsbank answers HKKAZ+HKTAN with `0030` (typed TAN) rather than `3955` (push), fetch cannot complete today. Needs the live test. If so: support a mid-fetch `Code` challenge, or rely on the 90-day window ("Tage beim ersten Abruf" ≤ 90, PSD2 exemption) which the error message already suggests. |
 | Depot (Kontoart 30–39) | HKWPD page loop + MT535 parser exist | live test only |
@@ -163,17 +159,11 @@ the typed-TAN-on-fetch case.
 
 ## Sources
 
-- Hibiscus wiki, section "Consors: PIN/TAN": https://www.willuhn.de/wiki/doku.php?id=support:list:banken:misc:pintan
-- python-fints PR #218 "Consorsbank: detect login SCA on HKIDN and decoupled 0030+3955 app approval": https://github.com/raphaelm/python-fints/pull/218
-- python-fints issue #51 "Consorsbank Depot": https://github.com/raphaelm/python-fints/issues/51
-- homebanking-hilfe.de: "Depot-Abruf bei Consors scheitert" (t=25359), "consorsbank nicht abrufbar" (t=25762), "Consorsbank – Fehler beim Umsatzabruf" (t=23128)
-- fino help "Consorsbank – Notes on Account Integration and Login (as of September 2025)": https://kws.help.fino.digital/en/support/solutions/articles/80000616990-consorsbank-formerly-dab-bnp-paribas-
-- Banking4 bank table: https://banking4.de/knowhow.html
 - Consorsbank developer portal (Trading API, OAuth, OpenAPI 3.1 spec): https://developer.consorsbank.de/
-- Consorsbank XS2A: https://www.consorsbank.de/web/Service/XS2A and the NextGenPSD2 YAML (2020)
+- Consorsbank XS2A: https://www.consorsbank.de/web/Service/XS2A
 - Consorsbank SecurePlus generator: https://www.consorsbank.de/web/Service/SecurePlus
 - Enable Banking Germany market page (no Consorsbank mention): https://enablebanking.com/docs/markets/de/
-- Miguel0888/consorsbank (ActiveTrader gRPC), kairichard/consorsbank (scraper, dead)
+- Everything else in this document comes from live tests with the bank's FinTS endpoint.
 
 ## Change log
 

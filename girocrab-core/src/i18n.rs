@@ -493,18 +493,18 @@ fn english(de: &str) -> Option<&'static str> {
         // ------------------------------------------------------------ importers/portal_import.rs
         "Keine Umsätze erkannt." => "No transactions found.",
         // ------------------------------------------------------------ importers/moneymoney_import.rs
-        "Keine MoneyMoney-Kopfzeile (Datum/Buchungstag und Betrag) gefunden." => "No MoneyMoney header row (date/booking date and amount) found.",
+        "Keine Kopfzeile (Datum/Buchungstag und Betrag) gefunden." => "No header row (date/booking date and amount) found.",
         // ------------------------------------------------------------ importers/moneymoney_db.rs
 "Import abgebrochen – es wurde nichts übernommen." => "Import cancelled – nothing was imported.",
-                "Falsches Passwort oder keine MoneyMoney-Datenbank." => "Wrong password or not a MoneyMoney database.",
-        "MoneyMoney verschlüsselt diese Datenbank mit einem eigenen Schlüssel, weil dort kein Datenbank-Passwort festgelegt ist. Legen Sie in der App MoneyMoney (nicht in GiroCrab) unter MoneyMoney › Einstellungen › Sicherheit eines fest, beenden Sie MoneyMoney und geben Sie es dann im Feld „Datenbank-Passwort“ dieses Dialogs ein." => "MoneyMoney encrypts this database with a key of its own because no database password is set there. Set one in the MoneyMoney app (not in GiroCrab) under MoneyMoney › Settings › Security, quit MoneyMoney and then enter it in this dialog's “Database password” field.",
-        "MoneyMoney-Datenbank" => "MoneyMoney database",
-        "MoneyMoney ist noch geöffnet und sperrt die Datenbank. Beenden Sie MoneyMoney vollständig und versuchen Sie es erneut." => "MoneyMoney is still open and locks the database. Quit MoneyMoney completely and try again.",
-        "Anfangssaldo laut MoneyMoney-Saldenverlauf ({0}) + Umsätze" => {
-            "Opening balance from MoneyMoney balance history ({0}) + transactions"
+                "Falsches Passwort oder keine unterstützte Datenbank." => "Wrong password or not a supported database.",
+        "Die Datenbank ist mit einem programmeigenen Schlüssel verschlüsselt, weil kein Datenbank-Passwort festgelegt ist. Legen Sie in dem Programm, das die Datenbank erstellt hat (nicht in GiroCrab), ein Passwort fest, beenden Sie es und geben Sie das Passwort dann im Feld „Datenbank-Passwort“ dieses Dialogs ein." => "The database is encrypted with a key of its own because no database password is set. Set a password in the program that created the database (not in GiroCrab), quit it and then enter the password in this dialog’s “Database password” field.",
+        "Datenbankdatei" => "Database file",
+        "Die Datenbank ist noch in einem anderen Programm geöffnet und gesperrt. Beenden Sie dieses Programm vollständig und versuchen Sie es erneut." => "The database is still open in another program and locked. Quit that program completely and try again.",
+        "Anfangssaldo laut Saldenverlauf der Datenbank ({0}) + Umsätze" => {
+            "Opening balance from the database’s balance history ({0}) + transactions"
         }
-        "Saldo laut MoneyMoney" => "Balance as shown in MoneyMoney",
-        "Saldo laut MoneyMoney ({0})" => "Balance as shown in MoneyMoney ({0})",
+        "Saldo laut Datenbank" => "Balance as stored in the database",
+        "Saldo laut Datenbank ({0})" => "Balance as stored in the database ({0})",
         "Anfangssaldo des Kontos + Umsätze" => "Account opening balance + transactions",
         "Summe der Umsätze" => "Sum of transactions",
         "Antwort der Bank zu groß (über {0} MB) – abgebrochen." => {

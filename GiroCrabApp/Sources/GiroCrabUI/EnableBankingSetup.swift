@@ -144,7 +144,7 @@ struct EnableBankingSetupSection: View {
     /// connections – the ones to link while activating the application.
     private var importedAccounts: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Aus Ihrem MoneyMoney-Import:").appFont(.caption, weight: .medium)
+            Text("Aus Ihrem Datenimport:").appFont(.caption, weight: .medium)
             ForEach(model.psd2LinkHints, id: \.connectionId) { c in
                 Text(c.bankName).appFont(.caption, weight: .medium).padding(.top, 2)
                 ForEach(Array(c.accounts.enumerated()), id: \.offset) { _, a in

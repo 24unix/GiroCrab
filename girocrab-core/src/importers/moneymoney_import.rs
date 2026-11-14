@@ -308,8 +308,7 @@ pub fn parse_csv_export(text: &str) -> CoreResult<Vec<MmRow>> {
                 .then_some((i, map))
         })
         .ok_or_else(|| CoreError::InvalidInput {
-            message: tr("Keine MoneyMoney-Kopfzeile (Datum/Buchungstag und Betrag) gefunden.")
-                .into(),
+            message: tr("Keine Kopfzeile (Datum/Buchungstag und Betrag) gefunden.").into(),
         })?;
     let mut out = Vec::new();
     for r in rows.iter().skip(hi + 1) {
@@ -697,7 +696,8 @@ pub(crate) fn suggest_account(
     }
     let stem = account_name_from_file(file_name);
     let stem = stem
-        .strip_suffix(" (MoneyMoney)")
+        .strip_suffix(" (Import)")
+        .or_else(|| stem.strip_suffix(" (MoneyMoney)")) // suffix of earlier versions
         .unwrap_or(&stem)
         .trim()
         .to_lowercase();
@@ -718,9 +718,9 @@ fn account_name_from_file(file_name: &str) -> String {
         .unwrap_or(file_name)
         .trim();
     if stem.is_empty() {
-        "MoneyMoney-Import".into()
+        "Datenimport".into()
     } else {
-        format!("{stem} (MoneyMoney)")
+        format!("{stem} (Import)")
     }
 }
 

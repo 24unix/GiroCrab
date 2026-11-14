@@ -3538,7 +3538,7 @@ fn every_mutating_api_stamps_or_soft_deletes() {
                 let p = v
                     .preview_moneymoney_database(path.clone(), PW.into(), None)
                     .unwrap();
-                v.import_moneymoney_database(path, PW.into(), options_from(&p, false, false))
+                v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
                     .unwrap();
             }),
         ),

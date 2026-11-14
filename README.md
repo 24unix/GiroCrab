@@ -8,7 +8,7 @@
 
 <h3 align="center">Die freie, native Banking-App für Mac, iPhone &amp; iPad.</h3>
 
-<p align="center">FinTS 3.0 · PSD2 · SEPA · MoneyMoney-Import — 100&nbsp;% lokal verschlüsselt, ohne Abo, ohne Cloud-Zwang.</p>
+<p align="center">FinTS 3.0 · PSD2 · SEPA · Datenimport — 100&nbsp;% lokal verschlüsselt, kostenlos, Daten bleiben auf deinem Gerät.</p>
 
 <p align="center">
   <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg"><img src="docs/assets/download-macos.svg" alt="Für macOS laden – v0.6.3 · Apple Silicon (.dmg)" width="260" height="56"></a>
@@ -37,22 +37,14 @@
 
 ## 🇩🇪 Deutsch
 
-**MoneyMoney-Alternative für macOS und iOS: Open-Source-Online-Banking für Mac (Apple Silicon) und iPhone/iPad – lokal, verschlüsselt, ohne Abo, ohne Cloud-Zwang.**
+**Open-Source-Online-Banking für Mac (Apple Silicon) und iPhone/iPad – lokal, verschlüsselt, Daten bleiben auf deinem Gerät.**
 Native SwiftUI-App auf einem Rust-Kern: verschlüsselter **SQLCipher-Banking-Tresor** (XChaCha20-Poly1305 & Argon2id), Kategorienbaum,
 Regeln, Händler-Erkennung, Sparplan-Ansicht, Darlehens-Tilgungsbalken und direkte Verbindungen
 zu Ihren Banken per **FinTS 3.0 / HBCI** und **PSD2 (Enable Banking)** – ohne Server, ohne Tracking.
 
-### 🆚 Warum GiroCrab? – MoneyMoney- & Outbank-Alternative ohne Abo
+### Für wen ist GiroCrab?
 
-| Kriterium | **GiroCrab** | MoneyMoney | Outbank |
-|---|---|---|---|
-| 100 % lokal, kein Cloud-Konto nötig | ✅ | ✅ | ⚠️ teils Cloud-/Konto-Funktionen |
-| Kein Abo, Open Source (GPLv3) | ✅ | ❌ proprietär | ❌ proprietär |
-| Direktes FinTS 3.0 / HBCI + PSD2 | ✅ | ✅ FinTS | ✅ FinTS / PSD2 |
-| Natives macOS + iOS (TestFlight) + Zero-Knowledge-iCloud-Sync | ✅ | ⚠️ nur macOS | ✅ |
-| Direkter MoneyMoney-Datenbank-Import (`.sqlite`) | ✅ | – | – |
-
-*Angaben zu Drittprodukten ohne Gewähr; GiroCrab ist unabhängig von diesen Anbietern. Auch als Alternative zu Banking4, Bank X oder Pecunia gedacht, die einen lokalen Mac-Client suchen.*
+GiroCrab ist eine freie, quelloffene Banking-App (GPLv3) für macOS und – derzeit als Beta über TestFlight – für iPhone und iPad. Alle Daten liegen verschlüsselt auf deinem Gerät. GiroCrab ist ein junges Community-Projekt: Die Bankenabdeckung wächst noch (siehe Bank-Tabelle), und PSD2-Zugänge laufen über einen eigenen, kostenlosen Enable-Banking-Zugang.
 
 ### ✨ Neu in v0.6.3
 
@@ -61,13 +53,13 @@ zu Ihren Banken per **FinTS 3.0 / HBCI** und **PSD2 (Enable Banking)** – ohne 
 - 🔄 **comdirect-Paging korrigiert:** Kontoumsätze blättern bei voller Seite weiter, die PostBox lädt bis zu 500 statt 50 Dokumente.
 - 🪙 **bunq:** externe Sparkonten werden als Sparkonto erkannt, Konten in Auflösung übersprungen.
 - 🏷️ **Kategorien (#94):** eine manuell gesetzte Kategorie oder ein ETF-Sparplan hat Vorrang vor der Eigenkonto-IBAN-Heuristik; Umbuchungen bleiben nur bei unkategorisierten Buchungen automatisch erkannt.
-- 🛡️ **Weitere Korrekturen:** MoneyMoney-Passworthinweis (#321), Symlink-Schutz beim Kontoauszug-Import (#318), iOS-Entsperrtext, Sheet-Breiten auf dem iPhone und Mindestdauer des Krabben-Splash (#317) sowie Hinweise bei lang laufenden Tresor-Zugriffen mit Zählung per SQL-Aggregat (#266).
+- 🛡️ **Weitere Korrekturen:** Passworthinweis beim Datenbank-Import (#321), Symlink-Schutz beim Kontoauszug-Import (#318), iOS-Entsperrtext, Sheet-Breiten auf dem iPhone und Mindestdauer des Krabben-Splash (#317) sowie Hinweise bei lang laufenden Tresor-Zugriffen mit Zählung per SQL-Aggregat (#266).
 
 **Highlights aus v0.6.2:**
 
-- 🧮 **Startsaldo für Konten mit berechnetem Saldo (#212, #227):** wie in MoneyMoney lässt sich ein Startsaldo mit optionalem Stichtag festlegen und per „Kalibrieren“ aus dem letzten Kontostand ableiten; der MoneyMoney-Datenbankimport übernimmt ihn. Entfernen setzt den Saldo auf die reine Umsatzsumme zurück.
+- 🧮 **Startsaldo für Konten mit berechnetem Saldo (#212, #227):** Ein Startsaldo lässt sich mit optionalem Stichtag festlegen und per „Kalibrieren“ aus dem letzten Kontostand ableiten; der Datenbank-Import übernimmt ihn. Entfernen setzt den Saldo auf die reine Umsatzsumme zurück.
 - 🗄️ **Versionierte Schema-Migrationen mit Downgrade-Schutz (#206, #232):** Tresore werden in nummerierten Schritten migriert; ein Tresor aus einer neueren Version wird nicht geöffnet. Diese Version hebt Tresore auf **Schema 10** – vor dem Testen eine Sicherungskopie anlegen, falls v0.6.1 den Tresor wieder öffnen soll.
-- 🖱️ **Drag & Drop in der Seitenleiste mit Einfügelinie (#230)** wie in MoneyMoney, dazu eindeutige PSD-Bankennamen im FinTS-Verzeichnis (#145) und ein Kopieren-Menü auf iOS (Konto- und Depotpositionen).
+- 🖱️ **Drag & Drop in der Seitenleiste mit Einfügelinie (#230)**, dazu eindeutige PSD-Bankennamen im FinTS-Verzeichnis (#145) und ein Kopieren-Menü auf iOS (Konto- und Depotpositionen).
 
 **Highlights aus v0.6.1:**
 
@@ -76,43 +68,30 @@ zu Ihren Banken per **FinTS 3.0 / HBCI** und **PSD2 (Enable Banking)** – ohne 
 - ⚡ **Kategorie-Zuweisung in `< 1 ms` (#159):** Optimistisches UI-Update und neue SQLite-Covering-Indizes sorgen selbst bei Tresoren mit über 30.000 Buchungen für verzögerungsfreies Kategorisieren.
 - ✅ **Buchungen automatisch als geprüft markieren (#176):** Neue Option unter *Einstellungen › Allgemein › Buchungen* – nach wählbarer Verzögerung oder nur manuell.
 - 🔴 **macOS Dock-Badge (#173) & farbige Konto-Icons (#175):** Optionale Anzeige der Anzahl ungeprüfter Buchungen im Dock; Konto-Symbole in der Seitenleiste erscheinen in ihrer Kontofarbe. Dazu das gemeinsame **Icon-&-Farbe-Popover** für Konten und Gruppen (#183).
-- 🧙 **Neue Assistenten nach Apple HIG:** *MoneyMoney-Import* mit Salden-Abgleich (#181) und *Bank hinzufügen* (#184).
+- 🧙 **Neue Assistenten nach Apple HIG:** *Import-Assistent* mit Salden-Abgleich (#181) und *Bank hinzufügen* (#184).
 - 🏦 **Enable Banking (PSD2) & Multi-Währungs-Konten (#164):** Finom-Geschäftskonten und Multi-Währungs-Wallets mit geteilter IBAN; Vormerkungen bei comdirect (#186) und bunq (#187).
 - 📣 **Projektmitteilungen (#185):** ruhiger, signierter Hinweis-Feed – ohne Release, ohne Tracking.
 
 **Highlights aus v0.4.0 – v0.5.5:**
 
-- 🗄️ **Direkter MoneyMoney-Datenbank-Import:** die verschlüsselte `MoneyMoney.sqlite` (inkl. Konten, Kategorienbaum, Notizen, Depot-Beständen und PDF-Kontoauszügen) wird **nur lesend** geöffnet und übernommen.
+- 🗄️ **Direkter Datenbank-Import:** eine verschlüsselte `.sqlite`-Datenbank (inkl. Konten, Kategorienbaum, Notizen, Depot-Beständen und PDF-Kontoauszügen) wird **nur lesend** geöffnet und übernommen.
 - 📁 **Eigene Kontogruppen & Untergruppen:** frei sortierbar, mit iCloud-Synchronisation und Summenzeile.
 - ☁️ **Optionale iCloud-Drive-Synchronisation** zwischen Macs und iOS-Geräten per verschlüsseltem SQLCipher-Snapshot-Merge.
 - 🔒 **Händler-Logos nur per Opt-in (#38):** Online-Logos sind standardmäßig **aus**; ohne Zustimmung unter *Einstellungen → Händler-Logos* bleibt alles zu 100 % lokal.
 
-### 🚚 Umzug von MoneyMoney in 60 Sekunden
+### 📥 Vorhandene Daten übernehmen
 
-Mehrjährige Historien, Kategorien und Notizen lassen sich verlustfrei übernehmen – ohne Abo-Bindung.
+GiroCrab kann Umsätze, Kategorien und Notizen aus unterstützten Exportdateien übernehmen. Vor dem Import zeigt eine Vorschau, was erkannt wurde; nicht unterstützte Dateien werden dort gemeldet. Bankzugänge richtest du anschließend separat in GiroCrab ein.
 
-**Variante A – direkt aus der MoneyMoney-Datenbank (empfohlen, macOS):**
-
-1. In GiroCrab: *Von MoneyMoney wechseln* (Onboarding), *MoneyMoney-Import* (Seitenleiste) oder `⌘K` → „MoneyMoney Historie & Kategorien importieren“ → Tab **MoneyMoney-Datenbank**.
-2. `MoneyMoney.sqlite` auswählen und das MoneyMoney-Passwort eingeben. Die Datei wird ausschließlich **lesend** geöffnet; MoneyMoney und die Originaldatei bleiben unverändert.
-3. Vorschau prüfen (Konten, Kategorien, Buchungen, Notizen), Zielkonten zuordnen, **Importieren**.
-
-<p align="center"><img src="docs/screenshots/moneymoney-db-import.png" alt="MoneyMoney-Datenbank-Import: 6 Konten, 6.790 Buchungen, 16 Kategorien (Demo-Daten)" width="560"></p>
-
-**Variante B – Export-Datei (CSV / XML / camt.053 / MT940):**
-
-1. In MoneyMoney das Konto wählen, **⌘A**, **Umsätze exportieren …** → **XML** oder **CSV**.
-2. In GiroCrab denselben Import-Dialog öffnen, Tab **Export-Datei (CSV/XML)** wählen und die Datei hineinziehen.
-3. Zielkonto wählen (oder neues Archivkonto anlegen), Vorschau prüfen, **Importieren**.
-
-<p align="center"><img src="docs/screenshots/moneymoney-import.png" alt="MoneyMoney-Import mit Vorschau: 4.820 Buchungen, 2012 – 2026, erkannte Kategorien" width="480"></p>
+<!-- TODO(Andreas): bitte prüfen: Screenshot des Import-Assistenten ohne Fremdmarke neu aufnehmen (alte Import-Screenshots entfernt) -->
 
 Kategorien (`Haushalt\Lebensmittel`) bleiben als Baum erhalten, Notizen stehen in der Buchungsdetail-Ansicht.
 Jeder Umsatz erhält einen Fingerabdruck (Datum, Betrag, IBAN/Name, Verwendungszweck): Ein erneuter Import
-oder später per FinTS abgerufene, überlappende Tage erzeugen **keine Duplikate** – vorhandene Buchungen werden
+oder später per FinTS abgerufene, überlappende Tage werden als Duplikate erkannt und nicht doppelt angelegt – vorhandene Buchungen werden
 nur um Kategorie und Notiz ergänzt.
-**Gewohnte Komfort-Funktionen für Umsteiger:**
-* **📋 Sm@rtPaste (`⌘V` / `⇧⌘V`):** Rechnungstexte oder Bankverbindungen aus der Zwischenablage direkt ins Überweisungsfenster einfügen – Empfänger, prüfsummengültige IBAN, BIC, Betrag und Verwendungszweck werden automatisch erkannt.
+
+**Komfort-Funktionen im Alltag:**
+* **📋 Überweisung aus Zwischenablage (`⌘V` / `⇧⌘V`):** Rechnungstexte oder Bankverbindungen aus der Zwischenablage direkt ins Überweisungsfenster einfügen – Empfänger, prüfsummengültige IBAN, BIC, Betrag und Verwendungszweck werden automatisch erkannt.
 * **📄 E-Rechnungen & PDF-Drop:** PDF-Rechnungen einfach auf das Überweisungsfenster ziehen (liest eingebettetes **ZUGFeRD / Factur-X XML**, **EPC-QR-Codes / GiroCode** oder den PDF-Text).
 * **✅ Geprüft-Häkchen (`Space`):** Umsätze in der Liste direkt per Leertaste als „geprüft“ markieren.
 * **🖱️ Rechtsklick-Workflows:** Mit einem Klick alle Buchungen desselben Empfängers filtern (*„Nach ‚…‘ suchen“*) oder eine *„Neue Überweisung aus Buchung …“* vorausfüllen lassen.
@@ -128,7 +107,7 @@ nur um Kategorie und Notiz ergänzt.
 - 🔒 **Local-First:** Alle Bankdaten bleiben auf Ihrem Gerät – in einem verschlüsselten Tresor (XChaCha20-Poly1305), geschützt durch Schlüsselbund / Touch ID bzw. Face ID. Es gibt keinen Entwickler-Server.
 - 📱 **macOS + iOS (iPhone / iPad):** Eine gemeinsame SwiftUI-Codebasis auf dem Rust-Kern. Voraussetzungen: **macOS 14+ (Apple Silicon, `arm64`)** bzw. **iOS 17+**. Für iPhone und iPad steht die App direkt über **[Apple TestFlight](https://testflight.apple.com/join/KBmvKVpT)** bereit (oder kann optional mit Xcode selbst aus dem Quellcode gebaut werden).
 - ☁️ **Optionale iCloud-Drive-Synchronisation:** Wer möchte, gleicht Tresor-Daten zwischen Macs und iOS-Geräten über den eigenen iCloud-Drive-Ordner (`iCloud Drive/GiroCrab/`) ab. In die Cloud wandert der Tresor nur als **verschlüsselter SQLCipher-Snapshot** (`wal_checkpoint(TRUNCATE)`); der Abgleich erfolgt deterministisch per `ATTACH DATABASE`-Merge. Eine **laufende SQLite-Datenbank mit WAL-Dateien wird nie direkt im Cloud-Speicher geöffnet.** Die Synchronisation ist **standardmäßig ausgeschaltet** und wird erst in den Einstellungen aktiviert; danach läuft der Abgleich beim Entsperren des Tresors. Der Ordner `iCloud Drive/GiroCrab/` wird erst angelegt, wenn Sie die Synchronisation aktivieren. 🔑 **Schlüssel:** Der Tresor-Schlüssel liegt **nicht** im iCloud-Ordner (die frühere Datei `tresor.key` aus v0.4.0 wird beim nächsten Abgleich automatisch gelöscht). Stattdessen teilt GiroCrab ihn standardmäßig über den **iCloud-Schlüsselbund** (`kSecAttrSynchronizable`, abschaltbar in den Einstellungen). Alternativ kopieren Sie den Schlüssel auf dem ersten Gerät („Tresor-Schlüssel kopieren“, Zwischenablage wird nach 60 s geleert) und fügen ihn einmalig auf dem zweiten Gerät ein („Schlüssel einfügen …“). ⚠️ Wer bereits v0.4.0 mit aktivem Sync genutzt hat: Die alte `tresor.key` kann noch in iCloud-Versionen/Papierkorb liegen; eine Schlüsselrotation ist für ein späteres Update geplant.
-- 🗄️ **MoneyMoney-Datenbank-Import:** lesender Import der verschlüsselten `.sqlite`-Datei inkl. Konten, Kategorien, Hierarchie und Buchungshistorie (siehe oben).
+- 🗄️ **Datenbank-Import:** lesender Import einer verschlüsselten `.sqlite`-Datei inkl. Konten, Kategorien, Hierarchie und Buchungshistorie (siehe „Vorhandene Daten übernehmen“).
 - 🏦 **FinTS 3.0 / HBCI-Client & PSD2 für macOS und iOS:** FinTS 3.0 / HBCI (CAMT.052 & MT940 mit intelligenter Latin-1/UTF-8-Erkennung), **bunq** (persönlicher API-Schlüssel), PayPal, Trade-Republic-WebSocket, comdirect-REST sowie eingebettete Web-Session-/CSV-Importe für Amex & Amazon Visa.
 - 💸 **SEPA-Überweisung & Echtzeitüberweisung via FinTS 3.0 / HKCCS** inkl. Verification of Payee (VoP), inkl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN-Prüfung (Mod-97), SEPA-konformer Zeichensatz, Empfängervorschläge aus bisherigen Buchungen und sofort vorgemerkte Buchung.
 - 🏠 **Intelligente Darlehens-Verfolgung:** Tilgungsfortschritt in Prozent und automatische Verknüpfung der monatlichen „Zins & Tilgung“-Raten vom Girokonto.
@@ -144,9 +123,9 @@ nur um Kategorie und Notiz ergänzt.
 |---|---|
 | <img src="docs/screenshots/loan-progress.png" alt="Immobilien-Darlehen, 27 % getilgt"> | <img src="docs/screenshots/analytics-or-inspector.png" alt="Inspektor mit EnBW-Buchung"> |
 
-| SEPA-Überweisung mit IBAN-Prüfung | MoneyMoney-Datenbank-Import |
-|---|---|
-| <img src="docs/screenshots/sepa-transfer.png" alt="Neue Überweisung an Stadtwerke München, IBAN geprüft"> | <img src="docs/screenshots/moneymoney-db-import.png" alt="MoneyMoney-Datenbank-Import: 6 Konten, 6.790 Buchungen"> |
+| SEPA-Überweisung mit IBAN-Prüfung |
+|---|
+| <img src="docs/screenshots/sepa-transfer.png" alt="Neue Überweisung an Stadtwerke München, IBAN geprüft" width="560"> |
 
 | iOS – Übersicht | iOS – Buchungen |
 |---|---|
@@ -257,26 +236,20 @@ und wird auch nicht als solcher angeboten.
 - Wer GiroCrab **für Dritte** betreibt, braucht ggf. eine BaFin-Erlaubnis – das ist nicht der vorgesehene Einsatzzweck.
 - Keine Anlageberatung; ISIN/WKN-Angaben sind Referenzdaten ohne Gewähr. Marken gehören ihren Inhabern und dienen nur der Wiedererkennung.
 
+<sub>Genannte Marken von Banken und Zahlungsdiensten gehören ihren jeweiligen Inhabern. GiroCrab ist unabhängig von diesen Anbietern.</sub>
+
 ---
 
 ## 🇬🇧 English
 
-**MoneyMoney alternative for macOS and iOS: open-source online banking for Mac (Apple Silicon) and iPhone/iPad – local-first, encrypted, no subscription, no cloud required.**
+**Open-source online banking for Mac (Apple Silicon) and iPhone/iPad – local-first, encrypted, your data stays on your device.**
 A native SwiftUI app on a Rust core: encrypted **SQLCipher banking vault** (XChaCha20-Poly1305 & Argon2id), category tree, rules, merchant
 recognition, savings-plan view, loan repayment progress and direct connections to your banks via
 **FinTS 3.0 / HBCI** and **PSD2 (Enable Banking)** – no server, no tracking. Money is always `i64` cents, never floats.
 
-### 🆚 Why GiroCrab? – the MoneyMoney & Outbank alternative without a subscription
+### Who is GiroCrab for?
 
-| Criterion | **GiroCrab** | MoneyMoney | Outbank |
-|---|---|---|---|
-| 100 % local, no cloud account required | ✅ | ✅ | ⚠️ some cloud/account features |
-| No subscription, open source (GPLv3) | ✅ | ❌ proprietary | ❌ proprietary |
-| Direct FinTS 3.0 / HBCI + PSD2 | ✅ | ✅ FinTS | ✅ FinTS / PSD2 |
-| Native macOS + iOS (TestFlight) + zero-knowledge iCloud sync | ✅ | ⚠️ macOS only | ✅ |
-| Direct MoneyMoney database import (`.sqlite`) | ✅ | – | – |
-
-*Information about third-party products without guarantee; GiroCrab is independent of these vendors.*
+GiroCrab is a free, open-source banking app (GPLv3) for macOS and – currently in beta via TestFlight – for iPhone and iPad. All data stays encrypted on your device. GiroCrab is a young community project: bank coverage is still growing (see the bank table), and PSD2 access works through your own free Enable Banking account.
 
 ### ✨ What's new in v0.6.3
 
@@ -285,13 +258,13 @@ recognition, savings-plan view, loan repayment progress and direct connections t
 - 🔄 **comdirect paging fixed:** account transactions keep paging on full pages, and the PostBox loads up to 500 instead of 50 documents.
 - 🪙 **bunq:** external savings accounts are recognised as savings accounts, accounts being closed are skipped.
 - 🏷️ **Categories (#94):** a manually set category or an ETF savings plan takes precedence over the own-account IBAN heuristic; transfers are still detected automatically for uncategorised bookings.
-- 🛡️ **More fixes:** MoneyMoney password hint (#321), symlink protection for statement import (#318), iOS unlock text, sheet widths on iPhone and minimum duration of the crab splash (#317), plus reporting of long-running vault accesses and counts via SQL aggregate (#266).
+- 🛡️ **More fixes:** password hint for the database import (#321), symlink protection for statement import (#318), iOS unlock text, sheet widths on iPhone and minimum duration of the crab splash (#317), plus reporting of long-running vault accesses and counts via SQL aggregate (#266).
 
 **Highlights from v0.6.2:**
 
-- 🧮 **Opening balance for accounts with a computed balance (#212, #227):** as in MoneyMoney, set an opening balance with an optional cut-off date and derive it from the latest statement balance with “Calibrate”; the MoneyMoney database import picks it up. Removing it falls back to the plain sum of the bookings.
+- 🧮 **Opening balance for accounts with a computed balance (#212, #227):** set an opening balance with an optional cut-off date and derive it from the latest statement balance with “Calibrate”; the database import picks it up. Removing it falls back to the plain sum of the bookings.
 - 🗄️ **Versioned schema migrations with downgrade protection (#206, #232):** vaults migrate in numbered steps; a vault written by a newer version is refused. This version upgrades vaults to **schema 10** – make a backup copy first if you may want to open the vault in v0.6.1 again.
-- 🖱️ **Drag & drop in the sidebar with an insertion line (#230)** like MoneyMoney, unambiguous PSD bank names in the FinTS directory (#145) and a copy menu on iOS (account and depot positions).
+- 🖱️ **Drag & drop in the sidebar with an insertion line (#230)**, unambiguous PSD bank names in the FinTS directory (#145) and a copy menu on iOS (account and depot positions).
 
 **Highlights from v0.6.1:**
 
@@ -300,40 +273,28 @@ recognition, savings-plan view, loan repayment progress and direct connections t
 - ⚡ **Category assignment in `< 1 ms` (#159):** optimistic UI update and new SQLite covering indexes keep categorising instant even with 30,000+ bookings.
 - ✅ **Mark bookings as reviewed automatically (#176):** new option under *Settings › General › Bookings* – after a configurable delay or manual only.
 - 🔴 **macOS Dock badge (#173) & coloured account icons (#175):** optional count of unchecked bookings in the Dock; sidebar account symbols show their account colour. Plus the shared **icon & colour popover** for accounts and groups (#183).
-- 🧙 **New Apple-HIG wizards:** *MoneyMoney import* with balance reconciliation (#181) and *Add bank* (#184).
+- 🧙 **New Apple-HIG wizards:** *Import assistant* with balance reconciliation (#181) and *Add bank* (#184).
 - 🏦 **Enable Banking (PSD2) & multi-currency (#164):** Finom business accounts and multi-currency wallets sharing one IBAN; pending bookings for comdirect (#186) and bunq (#187).
 - 📣 **Project notices (#185):** a calm, signed notice feed – no release needed, no tracking.
 
 **Highlights v0.4.0 – v0.5.5:**
 
-- 🗄️ **Direct MoneyMoney database import:** the encrypted `MoneyMoney.sqlite` (accounts, category tree, notes, depot holdings, PDF statements) is opened **read-only**.
+- 🗄️ **Direct database import:** an encrypted `.sqlite` database (accounts, category tree, notes, depot holdings, PDF statements) is opened **read-only**.
 - 📁 **Custom account groups & subgroups:** freely sortable, synced via iCloud, with a totals row.
 - ☁️ **Optional iCloud Drive sync** between Macs and iOS devices via an encrypted SQLCipher snapshot merge.
 - 🔒 **Merchant logos opt-in only (#38):** online logos are **off** by default; without opt-in everything stays 100 % local.
 
-### 🚚 Migrating from MoneyMoney
+### 📥 Importing existing data
 
-Full multi-year histories, categories and notes import seamlessly – no subscription lock-in.
+GiroCrab can import transactions, categories and notes from supported export files. A preview shows what was recognised before anything is imported; unsupported files are reported there. Bank connections are set up separately in GiroCrab afterwards.
 
-**Option A – straight from the MoneyMoney database (recommended, macOS):**
-
-1. In GiroCrab: *Switch from MoneyMoney* (onboarding), *MoneyMoney-Import* (sidebar) or `⌘K` → "MoneyMoney Historie & Kategorien importieren" → tab **MoneyMoney database**.
-2. Choose `MoneyMoney.sqlite` and enter your MoneyMoney password. The file is opened strictly **read-only**; MoneyMoney and the original file stay untouched.
-3. Check the preview (accounts, categories, bookings, notes), map the target accounts, hit **Import**.
-
-<p align="center"><img src="docs/screenshots/moneymoney-db-import.png" alt="MoneyMoney database import: 6 accounts, 6,790 bookings, 16 categories (demo data)" width="560"></p>
-
-**Option B – export file (CSV / XML):**
-
-1. In MoneyMoney select the account, press **⌘A**, then **Export Transactions …** → **XML** or **CSV**.
-2. In GiroCrab open the same import dialog, pick the **Export file (CSV/XML)** tab and drop the file in.
-3. Pick the target account (or create an archive account), check the preview, hit **Import**.
+<!-- TODO(Andreas): please check: re-shoot a screenshot of the import assistant without any third-party brand (old import screenshots removed) -->
 
 Hierarchical categories (`Household\Groceries`) are kept as a tree, notes show in the booking detail view.
-Every booking gets a fingerprint (date, amount, IBAN/name, purpose), so re-importing the file or overlapping days
-fetched later via FinTS **never create duplicates** – existing bookings are only enriched with category and note.
-**Familiar everyday workflows:**
-* **📋 Sm@rtPaste (`⌘V` / `⇧⌘V`):** Paste invoice text or bank details from the clipboard straight into the transfer sheet — recipient, checksum-verified IBAN, BIC, amount and purpose are filled in automatically.
+Every booking gets a fingerprint (date, amount, IBAN/name, purpose), so a repeated import or overlapping days
+fetched later via FinTS are recognised as duplicates and not created twice – existing bookings are only enriched with category and note.
+**Everyday convenience features:**
+* **📋 Transfer from clipboard (`⌘V` / `⇧⌘V`):** Paste invoice text or bank details from the clipboard straight into the transfer sheet — recipient, checksum-verified IBAN, BIC, amount and purpose are filled in automatically.
 * **📄 E-Invoice & PDF Drop:** Drag & drop a PDF invoice onto the transfer sheet (parses embedded **ZUGFeRD / Factur-X XML**, **EPC QR / GiroCode**, or PDF/OCR text).
 * **✅ Checked toggle (`Space`):** Mark bookings as checked directly via the Spacebar.
 * **🖱️ Context menu actions:** Right-click any booking to filter all transactions by that counterparty or pre-fill a new transfer from the booking.
@@ -348,7 +309,7 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 - 🔒 **Local-first:** all banking data lives on your device in an encrypted vault (XChaCha20-Poly1305) protected by the Keychain / Touch ID or Face ID. There is no developer server.
 - 📱 **macOS + iOS (iPhone / iPad):** one SwiftUI codebase on the shared Rust core. Requires **macOS 14+ (Apple Silicon, `arm64`)** or **iOS 17+**. On iPhone and iPad the app is available via **[Apple TestFlight](https://testflight.apple.com/join/KBmvKVpT)** (or optionally built from source with Xcode).
 - ☁️ **Optional iCloud Drive sync:** if you want, sync vault data between Macs and iOS devices through your own iCloud Drive folder (`iCloud Drive/GiroCrab/`). The vault goes to the cloud only as an **encrypted SQLCipher snapshot** (`wal_checkpoint(TRUNCATE)`), and devices are reconciled with a deterministic `ATTACH DATABASE` merge. **A live SQLite database with WAL files is never opened directly in cloud storage.** Sync is **off by default** and has to be enabled in Settings; once on, it runs when the vault is unlocked. The folder `iCloud Drive/GiroCrab/` is only created once you enable sync. 🔑 **Key handling:** the vault key is **not** stored in the iCloud folder (the `tresor.key` file from v0.4.0 is deleted automatically on the next sync). By default GiroCrab shares it through **iCloud Keychain** (`kSecAttrSynchronizable`, can be turned off in Settings). Alternatively, copy the key on the first device (“Copy vault key”, clipboard is cleared after 60 s) and paste it once on the second device (“Paste key …”). ⚠️ If you used v0.4.0 with sync enabled, the old `tresor.key` may still exist in iCloud versions/trash; key rotation is planned for a later release.
-- 🗄️ **MoneyMoney database import:** read-only import of the encrypted `.sqlite` file incl. accounts, categories, hierarchy and booking history (see above).
+- 🗄️ **Database import:** read-only import of an encrypted `.sqlite` file incl. accounts, categories, hierarchy and booking history (see “Importing existing data”).
 - 🏦 **FinTS 3.0 / HBCI client & PSD2 for macOS and iOS:** FinTS 3.0 / HBCI (CAMT.052 & MT940 with smart Latin-1/UTF-8 decoding), **bunq** (personal API key), PayPal, Trade Republic WebSocket, comdirect REST, and embedded web-session/CSV import for Amex & Amazon Visa.
 - 💸 **Native SEPA credit transfers via FinTS 3.0 / HKCCS** incl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN checksum validation (Mod-97), SEPA-compliant character set, recipient suggestions from past bookings and an instant pending booking.
 - 🏠 **Smart loan tracking:** automatic repayment progress (%) and cross-account linking of the monthly "Zins & Tilgung" instalments from your checking account.
@@ -364,9 +325,9 @@ fetched later via FinTS **never create duplicates** – existing bookings are on
 |---|---|
 | <img src="docs/screenshots/loan-progress.png" alt="Immobilien-Darlehen, 27% repaid"> | <img src="docs/screenshots/analytics-or-inspector.png" alt="Inspector showing an EnBW booking"> |
 
-| SEPA transfer with IBAN check | MoneyMoney database import |
-|---|---|
-| <img src="docs/screenshots/sepa-transfer.png" alt="New transfer to Stadtwerke München, IBAN validated"> | <img src="docs/screenshots/moneymoney-db-import.png" alt="MoneyMoney database import: 6 accounts, 6,790 bookings"> |
+| SEPA transfer with IBAN check |
+|---|
+| <img src="docs/screenshots/sepa-transfer.png" alt="New transfer to Stadtwerke München, IBAN validated" width="560"> |
 
 | iOS – Overview | iOS – Transactions |
 |---|---|
@@ -463,6 +424,8 @@ It is **not a payment initiation service and not an account information service 
 - Operating GiroCrab **for third parties** may require BaFin authorisation and is not the intended use.
 - Not investment advice; ISIN/WKN data is reference information without guarantee. Trademarks belong to their owners and are used for identification only.
 
+<sub>Names of banks and payment services are trademarks of their respective owners. GiroCrab is independent of these providers.</sub>
+
 ---
 
 ## Security / Sicherheit
@@ -501,7 +464,7 @@ EN: Every PR automatically gets an AI provenance card. Real financial data never
    - **Klassische Banken (Sparkassen, Volksbanken, DKB, ING, Comdirect, Deutsche Bank etc.):** Wähle **FinTS / HBCI** und melde dich mit deiner BLZ/BIC sowie deiner Online-Banking-Kennung und PIN an.
    - **Neobroker & Direktbanken (Trade Republic, Scalable Capital, N26, Revolut etc.):** Wähle den jeweiligen Direkt-Konnektor aus und melde dich mit deinen regulären Zugangsdaten an.
 2. **2FA bestätigen:** Bestätige die Freigabe (Push-TAN / App-Freigabe / PhotoTAN) einmalig auf deinem Smartphone. GiroCrab legt alle gefundenen Konten automatisch an.
-3. **Umsätze abrufen (Rundruf):** Klicke oben in der Symbolleiste auf **Synchronisieren (`↻`)** oder drücke **`⌘R`**. GiroCrab ruft neue Umsätze und Salden ab, wendet deine Kategorien-Regeln an und verhindert über deterministische Buchungs-Fingerprints zuverlässig Duplikate (auch nach einem vorherigen CSV-/CAMT-Import aus MoneyMoney).
+3. **Umsätze abrufen (Rundruf):** Klicke oben in der Symbolleiste auf **Synchronisieren (`↻`)** oder drücke **`⌘R`**. GiroCrab ruft neue Umsätze und Salden ab, wendet deine Kategorien-Regeln an und verhindert über deterministische Buchungs-Fingerprints zuverlässig Duplikate (auch nach einem vorherigen CSV-/CAMT-Import).
 
 ### 2. Läuft der Abgleich technisch über einen Drittanbieter-Service oder über Webscraping?
 **Weder noch!** GiroCrab arbeitet zu **100 % direkt (Point-to-Point)** zwischen deinem Gerät und der Bank – ohne Cloud-Backend, ohne PSD2-Kontoinformationsdienst (wie FinAPI, Tink oder GoCardless) dazwischen und ohne Headless-Browser/HTML-Scraping:
@@ -515,13 +478,13 @@ EN: Every PR automatically gets an AI provenance card. Real financial data never
 
 Danke an alle, die GiroCrab voranbringen! / Thanks to everyone who helps move GiroCrab forward!
 
-- **[@24unix](https://github.com/24unix)** — Direct MoneyMoney database import (#11), MoneyMoney search-expression rules (#60), Dark Mode (#2), DE/EN localisation (#4), key-unlock UX hint (#6), privacy opt-in for online merchant logos (#38), iCloud sync architecture (#10), Dock badge for unchecked bookings (#173), auto-review delay (#176), account/group icon & colour popover (#183) and Enable Banking business banks (#164).
-- **[@jacboy](https://github.com/jacboy)** — User-defined account groups with conflict-free iCloud sync & UI (#39, #40), SEPA Instant transfers with explicit fallback & OutcomeUnknown safety (#29), Verification of Payee / VoP (#30), bunq personal API key connector (#12), Consorsbank FinTS preset & product ID masking (#28), inline note editing (#41), the Apple-HIG wizards for MoneyMoney import (#181) and Add bank (#184), comdirect/bunq pending bookings (#186, #187), the project-notice feed (#185), the banking-policy security lock (#127) and release-integrity monitoring (#129).
+- **[@24unix](https://github.com/24unix)** — Direct database import (#11), search-expression rules (#60), Dark Mode (#2), DE/EN localisation (#4), key-unlock UX hint (#6), privacy opt-in for online merchant logos (#38), iCloud sync architecture (#10), Dock badge for unchecked bookings (#173), auto-review delay (#176), account/group icon & colour popover (#183) and Enable Banking business banks (#164).
+- **[@jacboy](https://github.com/jacboy)** — User-defined account groups with conflict-free iCloud sync & UI (#39, #40), SEPA Instant transfers with explicit fallback & OutcomeUnknown safety (#29), Verification of Payee / VoP (#30), bunq personal API key connector (#12), Consorsbank FinTS preset & product ID masking (#28), inline note editing (#41), the Apple-HIG wizards for the import assistant (#181) and Add bank (#184), comdirect/bunq pending bookings (#186, #187), the project-notice feed (#185), the banking-policy security lock (#127) and release-integrity monitoring (#129).
 - **[@nochsoeiner](https://github.com/nochsoeiner)** — FinTS securities holdings via HKWPD / MT535 (#23), interactive balance chart with hover readout & click-to-jump (#20), period-aware KPI tiles (#19), account & category markers in the booking stream (#26), and DKB FinTS URL preset fix (#25).
-- **[@sebastianmattar](https://github.com/sebastianmattar)** — MoneyMoney depot balances & securities positions import (#51) Trade Republic 8-digit bank code recognition (#52), category assignment without waiting time (#159), paged booking list (#141), logo loading off the main thread (#151) and Swift tests in CI (#163).
+- **[@sebastianmattar](https://github.com/sebastianmattar)** — Depot balances & securities positions import (#51) Trade Republic 8-digit bank code recognition (#52), category assignment without waiting time (#159), paged booking list (#141), logo loading off the main thread (#151) and Swift tests in CI (#163).
 - **[@martinhering](https://github.com/martinhering)** — Scalable Capital connector supporting Baader Bank and Scalable broker GraphQL with 2FA (#54).
 - **[@andre68723](https://github.com/andre68723)** — FNZ Bank balances, depot values and PDF inbox (#104), smooth booking scope selection (#63) and a reducible main window height on macOS (#62).
-- **[@HansWurst90](https://github.com/HansWurst90)** — Build script cleanup (#14) and testing & feedback on MoneyMoney and depot imports.
+- **[@HansWurst90](https://github.com/HansWurst90)** — Build script cleanup (#14) and testing & feedback on data and depot imports.
 
 ## License / Lizenz
 

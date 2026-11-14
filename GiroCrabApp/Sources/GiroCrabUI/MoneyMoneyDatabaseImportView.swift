@@ -55,7 +55,6 @@ struct MoneyMoneyDatabaseImportView: View {
     @State private var importNotes = true
     @State private var importGroups = true
     @State private var createConnections = true
-    @State private var importPins = false
     /// Enable Banking credentials entered in the assistant.
     @State private var ebValues: [String: String] = [:]
     @State private var loading = false
@@ -96,7 +95,7 @@ struct MoneyMoneyDatabaseImportView: View {
         .onChange(of: step) { _, now in running = now == .importing }
         .onAppear {
             if let demo = model.demoDbPreview {
-                fileURL = URL(fileURLWithPath: "/Users/max/Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney")
+                fileURL = URL(fileURLWithPath: "/Users/max/Documents/Import")
                 password = "demo-passwort"
                 apply(demo)
                 step = .accounts
@@ -121,7 +120,7 @@ struct MoneyMoneyDatabaseImportView: View {
 
     private var stepTitle: String {
         switch step {
-        case .source: return String(localized: "Aus MoneyMoney importieren")
+        case .source: return String(localized: "Vorhandene Daten importieren")
         case .accounts: return String(localized: "Konten")
         case .banks: return String(localized: "Übernahme")
         case .enableBanking: return String(localized: "Enable Banking einrichten")
@@ -133,7 +132,7 @@ struct MoneyMoneyDatabaseImportView: View {
     private var stepSubtitle: String {
         switch step {
         case .source:
-            return String(localized: "Wählen Sie, woher die Daten kommen. MoneyMoney und seine Daten bleiben unverändert.")
+            return String(localized: "Wählen Sie, woher die Daten kommen. Die Originaldaten bleiben unverändert.")
         case .accounts:
             guard let p = preview else { return "" }
             return [String(localized: "\(p.accounts.count) Konten"),
@@ -153,11 +152,11 @@ struct MoneyMoneyDatabaseImportView: View {
             let problems = checks.filter { !$0.ok }.count
             if checks.isEmpty { return line }
             if problems > 0 {
-                return line + " " + String(localized: "\(problems) von \(checks.count) Konten weichen von MoneyMoney ab.")
+                return line + " " + String(localized: "\(problems) von \(checks.count) Konten weichen von den importierten Daten ab.")
             }
             return line + " " + (checks.count == 1
-                ? String(localized: "Das Konto stimmt mit MoneyMoney überein.")
-                : String(localized: "Alle \(checks.count) Konten stimmen mit MoneyMoney überein."))
+                ? String(localized: "Das Konto stimmt mit den importierten Daten überein.")
+                : String(localized: "Alle \(checks.count) Konten stimmen mit den importierten Daten überein."))
         }
     }
 
@@ -253,15 +252,15 @@ struct MoneyMoneyDatabaseImportView: View {
         Form {
             ImportSourceSection(source: $source)
             Section {
-                ImportFileRow(title: "MoneyMoney-Daten", url: fileURL, name: fileURL?.lastPathComponent ?? "") { pickFile() }
+                ImportFileRow(title: "Importdaten", url: fileURL, name: fileURL?.lastPathComponent ?? "") { pickFile() }
                 SecureField("Datenbank-Passwort", text: $password, prompt: Text("Erforderlich"))
             } header: {
                 Text("Datenbank").appSectionHeader()
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
-                    footerText("Wählen Sie den MoneyMoney-Ordner, damit auch die Kontoauszüge übernommen werden. Eine einzelne Datei (MoneyMoney.sqlite), etwa aus einem Backup, geht auch.")
-                    footerText("Kein Datenbank-Passwort in MoneyMoney? Dann vorher eines festlegen (Einstellungen → Sicherheit).")
-                    footerText("Das Passwort wird in der App MoneyMoney festgelegt, nicht in GiroCrab. Tragen Sie es hier im Feld oben ein.")
+                    footerText("Wählen Sie den Ordner mit Datenbank und Kontoauszügen, damit auch die Kontoauszüge übernommen werden. Eine einzelne Datenbankdatei (.sqlite), etwa aus einem Backup, geht auch.")
+                    footerText("Kein Datenbank-Passwort festgelegt? Legen Sie vorher eines in dem Programm fest, das die Datenbank erstellt hat.")
+                    footerText("Das Passwort der Datenbank wurde nicht in GiroCrab festgelegt. Tragen Sie es hier im Feld oben ein.")
                 }
             }
         }
@@ -435,13 +434,6 @@ struct MoneyMoneyDatabaseImportView: View {
                     }
                 }
                 .disabled(!createConnections)
-                if createConnections, p.banks.contains(where: { $0.hasSavedPin && usesPin($0) }) {
-                    Section {
-                        Toggle("Gespeicherte PINs übernehmen", isOn: $importPins)
-                    } footer: {
-                        footerText("Die PINs aus MoneyMoney kommen verschlüsselt in den GiroCrab-Tresor. Ohne diese Option werden sie nicht gelesen.")
-                    }
-                }
             }
         }
         .formStyle(.grouped)
@@ -536,7 +528,7 @@ struct MoneyMoneyDatabaseImportView: View {
     }
 
     private func progressStatus(_ p: MoneyMoneyDbImportProgress) -> String {
-        if p.accountIndex == 0 { return String(localized: "MoneyMoney-Datenbank wird gelesen …") }
+        if p.accountIndex == 0 { return String(localized: "Datenbank wird gelesen …") }
         if p.accountIndex > p.accountCount { return String(localized: "Bankzugänge und Gruppen werden angelegt …") }
         return String(localized: "Konto \(p.accountIndex) von \(p.accountCount) · \(p.accountName)")
     }
@@ -620,7 +612,6 @@ struct MoneyMoneyDatabaseImportView: View {
             countRow("Depotpositionen", r.holdingsImported)
             countRow("Bankzugänge", r.connectionsCreated,
                      detail: r.connectionsExisting > 0 ? String(localized: "\(r.connectionsExisting) bereits vorhanden") : nil)
-            countRow("PINs im Tresor", r.pinsStored)
         } header: { Text("Übernommen").appSectionHeader() }
     }
 
@@ -690,7 +681,7 @@ struct MoneyMoneyDatabaseImportView: View {
                 checkTable(problems + checks.filter(\.ok))
             }
         } header: {
-            Text("Abgleich mit MoneyMoney").appSectionHeader()
+            Text("Abgleich mit den importierten Daten").appSectionHeader()
         } footer: {
             if !problems.isEmpty {
                 footerText("Bitte prüfen Sie die markierten Konten. Ein erneuter Import ergänzt fehlende Buchungen, ohne Duplikate anzulegen.")
@@ -704,7 +695,7 @@ struct MoneyMoneyDatabaseImportView: View {
             GridRow {
                 Text("Konto")
                 Text("Buchungen").gridColumnAlignment(.trailing)
-                Text("Saldo MoneyMoney").gridColumnAlignment(.trailing)
+                Text("Saldo laut Import").gridColumnAlignment(.trailing)
                 Text("Saldo GiroCrab").gridColumnAlignment(.trailing)
             }
             .appFont(.caption).foregroundStyle(Theme.secondary)
@@ -744,7 +735,7 @@ struct MoneyMoneyDatabaseImportView: View {
         if c.deletedBookings > 0 { parts.append(String(localized: "\(c.deletedBookings) in GiroCrab gelöscht")) }
         if c.otherBookings > 0 { parts.append(String(localized: "\(c.otherBookings) weitere von der Bank")) }
         if c.balanceFromBank { parts.append(String(localized: "Saldo von der Bank")) }
-        if !c.mmBalanceShown { parts.append(String(localized: "MoneyMoney-Saldo berechnet")) }
+        if !c.mmBalanceShown { parts.append(String(localized: "Saldo aus Umsätzen berechnet")) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -813,11 +804,6 @@ struct MoneyMoneyDatabaseImportView: View {
         return connectionOptions(b).first { $0.key == key }
     }
 
-    private func usesPin(_ b: MoneyMoneyDbBank) -> Bool {
-        guard let o = chosenOption(b) else { return false }
-        return o.via != .enableBanking
-    }
-
     private var chosenEnableBanking: Bool {
         preview?.banks.contains { chosenOption($0)?.via == .enableBanking } ?? false
     }
@@ -868,13 +854,10 @@ struct MoneyMoneyDatabaseImportView: View {
         // the folder brings the statement PDFs along; a single file is a backup
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = String(localized: "MoneyMoney-Ordner auswählen (mit Kontoauszügen) – oder eine einzelne Datenbank, z. B. ein Backup (MoneyMoney.sqlite)")
+        panel.message = String(localized: "Ordner mit Datenbank und Kontoauszügen auswählen – oder eine einzelne Datenbank, z. B. ein Backup (.sqlite)")
         panel.prompt = String(localized: "Auswählen")
         panel.treatsFilePackagesAsDirectories = true
-        // opens inside MoneyMoney's folder: "Auswählen" right away takes the folder
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney")
-        if FileManager.default.fileExists(atPath: dir.path) { panel.directoryURL = dir }
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
         if panel.runModal() == .OK, let url = panel.url {
             fileURL = url
             statementsURL = nil
@@ -942,7 +925,6 @@ struct MoneyMoneyDatabaseImportView: View {
             importCategories: importCategories,
             importNotes: importNotes,
             createConnections: createConnections,
-            importPins: createConnections && importPins,
             importGroups: importGroups,
             importStatements: importStatements && preview.statementsFound > 0,
             statementsDir: statementsURL?.path,
@@ -988,7 +970,7 @@ struct MoneyMoneyDatabaseImportView: View {
         MoneyMoneyDbImportResult(
             accountsCreated: UInt32(p.accounts.count), accountsMerged: 0, groupsCreated: 2, bookingsNew: p.totalBookings,
             bookingsDuplicates: 0, bookingsEnriched: 0, pendingSkipped: p.pendingBookings, notesImported: p.notesCount,
-            categoriesCreated: UInt32(p.categoryPaths.count), connectionsCreated: 4, connectionsExisting: 0, pinsStored: 0,
+            categoriesCreated: UInt32(p.categoryPaths.count), connectionsCreated: 4, connectionsExisting: 0,
             banksSkippedUnsupported: 1, banksSkippedNames: ["Musterbank"], documentsImported: statements ? p.statementsFound : 0, documentsExisting: 0,
             documentsMissing: 0, documentsMismatched: 0, documentsTooLarge: 0, documentsUnlisted: 0, holdingsImported: 3,
             rulesCreated: 0, rulesDisabled: 0,
@@ -1067,7 +1049,7 @@ extension AppModel {
     func finishMoneyMoneyDbImport(_ r: MoneyMoneyDbImportResult) {
         reloadAll()
         if !r.psd2Connections.isEmpty { psd2LinkHints = r.psd2Connections }
-        toast = String(localized: "MoneyMoney: \(r.bookingsNew) Buchungen in \(r.accountsCreated + r.accountsMerged) Konten importiert")
+        toast = String(localized: "Import: \(r.bookingsNew) Buchungen in \(r.accountsCreated + r.accountsMerged) Konten importiert")
             + (r.bookingsDuplicates > 0 ? String(localized: ", \(r.bookingsDuplicates) bereits vorhanden") : "")
     }
 }
@@ -1083,7 +1065,7 @@ extension AppModel {
                                 owner: "Max Mustermann", groupName: group, mmBankId: bankId, isPortfolio: portfolio, suggestedKind: kind,
                                 existingAccountId: existing?.id, existingAccountName: existing?.name, bookingCount: count, pendingCount: pending, holdingCount: portfolio ? 3 : 0,
                                 notesCount: 0, firstDate: from, lastDate: to, statementCount: kind == .checking ? 48 : 0, computedBalanceCents: balance,
-                                balanceSource: "Anfangssaldo laut MoneyMoney-Saldenverlauf + Umsätze")
+                                balanceSource: "Anfangssaldo laut Saldenverlauf der Datenbank + Umsätze")
         }
         let accounts = [
             acc(1, "Girokonto", "comdirect", "20041111", iban: "DE89370400440532013000", kind: .checking, existing: existingGiro,
@@ -1106,19 +1088,19 @@ extension AppModel {
         }
         let banks = [
             MoneyMoneyDbBank(mmId: 1, bankCode: "20041111", name: "comdirect", loginName: "12345678", customerId: "12345678",
-                             connector: .comdirect, hasSavedPin: true, existingConnectionId: nil, accountCount: 3,
+                             connector: .comdirect, existingConnectionId: nil, accountCount: 3,
                              connectionOptions: [direct(.ownApi, .comdirect, "comdirect")]),
             MoneyMoneyDbBank(mmId: 2, bankCode: "50050201", name: "1822direkt", loginName: "max.mustermann", customerId: "",
-                             connector: .direkt1822, hasSavedPin: true, existingConnectionId: nil, accountCount: 1,
+                             connector: .direkt1822, existingConnectionId: nil, accountCount: 1,
                              connectionOptions: [direct(.finTs, .direkt1822, "direkt1822")]),
             MoneyMoneyDbBank(mmId: 3, bankCode: "", name: "PayPal", loginName: "max@example.com", customerId: "",
-                             connector: .payPal, hasSavedPin: false, existingConnectionId: nil, accountCount: 1,
+                             connector: .payPal, existingConnectionId: nil, accountCount: 1,
                              connectionOptions: [direct(.ownApi, .payPal, "paypal")]),
             MoneyMoneyDbBank(mmId: 4, bankCode: "12345678", name: "Musterbank", loginName: "mustermann", customerId: "",
-                             connector: nil, hasSavedPin: false, existingConnectionId: nil, accountCount: 1, connectionOptions: []),
+                             connector: nil, existingConnectionId: nil, accountCount: 1, connectionOptions: []),
             // no own connector, but reachable through Enable Banking (PSD2)
             MoneyMoneyDbBank(mmId: 5, bankCode: "50024024", name: "C24 Bank", loginName: "max.mustermann", customerId: "",
-                             connector: nil, hasSavedPin: false, existingConnectionId: nil, accountCount: 1,
+                             connector: nil, existingConnectionId: nil, accountCount: 1,
                              connectionOptions: psd2Catalog().filter { $0.aspsp == "C24" }.map {
                                  MoneyMoneyDbConnectionOption(via: .enableBanking, connector: .enableBanking,
                                                               key: "enablebanking:\($0.country):\($0.aspsp)", psd2Bank: $0)
@@ -1131,7 +1113,7 @@ extension AppModel {
                                    totalBookings: accounts.reduce(0) { $0 + $1.bookingCount },
                                    pendingBookings: 5, notesCount: 312, splitParts: 14,
                                    dateRangeStart: "2009-04-01", dateRangeEnd: "2026-11-09", replacesStarterCategories: true,
-                                   databasePath: "MoneyMoney.sqlite",
+                                   databasePath: "Import.sqlite",
                                    statementCount: accounts.reduce(0) { $0 + $1.statementCount }, statementsDir: "Statements",
                                    statementsFound: accounts.reduce(0) { $0 + $1.statementCount }, statementsBytes: 38_400_000)
     }

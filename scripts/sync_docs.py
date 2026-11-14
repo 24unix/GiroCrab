@@ -73,20 +73,55 @@ TEXT = {
 
 
 def parse_matrix(text):
-    """-> [dict(name, interface, capabilities, status, issues)] from `BANK_MATRIX` in catalog.rs."""
+    """-> [dict(name, interface, official, capabilities, status, issues)] from `BANK_MATRIX` in catalog.rs."""
     pat = re.compile(
         r'MatrixEntry\s*\{\s*name:\s*"([^"]+)",\s*kind:\s*(?:Some\(ConnectorKind::\w+\)|None),\s*'
-        r"interface:\s*Interface::(\w+),\s*capabilities:\s*&\[([^\]]*)\],\s*"
+        r"interface:\s*Interface::(\w+),\s*(?://[^\n]*\s*)?official:\s*(Some\((?:true|false)\)|None),\s*capabilities:\s*&\[([^\]]*)\],\s*"
         r"status:\s*Status::(\w+),\s*issues:\s*&\[([^\]]*)\],?\s*\}"
     )
     out = []
-    for name, iface, caps, status, issues in pat.findall(text):
+    for name, iface, official, caps, status, issues in pat.findall(text):
         caps = re.findall(r"Capability::(\w+)", caps)
         if iface not in INTERFACES or status not in STATUSES or not set(caps) <= set(CAPS):
             sys.exit(f"error: unknown interface/status/capability in catalog.rs entry {name!r}")
-        out.append({"name": name, "interface": iface, "capabilities": caps, "status": status,
+        out.append({"name": name, "interface": iface, "capabilities": caps,
+                    "official": None if official == "None" else official == "Some(true)", "status": status,
                     "issues": [int(i) for i in re.findall(r"\d+", issues)]})
     return out
+
+
+NOTE_START, NOTE_END = "<!-- sync:connector-note:start -->", "<!-- sync:connector-note:end -->"
+# docs/<key>-connector.md -> (BANK_MATRIX name, name shown in the notice)
+CONNECTOR_DOCS = {
+    "consorsbank": ("Consorsbank", "Consorsbank"),
+    "easybank": ("easybank (ehem. Barclays)", "easybank"),
+    "fnz": ("FNZ Bank", "FNZ Bank"),
+    "quirion": ("quirion", "quirion"),
+    "scalable-capital": ("Scalable Capital", "Scalable Capital"),
+}
+
+
+def connector_note(bank, official):
+    """Notice block for the top of a connector doc, from the matrix field `official`."""
+    de = {True: "offiziell", False: "inoffiziell", None: "noch zu klären"}[official]
+    en = {True: "official", False: "unofficial", None: "to be confirmed"}[official]
+    return (
+        f"{NOTE_START}\n"
+        f"> **Hinweis / Note:** Dieser Connector ist ein unabhängiges Community-Projekt und steht in keiner "
+        f"Verbindung zur {bank}. Schnittstelle: {de}. Bei inoffiziellen Schnittstellen kann die Nutzung gegen "
+        f"die Nutzungsbedingungen der Bank verstoßen.\n"
+        f"> This connector is an independent community project and is not affiliated with {bank}. "
+        f"Interface: {en}. Using unofficial interfaces may violate the bank's terms of service.\n"
+        f"{NOTE_END}"
+    )
+
+
+def replace_connector_note(text, note):
+    pat = re.compile(re.escape(NOTE_START) + r".*?" + re.escape(NOTE_END), re.S)
+    if pat.search(text):
+        return pat.sub(lambda m: note, text)
+    nl = text.index("\n") + 1  # after the title line
+    return text[:nl] + "\n" + note + "\n" + text[nl:]
 
 
 def fints_count(tsv_text):
@@ -180,6 +215,14 @@ def run_readme(root, version):
 
     edit(root / "README.md", fix)
     edit(root / "docs/assets/download-macos.svg", lambda t: replace_version(t, version))
+    by_name = {e["name"]: e for e in matrix}
+    for key, (entry, shown) in CONNECTOR_DOCS.items():
+        if not (root / f"docs/{key}-connector.md").exists():
+            continue
+        if entry not in by_name:
+            sys.exit(f"error: {entry!r} not in BANK_MATRIX (docs/{key}-connector.md)")
+        note = connector_note(shown, by_name[entry]["official"])
+        edit(root / f"docs/{key}-connector.md", lambda t, note=note: replace_connector_note(t, note))
 
 
 def run_site(root, site, version):

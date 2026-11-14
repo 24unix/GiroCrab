@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import GiroCrabCore
 
-/// "Aus MoneyMoney importieren …": either reads MoneyMoney's own database
+/// "Vorhandene Daten importieren …": either reads MoneyMoney's own database
 /// (recommended, everything in one go) or a per-account CSV/XML export. Both
 /// are assistants with the same frame (title, steps, Back / Continue), so
 /// switching the source doesn't change the sheet.
@@ -97,7 +97,7 @@ struct ImportSourceSection: View {
     var body: some View {
         Section {
             Picker("Quelle", selection: $source) {
-                option("MoneyMoney-Datenbank",
+                option("Datenbank",
                        "Alle Konten mit Kategorien, Regeln, Bankzugängen und Kontoauszügen – empfohlen beim Umstieg.")
                     .tag(MoneyMoneyImportSheet.Source.database)
                 option("Exportdatei eines Kontos",
@@ -219,7 +219,7 @@ struct MoneyMoneyExportImportView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             ImportAssistantHeader(
-                title: step == .file ? String(localized: "Aus MoneyMoney importieren") : String(localized: "Übernahme"),
+                title: step == .file ? String(localized: "Vorhandene Daten importieren") : String(localized: "Übernahme"),
                 subtitle: subtitle)
             Group {
                 switch step {
@@ -243,7 +243,7 @@ struct MoneyMoneyExportImportView: View {
         .onAppear {
             if let demo = model.demoImportPreview {
                 preview = demo
-                fileName = "MoneyMoney-Umsaetze.xml"
+                fileName = "Umsaetze.xml"
                 fileData = Data([0])
                 // `--demo-sheet moneymoney` shows the "Übernahme" step (preview + target account)
                 step = .options
@@ -259,7 +259,7 @@ struct MoneyMoneyExportImportView: View {
     private var subtitle: String {
         switch step {
         case .file:
-            return String(localized: "Wählen Sie, woher die Daten kommen. MoneyMoney und seine Daten bleiben unverändert.")
+            return String(localized: "Wählen Sie, woher die Daten kommen. Die Originaldaten bleiben unverändert.")
         case .options:
             guard let p = preview else { return fileName }
             return [fileName, String(localized: "\(p.newBookings.formatted()) neue Buchungen"), yearSpan(p)]
@@ -278,7 +278,7 @@ struct MoneyMoneyExportImportView: View {
             } header: {
                 Text("Datei").appSectionHeader()
             } footer: {
-                Text("In MoneyMoney ein einzelnes Konto wählen, alle Umsätze markieren (⌘A) und „Umsätze exportieren …“. Nur CSV enthält auch die Kategorien. Sie können die Datei auch hierher ziehen.")
+                Text("Erwartet wird eine Exportdatei mit den Umsätzen eines Kontos (CSV, XML, camt.053 oder MT940). Kategorien werden übernommen, sofern die Datei sie enthält. Sie können die Datei auch hierher ziehen.")
                     .appFont(.caption).foregroundStyle(Theme.secondary)
                     .leadingFooter()
             }
@@ -409,7 +409,7 @@ struct MoneyMoneyExportImportView: View {
             case .failure(let e):
                 preview = nil
                 if case CoreError.InvalidInput = e {
-                    error = String(localized: "In dieser Datei wurden keine MoneyMoney-Umsätze erkannt (erwartet: CSV mit Datum/Betrag oder XML <transactions>).")
+                    error = String(localized: "In dieser Datei wurden keine Umsätze erkannt (erwartet: CSV mit Datum/Betrag, XML <transactions>, camt.053 oder MT940).")
                 } else { error = describe(e) }
             }
         }
@@ -440,7 +440,7 @@ extension AppModel {
     func finishMoneyMoneyImport(_ r: MoneyMoneyImportResult) {
         reloadAll()
         if r.accountCreated { sidebarSelection = .account(r.accountId) }
-        toast = String(localized: "MoneyMoney: \(r.imported) Buchungen importiert")
+        toast = String(localized: "Import: \(r.imported) Buchungen importiert")
             + (r.enriched > 0 ? String(localized: ", \(r.enriched) ergänzt") : "")
             + (r.duplicates > 0 ? String(localized: ", \(r.duplicates) bereits vorhanden") : "")
     }

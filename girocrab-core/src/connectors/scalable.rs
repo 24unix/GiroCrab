@@ -1,6 +1,9 @@
 //! Scalable Capital – the GraphQL API behind the official open-source CLI
 //! (<https://github.com/ScalableCapital/scalable-cli>). Read-only.
 //!
+//! Some GraphQL query texts below come from that project (Apache-2.0, v1.3.0) and are
+//! adapted here; see THIRD_PARTY_NOTICES.md.
+//!
 //!  1. POST {issuer}/oauth/device/code  (DPoP)           -> user_code + URL
 //!     the user signs in in the browser; we poll
 //!  2. POST {issuer}/oauth/token grant_type=device_code   -> DPoP-bound tokens

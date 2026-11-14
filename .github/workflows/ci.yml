@@ -47,6 +47,8 @@ jobs:
         run: scripts/lint-appmodel-internals.sh
       - name: Text styles via .appFont (scale with the text size)
         run: scripts/lint-fonts.sh
+      - name: No third-party software brands in user-visible texts
+        run: scripts/lint-brand-names.sh
       - name: String catalogs sorted (scripts/xcstrings.py format)
         run: scripts/xcstrings.py check
       - name: Test String-Catalog-Merge-Driver

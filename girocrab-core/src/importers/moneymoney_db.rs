@@ -4,7 +4,7 @@
 //! defaults, fallback `cipher_compatibility = 3` for older versions); nothing is
 //! ever written to it. Only explicit, harmless columns are selected – login
 //! secrets (`banks.credential`, keys, BPD/UPD, `accounts.cred` …) are never
-//! read, and the `pins` table only when the user opts in.
+//! read, and neither is the `pins` table.
 //!
 //! Bookings go through the same pipeline as the CSV/XML import
 //! ([`moneymoney_import::merge_rows`]): fingerprint de-duplication, category
@@ -109,8 +109,6 @@ pub struct MoneyMoneyDbBank {
     pub customer_id: String,
     /// GiroCrab connector for this bank, `None` = not supported (skipped).
     pub connector: Option<ConnectorKind>,
-    /// MoneyMoney has a saved PIN for this login (the PIN itself is not read).
-    pub has_saved_pin: bool,
     pub existing_connection_id: Option<i64>,
     pub account_count: u32,
     /// Every way GiroCrab can connect to this bank, best first: FinTS, then
@@ -218,8 +216,6 @@ pub struct MoneyMoneyDbImportOptions {
     pub import_categories: bool,
     pub import_notes: bool,
     pub create_connections: bool,
-    /// Copy saved PINs into the encrypted vault (only with `create_connections`).
-    pub import_pins: bool,
     /// Put the accounts into GiroCrab groups named like their MoneyMoney
     /// groups (created if missing, nested and ordered like in MoneyMoney).
     /// Accounts the user already placed keep their group (or "Ohne
@@ -317,7 +313,6 @@ pub struct MoneyMoneyDbImportResult {
     pub categories_created: u32,
     pub connections_created: u32,
     pub connections_existing: u32,
-    pub pins_stored: u32,
     pub banks_skipped_unsupported: u32,
     /// Names of those bank logins (MoneyMoney's bank name), same order as
     /// in the database.
@@ -496,10 +491,6 @@ struct Source {
     txs: Vec<SrcTx>,
     /// newest `balances` row per (account, currency): (timestamp, initial balance)
     balances: HashMap<(i64, String), (i64, f64)>,
-    /// banks with a saved PIN (from `SELECT bank_key FROM pins`)
-    pin_banks: HashSet<i64>,
-    /// the PINs themselves – only filled when the user opted in
-    pins: HashMap<i64, SecretString>,
     /// securities positions per MoneyMoney account id (depots)
     holdings: HashMap<i64, Vec<Holding>>,
 }
@@ -835,21 +826,9 @@ fn is_bunq_account(bic: &str, iban: &str, bankcode: &str) -> bool {
     }
 }
 
-/// Connectors that actually use a stored PIN (`begin_sync` without typing).
-fn pin_usable(kind: ConnectorKind) -> bool {
-    matches!(
-        kind,
-        ConnectorKind::VolksbankKasselGoettingen
-            | ConnectorKind::Direkt1822
-            | ConnectorKind::FinTsGeneric
-            | ConnectorKind::Comdirect
-            | ConnectorKind::TradeRepublic
-    )
-}
-
 fn wrong_password() -> CoreError {
     CoreError::Authentication {
-        message: tr("Falsches Passwort oder keine MoneyMoney-Datenbank.").into(),
+        message: tr("Falsches Passwort oder keine unterstützte Datenbank.").into(),
     }
 }
 
@@ -857,7 +836,7 @@ fn wrong_password() -> CoreError {
 /// with `SQLITE_BUSY`, which is not a wrong password (#201).
 fn locked_by_moneymoney() -> CoreError {
     CoreError::Authentication {
-        message: tr("MoneyMoney ist noch geöffnet und sperrt die Datenbank. Beenden Sie MoneyMoney vollständig und versuchen Sie es erneut.").into(),
+        message: tr("Die Datenbank ist noch in einem anderen Programm geöffnet und gesperrt. Beenden Sie dieses Programm vollständig und versuchen Sie es erneut.").into(),
     }
 }
 
@@ -884,7 +863,7 @@ fn open_failure(e: rusqlite::Error) -> CoreError {
 /// be read after the user sets a password in MoneyMoney.
 fn encrypted_without_password() -> CoreError {
     CoreError::Authentication {
-        message: tr("MoneyMoney verschlüsselt diese Datenbank mit einem eigenen Schlüssel, weil dort kein Datenbank-Passwort festgelegt ist. Legen Sie in der App MoneyMoney (nicht in GiroCrab) unter MoneyMoney › Einstellungen › Sicherheit eines fest, beenden Sie MoneyMoney und geben Sie es dann im Feld „Datenbank-Passwort“ dieses Dialogs ein.").into(),
+        message: tr("Die Datenbank ist mit einem programmeigenen Schlüssel verschlüsselt, weil kein Datenbank-Passwort festgelegt ist. Legen Sie in dem Programm, das die Datenbank erstellt hat (nicht in GiroCrab), ein Passwort fest, beenden Sie es und geben Sie das Passwort dann im Feld „Datenbank-Passwort“ dieses Dialogs ein.").into(),
     }
 }
 
@@ -905,7 +884,7 @@ fn is_plain_sqlite(path: &str) -> bool {
 fn open_source(path: &str, password: &SecretString) -> CoreResult<Connection> {
     if !std::path::Path::new(path).is_file() {
         return Err(CoreError::NotFound {
-            what: tr("MoneyMoney-Datenbank").into(),
+            what: tr("Datenbankdatei").into(),
         });
     }
     // Older MoneyMoney databases can be unencrypted: such a file is opened
@@ -1013,9 +992,8 @@ fn select(conn: &Connection, table: &str, cols: &[&str], tail: &str) -> CoreResu
     Ok(format!("SELECT {list} FROM \"{table}\" {tail}"))
 }
 
-/// Reads everything the importer needs. `with_pins` must only be true when the
-/// user explicitly asked to take over saved PINs.
-fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResult<Source> {
+/// Reads everything the importer needs (never the `pins` table).
+fn read_source(path: &str, password: &SecretString) -> CoreResult<Source> {
     let conn = open_source(path, password)?;
     let have = objects(&conn)?;
     if !["accounts", "transactions", "categories"]
@@ -1351,32 +1329,6 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
         }
     }
 
-    if have.contains("pins") {
-        // Only which banks have a PIN – the pin column is not touched here.
-        let mut st = conn.prepare("SELECT bank_key FROM pins")?;
-        let rows = st.query_map([], |r| Ok(vint(get(r, 0)?)))?;
-        for k in rows {
-            if let Some(k) = k? {
-                src.pin_banks.insert(k);
-            }
-        }
-        if with_pins {
-            // Only for banks GiroCrab supports and whose connector uses a PIN.
-            let mut st = conn.prepare("SELECT pin FROM pins WHERE bank_key = ?1")?;
-            for b in &src.banks {
-                if !src.connector(b).is_some_and(pin_usable) || !src.pin_banks.contains(&b.id) {
-                    continue;
-                }
-                let pin: Option<Value> = st.query_row([b.id], |r| get(r, 0)).optional()?;
-                if let Some(Value::Text(p)) = pin {
-                    let p = SecretString::new(p);
-                    if !p.expose().trim().is_empty() {
-                        src.pins.insert(b.id, p);
-                    }
-                }
-            }
-        }
-    }
     src.docs = read_documents(&conn, &have)?;
     Ok(src)
 }
@@ -1462,7 +1414,7 @@ fn locate(path: &str) -> CoreResult<(String, Option<PathBuf>)> {
         .into_iter()
         .next()
         .ok_or_else(|| CoreError::NotFound {
-            what: tr("MoneyMoney-Datenbank").into(),
+            what: tr("Datenbankdatei").into(),
         })?;
     let statements = p.join("Statements");
     Ok((
@@ -1725,7 +1677,7 @@ impl Source {
         let bank = self.bank(a.bank_key).map(|b| b.name.as_str()).unwrap_or("");
         let s = format!("{bank} {}", a.account).trim().to_string();
         if s.is_empty() {
-            format!("MoneyMoney-Konto {}", a.id)
+            format!("Konto {}", a.id)
         } else {
             s
         }
@@ -1889,9 +1841,9 @@ impl Source {
                 out.balance_cents = *cents;
                 out.balance_shown = true;
                 out.balance_source = if d.is_empty() {
-                    tr("Saldo laut MoneyMoney").into()
+                    tr("Saldo laut Datenbank").into()
                 } else {
-                    trf("Saldo laut MoneyMoney ({0})", &[&d])
+                    trf("Saldo laut Datenbank ({0})", &[&d])
                 };
                 out.balance_date = last.max(d);
                 return out;
@@ -1903,7 +1855,7 @@ impl Source {
                 (
                     *v,
                     trf(
-                        "Anfangssaldo laut MoneyMoney-Saldenverlauf ({0}) + Umsätze",
+                        "Anfangssaldo laut Saldenverlauf der Datenbank ({0}) + Umsätze",
                         &[&d],
                     ),
                     d,
@@ -2179,7 +2131,6 @@ fn preview(
             login_name: b.username.clone(),
             customer_id: b.customer.clone(),
             connector,
-            has_saved_pin: src.pin_banks.contains(&b.id),
             existing_connection_id: match connector {
                 Some(k) => {
                     let key = src
@@ -2448,7 +2399,7 @@ fn import(
             .iter()
             .find(|a| a.id == choice.mm_id)
             .ok_or_else(|| CoreError::NotFound {
-                what: format!("MoneyMoney-Konto {}", choice.mm_id),
+                what: format!("Konto {}", choice.mm_id),
             })?;
         plan.push((choice, a, src.rows_for(a)));
     }
@@ -2535,7 +2486,7 @@ fn import(
                     .bank(a.bank_key)
                     .map(|b| b.name.clone())
                     .filter(|n| !n.is_empty())
-                    .unwrap_or_else(|| "MoneyMoney-Import".into());
+                    .unwrap_or_else(|| "Datenimport".into());
                 conn.execute(
                     "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban, account_number,
                                           currency, kind, balance_cents, balance_date, sf_symbol, sort_order, created_ms)
@@ -2763,23 +2714,6 @@ fn import(
             }
         };
         bank_connection.insert(b.id, id);
-        if options.import_pins && pin_usable(kind) {
-            if let Some(pin) = src.pins.get(&b.id) {
-                let stored: bool = conn
-                    .query_row(
-                        "SELECT 1 FROM settings WHERE key = ?1",
-                        [crate::connections::pin_key(id)],
-                        |_| Ok(true),
-                    )
-                    .optional()?
-                    .unwrap_or(false);
-                // never overwrite a PIN the user already stored in GiroCrab
-                if !stored {
-                    crate::connections::set_pin_inner(conn, id, Some(pin.expose()))?;
-                    res.pins_stored += 1;
-                }
-            }
-        }
     }
     // Show imported accounts under their bank login right away; the first
     // sync then takes them over (adopt_account) instead of adding new ones.
@@ -2864,7 +2798,7 @@ fn psd2_connection(
 impl Vault {
     /// Dry run of a MoneyMoney import: reads the database read-only and
     /// lists accounts, bank logins, categories and documents. Nothing is
-    /// stored and no PIN is read.
+    /// stored
     ///
     /// `path` is MoneyMoney's data folder (the database and its `Statements`
     /// folder are found in it) or a single database file, e.g. a backup.
@@ -2878,7 +2812,7 @@ impl Vault {
     ) -> Result<MoneyMoneyDbPreview, CoreError> {
         let password = SecretString::new(password);
         let (db_path, found) = locate(&path)?;
-        let src = read_source(&db_path, &password, false)?;
+        let src = read_source(&db_path, &password)?;
         drop(password);
         let files = statement_files(statements_dir, found);
         let db = self.db()?;
@@ -2886,7 +2820,7 @@ impl Vault {
     }
 
     /// Imports from MoneyMoney in one go (accounts, bookings, categories,
-    /// notes, optionally bank logins, saved PINs and statement PDFs).
+    /// notes, optionally bank logins and statement PDFs).
     /// Idempotent. `path` as for `preview_moneymoney_database`.
     pub fn import_moneymoney_database(
         &self,
@@ -2920,7 +2854,6 @@ impl Vault {
         observer: Option<&dyn MoneyMoneyImportObserver>,
     ) -> CoreResult<MoneyMoneyDbImportResult> {
         let password = SecretString::new(password);
-        let with_pins = options.import_pins && options.create_connections;
         let (db_path, found) = locate(&path)?;
         // "reading the database" until the accounts start
         if let Some(o) = observer {
@@ -2928,7 +2861,7 @@ impl Vault {
                 return Err(cancelled());
             }
         }
-        let src = read_source(&db_path, &password, with_pins)?;
+        let src = read_source(&db_path, &password)?;
         drop(password);
         let files = statement_files(options.statements_dir.clone(), found);
         let db = self.db()?;

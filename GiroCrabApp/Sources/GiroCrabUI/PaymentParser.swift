@@ -25,7 +25,7 @@ struct ParsedPayment: Equatable {
 }
 
 enum PaymentParser {
-    // MARK: free text (Sm@rtPaste)
+    // MARK: free text (transfer from clipboard)
 
     static func parseText(_ text: String) -> ParsedPayment {
         var p = ParsedPayment()

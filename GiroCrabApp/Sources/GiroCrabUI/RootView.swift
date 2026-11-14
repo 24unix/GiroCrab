@@ -71,7 +71,7 @@ public struct GiroCrabScenes: Scene {
             }
             // Ablage › Import/Export (every toolbar command is also in the menu bar).
             CommandGroup(replacing: .importExport) {
-                Button("Aus MoneyMoney importieren …") { model.openMoneyMoneyImport() }
+                Button("Vorhandene Daten importieren …") { model.openMoneyMoneyImport() }
                     .disabled(!model.isUnlocked)
                 Button("Buchungen als CSV exportieren …") { model.exportFilteredBookingsCSV() }
                     .disabled(!model.isUnlocked)

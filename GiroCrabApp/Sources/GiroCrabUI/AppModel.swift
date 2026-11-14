@@ -538,7 +538,7 @@ public final class AppModel {
                 totalRows: 4820, newBookings: 4820, duplicatesSkippedOrEnriched: 0, notesCount: 312,
                 dateRangeStart: "2012-01-03", dateRangeEnd: "2026-10-30",
                 detectedCategories: ["Haushalt > Lebensmittel", "Gehalt", "Steuern", "Wohnen > Miete", "Mobilität > Tanken", "Freizeit > Restaurants", "Versicherungen", "Reisen"],
-                sampleBookings: [], suggestedAccountName: "MoneyMoney-Archiv", suggestedAccountId: nil)
+                sampleBookings: [], suggestedAccountName: "Import-Archiv", suggestedAccountId: nil)
             showMoneyMoneyImport = true
         case "recurring":
             showRecurringSheet = true

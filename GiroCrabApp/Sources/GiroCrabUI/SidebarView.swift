@@ -54,7 +54,7 @@ struct SidebarView: View {
             }
             .tag(SidebarItem.documents)
             // The MoneyMoney import is an action, not a place: it lives in
-            // Ablage › Aus MoneyMoney importieren …, the command palette and
+            // Ablage › Vorhandene Daten importieren …, the command palette and
             // the welcome card (HIG: sidebar rows are navigation destinations).
 
 

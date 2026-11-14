@@ -56,6 +56,7 @@ The macOS user interface uses only native Apple system frameworks (`SwiftUI`, `A
 | **SQLCipher 4.20.0 / SQLite 3.54.1** (via `rusqlite` feature `bundled-sqlcipher-vendored-openssl`, crate `sqlcipher-src`) | BSD-style (Zetetic LLC), SQLite public domain | Encrypted vault storage |
 | **OpenSSL** (crate `openssl-src`) | Apache-2.0 | Crypto backend for SQLCipher |
 | **Simple Icons** (via `simpleicons-rs`) | CC0-1.0 (icon data); brand logos remain trademarks of their owners | Merchant/bank icons |
+| **GraphQL query texts in `girocrab-core/src/connectors/scalable.rs`** (4 of 10 identical up to whitespace, the others adapted) | Apache-2.0 | Taken from `ScalableCapital/scalable-cli` v1.3.0 ([https://github.com/ScalableCapital/scalable-cli](https://github.com/ScalableCapital/scalable-cli); LICENSE there: "Copyright 2025 OpenAI"). Used for the Scalable Capital connector; changed and extended by GiroCrab. |
 | **Bundesbank Bankleitzahlendatei** (`tools/gen-bic-directory`) | Public data of Deutsche Bundesbank | BLZ → BIC table |
 
 ## Complete Transitive Dependency Tree

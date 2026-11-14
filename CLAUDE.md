@@ -12,7 +12,7 @@ Rust core (`girocrab-core`, UniFFI) + SwiftUI app (`GiroCrabApp`). Root = this d
   trait + DTOs), `catalog.rs` (`descriptor`, `make_connector*`), `sync_session.rs` / `transfer_session.rs` (FFI state
   machines), `persist.rs` (`impl Vault`: `store_fetch`, `begin_sync`/`begin_transfer`), tests in `connectors/tests/`;
   connector impls alongside: `fints/`, `comdirect.rs`, `trade_republic.rs`, `enable_banking.rs`, `paypal.rs`
-- `girocrab-core/src/importers/` – one-off file/web-capture importers: `moneymoney_db.rs` (MoneyMoney SQLCipher),
+- `girocrab-core/src/importers/` – one-off file/web-capture importers: `moneymoney_db.rs` (encrypted SQLCipher database import),
   `moneymoney_import.rs` (CSV/XML/CAMT/MT940 exports), `portal_import.rs` (Amex/Amazon Visa web + CSV/PDF import),
   `amazon_orders.rs`
 - `girocrab-core/src/merchants.rs` – merchant matching
@@ -40,6 +40,14 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 - Always pass `-q`/`--quiet` to `cargo check`, `cargo test`, `xcodebuild`. If output is still long, pipe through `tail -n 40`.
 - Before pushing a PR (also Swift-only ones; CI runs these on every PR): `cargo fmt --all -- --check` and `cargo clippy -q --workspace --all-targets -- -D warnings`. After pushing, check `gh pr checks`.
 - Every `uniffi::Record` / `uniffi::Enum` in `girocrab-core` carries `#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]` right below its `#[derive(…)]` (front ends without UniFFI, e.g. Linux, exchange JSON). `scripts/lint-serde-feature.sh` checks it (CI) and `cargo check -q -p girocrab-core --features serde` must build; run both before pushing Rust changes.
+
+## User-visible texts (no third-party brands)
+Nutzersichtbare Texte (README, docs, Website, App-Strings, Release-Notes) nennen keine Marken anderer Banking- oder
+Finanzsoftware und enthalten keine Vergleiche mit Fremdprodukten. Funktionen von GiroCrab werden sachlich und belegbar
+beschrieben.
+User-visible texts (README, docs, website, app strings, release notes) do not name brands of other banking or finance
+software and contain no comparisons with other products. GiroCrab's features are described factually and verifiably.
+Internal code identifiers (module, function, test and file names) are exempt; `scripts/lint-brand-names.sh` (CI) checks the rest.
 
 ## Don't read into context
 - Generated bindings: `generated/**/girocrab_core.swift` (6k lines), the xcframework, `target/`, `.build/`.

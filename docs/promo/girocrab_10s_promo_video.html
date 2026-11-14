@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GiroCrab – Vom Anwender zum Mitbauer (10s Promo)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-deep: #0b0f17;
+      --bg-slate: #1e2430;
+      --crab-orange: #e44318;
+      --crab-light: #f05a28;
+      --gold-amber: #fbbf24;
+      --emerald-ok: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: radial-gradient(circle at 50% 25%, #1a2232 0%, #0a0e16 75%);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #f8fafc;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Stage container scales smoothly for 16:9 or 9:16 */
+    #stage-wrapper {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      transition: padding 0.3s ease;
+    }
+
+    body.clean-mode #stage-wrapper {
+      padding: 0;
+    }
+
+    #video-stage {
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(120% 100% at 50% 15%, #232b3a 0%, #111622 58%, #090d14 100%);
+      box-shadow: 0 30px 90px -20px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08);
+      border-radius: 1.5rem;
+      transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1), height 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.3s ease;
+    }
+
+    body.clean-mode #video-stage {
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    /* Aspect ratio modes */
+    .aspect-16-9 {
+      width: min(94vw, calc(84vh * (16 / 9)));
+      height: min(84vh, calc(94vw * (9 / 16)));
+    }
+    body.clean-mode .aspect-16-9 {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .aspect-9-16 {
+      width: min(90vw, calc(86vh * (9 / 16)));
+      height: min(86vh, calc(90vw * (16 / 9)));
+    }
+
+    /* Studio floor reflection */
+    .studio-floor {
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 36%;
+      background: linear-gradient(to bottom, rgba(15, 20, 29, 0) 0%, rgba(245, 158, 11, 0.03) 45%, rgba(9, 13, 20, 0.92) 100%);
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      pointer-events: none;
+    }
+
+    .studio-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(to right, rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(circle at 50% 45%, black 25%, transparent 80%);
+      pointer-events: none;
+    }
+
+    /* Animated Crab parts */
+    .crab-claw-left {
+      transform-origin: 185px 255px;
+      transition: transform 0.25s ease-out;
+    }
+    .crab-claw-right {
+      transform-origin: 340px 255px;
+      transition: transform 0.25s ease-out;
+    }
+    .crab-body-group {
+      transform-origin: 256px 270px;
+      transition: transform 0.25s ease-out;
+    }
+    .crab-brows {
+      transform-origin: 256px 190px;
+      transition: transform 0.25s ease-out;
+    }
+
+    /* Glow utilities */
+    .gold-glow {
+      box-shadow: 0 0 35px rgba(251, 191, 36, 0.45), inset 0 0 15px rgba(251, 191, 36, 0.25);
+    }
+    .emerald-glow {
+      box-shadow: 0 0 40px rgba(16, 185, 129, 0.5), inset 0 0 12px rgba(16, 185, 129, 0.3);
+    }
+    .ai-orb-glow {
+      background: radial-gradient(circle at 35% 30%, #fef08a 0%, #f59e0b 38%, #9333ea 82%, #3b0764 100%);
+      box-shadow: 0 0 55px rgba(245, 158, 11, 0.75), 0 0 95px rgba(168, 85, 247, 0.55);
+    }
+
+    /* Scene layers */
+    .scene-layer {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: clamp(1.25rem, 3.2vw, 2.75rem);
+      pointer-events: none;
+      opacity: 0;
+      transform: scale(0.96);
+      transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .scene-layer.active {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* Vertical mode overrides */
+    .aspect-9-16 .scene-content-grid {
+      flex-direction: column !important;
+      gap: 1rem !important;
+    }
+    .aspect-9-16 .headline-xl {
+      font-size: clamp(1.35rem, 4.5vw, 1.85rem) !important;
+      line-height: 1.2 !important;
+    }
+
+    /* Shimmer effect */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.7; }
+      50% { transform: scale(1.06); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.7; }
+    }
+    .animate-pulse-ring {
+      animation: pulse-ring 2s infinite ease-in-out;
+    }
+
+    /* Custom range slider */
+    input[type=range].timeline-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type=range].timeline-slider::-webkit-slider-runnable-track {
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.15);
+    }
+    input[type=range].timeline-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fbbf24;
+      box-shadow: 0 0 12px rgba(251, 191, 36, 0.9);
+      margin-top: -5px;
+      transition: transform 0.15s ease;
+    }
+    input[type=range].timeline-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.25);
+    }
+
+    /* Clean mode hides HUD */
+    body.clean-mode #control-hud,
+    body.clean-mode #top-toolbar {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(20px);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Quick Action Bar -->
+  <div id="top-toolbar" class="fixed top-3 left-0 right-0 z-40 flex items-center justify-between px-6 transition-all duration-300">
+    <div class="flex items-center gap-2.5 bg-slate-900/80 backdrop-blur-md border border-white/10 px-3.5 py-1.5 rounded-full text-xs font-medium text-slate-300 shadow-lg">
+      <span class="inline-block w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+      <span>GiroCrab Community Trailer · <strong>10.0s @ 60fps</strong></span>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <button id="btn-aspect" class="bg-slate-900/80 hover:bg-slate-800 backdrop-blur-md border border-white/10 px-3.5 py-1.5 rounded-full text-xs font-semibold text-slate-200 transition flex items-center gap-1.5 shadow-lg">
+        <span>📐 Format:</span>
+        <span id="aspect-label" class="text-amber-400">16:9 (Web/GitHub)</span>
+      </button>
+      <button id="btn-audio" class="bg-slate-900/80 hover:bg-slate-800 backdrop-blur-md border border-white/10 px-3.5 py-1.5 rounded-full text-xs font-semibold text-slate-200 transition flex items-center gap-1.5 shadow-lg">
+        <span id="audio-icon">🔊</span>
+        <span id="audio-label">GEMA-freie Musik AN</span>
+      </button>
+      <button id="btn-clean" class="bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 px-3.5 py-1.5 rounded-full text-xs font-semibold text-amber-300 transition flex items-center gap-1.5 shadow-lg" title="Taste H für saubere Bildschirmaufnahme">
+        <span>🎥 Clean-Mode (Taste H)</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Floating Exit Clean Mode Hint -->
+  <button id="clean-exit-pill" class="fixed top-4 right-4 z-50 hidden bg-slate-900/70 hover:bg-slate-900 text-xs text-slate-300 border border-white/15 px-3 py-1.5 rounded-full backdrop-blur-md transition">
+    ESC / H · Steuerung einblenden
+  </button>
+
+  <!-- Main Video Stage Wrapper -->
+  <div id="stage-wrapper">
+    <div id="video-stage" class="aspect-16-9">
+
+      <!-- Background Studio Grid & Floor -->
+      <div class="studio-grid"></div>
+      <div class="studio-floor"></div>
+
+      <!-- 60fps Golden Sparks Particle Canvas -->
+      <canvas id="sparks-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-10"></canvas>
+
+      <!-- Persistent Center/Floating Animated GiroCrab Mascot Stage -->
+      <div id="mascot-anchor" class="absolute z-20 pointer-events-none transition-all duration-500 ease-out"
+           style="left: 50%; top: 52%; transform: translate(-50%, -50%) scale(1);">
+        <div id="mascot-container" class="relative w-52 h-52 sm:w-64 sm:h-64 flex items-center justify-center">
+          <!-- Ambient Halo behind Crab -->
+          <div id="crab-halo" class="absolute inset-2 rounded-full bg-amber-500/15 blur-2xl transition-all duration-500"></div>
+
+          <!-- Thought / Epiphany Bubble above Crab -->
+          <div id="crab-thought" class="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap bg-slate-900/95 border border-white/15 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-bold shadow-xl transition-all duration-300 opacity-0 scale-75">
+            <span id="crab-thought-text">🤔 Kein Rust? Kein Swift?</span>
+          </div>
+
+          <!-- EXACT GIROCRAB SVG LOGO / MASCOT -->
+          <svg id="girocrab-svg" viewBox="0 0 512 512" class="w-full h-full drop-shadow-[0_22px_32px_rgba(0,0,0,0.65)]">
+            <defs>
+              <!-- Squircle Background Gradient -->
+              <linearGradient id="gc-bg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#263040"/>
+                <stop offset="100%" stop-color="#1b222e"/>
+              </linearGradient>
+          <!-- EXACT GIROCRAB SVG LOGO / MASCOT (Floating freely without squircle/border) -->
+          <svg id="girocrab-svg" viewBox="0 0 512 512" class="w-full h-full drop-shadow-[0_22px_32px_rgba(0,0,0,0.65)]">
+            <defs>
+              <!-- Silver Credit Card Gradient -->
+              <linearGradient id="gc-card" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#d8dee9"/>
+                <stop offset="45%" stop-color="#f8fafc"/>
+                <stop offset="60%" stop-color="#94a3b8"/>
+                <stop offset="100%" stop-color="#cbd5e1"/>
+              </linearGradient>
+              <!-- Card Magnetic Stripe -->
+              <linearGradient id="gc-stripe" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#1e293b"/>
+                <stop offset="50%" stop-color="#64748b"/>
+                <stop offset="100%" stop-color="#0f172a"/>
+              </linearGradient>
+              <!-- Gold Coin Gradient -->
+              <linearGradient id="gc-coin" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#fde047"/>
+                <stop offset="100%" stop-color="#eab308"/>
+              </linearGradient>
+            </defs>
+
+            <!-- Floor Shadow Ellipse (No rounded rectangle or border around the crab) -->
+            <ellipse id="gc-shadow" cx="256" cy="406" rx="135" ry="14" fill="#090d14" opacity="0.65"/>
+
+            <g class="crab-body-group" id="crab-rig">
+              <!-- Left Walking Legs (3 geometric low-poly legs) -->
+              <g fill="#D1380A">
+                <polygon points="150,285 95,355 112,380 172,308"/>
+                <polygon points="168,305 118,378 136,396 190,322" fill="#E64815"/>
+                <polygon points="190,320 148,392 168,402 208,335" fill="#b82d0d"/>
+              </g>
+
+              <!-- Right Walking Legs (3 geometric low-poly legs) -->
+              <g fill="#D1380A">
+                <polygon points="362,285 417,355 400,380 340,308"/>
+                <polygon points="344,305 394,378 376,396 322,322" fill="#E64815"/>
+                <polygon points="322,320 364,392 344,402 304,335" fill="#b82d0d"/>
+              </g>
+
+              <!-- Left Claw + Tilted Silver Credit Card -->
+              <g class="crab-claw-left" id="claw-left">
+                <!-- Credit Card (held in left claw) -->
+                <g id="svg-credit-card" transform="translate(65, 92) rotate(-28)">
+                  <rect x="0" y="0" width="146" height="94" rx="12" fill="url(#gc-card)" stroke="#475569" stroke-width="2"/>
+                  <rect x="0" y="18" width="146" height="20" fill="url(#gc-stripe)"/>
+                  <rect x="16" y="54" width="52" height="7" rx="3.5" fill="#64748b"/>
+                  <rect x="16" y="67" width="38" height="7" rx="3.5" fill="#94a3b8"/>
+                  <circle cx="106" cy="64" r="12" fill="#64748b" opacity="0.85"/>
+                  <circle cx="120" cy="64" r="12" fill="#94a3b8" opacity="0.85"/>
+                </g>
+                <!-- Claw Arm & Pincer -->
+                <polygon points="182,255 148,225 164,208 196,242" fill="#D1380A"/>
+                <path d="M112,188 C112,155 152,148 166,178 L152,196 L172,186 C176,216 135,232 112,188 Z" fill="#FA5B22"/>
+              </g>
+
+              <!-- Right Claw + Gold Coin -->
+              <g class="crab-claw-right" id="claw-right">
+                <!-- Claw Arm -->
+                <polygon points="330,255 364,225 348,208 316,242" fill="#D1380A"/>
+                <!-- Gold Coin -->
+                <g id="svg-gold-coin" transform="translate(318, 108) rotate(-15)">
+                  <circle cx="48" cy="48" r="46" fill="url(#gc-coin)" stroke="#ca8a04" stroke-width="4"/>
+                  <circle cx="48" cy="48" r="35" fill="#eab308" opacity="0.65"/>
+                  <rect x="41" y="23" width="14" height="50" rx="5" fill="#fde047"/>
+                </g>
+                <!-- Right Pincer -->
+                <path d="M388,142 C418,168 412,216 372,222 C342,226 328,198 345,175 L366,192 L388,142 Z" fill="#FA5B22"/>
+                <circle cx="384" cy="196" r="4" fill="#FF7A45" opacity="0.85"/>
+                <circle cx="373" cy="204" r="2.5" fill="#FF7A45" opacity="0.85"/>
+              </g>
+
+              <!-- Low-Poly Geometric Carapace / Body -->
+              <g id="crab-shell">
+                <!-- Upper Shell Left & Right Facets -->
+                <polygon points="136,275 195,218 256,218 256,275" fill="#FA5B22"/>
+                <polygon points="376,275 317,218 256,218 256,275" fill="#E64815"/>
+                <!-- Mid Facets -->
+                <polygon points="136,275 256,275 202,366 168,340" fill="#E64815"/>
+                <polygon points="376,275 256,275 310,366 344,340" fill="#D1380A"/>
+                <!-- Center Belly Facet -->
+                <polygon points="202,366 310,366 256,275" fill="#E64815"/>
+                <!-- Shell Highlights -->
+                <ellipse cx="195" cy="242" rx="10" ry="5" transform="rotate(-22 195 242)" fill="#FF7A45" opacity="0.8"/>
+                <ellipse cx="208" cy="252" rx="5" ry="3" transform="rotate(-22 208 252)" fill="#FF7A45" opacity="0.8"/>
+              </g>
+
+              <!-- Expressive Eyes & Eyebrows -->
+              <g id="crab-eyes">
+                <!-- Eye Stalks -->
+                <rect x="214" y="206" width="12" height="18" fill="#D1380A"/>
+                <rect x="286" y="206" width="12" height="18" fill="#D1380A"/>
+                <!-- Left Eye -->
+                <circle cx="220" cy="192" r="24" fill="#FA5B22"/>
+                <circle cx="220" cy="192" r="17" fill="#ffffff"/>
+                <circle class="crab-pupil" cx="220" cy="192" r="10" fill="#1e293b"/>
+                <circle cx="216" cy="188" r="3.5" fill="#ffffff"/>
+                <!-- Right Eye -->
+                <circle cx="292" cy="192" r="24" fill="#FA5B22"/>
+                <circle cx="292" cy="192" r="17" fill="#ffffff"/>
+                <circle class="crab-pupil" cx="292" cy="192" r="10" fill="#1e293b"/>
+                <circle cx="288" cy="188" r="3.5" fill="#ffffff"/>
+              </g>
+
+              <!-- Expressive Eyebrows -->
+              <g class="crab-brows" id="crab-brows">
+                <path d="M196,162 Q220,146 240,160" fill="none" stroke="#FA5B22" stroke-width="7" stroke-linecap="round"/>
+                <path d="M272,160 Q292,146 316,162" fill="none" stroke="#FA5B22" stroke-width="7" stroke-linecap="round"/>
+              </g>
+
+              <!-- Happy Open Mouth -->
+              <g id="crab-mouth">
+                <path d="M222,294 L290,294 C290,338 222,338 222,294 Z" fill="#541608"/>
+                <ellipse cx="256" cy="322" rx="22" ry="10" fill="#FF7A45"/>
+              </g>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- =================================================================== -->
+      <!-- SCENE 1 (0.0s - 2.5s): "Du wünschst dir ein Feature?"               -->
+      <!-- =================================================================== -->
+      <div id="scene-1" class="scene-layer active z-30">
+        <!-- Top Headline -->
+        <div class="text-center max-w-3xl mx-auto">
+          <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-rose-500/15 border border-rose-400/30 text-rose-300 text-xs font-bold uppercase tracking-wider mb-2">
+            <span>🦀 Anwender-Dilemma · Issue #383</span>
+          </div>
+          <h1 class="headline-xl text-2xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-white drop-shadow-lg">
+            Du wünschst dir ein Feature,<br/>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-400 to-rose-400">
+              bist aber kein Entwickler?
+            </span>
+          </h1>
+        </div>
+
+        <!-- Middle Interactive Mockup Cards (Left & Right of Mascot) -->
+        <div class="scene-content-grid flex items-center justify-between gap-4 my-auto w-full max-w-5xl mx-auto">
+          <!-- Left Card: Greyed-out Feature in GiroCrab UI -->
+          <div id="s1-ui-card" class="w-full sm:w-80 bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-2xl p-4 shadow-2xl transition-all duration-500">
+            <div class="flex items-center justify-between border-b border-white/10 pb-2.5 mb-3">
+              <div class="flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500/80"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-400/80"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></span>
+                <span class="ml-1.5 text-xs font-semibold text-slate-400">GiroCrab · Buchungs-Detail</span>
+              </div>
+              <span class="text-[11px] font-mono-code text-slate-400">-120,00 €</span>
+            </div>
+
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-xs bg-slate-800/70 px-3 py-2 rounded-lg">
+                <span class="text-slate-300">Supermarkt & Drogerie</span>
+                <span class="text-amber-400 font-semibold">2 Kategorien?</span>
+              </div>
+
+              <!-- Greyed Out Split Button -->
+              <div class="relative overflow-hidden rounded-xl border border-dashed border-slate-600 bg-slate-800/40 px-3.5 py-3 flex items-center justify-between opacity-65">
+                <div class="flex items-center gap-2.5">
+                  <span class="text-base">🔒</span>
+                  <div>
+                    <div class="text-xs font-bold text-slate-400">Umsatz aufteilen (Splitbuchung)</div>
+                    <div class="text-[10px] text-rose-400 font-medium">Menüpunkt ausgegraut (.disabled)</div>
+                  </div>
+                </div>
+                <span class="px-2 py-0.5 text-[10px] font-mono-code rounded bg-slate-700 text-slate-400">Todo</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Card: "No Coding Skills" Badge -->
+          <div id="s1-nocode-card" class="w-full sm:w-72 bg-slate-900/90 backdrop-blur-xl border border-rose-500/30 rounded-2xl p-4 shadow-2xl transition-all duration-500">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-xl font-mono-code font-bold text-rose-400 shrink-0">
+                &lt;/&gt;❌
+              </div>
+              <div>
+                <div class="text-sm font-bold text-white">„Ich bin nur Anwender…“</div>
+                <div class="text-xs text-slate-400 mt-0.5">Keine Ahnung von <span class="text-slate-200 font-mono-code">Rust</span> oder <span class="text-slate-200 font-mono-code">SwiftUI</span>.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Subcaption -->
+        <div class="text-center">
+          <p class="text-xs sm:text-sm text-slate-400 font-medium">
+            Früher hieß das: Wochenlang warten, bis jemand anderes Zeit hat…
+          </p>
+        </div>
+      </div>
+
+      <!-- =================================================================== -->
+      <!-- SCENE 2 (2.5s - 5.2s): "Moment mal – ich hab doch ein KI-Abo!"      -->
+      <!-- =================================================================== -->
+      <div id="scene-2" class="scene-layer z-30">
+        <!-- Top Headline -->
+        <div class="text-center max-w-3xl mx-auto">
+          <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-bold uppercase tracking-wider mb-2">
+            <span>💡 Der Geistesblitz · Dein KI-Abo nutzen</span>
+          </div>
+          <h1 class="headline-xl text-2xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-white drop-shadow-lg">
+            „Moment mal – ich hab doch<br/>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-200 to-purple-400">
+              ein KI-Abo!“ ✨
+            </span>
+          </h1>
+        </div>
+
+        <!-- Middle Floating AI Orb & CLAUDE.md Blueprint -->
+        <div class="scene-content-grid flex items-center justify-between gap-4 my-auto w-full max-w-5xl mx-auto">
+          <!-- Left: Glowing AI Subscription Card -->
+          <div id="s2-ai-orb" class="w-full sm:w-80 rounded-2xl p-4 bg-gradient-to-br from-amber-500/25 via-purple-600/20 to-slate-900/95 border border-amber-400/50 gold-glow backdrop-blur-xl transition-all duration-500">
+            <div class="flex items-center gap-3.5">
+              <div class="w-14 h-14 rounded-2xl ai-orb-glow flex items-center justify-center text-2xl shrink-0 animate-pulse-ring">
+                ✨
+              </div>
+              <div>
+                <div class="text-xs font-bold uppercase tracking-wider text-amber-300">Dein bestehendes Abo</div>
+                <div class="text-base font-extrabold text-white mt-0.5">Claude · Cursor · ChatGPT</div>
+                <div class="text-xs text-amber-200/80 mt-1">Statt ungenutzt lassen → für GiroCrab einsetzen!</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: CLAUDE.md Project Brain -->
+          <div id="s2-claudemd" class="w-full sm:w-80 rounded-2xl p-4 bg-slate-900/95 border border-emerald-400/40 backdrop-blur-xl shadow-2xl transition-all duration-500">
+            <div class="flex items-center justify-between mb-2">
+              <span class="px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono-code text-xs font-bold">📄 CLAUDE.md im Repo</span>
+              <span class="text-xs text-emerald-400 font-semibold">100 % KI-Ready ✓</span>
+            </div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              GiroCrab bringt die komplette Bauanleitung für deine KI schon mit: Architektur, <span class="font-mono-code text-amber-300">--demo-seed</span> und automatische Prüfskripte!
+            </p>
+          </div>
+        </div>
+
+        <!-- Bottom Subcaption -->
+        <div class="text-center">
+          <p class="text-xs sm:text-sm text-amber-200/90 font-semibold">
+            Du beschreibst einfach auf Deutsch, was dir fehlt – deine KI kennt den Code bereits!
+          </p>
+        </div>
+      </div>
+
+      <!-- =================================================================== -->
+      <!-- SCENE 3 (5.2s - 8.0s): "Dein Prompt → Dein fertiger Pull Request"   -->
+      <!-- =================================================================== -->
+      <div id="scene-3" class="scene-layer z-30">
+        <!-- Top Headline -->
+        <div class="text-center max-w-3xl mx-auto">
+          <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold uppercase tracking-wider mb-2">
+            <span>⚡ Automatischer Bau & Test · In Minuten statt Wochen</span>
+          </div>
+          <h1 class="headline-xl text-2xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-white drop-shadow-lg">
+            Dein Wunsch auf Deutsch →<br/>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-teal-200 to-amber-300">
+              Dein eigener Pull Request!
+            </span>
+          </h1>
+        </div>
+
+        <!-- Middle: Prompt Terminal + Unlocked Green Feature -->
+        <div class="scene-content-grid flex items-center justify-between gap-4 my-auto w-full max-w-5xl mx-auto">
+          <!-- Left: AI Terminal typing & checking -->
+          <div class="w-full sm:w-88 bg-slate-950/95 border border-amber-400/40 rounded-2xl p-4 shadow-2xl font-mono-code text-xs">
+            <div class="flex items-center justify-between text-[11px] text-slate-400 border-b border-white/10 pb-2 mb-2.5">
+              <span>🤖 KI-Assistent (Claude Code / Cursor)</span>
+              <span class="text-amber-400">girocrab/main</span>
+            </div>
+            <div class="text-amber-300 mb-2">
+              <span class="text-slate-500">&gt; Prompt:</span>
+              <span id="typed-prompt" class="text-white">"Schalte Splitbuchung frei &amp; teste"</span>
+            </div>
+            <div class="space-y-1.5 text-[11px]">
+              <div id="step-badge-1" class="flex items-center justify-between bg-slate-900 px-2.5 py-1.5 rounded text-emerald-400 transition-all">
+                <span>📦 InspectorView.swift aktualisiert</span>
+                <span>✓</span>
+              </div>
+              <div id="step-badge-2" class="flex items-center justify-between bg-slate-900 px-2.5 py-1.5 rounded text-emerald-400 transition-all">
+                <span>🧪 swift test (296 Tests bestanden)</span>
+                <span>✓</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Unlocked Feature Card (Turns Emerald Green!) -->
+          <div id="s3-unlocked-card" class="w-full sm:w-84 bg-slate-900/95 border-2 border-emerald-400 emerald-glow rounded-2xl p-4 shadow-2xl transition-all duration-300">
+            <div class="flex items-center justify-between mb-2">
+              <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] font-bold">
+                🎉 Pull Request #383 bereit!
+              </span>
+              <span class="text-xs font-mono-code text-emerald-400 font-bold">+42 / -6</span>
+            </div>
+
+            <div class="rounded-xl bg-emerald-500/20 border border-emerald-400/50 p-3 flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <span class="text-xl">🔓</span>
+                <div>
+                  <div class="text-xs font-extrabold text-white">Umsatz aufteilen (Splitbuchung)</div>
+                  <div class="text-[11px] text-emerald-300 font-semibold">Aktiviert · Lebensmittel 80 € | Drogerie 40 €</div>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 rounded-lg bg-emerald-500 text-slate-950 font-extrabold text-xs shadow">Aktiv ✓</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Subcaption -->
+        <div class="text-center">
+          <p class="text-xs sm:text-sm text-emerald-300 font-semibold">
+            Unsere automatischen Checks sichern alles ab – du kannst nichts kaputt machen!
+          </p>
+        </div>
+      </div>
+
+      <!-- =================================================================== -->
+      <!-- SCENE 4 (8.0s - 10.0s): "Werde Teil von GiroCrab!" (Outro Hero)     -->
+      <!-- =================================================================== -->
+      <div id="scene-4" class="scene-layer z-30">
+        <!-- Top Pill + Hero CTA -->
+        <div class="text-center max-w-3xl mx-auto">
+          <div class="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 text-xs font-bold uppercase tracking-wider mb-2">
+            <span>🦀 Community-Power · Kostenlos &amp; Open Source</span>
+          </div>
+          <h1 class="headline-xl text-3xl sm:text-5xl font-black tracking-tight text-white drop-shadow-xl">
+            Mach dein KI-Abo produktiv.<br/>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-400 to-emerald-400">
+              Werde Teil von GiroCrab!
+            </span>
+          </h1>
+        </div>
+
+        <!-- Spacer for Center Mascot Hero -->
+        <div class="my-auto"></div>
+
+        <!-- Bottom Feature Pills & URL -->
+        <div class="flex flex-col items-center gap-3">
+          <div class="flex flex-wrap items-center justify-center gap-2">
+            <span class="px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-amber-400/40 text-xs font-bold text-amber-300 shadow-lg">
+              ✨ Keine Programmiererfahrung nötig
+            </span>
+            <span class="px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-emerald-400/40 text-xs font-bold text-emerald-300 shadow-lg">
+              🍎 macOS · 📱 iOS
+            </span>
+            <span class="px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-white/15 text-xs font-bold text-slate-200 shadow-lg">
+              🔒 100 % Lokal &amp; Open Source
+            </span>
+          </div>
+
+          <div class="mt-1 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-slate-950 font-black text-sm sm:text-base tracking-wide shadow-[0_0_35px_rgba(245,158,11,0.6)] flex items-center gap-3">
+            <span>🚀 Jetzt erstes Ticket schnappen:</span>
+            <span class="font-mono-code bg-slate-950/20 px-2.5 py-0.5 rounded-lg text-white">girocrab.de</span>
+            <span class="font-mono-code text-xs sm:text-sm text-slate-950/90">github.com/GiroCrab/GiroCrab</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Progress Bar inside Video Stage -->
+      <div class="absolute bottom-0 left-0 right-0 h-1.5 bg-white/10 z-40">
+        <div id="stage-progress-fill" class="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-emerald-400 transition-none" style="width: 0%;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Interactive Timeline & Scrubber HUD -->
+  <div id="control-hud" class="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 w-[94vw] max-w-4xl bg-slate-900/90 backdrop-blur-xl border border-white/15 rounded-2xl px-4 py-2.5 shadow-2xl transition-all duration-300">
+    <div class="flex items-center gap-3">
+      <!-- Play / Pause -->
+      <button id="btn-play" class="w-9 h-9 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold flex items-center justify-center shadow transition shrink-0" title="Leertaste">
+        <span id="play-icon">⏸</span>
+      </button>
+
+      <!-- Replay -->
+      <button id="btn-restart" class="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold flex items-center justify-center border border-white/10 transition shrink-0" title="Neu starten (Taste R)">
+        ↺
+      </button>
+
+      <!-- Time Readout -->
+      <div class="font-mono-code text-xs text-slate-300 w-20 shrink-0 text-center">
+        <span id="time-current" class="text-amber-400 font-bold">0.0s</span> / 10.0s
+      </div>
+
+      <!-- Timeline Scrubber + Scene Jumps -->
+      <div class="flex-1 flex flex-col gap-1">
+        <input id="timeline-scrubber" type="range" min="0" max="10" step="0.01" value="0" class="timeline-slider w-full" />
+        <div class="grid grid-cols-4 text-[10px] font-semibold text-slate-400">
+          <button data-jump="0" class="text-left hover:text-amber-300 transition truncate">1 · 0.0s Wunsch-Feature</button>
+          <button data-jump="2.5" class="text-left hover:text-amber-300 transition truncate">2 · 2.5s 💡 KI-Abo!</button>
+          <button data-jump="5.2" class="text-left hover:text-amber-300 transition truncate">3 · 5.2s ⚡ Prompt → PR</button>
+          <button data-jump="8.0" class="text-left hover:text-amber-300 transition truncate">4 · 8.0s 🦀 Mitmachen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. STATE & TIMELINE CONFIG (10.0 SECONDS @ 60FPS)
+    // =========================================================================
+    const DURATION = 10.0;
+    let currentTime = 0.0;
+    let isPlaying = true;
+    let lastFrameTime = performance.now();
+    let soundEnabled = true;
+    let currentAspect = '16:9';
+    let triggeredCues = new Set();
+
+    // DOM References
+    const videoStage = document.getElementById('video-stage');
+    const stageProgressFill = document.getElementById('stage-progress-fill');
+    const scrubber = document.getElementById('timeline-scrubber');
+    const timeCurrentLabel = document.getElementById('time-current');
+    const playIcon = document.getElementById('play-icon');
+
+    const scenes = [
+      document.getElementById('scene-1'),
+      document.getElementById('scene-2'),
+      document.getElementById('scene-3'),
+      document.getElementById('scene-4')
+    ];
+
+    const mascotAnchor = document.getElementById('mascot-anchor');
+    const crabRig = document.getElementById('crab-rig');
+    const clawLeft = document.getElementById('claw-left');
+    const clawRight = document.getElementById('claw-right');
+    const crabBrows = document.getElementById('crab-brows');
+    const crabHalo = document.getElementById('crab-halo');
+    const crabThought = document.getElementById('crab-thought');
+    const crabThoughtText = document.getElementById('crab-thought-text');
+    const typedPrompt = document.getElementById('typed-prompt');
+    const stepBadge1 = document.getElementById('step-badge-1');
+    const stepBadge2 = document.getElementById('step-badge-2');
+    const s3UnlockedCard = document.getElementById('s3-unlocked-card');
+
+    const FULL_PROMPT_TEXT = '"Schalte Splitbuchung frei & führe swift test aus"';
+
+    // =========================================================================
+    // 2. 100% GEMA-FREE PROCEDURAL UPBEAT SOUNDTRACK + SFX (WEB AUDIO API)
+    // =========================================================================
+    let audioCtx = null;
+    let lastScheduledStep = -1;
+
+    // 120 BPM = 0.5s per beat = 0.125s per 16th-note step (80 steps in 10.0s)
+    const STEP_DURATION = 0.125;
+
+    // Uplifting chord progression across the 80 steps (C -> G -> Am -> F -> C/G)
+    // Frequencies in Hz for warm synth arpeggios & bass
+    const ARP_CHORDS = [
+      // 0.0s - 2.5s (Steps 0..19): Gentle curious C major9 / A minor7
+      { bass: 130.81, notes: [261.63, 329.63, 392.00, 493.88], bell: 523.25 },
+      // 2.5s - 5.2s (Steps 20..41): Epiphany lift! F major7 -> G6
+      { bass: 174.61, notes: [349.23, 440.00, 523.25, 659.25], bell: 783.99 },
+      // 5.2s - 8.0s (Steps 42..63): Driving A minor7 -> E minor7 -> F major
+      { bass: 220.00, notes: [440.00, 523.25, 659.25, 783.99], bell: 880.00 },
+      // 8.0s - 10.0s (Steps 64..79): Heroic C major / G resolving fanfare
+      { bass: 130.81, notes: [523.25, 659.25, 783.99, 1046.50], bell: 1046.50 }
+    ];
+
+    function ensureAudioCtx() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) audioCtx = new AudioContextClass();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playTone(freq, type, duration, gainVal = 0.08, slideTo = null) {
+      if (!soundEnabled) return;
+      try {
+        ensureAudioCtx();
+        if (!audioCtx || audioCtx.state !== 'running') return;
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        if (slideTo) {
+          osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
+        }
+        gain.gain.setValueAtTime(gainVal, now);
+        gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + duration);
+      } catch (e) {
+        // Ignore until user interaction unlocks Web Audio
+      }
+    }
+
+    // Soft punchy electronic kick drum
+    function playKick(intensity = 1.0) {
+      if (!soundEnabled || !audioCtx || audioCtx.state !== 'running') return;
+      try {
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(135, now);
+        osc.frequency.exponentialRampToValueAtTime(36, now + 0.14);
+        gain.gain.setValueAtTime(0.16 * intensity, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.17);
+      } catch (e) {}
+    }
+
+    // Crisp filtered noise hi-hat / shaker
+    function playHiHat(open = false) {
+      if (!soundEnabled || !audioCtx || audioCtx.state !== 'running') return;
+      try {
+        const now = audioCtx.currentTime;
+        const dur = open ? 0.11 : 0.045;
+        const bufferSize = Math.floor(audioCtx.sampleRate * dur);
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+        }
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.setValueAtTime(6500, now);
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(open ? 0.045 : 0.028, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+        noise.start(now);
+      } catch (e) {}
+    }
+
+    // Warm plucked synth note with low-pass filter envelope
+    function playPluck(freq, duration = 0.22, vol = 0.045) {
+      if (!soundEnabled || !audioCtx || audioCtx.state !== 'running') return;
+      try {
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const filter = audioCtx.createBiquadFilter();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, now);
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(2400, now);
+        filter.frequency.exponentialRampToValueAtTime(480, now + duration);
+
+        gain.gain.setValueAtTime(vol, now);
+        gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + duration);
+      } catch (e) {}
+    }
+
+    // Sequencer step trigger synced to timeline `t` (0.0s .. 10.0s)
+    function updateProceduralMusic(t) {
+      if (!soundEnabled || !isPlaying) return;
+      const step = Math.floor(t / STEP_DURATION);
+      if (step === lastScheduledStep || step < 0 || step >= 80) return;
+      lastScheduledStep = step;
+
+      // Determine harmonic section based on timeline
+      let sectionIdx = 0;
+      if (t >= 8.0) sectionIdx = 3;
+      else if (t >= 5.2) sectionIdx = 2;
+      else if (t >= 2.5) sectionIdx = 1;
+
+      const chord = ARP_CHORDS[sectionIdx];
+      const noteInChord = chord.notes[step % chord.notes.length];
+
+      // 1. Upbeat Arpeggio pluck on every 16th step (brighter from Scene 2 onwards)
+      const arpVol = sectionIdx === 0 ? 0.025 : (sectionIdx === 3 ? 0.05 : 0.04);
+      playPluck(noteInChord, 0.19, arpVol);
+
+      // 2. Warm sub-bass pulse on eighth notes (every 2 steps)
+      if (step % 2 === 0) {
+        const bassFreq = (step % 8 === 6) ? chord.bass * 1.5 : chord.bass;
+        playTone(bassFreq, 'triangle', 0.22, sectionIdx === 0 ? 0.04 : 0.065);
+      }
+
+      // 3. Kick drum (4-on-the-floor groove kicks in at Scene 2 (2.5s+))
+      if (sectionIdx >= 1 && step % 4 === 0) {
+        playKick(sectionIdx >= 2 ? 1.0 : 0.75);
+      } else if (sectionIdx === 0 && step % 8 === 0) {
+        playKick(0.45);
+      }
+
+      // 4. Crisp Hi-Hat groove (off-beats in Scene 1, driving 16ths in Scene 2-4)
+      if (sectionIdx >= 2) {
+        playHiHat(step % 4 === 2);
+      } else if (sectionIdx === 1 && step % 2 === 1) {
+        playHiHat(false);
+      }
+
+      // 5. Uplifting melodic bell motif on key accents
+      if (sectionIdx >= 1 && (step % 8 === 0 || step % 8 === 3 || step % 8 === 6)) {
+        const melodyMultiplier = (step % 8 === 3) ? 1.25 : ((step % 8 === 6) ? 1.5 : 1.0);
+        playTone(chord.bell * melodyMultiplier, 'sine', 0.28, 0.035);
+      }
+    }
+
+    function triggerSoundCue(cueName) {
+      if (triggeredCues.has(cueName)) return;
+      triggeredCues.add(cueName);
+
+      if (cueName === 'scene1_shrug') {
+        playTone(220, 'sine', 0.25, 0.05, 185);
+      } else if (cueName === 'scene2_epiphany') {
+        playTone(523.25, 'triangle', 0.18, 0.07, 659.25);
+        setTimeout(() => playTone(783.99, 'triangle', 0.35, 0.08, 1046.5), 110);
+      } else if (cueName === 'scene3_unlock') {
+        playTone(587.33, 'sine', 0.15, 0.065, 880);
+        setTimeout(() => playTone(1046.5, 'triangle', 0.35, 0.08), 115);
+      } else if (cueName === 'scene4_fanfare') {
+        [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, idx) => {
+          setTimeout(() => playTone(f, 'triangle', 0.55, 0.065), idx * 65);
+        });
+      }
+    }
+
+    // =========================================================================
+    // 3. GOLDEN SPARKS PARTICLE ENGINE (HTML5 CANVAS)
+    // =========================================================================
+    const canvas = document.getElementById('sparks-canvas');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+
+    function resizeCanvas() {
+      const rect = videoStage.getBoundingClientRect();
+      canvas.width = rect.width * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
+      ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    function createParticle(w, h, burst = false) {
+      const cx = w * 0.5;
+      const cy = h * 0.52;
+      const angle = Math.random() * Math.PI * 2;
+      const speed = burst ? (2.2 + Math.random() * 5.5) : (0.3 + Math.random() * 1.4);
+      const colors = ['#fbbf24', '#f59e0b', '#fde047', '#f97316', '#34d399'];
+      return {
+        x: burst ? cx + (Math.random() - 0.5) * 60 : Math.random() * w,
+        y: burst ? cy + (Math.random() - 0.5) * 60 : Math.random() * h,
+        vx: burst ? Math.cos(angle) * speed : (Math.random() - 0.5) * 0.8,
+        vy: burst ? Math.sin(angle) * speed - 1.0 : -(0.4 + Math.random() * 1.3),
+        radius: burst ? (2 + Math.random() * 3.5) : (1.2 + Math.random() * 2.4),
+        alpha: 0.4 + Math.random() * 0.6,
+        decay: burst ? (0.012 + Math.random() * 0.015) : 0.003,
+        color: colors[Math.floor(Math.random() * colors.length)]
+      };
+    }
+
+    function spawnBurst(count = 36) {
+      const rect = videoStage.getBoundingClientRect();
+      for (let i = 0; i < count; i++) {
+        particles.push(createParticle(rect.width, rect.height, true));
+      }
+    }
+
+    function initParticles() {
+      resizeCanvas();
+      const rect = videoStage.getBoundingClientRect();
+      particles = [];
+      for (let i = 0; i < 55; i++) {
+        particles.push(createParticle(rect.width, rect.height, false));
+      }
+    }
+
+    function updateAndDrawParticles() {
+      const rect = videoStage.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // Draw subtle energy stream lines in Scene 2 & Scene 3
+      if (currentTime >= 2.5 && currentTime < 8.0) {
+        const pulse = 0.5 + 0.5 * Math.sin(currentTime * 8);
+        const grad = ctx.createLinearGradient(w * 0.2, h * 0.5, w * 0.8, h * 0.5);
+        grad.addColorStop(0, 'rgba(251, 191, 36, 0)');
+        grad.addColorStop(0.5, `rgba(251, 191, 36, ${0.18 + pulse * 0.18})`);
+        grad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.18, h * 0.52);
+        ctx.quadraticCurveTo(w * 0.5, h * (0.42 + 0.06 * Math.sin(currentTime * 4)), w * 0.82, h * 0.52);
+        ctx.stroke();
+      }
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= p.decay;
+
+        if (p.alpha <= 0 || p.y < -10 || p.x < -10 || p.x > w + 10) {
+          if (particles.length <= 55) {
+            particles[i] = createParticle(w, h, false);
+            particles[i].y = h + 5;
+          } else {
+            particles.splice(i, 1);
+            continue;
+          }
+        }
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // =========================================================================
+    // 4. SCENE CHOREOGRAPHY & MASCOT RIG ANIMATION (0.0s -> 10.0s)
+    // =========================================================================
+    function renderTimelineAt(t) {
+      // Update progress bars & labels
+      const pct = Math.min(100, Math.max(0, (t / DURATION) * 100));
+      stageProgressFill.style.width = `${pct}%`;
+      scrubber.value = t.toFixed(2);
+      timeCurrentLabel.textContent = `${t.toFixed(1)}s`;
+
+      // Determine active scene index (0..3)
+      let activeIdx = 0;
+      if (t >= 8.0) activeIdx = 3;
+      else if (t >= 5.2) activeIdx = 2;
+      else if (t >= 2.5) activeIdx = 1;
+      else activeIdx = 0;
+
+      scenes.forEach((el, idx) => {
+        if (idx === activeIdx) el.classList.add('active');
+        else el.classList.remove('active');
+      });
+
+      // Continuous 60fps Crab idle bounce + claw motion
+      const bounceY = Math.sin(t * 5.5) * 6;
+      const tiltDeg = Math.sin(t * 3.2) * 3.5;
+
+      if (activeIdx === 0) {
+        // SCENE 1 (0.0s - 2.5s): Puzzled user crab shrugging at locked feature
+        triggerSoundCue('scene1_shrug');
+        mascotAnchor.style.top = '54%';
+        mascotAnchor.style.transform = `translate(-50%, -50%) scale(0.92)`;
+
+        const shrugAngle = Math.sin(t * 4) * 8;
+        crabRig.style.transform = `translateY(${bounceY}px) rotate(${shrugAngle * 0.4}deg)`;
+        clawLeft.style.transform = `rotate(${-14 + shrugAngle}deg)`;
+        clawRight.style.transform = `rotate(${14 - shrugAngle}deg)`;
+        crabBrows.style.transform = `translateY(-4px) rotate(${shrugAngle * 0.5}deg)`;
+
+        crabHalo.className = 'absolute inset-2 rounded-full bg-rose-500/15 blur-2xl transition-all duration-500';
+        crabThought.style.opacity = '1';
+        crabThought.style.transform = 'translate(-50%, 0) scale(1)';
+        crabThoughtText.textContent = '🤔 Kein Entwickler? Wie helfe ich?';
+      }
+      else if (activeIdx === 1) {
+        // SCENE 2 (2.5s - 5.2s): Epiphany! "Moment mal – ich hab doch ein KI-Abo!"
+        if (!triggeredCues.has('scene2_epiphany')) {
+          triggerSoundCue('scene2_epiphany');
+          spawnBurst(32);
+        }
+        mascotAnchor.style.top = '54%';
+        mascotAnchor.style.transform = `translate(-50%, -50%) scale(0.98)`;
+
+        const excitedWave = Math.sin(t * 9) * 12;
+        crabRig.style.transform = `translateY(${bounceY - 6}px) rotate(${tiltDeg}deg)`;
+        clawLeft.style.transform = `rotate(${12 + excitedWave}deg)`;
+        clawRight.style.transform = `rotate(${-12 - excitedWave}deg)`;
+        crabBrows.style.transform = `translateY(-8px)`;
+
+        crabHalo.className = 'absolute inset-2 rounded-full bg-amber-400/35 blur-3xl transition-all duration-500';
+        crabThought.style.opacity = '1';
+        crabThought.style.transform = 'translate(-50%, 0) scale(1.05)';
+        crabThoughtText.textContent = '💡 Moment! Ich hab doch ein KI-Abo!';
+      }
+      else if (activeIdx === 2) {
+        // SCENE 3 (5.2s - 8.0s): Prompt -> Pull Request Assembly
+        if (!triggeredCues.has('scene3_unlock')) {
+          triggerSoundCue('scene3_unlock');
+          spawnBurst(40);
+        }
+        mascotAnchor.style.top = '55%';
+        mascotAnchor.style.transform = `translate(-50%, -50%) scale(0.88)`;
+
+        const scene3Progress = Math.min(1, (t - 5.2) / 1.4);
+        const charCount = Math.floor(scene3Progress * FULL_PROMPT_TEXT.length);
+        typedPrompt.textContent = FULL_PROMPT_TEXT.slice(0, Math.max(1, charCount));
+
+        stepBadge1.style.opacity = t > 5.7 ? '1' : '0.3';
+        stepBadge2.style.opacity = t > 6.3 ? '1' : '0.3';
+        s3UnlockedCard.style.transform = t > 6.1 ? 'scale(1.03)' : 'scale(0.95)';
+
+        const buildWave = Math.sin(t * 11) * 10;
+        crabRig.style.transform = `translateY(${bounceY}px)`;
+        clawLeft.style.transform = `rotate(${buildWave}deg)`;
+        clawRight.style.transform = `rotate(${-buildWave}deg)`;
+        crabBrows.style.transform = `translateY(-5px)`;
+
+        crabHalo.className = 'absolute inset-2 rounded-full bg-emerald-400/30 blur-3xl transition-all duration-500';
+        crabThought.style.opacity = '1';
+        crabThought.style.transform = 'translate(-50%, 0) scale(1)';
+        crabThoughtText.textContent = '🚀 KI baut & testet meinen PR!';
+      }
+      else {
+        // SCENE 4 (8.0s - 10.0s): Hero Celebration Outro
+        if (!triggeredCues.has('scene4_fanfare')) {
+          triggerSoundCue('scene4_fanfare');
+          spawnBurst(55);
+        }
+        mascotAnchor.style.top = '50%';
+        mascotAnchor.style.transform = `translate(-50%, -50%) scale(1.16)`;
+
+        const heroWave = Math.sin(t * 10) * 14;
+        crabRig.style.transform = `translateY(${bounceY - 8}px) rotate(${tiltDeg}deg)`;
+        clawLeft.style.transform = `rotate(${15 + heroWave}deg)`;
+        clawRight.style.transform = `rotate(${-15 - heroWave}deg)`;
+        crabBrows.style.transform = `translateY(-7px)`;
+
+        crabHalo.className = 'absolute inset-0 rounded-full bg-amber-400/45 blur-3xl transition-all duration-500';
+        crabThought.style.opacity = '1';
+        crabThought.style.transform = 'translate(-50%, -4px) scale(1.08)';
+        crabThoughtText.textContent = '🦀 Dein erster PR in 5 Minuten!';
+      }
+    }
+
+    // =========================================================================
+    // 5. MAIN 60FPS ANIMATION LOOP & CONTROLS
+    // =========================================================================
+    function tick(now) {
+      const dt = (now - lastFrameTime) / 1000;
+      lastFrameTime = now;
+
+      if (isPlaying) {
+        currentTime += dt;
+        if (currentTime >= DURATION) {
+          currentTime = 0;
+          lastScheduledStep = -1;
+          triggeredCues.clear();
+        }
+        updateProceduralMusic(currentTime);
+        renderTimelineAt(currentTime);
+      }
+
+      updateAndDrawParticles();
+      requestAnimationFrame(tick);
+    }
+
+    function togglePlay() {
+      ensureAudioCtx();
+      isPlaying = !isPlaying;
+      playIcon.textContent = isPlaying ? '⏸' : '▶';
+    }
+
+    function restartVideo() {
+      ensureAudioCtx();
+      currentTime = 0;
+      lastScheduledStep = -1;
+      triggeredCues.clear();
+      isPlaying = true;
+      playIcon.textContent = '⏸';
+      renderTimelineAt(0);
+    }
+
+    function toggleCleanMode() {
+      document.body.classList.toggle('clean-mode');
+      const isClean = document.body.classList.contains('clean-mode');
+      document.getElementById('clean-exit-pill').classList.toggle('hidden', !isClean);
+      setTimeout(resizeCanvas, 360);
+    }
+
+    // Unlock Web Audio on first click/key anywhere on the page
+    window.addEventListener('pointerdown', ensureAudioCtx, { once: true });
+
+    // Event Listeners
+    document.getElementById('btn-play').addEventListener('click', togglePlay);
+    document.getElementById('btn-restart').addEventListener('click', restartVideo);
+
+    scrubber.addEventListener('input', (e) => {
+      ensureAudioCtx();
+      currentTime = parseFloat(e.target.value);
+      lastScheduledStep = -1;
+      triggeredCues.clear();
+      renderTimelineAt(currentTime);
+    });
+
+    document.querySelectorAll('[data-jump]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        ensureAudioCtx();
+        currentTime = parseFloat(btn.getAttribute('data-jump'));
+        lastScheduledStep = -1;
+        triggeredCues.clear();
+        renderTimelineAt(currentTime);
+      });
+    });
+
+    document.getElementById('btn-aspect').addEventListener('click', () => {
+      ensureAudioCtx();
+      if (currentAspect === '16:9') {
+        currentAspect = '9:16';
+        videoStage.classList.remove('aspect-16-9');
+        videoStage.classList.add('aspect-9-16');
+        document.getElementById('aspect-label').textContent = '9:16 (Reels/Shorts)';
+      } else {
+        currentAspect = '16:9';
+        videoStage.classList.remove('aspect-9-16');
+        videoStage.classList.add('aspect-16-9');
+        document.getElementById('aspect-label').textContent = '16:9 (Web/GitHub)';
+      }
+      setTimeout(resizeCanvas, 380);
+    });
+
+    document.getElementById('btn-audio').addEventListener('click', () => {
+      ensureAudioCtx();
+      soundEnabled = !soundEnabled;
+      document.getElementById('audio-icon').textContent = soundEnabled ? '🔊' : '🔇';
+      document.getElementById('audio-label').textContent = soundEnabled ? 'GEMA-freie Musik AN' : 'Musik AUS';
+    });
+
+    document.getElementById('btn-clean').addEventListener('click', toggleCleanMode);
+    document.getElementById('clean-exit-pill').addEventListener('click', toggleCleanMode);
+
+    window.addEventListener('keydown', (e) => {
+      ensureAudioCtx();
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.key === 'r' || e.key === 'R') {
+        restartVideo();
+      } else if (e.key === 'h' || e.key === 'H' || (e.key === 'Escape' && document.body.classList.contains('clean-mode'))) {
+        toggleCleanMode();
+      }
+    });
+
+    window.onload = function () {
+      initParticles();
+      renderTimelineAt(0);
+      requestAnimationFrame(tick);
+    };
+  </script>
+</body>
+</html>
