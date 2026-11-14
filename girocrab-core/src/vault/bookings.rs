@@ -478,6 +478,11 @@ impl Vault {
             }
             enrich(&mut t);
             t.is_salary = crate::salary::is_salary(&t, &salary_ibans);
+            // A salary stays income although its booking text names a transfer
+            // (comdirect: "Übertrag / Überweisung"); a transfer category still wins.
+            if t.is_salary && t.flow == FlowKind::Transfer {
+                t.flow = FlowKind::Income;
+            }
             if is_own_transfer(&t, &own_ibans) {
                 t.flow = FlowKind::Transfer;
             }
@@ -1197,5 +1202,31 @@ mod own_transfer_tests {
             v.selection_flow(vec![], None, None).unwrap().income_cents,
             0
         );
+    }
+
+    /// comdirect books incoming transfers as "Übertrag / Überweisung": a
+    /// salary must not become a transfer by that booking text.
+    #[test]
+    fn salary_with_transfer_booking_text_is_income() {
+        let (_d, v, ids) = vault_with(&[
+            (
+                "UHB Software",
+                4254_94,
+                "LOHN / GEHALT 10/26 EREF:",
+                Some("Salary"),
+            ),
+            ("UHB Software", 4254_94, "LOHN / GEHALT 09/26 EREF:", None),
+        ]);
+        v.db()
+            .unwrap()
+            .execute_batch(
+                "UPDATE transactions SET booking_text = 'Übertrag / Überweisung',
+                     counterparty_iban = 'DE75512108001245126199'",
+            )
+            .unwrap();
+        assert_eq!(flow_of(&v, ids[0]), FlowKind::Income);
+        assert_eq!(flow_of(&v, ids[1]), FlowKind::Income);
+        let page = v.list_transactions(BookingFilter::default()).unwrap();
+        assert_eq!(page.income_cents, 2 * 4254_94);
     }
 }
