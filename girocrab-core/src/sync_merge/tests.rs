@@ -4036,3 +4036,156 @@ fn folded_twin_hands_over_rules_documents_and_loan_links() {
         bank_booking("mm-2")
     );
 }
+
+// ------------------------------------- MoneyMoney twins without a bank login
+
+const FINOM_IBAN: &str = "DE69100180000752999428";
+const WALLET_IBAN: &str = "GB51TCCL04140405131923";
+
+/// Account `ext` on login `c` (or none) with an IBAN and currency.
+fn wallet(v: &Vault, c: Option<i64>, ext: &str, iban: &str, currency: &str) -> i64 {
+    let db = v.db().unwrap();
+    db.execute_batch("INSERT OR IGNORE INTO account_groups(id, name) VALUES (1, 'G')")
+        .unwrap();
+    db.execute(
+        "INSERT INTO accounts(connection_id, group_id, external_ref, name, iban, currency, kind)
+         VALUES (?1, 1, ?2, 'Girokonto', ?3, ?4, 'checking')",
+        params![c, ext, iban, currency],
+    )
+    .unwrap();
+    db.last_insert_rowid()
+}
+
+fn booking(v: &Vault, account: i64, ext: &str, fp: &str) {
+    v.db()
+        .unwrap()
+        .execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, import_fp)
+             VALUES (?1, ?2, '2026-01-01', -100, ?3)",
+            params![account, ext, fp],
+        )
+        .unwrap();
+}
+
+/// A login set up after the MoneyMoney import (Enable Banking) took over an
+/// unlinked MoneyMoney account; another device brought the unlinked copy
+/// back. It is a twin by IBAN and bookings: the fetch renamed most of them
+/// to its own ids but kept their import fingerprints.
+#[test]
+fn unlinked_moneymoney_twin_is_folded_into_the_bank_account() {
+    let dir = temp_dir("twin-unlinked");
+    let v = open(&dir, "a.db");
+    let c = comdirect(&v);
+    let bank = wallet(&v, Some(c), FINOM_IBAN, FINOM_IBAN, "EUR");
+    booking(&v, bank, "eb-1", "F1");
+    booking(&v, bank, "eb-2", "F2");
+    booking(&v, bank, "mm-F3-0", "F3");
+    let twin = wallet(&v, None, "moneymoney-db:25:ba5a6b58", FINOM_IBAN, "EUR");
+    booking(&v, twin, "mm-F1-0", "F1");
+    booking(&v, twin, "mm-F2-0", "F2");
+    booking(&v, twin, "mm-F3-0", "F3");
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+        1
+    );
+    assert_eq!(
+        n(
+            &v,
+            "SELECT count(*) FROM transactions WHERE deleted_ms IS NULL"
+        ),
+        3
+    );
+    let db = v.db().unwrap();
+    assert_eq!(
+        crate::sync_merge::twins::folded_into(&db, twin).unwrap(),
+        Some(bank)
+    );
+}
+
+/// Finom's EUR and USD wallets share one IBAN: each unlinked empty copy goes
+/// to the wallet in its own currency.
+#[test]
+fn unlinked_empty_wallets_fold_by_currency() {
+    let dir = temp_dir("twin-wallets");
+    let v = open(&dir, "a.db");
+    let c = comdirect(&v);
+    let usd = wallet(&v, Some(c), "GB51:USD", WALLET_IBAN, "USD");
+    let eur = wallet(&v, Some(c), "GB51:EUR", WALLET_IBAN, "EUR");
+    wallet(&v, None, "moneymoney-db:26:ed66cd04", WALLET_IBAN, "USD");
+    wallet(&v, None, "moneymoney-db:27:ed66cd04", WALLET_IBAN, "EUR");
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        text(
+            &v,
+            "SELECT group_concat(id) FROM (SELECT id FROM accounts WHERE deleted_ms IS NULL ORDER BY id)"
+        ),
+        format!("{usd},{eur}")
+    );
+}
+
+/// Without IBAN an unlinked account is not tied to any bank account.
+#[test]
+fn unlinked_moneymoney_account_without_iban_stays() {
+    let dir = temp_dir("twin-noiban");
+    let v = open(&dir, "a.db");
+    let c = comdirect(&v);
+    exec(&v, "INSERT INTO account_groups(id, name) VALUES (1, 'G')");
+    exec(
+        &v,
+        &format!(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, account_number, kind)
+             VALUES ({c}, 1, 'depot:1', 'Depot', '42', 'brokerage'),
+                    (NULL, 1, 'moneymoney-db:9:x', 'Depot', '42', 'brokerage')"
+        ),
+    );
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+        2
+    );
+}
+
+/// B never fetched and holds the unlinked MoneyMoney account that A's fetch
+/// took over: the merge maps them onto each other, B links it to the login.
+#[test]
+fn merge_matches_an_unlinked_moneymoney_account_a_fetch_took_over() {
+    let dir = temp_dir("twin-merge-unlinked");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let acc = wallet(&a, None, "moneymoney-db:25:ba5a6b58", FINOM_IBAN, "EUR");
+    booking(&a, acc, "mm-F1-0", "F1");
+    booking(&a, acc, "mm-F2-0", "F2");
+    exec(&a, "UPDATE accounts SET created_ms = 1");
+    both_ways(&a, &b);
+    let c = comdirect(&a);
+    exec(&a, "UPDATE bank_connections SET created_ms = 1");
+    let mut remote = remote_account(FINOM_IBAN);
+    remote.iban = FINOM_IBAN.into();
+    let fetch = crate::connectors::FetchResult {
+        accounts: vec![remote],
+        transactions: vec![remote_tx(FINOM_IBAN, "b1")],
+        ..Default::default()
+    };
+    crate::connectors::store_fetch(&a, ConnectorKind::Comdirect, c, fetch).unwrap();
+    assert_eq!(text(&a, "SELECT external_ref FROM accounts"), FINOM_IBAN);
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(
+            text(
+                v,
+                "SELECT group_concat(external_ref) FROM accounts WHERE deleted_ms IS NULL"
+            ),
+            FINOM_IBAN
+        );
+        assert_eq!(
+            n(
+                v,
+                "SELECT count(*) FROM transactions WHERE deleted_ms IS NULL"
+            ),
+            3
+        );
+    }
+}

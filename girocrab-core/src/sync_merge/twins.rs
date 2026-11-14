@@ -5,15 +5,17 @@
 //! again. The merge now lets such an account take over the bank's key, and
 //! twins already in a vault are folded into the bank account.
 //!
-//! Two accounts are twins when they belong to the same bank login, one is a
-//! MoneyMoney account and the other a bank account, their IBANs match (or,
-//! without IBAN, kind and account number), and most of the MoneyMoney
+//! Two accounts are twins when one is a MoneyMoney account and the other a
+//! bank account of the same bank login, their IBANs match (or, without IBAN,
+//! kind and account number), and most of the MoneyMoney
 //! account's bookings are in the bank account (same external id or import
 //! fingerprint). Issue #94: MoneyMoney keeps closed accounts with the same
 //! IBAN; `mm-` ids are content hashes, so a closed account shares the few
 //! bookings MoneyMoney fetched again for its successor, but not most of its
 //! own. Accounts without any booking (depots) are twins when name and
-//! account number match too.
+//! account number match too. A MoneyMoney account linked to no login (the
+//! login was added after the import, e.g. Enable Banking) can be the twin of
+//! a bank account of any login, but only by IBAN and currency.
 
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
@@ -130,31 +132,45 @@ pub(crate) fn adopt_on_merge(
     }
     let candidates: Vec<Ident> = conn
         .prepare(&format!(
-            "SELECT {IDENT_COLUMNS} FROM main.accounts
-              WHERE connection_id = ?1 AND external_ref LIKE 'moneymoney-db:%' AND deleted_ms IS NULL
+            "SELECT {IDENT_COLUMNS}, connection_id FROM main.accounts
+              WHERE (connection_id = ?1 OR connection_id IS NULL)
+                AND external_ref LIKE 'moneymoney-db:%' AND deleted_ms IS NULL
               ORDER BY id"
         ))?
-        .query_map([connection_id], ident)?
-        .collect::<Result<_, _>>()?;
+        .query_map([connection_id], |r| {
+            Ok((ident(r)?, r.get::<_, Option<i64>>(6)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|(mm, login)| login.is_some() || !mm.iban.is_empty())
+        .map(|(mm, _)| mm)
+        .collect();
     let found = best(
         candidates.iter().filter(|mm| same_account(mm, &bank)),
         |mm| twin_score(conn, "main", mm, "other", &bank),
     )?;
     if let Some(id) = found {
+        // linked to the login too, as `adopt_account` does
         conn.execute(
-            "UPDATE accounts SET external_ref = ?2 WHERE id = ?1",
-            params![id, ext],
+            "UPDATE accounts SET connection_id = ?3, external_ref = ?2 WHERE id = ?1",
+            params![id, ext, connection_id],
         )?;
     }
     Ok(found)
 }
 
-/// The live bank account the MoneyMoney account `mm` is a twin of.
-fn bank_twin(conn: &Connection, mm: &Ident, connection_id: i64) -> CoreResult<Option<i64>> {
+/// The live bank account the MoneyMoney account `mm` (on login
+/// `connection_id`, or none) is a twin of.
+fn bank_twin(conn: &Connection, mm: &Ident, connection_id: Option<i64>) -> CoreResult<Option<i64>> {
+    // unlinked: any login, but only by IBAN
+    if connection_id.is_none() && mm.iban.is_empty() {
+        return Ok(None);
+    }
     let banks: Vec<Ident> = conn
         .prepare(&format!(
             "SELECT {IDENT_COLUMNS} FROM main.accounts
-              WHERE connection_id = ?1 AND external_ref NOT LIKE 'moneymoney-db:%' AND deleted_ms IS NULL
+              WHERE connection_id IS NOT NULL AND (?1 IS NULL OR connection_id = ?1)
+                AND external_ref NOT LIKE 'moneymoney-db:%' AND deleted_ms IS NULL
               ORDER BY id"
         ))?
         .query_map([connection_id], ident)?
@@ -168,12 +184,12 @@ fn bank_twin(conn: &Connection, mm: &Ident, connection_id: i64) -> CoreResult<Op
 /// its bank account live). The import then goes to the bank account
 /// instead of reviving the twin.
 pub(crate) fn folded_into(conn: &Connection, id: i64) -> CoreResult<Option<i64>> {
-    let row: Option<(Ident, i64)> = conn
+    let row: Option<(Ident, Option<i64>)> = conn
         .query_row(
             // includes soft-deleted rows
             &format!(
                 "SELECT {IDENT_COLUMNS}, connection_id FROM main.accounts
-                  WHERE id = ?1 AND deleted_ms IS NOT NULL AND connection_id IS NOT NULL
+                  WHERE id = ?1 AND deleted_ms IS NOT NULL
                     AND external_ref LIKE 'moneymoney-db:%'"
             ),
             [id],
@@ -193,10 +209,10 @@ pub(crate) fn folded_into(conn: &Connection, id: i64) -> CoreResult<Option<i64>>
 /// devices drop it on merge. Runs outside a transaction (it attaches a
 /// scratch database); each twin is folded all or nothing. Returns the count.
 pub(crate) fn fold_twins(conn: &Connection) -> CoreResult<u32> {
-    let twins: Vec<(Ident, i64)> = conn
+    let twins: Vec<(Ident, Option<i64>)> = conn
         .prepare(&format!(
             "SELECT {IDENT_COLUMNS}, connection_id FROM main.accounts
-              WHERE connection_id IS NOT NULL AND external_ref LIKE 'moneymoney-db:%' AND deleted_ms IS NULL
+              WHERE external_ref LIKE 'moneymoney-db:%' AND deleted_ms IS NULL
               ORDER BY id"
         ))?
         .query_map([], |r| Ok((ident(r)?, r.get(6)?)))?
