@@ -34,8 +34,10 @@
 # signature or nothing published aborts the release. Skipped while the policy
 # key is a placeholder.
 #   --ios           also bump iOS build number, archive for iOS, and upload to TestFlight
-#                   (IOS_MARKETING_VERSION=0.6.1 pins the iOS MARKETING_VERSION, so only the
-#                   build number changes and no new external beta review is needed)
+#                   By default the iOS MARKETING_VERSION stays at the value project.pbxproj had
+#                   before the release bump, so only the build number changes and no new
+#                   external beta review is needed. IOS_MARKETING_VERSION=x.y.z overrides it
+#                   when an iOS version bump is intended (only the iOS archive is pinned).
 # LOCKSTEP RULE: GiroCrab/girocrab.de (the marketing site, checked out next to this
 # repo as ../girocrab.de) and the newest icon from
 # GiroCrabApp/Xcode/App/Assets.xcassets/AppIcon.appiconset must always be kept in sync
@@ -86,7 +88,10 @@ while [ $# -gt 0 ]; do
       LOST_TO="${2:-}"
       [ -n "$LOST_TO" ] || { echo "error: --lost-key needs a new keychain account name" >&2; exit 2; }
       shift 2 ;;
-    *) echo "usage: $0 [--upload <TAG> [--critical | --critical-below X.Y.Z] [--rotate-key <account> | --lost-key <account>] | --nightly] [--ios] [--no-sync]" >&2; exit 2 ;;
+    -h|--help)
+      sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
+      exit 0 ;;
+    *) echo "usage: $0 [--upload <TAG> [--critical | --critical-below X.Y.Z] [--rotate-key <account> | --lost-key <account>] | --nightly] [--ios] [--no-sync] (see --help)" >&2; exit 2 ;;
   esac
 done
 
@@ -209,6 +214,9 @@ if [ -n "$UPLOAD_TAG" ]; then
   fi
   PBXPROJ="GiroCrabApp/Xcode/GiroCrab.xcodeproj/project.pbxproj"
   if [ "$CHANNEL" = "stable" ] && [ -f "$PBXPROJ" ]; then
+    # One multiplatform target shares MARKETING_VERSION with iOS. Remember the value from
+    # before the release bump: the iOS archive stays on it by default (see ios_pipeline).
+    IOS_PBX_MARKETING_VERSION="$(sed -n 's/.*MARKETING_VERSION = \([^;]*\);.*/\1/p' "$PBXPROJ" | head -1)"
     echo "==> Setting MARKETING_VERSION = ${CLEAN_VER} in project.pbxproj"
     sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = ${CLEAN_VER};/g" "$PBXPROJ"
     # Verify every MARKETING_VERSION now equals the tag version.
@@ -560,10 +568,12 @@ ios_pipeline() {
   rm -rf "$IOS_ARCHIVE" "$IOS_EXPORT"
 
   # TestFlight: a changed MARKETING_VERSION triggers a 24 h external beta
-  # review, a new build number under an approved version does not. With
-  # IOS_MARKETING_VERSION=0.6.1 only the iOS archive is pinned (override on the
-  # xcodebuild command line); project.pbxproj and macOS keep the release version.
-  IOS_MARKETING_VERSION="${IOS_MARKETING_VERSION:-}"
+  # review, a new build number under an approved version does not. By default
+  # the iOS archive keeps the MARKETING_VERSION project.pbxproj had BEFORE this
+  # run's release bump; IOS_MARKETING_VERSION=x.y.z overrides it when a new iOS
+  # version is intended. Only the iOS archive is pinned (xcodebuild command line);
+  # project.pbxproj and macOS get the release version.
+  IOS_MARKETING_VERSION="${IOS_MARKETING_VERSION:-${IOS_PBX_MARKETING_VERSION:-}}"
   IOS_VERSION_ARGS=()
   if [ -n "$IOS_MARKETING_VERSION" ]; then
     echo "==> Pinning iOS MARKETING_VERSION = ${IOS_MARKETING_VERSION} (Build ${NEXT_BUILD})"
