@@ -9,17 +9,26 @@ use crate::merchants::{classify, clean_purpose, payment_method, FlowKind, Mercha
 use crate::models::*;
 use crate::money::parse_cents;
 
-/// Booking between two own accounts: counterparty IBAN is one of ours, or a
-/// category segment marks it as transfer (MoneyMoney "Umbuchung", "Geldtransit" …).
+/// Booking between two own accounts. A category segment that marks a transfer
+/// (MoneyMoney "Umbuchung", "Geldtransit" …) always wins. The counterparty-IBAN
+/// heuristic only applies to bookings the user has not categorised and that
+/// `classify()` did not already see as investment / perk: an explicit category
+/// ("Sonstige Einnahmen" on a child's account) or an ETF savings plan on a depot
+/// settlement account must keep its flow (Issue #94).
 fn is_own_transfer(t: &Booking, own_ibans: &std::collections::HashSet<String>) -> bool {
+    if t.category_path.split(" › ").any(|s| {
+        matches!(
+            s.trim().to_lowercase().as_str(),
+            "umbuchung" | "umbuchungen" | "geldtransit" | "transfer" | "transfers"
+        )
+    }) {
+        return true;
+    }
+    if t.category_id.is_some() || matches!(t.flow, FlowKind::Investment | FlowKind::Perk) {
+        return false;
+    }
     let iban = crate::connectors::fints::sepa::normalize_iban(&t.counterparty_iban);
-    (!iban.is_empty() && own_ibans.contains(&iban))
-        || t.category_path.split(" › ").any(|s| {
-            matches!(
-                s.trim().to_lowercase().as_str(),
-                "umbuchung" | "umbuchungen" | "geldtransit" | "transfer" | "transfers"
-            )
-        })
+    !iban.is_empty() && own_ibans.contains(&iban)
 }
 
 /// WHERE clause "booking `t` belongs to the categories `cat_match`" (e.g. `= ?3`,
@@ -383,7 +392,7 @@ impl Vault {
         let mut txs = Vec::new();
         let salary_ibans = crate::salary::marked_salary_ibans(&db)?;
         let overrides = crate::insights::load_overrides(&db).unwrap_or_default();
-        // Own IBANs: bookings to / from them are transfers (Issue #94).
+        // Own IBANs: uncategorised bookings to / from them are transfers (Issue #94).
         let own_ibans: std::collections::HashSet<String> = {
             let mut st =
                 db.prepare("SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != '' AND deleted_ms IS NULL")?;
@@ -890,5 +899,160 @@ mod paging_tests {
             "the count follows the filter"
         );
         let _ = std::fs::remove_file(p);
+    }
+}
+
+#[cfg(test)]
+mod own_transfer_tests {
+    use super::*;
+    use crate::test_support::TempDir;
+    use rusqlite::params;
+    use std::sync::Arc;
+
+    const GIRO_IBAN: &str = "DE89370400440532013000";
+    const KIND_IBAN: &str = "DE02120300000000202051";
+
+    /// Two own accounts (parent Giro, child account) and one booking per case on
+    /// the child account, all coming from the parent's IBAN.
+    fn vault_with(cases: &[(&str, i64, &str, Option<&str>)]) -> (TempDir, Arc<Vault>, Vec<i64>) {
+        let dir = TempDir::new("own-transfer");
+        let v = Vault::open(dir.join("v.db").to_string_lossy().into(), vec![7u8; 32]).unwrap();
+        let db = v.db().unwrap();
+        db.execute(
+            "INSERT INTO bank_connections(connector, display_name, login_name) VALUES ('fints:12345678', 'Bank', 'me')",
+            [],
+        )
+        .unwrap();
+        let con = db.last_insert_rowid();
+        db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+            .unwrap();
+        let group = db.last_insert_rowid();
+        let mut accounts = vec![];
+        for (ext, name, iban) in [("A1", "Eltern", GIRO_IBAN), ("A2", "Kind", KIND_IBAN)] {
+            db.execute(
+                "INSERT INTO accounts(connection_id, group_id, external_ref, name, kind, iban) VALUES (?1, ?5, ?2, ?3, 'checking', ?4)",
+                params![con, ext, name, iban, group],
+            )
+            .unwrap();
+            accounts.push(db.last_insert_rowid());
+        }
+        let mut ids = vec![];
+        for (i, (cp, cents, purpose, cat)) in cases.iter().enumerate() {
+            let cat_id: Option<i64> = cat.map(|path| {
+                let mut parent: Option<i64> = None;
+                for seg in path.split('/') {
+                    let found: Option<i64> = db
+                        .query_row(
+                            "SELECT id FROM categories WHERE name = ?1 AND parent_id IS ?2",
+                            params![seg, parent],
+                            |r| r.get(0),
+                        )
+                        .ok();
+                    parent = Some(found.unwrap_or_else(|| {
+                        db.execute(
+                            "INSERT INTO categories(name, parent_id) VALUES (?1, ?2)",
+                            params![seg, parent],
+                        )
+                        .unwrap();
+                        db.last_insert_rowid()
+                    }));
+                }
+                parent.unwrap()
+            });
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, counterparty_iban, purpose, category_id, category_source)
+                 VALUES (?1, ?2, '2024-03-05', ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    accounts[1],
+                    format!("t{i}"),
+                    cents,
+                    cp,
+                    GIRO_IBAN,
+                    purpose,
+                    cat_id,
+                    if cat_id.is_some() { "manual" } else { "none" }
+                ],
+            )
+            .unwrap();
+            ids.push(db.last_insert_rowid());
+        }
+        drop(db);
+        (dir, v, ids)
+    }
+
+    fn flow_of(v: &Vault, id: i64) -> FlowKind {
+        v.list_transactions(BookingFilter::default())
+            .unwrap()
+            .transactions
+            .into_iter()
+            .find(|b| b.id == id)
+            .unwrap()
+            .flow
+    }
+
+    #[test]
+    fn uncategorised_booking_between_own_accounts_is_a_transfer() {
+        let (_d, v, ids) = vault_with(&[("Papa", 500_00, "Taschengeld", None)]);
+        assert_eq!(flow_of(&v, ids[0]), FlowKind::Transfer);
+        let page = v.list_transactions(BookingFilter::default()).unwrap();
+        assert_eq!(page.income_cents, 0);
+        assert_eq!(page.flow.income_cents, 0);
+    }
+
+    #[test]
+    fn explicit_non_transfer_category_keeps_its_flow() {
+        let (_d, v, ids) =
+            vault_with(&[("Papa", 500_00, "Taschengeld", Some("Sonstige Einnahmen"))]);
+        assert_eq!(flow_of(&v, ids[0]), FlowKind::Income);
+        let f = v.selection_flow(vec![], None, None).unwrap();
+        assert_eq!(f.income_cents, 500_00);
+        let page = v.list_transactions(BookingFilter::default()).unwrap();
+        assert_eq!(page.income_cents, 500_00);
+    }
+
+    #[test]
+    fn expense_with_category_to_own_account_counts_as_consumption() {
+        let (_d, v, ids) = vault_with(&[("Papa", -40_00, "Kino", Some("Freizeit"))]);
+        assert_eq!(flow_of(&v, ids[0]), FlowKind::Consumption);
+        assert_eq!(
+            v.selection_flow(vec![], None, None)
+                .unwrap()
+                .consumption_cents,
+            40_00
+        );
+    }
+
+    #[test]
+    fn investment_to_own_account_keeps_investment_flow() {
+        let (_d, v, ids) = vault_with(&[
+            ("Depot", -100_00, "Sparplan MSCI World", None),
+            (
+                "Depot",
+                -100_00,
+                "Sparplan MSCI World",
+                Some("Sparen & Investieren"),
+            ),
+        ]);
+        assert_eq!(flow_of(&v, ids[0]), FlowKind::Investment);
+        assert_eq!(flow_of(&v, ids[1]), FlowKind::Investment);
+        assert_eq!(
+            v.selection_flow(vec![], None, None).unwrap().invested_cents,
+            200_00
+        );
+    }
+
+    #[test]
+    fn explicit_transfer_category_is_a_transfer() {
+        let (_d, v, ids) = vault_with(&[
+            ("Papa", 500_00, "x", Some("Umbuchung")),
+            ("Papa", 500_00, "x", Some("Privat/Geldtransit")),
+            // no own IBAN involved: the category alone decides
+        ]);
+        assert_eq!(flow_of(&v, ids[0]), FlowKind::Transfer);
+        assert_eq!(flow_of(&v, ids[1]), FlowKind::Transfer);
+        assert_eq!(
+            v.selection_flow(vec![], None, None).unwrap().income_cents,
+            0
+        );
     }
 }
