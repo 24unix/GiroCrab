@@ -13,16 +13,27 @@ struct SidebarView: View {
     var body: some View {
         @Bindable var model = model
         List(selection: $model.interactiveSidebarSelection) {
-            HStack(spacing: 8) {
-                Image(systemName: "square.grid.2x2").foregroundStyle(Theme.secondary).frame(width: 20)
-                Text("Übersicht").fontWeight(.medium).appDefaultFont()
-                Spacer()
+            if !model.allAccounts.isEmpty {
+                AccountsSectionHeader()
             }
-            .badge(model.newCount) // system sidebar badge (hidden at 0)
-            .tag(SidebarItem.allAccounts)
-            .contextMenu {
-                Button("Alle als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
-                    .disabled(model.newCount == 0)
+            // the root of the account tree, like MoneyMoney's „Alle Konten“
+            AllAccountsRow()
+                .badge(model.newCount) // system sidebar badge (hidden at 0)
+                .tag(SidebarItem.allAccounts)
+                .contextMenu {
+                    Button("Alle als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
+                        .disabled(model.newCount == 0)
+                }
+            if model.showsAccountTree {
+                Group {
+                    switch model.accountView {
+                    case .byGroup: userGroupRows
+                    case .byBank: bankGroupRows
+                    case .byKind: kindGroupRows
+                    }
+                }
+                // one step right of „Alle Konten“
+                .padding(.leading, 14)
             }
             HStack(spacing: 8) {
                 Image(systemName: "doc.on.doc").foregroundStyle(Theme.secondary).frame(width: 20)
@@ -34,14 +45,6 @@ struct SidebarView: View {
             // Ablage › Aus MoneyMoney importieren …, the command palette and
             // the welcome card (HIG: sidebar rows are navigation destinations).
 
-            if !model.allAccounts.isEmpty {
-                AccountsSectionHeader()
-            }
-            switch model.accountView {
-            case .byGroup: userGroupRows
-            case .byBank: bankGroupRows
-            case .byKind: kindGroupRows
-            }
 
             let pending = model.connections.filter { c in !model.allAccounts.contains { $0.connectionId == c.id } }
             if !pending.isEmpty {

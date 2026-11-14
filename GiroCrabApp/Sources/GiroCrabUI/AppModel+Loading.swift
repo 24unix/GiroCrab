@@ -454,7 +454,7 @@ extension AppModel {
 
     var title: String {
         switch sidebarSelection {
-        case .allAccounts, .none: return String(localized: "Übersicht")
+        case .allAccounts, .none: return String(localized: "Alle Konten")
         case .group(let id): return groups.first { $0.id == id }?.name ?? String(localized: "Gruppe")
         case .bank(let key): return bankGroup(for: key)?.name ?? String(localized: "Bank")
         case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }?.name ?? String(localized: "Gruppe")

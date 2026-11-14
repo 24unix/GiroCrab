@@ -1976,6 +1976,17 @@
         }
       }
     },
+    "Alle Konten ausklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expand All Accounts"
+          }
+        }
+      }
+    },
     "Alle Konten dieses Bankzugangs werden samt Buchungen, Belegen und gespeicherten Zugangsdaten aus dem Tresor gelöscht. Das lässt sich nicht widerrufen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1983,6 +1994,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "All accounts of this bank login are deleted from the vault, including their transactions, documents and stored credentials. This can’t be undone."
+          }
+        }
+      }
+    },
+    "Alle Konten einklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse All Accounts"
           }
         }
       }
