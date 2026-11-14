@@ -1336,7 +1336,7 @@ fn archived_account_keeps_group_and_history_but_leaves_total_and_rules() {
         for (acc, ext) in [(ids[0], "g1"), (ids[1], "d1")] {
             db.execute(
                 "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty)
-                 VALUES (?1, ?2, date('now', '-1 day'), -10_00, 'Bäckerei Krume')",
+                 VALUES (?1, ?2, date('now', 'localtime', '-1 day'), -10_00, 'Bäckerei Krume')",
                 params![acc, ext],
             )
             .unwrap();
