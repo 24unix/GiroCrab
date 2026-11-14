@@ -607,6 +607,7 @@ fn to_item(
             current_price_cents: unit.as_ref().map(|(u, _)| u.round() as i64).unwrap_or(0),
             purchase_price_cents: bought_unit.map(|u| u.round() as i64).unwrap_or(0),
             value_cents: it.value_at(day, prices),
+            ..Default::default()
         },
         quantities: it
             .quantities

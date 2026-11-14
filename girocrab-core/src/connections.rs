@@ -164,6 +164,10 @@ fn merge_duplicate_account(conn: &Connection, keep: i64, dup: i64) -> CoreResult
             params![keep, dup],
         )?;
     }
+    conn.execute(
+        "UPDATE OR IGNORE security_transactions SET account_id = ?1 WHERE account_id = ?2",
+        params![keep, dup],
+    )?;
     Ok(())
 }
 

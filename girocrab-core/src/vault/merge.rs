@@ -57,6 +57,7 @@ impl Vault {
         crate::loans::merge_attached(&tx, &acc_map)?;
         crate::opening_balance::merge_attached(&tx, &acc_map)?;
         crate::assets::merge_attached(&tx, &acc_map)?;
+        crate::security_transactions::merge_attached(&tx, &acc_map)?;
         tx.commit()?;
         Ok(st)
     }

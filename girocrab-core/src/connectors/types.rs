@@ -403,6 +403,20 @@ impl ContentIds {
     }
 }
 
+/// A securities transaction of a depot (#314). The cash side is a normal
+/// [`RemoteTransaction`] of the settlement account; this one is the execution.
+#[derive(Debug, Clone, Default)]
+pub struct RemoteSecurityTransaction {
+    pub account_ref: String,
+    /// De-duplication key per account: the bank's id or a content hash.
+    pub external_id: String,
+    pub transaction: crate::models::SecurityTransaction,
+    /// `external_id` of the matching booking on a cash account of the same
+    /// login, when the bank names it (IBKR, Scalable …). Empty: the amount
+    /// match in `link_cash_bookings` decides.
+    pub cash_external_id: String,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct FetchResult {
     pub accounts: Vec<RemoteAccount>,
@@ -411,6 +425,9 @@ pub struct FetchResult {
     pub holdings: Vec<RemoteHolding>,
     /// Explicitly fetched complete inventories, including empty depots.
     pub holdings_fetched: Vec<String>,
+    /// Securities transactions (buy, sell, dividend …) of depots; added or
+    /// refreshed by `(account, external_id)`, never removed.
+    pub security_transactions: Vec<RemoteSecurityTransaction>,
     /// Updated connector state to persist.
     pub state: Option<serde_json::Value>,
     /// Keep stored balances and add newly imported bookings to them

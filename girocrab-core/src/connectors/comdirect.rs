@@ -574,6 +574,30 @@ impl BankConnector for ComdirectConnector {
                     continue;
                 };
                 let external_ref = format!("depot:{depot_id}");
+                // Securities transactions (#314). The endpoint has no paging, only a
+                // window (default 180 days): ask for the longest one first and fall back
+                // to the default when the bank refuses it. A failure only skips them.
+                let tx_url = |window: &str| {
+                    format!("/api/brokerage/v3/depots/{depot_id}/transactions{window}")
+                };
+                let tx_res = match self.get(&tx_url("?min-bookingDate=-3650d")).await {
+                    Ok(v) => Ok(v),
+                    Err(_) => self.get(&tx_url("")).await,
+                };
+                match tx_res {
+                    Ok(v) => {
+                        let list = parse_security_transactions(&v, &external_ref);
+                        crate::depot_debug::log(&format!(
+                            "comdirect REST: depot transactions={}",
+                            list.len()
+                        ));
+                        out.security_transactions.extend(list);
+                    }
+                    Err(e) => crate::depot_debug::log(&format!(
+                        "comdirect REST: depot transactions failed ({})",
+                        e.to_string().chars().take(60).collect::<String>()
+                    )),
+                }
                 for h in holdings {
                     out.holdings.push(super::RemoteHolding {
                         account_ref: external_ref.clone(),
@@ -704,6 +728,12 @@ fn depot_value(pos: &Value) -> Option<(i64, String)> {
 /// shares), so they are rounded rather than rejected.
 pub(crate) fn parse_positions(pos: &Value) -> Vec<crate::models::Holding> {
     let cents = |v: &Value| json_number_to_cents_rounded(&v["value"]).unwrap_or(0);
+    // optional amount: absent stays unknown instead of becoming 0
+    let opt_cents = |v: &Value| {
+        v.get("value")
+            .filter(|x| !x.is_null())
+            .and_then(|x| json_number_to_cents_rounded(x).ok())
+    };
     pos["values"]
         .as_array()
         .map(|a| a.as_slice())
@@ -726,7 +756,108 @@ pub(crate) fn parse_positions(pos: &Value) -> Vec<crate::models::Holding> {
                 current_price_cents: cents(&p["currentPrice"]["price"]),
                 purchase_price_cents: cents(&p["purchasePrice"]),
                 value_cents: cents(&p["currentValue"]),
+                prev_day_price_cents: opt_cents(&p["prevDayPrice"]["price"]),
+                prev_day_value_cents: opt_cents(&p["prevDayValue"]),
+                profit_loss_purchase_cents: opt_cents(&p["profitLossPurchaseAbs"]),
+                profit_loss_purchase_rel: percent(&p["profitLossPurchaseRel"]),
+                profit_loss_prev_day_cents: opt_cents(&p["profitLossPrevDayAbs"]),
+                profit_loss_prev_day_rel: percent(&p["profitLossPrevDayRel"]),
+                custody_type: s(&p["custodyType"]),
             }
+        })
+        .collect()
+}
+
+/// A `PercentageString` (`percentString`, or `preDecimalPlaces` + `decimalPlaces`).
+fn percent(v: &Value) -> Option<f64> {
+    if let Some(t) = v["percentString"].as_str() {
+        let t = t.trim().trim_end_matches('%').trim().replace(',', ".");
+        return t.parse().ok();
+    }
+    let pre = v["preDecimalPlaces"].as_str()?;
+    let dec = v["decimalPlaces"].as_str().unwrap_or("0");
+    format!("{pre}.{dec}").parse().ok()
+}
+
+/// First number of an FX string such as "1,1752 USD (1 EUR)".
+fn fx_number(v: &Value) -> Option<f64> {
+    let t = v["value"].as_str().or_else(|| v.as_str())?;
+    t.split_whitespace().next()?.replace(',', ".").parse().ok()
+}
+
+/// Parses `/brokerage/v3/depots/{id}/transactions` (#314). The API reports no
+/// fees or taxes: BUY/SELL carry quantity, execution price and value;
+/// transfers and everything else become [`SecurityDirection::Other`] with the
+/// API type as booking text. Rows without a quantity and value are skipped.
+pub(crate) fn parse_security_transactions(
+    res: &Value,
+    account_ref: &str,
+) -> Vec<super::RemoteSecurityTransaction> {
+    use crate::models::{SecurityDirection, SecurityTransaction};
+    let amount = |v: &Value| json_number_to_cents_rounded(&v["value"]).ok();
+    let num = |v: &Value| {
+        let x = &v["value"];
+        x.as_f64()
+            .or_else(|| x.as_str().and_then(|t| t.replace(',', ".").parse().ok()))
+    };
+    res["values"]
+        .as_array()
+        .map(|a| a.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .filter(|t| t["bookingStatus"].as_str() != Some("NOTBOOKED"))
+        .filter_map(|t| {
+            let s = |v: &Value| v.as_str().unwrap_or_default().to_string();
+            let ins = &t["instrument"];
+            let quantity = num(&t["quantity"]).unwrap_or(0.0).abs();
+            let value = amount(&t["transactionValue"]).unwrap_or(0).abs();
+            if quantity == 0.0 && value == 0 {
+                return None;
+            }
+            let kind = s(&t["transactionType"]);
+            let direction = match kind.as_str() {
+                "BUY" => SecurityDirection::Buy,
+                "SELL" => SecurityDirection::Sell,
+                _ => SecurityDirection::Other,
+            };
+            let booking_date = s(&t["bookingDate"]["date"]);
+            let settlement = s(&t["settlementDate"]["dateTime"]);
+            let settlement_date = settlement.get(..10).unwrap_or_default().to_string();
+            let isin = s(&ins["isin"]);
+            let price_cents = amount(&t["executionPrice"]).unwrap_or(0);
+            let external_id = match s(&t["transactionId"]) {
+                id if !id.is_empty() => id,
+                _ => format!("{booking_date}|{isin}|{kind}|{quantity}|{value}"),
+            };
+            let currency = t["transactionValue"]["unit"]
+                .as_str()
+                .filter(|c| !c.is_empty())
+                .unwrap_or("EUR")
+                .to_string();
+            Some(super::RemoteSecurityTransaction {
+                account_ref: account_ref.to_string(),
+                external_id,
+                cash_external_id: String::new(),
+                transaction: SecurityTransaction {
+                    booking_date,
+                    settlement_date,
+                    isin,
+                    wkn: s(&ins["wkn"]),
+                    name: if s(&ins["name"]).is_empty() {
+                        s(&ins["shortName"])
+                    } else {
+                        s(&ins["name"])
+                    },
+                    direction,
+                    quantity,
+                    price_cents,
+                    currency,
+                    value_cents: value,
+                    fx_rate: fx_number(&t["fxRate"]["bid"]),
+                    booking_text: kind,
+                    ..Default::default()
+                },
+            })
         })
         .collect()
 }
@@ -771,6 +902,81 @@ mod api_path_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn parses_position_extras() {
+        let j = serde_json::json!({"values": [{
+            "wkn": "A0RPWH", "custodyType": "Wertpapierrechnung",
+            "instrument": {"isin": "IE00B4L5Y983", "name": "iShares"},
+            "quantity": {"value": "2", "unit": "XXX"},
+            "currentPrice": {"price": {"value": "50.00", "unit": "EUR"}},
+            "purchasePrice": {"value": "40.00", "unit": "EUR"},
+            "currentValue": {"value": "100.00", "unit": "EUR"},
+            "prevDayPrice": {"price": {"value": "49.00", "unit": "EUR"}},
+            "prevDayValue": {"value": "98.00", "unit": "EUR"},
+            "profitLossPurchaseAbs": {"value": "-20.00", "unit": "EUR"},
+            "profitLossPurchaseRel": {"percentString": "-20,00 %"},
+            "profitLossPrevDayAbs": {"value": "2.00", "unit": "EUR"},
+            "profitLossPrevDayRel": {"preDecimalPlaces": "2", "decimalPlaces": "04"}
+        }, {"wkn": "X", "instrument": {"isin": "DE0000000001"}}]});
+        let h = super::parse_positions(&j);
+        assert_eq!(h[0].prev_day_price_cents, Some(4_900));
+        assert_eq!(h[0].prev_day_value_cents, Some(9_800));
+        assert_eq!(h[0].profit_loss_purchase_cents, Some(-2_000));
+        assert_eq!(h[0].profit_loss_purchase_rel, Some(-20.0));
+        assert_eq!(h[0].profit_loss_prev_day_cents, Some(200));
+        assert_eq!(h[0].profit_loss_prev_day_rel, Some(2.04));
+        assert_eq!(h[0].custody_type, "Wertpapierrechnung");
+        // fields the bank omits stay unknown instead of 0
+        assert_eq!(h[1].prev_day_value_cents, None);
+        assert_eq!(h[1].profit_loss_purchase_rel, None);
+        assert_eq!(h[1].custody_type, "");
+    }
+
+    #[test]
+    fn parses_depot_transactions() {
+        use crate::models::SecurityDirection;
+        let j = serde_json::json!({"values": [
+            {"transactionId": "T1", "bookingStatus": "BOOKED",
+             "bookingDate": {"date": "2026-11-05"},
+             "settlementDate": {"dateTime": "2026-11-07T00:00:00+01"},
+             "quantity": {"value": "2.5", "unit": "XXX"},
+             "instrument": {"isin": "US0378331005", "wkn": "865985", "name": "Apple"},
+             "executionPrice": {"value": "160.5", "unit": "USD"},
+             "transactionValue": {"value": "-401.25", "unit": "USD"},
+             "transactionDirection": "IN", "transactionType": "BUY",
+             "fxRate": {"bid": {"value": "1,1752 USD (1 EUR)"}}},
+            {"transactionId": "T2", "bookingStatus": "BOOKED",
+             "bookingDate": {"date": "2026-11-06"},
+             "quantity": {"value": "10"}, "instrument": {"isin": "DE0001"},
+             "transactionValue": {"value": "50.00", "unit": "EUR"},
+             "transactionType": "TRANSFER_IN"},
+            {"transactionId": "T3", "bookingStatus": "NOTBOOKED",
+             "quantity": {"value": "1"}, "transactionType": "SELL"},
+            {"bookingStatus": "BOOKED", "bookingDate": {"date": "2026-11-07"}}
+        ]});
+        let r = super::parse_security_transactions(&j, "depot:D1");
+        assert_eq!(r.len(), 2, "NOTBOOKED and empty rows are skipped");
+        assert_eq!(r[0].account_ref, "depot:D1");
+        assert_eq!(r[0].external_id, "T1");
+        let t = &r[0].transaction;
+        assert_eq!(t.direction, SecurityDirection::Buy);
+        assert_eq!(
+            (t.quantity, t.price_cents, t.value_cents),
+            (2.5, 16_050, 40_125)
+        );
+        assert_eq!(
+            (t.currency.as_str(), t.isin.as_str(), t.wkn.as_str()),
+            ("USD", "US0378331005", "865985")
+        );
+        assert_eq!(
+            (t.booking_date.as_str(), t.settlement_date.as_str()),
+            ("2026-11-05", "2026-11-07")
+        );
+        assert_eq!(t.fx_rate, Some(1.1752));
+        assert_eq!(r[1].transaction.direction, SecurityDirection::Other);
+        assert_eq!(r[1].transaction.booking_text, "TRANSFER_IN");
+    }
+
     #[test]
     fn paging_continues_without_matches_only_on_full_page() {
         let with = |m: u64| serde_json::json!({"paging": {"matches": m}});

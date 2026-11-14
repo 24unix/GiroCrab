@@ -25,11 +25,11 @@ use async_trait::async_trait;
 
 use super::{
     BankConnector, ChallengeResponse, ConnectContext, ContentIds, FetchResult, Phase,
-    RemoteAccount, RemoteHolding, RemoteTransaction,
+    RemoteAccount, RemoteHolding, RemoteSecurityTransaction, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
-use crate::models::{AccountKind, Holding};
+use crate::models::{AccountKind, Holding, SecurityDirection, SecurityTransaction};
 
 const SEND_URL: &str =
     "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/SendRequest";
@@ -635,6 +635,7 @@ fn parse_holding(a: &Attrs, base: &str) -> Option<Holding> {
         current_price_cents: price,
         purchase_price_cents: purchase,
         value_cents: value,
+        ..Default::default()
     })
 }
 
@@ -739,6 +740,151 @@ fn parse_trade(a: &Attrs, st: &Statement, cash_ref: &str) -> Option<RemoteTransa
     Some(t)
 }
 
+/// An ISIN inside a description such as "AAPL(US0378331005) CASH DIVIDEND …".
+fn isin_in(text: &str) -> String {
+    text.split(|c: char| !c.is_ascii_alphanumeric())
+        .find(|w| {
+            w.len() == 12
+                && w[..2].chars().all(|c| c.is_ascii_uppercase())
+                && w[2..]
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || c.is_ascii_uppercase())
+                && w[11..].chars().all(|c| c.is_ascii_digit())
+        })
+        .unwrap_or("")
+        .to_string()
+}
+
+fn decimal(a: &Attrs, key: &str) -> Option<f64> {
+    attr(a, key).replace(',', "").parse().ok()
+}
+
+/// A trade as a securities transaction of the depot (#314), in the trade's
+/// own currency with `fx_rate` to the base currency; the cash side is
+/// `parse_trade` on the settlement account (same transaction id).
+fn parse_security_trade(
+    a: &Attrs,
+    st: &Statement,
+    depot_ref: &str,
+) -> Option<RemoteSecurityTransaction> {
+    if attr(a, "assetCategory").eq_ignore_ascii_case("CASH") {
+        return None;
+    }
+    let quantity = decimal(a, "quantity")?.abs();
+    let date = first_date(a, &["tradeDate", "dateTime", "reportDate"])?;
+    let side = attr(a, "buySell").to_ascii_uppercase();
+    let direction = match side.as_str() {
+        "BUY" => SecurityDirection::Buy,
+        "SELL" => SecurityDirection::Sell,
+        _ => SecurityDirection::Other,
+    };
+    let cents = |k: &str| parse_cents(attr(a, k)).map_or(0, i64::abs);
+    let id = [attr(a, "transactionID"), attr(a, "tradeID")]
+        .into_iter()
+        .find(|s| !s.is_empty());
+    let symbol = attr(a, "symbol");
+    let isin = [attr(a, "isin"), attr(a, "conid"), attr(a, "cusip")]
+        .into_iter()
+        .find(|s| !s.is_empty())
+        .unwrap_or("")
+        .to_string();
+    let external_id = match id {
+        Some(id) => format!("ibkr:{}:{id}", st.account_id),
+        None => format!(
+            "ibkr:{}:{date}:{symbol}:{side}:{quantity}:{}",
+            st.account_id,
+            attr(a, "tradePrice")
+        ),
+    };
+    let currency = if attr(a, "currency").is_empty() {
+        &st.base_currency
+    } else {
+        attr(a, "currency")
+    };
+    Some(RemoteSecurityTransaction {
+        account_ref: depot_ref.to_string(),
+        external_id,
+        cash_external_id: id
+            .map(|i| format!("ibkr:{}:{i}", st.account_id))
+            .unwrap_or_default(),
+        transaction: SecurityTransaction {
+            booking_date: date.clone(),
+            settlement_date: first_date(a, &["settleDateTarget"]).unwrap_or_default(),
+            isin,
+            name: if attr(a, "description").is_empty() {
+                symbol.to_string()
+            } else {
+                attr(a, "description").to_string()
+            },
+            direction,
+            quantity,
+            price_cents: parse_cents(attr(a, "tradePrice")).unwrap_or(0),
+            currency: currency.to_string(),
+            value_cents: cents("proceeds"),
+            fees_cents: cents("ibCommission"),
+            taxes_cents: cents("taxes"),
+            fx_rate: decimal(a, "fxRateToBase"),
+            booking_text: format!("Trade {side}").trim().to_string(),
+            ..Default::default()
+        },
+    })
+}
+
+/// Dividends, withholding tax and fees of the cash report that belong to a
+/// security or the account, as securities transactions of the depot.
+fn parse_security_cash(
+    a: &Attrs,
+    st: &Statement,
+    depot_ref: &str,
+) -> Option<RemoteSecurityTransaction> {
+    let kind = attr(a, "type");
+    let direction = match kind {
+        "Dividends" | "Payment In Lieu Of Dividends" => SecurityDirection::Dividend,
+        "Withholding Tax" => SecurityDirection::Tax,
+        "Broker Fees" | "Other Fees" | "Commission Adjustments" => SecurityDirection::Fee,
+        _ => return None,
+    };
+    let value = parse_cents(attr(a, "amount"))?.abs();
+    let id = attr(a, "transactionID");
+    if value == 0 || id.is_empty() {
+        return None;
+    }
+    let date = first_date(a, &["reportDate", "dateTime", "settleDate"])?;
+    let symbol = attr(a, "symbol");
+    let description = attr(a, "description");
+    let isin = [attr(a, "isin"), attr(a, "conid"), attr(a, "cusip")]
+        .into_iter()
+        .find(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| isin_in(description));
+    let ext = format!("ibkr:{}:{id}", st.account_id);
+    Some(RemoteSecurityTransaction {
+        account_ref: depot_ref.to_string(),
+        external_id: ext.clone(),
+        cash_external_id: ext,
+        transaction: SecurityTransaction {
+            booking_date: date,
+            settlement_date: first_date(a, &["settleDate"]).unwrap_or_default(),
+            isin,
+            name: if description.is_empty() {
+                symbol.to_string()
+            } else {
+                description.to_string()
+            },
+            direction,
+            currency: if attr(a, "currency").is_empty() {
+                st.base_currency.clone()
+            } else {
+                attr(a, "currency").to_string()
+            },
+            value_cents: value,
+            fx_rate: decimal(a, "fxRateToBase"),
+            booking_text: kind.to_string(),
+            ..Default::default()
+        },
+    })
+}
+
 fn build_fetch(xml: &str, since: &str) -> CoreResult<FetchResult> {
     let statements = parse_statements(xml)?;
     let mut out = FetchResult::default();
@@ -815,6 +961,23 @@ fn build_fetch(xml: &str, since: &str) -> CoreResult<FetchResult> {
                     .iter()
                     .filter_map(|a| parse_trade(a, st, &cash_ref)),
             );
+        let mut seen_sec: HashSet<String> = HashSet::new();
+        for t in st
+            .trades
+            .iter()
+            .filter_map(|a| parse_security_trade(a, st, &depot_ref))
+            .chain(
+                st.cash_txs
+                    .iter()
+                    .filter_map(|a| parse_security_cash(a, st, &depot_ref)),
+            )
+        {
+            if t.transaction.booking_date.as_str() >= since
+                && seen_sec.insert(t.external_id.clone())
+            {
+                out.security_transactions.push(t);
+            }
+        }
         for mut t in txs {
             if t.booking_date.as_str() < since {
                 continue;
@@ -1027,6 +1190,44 @@ mod tests {
         let ids: HashSet<_> = r.transactions.iter().map(|t| &t.external_id).collect();
         assert_eq!(ids.len(), 6);
         assert!(!ids.contains(&"ibkr:U1234567:9002".to_string()));
+    }
+
+    #[test]
+    fn maps_security_transactions_with_cash_links() {
+        let r = build_fetch(FLEX, "2026-01-01").unwrap();
+        let by_id = |id: &str| {
+            r.security_transactions
+                .iter()
+                .find(|t| t.external_id == format!("ibkr:U1234567:{id}"))
+                .unwrap_or_else(|| panic!("missing {id}"))
+        };
+        let buy = by_id("9001");
+        assert_eq!(buy.account_ref, "ibkr:U1234567:depot");
+        assert_eq!(buy.cash_external_id, "ibkr:U1234567:9001");
+        let t = &buy.transaction;
+        assert_eq!(t.direction, SecurityDirection::Buy);
+        assert_eq!(
+            (t.quantity, t.price_cents, t.value_cents, t.fees_cents),
+            (2.5, 16_000, 40_000, 100)
+        );
+        assert_eq!(t.currency, "USD");
+        assert_eq!(t.fx_rate, Some(0.9));
+        assert_eq!(t.settlement_date, "2026-11-07");
+        let dividend = &by_id("9100").transaction;
+        assert_eq!(dividend.direction, SecurityDirection::Dividend);
+        assert_eq!(dividend.isin, "US0378331005");
+        assert_eq!(dividend.value_cents, 63);
+        assert_eq!(by_id("9101").transaction.direction, SecurityDirection::Tax);
+        // FX trade, ORDER-level trade, deposits and interest are no securities transactions
+        assert!(r
+            .security_transactions
+            .iter()
+            .all(|t| t.external_id != "ibkr:U1234567:9002"));
+        assert!(r
+            .security_transactions
+            .iter()
+            .all(|t| t.external_id != "ibkr:U1234567:9102"));
+        assert_eq!(r.security_transactions.len(), 4); // buy, 2 dividends, withholding tax
     }
 
     #[test]

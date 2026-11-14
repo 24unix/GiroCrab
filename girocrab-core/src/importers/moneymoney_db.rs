@@ -1114,6 +1114,7 @@ fn read_source(path: &str, password: &SecretString, with_pins: bool) -> CoreResu
                 current_price_cents: price.and_then(real_to_cents).unwrap_or(0),
                 purchase_price_cents: purchase.and_then(real_to_cents).unwrap_or(0),
                 value_cents: amount.and_then(real_to_cents).unwrap_or(0),
+                ..Default::default()
             });
         }
     }

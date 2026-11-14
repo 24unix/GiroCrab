@@ -171,6 +171,7 @@ fn holdings(
                 // as unrealized gains or reconstructing an incomplete cost basis.
                 purchase_price_cents: 0,
                 value_cents: value,
+                ..Default::default()
             },
         });
     }

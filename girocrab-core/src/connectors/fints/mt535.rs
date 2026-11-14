@@ -71,6 +71,7 @@ impl Holding {
                 .value_cents
                 .or_else(|| self.position_value_cents())
                 .unwrap_or(0),
+            ..Default::default()
         }
     }
 }

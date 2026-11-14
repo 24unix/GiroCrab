@@ -438,9 +438,13 @@ pub(crate) fn store_fetch(
             tx.execute("DELETE FROM holdings WHERE account_id = ?1", [acc_id])?;
             for h in list {
                 tx.execute(
-                    "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    params![acc_id, h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents],
+                    "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents,
+                            prev_day_price_cents, prev_day_value_cents, profit_loss_purchase_cents, profit_loss_purchase_rel,
+                            profit_loss_prev_day_cents, profit_loss_prev_day_rel, custody_type)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                    params![acc_id, h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents,
+                            h.prev_day_price_cents, h.prev_day_value_cents, h.profit_loss_purchase_cents, h.profit_loss_purchase_rel,
+                            h.profit_loss_prev_day_cents, h.profit_loss_prev_day_rel, h.custody_type],
                 )?;
             }
         }
@@ -571,6 +575,23 @@ pub(crate) fn store_fetch(
                     }
                 }
             }
+        }
+        // Securities transactions (#314): beside the cash bookings, then matched to them.
+        for st in &data.security_transactions {
+            if let Some(id) = resolve(&st.account_ref) {
+                let mut t = st.transaction.clone();
+                t.external_id = st.external_id.clone();
+                crate::security_transactions::upsert(&tx, id, &t)?;
+                crate::security_transactions::link_by_external_id(
+                    &tx,
+                    id,
+                    &t.external_id,
+                    &st.cash_external_id,
+                )?;
+            }
+        }
+        if !data.security_transactions.is_empty() || !data.transactions.is_empty() {
+            crate::security_transactions::link_cash_bookings(&tx)?;
         }
         // Drop optimistic transfer bookings once the bank's real booking arrived
         // (same account, amount and recipient IBAN) or after 14 days.

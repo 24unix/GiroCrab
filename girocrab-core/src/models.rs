@@ -183,6 +183,87 @@ pub struct Holding {
     pub current_price_cents: i64,
     pub purchase_price_cents: i64,
     pub value_cents: i64,
+    /// Previous-day price / value, when the bank reports them.
+    #[uniffi(default = None)]
+    pub prev_day_price_cents: Option<i64>,
+    #[uniffi(default = None)]
+    pub prev_day_value_cents: Option<i64>,
+    /// Profit/loss against the purchase price (absolute in cents, relative in %).
+    #[uniffi(default = None)]
+    pub profit_loss_purchase_cents: Option<i64>,
+    #[uniffi(default = None)]
+    pub profit_loss_purchase_rel: Option<f64>,
+    /// Profit/loss against the previous day.
+    #[uniffi(default = None)]
+    pub profit_loss_prev_day_cents: Option<i64>,
+    #[uniffi(default = None)]
+    pub profit_loss_prev_day_rel: Option<f64>,
+    /// Custody type as the bank names it (e.g. "Girosammelverwahrung"), "" = unknown.
+    #[uniffi(default = "")]
+    pub custody_type: String,
+}
+
+/// What a securities transaction was (#314).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
+pub enum SecurityDirection {
+    Buy,
+    Sell,
+    Dividend,
+    Fee,
+    Tax,
+    #[default]
+    Other,
+}
+
+impl SecurityDirection {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Buy => "buy",
+            Self::Sell => "sell",
+            Self::Dividend => "dividend",
+            Self::Fee => "fee",
+            Self::Tax => "tax",
+            Self::Other => "other",
+        }
+    }
+
+    pub fn from_db(s: &str) -> Self {
+        match s {
+            "buy" => Self::Buy,
+            "sell" => Self::Sell,
+            "dividend" => Self::Dividend,
+            "fee" => Self::Fee,
+            "tax" => Self::Tax,
+            _ => Self::Other,
+        }
+    }
+}
+
+/// One securities transaction of a depot (#314): not a cash booking, so no
+/// category and no cash flow. Cents are in `currency`; `value_cents` is the
+/// gross amount (quantity × price) without fees, taxes and accrued interest.
+#[derive(Debug, Clone, PartialEq, Default, uniffi::Record)]
+pub struct SecurityTransaction {
+    pub id: i64,
+    pub account_id: i64,
+    pub external_id: String,
+    pub booking_date: String,
+    pub settlement_date: String,
+    pub isin: String,
+    pub wkn: String,
+    pub name: String,
+    pub direction: SecurityDirection,
+    pub quantity: f64,
+    pub price_cents: i64,
+    pub currency: String,
+    pub value_cents: i64,
+    pub fees_cents: i64,
+    pub taxes_cents: i64,
+    pub accrued_interest_cents: i64,
+    pub fx_rate: Option<f64>,
+    pub booking_text: String,
+    /// The matching cash booking on a settlement account, when found.
+    pub cash_transaction_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]

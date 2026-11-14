@@ -130,6 +130,212 @@ fn amount_cents(v: &Value) -> i64 {
         .unwrap_or_else(|_| v.as_f64().map(|f| (f * 100.0).round() as i64).unwrap_or(0))
 }
 
+/// A number in a detail text such as "1.234,56 €", "0,5" or "12.5": German
+/// notation first. A lone `.` followed by exactly three digits after at most
+/// three is a thousands separator ("1.234"), otherwise a decimal point.
+fn parse_decimal_text(text: &str) -> Option<f64> {
+    let t: String = text
+        .chars()
+        .filter(|c| c.is_ascii_digit() || matches!(c, ',' | '.' | '-' | '−'))
+        .map(|c| if c == '−' { '-' } else { c })
+        .collect();
+    if t.is_empty() || !t.chars().any(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let norm = match (t.rfind(','), t.rfind('.')) {
+        (Some(c), Some(d)) if c > d => t.replace('.', "").replace(',', "."),
+        (Some(_), Some(_)) => t.replace(',', ""),
+        (Some(_), None) => t.replace(',', "."),
+        (None, Some(d)) => {
+            let (head, tail) = t.split_at(d);
+            let thousands = tail.len() == 4
+                && head.trim_start_matches('-').len() <= 3
+                && !head.trim_start_matches('-').contains('.');
+            if thousands {
+                t.replace('.', "")
+            } else {
+                t
+            }
+        }
+        (None, None) => t,
+    };
+    norm.parse().ok()
+}
+
+/// What a trade's detail screen (`timelineDetailV2`) tells besides the
+/// timeline row: ISIN, units, price per unit, fees and taxes.
+#[derive(Debug, Default, PartialEq)]
+struct TradeDetail {
+    isin: Option<String>,
+    quantity: Option<f64>,
+    price_cents: Option<i64>,
+    fees_cents: Option<i64>,
+    taxes_cents: Option<i64>,
+}
+
+/// `logos/US0378331005/v2` or a bare ISIN → the ISIN.
+fn isin_of(icon: &str) -> Option<String> {
+    let rest = icon.find('/').map_or(icon, |i| &icon[i + 1..]);
+    let isin = rest.split('/').next().unwrap_or_default();
+    (isin.len() == 12
+        && isin[..2].chars().all(|c| c.is_ascii_uppercase())
+        && isin[2..]
+            .chars()
+            .all(|c| c.is_ascii_digit() || c.is_ascii_uppercase()))
+    .then(|| isin.to_string())
+}
+
+fn walk_rows(v: &Value, f: &mut dyn FnMut(&str, &str)) {
+    match v {
+        Value::Object(m) => {
+            if let Some(title) = m.get("title").and_then(Value::as_str) {
+                let text = m
+                    .get("detail")
+                    .and_then(|d| d["text"].as_str().or_else(|| d.as_str()))
+                    .unwrap_or_default();
+                f(title, text);
+            }
+            m.values().for_each(|x| walk_rows(x, f));
+        }
+        Value::Array(a) => a.iter().for_each(|x| walk_rows(x, f)),
+        _ => {}
+    }
+}
+
+fn parse_trade_detail(item_icon: &str, detail: &Value) -> TradeDetail {
+    let mut d = TradeDetail {
+        isin: isin_of(item_icon),
+        ..Default::default()
+    };
+    if d.isin.is_none() {
+        // header section carries the instrument icon, an action its ISIN
+        if let Some(sections) = detail["sections"].as_array() {
+            d.isin = sections.iter().find_map(|s| {
+                let icon = s["data"]["icon"]
+                    .as_str()
+                    .or_else(|| s["data"]["icon"]["asset"].as_str());
+                icon.and_then(isin_of).or_else(|| {
+                    (s["action"]["type"] == "instrumentDetail")
+                        .then(|| s["action"]["payload"].as_str().and_then(isin_of))
+                        .flatten()
+                })
+            });
+        }
+    }
+    let cents = |t: &str| parse_decimal_text(t).map(|f| (f * 100.0).round() as i64);
+    walk_rows(detail, &mut |title, text| {
+        match title {
+            "Aktien" | "Anteile" | "Shares" | "Aktien hinzugefügt" | "Aktien entfernt"
+                if d.quantity.is_none() =>
+            {
+                d.quantity = parse_decimal_text(text).map(f64::abs);
+            }
+            "Preis" | "Kurs" | "Aktienkurs" | "Quotation" | "Price" if d.price_cents.is_none() => {
+                d.price_cents = cents(text).map(i64::abs);
+            }
+            "Gebühr" | "Gebühren" | "Fee" if d.fees_cents.is_none() => {
+                d.fees_cents = cents(text).map(i64::abs);
+            }
+            "Steuer" | "Steuern" | "Tax" if d.taxes_cents.is_none() => {
+                d.taxes_cents = cents(text).map(i64::abs);
+            }
+            _ => {}
+        };
+    });
+    d
+}
+
+/// A timeline row of a trade, dividend or savings plan that has a detail screen.
+struct TradeRow {
+    id: String,
+    date: String,
+    title: String,
+    kind_text: String,
+    amount_cents: i64,
+    currency: String,
+    icon: String,
+}
+
+fn is_trade_kind(kind_text: &str) -> bool {
+    [
+        "kauf",
+        "sparplan",
+        "savings_plan",
+        "trade",
+        "dividende",
+        "dividend",
+        "ausschüttung",
+    ]
+    .iter()
+    .any(|k| kind_text.contains(k))
+}
+
+/// The securities side of a trade row (#314). Direction from the row's text
+/// (sell before buy: "Verkauf" contains "kauf"), ISIN, units, price, fees and
+/// taxes from the detail screen. Without ISIN or direction there is no
+/// securities transaction. Value: units × price, else the cash amount
+/// without fees and taxes. Best effort: the screen is not a documented API.
+fn trade_security(row: &TradeRow, detail: &Value) -> Option<super::RemoteSecurityTransaction> {
+    use crate::models::{SecurityDirection, SecurityTransaction};
+    let k = &row.kind_text;
+    let direction = if k.contains("dividend") || k.contains("ausschüttung") {
+        SecurityDirection::Dividend
+    } else if k.contains("verkauf") || k.contains("sell") {
+        SecurityDirection::Sell
+    } else if k.contains("kauf")
+        || k.contains("sparplan")
+        || k.contains("savings_plan")
+        || k.contains("buy")
+    {
+        SecurityDirection::Buy
+    } else {
+        return None;
+    };
+    let d = parse_trade_detail(&row.icon, detail);
+    let isin = d.isin?;
+    let fees = d.fees_cents.unwrap_or(0);
+    let taxes = d.taxes_cents.unwrap_or(0);
+    let cash = row.amount_cents.abs();
+    let quantity = d.quantity.unwrap_or(0.0);
+    let by_price = d
+        .price_cents
+        .filter(|_| quantity > 0.0)
+        .map(|p| (p as f64 * quantity).round() as i64);
+    let value = by_price.unwrap_or(match direction {
+        SecurityDirection::Buy => (cash - fees - taxes).max(0),
+        SecurityDirection::Sell => cash + fees + taxes,
+        _ => cash + taxes,
+    });
+    let price_cents = d.price_cents.unwrap_or(if quantity > 0.0 {
+        (value as f64 / quantity).round() as i64
+    } else {
+        0
+    });
+    Some(super::RemoteSecurityTransaction {
+        account_ref: "tr:depot".into(),
+        external_id: row.id.clone(),
+        cash_external_id: row.id.clone(),
+        transaction: SecurityTransaction {
+            booking_date: row.date.clone(),
+            isin,
+            name: row.title.clone(),
+            direction,
+            quantity,
+            price_cents,
+            currency: if row.currency.is_empty() {
+                "EUR".into()
+            } else {
+                row.currency.clone()
+            },
+            value_cents: value,
+            fees_cents: fees,
+            taxes_cents: taxes,
+            booking_text: row.kind_text.trim().to_string(),
+            ..Default::default()
+        },
+    })
+}
+
 pub struct TradeRepublicConnector {
     jar: Arc<Jar>,
     client: Option<reqwest::Client>,
@@ -608,6 +814,7 @@ impl BankConnector for TradeRepublicConnector {
         let mut cursor: Option<String> = None;
         let mut sub_id = 2u32;
         let mut doc_candidates: Vec<(String, String, String)> = Vec::new();
+        let mut trade_rows: Vec<TradeRow> = Vec::new();
         'pages: for _ in 0..200 {
             let mut payload = json!({"type": "timelineTransactions"});
             if let Some(c) = &cursor {
@@ -667,6 +874,20 @@ impl BankConnector for TradeRepublicConnector {
                         item["title"].as_str().unwrap_or_default().to_string(),
                     ));
                 }
+                if !item_id.is_empty() && is_trade_kind(&kind_text) {
+                    trade_rows.push(TradeRow {
+                        id: item_id.clone(),
+                        date: date.clone(),
+                        title: item["title"].as_str().unwrap_or_default().to_string(),
+                        kind_text: kind_text.clone(),
+                        amount_cents: amount_cents(&item["amount"]["value"]),
+                        currency: item["amount"]["currency"]
+                            .as_str()
+                            .unwrap_or("EUR")
+                            .to_string(),
+                        icon: item["icon"].as_str().unwrap_or_default().to_string(),
+                    });
+                }
                 out.transactions.push(RemoteTransaction {
                     account_ref: "tr:cash".into(),
                     external_id: item["id"].as_str().unwrap_or_default().to_string(),
@@ -695,6 +916,7 @@ impl BankConnector for TradeRepublicConnector {
         }
         // --- Beleg-Abruf: timelineDetailV2 -> "Dokumente" section -> PDF download
         let client = self.client()?;
+        let mut details: std::collections::HashMap<String, Value> = Default::default();
         for (item_id, date, title) in doc_candidates.into_iter().take(40) {
             sub_id += 2;
             let Ok(detail) = request(
@@ -707,6 +929,7 @@ impl BankConnector for TradeRepublicConnector {
             else {
                 continue;
             };
+            details.insert(item_id.clone(), detail.clone());
             for section in detail["sections"].as_array().cloned().unwrap_or_default() {
                 let is_docs = section["type"].as_str() == Some("documents")
                     || section["title"]
@@ -777,6 +1000,47 @@ impl BankConnector for TradeRepublicConnector {
             }
             self.known_doc_items.push(item_id);
         }
+        // --- Wertpapierseite (#314): units, price, fees and taxes of the newest
+        // trades from their detail screens (cached from the document pass).
+        // A trade whose screen fails is skipped; the cash booking stays.
+        for row in trade_rows.iter().take(100) {
+            let detail = match details.remove(&row.id) {
+                Some(d) => d,
+                None => {
+                    sub_id += 2;
+                    match request(
+                        &mut ws,
+                        sub_id,
+                        json!({"type": "timelineDetailV2", "id": row.id}),
+                        &token,
+                    )
+                    .await
+                    {
+                        Ok(d) => d,
+                        Err(_) => continue,
+                    }
+                }
+            };
+            if let Some(t) = trade_security(row, &detail) {
+                out.security_transactions.push(t);
+            }
+        }
+        if !out.security_transactions.is_empty() {
+            // Trade Republic reports no positions here: the depot only carries
+            // the transactions (value 0), the cash account keeps the balance.
+            out.accounts.push(RemoteAccount {
+                external_ref: "tr:depot".into(),
+                name: "Depot".into(),
+                owner: String::new(),
+                iban: String::new(),
+                // no phone number here: it would show up as an account number
+                account_number: String::new(),
+                currency: "EUR".into(),
+                kind: AccountKind::Brokerage,
+                balance_cents: 0,
+                balance_date: super::today(),
+            });
+        }
         let _ = ws.close(None).await;
         out.state = Some(self.state());
         Ok(out)
@@ -796,6 +1060,109 @@ fn is_trade_republic_host(url: &reqwest::Url) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn detail(extra_rows: serde_json::Value) -> Value {
+        json!({"sections": [
+            {"type": "header", "data": {"icon": "logos/US0378331005/v2"}},
+            {"title": "Übersicht", "type": "table", "data": [
+                {"title": "Gebühr", "detail": {"text": "1,00 €"}},
+                {"title": "Steuer", "detail": {"text": "0,50 €"}},
+                {"title": "Transaktion", "detail": {"action": {"payload": {"sections": [
+                    {"type": "table", "data": extra_rows}
+                ]}}}}
+            ]}
+        ]})
+    }
+
+    fn row(kind: &str, amount: i64) -> TradeRow {
+        TradeRow {
+            id: "evt-1".into(),
+            date: "2026-11-05".into(),
+            title: "Apple".into(),
+            kind_text: kind.into(),
+            amount_cents: amount,
+            currency: "EUR".into(),
+            icon: String::new(),
+        }
+    }
+
+    #[test]
+    fn parses_decimal_texts() {
+        assert_eq!(parse_decimal_text("1.234,56 €"), Some(1234.56));
+        assert_eq!(parse_decimal_text("0,5"), Some(0.5));
+        assert_eq!(parse_decimal_text("12.5"), Some(12.5));
+        assert_eq!(parse_decimal_text("1.234"), Some(1234.0));
+        assert_eq!(parse_decimal_text("1,234.50"), Some(1234.5));
+        assert_eq!(parse_decimal_text("−3,00 €"), Some(-3.0));
+        assert_eq!(parse_decimal_text("– €"), None);
+        assert_eq!(parse_decimal_text(""), None);
+    }
+
+    #[test]
+    fn reads_trade_details_and_builds_the_securities_side() {
+        use crate::models::SecurityDirection;
+        let d = detail(json!([
+            {"title": "Aktien", "detail": {"text": "2,5"}},
+            {"title": "Preis", "detail": {"text": "160,00 €"}}
+        ]));
+        let t = trade_security(&row("kauf apple", -40_150), &d).unwrap();
+        assert_eq!(
+            (
+                t.account_ref.as_str(),
+                t.external_id.as_str(),
+                t.cash_external_id.as_str()
+            ),
+            ("tr:depot", "evt-1", "evt-1")
+        );
+        let x = &t.transaction;
+        assert_eq!(x.isin, "US0378331005");
+        assert_eq!(x.direction, SecurityDirection::Buy);
+        assert_eq!(
+            (x.quantity, x.price_cents, x.value_cents),
+            (2.5, 16_000, 40_000)
+        );
+        assert_eq!((x.fees_cents, x.taxes_cents), (100, 50));
+        // without a price the value is the cash amount minus fees and taxes
+        let d2 = detail(json!([{"title": "Aktien", "detail": {"text": "2,5"}}]));
+        let b = trade_security(&row("kauf apple", -40_150), &d2)
+            .unwrap()
+            .transaction;
+        assert_eq!((b.value_cents, b.price_cents), (40_000, 16_000));
+        // "Verkauf" is a sell although it contains "kauf"; sells add fees back
+        let s = trade_security(&row("verkaufsorder", 39_850), &d2)
+            .unwrap()
+            .transaction;
+        assert_eq!(s.direction, SecurityDirection::Sell);
+        assert_eq!(s.value_cents, 40_000);
+        let div = trade_security(&row("dividende", 1_000), &detail(json!([])))
+            .unwrap()
+            .transaction;
+        assert_eq!(div.direction, SecurityDirection::Dividend);
+        // no ISIN anywhere: not a securities transaction
+        assert!(trade_security(&row("kauf", -100), &json!({"sections": []})).is_none());
+        assert!(trade_security(&row("zinsen", 100), &d2).is_none());
+    }
+
+    #[test]
+    fn isin_comes_from_the_icon_or_the_header() {
+        assert_eq!(
+            isin_of("logos/IE00B4L5Y983/v2").as_deref(),
+            Some("IE00B4L5Y983")
+        );
+        assert_eq!(isin_of("DE0007164600").as_deref(), Some("DE0007164600"));
+        assert_eq!(isin_of("logos/company/v2"), None);
+        assert_eq!(
+            parse_trade_detail("logos/DE0007164600/v2", &json!({}))
+                .isin
+                .as_deref(),
+            Some("DE0007164600")
+        );
+        let d = json!({"sections": [{"action": {"type": "instrumentDetail", "payload": "IE00B4L5Y983"}}]});
+        assert_eq!(
+            parse_trade_detail("", &d).isin.as_deref(),
+            Some("IE00B4L5Y983")
+        );
+    }
 
     #[test]
     fn expired_session_is_named_in_the_login_prompts() {

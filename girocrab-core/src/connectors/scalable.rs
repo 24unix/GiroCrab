@@ -23,11 +23,11 @@ use serde_json::{json, Value};
 use super::dpop::DpopKey;
 use super::{
     http_client, BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
-    FetchResult, Phase, RemoteAccount, RemoteHolding, RemoteTransaction,
+    FetchResult, Phase, RemoteAccount, RemoteHolding, RemoteSecurityTransaction, RemoteTransaction,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
-use crate::models::{AccountKind, Holding};
+use crate::models::{AccountKind, Holding, SecurityDirection, SecurityTransaction};
 use crate::money::{json_number_to_cents, json_number_to_cents_rounded};
 
 const GRAPHQL_URL: &str = "https://de.scalable.capital/api/cli/graphql";
@@ -374,6 +374,109 @@ pub(crate) fn map_transaction(
     })
 }
 
+/// The securities side of a broker transaction summary (#314): trades,
+/// savings-plan executions, dividends, taxes and fees that name an ISIN. The
+/// API reports one net `amount` per summary and no fees or price, so
+/// `value_cents` is that amount and `price_cents` the average per unit.
+/// The cash side is `map_transaction` (same `sc:{id}`) on the cash account.
+pub(crate) fn map_security_transaction(
+    depot_ref: &str,
+    item: &Value,
+    names: &std::collections::HashMap<String, String>,
+) -> Option<RemoteSecurityTransaction> {
+    let id = str_of(&item["id"]);
+    let status = str_of(&item["status"]);
+    if id.is_empty() || is_open_status(&status) || item["isCancellation"].as_bool().unwrap_or(false)
+    {
+        return None;
+    }
+    let date = local_date(&item["lastEventDateTime"]);
+    let isin = {
+        let i = str_of(&item["isin"]);
+        if i.is_empty() {
+            str_of(&item["relatedIsin"])
+        } else {
+            i
+        }
+    };
+    if date.is_empty() || isin.is_empty() {
+        return None;
+    }
+    let side = str_of(&item["side"]);
+    let kinds: Vec<String> = [
+        &item["securityTransactionType"],
+        &item["nonTradeSecurityTransactionType"],
+        &item["type"],
+    ]
+    .iter()
+    .map(|v| str_of(v).to_ascii_uppercase())
+    .filter(|s| !s.is_empty())
+    .collect();
+    let has = |w: &str| kinds.iter().any(|k| k.contains(w));
+    let quantity = f64_of(&item["quantity"]).abs();
+    let value = json_number_to_cents(&item["amount"]).unwrap_or(0).abs();
+    let kind_refs: Vec<&str> = kinds.iter().map(String::as_str).collect();
+    let direction = if has("DIVIDEND") {
+        SecurityDirection::Dividend
+    } else if has("TAX") {
+        SecurityDirection::Tax
+    } else if has("FEE") {
+        SecurityDirection::Fee
+    } else if quantity > 0.0
+        && (side.eq_ignore_ascii_case("BUY") || has("BUY") || has("SAVINGS_PLAN"))
+    {
+        SecurityDirection::Buy
+    } else if quantity > 0.0 && (side.eq_ignore_ascii_case("SELL") || has("SELL")) {
+        SecurityDirection::Sell
+    } else if quantity > 0.0 {
+        if is_outflow(&kind_refs, &side) {
+            SecurityDirection::Buy
+        } else {
+            SecurityDirection::Sell
+        }
+    } else {
+        SecurityDirection::Other
+    };
+    if direction == SecurityDirection::Other && quantity == 0.0 {
+        return None;
+    }
+    let description = str_of(&item["description"]);
+    let name = if description.is_empty() {
+        names.get(&isin).cloned().unwrap_or_default()
+    } else {
+        description
+    };
+    let currency = {
+        let c = str_of(&item["currency"]);
+        if c.is_empty() {
+            "EUR".to_string()
+        } else {
+            c
+        }
+    };
+    Some(RemoteSecurityTransaction {
+        account_ref: depot_ref.to_string(),
+        external_id: format!("sc:{id}"),
+        cash_external_id: format!("sc:{id}"),
+        transaction: SecurityTransaction {
+            booking_date: date,
+            isin,
+            name,
+            direction,
+            quantity,
+            price_cents: if quantity > 0.0 {
+                (value as f64 / quantity).round() as i64
+            } else {
+                0
+            },
+            currency,
+            value_cents: value,
+            booking_text: kinds.first().cloned().unwrap_or_default(),
+            ..Default::default()
+        },
+    })
+}
+
 /// Counts of (type/subtypes, sign) per fetch for the debug log – enum names only.
 pub(crate) fn kind_stats(items: &[Value]) -> String {
     let mut counts: std::collections::BTreeMap<String, usize> = Default::default();
@@ -435,6 +538,7 @@ pub(crate) fn map_holdings(inventory: &Value) -> Vec<Holding> {
                 current_price_cents: price,
                 purchase_price_cents: json_number_to_cents_rounded(&pos["fifoPrice"]).unwrap_or(0),
                 value_cents: value,
+                ..Default::default()
             })
         })
         .collect()
@@ -1164,6 +1268,9 @@ impl ScalableConnector {
                     out.transactions.push(t);
                     count += 1;
                 }
+                if let Some(t) = map_security_transaction(&depot_ref, item, &names) {
+                    out.security_transactions.push(t);
+                }
             }
             pages += 1;
             cursor = more["cursor"]
@@ -1441,6 +1548,60 @@ impl BankConnector for ScalableConnector {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn maps_security_side_of_trades_and_dividends() {
+        let buy = json!({
+            "id": "tx-1", "currency": "EUR", "type": "BUY", "status": "SETTLED",
+            "isCancellation": false, "lastEventDateTime": "2026-11-03T09:15:00Z",
+            "description": "Vanguard FTSE All-World", "isin": "IE00BK5BQT80",
+            "securityTransactionType": "BUY", "quantity": "1.5", "amount": "150.00", "side": "BUY"
+        });
+        let none = Default::default();
+        let t = map_security_transaction("sc:depot:p1", &buy, &none).unwrap();
+        assert_eq!(t.account_ref, "sc:depot:p1");
+        assert_eq!(t.external_id, "sc:tx-1");
+        assert_eq!(t.cash_external_id, "sc:tx-1");
+        let x = &t.transaction;
+        assert_eq!(x.direction, SecurityDirection::Buy);
+        assert_eq!(
+            (x.quantity, x.value_cents, x.price_cents),
+            (1.5, 15_000, 10_000)
+        );
+        let mut sell = buy.clone();
+        sell["securityTransactionType"] = json!("SELL");
+        sell["type"] = json!("SELL");
+        sell["side"] = json!("SELL");
+        assert_eq!(
+            map_security_transaction("d", &sell, &none)
+                .unwrap()
+                .transaction
+                .direction,
+            SecurityDirection::Sell
+        );
+        let div = json!({
+            "id": "tx-2", "currency": "EUR", "type": "NON_TRADE", "status": "SETTLED",
+            "isCancellation": false, "lastEventDateTime": "2026-11-05T09:15:00Z",
+            "isin": "IE00BK5BQT80", "nonTradeSecurityTransactionType": "DIVIDEND", "amount": "2.10"
+        });
+        let d = map_security_transaction("d", &div, &none)
+            .unwrap()
+            .transaction;
+        assert_eq!(
+            (d.direction, d.value_cents, d.quantity),
+            (SecurityDirection::Dividend, 210, 0.0)
+        );
+        // cancellations, open orders and rows without an ISIN are no securities transactions
+        let mut cancelled = buy.clone();
+        cancelled["isCancellation"] = json!(true);
+        assert!(map_security_transaction("d", &cancelled, &none).is_none());
+        let mut open = buy.clone();
+        open["status"] = json!("PENDING");
+        assert!(map_security_transaction("d", &open, &none).is_none());
+        let mut deposit = buy.clone();
+        deposit["isin"] = json!("");
+        assert!(map_security_transaction("d", &deposit, &none).is_none());
+    }
 
     #[test]
     fn maps_buy_as_debit_and_keeps_signed_amounts() {

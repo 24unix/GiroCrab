@@ -393,7 +393,9 @@ impl Vault {
             return crate::assets::holdings(&db, account_id);
         }
         let mut q = db.prepare(
-            "SELECT isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents
+            "SELECT isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents,
+                    prev_day_price_cents, prev_day_value_cents, profit_loss_purchase_cents, profit_loss_purchase_rel,
+                    profit_loss_prev_day_cents, profit_loss_prev_day_rel, custody_type
              FROM holdings h WHERE account_id = ?1
                AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = h.account_id AND a.deleted_ms IS NULL)
              ORDER BY value_cents DESC, name",
@@ -407,9 +409,25 @@ impl Vault {
                 current_price_cents: r.get(4)?,
                 purchase_price_cents: r.get(5)?,
                 value_cents: r.get(6)?,
+                prev_day_price_cents: r.get(7)?,
+                prev_day_value_cents: r.get(8)?,
+                profit_loss_purchase_cents: r.get(9)?,
+                profit_loss_purchase_rel: r.get(10)?,
+                profit_loss_prev_day_cents: r.get(11)?,
+                profit_loss_prev_day_rel: r.get(12)?,
+                custody_type: r.get(13)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Securities transactions of a depot (#314), newest first.
+    pub fn list_security_transactions(
+        &self,
+        account_id: i64,
+    ) -> Result<Vec<SecurityTransaction>, CoreError> {
+        let db = self.db()?;
+        crate::security_transactions::list(&db, account_id)
     }
 
     // ---------------------------------------------------------------- accounts
