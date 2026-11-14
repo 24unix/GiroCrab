@@ -58,6 +58,7 @@ struct CommandPaletteView: View {
         out.append(Item(title: String(localized: "Einstellungen"), subtitle: action, symbol: "gearshape") { model.showSettings = true })
         #endif
         out.append(Item(title: String(localized: "Alle Konten"), subtitle: String(localized: "Konten"), symbol: "square.grid.2x2") { model.interactiveSidebarSelection = .allAccounts })
+        out.append(Item(title: String(localized: "Neue Umsätze"), subtitle: String(localized: "Konten"), symbol: "tray.full") { model.interactiveSidebarSelection = .newBookings })
         out.append(Item(title: String(localized: "Neue Kontogruppe"), subtitle: "\(action) · ⇧⌘N", symbol: "folder.badge.plus") { model.groupDialog = .create() })
         out.append(Item(title: String(localized: "Kontogruppen bearbeiten"), subtitle: action, symbol: "slider.horizontal.3") { model.openGroupManager() })
         out.append(Item(title: String(localized: "Neue Hauptkategorie"), subtitle: action, symbol: "plus.square") {

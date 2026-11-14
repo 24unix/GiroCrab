@@ -30,6 +30,8 @@ struct BookingStreamView: View {
     var body: some View {
         @Bindable var model = model
         let isOverview: Bool = { if case .allAccounts? = model.sidebarSelection { return true }; return false }()
+        // „Neue Umsätze“: account cards instead of day cards, no charts
+        let isNewBookings = model.sidebarSelection == .newBookings
         let emptyVault = !model.demoActive && model.allAccounts.isEmpty
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
@@ -57,7 +59,7 @@ struct BookingStreamView: View {
                         }
                         if model.scope == .investments {
                             InvestmentDashboardView()
-                        } else if showStatistics, !model.allAccounts.isEmpty, isOverview || showAnalytics {
+                        } else if showStatistics, !isNewBookings, !model.allAccounts.isEmpty, isOverview || showAnalytics {
                             // Overview: always; single account: only when toggled on.
                             #if os(iOS)
                             DisclosureGroup("Cashflow-Analyse", isExpanded: $showCashflowIOS) {
@@ -80,6 +82,8 @@ struct BookingStreamView: View {
                             ProgressView().controlSize(.small)
                                 .frame(maxWidth: .infinity)
                                 .padding(.top, 40)
+                        } else if isNewBookings {
+                            // the cards below bring their own empty state
                         } else if isDepot, case .account(let id)? = model.sidebarSelection, let a = model.account(for: id) {
                             // depots: positions as cards (an empty depot explains itself there)
                             DepotPositionsView(account: a)
@@ -97,15 +101,19 @@ struct BookingStreamView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         // One lazy element per header and per booking (not per day):
                         // rows are nearly equally high, so the scroll bar stays steady.
-                        ForEach(model.streamItems) { item in
-                            switch item {
-                            case .header(let day):
-                                DayHeader(day: day)
-                                    .padding(.top, 14)
-                                    .id(day.id)
-                            case .row(let b, let isLast):
-                                DayCardRow(booking: b, isLast: isLast)
-                                    .id(b.id)
+                        if isNewBookings {
+                            NewBookingsCards()
+                        } else {
+                            ForEach(model.streamItems) { item in
+                                switch item {
+                                case .header(let day):
+                                    DayHeader(day: day)
+                                        .padding(.top, 14)
+                                        .id(day.id)
+                                case .row(let b, let isLast):
+                                    DayCardRow(booking: b, isLast: isLast)
+                                        .id(b.id)
+                                }
                             }
                         }
                         if model.hasMoreBookings {
@@ -329,7 +337,7 @@ private struct BookingScopePicker: View {
 /// stacked slices (header, rows) so each slice can be a lazy element of its own:
 /// rounded corners only at the card's top and bottom, the border only on the
 /// sides in between.
-private struct DayCardSegment: ViewModifier {
+struct DayCardSegment: ViewModifier {
     let isTop: Bool
     let isBottom: Bool
 
@@ -843,7 +851,7 @@ struct MainToolbar: ViewModifier {
         content.toolbar(id: "girocrab.main") {
             ToolbarItem(id: "scope", placement: .principal) {
                 BookingScopePicker()
-                    .disabled(model.sidebarSelection == .documents)
+                    .disabled(model.sidebarSelection == .documents || model.sidebarSelection == .newBookings)
             }
             ToolbarItem(id: "transfer", placement: .primaryAction) {
                 Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }

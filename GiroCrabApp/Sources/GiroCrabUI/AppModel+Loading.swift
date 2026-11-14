@@ -202,7 +202,15 @@ extension AppModel {
         case .userGroup(let uuid): accountIDs = userGroupAccountIDs(uuid)
         case .category(let id): category = id
         case .uncategorized: uncategorized = true
-        case .allAccounts, .documents, .none: break
+        case .allAccounts, .documents, .newBookings, .none: break
+        }
+        // Everything new, whatever the list filters say elsewhere.
+        if sidebarSelection == .newBookings {
+            return BookingFilter(
+                accountIds: [], categoryId: nil, includeSubcategories: true, uncategorizedOnly: false,
+                search: nil, dateFrom: nil, dateTo: nil, limit: listLimit, offset: 0, scope: .all,
+                merchantKey: nil, direction: .all, checked: false, wholeDays: true
+            )
         }
         return BookingFilter(
             accountIds: accountIDs,
@@ -272,7 +280,8 @@ extension AppModel {
         page = p
         bookings = p.transactions
         if let id = selectedBookingID, booking(withID: id) == nil, stickyBooking?.id != id {
-            selectedBookingID = p.transactions.first?.id
+            // „Neue Umsätze“: no booking selected unasked, auto review would check it
+            selectedBookingID = sidebarSelection == .newBookings ? nil : p.transactions.first?.id
         }
         pruneMultiSelection()
     }
@@ -388,7 +397,13 @@ extension AppModel {
     // MARK: - Derived
 
     /// The loaded bookings; every filter of the list is applied by the core.
-    var visibleBookings: [Booking] { bookings }
+    /// „Neue Umsätze“ shows the bookings per account: ↑/↓ and ranges follow the cards.
+    var visibleBookings: [Booking] {
+        sidebarSelection == .newBookings ? newBookingSections.flatMap(\.bookings) : bookings
+    }
+
+    /// „Neue Umsätze“: the loaded bookings as one card per account.
+    var newBookingSections: [NewBookingsSection] { NewBookings.sections(bookings: bookings, accounts: allAccounts) }
 
     /// Jump to `date` in the booking stream: that day, or the nearest earlier
     /// day with bookings (the balance of a quiet day comes from there).
@@ -462,6 +477,7 @@ extension AppModel {
         case .category(let id): return categories.first { $0.id == id }?.path ?? String(localized: "Kategorie")
         case .uncategorized: return String(localized: "Ohne Kategorie")
         case .documents: return String(localized: "Belege & PostBox")
+        case .newBookings: return String(localized: "Neue Umsätze")
         }
     }
 
@@ -473,7 +489,7 @@ extension AppModel {
         case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .allAccounts, .none: return (String(localized: "Verfügbar (Giro, Tagesgeld, Karten)"), liquidBalance)
         case .category(let id): return categories.first { $0.id == id }.map { (String(localized: "Summe im Zeitraum"), $0.totalCents) }
-        case .uncategorized, .documents: return nil
+        case .uncategorized, .documents, .newBookings: return nil
         }
     }
 
@@ -515,6 +531,7 @@ extension AppModel {
         case .group(let id): (groups.first { $0.id == id }?.accounts.count ?? 0) > 1
         case .bank(let key): (bankGroup(for: key)?.accounts.count ?? 0) > 1
         case .userGroup(let uuid): userGroupAccountIDs(uuid).count > 1
+        case .newBookings: false // the card header names the account
         default: accountMarkers.count > 1
         }
     }

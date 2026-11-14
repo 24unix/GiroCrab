@@ -122,11 +122,14 @@ extension AppModel {
         let userGroups: [UserGroup]
     }
 
+    /// The list filters by checked state: a changed booking leaves it.
+    private var leavesListWhenChecked: Bool { statusFilter != .all || sidebarSelection == .newBookings }
+
     func setChecked(_ checked: Bool, for booking: Booking) {
         guard let vault else { return }
         runCore { try vault.setTransactionChecked(transactionId: booking.id, checked: checked) }
         // With "Neu" / "Geprüft" active the booking leaves the list: keep it in the inspector.
-        if statusFilter != .all, selectedBookingID == booking.id { stickyBooking = freshBooking(booking) }
+        if leavesListWhenChecked, selectedBookingID == booking.id { stickyBooking = freshBooking(booking) }
         reloadBookings(); reloadAccounts()
     }
 
@@ -171,7 +174,7 @@ extension AppModel {
         }
         toast = String(localized: "\(ids.count) Umsätze als gelesen markiert")
         // With "Neu" / "Geprüft" active the bookings leave the list: keep the selected one in the inspector (like setChecked)
-        if statusFilter != .all, let b = selectedBooking, ids.contains(b.id) { stickyBooking = freshBooking(b) }
+        if leavesListWhenChecked, let b = selectedBooking, ids.contains(b.id) { stickyBooking = freshBooking(b) }
         reloadBookings(); reloadAccounts()
     }
 
