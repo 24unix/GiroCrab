@@ -513,9 +513,9 @@ struct AccountRow: View {
                             .foregroundStyle(.orange)
                             .help("Zugriff entzogen: Die Bank liefert dieses Konto nicht mehr. Buchungen bleiben erhalten.")
                     }
-                    if account.newCount > 0 {
-                        Circle().fill(Theme.accent).frame(width: 6, height: 6)
-                    }
+                    // a count bubble, not just a dot: how many are new (the balance
+                    // sits where a system `.badge` would go)
+                    NewCountBadge(count: Int(account.newCount), onSelection: onSelection)
                 }
                 if let repaid {
                     // in a line as tall as the bank name of other accounts, so
@@ -788,5 +788,31 @@ private struct CategoriesHeader: View {
         .foregroundStyle(.secondary)
         .contentShape(Rectangle())
         .onTapGesture(perform: toggle)
+    }
+}
+
+/// Small bubble with the number of new bookings, next to an account's name.
+struct NewCountBadge: View {
+    let count: Int
+    var onSelection = false
+
+    /// The text in the bubble; nil hides it. Long numbers are capped.
+    static func label(for count: Int) -> String? {
+        guard count > 0 else { return nil }
+        return count > 999 ? "999+" : "\(count)"
+    }
+
+    var body: some View {
+        if let text = Self.label(for: count) {
+            Text(verbatim: text)
+                .appFont(.caption2, weight: .semibold, monospacedDigit: true)
+                .foregroundStyle(onSelection ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.accent))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(Theme.accent.opacity(onSelection ? 0.35 : 0.18)))
+                .overlay(Capsule().strokeBorder(onSelection ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.accent), lineWidth: 1))
+                .fixedSize() // the name truncates, never the count
+                .accessibilityLabel(Text("\(count) neue Buchungen"))
+        }
     }
 }
