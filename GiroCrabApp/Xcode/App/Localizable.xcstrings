@@ -708,6 +708,69 @@
         }
       }
     },
+    "%lld Zahlungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Zahlung"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Zahlungen"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld payment"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld payments"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld Zahlungen aus „%@“ übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld payments imported from “%@”"
+          }
+        }
+      }
+    },
+    "%lld Zahlungen aus „%@“ übernommen, %lld fehlerhaft" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld payments imported from “%@”, %lld faulty"
+          }
+        }
+      }
+    },
     "%lld aktive Sparpläne" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -745,6 +808,17 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "%lld fehlerhaft" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld faulty"
           }
         }
       }
@@ -3209,6 +3283,28 @@
         }
       }
     },
+    "Ausgewählte Zeilen entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove selected rows"
+          }
+        }
+      }
+    },
+    "Ausgewählte Zeilen entfernen (⌘Z macht es rückgängig)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove selected rows (⌘Z undoes it)"
+          }
+        }
+      }
+    },
     "Auswahl" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4397,6 +4493,17 @@
         }
       }
     },
+    "Betrag fehlt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amount missing"
+          }
+        }
+      }
+    },
     "Beträge, IBANs, Namen, Kontonamen, Verwendungszwecke und Belege werden abgedeckt; „Kategorien ausblenden“ deckt auch Kategorien, Gruppen und Wertpapiernamen ab. Im Demo-Tresor sind alle Daten erfunden, deshalb lässt sich die Schwärzung hier abschalten." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4749,6 +4856,17 @@
         }
       }
     },
+    "Buchung auf dem Kontoauszug" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Booking on the statement"
+          }
+        }
+      }
+    },
     "Buchung wechseln" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4921,6 +5039,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Export CSV…"
+          }
+        }
+      }
+    },
+    "CSV importieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import CSV …"
           }
         }
       }
@@ -5976,6 +6105,17 @@
         }
       }
     },
+    "Die Datei konnte nicht gelesen werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The file could not be read."
+          }
+        }
+      }
+    },
     "Die Daten wurden in den Ordner „GiroCrab“ in iCloud Drive verschoben. Bitte wechseln Sie über „Ordner wählen …“ zu diesem Ordner, damit alle Geräte denselben Ordner nutzen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7005,6 +7145,17 @@
         }
       }
     },
+    "Eine Sammelbuchung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One batch booking"
+          }
+        }
+      }
+    },
     "Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7221,6 +7372,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add"
+          }
+        }
+      }
+    },
+    "Einzelbuchungen pro Zahlung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One booking per payment"
+          }
+        }
+      }
+    },
+    "Einzeln" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Single"
           }
         }
       }
@@ -9751,6 +9924,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copy IBAN"
+          }
+        }
+      }
+    },
+    "IBAN ungültig" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "IBAN invalid"
           }
         }
       }
@@ -16006,6 +16190,28 @@
         }
       }
     },
+    "Sammelüberweisung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Batch transfer"
+          }
+        }
+      }
+    },
+    "Sammelüberweisung prüfen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review batch transfer"
+          }
+        }
+      }
+    },
     "Sammlung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16564,6 +16770,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Other"
+          }
+        }
+      }
+    },
+    "Spalten: Name, IBAN, Betrag, Verwendungszweck (Trennzeichen ; , oder Tab). Datei hierher ziehen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Columns: name, IBAN, amount, purpose (separator ; , or tab). Drag the file here."
           }
         }
       }
@@ -19507,6 +19724,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Payment service"
+          }
+        }
+      }
+    },
+    "Zeile hinzufügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add row"
+          }
+        }
+      }
+    },
+    "Zeilen entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove rows"
           }
         }
       }
