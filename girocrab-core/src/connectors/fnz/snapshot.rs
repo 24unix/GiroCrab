@@ -10,9 +10,12 @@ use serde_json::Value;
 
 use super::{field, invalid, is_currency_code, open_rows, overview};
 use crate::{
-    connectors::{store_fetch, FetchResult, RemoteHolding, RemoteTransaction, SyncSummary},
+    connectors::{
+        store_fetch, FetchResult, RemoteHolding, RemoteSecurityTransaction, RemoteTransaction,
+        SyncSummary,
+    },
     error::{CoreError, CoreResult},
-    models::Holding,
+    models::{Holding, SecurityDirection, SecurityTransaction},
     vault::Vault,
 };
 
@@ -230,11 +233,101 @@ fn cash_transactions(
         .collect()
 }
 
+/// What a depot transaction is, from the portal's own type name. Unknown names stay
+/// `Other` instead of being guessed from the sign.
+fn security_direction(type_name: &str) -> SecurityDirection {
+    let n = type_name.to_lowercase();
+    if n.contains("entgelt") {
+        SecurityDirection::Fee
+    } else if n.contains("vorabpauschale") || n.contains("steuer") {
+        SecurityDirection::Tax
+    } else if n.contains("wiederanlage") || n.contains("ansparplan") {
+        // Reinvested distribution and savings plan both buy units.
+        SecurityDirection::Buy
+    } else if n.contains("fondsertrag") || n.contains("ausschüttung") {
+        SecurityDirection::Dividend
+    } else if n.contains("verkauf") || n.contains("entnahme") || n.contains("auszahlungsplan") {
+        SecurityDirection::Sell
+    } else if n.contains("kauf") {
+        SecurityDirection::Buy
+    } else {
+        SecurityDirection::Other
+    }
+}
+
+/// The execution behind a depot booking (#314), or `None` if the portal row lacks
+/// the units or the fund. The booking itself is still imported as before.
+fn security_transaction(
+    t: &Value,
+    external_id: &str,
+    account_ref: &str,
+    account_currency: &str,
+    description: &str,
+    isin: &str,
+    name: &str,
+) -> Option<RemoteSecurityTransaction> {
+    // A cancelation and the booking it cancels net out; neither is an execution.
+    if t["isCancelationTransaction"].as_bool() == Some(true)
+        || t["wasCanceled"].as_bool() == Some(true)
+        || isin.len() != 12
+    {
+        return None;
+    }
+    let type_name = t.pointer("/transactionTypeName")?.as_str()?;
+    // Distributions, fees and taxes may come without units.
+    let quantity = if t["pieces"].is_null() {
+        None
+    } else {
+        Some(decimal(&t["pieces"]["value"]).ok()?.abs())
+    };
+    // The payment is in the account currency; the fund price may be in the fund's
+    // currency, so the unit price is derived from the payment (as the holdings do).
+    let (value, cur) = if t["paymentAmount"].is_null() {
+        (0, account_currency)
+    } else {
+        (
+            amount(&t["paymentAmount"]).ok()?.abs(),
+            currency(&t["paymentAmount"]).ok()?,
+        )
+    };
+    let direction = security_direction(type_name);
+    if (quantity.is_none() && matches!(direction, SecurityDirection::Buy | SecurityDirection::Sell))
+        || (value == 0 && quantity.unwrap_or(0.0) == 0.0)
+    {
+        // A trade needs units; a line with neither units nor amount is only information.
+        return None;
+    }
+    let quantity = quantity.unwrap_or(0.0);
+    Some(RemoteSecurityTransaction {
+        account_ref: account_ref.into(),
+        external_id: external_id.into(),
+        transaction: SecurityTransaction {
+            booking_date: date(t, "/bookingDate").ok()?,
+            isin: isin.into(),
+            wkn: optional_text(t, "/fund/wkn"),
+            name: name.into(),
+            direction,
+            quantity,
+            price_cents: if quantity > 0.0 {
+                (value as f64 / quantity).round() as i64
+            } else {
+                0
+            },
+            currency: cur.into(),
+            value_cents: value,
+            booking_text: description.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+}
+
 fn depot_transactions(
     detail: &Value,
     account_ref: &str,
     expected_id: &Value,
     account_currency: &str,
+    securities: &mut Vec<RemoteSecurityTransaction>,
 ) -> CoreResult<Vec<RemoteTransaction>> {
     let mut result = Vec::new();
     for (key, historical) in [("transactions", false), ("historicalTransactions", true)] {
@@ -290,12 +383,20 @@ fn depot_transactions(
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>()
                 .join(" · ");
+            let external_id =
+                identifier(&t[id_key], if historical { "historical" } else { "depot" })?;
+            securities.extend(security_transaction(
+                t,
+                &external_id,
+                account_ref,
+                account_currency,
+                &description,
+                &isin,
+                &name,
+            ));
             result.push(RemoteTransaction {
                 account_ref: account_ref.into(),
-                external_id: identifier(
-                    &t[id_key],
-                    if historical { "historical" } else { "depot" },
-                )?,
+                external_id,
                 booking_date: date(t, "/bookingDate")?,
                 // fundPriceDate/priceDate is a pricing date, not a value date.
                 value_date: String::new(),
@@ -362,6 +463,7 @@ fn snapshot(json: &str) -> CoreResult<FetchResult> {
                     &account.external_ref,
                     account_id(&remote["depotOrCashAccountId"]["depotId"])?,
                     &account.currency,
+                    &mut result.security_transactions,
                 )?);
             }
             ("managedDepots" | "stockDepots" | "preciousMetalDepots", "totalsOnly") => {}
