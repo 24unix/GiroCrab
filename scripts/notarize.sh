@@ -34,10 +34,12 @@
 # signature or nothing published aborts the release. Skipped while the policy
 # key is a placeholder.
 #   --ios           also bump iOS build number, archive for iOS, and upload to TestFlight
-#                   By default the iOS MARKETING_VERSION stays at the value project.pbxproj had
-#                   before the release bump, so only the build number changes and no new
-#                   external beta review is needed. IOS_MARKETING_VERSION=x.y.z overrides it
-#                   when an iOS version bump is intended (only the iOS archive is pinned).
+#                   With --ios, MARKETING_VERSION in project.pbxproj is NEVER rewritten (only
+#                   CURRENT_PROJECT_VERSION + 1) and the iOS archive is pinned to it, so no new
+#                   external beta review is needed. IOS_MARKETING_VERSION=x.y.z, passed
+#                   explicitly, writes that version to project.pbxproj and pins iOS to it.
+#                   Without --ios a stable release sets MARKETING_VERSION to the release version.
+#                   (macOS always gets the release version via GIROCRAB_VERSION.)
 # LOCKSTEP RULE: GiroCrab/girocrab.de (the marketing site, checked out next to this
 # repo as ../girocrab.de) and the newest icon from
 # GiroCrabApp/Xcode/App/Assets.xcassets/AppIcon.appiconset must always be kept in sync
@@ -213,18 +215,21 @@ if [ -n "$UPLOAD_TAG" ]; then
     fi
   fi
   PBXPROJ="GiroCrabApp/Xcode/GiroCrab.xcodeproj/project.pbxproj"
-  if [ "$CHANNEL" = "stable" ] && [ -f "$PBXPROJ" ]; then
-    # One multiplatform target shares MARKETING_VERSION with iOS. Remember the value from
-    # before the release bump: the iOS archive stays on it by default (see ios_pipeline).
-    IOS_PBX_MARKETING_VERSION="$(sed -n 's/.*MARKETING_VERSION = \([^;]*\);.*/\1/p' "$PBXPROJ" | head -1)"
-    echo "==> Setting MARKETING_VERSION = ${CLEAN_VER} in project.pbxproj"
-    sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = ${CLEAN_VER};/g" "$PBXPROJ"
-    # Verify every MARKETING_VERSION now equals the tag version.
-    BAD_MV="$(grep -o 'MARKETING_VERSION = [^;]*;' "$PBXPROJ" | grep -vxF "MARKETING_VERSION = ${CLEAN_VER};" || true)"
+  # One multiplatform target shares MARKETING_VERSION with iOS. With --ios the pbxproj value
+  # is the iOS version: it is only rewritten when IOS_MARKETING_VERSION is passed explicitly
+  # (to that value); otherwise it stays untouched. Without --ios it gets the release version.
+  if [ "$BUILD_IOS" -eq 1 ]; then PBX_MV="${IOS_MARKETING_VERSION:-}"; else PBX_MV="$CLEAN_VER"; fi
+  if [ "$CHANNEL" = "stable" ] && [ -f "$PBXPROJ" ] && [ -n "$PBX_MV" ]; then
+    echo "==> Setting MARKETING_VERSION = ${PBX_MV} in project.pbxproj"
+    sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = ${PBX_MV};/g" "$PBXPROJ"
+    # Verify every MARKETING_VERSION now equals the intended version.
+    BAD_MV="$(grep -o 'MARKETING_VERSION = [^;]*;' "$PBXPROJ" | grep -vxF "MARKETING_VERSION = ${PBX_MV};" || true)"
     if [ -n "$BAD_MV" ]; then
-      echo "error: project.pbxproj still has MARKETING_VERSION != ${CLEAN_VER}: $BAD_MV" >&2
+      echo "error: project.pbxproj still has MARKETING_VERSION != ${PBX_MV}: $BAD_MV" >&2
       exit 2
     fi
+  elif [ "$CHANNEL" = "stable" ] && [ "$BUILD_IOS" -eq 1 ]; then
+    echo "==> --ios without IOS_MARKETING_VERSION: MARKETING_VERSION in project.pbxproj stays untouched"
   fi
   # Lockstep: the marketing site must already show this version (warning only).
   if [ "$CHANNEL" = "stable" ]; then
@@ -569,11 +574,11 @@ ios_pipeline() {
 
   # TestFlight: a changed MARKETING_VERSION triggers a 24 h external beta
   # review, a new build number under an approved version does not. By default
-  # the iOS archive keeps the MARKETING_VERSION project.pbxproj had BEFORE this
-  # run's release bump; IOS_MARKETING_VERSION=x.y.z overrides it when a new iOS
-  # version is intended. Only the iOS archive is pinned (xcodebuild command line);
-  # project.pbxproj and macOS get the release version.
-  IOS_MARKETING_VERSION="${IOS_MARKETING_VERSION:-${IOS_PBX_MARKETING_VERSION:-}}"
+  # the iOS archive is pinned to the (untouched) MARKETING_VERSION of
+  # project.pbxproj; IOS_MARKETING_VERSION=x.y.z (explicit) overrides it and was
+  # already written to project.pbxproj for stable releases. macOS gets the
+  # release version via GIROCRAB_VERSION, independent of the pbxproj.
+  IOS_MARKETING_VERSION="${IOS_MARKETING_VERSION:-$(sed -n 's/.*MARKETING_VERSION = \([^;]*\);.*/\1/p' "$PBXPROJ" | head -1)}"
   IOS_VERSION_ARGS=()
   if [ -n "$IOS_MARKETING_VERSION" ]; then
     echo "==> Pinning iOS MARKETING_VERSION = ${IOS_MARKETING_VERSION} (Build ${NEXT_BUILD})"
