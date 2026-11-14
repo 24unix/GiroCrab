@@ -569,6 +569,17 @@ fn map_transaction(t: &Value, account_ref: &str) -> Option<RemoteTransaction> {
             .unwrap_or_default()
             .to_string(),
         purpose_code: eb_purpose_code(t),
+        // The API has no end-to-end id or creditor id on transactions; a direct
+        // debit's mandate reference comes as `reference_number` with scheme SDDM.
+        mandate_id: if t["reference_number_schema"].as_str() == Some("SDDM") {
+            t["reference_number"]
+                .as_str()
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        } else {
+            String::new()
+        },
         ..Default::default()
     };
     if rt.counterparty.is_empty() {
@@ -2529,6 +2540,26 @@ mod content_id_tests {
         json!({"status": "BOOK", "transaction_amount": {"amount": amount, "currency": "EUR"},
                "credit_debit_indicator": "DBIT", "booking_date": date,
                "creditor": {"name": name}})
+    }
+
+    #[test]
+    fn mandate_reference_only_from_the_sddm_scheme() {
+        let base = |extra: Value| {
+            let mut t = json!({"entry_reference": "E1", "status": "BOOK",
+                "credit_debit_indicator": "DBIT",
+                "transaction_amount": {"currency": "EUR", "amount": "5.00"}});
+            t.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            map_transaction(&t, "a").unwrap()
+        };
+        let dd = base(json!({"reference_number": " MANDAT-7 ", "reference_number_schema": "SDDM"}));
+        assert_eq!(dd.mandate_id, "MANDAT-7");
+        let rf = base(
+            json!({"reference_number": "RF18539007547034", "reference_number_schema": "INTL"}),
+        );
+        assert_eq!(rf.mandate_id, "");
+        assert_eq!(base(json!({})).mandate_id, "");
     }
 
     #[test]
