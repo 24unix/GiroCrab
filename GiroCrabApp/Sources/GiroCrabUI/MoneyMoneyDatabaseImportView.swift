@@ -258,7 +258,11 @@ struct MoneyMoneyDatabaseImportView: View {
             } header: {
                 Text("Datenbank")
             } footer: {
-                footerText("Wählen Sie den MoneyMoney-Ordner, damit auch die Kontoauszüge übernommen werden. Eine einzelne Datei (MoneyMoney.sqlite), etwa aus einem Backup, geht auch.")
+                VStack(alignment: .leading, spacing: 6) {
+                    footerText("Wählen Sie den MoneyMoney-Ordner, damit auch die Kontoauszüge übernommen werden. Eine einzelne Datei (MoneyMoney.sqlite), etwa aus einem Backup, geht auch.")
+                    footerText("Kein Datenbank-Passwort in MoneyMoney? Dann vorher eines festlegen (Einstellungen → Sicherheit).")
+                    footerText("Das Passwort wird in der App MoneyMoney festgelegt, nicht in GiroCrab. Tragen Sie es hier im Feld oben ein.")
+                }
             }
         }
         .formStyle(.grouped)

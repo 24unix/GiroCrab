@@ -474,7 +474,7 @@ fn english(de: &str) -> Option<&'static str> {
         // ------------------------------------------------------------ importers/moneymoney_db.rs
 "Import abgebrochen – es wurde nichts übernommen." => "Import cancelled – nothing was imported.",
                 "Falsches Passwort oder keine MoneyMoney-Datenbank." => "Wrong password or not a MoneyMoney database.",
-        "MoneyMoney verschlüsselt diese Datenbank mit einem eigenen Schlüssel, weil dort kein Datenbank-Passwort festgelegt ist. Legen Sie in MoneyMoney unter Einstellungen → Sicherheit eines fest, beenden Sie MoneyMoney und geben Sie es hier ein." => "MoneyMoney encrypts this database with a key of its own because no database password is set there. Set one in MoneyMoney under Settings → Security, quit MoneyMoney and enter it here.",
+        "MoneyMoney verschlüsselt diese Datenbank mit einem eigenen Schlüssel, weil dort kein Datenbank-Passwort festgelegt ist. Legen Sie in der App MoneyMoney (nicht in GiroCrab) unter MoneyMoney › Einstellungen › Sicherheit eines fest, beenden Sie MoneyMoney und geben Sie es dann im Feld „Datenbank-Passwort“ dieses Dialogs ein." => "MoneyMoney encrypts this database with a key of its own because no database password is set there. Set one in the MoneyMoney app (not in GiroCrab) under MoneyMoney › Settings › Security, quit MoneyMoney and then enter it in this dialog's “Database password” field.",
         "MoneyMoney-Datenbank" => "MoneyMoney database",
         "MoneyMoney ist noch geöffnet und sperrt die Datenbank. Beenden Sie MoneyMoney vollständig und versuchen Sie es erneut." => "MoneyMoney is still open and locks the database. Quit MoneyMoney completely and try again.",
         "Anfangssaldo laut MoneyMoney-Saldenverlauf ({0}) + Umsätze" => {

@@ -871,7 +871,7 @@ fn open_failure(e: rusqlite::Error) -> CoreError {
 /// be read after the user sets a password in MoneyMoney.
 fn encrypted_without_password() -> CoreError {
     CoreError::Authentication {
-        message: tr("MoneyMoney verschlüsselt diese Datenbank mit einem eigenen Schlüssel, weil dort kein Datenbank-Passwort festgelegt ist. Legen Sie in MoneyMoney unter Einstellungen → Sicherheit eines fest, beenden Sie MoneyMoney und geben Sie es hier ein.").into(),
+        message: tr("MoneyMoney verschlüsselt diese Datenbank mit einem eigenen Schlüssel, weil dort kein Datenbank-Passwort festgelegt ist. Legen Sie in der App MoneyMoney (nicht in GiroCrab) unter MoneyMoney › Einstellungen › Sicherheit eines fest, beenden Sie MoneyMoney und geben Sie es dann im Feld „Datenbank-Passwort“ dieses Dialogs ein.").into(),
     }
 }
 
@@ -1475,6 +1475,8 @@ fn component(s: &str) -> Option<&str> {
 /// The folder the PDFs are taken from, and how to find a listed file in it.
 struct StatementFiles {
     root: PathBuf,
+    /// `root` with all symlinks resolved; every file handed out lies below it.
+    canonical_root: Option<PathBuf>,
     /// All PDFs below `root` (built on first use).
     all: Option<Vec<PathBuf>>,
     /// SHA-256 → file, for files not at their original place (built on first use).
@@ -1486,6 +1488,7 @@ struct StatementFiles {
 impl StatementFiles {
     fn new(root: PathBuf) -> Self {
         Self {
+            canonical_root: std::fs::canonicalize(&root).ok(),
             root,
             all: None,
             by_digest: None,
@@ -1523,6 +1526,17 @@ impl StatementFiles {
         self.all.as_deref().unwrap_or_default()
     }
 
+    /// A regular file that is not a symlink and, after resolving every link
+    /// on the way, lies inside the selected folder (no escapes via a linked
+    /// sub-folder or file).
+    fn safe_file(&self, path: &Path) -> bool {
+        let Some(root) = &self.canonical_root else {
+            return false;
+        };
+        let plain = std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_file());
+        plain && std::fs::canonicalize(path).is_ok_and(|c| c.starts_with(root))
+    }
+
     /// The file of a listed document: at its original place, else by name
     /// directly in the folder, else by checksum anywhere below it.
     fn find(&mut self, d: &SrcDoc) -> Option<PathBuf> {
@@ -1531,11 +1545,14 @@ impl StatementFiles {
         if let Some(dir) = component(&d.directory) {
             candidates.insert(0, self.root.join(dir).join(name));
         }
-        let mut hit = candidates.into_iter().find(|c| c.is_file());
+        let mut hit = candidates.into_iter().find(|c| self.safe_file(c));
         if hit.is_none() && !d.digest.is_empty() {
             if self.by_digest.is_none() {
                 let mut map = HashMap::new();
                 for f in self.all().to_vec() {
+                    if !self.safe_file(&f) {
+                        continue;
+                    }
                     let small = std::fs::metadata(&f).is_ok_and(|m| m.len() <= MAX_PDF_BYTES);
                     if let (true, Ok(bytes)) = (small, std::fs::read(&f)) {
                         map.entry(sha256_hex(&bytes)).or_insert(f);

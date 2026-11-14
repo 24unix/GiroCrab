@@ -463,25 +463,42 @@ struct RawDataCard: View {
     }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            VStack(alignment: .leading, spacing: 8) {
-                row("Verwendungszweck (roh)", booking.purpose.isEmpty ? "–" : booking.purpose)
-                if !booking.bookingText.isEmpty { row("Buchungstext", booking.bookingText) }
-                if let e = sepa("EREF") { row("EREF (Ende-zu-Ende-Referenz)", e) }
-                if let m = sepa("MREF") { row("MREF (Mandatsreferenz)", m) }
-                if let c = sepa("CRED") { row("Gläubiger-ID", c) }
-                if !booking.purposeCode.isEmpty { row("Purpose-Code", booking.purposeCode) }
-                if !booking.gvc.isEmpty { row("Geschäftsvorfallcode", booking.gvc) }
-                if !booking.counterpartyIban.isEmpty { row("IBAN Gegenkonto", formatIBAN(booking.counterpartyIban)) }
-                row("Gegenpartei (roh)", booking.counterparty)
-                if !booking.valueDate.isEmpty { row("Wertstellung", DateText.medium(booking.valueDate)) }
-                row("Konto", booking.accountName)
+        // A plain button header instead of `DisclosureGroup`: inside the macOS
+        // `.inspector` the group's chevron-only hit target did not expand (#320).
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                expanded.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Label("SEPA & Bank-Rohdaten", systemImage: "doc.plaintext")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.secondary)
+                        .rotationEffect(.degrees(expanded ? 90 : 0))
+                }
+                .contentShape(Rectangle())
             }
-            .padding(.top, 8)
-        } label: {
-            Label("SEPA & Bank-Rohdaten", systemImage: "doc.plaintext")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.text)
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isButton)
+            if expanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    row("Verwendungszweck (roh)", booking.purpose.isEmpty ? "–" : booking.purpose)
+                    if !booking.bookingText.isEmpty { row("Buchungstext", booking.bookingText) }
+                    if let e = sepa("EREF") { row("EREF (Ende-zu-Ende-Referenz)", e) }
+                    if let m = sepa("MREF") { row("MREF (Mandatsreferenz)", m) }
+                    if let c = sepa("CRED") { row("Gläubiger-ID", c) }
+                    if !booking.purposeCode.isEmpty { row("Purpose-Code", booking.purposeCode) }
+                    if !booking.gvc.isEmpty { row("Geschäftsvorfallcode", booking.gvc) }
+                    if !booking.counterpartyIban.isEmpty { row("IBAN Gegenkonto", formatIBAN(booking.counterpartyIban)) }
+                    row("Gegenpartei (roh)", booking.counterparty)
+                    if !booking.valueDate.isEmpty { row("Wertstellung", DateText.medium(booking.valueDate)) }
+                    row("Konto", booking.accountName)
+                }
+                .padding(.top, 8)
+            }
         }
         .card()
     }

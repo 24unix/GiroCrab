@@ -242,7 +242,11 @@ fn encrypted_database_without_password_explains_moneymoney_key() {
         .unwrap_err();
     assert!(matches!(err, CoreError::Authentication { .. }));
     let msg = err.to_string();
-    assert!(msg.contains("Einstellungen → Sicherheit"), "{msg}");
+    assert!(
+        msg.contains("MoneyMoney (nicht in GiroCrab)")
+            && msg.contains("Einstellungen › Sicherheit"),
+        "{msg}"
+    );
     assert!(!msg.contains("Falsches Passwort"), "{msg}");
 }
 
@@ -2488,4 +2492,39 @@ fn accounts_sharing_an_iban_are_merged_into_different_vault_accounts() {
         .unwrap();
     let ids: Vec<Option<i64>> = p.accounts.iter().map(|a| a.existing_account_id).collect();
     assert_eq!(ids, vec![Some(existing), None]);
+}
+
+#[cfg(unix)]
+#[test]
+fn statement_lookup_rejects_symlinks_leaving_the_import_folder() {
+    use std::os::unix::fs::symlink;
+    let outside = temp("mm-symlink-outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    let secret = pdf("GEHEIM");
+    std::fs::write(outside.join("secret.pdf"), &secret).unwrap();
+    let folder = temp("mm-symlink-root");
+    let bank = folder.join("Statements").join("Bank");
+    std::fs::create_dir_all(&bank).unwrap();
+    std::fs::write(bank.join("ok.pdf"), pdf("OK")).unwrap();
+    // a file link, a folder link and a link found only by checksum
+    symlink(outside.join("secret.pdf"), bank.join("link.pdf")).unwrap();
+    symlink(&outside, folder.join("Statements").join("Linked")).unwrap();
+    let doc = |dir: &str, name: &str, digest: String| SrcDoc {
+        account_key: 1,
+        directory: dir.into(),
+        filename: name.into(),
+        created_ts: None,
+        digest,
+    };
+    let mut files = StatementFiles::new(folder.join("Statements"));
+    assert!(files.find(&doc("Bank", "ok.pdf", String::new())).is_some());
+    assert!(files
+        .find(&doc("Bank", "link.pdf", String::new()))
+        .is_none());
+    assert!(files
+        .find(&doc("Linked", "secret.pdf", String::new()))
+        .is_none());
+    // the digest fallback must not hand out the linked outside file either
+    let digest = sha256_hex(&secret);
+    assert!(files.find(&doc("", "other.pdf", digest)).is_none());
 }

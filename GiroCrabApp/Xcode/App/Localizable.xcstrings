@@ -4639,6 +4639,17 @@
         }
       }
     },
+    "Das Passwort wird in der App MoneyMoney festgelegt, nicht in GiroCrab. Tragen Sie es hier im Feld oben ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The password is set in the MoneyMoney app, not in GiroCrab. Enter it in the field above."
+          }
+        }
+      }
+    },
     "Das TAN-Medium brauchen Sie nur, wenn die Bank danach fragt." : {
       "extractionState" : "manual",
       "localizations" : {
