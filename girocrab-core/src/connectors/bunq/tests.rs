@@ -25,6 +25,14 @@ fn parses_accounts_and_payments() {
 
     let cancelled = json!({"MonetaryAccountBank": {"id": 1, "status": "CANCELLED"}});
     assert!(parse_account(&cancelled, "2026-11-10").is_none());
+    let closing =
+        json!({"MonetaryAccountBank": {"id": 1, "status": "CANCELLED_PENDING_SETTLEMENT"}});
+    assert!(parse_account(&closing, "2026-11-10").is_none());
+    let ext = json!({"MonetaryAccountExternalSavings": {"id": 3, "status": "ACTIVE"}});
+    assert_eq!(
+        parse_account(&ext, "2026-11-10").unwrap().1.kind,
+        AccountKind::Savings
+    );
 
     let pay = json!({
         "id": 7, "created": "2026-11-09 12:00:00.000000",
