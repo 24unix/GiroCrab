@@ -15,6 +15,8 @@ enum SidebarItem: Hashable {
     case uncategorized
     /// "Belege & PostBox"
     case documents
+    /// „Neue Umsätze“ (GitHub #352): unreviewed bookings of all accounts.
+    case newBookings
 }
 
 /// Period of the booking list and its sums. The menu follows MoneyMoney

@@ -35,6 +35,18 @@ struct SidebarView: View {
                 // one step right of „Alle Konten“
                 .padding(.leading, 14)
             }
+            // „Neue Umsätze“ (#352): a page across all accounts, like „Belege & PostBox“
+            HStack(spacing: 8) {
+                Image(systemName: "tray.full").foregroundStyle(Theme.secondary).frame(width: 20)
+                Text("Neue Umsätze").fontWeight(.medium).appDefaultFont()
+                Spacer()
+            }
+            .badge(model.newCount)
+            .tag(SidebarItem.newBookings)
+            .contextMenu {
+                Button("Alle als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
+                    .disabled(model.newCount == 0)
+            }
             HStack(spacing: 8) {
                 Image(systemName: "doc.on.doc").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Belege & PostBox").fontWeight(.medium).appDefaultFont()

@@ -1932,6 +1932,17 @@
         }
       }
     },
+    "Alle Buchungen sind geprüft." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All transactions are reviewed."
+          }
+        }
+      }
+    },
     "Alle Einträge des Abruf-Protokolls werden gelöscht. Das lässt sich nicht widerrufen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13398,6 +13409,17 @@
         }
       }
     },
+    "Neue Umsätze" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New transactions"
+          }
+        }
+      }
+    },
     "Neue Untergruppe in „%@“" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18517,6 +18539,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pending – not booked yet"
+          }
+        }
+      }
+    },
+    "Vorgemerkt: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending: %@"
           }
         }
       }
