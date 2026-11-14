@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>de.girocrab.GiroCrab</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>GiroCrab</name>
+  <summary xml:lang="de">Verschlüsselte Finanzverwaltung (inoffizieller Linux-Port)</summary>
+  <summary>Encrypted personal finance (unofficial Linux port)</summary>
+  <description>
+    <p xml:lang="de">
+      GiroCrab ruft Umsätze direkt bei Ihrer Bank ab (FinTS/HBCI, PSD2 über Enable Banking und weitere
+      Schnittstellen), kategorisiert sie mit Regeln und speichert alles in einem lokal verschlüsselten Tresor
+      (SQLCipher). Es gibt keinen GiroCrab-Server und kein Tracking.
+    </p>
+    <p>
+      GiroCrab fetches transactions directly from your bank (FinTS/HBCI, PSD2 via Enable Banking and other
+      interfaces), categorises them with rules and keeps everything in a locally encrypted vault (SQLCipher).
+      There is no GiroCrab server and no tracking.
+    </p>
+  </description>
+  <developer id="de.girocrab">
+    <name>GiroCrab contributors</name>
+  </developer>
+  <launchable type="desktop-id">de.girocrab.GiroCrab.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <caption xml:lang="de">Hauptfenster mit Demo-Daten</caption>
+      <caption>Main window with demo data</caption>
+      <image>https://raw.githubusercontent.com/GiroCrab/GiroCrab/main/GiroCrabLinux/docs/images/hauptfenster.png</image>
+    </screenshot>
+    <screenshot>
+      <caption xml:lang="de">Überweisung</caption>
+      <caption>Transfer</caption>
+      <image>https://raw.githubusercontent.com/GiroCrab/GiroCrab/main/GiroCrabLinux/docs/images/ueberweisung.png</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.6.3" date="2026-11-14"/>
+  </releases>
+  <url type="homepage">https://girocrab.de</url>
+  <url type="bugtracker">https://github.com/GiroCrab/GiroCrab/issues</url>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>Office</category>
+    <category>Finance</category>
+  </categories>
+</component>

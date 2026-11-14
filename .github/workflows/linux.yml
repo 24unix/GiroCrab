@@ -1,0 +1,115 @@
+name: Linux
+
+# Linux port (GiroCrabLinux/, Qt 6 / QML). Community-maintained: it follows the SwiftUI app
+# asynchronously, so this workflow only runs when the port or the shared core changes and
+# never blocks macOS / iOS work (see #389).
+on:
+  push:
+    branches: [main]
+    paths: ['GiroCrabLinux/**', 'girocrab-core/**', '.github/workflows/linux.yml']
+  pull_request:
+    paths: ['GiroCrabLinux/**', 'girocrab-core/**', '.github/workflows/linux.yml']
+  workflow_dispatch:
+
+# Read-only token: CI never needs to write to the repository.
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_TERM_COLOR: always
+  # tests never touch a real keyring / Secret Service
+  GIROCRAB_NO_KEYCHAIN: '1'
+
+concurrency:
+  group: linux-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # The oldest Qt the port supports. Qt 6.6 is needed for font.features (tabular figures)
+  # and the curve renderer of Qt Quick Shapes. Official Qt builds for Linux arm64 start
+  # at 6.7, so this job runs on x86_64 only.
+  qt-minimum:
+    name: Qt 6.6 (Mindestversion, x86_64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: System libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1-mesa-dev libxkbcommon-dev libdbus-1-dev pkg-config
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.6.3'
+          modules: 'qtwebengine qtwebchannel qtpositioning qtpdf'
+          cache: true
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: GiroCrabLinux
+      - name: cargo fmt
+        working-directory: GiroCrabLinux
+        run: cargo fmt -- --check
+      - name: cargo clippy
+        working-directory: GiroCrabLinux
+        run: cargo clippy --all-targets -- -D warnings
+      - name: cargo test
+        working-directory: GiroCrabLinux
+        run: |
+          export XDG_DATA_HOME="$RUNNER_TEMP/data" XDG_CONFIG_HOME="$RUNNER_TEMP/config"
+          cargo test
+
+  # What users install: Debian 13 with Qt from the distribution, on x86_64 and arm64.
+  # Also builds the .deb package (uploaded as a workflow artifact, not released).
+  debian:
+    name: Debian 13 (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    container: debian:trixie
+    timeout-minutes: 60
+    steps:
+      - name: Build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config \
+            dpkg-dev perl libdbus-1-dev qt6-base-dev qt6-declarative-dev qt6-declarative-private-dev \
+            qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts \
+            qml6-module-qtquick-shapes qml6-module-qtquick-dialogs qml6-module-qt-labs-qmlmodels \
+            qml6-module-qtcore qml6-module-org-kde-kirigami
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --component clippy
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: GiroCrabLinux
+          key: debian-${{ matrix.arch }}
+      - name: cargo clippy
+        working-directory: GiroCrabLinux
+        run: cargo clippy --all-targets -- -D warnings
+      - name: cargo test
+        working-directory: GiroCrabLinux
+        run: |
+          export XDG_DATA_HOME="$RUNNER_TEMP/data" XDG_CONFIG_HOME="$RUNNER_TEMP/config"
+          cargo test
+      - name: Build .deb
+        working-directory: GiroCrabLinux
+        run: ./packaging/build-deb.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: girocrab-debian13-${{ matrix.arch }}
+          path: GiroCrabLinux/target/debian/*.deb
+          if-no-files-found: error

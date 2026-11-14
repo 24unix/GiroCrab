@@ -1,0 +1,135 @@
+# Flatpak of the GiroCrab Linux port (Qt 6 / QML + Rust via cxx-qt).
+#
+# Build from the repository root (offline: every source below is pinned, cargo uses
+# cargo-sources.json, no build step touches the network):
+#   flatpak run org.flatpak.Builder --user --install-deps-from=flathub --force-clean \
+#     --repo=repo build-dir GiroCrabLinux/packaging/flatpak/de.girocrab.GiroCrab.yml
+#   flatpak build-bundle repo girocrab.flatpak de.girocrab.GiroCrab
+#
+# After a change to GiroCrabLinux/Cargo.lock run update-cargo-sources.sh next to this file.
+app-id: de.girocrab.GiroCrab
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+# QtWebEngine (web logins, bank consent pages) and QtPdf (PDF preview); both are
+# loaded only on demand, the app also runs without them.
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.11'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: girocrab
+finish-args:
+  # Window: Wayland, X11 only as a fallback; GPU for Qt Quick
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Bank access (FinTS, PSD2, web logins)
+  - --share=network
+  # Vault key in the Secret Service (GNOME Keyring, KWallet, KeePassXC)
+  - --talk-name=org.freedesktop.secrets
+  # Printing (Ablage › Drucken …)
+  - --socket=cups
+  # Plasma colours and fonts (the Fusion style follows the KDE palette)
+  - --filesystem=xdg-config/kdeglobals:ro
+  # Files dropped onto the window (bank statements, invoices, receipt photos) arrive as
+  # plain paths; most come from the download folder. File dialogs go through the portal
+  # and need no permission.
+  - --filesystem=xdg-download:ro
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+modules:
+  # Receipt OCR (src/ocr.rs runs `tesseract stdin stdout -l deu+eng`)
+  - name: leptonica
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_PROG=OFF
+      - -DSW_BUILD=OFF
+    post-install:
+      - install -Dm644 $FLATPAK_BUILDER_BUILDDIR/leptonica-license.txt /app/share/licenses/de.girocrab.GiroCrab/leptonica-license.txt
+    sources:
+      - type: archive
+        url: https://github.com/DanBloomberg/leptonica/releases/download/1.87.0/leptonica-1.87.0.tar.gz
+        sha256: c73363397f96eb1295602bf44d708a994ad42046c791bf03ea0505d829bdb6a7
+
+  - name: tesseract
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      # compiled-in data folder (<prefix>/tessdata), the CMake build sets none
+      cxxflags: -DTESSDATA_PREFIX=\"/app/share\"
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TRAINING_TOOLS=OFF
+      - -DBUILD_TESTS=OFF
+      - -DGRAPHICS_DISABLED=ON
+      - -DDISABLE_ARCHIVE=ON
+      - -DDISABLE_CURL=ON
+      - -DOPENMP_BUILD=OFF
+      - -DENABLE_LTO=OFF
+    post-install:
+      # tessdata_fast (below) is under the same Apache-2.0 licence
+      - install -Dm644 $FLATPAK_BUILDER_BUILDDIR/LICENSE /app/share/licenses/de.girocrab.GiroCrab/tesseract-LICENSE
+    sources:
+      - type: archive
+        url: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.4.tar.gz
+        sha256: a8dbf8b8c8ee427ff6ad1d99116502feaf59440af1adb893caf60a6576826cf4
+
+  # German + English language data, "fast" models (5.6 MB together; the "best" ones
+  # are about ten times larger for little gain on receipts)
+  - name: tessdata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 -t /app/share/tessdata deu.traineddata eng.traineddata
+    sources:
+      - type: file
+        url: https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/65727574dfcd264acbb0c3e07860e4e9e9b22185/deu.traineddata
+        sha256: 19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d
+      - type: file
+        url: https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/65727574dfcd264acbb0c3e07860e4e9e9b22185/eng.traineddata
+        sha256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+
+  - name: girocrab
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/girocrab/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo build --release --locked --offline --manifest-path GiroCrabLinux/Cargo.toml
+      - install -Dm755 GiroCrabLinux/target/release/girocrab /app/bin/girocrab
+      - install -Dm644 GiroCrabLinux/packaging/de.girocrab.GiroCrab.desktop /app/share/applications/de.girocrab.GiroCrab.desktop
+      - install -Dm644 GiroCrabLinux/packaging/de.girocrab.GiroCrab.metainfo.xml /app/share/metainfo/de.girocrab.GiroCrab.metainfo.xml
+      - install -Dm644 GiroCrabApp/Assets/girocrab-icon.svg /app/share/icons/hicolor/scalable/apps/de.girocrab.GiroCrab.svg
+      - install -Dm644 -t /app/share/licenses/de.girocrab.GiroCrab LICENSE THIRD_PARTY_NOTICES.md
+    sources:
+      # The checkout this manifest lives in (CI builds the code of the pull request).
+      # Only what the build needs: the core, the Linux port, the banking policy, icon
+      # and licence texts.
+      - type: dir
+        path: ../../..
+        skip:
+          - .git
+          - .github
+          - .flatpak-builder
+          - target
+          - GiroCrabLinux/target
+          - GiroCrabApp/Tests
+          - GiroCrabApp/Xcode
+          - docs
+          - generated
+          - CashCrabApp
+          - cashcrab-core
+      - cargo-sources.json
