@@ -540,6 +540,10 @@ struct MainSplitView: View {
             CommandPaletteView()
                 .environment(model)
         }
+        .sheet(item: $model.accountSelectionConnection) { c in
+            AccountSelectionSheet(connection: c)
+                .environment(model)
+        }
         .sheet(isPresented: $model.showAddBank) {
             AddBankSheet()
                 .environment(model)

@@ -282,6 +282,9 @@ struct ConnectionEditSheet: View {
                     }
                 }
                 Section {
+                    AccountSelectionList(connection: connection)
+                } header: { Text("Kontenauswahl").appSectionHeader() }
+                Section {
                     if let st = status {
                         LabeledContent("Konten", value: "\(st.accountCount)")
                         LabeledContent("Buchungen", value: "\(st.bookingCount)")

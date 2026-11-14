@@ -234,6 +234,7 @@ struct BankConnectionsSettings: View {
             // --demo-settings banks:edit / banks:add (screenshots)
             switch model.demoSettingsSheet {
             case "edit": editing = model.connections.first
+            case "select": editing = model.connections.last
             case "add": showAddBank = true
             case "remove": confirmRemove = model.connections.first
             default: break
