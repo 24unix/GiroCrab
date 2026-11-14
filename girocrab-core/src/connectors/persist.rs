@@ -454,8 +454,8 @@ pub(crate) fn store_fetch(
             let mut ins = tx.prepare(
                 "INSERT OR IGNORE INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency,
                          counterparty, counterparty_iban, purpose, booking_text, purpose_code, gvc,
-                         end_to_end_id, mandate_id, creditor_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                         end_to_end_id, mandate_id, creditor_id, item_refs)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             )?;
             for t in &data.transactions {
                 let Some(acc_id) = account_ids.get(&t.account_ref) else {
@@ -506,7 +506,8 @@ pub(crate) fn store_fetch(
                     t.gvc,
                     t.end_to_end_id,
                     t.mandate_id,
-                    t.creditor_id
+                    t.creditor_id,
+                    t.item_refs
                 ])? as u32;
                 if n > 0 && data.adjust_balances {
                     tx.execute(
@@ -558,6 +559,13 @@ pub(crate) fn store_fetch(
                                 "UPDATE transactions SET end_to_end_id = ?1, mandate_id = ?2, creditor_id = ?3
                                  WHERE id = ?4 AND end_to_end_id = '' AND mandate_id = '' AND creditor_id = ''",
                                 params![t.end_to_end_id, t.mandate_id, t.creditor_id, row_id],
+                            )?;
+                        }
+                        // Product ids of earlier imports (before step 15).
+                        if !t.item_refs.is_empty() {
+                            tx.execute(
+                                "UPDATE transactions SET item_refs = ?1 WHERE id = ?2 AND item_refs = ''",
+                                params![t.item_refs, row_id],
                             )?;
                         }
                         if bad(&cp) && good(&t.counterparty) {

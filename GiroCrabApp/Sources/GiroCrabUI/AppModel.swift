@@ -54,6 +54,8 @@ public final class AppModel {
     var selectionFlow: (consumption: Int64, invested: Int64, income: Int64)?
     var dashboard: InvestmentDashboard?
     var merchantStats: MerchantStats?
+    /// The same history restricted to the booking's own account (#299).
+    var merchantAccountStats: (accountId: Int64, stats: MerchantStats)?
     var rules: [Rule] = []
     var history: [DailyBalance] = []
     var connections: [BankConnection] = []
@@ -966,7 +968,7 @@ public final class AppModel {
         demoActive = false
         vault = nil
         groups = []; userGroups = []; accountsByID = [:]; accountMarkers = [:]; bookings = []; categories = []; categoryTree = []; rules = []; connections = []; settings = []
-        page = nil; dashboard = nil; merchantStats = nil; logoCache = [:]
+        page = nil; dashboard = nil; merchantStats = nil; merchantAccountStats = nil; logoCache = [:]
     }
 
     /// Locking ends every bank dialog: no session keeps writing into the vault,

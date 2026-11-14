@@ -375,6 +375,7 @@ pub fn parse(xml: &str, account_ref: &str) -> (Vec<RemoteTransaction>, CamtRepor
             },
             mandate_id: e.mandate.trim().to_string(),
             creditor_id: e.creditor_id.clone(),
+            ..Default::default()
         };
         let key = format!(
             "{}{}{}{}",

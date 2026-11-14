@@ -22,10 +22,29 @@ struct AmazonOrderRef: Equatable {
     let isSubscription: Bool
     /// Shop domain the booking belongs to ("amazon.de" / "amazon.com").
     let domain: String
+    /// Product ids (ASIN), one per entry of `itemList` ("" = unknown). Stored
+    /// next to the purpose (`Booking.itemRefs`), never inside it (#354).
+    var itemASINs: [String] = []
 
     /// Order detail page of this booking's shop.
     var orderURL: URL? {
         URL(string: "https://www.\(domain)/gp/your-account/order-details?orderID=\(code)")
+    }
+
+    /// Product page of the item at `index` in this booking's shop; nil without a valid ASIN.
+    func productURL(at index: Int) -> URL? {
+        guard itemASINs.indices.contains(index), Self.isASIN(itemASINs[index]) else { return nil }
+        return URL(string: "https://www.\(domain)/dp/\(itemASINs[index])")
+    }
+
+    /// Splits `Booking.itemRefs` ("B08XYZ1234,,3453146883"): one entry per item, "" = unknown.
+    static func asins(from itemRefs: String) -> [String] {
+        itemRefs.isEmpty ? [] : itemRefs.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+    }
+
+    /// An ASIN is 10 upper-case ASCII letters / digits.
+    static func isASIN(_ s: String) -> Bool {
+        s.utf8.count == 10 && s.utf8.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x41 && $0 <= 0x5A) }
     }
 
     /// Same wording and dash (en dash) as `purpose()` in amazon_orders.rs.
@@ -41,7 +60,7 @@ struct AmazonOrderRef: Equatable {
     /// merchant's shop domain. The domain alone is not enough: users can
     /// override the merchant logo domain (e.g. "smile.amazon.de"), which
     /// must not hide the order reference.
-    static func parse(purpose: String, merchantDomain: String?, bookingText: String = "") -> AmazonOrderRef? {
+    static func parse(purpose: String, merchantDomain: String?, bookingText: String = "", itemRefs: String = "") -> AmazonOrderRef? {
         let domain = merchantDomain?.lowercased() ?? ""
         let amazonBooking = bookingText == "Amazon-Bestellung" || bookingText == "Amazon-Erstattung"
         guard !purpose.isEmpty,
@@ -74,7 +93,8 @@ struct AmazonOrderRef: Equatable {
         let head = itemList.prefix(2).joined(separator: ", ")
         return AmazonOrderRef(items: head, moreCount: max(0, itemList.count - 2),
                               itemList: itemList, code: code,
-                              isSubscription: code.hasPrefix("D"), domain: shop)
+                              isSubscription: code.hasPrefix("D"), domain: shop,
+                              itemASINs: asins(from: itemRefs))
     }
 
     /// Amazon order codes are 3-7-7 digits ("028-1234567-7654321");

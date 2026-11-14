@@ -1723,7 +1723,7 @@ struct OtherBooking {
     import_fp: String,
     /// booking_date .. salary_flag, copied as they are into a new row
     rest: Vec<rusqlite::types::Value>,
-    /// end_to_end_id, mandate_id, creditor_id
+    /// end_to_end_id, mandate_id, creditor_id, item_refs
     sepa_refs: Vec<rusqlite::types::Value>,
     category_id: Option<i64>,
     category_source: String,
@@ -1737,7 +1737,7 @@ const OTHER_BOOKINGS: &str = "SELECT id, account_id, external_id, import_fp,
         imported_unix, purpose_code, gvc, salary_flag,
         category_id, category_source, rule_id, category_ms, note, note_ms, checked, checked_ms,
         counterparty, purpose, text_ms, splits_ms, deleted_ms,
-        end_to_end_id, mandate_id, creditor_id
+        end_to_end_id, mandate_id, creditor_id, item_refs
      FROM other.transactions ORDER BY account_id, external_id";
 
 /// The id both sides keep for one booking known under two ids: the bank's
@@ -1832,7 +1832,7 @@ pub(crate) fn merge_bookings(
                 external_id: r.get(2)?,
                 import_fp: r.get(3)?,
                 rest: (4..14).map(|i| r.get(i)).collect::<Result<_, _>>()?,
-                sepa_refs: (27..30).map(|i| r.get(i)).collect::<Result<_, _>>()?,
+                sepa_refs: (27..31).map(|i| r.get(i)).collect::<Result<_, _>>()?,
                 category_id: cat,
                 rule_id: r.get(16)?,
                 fields: BookingFields {
@@ -1989,8 +1989,8 @@ pub(crate) fn merge_bookings(
                         imported_unix, purpose_code, gvc, salary_flag,
                         category_id, category_source, rule_id, category_ms, note, note_ms, checked, checked_ms,
                         counterparty, purpose, text_ms, splits_ms, deleted_ms,
-                        end_to_end_id, mandate_id, creditor_id)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29)",
+                        end_to_end_id, mandate_id, creditor_id, item_refs)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30)",
                     rusqlite::params_from_iter(p),
                 )?;
                 let id = conn.last_insert_rowid();

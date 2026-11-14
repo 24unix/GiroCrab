@@ -449,6 +449,9 @@ pub struct Booking {
     /// Not booked yet (card hold, pending transfer): the bank still reports it
     /// as open, so it can change or disappear. The list shows it dashed.
     pub is_pending: bool,
+    /// Product ids (Amazon ASIN) of an order's items, comma separated, one
+    /// entry per item in purpose order ("" entry = unknown); "" = none (#354).
+    pub item_refs: String,
 }
 
 /// Dry-run result of a MoneyMoney import (nothing stored).

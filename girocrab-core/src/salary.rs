@@ -239,6 +239,7 @@ mod tests {
             is_salary: false,
             recurrence_key: String::new(),
             is_pending: false,
+            item_refs: String::new(),
         }
     }
 

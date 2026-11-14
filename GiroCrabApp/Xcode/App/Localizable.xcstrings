@@ -6339,6 +6339,17 @@
         }
       }
     },
+    "Dieses Konto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This account"
+          }
+        }
+      }
+    },
     "Dieses Quartal" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -15088,6 +15099,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Report a Problem …"
+          }
+        }
+      }
+    },
+    "Produkt auf %@ öffnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open product on %@"
           }
         }
       }

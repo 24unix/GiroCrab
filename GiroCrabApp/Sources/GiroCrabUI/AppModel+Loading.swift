@@ -92,21 +92,35 @@ extension AppModel {
     /// stays until the fresh one arrives (no flicker).
     func loadMerchantStats(keepShown: Bool = false) {
         merchantStatsTask?.cancel()
-        guard let vault, let key = selectedBooking?.merchant.key else {
-            merchantStats = nil; merchantStatsKey = nil; return
+        guard let vault, let booking = selectedBooking else {
+            merchantStats = nil; merchantAccountStats = nil; merchantStatsKey = nil; return
         }
-        if let cached = merchantStatsCache[key] { merchantStats = cached; merchantStatsKey = key; return }
-        if !(keepShown && merchantStatsKey == key) { merchantStats = nil; merchantStatsKey = nil }
+        let key = booking.merchant.key, accountId = booking.accountId
+        // the account's own history lives in the same cache under a composite key
+        let ownKey = "\(accountId)|\(key)"
+        if let cached = merchantStatsCache[key], let own = merchantStatsCache[ownKey] {
+            merchantStats = cached; merchantAccountStats = (accountId, own); merchantStatsKey = key; return
+        }
+        if !(keepShown && merchantStatsKey == key) { merchantStats = nil; merchantAccountStats = nil; merchantStatsKey = nil }
         merchantStatsTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(80))
             guard !Task.isCancelled else { return }
             let stats = await Task.detached(priority: .userInitiated) {
-                Perf.interval("merchantStats") { try? vault.merchantStats(merchantKey: key) }
+                Perf.interval("merchantStats") {
+                    guard let all = try? vault.merchantStats(merchantKey: key),
+                          let own = try? vault.merchantStatsInAccount(merchantKey: key, accountId: accountId)
+                    else { return nil as (MerchantStats, MerchantStats)? }
+                    return (all, own)
+                }
             }.value
             // A vault switch or data change in the meantime cancels this task.
-            guard !Task.isCancelled, let self, let stats else { return }
-            self.merchantStatsCache[key] = stats
-            if self.selectedBooking?.merchant.key == key { self.merchantStats = stats; self.merchantStatsKey = key }
+            guard !Task.isCancelled, let self, let (all, own) = stats else { return }
+            self.merchantStatsCache[key] = all
+            self.merchantStatsCache[ownKey] = own
+            if let now = self.selectedBooking, now.merchant.key == key {
+                self.merchantStats = all; self.merchantStatsKey = key
+                self.merchantAccountStats = now.accountId == accountId ? (accountId, own) : nil
+            }
         }
     }
 

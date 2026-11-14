@@ -98,4 +98,42 @@ final class AmazonOrderRefTests: XCTestCase {
         XCTAssertNil(AmazonOrderRef.parse(purpose: "Buch – Bestellung 028-1234567-7654321",
                                           merchantDomain: "smile.amazon.de"))
     }
+
+    // MARK: product links (#354)
+
+    private let multi = "USB-Kabel; Buch; 4× AA Zellen – Bestellung 028-0171190-7789978"
+
+    func testProductURLUsesTheShopOfTheBooking() {
+        let r = AmazonOrderRef.parse(purpose: multi, merchantDomain: "amazon.com", itemRefs: "B08XYZ1234,,3453146883")!
+        XCTAssertEqual(r.itemASINs, ["B08XYZ1234", "", "3453146883"])
+        XCTAssertEqual(r.productURL(at: 0)?.absoluteString, "https://www.amazon.com/dp/B08XYZ1234")
+        XCTAssertNil(r.productURL(at: 1), "unknown ASIN: no link")
+        XCTAssertEqual(r.productURL(at: 2)?.absoluteString, "https://www.amazon.com/dp/3453146883")
+        XCTAssertNil(r.productURL(at: 3), "out of range")
+        XCTAssertNil(r.productURL(at: -1))
+    }
+
+    func testPurposeTextStaysFreeOfProductIDs() {
+        let r = AmazonOrderRef.parse(purpose: multi, merchantDomain: "amazon.de", itemRefs: "B08XYZ1234,B0AAAAAAAA,B0BBBBBBBB")!
+        XCTAssertEqual(r.itemList, ["USB-Kabel", "Buch", "4× AA Zellen"])
+        XCTAssertFalse(r.items.contains("B08XYZ1234"))
+    }
+
+    func testNoRefsMeansNoLinks() {
+        let r = parse(multi)!
+        XCTAssertTrue(r.itemASINs.isEmpty)
+        XCTAssertNil(r.productURL(at: 0))
+    }
+
+    func testOnlyWellFormedASINsBecomeLinks() {
+        let r = AmazonOrderRef.parse(purpose: multi, merchantDomain: "amazon.de", itemRefs: "b08xyz1234,B0/../EVIL,B08XYZ12345")!
+        XCTAssertTrue((0..<3).allSatisfy { r.productURL(at: $0) == nil })
+        XCTAssertTrue(AmazonOrderRef.isASIN("B08XYZ1234"))
+        XCTAssertFalse(AmazonOrderRef.isASIN("B08XYZ123"))
+    }
+
+    func testRefundsAndItemlessOrdersHaveNoItemLinks() {
+        let refund = AmazonOrderRef.parse(purpose: "Erstattung für Bestellung 028-1234567-7654321", merchantDomain: "amazon.de", itemRefs: "B08XYZ1234")!
+        XCTAssertNil(refund.productURL(at: 0))
+    }
 }

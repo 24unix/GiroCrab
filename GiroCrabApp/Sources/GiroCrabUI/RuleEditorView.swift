@@ -196,8 +196,12 @@ struct RuleForm: View {
                     .pickerStyle(.segmented)
                     Picker("Konto", selection: $rule.accountId) {
                         Text("Alle Konten").tag(Int64?.none)
-                        ForEach(model.allAccounts) { a in
-                            Text("\(a.bankName) – \(a.name)").tag(Int64?.some(a.id))
+                        ForEach(model.accountMenuSections) { section in
+                            Section(section.title) {
+                                ForEach(section.accounts) { a in
+                                    Text("\(a.bankName) – \(a.name)").tag(Int64?.some(a.id))
+                                }
+                            }
                         }
                     }
                 } header: { Text("Betrag").appSectionHeader() }

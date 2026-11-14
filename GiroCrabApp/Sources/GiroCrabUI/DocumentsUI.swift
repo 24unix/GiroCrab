@@ -219,8 +219,13 @@ struct DocumentsView: View {
                         Picker("Konto", selection: $model.documentsAccountFilter) {
                             Text("Alle Konten").tag(Int64?.none)
                             Divider()
-                            ForEach(model.allAccounts) { a in
-                                Label(a.name, systemImage: a.sfSymbol).tag(Int64?.some(a.id))
+                            // same order and groups as the sidebar (#412)
+                            ForEach(model.accountMenuSections) { section in
+                                Section(section.title) {
+                                    ForEach(section.accounts) { a in
+                                        Label(a.name, systemImage: a.sfSymbol).tag(Int64?.some(a.id))
+                                    }
+                                }
                             }
                         }
                         .pickerStyle(.menu)

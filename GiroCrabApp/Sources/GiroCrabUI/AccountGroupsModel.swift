@@ -568,3 +568,37 @@ extension AppModel {
         do { try body() } catch { errorMessage = describe(error) }
     }
 }
+
+/// One section of an account menu (e.g. the Belege filter, #412): the
+/// accounts of a sidebar group in sidebar order.
+struct AccountMenuSection: Identifiable {
+    var id: String
+    /// Group name; subgroups carry their path ("Familie › Kinder") because a
+    /// menu cannot indent its entries.
+    var title: String
+    var accounts: [Account]
+}
+
+extension AppModel {
+    /// All accounts grouped and ordered exactly like the sidebar shows them
+    /// in the current `accountView` (by group, bank or kind). Empty sections
+    /// are dropped.
+    var accountMenuSections: [AccountMenuSection] {
+        let sections: [AccountMenuSection]
+        switch accountView {
+        case .byKind:
+            sections = groups.map { AccountMenuSection(id: "k\($0.id)", title: $0.name, accounts: $0.accounts) }
+        case .byBank:
+            sections = bankGroups.map { AccountMenuSection(id: "b" + $0.id, title: $0.name, accounts: $0.accounts) }
+        case .byGroup:
+            // a flattened tree: subgroups follow their group with a greater depth
+            var path: [String] = []
+            sections = userGroups.map { g in
+                path = Array(path.prefix(Int(g.depth)))
+                path.append(g.name)
+                return AccountMenuSection(id: "g" + g.uuid, title: path.joined(separator: " › "), accounts: g.accounts)
+            }
+        }
+        return sections.filter { !$0.accounts.isEmpty }
+    }
+}

@@ -39,6 +39,7 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 - Before every push run `cargo fmt --all`: CI fails on `cargo fmt --check` and then skips the Swift job. Enable the hook once: `git config core.hooksPath .githooks`.
 - Always pass `-q`/`--quiet` to `cargo check`, `cargo test`, `xcodebuild`. If output is still long, pipe through `tail -n 40`.
 - Before pushing a PR (also Swift-only ones; CI runs these on every PR): `cargo fmt --all -- --check` and `cargo clippy -q --workspace --all-targets -- -D warnings`. After pushing, check `gh pr checks`.
+- Every `uniffi::Record` / `uniffi::Enum` in `girocrab-core` carries `#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]` right below its `#[derive(…)]` (front ends without UniFFI, e.g. Linux, exchange JSON). `scripts/lint-serde-feature.sh` checks it (CI) and `cargo check -q -p girocrab-core --features serde` must build; run both before pushing Rust changes.
 
 ## Don't read into context
 - Generated bindings: `generated/**/girocrab_core.swift` (6k lines), the xcframework, `target/`, `.build/`.

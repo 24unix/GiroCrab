@@ -48,31 +48,16 @@ fn lower_contains(b: &Booking, needles: &[&str]) -> bool {
 impl Vault {
     /// "Händler-Historie": how often and how much at this merchant.
     pub fn merchant_stats(&self, merchant_key: String) -> Result<MerchantStats, CoreError> {
-        let page = self.list_transactions(BookingFilter {
-            merchant_key: Some(merchant_key.clone()),
-            ..Default::default()
-        })?;
-        let txs = page.transactions;
-        let count = txs.len() as u32;
-        let total: i64 = txs.iter().map(|t| t.amount_cents).sum();
-        Ok(MerchantStats {
-            name: txs
-                .first()
-                .map(|t| t.merchant.name.clone())
-                .unwrap_or_default(),
-            key: merchant_key,
-            count,
-            total_cents: total,
-            average_cents: if count > 0 { total / count as i64 } else { 0 },
-            first_date: txs
-                .last()
-                .map(|t| t.booking_date.clone())
-                .unwrap_or_default(),
-            last_date: txs
-                .first()
-                .map(|t| t.booking_date.clone())
-                .unwrap_or_default(),
-        })
+        self.merchant_stats_for(merchant_key, Vec::new())
+    }
+
+    /// The same history restricted to one account (#299), next to the total.
+    pub fn merchant_stats_in_account(
+        &self,
+        merchant_key: String,
+        account_id: i64,
+    ) -> Result<MerchantStats, CoreError> {
+        self.merchant_stats_for(merchant_key, vec![account_id])
     }
 
     /// KPI tiles for the selected accounts (empty = all) and period. Sums in the
@@ -277,6 +262,42 @@ impl Vault {
     }
 }
 
+impl Vault {
+    /// `account_ids` empty = all accounts.
+    fn merchant_stats_for(
+        &self,
+        merchant_key: String,
+        account_ids: Vec<i64>,
+    ) -> Result<MerchantStats, CoreError> {
+        let page = self.list_transactions(BookingFilter {
+            merchant_key: Some(merchant_key.clone()),
+            account_ids,
+            ..Default::default()
+        })?;
+        let txs = page.transactions;
+        let count = txs.len() as u32;
+        let total: i64 = txs.iter().map(|t| t.amount_cents).sum();
+        Ok(MerchantStats {
+            name: txs
+                .first()
+                .map(|t| t.merchant.name.clone())
+                .unwrap_or_default(),
+            key: merchant_key,
+            count,
+            total_cents: total,
+            average_cents: if count > 0 { total / count as i64 } else { 0 },
+            first_date: txs
+                .last()
+                .map(|t| t.booking_date.clone())
+                .unwrap_or_default(),
+            last_date: txs
+                .first()
+                .map(|t| t.booking_date.clone())
+                .unwrap_or_default(),
+        })
+    }
+}
+
 fn normalize_logo_provider(raw: Option<&str>) -> &'static str {
     match raw.map(|v| v.trim().to_lowercase()).as_deref() {
         Some("duckduckgo") => "duckduckgo",
@@ -439,6 +460,38 @@ mod logo_tests {
         v.set_setting("merchants.online_logos".into(), "0".into())
             .unwrap();
         assert_eq!(v.online_logo_provider().unwrap(), "off");
+    }
+
+    #[test]
+    fn merchant_stats_in_account_splits_the_total() {
+        let p_dir = crate::test_support::TempDir::new("girocrab-mstats");
+        let p = p_dir.join("v.db");
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let all = v
+            .list_transactions(BookingFilter::default())
+            .unwrap()
+            .transactions;
+        let key = all[0].merchant.key.clone();
+        let total = v.merchant_stats(key.clone()).unwrap();
+        let mut accounts: Vec<i64> = all
+            .iter()
+            .filter(|t| t.merchant.key == key)
+            .map(|t| t.account_id)
+            .collect();
+        accounts.sort_unstable();
+        accounts.dedup();
+        let (mut count, mut sum) = (0, 0);
+        for id in &accounts {
+            let s = v.merchant_stats_in_account(key.clone(), *id).unwrap();
+            assert!(s.count >= 1 && s.count <= total.count);
+            count += s.count;
+            sum += s.total_cents;
+        }
+        assert_eq!((count, sum), (total.count, total.total_cents));
+        // an account without bookings of the merchant: empty history
+        let none = v.merchant_stats_in_account(key, -1).unwrap();
+        assert_eq!((none.count, none.total_cents), (0, 0));
     }
 
     #[test]

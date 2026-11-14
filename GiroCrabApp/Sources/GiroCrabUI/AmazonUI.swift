@@ -68,7 +68,10 @@ private enum AmazonScripts {
       const grid = it.closest(".a-fixed-left-grid-inner");
       const q = txt((grid && grid.querySelector(".od-item-view-qty")) || it.querySelector('[data-component="quantity"]'));
       const qm = /\\d+/.exec(q);
-      if (title) items.push({title: title, qty: qm ? parseInt(qm[0], 10) : 1});
+      // product link of the title (".../dp/<ASIN>"): kept apart from the title text (#354)
+      const link = it.querySelector('a[href*="/dp/"]') || (grid || it).querySelector('a[href*="/dp/"]');
+      const am = link ? /\\/dp\\/([A-Z0-9]{10})(?:[/?#]|$)/.exec(link.getAttribute("href") || "") : null;
+      if (title) items.push({title: title, qty: qm ? parseInt(qm[0], 10) : 1, asin: am ? am[1] : ""});
     });
     const rows = [];
     root.querySelectorAll(".od-line-item-row").forEach(function(row) {

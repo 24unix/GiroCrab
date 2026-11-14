@@ -17,6 +17,8 @@
 //! - 13: Sachwerte (#87): items, dated quantities and values, metal prices.
 //! - 14: securities transactions (#314): table `security_transactions`, extra
 //!   position fields on `holdings` (previous day, profit/loss, custody type).
+//! - 15: item references on bookings (#354): `transactions.item_refs`, the
+//!   product ids (ASIN) of an Amazon order, one entry per item.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -47,6 +49,7 @@ const STEPS: &[Step] = &[
     Step::Hook(sepa_refs),             // 12
     Step::Hook(tangible_assets),       // 13
     Step::Hook(security_transactions), // 14
+    Step::Hook(item_refs),             // 15
 ];
 
 /// Step 14 (#314): securities transactions (buy, sell, dividend, fee, tax …)
@@ -55,6 +58,18 @@ const STEPS: &[Step] = &[
 /// `cash_transaction_id` is the matching cash booking on a settlement account
 /// (local id, set by `link_cash_bookings`, not merged). Also the position
 /// fields the banks report besides the stock. Idempotent like the steps above.
+/// Step 15 (#354): product ids of an order's items (Amazon ASIN), comma
+/// separated, one entry per item in purpose order ("" entry = unknown).
+/// "" = none. Idempotent like [`sepa_refs`].
+fn item_refs(conn: &Connection) -> CoreResult<()> {
+    if !has_column(conn, "transactions", "item_refs")? {
+        conn.execute_batch(
+            "ALTER TABLE transactions ADD COLUMN item_refs TEXT NOT NULL DEFAULT '';",
+        )?;
+    }
+    Ok(())
+}
+
 fn security_transactions(conn: &Connection) -> CoreResult<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS security_transactions (
@@ -558,7 +573,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 14);
+        assert_eq!(SCHEMA_VERSION, 15);
     }
 
     #[test]

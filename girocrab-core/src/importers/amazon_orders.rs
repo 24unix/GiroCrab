@@ -53,6 +53,9 @@ pub struct Item {
     pub title: String,
     #[serde(default)]
     pub qty: Option<u32>,
+    /// Product id from the item's `/dp/<ASIN>` link (#354); "" = no link.
+    #[serde(default)]
+    pub asin: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -73,6 +76,8 @@ pub struct Booking {
     pub cents: i64,
     pub purpose: String,
     pub text: &'static str,
+    /// ASINs of the purpose's items, comma separated, same order ("" = unknown).
+    pub item_refs: String,
 }
 
 const MONTHS: [(&str, u32); 21] = [
@@ -179,6 +184,36 @@ fn total_cents(o: &Order) -> Option<i64> {
         })
 }
 
+/// ASINs of the items that appear in the purpose (same filter, same order),
+/// comma separated; "" if none is known. Only plain ASINs are kept.
+fn item_refs(o: &Order) -> String {
+    let refs: Vec<&str> = o
+        .items
+        .iter()
+        .filter(|i| !i.title.trim().is_empty())
+        .map(|i| {
+            let a = i.asin.trim();
+            if is_asin(a) {
+                a
+            } else {
+                ""
+            }
+        })
+        .collect();
+    if refs.iter().all(|a| a.is_empty()) {
+        String::new()
+    } else {
+        refs.join(",")
+    }
+}
+
+/// An ASIN is 10 upper-case letters / digits (ISBN-10 products included).
+pub fn is_asin(s: &str) -> bool {
+    s.len() == 10
+        && s.bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+}
+
 fn purpose(o: &Order) -> String {
     let items: Vec<String> = o
         .items
@@ -219,6 +254,7 @@ pub fn bookings(orders: &[Order]) -> Vec<Booking> {
                 cents: -total,
                 purpose: purpose.clone(),
                 text: "Amazon-Bestellung",
+                item_refs: item_refs(o),
             });
         }
         for (i, r) in o
@@ -234,6 +270,7 @@ pub fn bookings(orders: &[Order]) -> Vec<Booking> {
                     cents: c,
                     purpose: format!("Erstattung für Bestellung {code}"),
                     text: "Amazon-Erstattung",
+                    item_refs: String::new(),
                 });
             }
         }
@@ -256,6 +293,7 @@ fn to_fetch(connection_id: i64, name: &str, bookings: Vec<Booking>) -> FetchResu
             counterparty_iban: String::new(),
             purpose: b.purpose,
             booking_text: b.text.into(),
+            item_refs: b.item_refs,
             ..Default::default()
         })
         .collect();
@@ -497,6 +535,76 @@ mod tests {
     }
 
     #[test]
+    fn item_refs_follow_the_purpose_items() {
+        let o = order(
+            r#"{"code":"302-1","date":"1. Mai 2025","items":[
+                {"title":"USB-Kabel","qty":2,"asin":"B08XYZ1234"},
+                {"title":"  "},
+                {"title":"Buch"},
+                {"title":"Stuhl","asin":"nicht gültig"},
+                {"title":"Lampe","asin":"3453146883"}],
+              "rows":[{"label":"Gesamtsumme","value":"9,00 €","bold":true}]}"#,
+        );
+        let b = &bookings(&[o])[0];
+        // one entry per purpose item (the blank title is skipped), "" = unknown
+        assert_eq!(
+            b.purpose,
+            "2× USB-Kabel; Buch; Stuhl; Lampe – Bestellung 302-1"
+        );
+        assert_eq!(b.item_refs, "B08XYZ1234,,,3453146883");
+        // the purpose stays free of product ids
+        assert!(!b.purpose.contains("B08XYZ1234"));
+        // no ASIN at all: nothing stored
+        let none = order(
+            r#"{"code":"302-2","date":"1. Mai 2025","items":[{"title":"Buch"}],
+                "rows":[{"label":"Gesamtsumme","value":"9,00 €","bold":true}]}"#,
+        );
+        assert_eq!(bookings(&[none])[0].item_refs, "");
+        assert!(is_asin("B0ABCDEFGH") && !is_asin("b0abcdefgh") && !is_asin("B0ABC"));
+    }
+
+    #[test]
+    fn reimport_stores_item_refs_on_the_booking() {
+        let p_dir = crate::test_support::TempDir::new("girocrab-amazon-asin");
+        let p = p_dir.join("v.db");
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![8u8; 32]).unwrap();
+        let conn = v
+            .add_bank_connection(
+                ConnectorKind::AmazonOrders,
+                "Amazon Bestellungen".into(),
+                String::new(),
+            )
+            .unwrap();
+        let rows = r#""rows":[{"label":"Grand Total:","value":"€12.00","bold":true}]"#;
+        let refs = |v: &Arc<Vault>| -> Vec<String> {
+            v.list_transactions(Default::default())
+                .unwrap()
+                .transactions
+                .into_iter()
+                .map(|t| t.item_refs)
+                .collect()
+        };
+        // imported before product ids were captured
+        let old = format!(
+            r#"{{"orders":[{{"code":"302-1","date":"February 14, 2026","items":[{{"title":"Kabel"}}],{rows}}}]}}"#
+        );
+        Arc::clone(&v).import_amazon_orders(conn, old).unwrap();
+        assert_eq!(refs(&v), vec![String::new()]);
+        let new = format!(
+            r#"{{"orders":[{{"code":"302-1","date":"February 14, 2026","items":[{{"title":"Kabel","asin":"B08XYZ1234"}}],{rows}}}]}}"#
+        );
+        Arc::clone(&v)
+            .import_amazon_orders(conn, new.clone())
+            .unwrap();
+        assert_eq!(refs(&v), vec!["B08XYZ1234".to_string()]);
+        // a later import never replaces a stored value
+        let other = new.replace("B08XYZ1234", "B0OTHER123");
+        Arc::clone(&v).import_amazon_orders(conn, other).unwrap();
+        assert_eq!(refs(&v), vec!["B08XYZ1234".to_string()]);
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
     fn reimport_corrects_wrong_stored_total() {
         let p_dir = crate::test_support::TempDir::new("girocrab-amazon");
         let p = p_dir.join("v.db");
@@ -515,6 +623,7 @@ mod tests {
             cents: -132,
             purpose: "iPhone".into(),
             text: "Amazon-Bestellung",
+            item_refs: String::new(),
         }];
         store_fetch(
             &v,

@@ -286,8 +286,10 @@ extension AppModel {
             matchKind: .keyword,
             pattern: booking.map { $0.merchant.known ? $0.merchant.name : $0.counterparty.split(separator: " ").prefix(2).joined(separator: " ") } ?? "",
             caseSensitive: false,
-            minAmountCents: nil,
-            maxAmountCents: booking.map { $0.amountCents < 0 ? 0 : nil } ?? nil,
+            // Direction follows the booking (#295): a rule made from an income
+            // must not also categorise the outgoing transfers to the same payee.
+            minAmountCents: booking.flatMap { $0.amountCents > 0 ? 1 : nil },
+            maxAmountCents: booking.flatMap { $0.amountCents < 0 ? 0 : nil },
             accountId: nil,
             priority: Int32((rules.map(\.priority).max() ?? 0) + 10),
             enabled: true,

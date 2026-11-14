@@ -397,7 +397,7 @@ impl Vault {
                     t.counterparty_iban, t.purpose, t.booking_text, cat.id, t.category_source, r.id, t.checked, a.kind,
                     (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note,
                     t.purpose_code, t.gvc, t.salary_flag, {share_sql},
-                    (t.external_id LIKE 'pending-%')
+                    (t.external_id LIKE 'pending-%'), t.item_refs
              {from_sql} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC"
         );
         let mut stmt = db.prepare(&sql)?;
@@ -448,6 +448,7 @@ impl Vault {
                     is_salary: false,
                     recurrence_key: String::new(),
                     is_pending: r.get::<_, i64>(22)? != 0,
+                    item_refs: r.get(23)?,
                 },
             ))
         })?;

@@ -359,6 +359,9 @@ pub struct RemoteTransaction {
     pub mandate_id: String,
     /// SEPA creditor identifier (Gläubiger-ID) of a direct debit; "" = unknown.
     pub creditor_id: String,
+    /// Product ids (ASIN) of an order's items, comma separated, one entry per
+    /// item in purpose order; "" = none (#354).
+    pub item_refs: String,
 }
 
 impl RemoteTransaction {

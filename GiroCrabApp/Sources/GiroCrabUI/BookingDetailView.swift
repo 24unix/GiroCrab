@@ -105,16 +105,29 @@ struct ReceiptCard: View {
             }
             .appFont(.caption)
             .foregroundStyle(Theme.secondary)
-            if let ref = AmazonOrderRef.parse(purpose: booking.purpose, merchantDomain: booking.merchantDomain, bookingText: booking.bookingText), !ref.itemList.isEmpty {
-                // Amazon order: one item per line instead of the ";" purpose run
+            if let ref = AmazonOrderRef.parse(purpose: booking.purpose, merchantDomain: booking.merchantDomain, bookingText: booking.bookingText, itemRefs: booking.itemRefs), !ref.itemList.isEmpty {
+                // Amazon order: one item per line instead of the ";" purpose run;
+                // an item with a stored ASIN opens its product page (#354)
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(ref.itemList, id: \.self) { item in
-                        Text(item)
+                    ForEach(Array(ref.itemList.enumerated()), id: \.offset) { index, item in
+                        if let url = ref.productURL(at: index) {
+                            Link(destination: url) {
+                                Text(item)
+                                    .appFont(.callout)
+                                    .foregroundStyle(Theme.accent)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                             .sensitive()
-                            .appFont(.callout)
-                            .foregroundStyle(Theme.text)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .help("Produkt auf \(ref.domain) öffnen")
+                        } else {
+                            Text(item)
+                                .sensitive()
+                                .appFont(.callout)
+                                .foregroundStyle(Theme.text)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
             } else if !booking.cleanPurpose.isEmpty {
@@ -335,14 +348,14 @@ struct MerchantHistoryCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Händler-Historie").appFont(.subheadline, weight: .semibold)
             if let s = model.merchantStats, s.key == booking.merchant.key {
-                HStack(spacing: 10) {
-                    stat("Buchungen", "\(s.count)×")
-                    stat("Summe", Money.format(s.totalCents), sensitive: true)
-                    stat("Ø Betrag", Money.format(s.averageCents), sensitive: true)
-                }
-                if !s.firstDate.isEmpty {
-                    Text("Seit \(DateText.medium(s.firstDate)) · zuletzt \(DateText.medium(s.lastDate))")
-                        .appFont(.caption2).foregroundStyle(Theme.tertiary)
+                // The merchant also occurs on other accounts (#299): show the
+                // total and the booking's own account side by side.
+                if let own = model.merchantAccountStats, own.accountId == booking.accountId,
+                   own.stats.key == s.key, own.stats.count < s.count {
+                    statsRow(label: "Alle Konten", s)
+                    statsRow(label: "Dieses Konto", accountName: booking.accountName, own.stats)
+                } else {
+                    statsRow(label: nil, s)
                 }
             }
             if !booking.merchant.isin.isEmpty || !booking.merchant.assetClass.isEmpty {
@@ -356,6 +369,27 @@ struct MerchantHistoryCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
+    }
+
+    private func statsRow(label: LocalizedStringKey?, accountName: String? = nil, _ s: MerchantStats) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let label {
+                HStack(spacing: 4) {
+                    Text(label)
+                    if let accountName { Text("·"); Text(accountName).sensitive(.personal) }
+                }
+                .appFont(.caption, weight: .medium).foregroundStyle(Theme.secondary).lineLimit(1)
+            }
+            HStack(spacing: 10) {
+                stat("Buchungen", "\(s.count)×")
+                stat("Summe", Money.format(s.totalCents), sensitive: true)
+                stat("Ø Betrag", Money.format(s.averageCents), sensitive: true)
+            }
+            if !s.firstDate.isEmpty {
+                Text("Seit \(DateText.medium(s.firstDate)) · zuletzt \(DateText.medium(s.lastDate))")
+                    .appFont(.caption2).foregroundStyle(Theme.tertiary)
+            }
+        }
     }
 
     private func stat(_ title: LocalizedStringKey, _ value: String, sensitive: Bool = false) -> some View {
