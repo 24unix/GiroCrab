@@ -27,6 +27,12 @@ enum Theme {
     static let outflow = Color(light: "#0F172A", dark: "#F1F5F9")
     static let inflow = Color(light: "#059669", dark: "#34D399")
     static let inflowBadge = Color(light: "#ECFDF5", dark: "#064E3B")
+    /// Order-account charge colour: the red counterpart of `inflow`, paired
+    /// with `outflowBadge` so badged charges and refunds read symmetrically.
+    static let charge = Color(light: "#DC2626", dark: "#F87171")
+    /// Red counterpart of `inflowBadge`, so the order-account rows can badge
+    /// charges and refunds symmetrically (colour = direction, no sign).
+    static let outflowBadge = Color(light: "#FEF2F2", dark: "#7F1D1D")
     /// The app accent colour (HIG › Color › App accent colors): GiroCrab blue,
     /// defined as `AccentColor` in the asset catalog, so buttons, toggles and
     /// focus rings use it too. With the system default "Multicolour" everyone
