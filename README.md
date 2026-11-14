@@ -184,6 +184,9 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | American Express / Amazon Visa | PSD2 via Enable Banking | ✅ Unterstützt |
 | ING, N26, Scalable Capital, Consorsbank, Santander | – | 🙋 **Help Wanted** |
 
+<!-- sync:connectors:start -->
+<!-- sync:connectors:end -->
+
 quirion: Einrichtung, technische Details und geprüfter Umfang stehen in [docs/quirion-connector.md](docs/quirion-connector.md).
 
 Eine neue Bank anzubinden dauert meist unter 100 Zeilen: siehe
@@ -368,6 +371,9 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | Trade Republic | WebSocket (unofficial) | ⚠️ Supported, may break |
 | American Express / Amazon Visa | PSD2 via Enable Banking | ✅ Supported |
 | ING, N26, Scalable Capital, Consorsbank, Santander | – | 🙋 **Help wanted** |
+
+<!-- sync:connectors:start -->
+<!-- sync:connectors:end -->
 
 Adding a bank usually takes under 100 lines – start from
 [`connectors/template.rs`](girocrab-core/src/connectors/template.rs) and read [CONTRIBUTING.md](CONTRIBUTING.md).

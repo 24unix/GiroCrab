@@ -7,6 +7,11 @@ name: Nightly
 
 on:
   workflow_dispatch:
+    inputs:
+      sync_docs_and_website:
+        description: "Sync README (PR) and girocrab.de with the latest stable release"
+        type: boolean
+        default: true
   schedule:
     - cron: "0 3 * * *"
 
@@ -42,3 +47,24 @@ jobs:
           name: GiroCrab-macOS-arm64-nightly
           path: dist/GiroCrab-macOS-arm64.zip
           retention-days: 14
+
+  sync-docs-website:
+    # Idempotent: no diff => nothing happens. Manual runs can opt out via the input.
+    if: github.event_name == 'schedule' || inputs.sync_docs_and_website
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.WEBSITE_DEPLOY_TOKEN || github.token }}
+      WEBSITE_DEPLOY_TOKEN: ${{ secrets.WEBSITE_DEPLOY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Configure git push auth
+        run: git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+      - name: Sync README and girocrab.de (latest stable release)
+        run: scripts/sync-docs-and-website.sh --push

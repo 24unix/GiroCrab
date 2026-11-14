@@ -81,6 +81,7 @@ whenever `README.md`, `docs/screenshots/**`, `docs/assets/**` or a release chang
 - Marketing screenshots: `--screenshot` hides the demo banners; re-shoot, then copy to `../girocrab.de/img/screenshots/`.
 - Never remove from `../girocrab.de/index.html` the support section `#unterstuetzen` ("☕ Projekt unterstützen (Freiwillige Zuwendung)", paypal.me/aprinz) and its `THIRD_PARTY_NOTICES.md` link; keep it above the footer on every sync.
 - Social preview: `og:image`/`twitter:image` use the square `og-logo-v2.png` (512×512, from `icon-1024.png`; `twitter:card=summary`). Regenerate it when the icon changes.
+- Automated: `scripts/sync-docs-and-website.sh` (`--dry-run` / `--push`) syncs version strings and the `<!-- sync:connectors -->` blocks (from `catalog.rs`) in README + site; runs from `release.yml` (on publish) and `nightly.yml` (needs secret `WEBSITE_DEPLOY_TOKEN`, see `docs/docs-website-sync.md`). Prose, screenshots and "Neu in v…" stay manual.
 - Commit + push both repos in the same session. `scripts/notarize.sh` warns if the site lacks the new version.
 
 ## Third-party notices (dependencies)

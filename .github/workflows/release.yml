@@ -13,12 +13,17 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Fired when the maintainer publishes the (locally notarized) release: sync README + website.
+  release:
+    types: [published]
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   draft-release:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,3 +34,21 @@ jobs:
         with:
           draft: true
           generate_release_notes: true
+
+  sync-docs-website:
+    # Stable releases only. README goes through a PR (main is protected); the website is pushed to
+    # GiroCrab/girocrab.de with WEBSITE_DEPLOY_TOKEN (docs/docs-website-sync.md). No token => website skipped.
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.WEBSITE_DEPLOY_TOKEN || github.token }}
+      WEBSITE_DEPLOY_TOKEN: ${{ secrets.WEBSITE_DEPLOY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Configure git push auth
+        run: git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+      - name: Sync README and girocrab.de
+        run: scripts/sync-docs-and-website.sh --push --version "${{ github.event.release.tag_name }}"

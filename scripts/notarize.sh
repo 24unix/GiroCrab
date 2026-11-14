@@ -610,4 +610,10 @@ if [ "$BUILD_IOS" -eq 1 ]; then
   echo "    git commit -m \"chore: bump iOS build number to ${NEXT_BUILD}\" -- \"$PBXPROJ\" && git push"
 fi
 
+if [ -n "$UPLOAD_TAG" ] && [[ "$UPLOAD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo ""
+  echo "==> README + girocrab.de: the 'Release' workflow syncs them when the release is published (needs WEBSITE_DEPLOY_TOKEN)."
+  echo "    Locally / if the workflow was skipped: ./scripts/sync-docs-and-website.sh --push --version $UPLOAD_TAG"
+fi
+
 echo "==> Done"
