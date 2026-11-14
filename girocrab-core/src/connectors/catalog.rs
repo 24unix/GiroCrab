@@ -186,6 +186,266 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
     }
 }
 
+// ------------------------------------------------------------------ capability matrix
+
+/// How GiroCrab talks to an institution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Interface {
+    /// `FinTS 3.0`
+    Fints,
+    /// `REST-API` (official bank/provider API)
+    RestApi,
+    /// `Enable Banking (PSD2)`
+    EnableBanking,
+    /// `Web-Portal` (embedded browser login, internal portal API)
+    WebPortal,
+}
+
+/// What a connector can read or do. Only list what is implemented today.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Capability {
+    /// Booked transactions.
+    Transactions,
+    /// Account balances.
+    Balances,
+    /// Depot / securities positions.
+    Securities,
+    /// SEPA credit transfers (incl. SEPA Instant where the bank offers it).
+    Transfers,
+    /// Standing orders (not implemented by any connector yet).
+    StandingOrders,
+    /// PDF statements / post box documents.
+    Documents,
+}
+
+/// Test status of a catalog entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    /// Verified with real accounts.
+    Verified,
+    /// Implemented; feedback from real accounts wanted.
+    TestingWanted,
+    /// Works with known limitations (see `issues`).
+    Limited,
+}
+
+/// One row of the public bank matrix (README, girocrab.de). Parsed by
+/// `scripts/sync_docs.py`: keep the field order and literal style.
+#[derive(Debug, Clone, Copy)]
+pub struct MatrixEntry {
+    pub name: &'static str,
+    /// The connector behind this row; `None` for presets of a generic connector.
+    pub kind: Option<ConnectorKind>,
+    pub interface: Interface,
+    pub capabilities: &'static [Capability],
+    pub status: Status,
+    /// GitHub issue numbers (feedback wanted / known limitation).
+    pub issues: &'static [u32],
+}
+
+/// Curated institutions only (not the full FinTS directory). Bank-dependent
+/// FinTS functions (securities, PDF statements) are offered where the bank's
+/// BPD advertises them.
+pub const BANK_MATRIX: &[MatrixEntry] = &[
+    MatrixEntry {
+        name: "Volksbank Kassel Göttingen",
+        kind: Some(ConnectorKind::VolksbankKasselGoettingen),
+        interface: Interface::Fints,
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Securities,
+            Capability::Transfers,
+            Capability::Documents,
+        ],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "1822direkt",
+        kind: Some(ConnectorKind::Direkt1822),
+        interface: Interface::Fints,
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Securities,
+            Capability::Transfers,
+            Capability::Documents,
+        ],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "FinTS-Bank (BLZ + URL)",
+        kind: Some(ConnectorKind::FinTsGeneric),
+        interface: Interface::Fints,
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Securities,
+            Capability::Transfers,
+            Capability::Documents,
+        ],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "ING",
+        kind: None,
+        interface: Interface::Fints,
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::TestingWanted,
+        issues: &[313],
+    },
+    MatrixEntry {
+        name: "Consorsbank",
+        kind: None,
+        interface: Interface::Fints,
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Securities,
+        ],
+        status: Status::TestingWanted,
+        issues: &[45],
+    },
+    MatrixEntry {
+        name: "comdirect",
+        kind: Some(ConnectorKind::Comdirect),
+        interface: Interface::RestApi,
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Securities,
+            Capability::Documents,
+        ],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "bunq",
+        kind: Some(ConnectorKind::Bunq),
+        interface: Interface::RestApi,
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Transfers,
+            Capability::Documents,
+        ],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "PayPal",
+        kind: Some(ConnectorKind::PayPal),
+        interface: Interface::RestApi,
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Limited,
+        issues: &[156],
+    },
+    MatrixEntry {
+        name: "Interactive Brokers (IBKR)",
+        kind: Some(ConnectorKind::Ibkr),
+        interface: Interface::RestApi,
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Securities,
+        ],
+        status: Status::TestingWanted,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "Scalable Capital",
+        kind: Some(ConnectorKind::ScalableCapital),
+        interface: Interface::RestApi,
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Securities,
+        ],
+        status: Status::TestingWanted,
+        issues: &[45],
+    },
+    MatrixEntry {
+        name: "Bank per PSD2 (Enable Banking)",
+        kind: Some(ConnectorKind::EnableBanking),
+        interface: Interface::EnableBanking,
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Limited,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "Revolut",
+        kind: None,
+        interface: Interface::EnableBanking,
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::TestingWanted,
+        issues: &[289],
+    },
+    MatrixEntry {
+        name: "American Express",
+        kind: Some(ConnectorKind::AmericanExpress),
+        interface: Interface::EnableBanking,
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "Amazon Visa",
+        kind: Some(ConnectorKind::AmazonVisa),
+        interface: Interface::EnableBanking,
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "Trade Republic",
+        kind: Some(ConnectorKind::TradeRepublic),
+        interface: Interface::WebPortal,
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Documents,
+        ],
+        status: Status::Limited,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "quirion",
+        kind: Some(ConnectorKind::Quirion),
+        interface: Interface::WebPortal,
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Securities,
+            Capability::Documents,
+        ],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "FNZ Bank",
+        kind: Some(ConnectorKind::Fnz),
+        interface: Interface::WebPortal,
+        capabilities: &[
+            Capability::Balances,
+            Capability::Securities,
+            Capability::Documents,
+        ],
+        status: Status::TestingWanted,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "Amazon Bestellungen",
+        kind: Some(ConnectorKind::AmazonOrders),
+        interface: Interface::WebPortal,
+        capabilities: &[Capability::Transactions],
+        status: Status::TestingWanted,
+        issues: &[],
+    },
+];
+
 pub fn make_connector(kind: ConnectorKind, demo: bool) -> Box<dyn BankConnector> {
     make_connector_for(kind, kind.as_str(), demo)
 }
@@ -228,6 +488,74 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
             Box::new(enable_banking::EnableBankingConnector::for_aspsp(
                 aspsp, country,
             ))
+        }
+    }
+}
+
+#[cfg(test)]
+mod matrix_tests {
+    use super::*;
+
+    #[test]
+    fn every_connector_kind_has_a_matrix_row() {
+        for kind in ConnectorKind::all() {
+            assert!(
+                BANK_MATRIX.iter().any(|e| e.kind == Some(kind)),
+                "no BANK_MATRIX entry for {kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn kinds_are_listed_once() {
+        for (i, a) in BANK_MATRIX.iter().enumerate() {
+            assert!(!a.name.trim().is_empty());
+            if a.kind.is_some() {
+                let dups = BANK_MATRIX[i + 1..].iter().filter(|b| b.kind == a.kind);
+                assert_eq!(dups.count(), 0, "duplicate kind for {}", a.name);
+            }
+            let same_name = BANK_MATRIX[i + 1..].iter().filter(|b| b.name == a.name);
+            assert_eq!(same_name.count(), 0, "duplicate name {}", a.name);
+        }
+    }
+
+    #[test]
+    fn capabilities_are_non_empty_and_unique() {
+        for e in BANK_MATRIX {
+            assert!(!e.capabilities.is_empty(), "{} has no capabilities", e.name);
+            for (i, c) in e.capabilities.iter().enumerate() {
+                assert!(
+                    !e.capabilities[i + 1..].contains(c),
+                    "{} lists {c:?} twice",
+                    e.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn open_test_needs_and_limits_point_to_issues() {
+        for name in ["ING", "Consorsbank", "Revolut", "PayPal"] {
+            let e = BANK_MATRIX.iter().find(|e| e.name == name).expect(name);
+            assert_ne!(e.status, Status::Verified, "{name}");
+            assert!(!e.issues.is_empty(), "{name} needs a tracking issue");
+        }
+        for e in BANK_MATRIX.iter().filter(|e| e.status == Status::Verified) {
+            assert!(e.issues.is_empty(), "{} is verified but has issues", e.name);
+        }
+    }
+
+    #[test]
+    fn interface_matches_protocol_of_catalog_entry() {
+        for e in BANK_MATRIX {
+            let Some(kind) = e.kind else { continue };
+            let proto = descriptor(kind).protocol;
+            assert_eq!(
+                proto.starts_with("FinTS"),
+                e.interface == Interface::Fints,
+                "{}: interface vs protocol {proto:?}",
+                e.name
+            );
         }
     }
 }

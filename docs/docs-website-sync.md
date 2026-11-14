@@ -8,9 +8,11 @@ stehen in `scripts/sync_docs.py` (Tests: `python3 -m unittest scripts/test_sync_
 - Versionsangaben: Download-Button (`docs/assets/download-macos.svg` bzw. `img/download-macos.svg` + Alt-Text),
   „✓ Version vX“, „Aktuelle Version / Current version“, Meta-Description der Website.
 - Der Block zwischen `<!-- sync:connectors:start -->` und `<!-- sync:connectors:end -->` (README DE + EN,
-  Website-FAQ): direkte Konnektoren aus `catalog.rs` (alles außer FinTS-Einträgen) und Anzahl der Institute in
-  `girocrab-core/data/fints_directory.tsv`.
-- Alles andere (Prosa, Statustabelle, Screenshots, „Neu in v…“) bleibt Handarbeit.
+  Website `#banken`): die Banken- und Funktionsmatrix aus `BANK_MATRIX` in `catalog.rs` (Schnittstelle, Funktionsumfang,
+  Teststatus ✅ verifiziert / 🧪 Test gesucht / ⚠️ mit Einschränkungen, Issue-Links) plus Anzahl der Institute in
+  `girocrab-core/data/fints_directory.tsv`. Neue oder geänderte Banken also in `BANK_MATRIX` pflegen (ein Test
+  erzwingt eine Zeile pro `ConnectorKind`); die Website-Tabelle braucht kein JS und keine Inline-Styles (CSP).
+- Alles andere (Prosa, Screenshots, „Neu in v…“) bleibt Handarbeit.
 
 ## Aufruf
 ```bash

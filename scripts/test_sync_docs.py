@@ -9,17 +9,67 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sync_docs as sd  # noqa: E402
 
 CATALOG = '''
-ConnectorKind::A => BankDescriptor { name: "Volksbank X".into(), protocol: "FinTS 3.0 PIN/TAN".into(), }
-ConnectorKind::B => BankDescriptor { name: "bunq".into(), protocol: tr("bunq Public API").into(), }
-ConnectorKind::C => BankDescriptor { name: tr("Amazon Bestellungen").into(), protocol: tr("Web").into(), }
+pub const BANK_MATRIX: &[MatrixEntry] = &[
+    MatrixEntry {
+        name: "Volksbank X",
+        kind: Some(ConnectorKind::A),
+        interface: Interface::Fints,
+        capabilities: &[Capability::Transactions, Capability::Balances, Capability::Transfers],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "ING",
+        kind: None,
+        interface: Interface::Fints,
+        capabilities: &[Capability::Transactions],
+        status: Status::TestingWanted,
+        issues: &[313],
+    },
+    MatrixEntry {
+        name: "Amazon Bestellungen",
+        kind: Some(ConnectorKind::C),
+        interface: Interface::WebPortal,
+        capabilities: &[Capability::Transactions],
+        status: Status::Limited,
+        issues: &[1, 2],
+    },
+];
 '''
 BLK = f"{sd.START}old{sd.END}"
 
 
 class SyncDocs(unittest.TestCase):
-    def test_catalog_skips_fints(self):
-        names = sd.direct_connectors(sd.parse_catalog(CATALOG))
-        self.assertEqual(names, ["bunq", "Amazon Bestellungen"])
+    def test_parse_matrix(self):
+        m = sd.parse_matrix(CATALOG)
+        self.assertEqual([e["name"] for e in m], ["Volksbank X", "ING", "Amazon Bestellungen"])
+        self.assertEqual(m[0]["capabilities"], ["Transactions", "Balances", "Transfers"])
+        self.assertEqual((m[1]["status"], m[1]["issues"]), ("TestingWanted", [313]))
+        self.assertEqual(m[2]["issues"], [1, 2])
+
+    def test_parse_matrix_rejects_unknown_values(self):
+        with self.assertRaises(SystemExit):
+            sd.parse_matrix(CATALOG.replace("Status::Verified", "Status::Bogus"))
+
+    def test_matrix_markdown(self):
+        m = sd.parse_matrix(CATALOG)
+        de = sd.matrix_text("de", m, 2010)
+        self.assertIn("| Volksbank X | FinTS 3.0 | ✓ | ✓ | – | ✓ | – | – | ✅ Verifiziert |", de)
+        self.assertIn("🧪 Test gesucht [#313](https://github.com/GiroCrab/GiroCrab/issues/313)", de)
+        self.assertIn("2.010 Institute", de)
+        en = sd.matrix_text("en", m, 2010)
+        self.assertIn("| Amazon orders | Web-Portal |", en)
+        self.assertIn("⚠️ Limited [#1](", en)
+        self.assertIn("2,010 institutions", en)
+        self.assertEqual(de.count("\n|"), len(m) + 1)  # header + separator + rows
+
+    def test_matrix_html_is_inert(self):
+        m = sd.parse_matrix(CATALOG.replace("Volksbank X", "A <b>&</b>"))
+        out = sd.matrix_text("de", m, 1, "html")
+        self.assertIn("A &lt;b&gt;&amp;&lt;/b&gt;", out)
+        self.assertIn('<a href="https://github.com/GiroCrab/GiroCrab/issues/313">#313</a>', out)
+        for banned in ("<script", " style=", " onclick=", "javascript:"):
+            self.assertNotIn(banned, out)
 
     def test_fints_count_ignores_comments(self):
         self.assertEqual(sd.fints_count("# c\n\n1\ta\tu\n2\tb\tu\n"), 2)
@@ -29,10 +79,6 @@ class SyncDocs(unittest.TestCase):
         out = sd.replace_version(t, "v0.7.0")
         self.assertEqual(out.count("v0.7.0"), 3)
         self.assertIn("Neu in v0.6.1 bleibt", out)
-
-    def test_connector_text_languages(self):
-        self.assertIn("Amazon orders", sd.connector_text("en", ["Amazon Bestellungen"], 2010))
-        self.assertIn("2.010 Institute", sd.connector_text("de", ["bunq"], 2010))
 
     def test_block_replace_idempotent(self):
         once, n = sd.replace_block(f"a {BLK} b", lambda m: "X")
@@ -55,8 +101,8 @@ class SyncDocs(unittest.TestCase):
             sd.run_readme(root, "v0.2.0")
             self.assertEqual(first, readme.read_text())
             self.assertIn("v0.2.0", first)
-            self.assertIn("Direkte Konnektoren", first)
-            self.assertIn("Direct connectors", first)
+            self.assertIn("| Volksbank X | FinTS 3.0 |", first)
+            self.assertIn("| Amazon orders | Web-Portal |", first)
 
 
 if __name__ == "__main__":

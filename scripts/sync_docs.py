@@ -7,60 +7,122 @@
 Only machine-derivable facts are rewritten; all prose stays untouched:
   * version strings (download button alt text / SVG, "Version vX", "Aktuelle Version", meta description)
   * the block between `<!-- sync:connectors:start -->` and `<!-- sync:connectors:end -->`
-    (README DE/EN, website FAQ), derived from girocrab-core/src/connectors/catalog.rs and
-    girocrab-core/data/fints_directory.tsv.
+    (README DE/EN, website FAQ): the bank & capability matrix derived from `BANK_MATRIX` in
+    girocrab-core/src/connectors/catalog.rs (interface, capabilities, test status) plus the
+    institute count of girocrab-core/data/fints_directory.tsv.
 Idempotent: a second run changes nothing.
 """
 import argparse
+import html
 import re
 import sys
 from pathlib import Path
 
 VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 
-# catalog.rs names that go through tr(): English wording for the EN README block.
-EN_NAMES = {
-    "Amazon Bestellungen": "Amazon orders",
-    "Bank per PSD2 (Enable Banking)": "Enable Banking (PSD2)",
-}
-DE_NAMES = {"Bank per PSD2 (Enable Banking)": "Enable Banking (PSD2)"}
-
 START, END = "<!-- sync:connectors:start -->", "<!-- sync:connectors:end -->"
+REPO_URL = "https://github.com/GiroCrab/GiroCrab"
+
+CAPS = ["Transactions", "Balances", "Securities", "Transfers", "StandingOrders", "Documents"]
+INTERFACES = {
+    "Fints": "FinTS 3.0",
+    "RestApi": "REST-API",
+    "EnableBanking": "Enable Banking (PSD2)",
+    "WebPortal": "Web-Portal",
+}
+STATUSES = ["Verified", "TestingWanted", "Limited"]
+
+# catalog.rs entry names -> display names per language (everything else is shown as is).
+NAMES = {
+    "de": {"Bank per PSD2 (Enable Banking)": "Weitere Banken per PSD2 (Enable Banking)"},
+    "en": {
+        "Bank per PSD2 (Enable Banking)": "More banks via PSD2 (Enable Banking)",
+        "Amazon Bestellungen": "Amazon orders",
+        "FinTS-Bank (BLZ + URL)": "FinTS bank (bank code + URL)",
+    },
+}
+
+TEXT = {
+    "de": {
+        "heading": ["Bank", "Schnittstelle", "Umsätze", "Salden", "Depot", "Überweisung",
+                    "Dauerauftrag", "PDF/Postfach", "Status"],
+        "status": {"Verified": "✅ Verifiziert", "TestingWanted": "🧪 Test gesucht",
+                   "Limited": "⚠️ Mit Einschränkungen"},
+        "legend": ("✅ mit echten Konten getestet · 🧪 implementiert, Rückmeldungen aus der Praxis "
+                   "willkommen (Issue verlinkt) · ⚠️ bekannte Einschränkungen · ✓ umgesetzt · "
+                   "– nicht umgesetzt. Bei FinTS hängen Depot und PDF-Kontoauszüge vom Angebot "
+                   "der jeweiligen Bank ab."),
+        "more": ("Weitere deutsche Banken mit FinTS 3.0 (PIN/TAN) lassen sich über BLZ und "
+                 "FinTS-URL anbinden ({n} Institute im FinTS-Verzeichnis); europäische "
+                 "PSD2-Banken über Enable Banking mit einer eigenen, kostenlosen Anwendung."),
+    },
+    "en": {
+        "heading": ["Bank", "Interface", "Transactions", "Balances", "Securities", "Transfers",
+                    "Standing orders", "PDF/post box", "Status"],
+        "status": {"Verified": "✅ Verified", "TestingWanted": "🧪 Testing wanted",
+                   "Limited": "⚠️ Limited"},
+        "legend": ("✅ tested with real accounts · 🧪 implemented, feedback from real accounts "
+                   "welcome (issue linked) · ⚠️ known limitations · ✓ implemented · – not "
+                   "implemented. For FinTS, securities and PDF statements depend on what the "
+                   "individual bank offers."),
+        "more": ("Further German banks with FinTS 3.0 (PIN/TAN) can be connected via bank code "
+                 "and FinTS URL ({n} institutions in the FinTS directory); European PSD2 banks "
+                 "via Enable Banking with your own free application."),
+    },
+}
 
 
-def parse_catalog(text):
-    """-> [(name, protocol)] for every `descriptor` arm in catalog.rs."""
+def parse_matrix(text):
+    """-> [dict(name, interface, capabilities, status, issues)] from `BANK_MATRIX` in catalog.rs."""
+    pat = re.compile(
+        r'MatrixEntry\s*\{\s*name:\s*"([^"]+)",\s*kind:\s*(?:Some\(ConnectorKind::\w+\)|None),\s*'
+        r"interface:\s*Interface::(\w+),\s*capabilities:\s*&\[([^\]]*)\],\s*"
+        r"status:\s*Status::(\w+),\s*issues:\s*&\[([^\]]*)\],?\s*\}"
+    )
     out = []
-    for block in re.split(r"ConnectorKind::\w+ => BankDescriptor \{", text)[1:]:
-        name = re.search(r'name:\s*(?:tr\()?"([^"]+)"', block)
-        proto = re.search(r'protocol:\s*(?:tr\()?"([^"]+)"', block)
-        if name and proto:
-            out.append((name.group(1), proto.group(1)))
+    for name, iface, caps, status, issues in pat.findall(text):
+        caps = re.findall(r"Capability::(\w+)", caps)
+        if iface not in INTERFACES or status not in STATUSES or not set(caps) <= set(CAPS):
+            sys.exit(f"error: unknown interface/status/capability in catalog.rs entry {name!r}")
+        out.append({"name": name, "interface": iface, "capabilities": caps, "status": status,
+                    "issues": [int(i) for i in re.findall(r"\d+", issues)]})
     return out
-
-
-def direct_connectors(catalog):
-    """Names of connectors that are not plain FinTS entries (those are covered by the FinTS directory)."""
-    return [n for n, p in catalog if not p.startswith("FinTS")]
 
 
 def fints_count(tsv_text):
     return sum(1 for l in tsv_text.splitlines() if l.strip() and not l.startswith("#"))
 
 
-def join(items, last):
-    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + f" {last} " + items[-1]
+def _cells(lang, e, fmt):
+    esc = html.escape if fmt == "html" else (lambda s: s)
+    t = TEXT[lang]
+    name = NAMES[lang].get(e["name"], e["name"])
+    status = t["status"][e["status"]]
+    for i in e["issues"]:
+        link = f"{REPO_URL}/issues/{i}"
+        status += f' <a href="{link}">#{i}</a>' if fmt == "html" else f" [#{i}]({link})"
+    caps = ["✓" if c in e["capabilities"] else "–" for c in CAPS]
+    return [esc(name), esc(INTERFACES[e["interface"]])] + caps + [status]
 
 
-def connector_text(lang, names, n_fints):
-    if lang == "en":
-        items = [EN_NAMES.get(n, n) for n in names]
-        return (f"Direct connectors in the catalog: {join(items, 'and')}; "
-                f"plus {n_fints:,} institutions in the FinTS directory.")
-    items = [DE_NAMES.get(n, n) for n in names]
-    de_n = f"{n_fints:,}".replace(",", ".")
-    return (f"Direkte Konnektoren im Katalog: {join(items, 'und')}; "
-            f"dazu {de_n} Institute im FinTS-Verzeichnis.")
+def matrix_text(lang, matrix, n_fints, fmt="md"):
+    """Matrix + note for one marker block. fmt: 'md' (README) or 'html' (website, no inline JS/CSS)."""
+    t = TEXT[lang]
+    n = f"{n_fints:,}" if lang == "en" else f"{n_fints:,}".replace(",", ".")
+    more, legend = t["more"].format(n=n), t["legend"]
+    if fmt == "md":
+        rows = ["| " + " | ".join(t["heading"]) + " |", "|" + "---|" * len(t["heading"])]
+        rows += ["| " + " | ".join(_cells(lang, e, fmt)) + " |" for e in matrix]
+        return "\n".join(rows) + f"\n\n{more}\n\n<sub>{legend}</sub>"
+    head = "".join(f'<th scope="col">{html.escape(h)}</th>' for h in t["heading"])
+    body = "".join(
+        f'<tr class="status-{e["status"].lower()}">'
+        + "".join(f"<td>{c}</td>" for c in _cells(lang, e, fmt)) + "</tr>"
+        for e in matrix)
+    return (f'<div class="matrix-wrap"><table class="bank-matrix"><thead><tr>{head}</tr></thead>'
+            f"<tbody>{body}</tbody></table></div>"
+            f'<p class="matrix-note">{html.escape(more)}</p>'
+            f'<p class="matrix-note"><small>{html.escape(legend)}</small></p>')
 
 
 def replace_block(text, new_inner):
@@ -84,12 +146,11 @@ def replace_version(text, version):
 
 
 def read_facts(root):
-    cat = parse_catalog((root / "girocrab-core/src/connectors/catalog.rs").read_text())
-    names = direct_connectors(cat)
-    if not names:
-        sys.exit("error: no connectors parsed from catalog.rs (format changed?)")
+    matrix = parse_matrix((root / "girocrab-core/src/connectors/catalog.rs").read_text())
+    if not matrix:
+        sys.exit("error: no BANK_MATRIX entries parsed from catalog.rs (format changed?)")
     n = fints_count((root / "girocrab-core/data/fints_directory.tsv").read_text())
-    return names, n
+    return matrix, n
 
 
 def edit(path, fn):
@@ -102,13 +163,13 @@ def edit(path, fn):
 
 
 def run_readme(root, version):
-    names, n = read_facts(root)
+    matrix, n = read_facts(root)
 
     def fix(text):
         text = replace_version(text, version)
         # Two blocks in README order: DE first, EN second.
         langs = iter(["de", "en"])
-        text, k = replace_block(text, lambda m: f"\n{connector_text(next(langs, 'en'), names, n)}\n")
+        text, k = replace_block(text, lambda m: f"\n{matrix_text(next(langs, 'en'), matrix, n)}\n")
         if k != 2:
             sys.exit(f"error: README.md needs exactly 2 sync:connectors blocks (DE, EN), found {k}")
         return text
@@ -118,11 +179,11 @@ def run_readme(root, version):
 
 
 def run_site(root, site, version):
-    names, n = read_facts(root)
+    matrix, n = read_facts(root)
 
     def fix(text):
         text = replace_version(text, version)
-        text, k = replace_block(text, lambda m: connector_text("de", names, n))
+        text, k = replace_block(text, lambda m: f"\n{matrix_text('de', matrix, n, 'html')}\n")
         if k < 1:
             sys.exit("error: index.html has no sync:connectors block")
         return text
