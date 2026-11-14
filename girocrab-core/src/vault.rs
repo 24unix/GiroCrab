@@ -395,6 +395,9 @@ impl Vault {
         let _ = crate::sync_merge::fill_missing_uuids(&conn);
         // merge duplicate bank logins left by older versions (keeps bookings)
         let _ = crate::connections::deduplicate(&conn);
+        // fold MoneyMoney accounts a merge added next to the bank account
+        // that took them over (keeps bookings)
+        let _ = crate::sync_merge::twins::fold_twins(&conn);
         // repair "MÃ¼ller" -> "Müller" stored by older versions
         let _ = crate::text::repair_stored_text(&conn);
         // one-time purge of favicons that don't belong to a known brand

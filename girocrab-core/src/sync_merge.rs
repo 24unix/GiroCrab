@@ -1513,9 +1513,11 @@ pub(crate) fn merge_accounts(
     let mut inserted: HashSet<i64> = HashSet::new();
     {
         let mut st = conn.prepare(
-            // includes soft-deleted rows: deleted accounts travel as tombstones
+            // includes soft-deleted rows: deleted accounts travel as tombstones.
+            // Bank accounts first: one may take over a local MoneyMoney account
+            // (twins) before a tombstone for that MoneyMoney key reaches it.
             "SELECT id, connection_id, group_id, external_ref, created_ms, deleted_ms
-               FROM other.accounts ORDER BY id",
+               FROM other.accounts ORDER BY external_ref LIKE 'moneymoney-db:%', id",
         )?;
         #[allow(clippy::type_complexity)]
         let rows: Vec<(i64, Option<i64>, i64, String, i64, Option<i64>)> = st
@@ -1540,6 +1542,10 @@ pub(crate) fn merge_accounts(
                     |r| r.get(0),
                 )
                 .optional()?;
+            let existing = match (existing, con) {
+                (None, Some(c)) => twins::adopt_on_merge(conn, c, oid)?,
+                (found, _) => found,
+            };
             let id = match existing {
                 Some(id) => {
                     let joined = join_life(now[&id], (created, deleted), None);
@@ -2196,6 +2202,8 @@ fn synced_state(v: &crate::vault::Vault) -> Vec<String> {
 pub(crate) fn assert_converged(a: &crate::vault::Vault, b: &crate::vault::Vault) {
     assert_eq!(synced_state(a), synced_state(b), "vaults did not converge");
 }
+
+pub(crate) mod twins;
 
 #[cfg(test)]
 mod tests;

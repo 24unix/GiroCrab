@@ -125,15 +125,19 @@ impl Vault {
             "ATTACH DATABASE ?1 AS other KEY ?2",
             params![other_path, &*raw_key],
         )?;
-        let res = Self::merge_attached(&conn, legacy).map(|mut st| {
-            st.changes = conn.total_changes() - before;
-            st
-        });
+        let res = Self::merge_attached(&conn, legacy);
         let detach_res = conn.execute_batch("DETACH DATABASE other");
+        // MoneyMoney twins the merge brought in from a device that did not
+        // fetch (best effort, like on open: the merge itself is committed)
+        let res = res.and_then(|st| {
+            detach_res?;
+            let _ = crate::sync_merge::twins::fold_twins(&conn);
+            Ok(st)
+        });
         // Fold WAL frames into the main file so a plain file copy is complete.
         let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
-        let stats = res?;
-        detach_res?;
+        let mut stats = res?;
+        stats.changes = conn.total_changes() - before;
         Ok(stats)
     }
 }

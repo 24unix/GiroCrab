@@ -1941,6 +1941,19 @@ fn find_existing_accounts(
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
+        // a twin folded into its bank account: the import goes there
+        let by_ref = match by_ref {
+            Some((id, name)) => match crate::sync_merge::twins::folded_into(conn, id)? {
+                Some(bank) => Some((
+                    bank,
+                    conn.query_row("SELECT name FROM accounts WHERE id = ?1", [bank], |r| {
+                        r.get(0)
+                    })?,
+                )),
+                None => Some((id, name)),
+            },
+            None => None,
+        };
         if let Some(found) = by_ref {
             claimed.insert(found.0);
             out.insert(a.id, found);
@@ -2481,7 +2494,11 @@ fn import(
                     [&ext],
                     |r| r.get::<_, i64>(0),
                 )
-                .optional()?,
+                .optional()?
+                .map(|id| {
+                    crate::sync_merge::twins::folded_into(conn, id).map(|bank| bank.unwrap_or(id))
+                })
+                .transpose()?,
         };
         let (account_id, currency) = match target {
             Some(id) => {

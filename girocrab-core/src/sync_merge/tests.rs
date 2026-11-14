@@ -3730,3 +3730,309 @@ fn revived_account_is_unarchived_on_both_vaults() {
         assert_zero(&merge(&b, &a));
     }
 }
+
+// ------------------------------------------------------- MoneyMoney twins
+
+const MM_GIRO: &str = "moneymoney-db:5:4de55d4e";
+const GIRO_IBAN: &str = "DE53200411110102211000";
+
+/// Account `ext` on the bank login `c` with the IBAN above and one booking
+/// per external id (`mm-` ids carry their import fingerprint).
+fn giro(v: &Vault, c: i64, ext: &str, bookings: &[&str]) -> i64 {
+    let db = v.db().unwrap();
+    db.execute_batch("INSERT OR IGNORE INTO account_groups(id, name) VALUES (1, 'G')")
+        .unwrap();
+    db.execute(
+        "INSERT INTO accounts(connection_id, group_id, external_ref, name, iban, account_number, currency, kind)
+         VALUES (?1, 1, ?2, 'Girokonto', ?3, '102211000', 'EUR', 'checking')",
+        params![c, ext, GIRO_IBAN],
+    )
+    .unwrap();
+    let id = db.last_insert_rowid();
+    for (i, b) in bookings.iter().enumerate() {
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, import_fp)
+             VALUES (?1, ?2, '2026-01-01', ?3, ?4)",
+            params![id, b, -100 - i as i64, b.strip_prefix("mm-").unwrap_or("")],
+        )
+        .unwrap();
+    }
+    id
+}
+
+fn comdirect(v: &Vault) -> i64 {
+    v.add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
+        .unwrap()
+}
+
+/// external_id:note:checked of the live bookings, sorted.
+fn live_bookings(v: &Vault) -> String {
+    let db = v.db().unwrap();
+    let mut st = db
+        .prepare(
+            "SELECT external_id || ':' || note || ':' || checked FROM transactions
+              WHERE deleted_ms IS NULL ORDER BY external_id",
+        )
+        .unwrap();
+    let rows: Vec<String> = st
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    rows.join(" ")
+}
+
+/// A MoneyMoney account that a bank fetch took over on one device came back
+/// from another device as a second account (same login, IBAN and MoneyMoney
+/// bookings). Opening the vault folds it into the bank account: shared
+/// bookings once, the newer edit wins, bookings only the twin has move over.
+#[test]
+fn moneymoney_twin_of_a_bank_account_is_folded_on_open() {
+    let dir = temp_dir("twin-fold");
+    let v = open(&dir, "a.db");
+    let c = comdirect(&v);
+    let bank = giro(&v, c, "API1", &["mm-1", "mm-2", "b1"]);
+    let twin = giro(&v, c, MM_GIRO, &["mm-1", "mm-2", "mm-3"]);
+    exec(
+        &v,
+        &format!("UPDATE transactions SET checked = 1, checked_ms = 5 WHERE account_id = {bank} AND external_id = 'mm-1'"),
+    );
+    exec(
+        &v,
+        &format!("UPDATE transactions SET note = 'Miete', note_ms = 9 WHERE account_id = {twin} AND external_id = 'mm-2'"),
+    );
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+        1
+    );
+    assert_eq!(
+        n(
+            &v,
+            &format!("SELECT deleted_ms > 0 FROM accounts WHERE id = {twin}")
+        ),
+        1
+    );
+    assert_eq!(live_bookings(&v), "b1::0 mm-1::1 mm-2:Miete:0 mm-3::0");
+    assert_eq!(
+        n(&v, &format!("SELECT count(DISTINCT account_id) FROM transactions WHERE deleted_ms IS NULL AND account_id = {bank}")),
+        1
+    );
+}
+
+/// Issue #94: MoneyMoney keeps a closed account with the same IBAN. Without
+/// shared bookings it is a different account and stays.
+#[test]
+fn moneymoney_account_with_same_iban_but_other_bookings_stays() {
+    let dir = temp_dir("twin-keep");
+    let v = open(&dir, "a.db");
+    let c = comdirect(&v);
+    giro(&v, c, "API1", &["b1", "mm-1"]);
+    giro(&v, c, "moneymoney-db:7:4de55d4e", &["mm-9"]);
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+        2
+    );
+    assert_eq!(live_bookings(&v), "b1::0 mm-1::0 mm-9::0");
+}
+
+/// A depot twin has no IBAN and no bookings: same kind, number and name.
+#[test]
+fn empty_depot_twin_is_folded() {
+    let dir = temp_dir("twin-depot");
+    let v = open(&dir, "a.db");
+    let c = comdirect(&v);
+    exec(&v, "INSERT INTO account_groups(id, name) VALUES (1, 'G')");
+    for ext in ["depot:E5AA", "moneymoney-db:22:4de55d4e"] {
+        v.db()
+            .unwrap()
+            .execute(
+                "INSERT INTO accounts(connection_id, group_id, external_ref, name, account_number, currency, kind)
+                 VALUES (?1, 1, ?2, 'Depot', '102211000', 'EUR', 'brokerage')",
+                params![c, ext],
+            )
+            .unwrap();
+    }
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        text(
+            &v,
+            "SELECT group_concat(external_ref) FROM accounts WHERE deleted_ms IS NULL"
+        ),
+        "depot:E5AA"
+    );
+}
+
+/// B never fetched: it still holds the MoneyMoney account that A's fetch
+/// took over. The merge maps the two onto each other instead of adding the
+/// bank account a second time, and both devices converge on the bank's key.
+#[test]
+fn merge_matches_the_moneymoney_account_a_fetch_took_over() {
+    let dir = temp_dir("twin-merge");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let c = comdirect(&a);
+    giro(&a, c, MM_GIRO, &["mm-1", "mm-2"]);
+    exec(&a, "UPDATE bank_connections SET created_ms = 1");
+    exec(&a, "UPDATE accounts SET created_ms = 1");
+    both_ways(&a, &b);
+    let mut acc = remote_account("API1");
+    acc.iban = GIRO_IBAN.into();
+    let fetch = crate::connectors::FetchResult {
+        accounts: vec![acc],
+        transactions: vec![remote_tx("API1", "b1")],
+        ..Default::default()
+    };
+    crate::connectors::store_fetch(&a, ConnectorKind::Comdirect, c, fetch).unwrap();
+    assert_eq!(text(&a, "SELECT external_ref FROM accounts"), "API1");
+    exec(
+        &b,
+        "UPDATE transactions SET note = 'Miete', note_ms = 9 WHERE external_id = 'mm-2'",
+    );
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(
+            text(
+                v,
+                "SELECT group_concat(external_ref) FROM accounts WHERE deleted_ms IS NULL"
+            ),
+            "API1"
+        );
+        assert_eq!(live_bookings(v), "b1::0 mm-1::0 mm-2:Miete:0");
+    }
+}
+
+/// A folded first (its twin has the lower id), B still has only the
+/// MoneyMoney account with a booking of its own. B takes over the bank key
+/// before A's tombstone for the MoneyMoney key arrives, so nothing is lost.
+#[test]
+fn folded_twin_tombstone_does_not_delete_the_other_devices_account() {
+    let dir = temp_dir("twin-tomb");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    let ca = comdirect(&a);
+    let cb = comdirect(&b);
+    giro(&a, ca, MM_GIRO, &["mm-1", "mm-2"]);
+    giro(&a, ca, "API1", &["mm-1", "mm-2", "b1"]);
+    giro(&b, cb, MM_GIRO, &["mm-1", "mm-2", "mm-4"]);
+    for v in [&a, &b] {
+        exec(v, "UPDATE bank_connections SET created_ms = 1");
+        exec(v, "UPDATE accounts SET created_ms = 1");
+    }
+    drop(a);
+    let a = open(&dir, "a.db");
+    assert_eq!(
+        n(&a, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+        1
+    );
+    merge(&b, &a);
+    assert_eq!(
+        text(
+            &b,
+            "SELECT group_concat(external_ref) FROM accounts WHERE deleted_ms IS NULL"
+        ),
+        "API1"
+    );
+    both_ways(&a, &b);
+    for v in [&a, &b] {
+        assert_eq!(live_bookings(v), "b1::0 mm-1::0 mm-2::0 mm-4::0");
+    }
+}
+
+/// Issue #94: a closed MoneyMoney account and its successor share the
+/// bookings MoneyMoney fetched again for the new one (`mm-` ids are content
+/// hashes). A few shared bookings do not make them the same account.
+#[test]
+fn moneymoney_account_sharing_only_a_few_bookings_stays() {
+    let dir = temp_dir("twin-few");
+    let v = open(&dir, "a.db");
+    let c = comdirect(&v);
+    giro(&v, c, "API1", &["mm-1", "b1"]);
+    giro(&v, c, MM_GIRO, &["mm-1", "mm-7", "mm-8", "mm-9"]);
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+        2
+    );
+}
+
+/// A depot without IBAN and account number is not told apart by its name.
+#[test]
+fn empty_depot_without_account_number_stays() {
+    let dir = temp_dir("twin-depot-nonum");
+    let v = open(&dir, "a.db");
+    let c = comdirect(&v);
+    exec(&v, "INSERT INTO account_groups(id, name) VALUES (1, 'G')");
+    for ext in ["depot:E5AA", "moneymoney-db:22:4de55d4e"] {
+        v.db()
+            .unwrap()
+            .execute(
+                "INSERT INTO accounts(connection_id, group_id, external_ref, name, currency, kind)
+                 VALUES (?1, 1, ?2, 'Depot', 'EUR', 'brokerage')",
+                params![c, ext],
+            )
+            .unwrap();
+    }
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        n(&v, "SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+        2
+    );
+}
+
+/// Rules, documents and loan links of the twin go with it to the bank
+/// account; the moved rule is stamped, so a merge does not move it back.
+#[test]
+fn folded_twin_hands_over_rules_documents_and_loan_links() {
+    let dir = temp_dir("twin-extras");
+    let v = open(&dir, "a.db");
+    let c = comdirect(&v);
+    let bank = giro(&v, c, "API1", &["mm-1", "mm-2"]);
+    let twin = giro(&v, c, MM_GIRO, &["mm-1", "mm-2"]);
+    exec(
+        &v,
+        &format!(
+            "INSERT INTO categories(name) VALUES ('Miete');
+             INSERT INTO rules(name, category_id, pattern, account_id, updated_ms)
+                 SELECT 'r', id, 'x', {twin}, 1 FROM categories WHERE name = 'Miete';
+             INSERT INTO accounts(group_id, external_ref, name, kind) VALUES (1, 'L1', 'Kredit', 'loan');
+             INSERT INTO booking_documents(booking_id, account_id, pdf_bytes)
+                 SELECT id, {twin}, x'00' FROM transactions WHERE account_id = {twin} AND external_id = 'mm-1';
+             INSERT INTO loan_links(transaction_id, loan_account_id)
+                 SELECT t.id, a.id FROM transactions t, accounts a
+                  WHERE t.account_id = {twin} AND t.external_id = 'mm-2' AND a.external_ref = 'L1';"
+        ),
+    );
+    drop(v);
+    let v = open(&dir, "a.db");
+    assert_eq!(
+        n(
+            &v,
+            &format!("SELECT account_id = {bank} AND updated_ms > 1 FROM rules")
+        ),
+        1
+    );
+    let bank_booking = |ext: &str| {
+        n(
+            &v,
+            &format!(
+                "SELECT id FROM transactions WHERE account_id = {bank} AND external_id = '{ext}'"
+            ),
+        )
+    };
+    assert_eq!(
+        text(
+            &v,
+            "SELECT booking_id || ':' || account_id FROM booking_documents"
+        ),
+        format!("{}:{bank}", bank_booking("mm-1"))
+    );
+    assert_eq!(
+        n(&v, "SELECT transaction_id FROM loan_links"),
+        bank_booking("mm-2")
+    );
+}
