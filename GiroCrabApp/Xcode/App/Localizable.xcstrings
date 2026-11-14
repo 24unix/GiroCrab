@@ -4793,6 +4793,17 @@
         }
       }
     },
+    "Budget bearbeiten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Budget …"
+          }
+        }
+      }
+    },
     "Budget entfernen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4811,6 +4822,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add budget"
+          }
+        }
+      }
+    },
+    "Budgets anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Budgets"
           }
         }
       }
@@ -18858,6 +18880,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "World"
+          }
+        }
+      }
+    },
+    "Wer keine Monatsbudgets nutzt, blendet die Budget-Karte und „Monatsbudget festlegen …“ ganz aus. Auch im Menü Ansicht umschaltbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you don't use monthly budgets, hide the budget card and “Set Monthly Budget …” completely. Also available in the View menu."
           }
         }
       }

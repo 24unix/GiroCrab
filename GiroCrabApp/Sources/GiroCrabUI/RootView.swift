@@ -10,6 +10,7 @@ public struct GiroCrabScenes: Scene {
     @Environment(\.openWindow) private var openWindow
     @AppStorage(ViewLayout.inspectorKey) private var showInspector = true
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
+    @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
     #endif
 
@@ -189,6 +190,8 @@ public struct GiroCrabScenes: Scene {
                     .keyboardShortcut("i", modifiers: [.command, .option])
                     .disabled(!model.isUnlocked)
                 Toggle("Auswertungen anzeigen", isOn: $showStatistics)
+                    .disabled(!model.isUnlocked)
+                Toggle("Budgets anzeigen", isOn: $showBudgets)
                     .disabled(!model.isUnlocked)
                 Divider()
                 // Like Mail/Notes: text size of the whole app (#343).

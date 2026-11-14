@@ -56,6 +56,7 @@ struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
     @State private var showHelp = false
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
+    @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
 
     var body: some View {
@@ -83,6 +84,9 @@ struct GeneralSettings: View {
                 #endif
                 Toggle("Auswertungen in der Übersicht anzeigen", isOn: $showStatistics)
                 Text("Blendet Saldoverlauf, Cashflow und Budgets über der Buchungsliste aus. Auch im Menü Ansicht umschaltbar.")
+                    .appFont(.caption).foregroundStyle(.secondary)
+                Toggle("Budgets anzeigen", isOn: $showBudgets)
+                Text("Wer keine Monatsbudgets nutzt, blendet die Budget-Karte und „Monatsbudget festlegen …“ ganz aus. Auch im Menü Ansicht umschaltbar.")
                     .appFont(.caption).foregroundStyle(.secondary)
             } header: { Text("Ansicht").appSectionHeader() }
             Section {

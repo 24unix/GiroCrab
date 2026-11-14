@@ -7,6 +7,7 @@ struct SidebarView: View {
     /// The one sidebar dialog on screen (group dialogs live in `model.groupDialog`).
     @State private var dialog: SidebarDialog?
     @State private var budgetCategory: IDBox?
+    @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
     /// Where a drop would land: a thin line above or below one row.
     @State private var dropLine: DropLine?
 
@@ -432,7 +433,9 @@ struct SidebarView: View {
         }
         Divider()
         Button("Neue Unterkategorie …", systemImage: "plus") { model.newCategoryRequest = NewCategoryRequest(parent: category.id) }
-        Button("Monatsbudget festlegen …", systemImage: "gauge.with.dots.needle.67percent") { budgetCategory = IDBox(id: category.id) }
+        if showBudgets {
+            Button("Monatsbudget festlegen …", systemImage: "gauge.with.dots.needle.67percent") { budgetCategory = IDBox(id: category.id) }
+        }
         Divider()
         Button("Kategorie löschen …", systemImage: "trash", role: .destructive) { dialog = .deleteCategory(category) }
     }

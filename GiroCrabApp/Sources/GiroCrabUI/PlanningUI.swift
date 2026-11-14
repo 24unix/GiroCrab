@@ -89,6 +89,8 @@ struct BudgetProgressCard: View {
     @Environment(AppModel.self) private var model
     @State private var items: [CategoryBudgetStatus] = []
     @State private var editing: IDBox?
+    /// Budget row under the pointer: shows its pencil.
+    @State private var hovered: Int64?
 
     private var token: String {
         model.categories.map { "\($0.id):\($0.budgetCents ?? 0):\($0.totalCents)" }.joined(separator: ",") + "#\(model.bookings.count)"
@@ -119,12 +121,28 @@ struct BudgetProgressCard: View {
                             Text("\(Money.format(s.spentCents)) / \(Money.format(s.budgetCents))")
                                 .sensitive()
                                 .appFont(.caption, monospacedDigit: true).foregroundStyle(BudgetTone.color(s.percent))
+                            // shows the row opens the editor (it looked read-only)
+                            Image(systemName: "pencil")
+                                .appFont(.caption)
+                                .foregroundStyle(Theme.secondary)
+                                .opacity(hovered == s.categoryId ? 1 : 0)
+                                .accessibilityHidden(true)
                         }
                         BudgetBar(percent: s.percent)
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .onHover { inside in
+                    if inside { hovered = s.categoryId } else if hovered == s.categoryId { hovered = nil }
+                }
+                .help("Budget bearbeiten …")
+                .contextMenu {
+                    Button("Budget bearbeiten …", systemImage: "pencil") { editing = IDBox(id: s.categoryId) }
+                    Button("Budget entfernen", systemImage: "trash", role: .destructive) {
+                        model.setBudget(nil, for: s.categoryId)
+                    }
+                }
             }
         }
         .card()

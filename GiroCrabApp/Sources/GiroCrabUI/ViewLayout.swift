@@ -7,4 +7,11 @@ enum ViewLayout {
     static let statisticsKey = "showStatistics"
     /// Right-hand inspector column.
     static let inspectorKey = "showInspector"
+    /// Monthly budgets: the card above the list and „Monatsbudget festlegen …“.
+    static let budgetsKey = "showBudgets"
+
+    /// Budgets show until switched off (Ansicht › Budgets anzeigen).
+    static func showsBudgets(_ defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: budgetsKey) as? Bool ?? true
+    }
 }

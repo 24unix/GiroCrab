@@ -14,6 +14,7 @@ struct BookingStreamView: View {
     @AppStorage("showAccountAnalytics") private var showAnalytics: Bool = false
     /// View › "Auswertungen anzeigen" (GitHub #233): hides the charts and analysis cards.
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics: Bool = true
+    @AppStorage(ViewLayout.budgetsKey) private var showBudgets: Bool = true
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSize
     @State private var showCashflowIOS = false
@@ -65,7 +66,7 @@ struct BookingStreamView: View {
                             DisclosureGroup("Cashflow-Analyse", isExpanded: $showCashflowIOS) {
                                 VStack(spacing: 14) {
                                     CashflowCard()
-                                    BudgetProgressCard()
+                                    if showBudgets { BudgetProgressCard() }
                                 }
                                 .padding(.top, 8)
                             }
@@ -75,7 +76,9 @@ struct BookingStreamView: View {
                             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
                             #else
                             CashflowCard().transition(Motion.slide(.top))
-                            BudgetProgressCard().transition(Motion.slide(.top))
+                            if showBudgets {
+                                BudgetProgressCard().transition(Motion.slide(.top))
+                            }
                             #endif
                         }
                         if model.isLoadingSelection {
