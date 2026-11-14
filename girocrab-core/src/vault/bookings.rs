@@ -283,6 +283,35 @@ impl Vault {
         Ok(())
     }
 
+    /// Number of bookings matching `filter` (`limit`/`offset` ignored) as one SQL
+    /// count, without enriching every row like `list_transactions` (#266). Scope
+    /// and merchant depend on the enriched booking: those filters take the list.
+    pub fn count_transactions(&self, filter: BookingFilter) -> Result<u32, CoreError> {
+        if !matches!(filter.scope, BookingScope::All) || filter.merchant_key.is_some() {
+            return Ok(self
+                .list_transactions(BookingFilter {
+                    limit: 1,
+                    offset: 0,
+                    whole_days: false,
+                    ..filter
+                })?
+                .total_count);
+        }
+        let db = self.db()?;
+        let (cte, where_sql, args, _) = Self::filter_clauses(&db, &filter)?;
+        let sql = format!(
+            "{cte}SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id \
+             LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL \
+             WHERE {where_sql}"
+        );
+        let n: i64 = db.query_row(
+            &sql,
+            params_from_iter(args.iter().map(|b| b.as_ref())),
+            |r| r.get(0),
+        )?;
+        Ok(n as u32)
+    }
+
     pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
         let db = self.db()?;
         let paths = Self::category_paths(&db)?;
@@ -655,6 +684,56 @@ mod paging_tests {
             })
             .unwrap();
         assert!(past.transactions.is_empty());
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn count_matches_the_list_total() {
+        let (v, p) = demo();
+        let all = v
+            .list_transactions(BookingFilter::default())
+            .unwrap()
+            .transactions;
+        let some = &all[all.len() / 2];
+        let filters = [
+            BookingFilter::default(),
+            BookingFilter {
+                checked: Some(false),
+                ..Default::default()
+            },
+            BookingFilter {
+                date_from: Some(some.booking_date.clone()),
+                direction: BookingDirection::Expense,
+                limit: 3,
+                ..Default::default()
+            },
+            BookingFilter {
+                account_ids: vec![some.account_id],
+                search: Some(some.counterparty.clone()),
+                ..Default::default()
+            },
+            BookingFilter {
+                category_id: all.iter().find_map(|b| b.category_id),
+                include_subcategories: true,
+                ..Default::default()
+            },
+            BookingFilter {
+                uncategorized_only: true,
+                ..Default::default()
+            },
+            BookingFilter {
+                scope: BookingScope::Investments,
+                ..Default::default()
+            },
+            BookingFilter {
+                merchant_key: Some(some.merchant.key.clone()),
+                ..Default::default()
+            },
+        ];
+        for f in filters {
+            let listed = v.list_transactions(f.clone()).unwrap().total_count;
+            assert_eq!(v.count_transactions(f.clone()).unwrap(), listed, "{f:?}");
+        }
         let _ = std::fs::remove_file(p);
     }
 

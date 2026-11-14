@@ -1369,8 +1369,7 @@ public final class AppModel {
         // count the bookings from that day on
         var f = currentFilter
         if f.dateFrom.map({ $0 < day }) ?? true { f.dateFrom = day }
-        f.limit = 1
-        if let newer = try? vault.listTransactions(filter: f).totalCount {
+        if let newer = try? vault.countTransactions(filter: f) {
             listLimit = max(listLimit, newer + 200)
             reloadBookings()
         }
