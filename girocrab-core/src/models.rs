@@ -39,6 +39,8 @@ pub enum ConnectorKind {
     Ibkr,
     /// quirion portal API, authenticated inside the embedded browser.
     Quirion,
+    /// easybank (formerly Barclays Deutschland) credit cards and statements, see #209.
+    Easybank,
 }
 
 impl ConnectorKind {
@@ -59,6 +61,7 @@ impl ConnectorKind {
             ConnectorKind::Fnz => "fnz",
             ConnectorKind::Ibkr => "ibkr",
             ConnectorKind::Quirion => "quirion",
+            ConnectorKind::Easybank => "easybank",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -107,6 +110,7 @@ impl ConnectorKind {
             ConnectorKind::Fnz,
             ConnectorKind::Ibkr,
             ConnectorKind::Quirion,
+            ConnectorKind::Easybank,
         ]
     }
 }

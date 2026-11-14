@@ -169,6 +169,7 @@ public struct BankingGate: Equatable, Sendable {
         case "fnz": base = "FNZ Bank"
         case "ibkr": base = "Interactive Brokers"
         case "quirion": base = "quirion"
+        case "easybank": base = "easybank"
         default: base = parts.first ?? id
         }
         guard parts.count == 2 else { return base }

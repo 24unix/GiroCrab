@@ -19,6 +19,7 @@ pub mod bunq;
 pub mod comdirect;
 pub mod demo;
 pub mod dpop;
+pub mod easybank;
 pub mod enable_banking;
 pub mod fints;
 pub mod fints_directory;

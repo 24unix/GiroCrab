@@ -198,6 +198,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
 | Weitere Banken per PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen |
 | Amazon Bestellungen | Web-Portal | ✓ | – | – | – | – | – | 🧪 Test gesucht |
+| easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Test gesucht |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Mit Einschränkungen |
@@ -408,6 +409,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | More banks via PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Limited |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
 | Amazon orders | Web-Portal | ✓ | – | – | – | – | – | 🧪 Testing wanted |
+| easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Testing wanted |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Limited |

@@ -825,17 +825,18 @@ impl Vault {
             [conn_id],
             |r| r.get(0),
         )?;
-        let is_fints = ConnectorKind::from_str(&kind).is_some_and(|k| {
+        let supports_statements = ConnectorKind::from_str(&kind).is_some_and(|k| {
             matches!(
                 k,
                 ConnectorKind::FinTsGeneric
                     | ConnectorKind::VolksbankKasselGoettingen
                     | ConnectorKind::Direkt1822
+                    | ConnectorKind::Easybank
             )
         });
-        if !is_fints {
+        if !supports_statements {
             return Err(CoreError::InvalidInput {
-                message: tr("Kontoauszüge können nur per FinTS abgerufen werden.").into(),
+                message: tr("Für diese Bank können keine Kontoauszüge abgerufen werden.").into(),
             });
         }
         self.begin_sync_inner(conn_id, secret, demo, Some(ext))

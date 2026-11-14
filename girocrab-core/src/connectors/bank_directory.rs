@@ -134,6 +134,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
         ),
         (ConnectorKind::PayPal, "PayPal", "paypal"),
         (
+            ConnectorKind::Easybank,
+            "easybank",
+            "easybank barclays kreditkarte bawag",
+        ),
+        (
             ConnectorKind::Ibkr,
             "Interactive Brokers (IBKR)",
             "interactive brokers ibkr depot broker",

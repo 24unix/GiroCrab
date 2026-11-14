@@ -88,6 +88,16 @@ impl BankConnector for DemoConnector {
                 expires_in_seconds: Some(300),
                 poll_interval_seconds: 2,
             },
+            ConnectorKind::Easybank => Challenge {
+                kind: ChallengeKind::Code,
+                title: "easybank SMS-TAN".into(),
+                message: tr("Demo: beliebigen 6-stelligen Code eingeben.").into(),
+                method_name: tr("SMS-TAN (Demo)").into(),
+                redirect_url: None,
+                image: None,
+                expires_in_seconds: Some(300),
+                poll_interval_seconds: 0,
+            },
             ConnectorKind::TradeRepublic => Challenge {
                 kind: ChallengeKind::Code,
                 title: "Trade Republic 2FA".into(),

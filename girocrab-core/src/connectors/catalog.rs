@@ -113,6 +113,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("quirion: Depotpositionen, Liquiditätskonto, Verrechnungskonto und gebuchte Umsätze. Anmeldung im Browserfenster. Interne Portal-API; Änderungen sind möglich.").into(),
         },
+        ConnectorKind::Easybank => BankDescriptor {
+            kind,
+            name: "easybank".into(),
+            protocol: tr("Online-Banking-API (Direkt-Login)").into(),
+            bank_code: String::new(),
+            sf_symbol: "creditcard".into(),
+            login_label: tr("Benutzername").into(),
+            secret_label: tr("Passwort").into(),
+            required_settings: vec![],
+            note: tr("easybank (ehemals Barclays Deutschland): Kreditkarten und Umsätze der letzten zwei Jahre. Beim ersten Abruf fragt easybank eine SMS-TAN ab, danach erkennt die Bank GiroCrab wieder. Interne Portal-API; Änderungen sind möglich.").into(),
+        },
         ConnectorKind::Fnz => BankDescriptor {
             kind,
             name: "FNZ Bank".into(),
@@ -400,6 +411,18 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[],
     },
     MatrixEntry {
+        name: "easybank (ehem. Barclays)",
+        kind: Some(ConnectorKind::Easybank),
+        interface: Interface::WebPortal,
+        capabilities: &[
+            Capability::Transactions,
+            Capability::Balances,
+            Capability::Documents,
+        ],
+        status: Status::TestingWanted,
+        issues: &[],
+    },
+    MatrixEntry {
         name: "Trade Republic",
         kind: Some(ConnectorKind::TradeRepublic),
         interface: Interface::WebPortal,
@@ -483,6 +506,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::Ibkr => Box::new(ibkr::IbkrConnector::new()),
         ConnectorKind::Quirion => Box::new(quirion::WebOnlyConnector),
         ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),
+        ConnectorKind::Easybank => Box::new(easybank::EasybankConnector::new()),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {
             let (country, aspsp) = ConnectorKind::enable_banking_target(key).unwrap_or(("DE", ""));
