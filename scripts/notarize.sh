@@ -474,8 +474,15 @@ ${NOTES}"
   [ "$CHANNEL" = "beta" ] && RELEASE_FLAGS=(--prerelease --latest=false)
 
   printf '%s\n' "$NOTES" > build/release-notes.md
+  # Do NOT call make_feed inside an `if`: that disables `set -e`, so a failing
+  # make-appcast.sh (signing, key mismatch, ...) was silently treated as "no key"
+  # and the release went out without appcast.xml (Issue #322, v0.6.2).
   HAVE_FEED=0
-  if make_feed "$UPLOAD_TAG" build/release-notes.md; then HAVE_FEED=1
+  if [ -f scripts/sparkle-public-ed-key.txt ]; then
+    rm -f dist/appcast.xml
+    make_feed "$UPLOAD_TAG" build/release-notes.md
+    [ -s dist/appcast.xml ] || { echo "error: appcast.xml was not generated; not publishing" >&2; exit 1; }
+    HAVE_FEED=1
   else echo "==> No appcast (no scripts/sparkle-public-ed-key.txt yet – in-app updates off)"; fi
   if [ -n "$ROTATE_TO" ]; then
     # Before anything is published: new key inside, old key signs.
@@ -530,7 +537,11 @@ elif [ "$NIGHTLY" -eq 1 ]; then
   # old nightly item's signature no longer matches and clients reject the
   # download (fails safe).
   export GIROCRAB_SHORT_VERSION="Nightly ${BUILD_DATE} (${SHORT_SHA})"
-  if make_feed nightly build/release-notes.md; then
+  # Not inside an `if` (that would disable `set -e` and skip a failing feed silently).
+  if [ -f scripts/sparkle-public-ed-key.txt ]; then
+    rm -f dist/appcast.xml
+    make_feed nightly build/release-notes.md
+    [ -s dist/appcast.xml ] || { echo "error: nightly appcast.xml was not generated" >&2; exit 1; }
     upload_feed_to_latest_stable
   fi
 fi
