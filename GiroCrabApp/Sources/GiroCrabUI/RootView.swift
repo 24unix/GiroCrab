@@ -41,10 +41,11 @@ public struct GiroCrabScenes: Scene {
 
     public var body: some Scene {
         WindowGroup("GiroCrab", id: "main") {
+            // `GiroCrabRootView` sets the preferred colour scheme itself (dark on the
+            // brand start/lock screen, otherwise the chosen appearance).
             GiroCrabRootView()
                 .environment(model)
                 .modifier(AutoLockOnBackground(model: model))
-                .preferredColorScheme(appearance.colorScheme)
                 #if os(macOS)
                 .appTextSize(textSize.effective)
                 // Keep the minimum independent of the split columns' ideal heights.
@@ -296,9 +297,20 @@ public struct GiroCrabRootView: View {
     @State private var splashHold = false
     #endif
 
+    @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
+
     public init() {}
 
     private var splash: some View { SplashView() }
+
+    /// Colour scheme of the window. The brand start and lock screen (iOS, #505)
+    /// are always dark, so the status bar (time, battery) stays white on the
+    /// dark backdrop even when the device or the app runs in light mode. Set
+    /// here in one place: a second `.preferredColorScheme` further out would
+    /// override one on the screens themselves.
+    static func preferredScheme(brand: Bool, splashHold: Bool, vaultOpen: Bool, appearance: ColorScheme?) -> ColorScheme? {
+        brand && (splashHold || !vaultOpen) ? .dark : appearance
+    }
 
     public var body: some View {
         Group {
@@ -332,6 +344,10 @@ public struct GiroCrabRootView: View {
             }
             }
         }
+        .preferredColorScheme(Self.preferredScheme(
+            brand: BrandBackdrop.isPlatformDefault, splashHold: splashHold,
+            vaultOpen: model.vaultState == .open, appearance: appearance.colorScheme
+        ))
         .animation(.easeOut(duration: 0.35), value: splashHold)
         .task {
             guard splashHold else { return }

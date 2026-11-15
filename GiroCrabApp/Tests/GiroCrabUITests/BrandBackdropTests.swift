@@ -48,6 +48,20 @@ final class BrandBackdropTests: XCTestCase {
         }
     }
 
+    /// Start and lock screen force the dark scheme (white status bar on the dark
+    /// backdrop), whatever the device or the app's appearance setting says.
+    func testBrandScreensPreferTheDarkScheme() {
+        typealias Root = GiroCrabRootView
+        for appearance: ColorScheme? in [nil, .light, .dark] {
+            XCTAssertEqual(Root.preferredScheme(brand: true, splashHold: true, vaultOpen: false, appearance: appearance), .dark)
+            XCTAssertEqual(Root.preferredScheme(brand: true, splashHold: true, vaultOpen: true, appearance: appearance), .dark)
+            XCTAssertEqual(Root.preferredScheme(brand: true, splashHold: false, vaultOpen: false, appearance: appearance), .dark)
+            // the open vault and a Mac window follow the chosen appearance
+            XCTAssertEqual(Root.preferredScheme(brand: true, splashHold: false, vaultOpen: true, appearance: appearance), appearance)
+            XCTAssertEqual(Root.preferredScheme(brand: false, splashHold: true, vaultOpen: false, appearance: appearance), appearance)
+        }
+    }
+
     func testBrandScreensRender() throws {
         let model = AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))
         let size = CGSize(width: 393, height: 852)
