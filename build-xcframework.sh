@@ -150,7 +150,13 @@ BUILD_FLAGS=()
 export MACOSX_DEPLOYMENT_TARGET=14.0
 export IPHONEOS_DEPLOYMENT_TARGET=17.0
 
-TARGETS=(aarch64-apple-darwin)
+HOST_ARCH="$(uname -m)"
+if [[ "$HOST_ARCH" == "x86_64" ]]; then
+  MAC_TARGET="x86_64-apple-darwin"
+else
+  MAC_TARGET="aarch64-apple-darwin"
+fi
+TARGETS=($MAC_TARGET)
 if [[ $MACOS_ONLY -eq 0 || $FORCE_IOS -eq 1 ]]; then
   TARGETS+=(aarch64-apple-ios)
   [[ $NO_SIM -eq 1 ]] || TARGETS+=(aarch64-apple-ios-sim)
@@ -181,7 +187,7 @@ echo "==> Building uniffi-bindgen-swift"
 BINDGEN="$TARGET_DIR/release/uniffi-bindgen-swift"
 FINGERPRINT="$(combine_fingerprint "$SOURCES_FP" "$(lock_fingerprint)")"
 
-MAC_LIB="$TARGET_DIR/aarch64-apple-darwin/$PROFILE/lib$CRATE.a"
+MAC_LIB="$TARGET_DIR/$MAC_TARGET/$PROFILE/lib$CRATE.a"
 GEN="$TARGET_DIR/swift-gen"
 rm -rf "$GEN"
 mkdir -p "$GEN/Headers" "$GEN/Sources"
