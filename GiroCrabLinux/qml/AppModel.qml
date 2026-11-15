@@ -2338,6 +2338,26 @@ QtObject {
     property var psd2LinkHints: []
     property bool showPrintSheet: false
     property bool showCSVExporter: false
+    // Umsatz-Export (PDF / CSV / CAMT.053): ExportSheet.qml, logic in BookingExport.qml.
+    property bool showExportSheet: false
+    /// When set, the export sheet defaults to these booking ids (context menu).
+    property var exportBookingIDs: null
+    property bool exportPreferSelection: false
+    /// A built export file waiting for the save dialog („Unter …“, Main.qml).
+    property var exportSaveRequest: null
+    /// Opens the export dialog; `selection`: use the current multi-/single selection (context menu).
+    function openBookingExport(selection) {
+        if (!isUnlocked) return
+        if (selection) {
+            exportBookingIDs = Object.keys(selectedBookingIDs).map(Number)
+            if (!exportBookingIDs.length && selectedBookingID !== null) exportBookingIDs = [selectedBookingID]
+            exportPreferSelection = exportBookingIDs.length > 0
+        } else {
+            exportBookingIDs = null
+            exportPreferSelection = false
+        }
+        showExportSheet = true
+    }
 
     /// Opens the MoneyMoney import. An import belongs in the own vault, so the
     /// demo data an empty vault starts with is left first.
@@ -2448,6 +2468,7 @@ QtObject {
         const job = printJob
         printJob = null
         if (!job) return
+        if (job.done) { job.done(ok, failure, job.path); return }   // PDF export (BookingExport.qml)
         if (!ok) {
             errorTitle = qsTr("Drucken nicht möglich")
             errorMessage = failure || qsTr("Der Bericht konnte nicht gesetzt werden.")

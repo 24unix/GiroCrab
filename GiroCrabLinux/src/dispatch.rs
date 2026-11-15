@@ -377,6 +377,21 @@ fn call(method: &str, a: &Value) -> R {
             std::fs::write(arg::<String>(a, "path")?, csv).map_err(|e| e.to_string())?;
             ok(())
         }
+        // --- Umsatz-Export (ExportSheet.swift): CSV / CAMT.053 from the core, files written here ---
+        "export_csv" => ok(girocrab_core::export::export_csv(
+            arg(a, "rows")?,
+            arg(a, "columns")?,
+            arg(a, "balance_lines")?,
+        )),
+        "camt053_statement" => ok(girocrab_core::export::camt053_statement(
+            arg(a, "account")?,
+            arg(a, "bookings")?,
+            arg(a, "version")?,
+            arg(a, "opening_cents")?,
+            arg(a, "opening_date")?,
+            arg(a, "created_at")?,
+        )),
+        "save_export_file" => save_export_file(a),
         "print_pdf" => print_pdf(a),
         "print_web_assets" => print_web_assets(),
         "psd2_catalog" => ok(girocrab_core::connectors::bank_directory::psd2_catalog()),
@@ -514,6 +529,72 @@ fn print_web_assets() -> R {
         "paginator": print_assets::PRINT_PAGINATOR,
         "pdf_supported": pdf,
     }))
+}
+
+/// AppModel+Printing.swift › presentExportFile: writes an export (`text`, or the PDF
+/// WebPrinter.qml rendered at `from_path`, which is removed afterwards). With `path`
+/// (save dialog, which already asked about replacing) exactly there; otherwise into
+/// `dir` as `filename`, or the first free `Name-2.ext`, `Name-3.ext`, … so an export
+/// never replaces an existing file without asking; a `dir` that is gone falls back to
+/// `fallback_dir` (Downloads, created if needed). Returns the path written. `discard`
+/// (save dialog cancelled) only removes the rendered PDF.
+fn save_export_file(a: &Value) -> R {
+    use std::io::Write;
+    let text = arg::<Option<String>>(a, "text")?;
+    let from = arg::<Option<String>>(a, "from_path")?;
+    if arg::<Option<bool>>(a, "discard")?.unwrap_or(false) {
+        if let Some(p) = from {
+            let _ = std::fs::remove_file(p);
+        }
+        return ok(());
+    }
+    let bytes = match (&text, &from) {
+        (Some(t), _) => t.clone().into_bytes(),
+        (None, Some(p)) => std::fs::read(p).map_err(|e| format!("{p}: {e}"))?,
+        (None, None) => return Err("argument `text` or `from_path` missing".into()),
+    };
+    let written = if let Some(path) = arg::<Option<String>>(a, "path")? {
+        std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+        path
+    } else {
+        let mut dir = std::path::PathBuf::from(arg::<String>(a, "dir")?);
+        if !dir.is_dir() {
+            if let Some(fallback) = arg::<Option<String>>(a, "fallback_dir")? {
+                dir = fallback.into();
+                std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            }
+        }
+        let filename: String = arg(a, "filename")?;
+        let (stem, ext) = match filename.rsplit_once('.') {
+            Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
+            _ => (filename.clone(), String::new()),
+        };
+        let mut n = 1;
+        loop {
+            let name = if n == 1 {
+                filename.clone()
+            } else {
+                format!("{stem}-{n}{ext}")
+            };
+            let path = dir.join(&name);
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(mut f) => {
+                    f.write_all(&bytes).map_err(|e| e.to_string())?;
+                    break path.display().to_string();
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => n += 1,
+                Err(e) => return Err(format!("{}: {e}", path.display())),
+            }
+        }
+    };
+    if let Some(p) = from {
+        let _ = std::fs::remove_file(p);
+    }
+    ok(written)
 }
 
 /// Prints a PDF that WebPrinter.qml rendered from the Mac markup: system print dialog,
@@ -1411,6 +1492,84 @@ mod tests {
             .as_array()
             .unwrap()
             .is_empty());
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Umsatz-Export: CSV and CAMT.053 from demo bookings, saved without replacing a file.
+    #[test]
+    fn export_calls() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-export-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![7; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        let accounts = call("list_accounts", json!({}));
+        let account = accounts
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["kind"] == "Checking")
+            .unwrap()
+            .clone();
+        let filter = json!({ "account_ids": [account["id"]], "category_id": null,
+            "include_subcategories": true, "uncategorized_only": false, "search": null,
+            "date_from": null, "date_to": null, "limit": 0, "offset": 0, "scope": "All",
+            "merchant_key": null, "direction": "All", "checked": null, "whole_days": true });
+        let bookings =
+            call("list_transactions", json!({ "filter": filter }))["transactions"].clone();
+        let first = &bookings.as_array().unwrap()[0];
+        let rows = json!([{ "date": first["booking_date"], "account_name": account["name"],
+            "counterparty": "=SUMME(A1)", "purpose": "Miete; März", "category": "Wohnen",
+            "note": "", "amount_cents": -123456, "currency": "EUR", "day_balance_cents": 50 }]);
+        let csv = call_ok(
+            "export_csv",
+            json!({ "rows": rows, "columns": { "category": true, "note": false, "daily_balance": true },
+                    "balance_lines": [] }),
+        );
+        let csv = csv.as_str().unwrap();
+        assert!(csv.starts_with(
+            "\u{FEFF}Datum;Konto;Name;Verwendungszweck;Kategorie;Betrag;Währung;Tagessaldo\r\n"
+        ));
+        assert!(csv.contains(";'=SUMME(A1);\"Miete; März\";Wohnen;-1234,56;EUR;0,50\r\n"));
+        let camt = call_ok(
+            "camt053_statement",
+            json!({ "account": account, "bookings": bookings, "version": "V08",
+                    "opening_cents": 100000, "opening_date": "2026-01-01",
+                    "created_at": "2026-11-15T12:00:00+01:00" }),
+        );
+        let camt = camt.as_str().unwrap();
+        assert!(camt.contains("urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"));
+        assert!(camt.contains("<Cd>OPBD</Cd>") && camt.contains("<Cd>CLBD</Cd>"));
+        let dir = std::env::temp_dir().join(format!("girocrab-export-out-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let save = |a: Value| call_ok("save_export_file", a).as_str().unwrap().to_string();
+        let args = json!({ "text": "a", "dir": dir, "filename": "Umsaetze-Giro.csv" });
+        assert!(save(args.clone()).ends_with("/Umsaetze-Giro.csv"));
+        assert!(save(args).ends_with("/Umsaetze-Giro-2.csv"));
+        let tmp = dir.join("render.pdf");
+        std::fs::write(&tmp, b"%PDF-1.4").unwrap();
+        let target = dir.join("Umsaetze-Giro.pdf");
+        let written = save(json!({ "from_path": tmp, "path": target }));
+        assert_eq!(std::fs::read(&written).unwrap(), b"%PDF-1.4");
+        assert!(!tmp.exists());
+        std::fs::write(&tmp, b"%PDF-1.4").unwrap();
+        call_ok(
+            "save_export_file",
+            json!({ "from_path": tmp, "discard": true }),
+        );
+        assert!(!tmp.exists());
+        let moved = save(json!({ "text": "b", "dir": dir.join("gone"),
+            "fallback_dir": dir.join("Downloads"), "filename": "x.xml" }));
+        assert!(moved.ends_with("/Downloads/x.xml"));
+        assert_eq!(
+            std::fs::read_to_string(dir.join("Umsaetze-Giro.csv")).unwrap(),
+            "a"
+        );
+        let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_file(path);
     }
 

@@ -492,6 +492,17 @@ Rectangle {
                    onTriggered: AppModel.openTransferFrom(stream.menuBooking) }
         AppMenuItem { text: qsTr("Umsatz kopieren"); icon.name: SF.icon("doc.on.doc")
                    onTriggered: AppModel.copyToClipboard(AppModel.clipboardLine(stream.menuBooking)) }
+        // exportMenuButton(for:)
+        AppMenuItem {
+            readonly property int count: AppModel.isMultiSelection && stream.menuBooking !== null && !!AppModel.selectedBookingIDs[stream.menuBooking.id]
+                ? Object.keys(AppModel.selectedBookingIDs).length : 1
+            text: count > 1 ? qsTr("%1 Umsätze exportieren …").arg(count) : qsTr("Umsatz exportieren …")
+            icon.name: SF.icon("square.and.arrow.up")
+            onTriggered: {
+                if (!AppModel.selectedBookingIDs[stream.menuBooking.id]) AppModel.selectedBookingID = stream.menuBooking.id
+                AppModel.openBookingExport(true)
+            }
+        }
         AppMenuSeparator {}
         AppMenuItem { text: stream.menuBooking && stream.menuBooking.checked ? qsTr("Als neu markieren") : qsTr("Als geprüft markieren"); icon.name: SF.icon("checkmark.circle")
                    onTriggered: AppModel.setChecked(!stream.menuBooking.checked, stream.menuBooking) }

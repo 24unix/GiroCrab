@@ -99,6 +99,7 @@
   "Version": "Version",
   "Vorschau mit QtPdf": "Preview with QtPdf",
   "Warte auf den Schlüsselbund …": "Waiting for the keyring…",
+  "XML-Dateien (*.xml)": "XML files (*.xml)",
   "Zum Drucken fehlt QtWebEngine (Paket „qml6-module-qtwebengine“).": "Printing requires QtWebEngine (package “qml6-module-qtwebengine”).",
   "Zum Drucken fehlt das PDF-Modul von Qt (Paket „qt6-image-formats-plugin-pdf“).": "Printing requires Qt’s PDF module (package “qt6-image-formats-plugin-pdf”).",
   "Zurück zum eigenen Tresor": "Back to Your Own Vault",

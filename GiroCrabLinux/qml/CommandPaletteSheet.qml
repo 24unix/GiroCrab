@@ -22,6 +22,7 @@ Sheet {
         if (m.canTransfer) add(qsTr("Überweisung senden"), action + " · " + Fmt.keys("Strg+N"), "paperplane", () => m.openTransfer())
         if (!m.bankingBlocksAll) add(qsTr("Alle Konten abrufen"), action + " · " + Fmt.keys("Strg+R"), "arrow.triangle.2.circlepath", () => m.requestSyncAll())
         add(qsTr("Regeln bearbeiten"), action, "wand.and.stars", () => m.openRuleEditor(null))
+        add(qsTr("Umsätze exportieren"), action, "square.and.arrow.up", () => m.openBookingExport(false))
         add(qsTr("Buchungen drucken"), action + " · " + Fmt.keys("Strg+P"), "printer", () => m.showPrintSheet = true)
         add(qsTr("Wiederkehrende Buchungen"), action, "repeat", () => m.showRecurringSheet = true)
         add(qsTr("Zeitraum: Seit letztem Gehalt"), view, "banknote", () => m.period = "sinceSalary")

@@ -59,7 +59,8 @@ ApplicationWindow {
             Action { text: qsTr("Neue Hauptkategorie …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.newCategoryRequest = { parent: null } }
             AppMenuSeparator {}
             Action { text: qsTr("Vorhandene Daten importieren …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.openMoneyMoneyImport() }
-            Action { text: qsTr("Buchungen als CSV exportieren …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.exportFilteredBookingsCSV() }
+            Action { text: qsTr("Umsätze exportieren …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.openBookingExport(false) }
+            Action { text: qsTr("Umsätze als CSV exportieren …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.exportFilteredBookingsCSV() }
             AppMenuSeparator {}
             Action { text: qsTr("Drucken …"); shortcut: "Ctrl+P"; enabled: AppModel.isUnlocked; onTriggered: AppModel.showPrintSheet = true }
             AppMenuSeparator {}
@@ -455,6 +456,23 @@ ApplicationWindow {
         visible: AppModel.showCSVExporter
         onAccepted: { AppModel.showCSVExporter = false; AppModel.writeFilteredBookingsCSV(AppModel.localPath(selectedFile)) }
         onRejected: AppModel.showCSVExporter = false
+    }
+
+    // Umsätze exportieren (ExportSheet.swift); „Unter …“ asks here, after the sheet has closed.
+    Loader { active: AppModel.showExportSheet; sourceComponent: Component { ExportSheet { visible: AppModel.showExportSheet } } }
+    FileDialog {
+        readonly property var request: AppModel.exportSaveRequest
+        readonly property string folder: "file://" + BookingExport.preferredDirectory()
+        title: qsTr("Umsätze sichern")
+        acceptLabel: qsTr("Sichern")
+        fileMode: FileDialog.SaveFile
+        nameFilters: !request ? [] : request.format === "pdf" ? [qsTr("PDF-Dokumente (*.pdf)")]
+                   : request.format === "csv" ? [qsTr("CSV-Dateien (*.csv)")] : [qsTr("XML-Dateien (*.xml)")]
+        currentFolder: folder
+        selectedFile: request ? folder + "/" + request.filename : ""
+        visible: request !== null
+        onAccepted: BookingExport.saveExportRequest(AppModel.localPath(selectedFile))
+        onRejected: BookingExport.saveExportRequest(null)
     }
 
     TransferSheet {}
