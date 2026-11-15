@@ -600,6 +600,9 @@ impl BankConnector for ComdirectConnector {
                 }
                 for h in holdings {
                     out.holdings.push(super::RemoteHolding {
+                        classification: Default::default(),
+                        direct_crypto: false,
+
                         account_ref: external_ref.clone(),
                         holding: h,
                     });

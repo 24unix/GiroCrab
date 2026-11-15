@@ -211,6 +211,12 @@ struct ConnectionEditSheet: View {
 
     private var isPortal: Bool { connection.connector == .americanExpress || connection.connector == .amazonVisa }
     @State private var importingStatement = false
+    @State private var confirmSwitch = false
+    /// comdirect logins can switch between FinTS and comdirect's own API.
+    private var isComdirect: Bool {
+        connection.connector == .comdirect
+            || (connection.connector == .finTsGeneric && ["20041111", "20041133", "20041144", "20041155"].contains(connection.bankCode))
+    }
     @State private var showAdvanced = false
 
     private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq, .ibkr, .easybank].contains(connection.connector) }
@@ -281,6 +287,21 @@ struct ConnectionEditSheet: View {
                         }
                     }
                 }
+                if isComdirect {
+                    Section {
+                        LabeledContent("Abrufweg", value: connection.connector == .comdirect
+                            ? String(localized: "Schnittstelle der Bank") : String(localized: "Online-Banking (FinTS)"))
+                        Button(connection.connector == .comdirect ? "Auf FinTS umstellen …" : "Auf die Schnittstelle der Bank umstellen …") {
+                            confirmSwitch = true
+                        }
+                    } header: {
+                        Text("Abrufweg").appSectionHeader()
+                    } footer: {
+                        Text("Konten, Kategorien und Notizen bleiben erhalten. Beim nächsten Abruf ordnet GiroCrab Konten und Buchungen dem neuen Weg zu.")
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
+                            .leadingFooter()
+                    }
+                }
                 Section {
                     AccountSelectionList(connection: connection)
                 } header: { Text("Kontenauswahl").appSectionHeader() }
@@ -326,6 +347,17 @@ struct ConnectionEditSheet: View {
         .macFrame(minWidth: 560, minHeight: 560)
         .onAppear(perform: load)
         .confirmRemoveConnection($confirmRemove) { dismiss() }
+        .confirmationDialog("Abrufweg umstellen?", isPresented: $confirmSwitch, titleVisibility: .visible) {
+            Button("Umstellen") {
+                model.switchComdirectAccess(connection.id)
+                dismiss()
+            }
+            Button("Abbrechen", role: .cancel) {}
+        } message: {
+            Text(connection.connector == .comdirect
+                ? "GiroCrab ruft comdirect danach per FinTS ab. Die Bankleitzahl kommt aus der IBAN Ihrer Konten. Beim ersten Abruf werden PIN und Freigabe in der App erneut abgefragt."
+                : "GiroCrab ruft comdirect danach über die Schnittstelle der Bank ab. Dafür sind Client-ID und Client-Secret nötig.")
+        }
         .confirmationDialog("Sitzung löschen?", isPresented: Binding(get: { confirmClear != nil }, set: { if !$0 { confirmClear = nil } }),
                             titleVisibility: .visible, presenting: confirmClear) { kind in
             Button("Sitzung löschen", role: .destructive) {

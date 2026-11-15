@@ -51,7 +51,7 @@ Sheet {
         return r.mode === "Psd2" ? "building.columns.circle" : "building.columns"
     }
     function detailLine(r) {
-        if (r.mode === "FinTs") return qsTr("BLZ %1").arg(r.blz)
+        if (r.mode === "FinTs") return r.blz ? qsTr("BLZ %1").arg(r.blz) : ""
         if (r.mode === "Psd2") return r.country
         return ""
     }

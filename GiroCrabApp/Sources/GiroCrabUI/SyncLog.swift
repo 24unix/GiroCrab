@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import GiroCrabCore
 
-extension SyncLogEntry: Identifiable {}
+extension SyncLogEntry: @retroactive Identifiable {}
 
 extension AppModel {
     /// What started the sync that is running for `connectionID`.

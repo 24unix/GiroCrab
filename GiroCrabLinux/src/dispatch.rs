@@ -836,6 +836,7 @@ vault_methods! {
     update_bank_connection(connection_id, display_name, login_name)
     set_connection_pin(connection_id, pin) connection_status(connection_id)
     clear_connection_session(connection_id) set_connection_session(connection_id, cookies)
+    switch_comdirect_access(connection_id)
     fints_product_id_mode() set_fints_product_id_mode(mode) fints_product_id_source()
     list_holdings(account_id) balance_history(account_ids, days)
     rename_account(account_id, name)

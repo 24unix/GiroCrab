@@ -40,6 +40,8 @@ pub fn fints_presets() -> Vec<FinTsPreset> {
         p("dkb", "DKB", "12030000", "https://fints.dkb.de/fints",
           "URL ggf. laut DK-Institutsliste prüfen."),
         p("ing", "ING", "50010517", "https://fints.ing.de/fints/", ""),
+        p("comdirect", "comdirect", "", super::fints_directory::COMDIRECT_FINTS_URL,
+          "BLZ aus Ihrer IBAN eintragen (Stellen 5–12, z. B. 20041155) oder die IBAN einfügen. Anmeldename: Ihre Zugangsnummer."),
         p("gls", "GLS Gemeinschaftsbank", "43060967", ATRUVIA, ""),
         p("consorsbank", "Consorsbank", "76030080", "https://brokerage-hbci.consorsbank.de/hbci",
           "Anmeldename: 10-stellige Kontonummer des Verrechnungskontos (mit führenden Nullen) + 001, z. B. 0001234567001. TAN aus der Consorsbank App oder dem SecurePlus-Generator."),
@@ -135,7 +137,12 @@ mod tests {
             assert_eq!(d.url, pr.url, "{id}");
         }
         assert!(known_fints_blz("50010517") && known_fints_blz("10050000"));
-        assert!(!known_fints_blz("20041111")); // comdirect: own connector
+        assert!(known_fints_blz("20041155")); // comdirect: FinTS next to its own API
+        let comdirect = fints_presets()
+            .into_iter()
+            .find(|p| p.id == "comdirect")
+            .unwrap();
+        assert!(comdirect.blz.is_empty() && is_valid_fints_url(&comdirect.url));
         assert!(!known_fints_blz("12345678"));
     }
 
