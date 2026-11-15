@@ -600,7 +600,9 @@ mod matrix_tests {
             .unwrap();
         assert!(!e.capabilities.contains(&Capability::Transfers));
         assert!(e.capabilities.contains(&Capability::Transactions));
-        assert!(descriptor(ConnectorKind::Direkt1822).note.contains("09/2025"));
+        assert!(descriptor(ConnectorKind::Direkt1822)
+            .note
+            .contains("09/2025"));
     }
 
     #[test]
