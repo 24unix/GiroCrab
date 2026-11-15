@@ -555,7 +555,8 @@ struct LoanAssignMenu: View {
 
     var body: some View {
         let loans = model.assignableLoans
-        if let b = booking, b.accountKind != .loan {
+        // Repayments leave the account: offered for outflows, or to undo an existing link (#429).
+        if let b = booking, b.accountKind != .loan, b.amountCents < 0 || model.loanLink(for: b) != nil {
             Menu("Darlehen zuordnen") {
                 if !loans.isEmpty {
                     Picker("Darlehen", selection: Binding(
@@ -569,6 +570,10 @@ struct LoanAssignMenu: View {
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
+                    Divider()
+                } else {
+                    // Only loans created in GiroCrab (Neues Darlehen) can take bookings; say so (#429).
+                    Text("Keine manuellen Darlehen angelegt")
                     Divider()
                 }
                 Button("Neues Darlehen aus dieser Buchung …") { model.openLoanEditor(from: b) }

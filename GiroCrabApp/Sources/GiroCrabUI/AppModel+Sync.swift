@@ -97,7 +97,7 @@ extension AppModel {
             return .connection(cid)
         case .userGroup(let uuid) where !uuid.isEmpty:
             return .group(uuid)
-        case .documents:
+        case .documents, .wealth:
             return .none
         default:
             return .all
@@ -362,7 +362,9 @@ extension AppModel {
                 statementsAccountID = nil
                 documentsVersion += 1
                 let n = max(0, accountDocuments(accountID).count - statementsCountBefore)
-                toast = String(localized: "\(connection.displayName): \(n) neue Kontoauszüge")
+                toast = n > 0
+                    ? String(localized: "\(connection.displayName): \(n) neue Kontoauszüge")
+                    : String(localized: "\(connection.displayName): keine neuen Kontoauszüge. Falls die Bank keine elektronischen Kontoauszüge per FinTS anbietet, lassen sie sich hier nicht abrufen.")
             } else {
                 let quiet = quietSyncConnectionID == connection.id
                 // scheduled syncs only speak up when something changed

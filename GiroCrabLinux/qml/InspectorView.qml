@@ -1,0 +1,573 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import QtQuick.Dialogs
+
+// BookingDetailView.swift › InspectorView: receipt, note, salary, recurring,
+// merchant history, category grid, raw data – or the multi-selection card.
+Rectangle {
+    id: inspector
+    color: Theme.canvas
+    readonly property var b: AppModel.selectedBooking
+
+    ScrollView {
+        anchors.fill: parent
+        contentWidth: availableWidth
+        ColumnLayout {
+            width: parent.width
+            spacing: 14
+            Item { implicitHeight: 2 }
+
+            LoanProgressCard {
+                visible: AppModel.selectedAccount !== null && AppModel.selectedAccount.kind === "Loan"
+                account: visible ? AppModel.selectedAccount : null
+                Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16
+            }
+
+            // Keine Buchung ausgewählt
+            Card {
+                visible: !AppModel.isMultiSelection && inspector.b === null
+                Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16
+                ColumnLayout {
+                    width: parent.width; spacing: 10
+                    RowLayout { SFIcon { symbol: "doc.text.magnifyingglass"; size: 16; color: Theme.text }
+                        Text { text: qsTr("Keine Buchung ausgewählt"); font.pixelSize: Theme.body + 1; font.weight: Font.DemiBold; color: Theme.text } }
+                    Text { text: qsTr("Wählen Sie eine Buchung, um Beleg, Händler-Historie und Kategorie zu sehen.")
+                           font.pixelSize: Theme.callout + 1; color: Theme.secondary; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                }
+            }
+
+            // MultiSelectionCard
+            Card {
+                id: multi
+                visible: AppModel.isMultiSelection
+                Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16
+                readonly property real income: AppModel.selectedBookings.filter(x => x.amount_cents > 0).reduce((s, x) => s + x.amount_cents, 0)
+                readonly property real expense: AppModel.selectedBookings.filter(x => x.amount_cents < 0).reduce((s, x) => s + x.amount_cents, 0)
+                ColumnLayout {
+                    width: parent.width; spacing: 12
+                    RowLayout { SFIcon { symbol: "checkmark.circle"; size: 16; color: Theme.text }
+                        Text { text: qsTr("%1 Buchungen ausgewählt").arg(AppModel.selectedBookings.length); font.pixelSize: Theme.body + 1; font.weight: Font.DemiBold; color: Theme.text } }
+                    GridLayout {
+                        columns: 2; Layout.fillWidth: true; rowSpacing: 4
+                        Text { text: qsTr("Summe"); color: Theme.text; font.pixelSize: Theme.callout + 1; Layout.fillWidth: true }
+                        Text { text: Fmt.money(multi.income + multi.expense); color: Theme.secondary; font.pixelSize: Theme.callout + 1 }
+                        Text { visible: multi.income !== 0; text: qsTr("Einnahmen"); color: Theme.text; font.pixelSize: Theme.callout + 1 }
+                        Text { visible: multi.income !== 0; text: Fmt.money(multi.income); color: Theme.secondary; font.pixelSize: Theme.callout + 1 }
+                        Text { visible: multi.expense !== 0; text: qsTr("Ausgaben"); color: Theme.text; font.pixelSize: Theme.callout + 1 }
+                        Text { visible: multi.expense !== 0; text: Fmt.money(multi.expense); color: Theme.secondary; font.pixelSize: Theme.callout + 1 }
+                    }
+                    Button { text: qsTr("Kategorisieren …"); icon.name: SF.icon("tag"); highlighted: true; Layout.fillWidth: true; onClicked: AppModel.showCategorizer = true }
+                    Button { text: qsTr("Auswahl aufheben"); onClicked: AppModel.selectBooking(AppModel.selectedBookingID) }
+                    Text { text: qsTr("Strg-Klick fügt eine Buchung hinzu oder entfernt sie, ⇧-Klick wählt einen Bereich, Strg+A alle.")
+                           font.pixelSize: Theme.caption; color: Theme.tertiary; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                }
+            }
+
+            Loader {
+                active: !AppModel.isMultiSelection && inspector.b !== null
+                visible: active
+                Layout.fillWidth: true; Layout.leftMargin: 16; Layout.rightMargin: 16
+                sourceComponent: ColumnLayout {
+                    spacing: 14
+                    ReceiptCard { Layout.fillWidth: true; booking: inspector.b }
+                    NoteCard { Layout.fillWidth: true; booking: inspector.b }
+                    SalaryCard { Layout.fillWidth: true; booking: inspector.b; visible: inspector.b.amount_cents > 0 }
+                    RecurringCard { Layout.fillWidth: true; booking: inspector.b }
+                    MerchantHistoryCard { Layout.fillWidth: true; booking: inspector.b }
+                    CategoryGridCard { Layout.fillWidth: true; booking: inspector.b }
+                    DocumentsCard { Layout.fillWidth: true; booking: inspector.b }
+                    RawDataCard { Layout.fillWidth: true; booking: inspector.b }
+                }
+            }
+            Item { implicitHeight: 2 }
+        }
+    }
+
+    component CardTitle: RowLayout {
+        property string text
+        property string symbol
+        property color tint: Theme.text
+        spacing: 6
+        SFIcon { visible: parent.symbol !== ""; symbol: parent.symbol; size: 14; color: parent.tint }
+        Text { text: parent.text; font.pixelSize: Theme.subheadline + 2; font.weight: Font.DemiBold; color: parent.tint }
+    }
+
+    // ReceiptCard
+    component ReceiptCard: Card {
+        id: rc
+        property var booking
+        ColumnLayout {
+            width: parent.width; spacing: 12
+            RowLayout {
+                Item { Layout.fillWidth: true }
+                IconButton {
+                    text: qsTr("Text bearbeiten …"); symbol: "pencil"; symbolSize: 12
+                    display: AbstractButton.TextBesideIcon; font.pixelSize: Theme.caption
+                    ToolTip.text: qsTr("Gegenpartei und Verwendungszweck korrigieren"); ToolTip.visible: hovered
+                    onClicked: { nameField.text = rc.booking.counterparty; purposeField.text = rc.booking.purpose; editPopup.open() }
+                    Popup {
+                        id: editPopup
+                        y: parent.height; x: parent.width - width
+                        width: 340; padding: 14
+                        ColumnLayout {
+                            anchors.fill: parent; spacing: 8
+                            Text { text: qsTr("Gegenpartei"); font.pixelSize: Theme.caption; color: Theme.secondary }
+                            TextField { id: nameField; Layout.fillWidth: true }
+                            Text { text: qsTr("Verwendungszweck"); font.pixelSize: Theme.caption; color: Theme.secondary }
+                            TextArea { id: purposeField; Layout.fillWidth: true; Layout.preferredHeight: 90; wrapMode: TextEdit.Wrap }
+                            RowLayout {
+                                Item { Layout.fillWidth: true }
+                                Button { text: qsTr("Abbrechen"); onClicked: editPopup.close() }
+                                Button { text: qsTr("Speichern"); highlighted: true
+                                         onClicked: { AppModel.updateText(rc.booking, nameField.text, purposeField.text); editPopup.close() } }
+                            }
+                        }
+                    }
+                }
+            }
+            RowLayout {
+                spacing: 12
+                MerchantSignet { merchant: rc.booking.merchant; categorySymbol: rc.booking.category_symbol; size: 48 }
+                // Always as high as a two-line name: the amount and everything below keep
+                // their place from booking to booking. A one-line name block is centred
+                // next to the signet (free space above and below, not between the lines).
+                ColumnLayout {
+                    id: titleBlock
+                    spacing: 2; Layout.fillWidth: true
+                    Layout.preferredHeight: Math.max(implicitHeight, implicitHeight - merchantName.implicitHeight
+                                                     + Math.ceil(nameMetrics.lineSpacing * 2))
+                    Item { Layout.fillHeight: true }
+                    // longer names end in "…" after two lines (full name as tooltip)
+                    Text {
+                        id: merchantName
+                        text: rc.booking.merchant.name
+                        wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight
+                        font.pixelSize: Theme.title3 + 2; font.weight: Font.DemiBold; color: Theme.text
+                        Layout.fillWidth: true
+                        FontMetrics { id: nameMetrics; font: merchantName.font }
+                        HoverHandler { id: nameHover; enabled: merchantName.truncated }
+                        ToolTip.visible: nameHover.hovered; ToolTip.text: text; ToolTip.delay: 500
+                    }
+                    Text { text: rc.booking.account_name + " · " + rc.booking.payment_method; font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
+                    MerchantDomainRow { merchant: rc.booking.merchant; Layout.fillWidth: true }
+                    Item { Layout.fillHeight: true }
+                }
+            }
+            Text {
+                text: Fmt.signed(rc.booking.amount_cents)
+                font.pixelSize: Theme.largeTitle + 6; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
+                color: rc.booking.amount_cents > 0 ? Theme.inflow : Theme.outflow
+            }
+            RowLayout {
+                spacing: 6
+                SFIcon { symbol: "calendar"; size: 12; color: Theme.tertiary }
+                Text { text: Fmt.longDate(rc.booking.booking_date); font.pixelSize: Theme.caption; color: Theme.secondary; Layout.fillWidth: true }
+                FlowBadge { flow: rc.booking.flow }
+            }
+            TextEdit {
+                visible: rc.booking.clean_purpose !== ""
+                text: rc.booking.clean_purpose; readOnly: true; selectByMouse: true
+                wrapMode: Text.Wrap; font.pixelSize: Theme.callout + 1; color: Theme.text; Layout.fillWidth: true
+            }
+            RowLayout {
+                Text { text: qsTr("Geprüft"); font.pixelSize: Theme.caption; color: Theme.text }
+                Switch { checked: rc.booking.checked; onToggled: AppModel.setChecked(checked, rc.booking); scale: 0.8 }
+                Item { Layout.fillWidth: true }
+            }
+        }
+    }
+
+    component FlowBadge: Rectangle {
+        property string flow
+        readonly property color tint: flow === "Investment" || flow === "Perk" ? Theme.invest : flow === "Income" ? Theme.inflow
+                                    : flow === "Loan" ? Theme.loan : flow === "Transfer" ? Theme.secondary : Theme.outflow
+        implicitWidth: fl.implicitWidth + 14; implicitHeight: fl.implicitHeight + 4; radius: height / 2
+        color: Theme.withAlpha(tint, 0.08)
+        Text { id: fl; anchors.centerIn: parent; text: AppModel.flowLabels[parent.flow] || ""; font.pixelSize: Theme.caption2; font.weight: Font.DemiBold; color: parent.tint }
+    }
+
+    component MerchantDomainRow: RowLayout {
+        property var merchant
+        readonly property string sourceLabel: ({ dictionary: qsTr("Wörterbuch"), company: qsTr("Firmenname"), person: qsTr("Privatperson"),
+                                                 override: qsTr("manuell") })[merchant.domain_source] || qsTr("keine Domain")
+        spacing: 4
+        SFIcon { symbol: "globe"; size: 10; color: Theme.tertiary }
+        Text { text: merchant.domain || (merchant.is_person ? qsTr("Privatperson – kein Logo") : qsTr("Domain festlegen"))
+               font.family: "monospace"; font.pixelSize: Theme.caption; color: Theme.tertiary
+               elide: Text.ElideRight; Layout.minimumWidth: 24; Layout.preferredWidth: implicitWidth }
+        Text { visible: merchant.domain !== ""; text: "· " + parent.sourceLabel; font.pixelSize: Theme.caption2; color: Theme.tertiary }
+        SFIcon { symbol: "pencil"; size: 10; color: Theme.tertiary }
+        Item { Layout.fillWidth: true }
+    }
+
+    // NoteCard: saved when the editor loses focus. SwiftUI recreates the card per
+    // booking (saving on disappear); here the draft is saved to the booking it was
+    // typed for before the next booking's note is loaded.
+    component NoteCard: Card {
+        id: nc
+        property var booking
+        /// The booking the editor's text belongs to.
+        property var shown: null
+        property string draft: ""
+        onBookingChanged: {
+            if (booking && shown && booking.id === shown.id) {
+                // same booking, fresh data (e.g. after a reload)
+                shown = booking
+                if (!note.activeFocus) note.text = booking.note
+                return
+            }
+            const prev = shown, text = draft
+            shown = booking
+            note.text = booking ? booking.note : ""
+            if (prev && text.trim() !== prev.note) AppModel.updateNote(prev, text)
+            claimFocus()
+        }
+        function save() { if (shown && draft.trim() !== shown.note) AppModel.updateNote(shown, draft) }
+        /// Takes the focus requested by a double-click / Return in the list for this booking.
+        function claimFocus() {
+            if (!shown || AppModel.pendingNoteFocus !== shown.id) return
+            AppModel.pendingNoteFocus = null
+            Qt.callLater(() => { note.forceActiveFocus(); note.cursorPosition = note.length })
+        }
+        Connections { target: AppModel; function onPendingNoteFocusChanged() { nc.claimFocus() } }
+        Component.onCompleted: if (shown === null && booking) { shown = booking; note.text = booking.note; claimFocus() }
+        Component.onDestruction: {
+            const s = shown, text = draft
+            if (s && text.trim() !== s.note) Qt.callLater(() => AppModel.updateNote(s, text))
+        }
+        ColumnLayout {
+            width: parent.width; spacing: 6
+            CardTitle { text: qsTr("Notiz"); symbol: "note.text" }
+            TextArea {
+                id: note
+                Layout.fillWidth: true; Layout.minimumHeight: 54; Layout.maximumHeight: 120
+                wrapMode: TextEdit.Wrap; font.pixelSize: Theme.callout + 1
+                onTextChanged: nc.draft = text
+                onActiveFocusChanged: if (!activeFocus) nc.save()
+                // Esc: leave the note (saves via focus loss) and go back to the list
+                Keys.onEscapePressed: AppModel.focusList()
+            }
+        }
+    }
+
+    // SalaryCard
+    component SalaryCard: Card {
+        property var booking
+        readonly property string choice: booking.salary_flag === true ? "yes" : booking.salary_flag === false ? "no" : "auto"
+        ColumnLayout {
+            width: parent.width; spacing: 8
+            CardTitle { text: qsTr("Gehalt / Rente"); tint: booking.is_salary ? Theme.inflow : Theme.text }
+            Segmented {
+                Layout.fillWidth: true
+                options: [{ id: "auto", title: qsTr("Automatisch") }, { id: "yes", title: qsTr("Ja") }, { id: "no", title: qsTr("Nein") }]
+                current: choice
+                onActivated: id => AppModel.setSalaryFlag(booking, id === "auto" ? null : id === "yes")
+            }
+            Text {
+                Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
+                text: choice === "yes" ? qsTr("Als Gehalt markiert. Weitere Eingänge von diesem Konto zählen ebenfalls als Gehalt.")
+                    : choice === "no" ? qsTr("Wird nie als Gehalt gezählt.")
+                    : booking.is_salary ? qsTr("Als Gehalt erkannt (Purpose-Code, Geschäftsvorfallcode oder Verwendungszweck).")
+                    : qsTr("Nicht als Gehalt erkannt. Markieren Sie den Eingang, damit der Zeitraum „Seit letztem Gehalt“ ihn nutzt.")
+            }
+        }
+    }
+
+    // RecurringUI.swift › RecurringCard
+    component RecurringCard: Card {
+        id: rec
+        property var booking
+        readonly property var series: AppModel.recurringSeries(booking)
+        ColumnLayout {
+            width: parent.width; spacing: 8
+            RowLayout {
+                CardTitle { text: qsTr("Wiederkehrend"); symbol: "repeat"; tint: rec.series === null ? Theme.text : Theme.accent; Layout.fillWidth: true }
+                ToolButton {
+                    text: (rec.series === null ? qsTr("Markieren") : qsTr("Ändern")) + "  ▾"
+                    flat: true
+                    onClicked: recMenu.popup()
+                    AppMenu {
+                        id: recMenu
+                        Repeater {
+                            model: ["Monthly", "Quarterly", "HalfYearly", "Yearly"]
+                            AppMenuItem { required property string modelData; text: AppModel.intervalLabels[modelData]; checkable: true
+                                       checked: rec.series !== null && rec.series.interval === modelData
+                                       onTriggered: AppModel.markRecurring(rec.booking, modelData) }
+                        }
+                        AppMenuItem { text: qsTr("Individuell …"); checkable: true
+                                   checked: rec.series !== null && rec.series.interval === "Custom"
+                                   onTriggered: { checked = Qt.binding(() => rec.series !== null && rec.series.interval === "Custom"); AppModel.customRecurringBooking = rec.booking } }
+                        AppMenuSeparator {}
+                        AppMenuItem { text: qsTr("Automatisch erkennen"); enabled: rec.series !== null && rec.series.source === "Manual"; onTriggered: AppModel.resetRecurring(rec.series.series_key) }
+                        AppMenuItem { text: qsTr("Nicht wiederkehrend"); enabled: rec.series !== null; onTriggered: AppModel.ignoreRecurring(rec.series) }
+                    }
+                }
+            }
+            Text {
+                visible: rec.series !== null
+                text: rec.series ? AppModel.intervalText(rec.series) + " · " + qsTr("nächste am %1").arg(Fmt.medium(rec.series.next_due)) : ""
+                font.pixelSize: Theme.callout + 1; color: Theme.text
+            }
+            Text {
+                Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
+                text: rec.series === null
+                    ? qsTr("Nicht als wiederkehrend erkannt. Markieren Sie die Buchung, damit sie in den anstehenden Fixkosten erscheint.")
+                    : rec.series.source === "Manual" ? qsTr("Manuell markiert · ca. %1").arg(Fmt.money(rec.series.amount_cents))
+                    : qsTr("Automatisch erkannt aus %1 Buchungen · ca. %2").arg(rec.series.occurrences).arg(Fmt.money(rec.series.amount_cents))
+            }
+        }
+    }
+
+    // MerchantHistoryCard
+    component MerchantHistoryCard: Card {
+        id: mh
+        property var booking
+        readonly property var s: AppModel.merchantStats && AppModel.merchantStats.key === booking.merchant.key ? AppModel.merchantStats : null
+        ColumnLayout {
+            width: parent.width; spacing: 10
+            CardTitle { text: qsTr("Händler-Historie") }
+            RowLayout {
+                visible: mh.s !== null
+                spacing: 10; Layout.fillWidth: true
+                Repeater {
+                    model: mh.s ? [[qsTr("Buchungen"), mh.s.count + "×"], [qsTr("Summe"), Fmt.money(mh.s.total_cents)], [qsTr("Ø Betrag"), Fmt.money(mh.s.average_cents)]] : []
+                    ColumnLayout { required property var modelData; spacing: 2; Layout.fillWidth: true; Layout.preferredWidth: 1
+                        Text { text: modelData[0]; font.pixelSize: Theme.caption2; color: Theme.secondary }
+                        Text { text: modelData[1]; font.pixelSize: Theme.callout + 1; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true } }
+                }
+            }
+            Text { visible: mh.s !== null && mh.s.first_date !== ""
+                   text: mh.s ? qsTr("Seit %1 · zuletzt %2").arg(Fmt.medium(mh.s.first_date)).arg(Fmt.medium(mh.s.last_date)) : ""
+                   font.pixelSize: Theme.caption2; color: Theme.tertiary }
+            Rectangle { visible: mh.booking.merchant.isin !== "" || mh.booking.merchant.asset_class !== ""; Layout.fillWidth: true; height: 1; color: Theme.border }
+            RowLayout {
+                visible: mh.booking.merchant.isin !== "" || mh.booking.merchant.asset_class !== ""
+                spacing: 14
+                Repeater {
+                    model: [[qsTr("Anlage"), mh.booking.merchant.asset_class], [qsTr("ISIN"), mh.booking.merchant.isin], [qsTr("WKN"), mh.booking.merchant.wkn]].filter(x => x[1])
+                    ColumnLayout { required property var modelData; spacing: 1
+                        Text { text: modelData[0]; font.pixelSize: Theme.caption2; color: Theme.secondary }
+                        TextEdit { text: modelData[1]; readOnly: true; selectByMouse: true; font.family: "monospace"; font.pixelSize: Theme.caption; color: Theme.text } }
+                }
+            }
+        }
+    }
+
+    // CategoryGridCard: top-level chips, then one row of chips per opened level.
+    component CategoryGridCard: Card {
+        id: cg
+        property var booking
+        property var openPath: null
+        // a reload hands in a new object for the same booking: keep the opened level
+        property var openFor: null
+        onBookingChanged: { const id = booking ? booking.id : null; if (id !== openFor) { openFor = id; openPath = null } }
+        readonly property var currentPath: {
+            if (booking.category_id === null) return []
+            const path = []
+            let next = booking.category_id
+            while (next !== null && path.length < 32) {
+                const c = AppModel.categories.find(c => c.id === next)
+                if (!c) break
+                path.unshift(next)
+                next = c.parent_id
+            }
+            const node = AppModel.categoryNode(booking.category_id)
+            if (path.length && path[path.length - 1] === booking.category_id && node && !node.children) path.pop()
+            return path
+        }
+        readonly property var path: openPath || currentPath
+        function pick(node, level) {
+            if (!node.children) AppModel.setCategory(booking, node.category.id)
+            else openPath = path.slice(0, level).concat([node.category.id])
+        }
+        ColumnLayout {
+            width: parent.width; spacing: 10
+            RowLayout {
+                CardTitle { text: qsTr("Kategorie"); Layout.fillWidth: true }
+                Text { text: cg.booking.category_path || qsTr("Ohne Kategorie"); font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.maximumWidth: 160 }
+            }
+            ChipGrid { card: cg; Layout.fillWidth: true; nodes: AppModel.categoryTree; selectedId: cg.path.length ? cg.path[0] : -1; level: 0; minimum: 104 }
+            Repeater {
+                model: cg.path
+                ColumnLayout {
+                    required property var modelData
+                    required property int index
+                    readonly property var node: AppModel.categoryNode(modelData)
+                    visible: node !== null && !!node.children
+                    Layout.fillWidth: true
+                    spacing: 10
+                    Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
+                    ChipGrid { card: cg; Layout.fillWidth: true; nodes: parent.node && parent.node.children ? parent.node.children : []; filled: true; minimum: 120; level: index + 1
+                               selectedId: index + 1 < cg.path.length ? cg.path[index + 1] : (cg.booking.category_id ?? -1) }
+                }
+            }
+            Button { Layout.fillWidth: true; text: qsTr("Umsatz aufteilen (Splitbuchung) …"); icon.name: SF.icon("arrow.triangle.branch"); onClicked: AppModel.splitBooking = cg.booking }
+            Button { Layout.fillWidth: true; text: qsTr("Regel für diesen Händler erstellen …"); icon.name: SF.icon("wand.and.stars"); highlighted: true
+                     onClicked: AppModel.openRuleEditor(cg.booking) }
+            Text { text: qsTr("In der Liste: C kategorisieren · R Regel erstellen"); font.pixelSize: Theme.caption2; color: Theme.tertiary }
+        }
+    }
+
+    component ChipGrid: Flow {
+        property var card
+        property var nodes: []
+        property var selectedId: -1
+        property bool filled: false
+        property int level: 0
+        property int minimum: 104
+        readonly property int columns: Math.max(1, Math.floor((width + 6) / (minimum + 6)))
+        spacing: 6
+        Repeater {
+            model: parent.nodes
+            CategoryChip {
+                required property var modelData
+                width: (parent.width - (parent.columns - 1) * 6) / parent.columns
+                category: modelData.category
+                selected: modelData.category.id === parent.selectedId
+                filled: parent.filled
+                onClicked: parent.card.pick(modelData, parent.level)
+            }
+        }
+    }
+
+    component CategoryChip: Rectangle {
+        property var category
+        property bool selected
+        property bool filled
+        signal clicked()
+        implicitHeight: 30
+        radius: 7
+        color: selected ? Theme.selection : (filled ? Theme.canvas : Theme.card)
+        border.color: selected ? Theme.accent : Theme.border
+        border.width: selected ? 1.5 : 1
+        RowLayout {
+            anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 5
+            SFIcon { symbol: parent.parent.category.sf_symbol; size: 13; color: Theme.text }
+            Text { text: parent.parent.category.name; font.pixelSize: Theme.caption + 1; font.weight: parent.parent.selected ? Font.DemiBold : Font.Normal
+                   color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+        }
+        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked() }
+    }
+
+    // DocumentsUI.swift › DocumentsCard: attached receipts, preview, drop zone, export.
+    component DocumentsCard: Card {
+        id: dc
+        property var booking
+        property var selectedDoc: null
+        property var docToDelete: null
+        onBookingChanged: selectedDoc = null
+        readonly property var docs: AppModel.documents(booking)
+        readonly property var shown: selectedDoc || (docs.length ? docs[0] : null)
+        ColumnLayout {
+            width: parent.width; spacing: 10
+            RowLayout {
+                CardTitle { text: qsTr("Belege & Abrechnungen"); symbol: "paperclip"; Layout.fillWidth: true }
+                Text { visible: dc.docs.length > 0; text: dc.docs.length; font.pixelSize: Theme.caption; color: Theme.secondary }
+            }
+            Repeater {
+                model: dc.docs
+                Rectangle {
+                    required property var modelData
+                    Layout.fillWidth: true; implicitHeight: 40; radius: 7
+                    color: dc.selectedDoc && dc.selectedDoc.id === modelData.id ? Theme.selection : "transparent"
+                    RowLayout {
+                        anchors.fill: parent; anchors.margins: 6; spacing: 8
+                        SFIcon { symbol: AppModel.docSymbol(modelData); size: 15; color: Theme.accent; Layout.preferredWidth: 18 }
+                        ColumnLayout { spacing: 1; Layout.fillWidth: true
+                            Text { text: modelData.title; font.pixelSize: Theme.callout + 1; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                            Text { text: Fmt.medium(modelData.doc_date) + " · " + AppModel.byteCount(modelData.size_bytes); font.pixelSize: Theme.caption2; color: Theme.secondary } }
+                        IconButton { symbol: "eye"; symbolSize: 14; ToolTip.text: qsTr("QuickLook (Leertaste)"); onClicked: AppModel.quickLook(modelData) }
+                        IconButton { symbol: "ellipsis.circle"; symbolSize: 14; ToolTip.text: qsTr("Aktionen"); onClicked: docMenu.popup() }
+                    }
+                    TapHandler { onTapped: dc.selectedDoc = dc.selectedDoc && dc.selectedDoc.id === modelData.id ? null : modelData }
+                    AppMenu { id: docMenu
+                        AppMenuItem { text: qsTr("In PostBox verschieben (Verknüpfung lösen)"); onTriggered: AppModel.linkDocument(modelData, null) }
+                        AppMenuSeparator {}
+                        AppMenuItem { text: qsTr("Beleg löschen …"); onTriggered: dc.docToDelete = modelData } }
+                }
+            }
+            DocumentPreview {
+                visible: dc.shown !== null
+                doc: dc.shown
+                Layout.fillWidth: true; Layout.preferredHeight: 300
+                radius: 8; border.color: Theme.border; clip: true
+            }
+            Rectangle {
+                Layout.fillWidth: true; implicitHeight: dz.implicitHeight + 24; radius: 9
+                color: drop.containsDrag ? Theme.selection : Theme.canvas
+                border.color: drop.containsDrag ? Theme.accent : Theme.border
+                ColumnLayout { id: dz; anchors.centerIn: parent; spacing: 4
+                    SFIcon { Layout.alignment: Qt.AlignHCenter; symbol: "arrow.down.doc"; size: 18; color: drop.containsDrag ? Theme.accent : Theme.secondary }
+                    Text { text: qsTr("PDF-Rechnung oder Kassenbon hierher ziehen"); font.pixelSize: Theme.caption; color: drop.containsDrag ? Theme.accent : Theme.secondary } }
+                DropArea { id: drop; anchors.fill: parent; onDropped: d => { if (d.hasUrls) AppModel.attach(d.urls, dc.booking) } }
+            }
+            Button {
+                Layout.fillWidth: true
+                text: qsTr("Alle Belege exportieren …"); icon.name: SF.icon("square.and.arrow.up.on.square")
+                ToolTip.text: qsTr("Für die Steuererklärung: alle Belege nach Jahr sortiert in einen Ordner"); ToolTip.visible: hovered
+                onClicked: exportFolder.open()
+            }
+        }
+        FolderDialog { id: exportFolder; title: qsTr("Ordner für die exportierten Belege wählen"); acceptLabel: qsTr("Exportieren")
+                       onAccepted: AppModel.exportAllDocuments(AppModel.localPath(selectedFolder)) }
+        Sheet {
+            visible: dc.docToDelete !== null
+            onClosed: dc.docToDelete = null
+            sheetWidth: 380
+            ColumnLayout { width: parent.width; spacing: 12
+                Text { text: qsTr("Beleg löschen?"); font.pixelSize: Theme.body + 2; font.weight: Font.Bold; color: Theme.text }
+                Text { text: dc.docToDelete ? qsTr("„%1“ wird unwiderruflich gelöscht.").arg(dc.docToDelete.title) : ""; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: Theme.text }
+                RowLayout { Item { Layout.fillWidth: true }
+                    Button { text: qsTr("Abbrechen"); onClicked: dc.docToDelete = null }
+                    Button { text: qsTr("Löschen"); onClicked: { AppModel.deleteDocument(dc.docToDelete); dc.selectedDoc = null; dc.docToDelete = null } } } }
+        }
+    }
+
+    // RawDataCard
+    component RawDataCard: Card {
+        id: raw
+        property var booking
+        property bool expanded: false
+        function sepa(key) {
+            const i = booking.purpose.indexOf(key + "+")
+            return i < 0 ? null : booking.purpose.slice(i + key.length + 1).split(" ")[0]
+        }
+        readonly property var rows: {
+            const r = [[qsTr("Verwendungszweck (roh)"), booking.purpose || "–"]]
+            if (booking.booking_text) r.push([qsTr("Buchungstext"), booking.booking_text])
+            const e = sepa("EREF"), m = sepa("MREF"), c = sepa("CRED")
+            if (e) r.push([qsTr("EREF (Ende-zu-Ende-Referenz)"), e])
+            if (m) r.push([qsTr("MREF (Mandatsreferenz)"), m])
+            if (c) r.push([qsTr("Gläubiger-ID"), c])
+            if (booking.purpose_code) r.push([qsTr("Purpose-Code"), booking.purpose_code])
+            if (booking.gvc) r.push([qsTr("Geschäftsvorfallcode"), booking.gvc])
+            if (booking.counterparty_iban) r.push([qsTr("IBAN Gegenkonto"), Fmt.iban(booking.counterparty_iban)])
+            r.push([qsTr("Gegenpartei (roh)"), booking.counterparty])
+            if (booking.value_date) r.push([qsTr("Wertstellung"), Fmt.medium(booking.value_date)])
+            r.push([qsTr("Konto"), booking.account_name])
+            return r
+        }
+        ColumnLayout {
+            width: parent.width; spacing: 0
+            RowLayout {
+                Layout.fillWidth: true
+                CardTitle { text: qsTr("SEPA & Bank-Rohdaten"); symbol: "doc.plaintext"; Layout.fillWidth: true }
+                SFIcon { symbol: "chevron.right"; size: 10; rotation: raw.expanded ? 90 : 0 }
+                TapHandler { onTapped: raw.expanded = !raw.expanded }
+            }
+            ColumnLayout {
+                visible: raw.expanded
+                Layout.fillWidth: true; Layout.topMargin: 8
+                spacing: 8
+                Repeater {
+                    model: raw.expanded ? raw.rows : []
+                    ColumnLayout { required property var modelData; spacing: 1; Layout.fillWidth: true
+                        Text { text: modelData[0]; font.pixelSize: Theme.caption2; color: Theme.secondary }
+                        TextEdit { text: modelData[1]; readOnly: true; selectByMouse: true; wrapMode: Text.WrapAnywhere
+                                   font.family: "monospace"; font.pixelSize: Theme.caption; color: Theme.text; Layout.fillWidth: true } }
+                }
+            }
+        }
+    }
+}

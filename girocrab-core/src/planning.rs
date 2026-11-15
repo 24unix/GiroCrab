@@ -553,6 +553,33 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// #427: +59 EUR split into +200 EUR and a counter part of -141 EUR (signed sum = booking).
+    #[test]
+    fn splits_allow_mixed_signs_when_the_signed_sum_matches() {
+        let (v, dir) = vault();
+        let a = cat(&v, "Test-A", None);
+        let b = cat(&v, "Test-B", None);
+        let id = tx(&v, "1", "2025-05-02", 5_900, Some(a));
+        let inp = |c, amount| TransactionSplitInput {
+            category_id: Some(c),
+            amount_cents: amount,
+            note: String::new(),
+        };
+        v.set_transaction_splits(id, vec![inp(a, 20_000), inp(b, -14_100)])
+            .unwrap();
+        let parts = v.list_transaction_splits(id).unwrap();
+        assert_eq!(parts.iter().map(|p| p.amount_cents).sum::<i64>(), 5_900);
+        assert!(parts.iter().any(|p| p.amount_cents == -14_100));
+        // signed sum off, or a zero part: still rejected
+        assert!(v
+            .set_transaction_splits(id, vec![inp(a, 20_000), inp(b, -14_000)])
+            .is_err());
+        assert!(v
+            .set_transaction_splits(id, vec![inp(a, 5_900), inp(b, 0)])
+            .is_err());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn templates_roundtrip() {
         let (v, dir) = vault();

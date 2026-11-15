@@ -200,8 +200,13 @@ impl Vault {
     }
 
     /// Tier 2: cached logo bytes (PNG/ICO) for a domain – never touches the network.
+    /// None while online logos are off: "Aus" shows no favicons, not even cached ones (#422).
     pub fn get_merchant_logo_png(&self, domain: String) -> Result<Option<Vec<u8>>, CoreError> {
         let db = self.db()?;
+        let raw = Vault::setting_inner(&db, "merchants.online_logos")?;
+        if normalize_logo_provider(raw.as_deref()) == "off" {
+            return Ok(None);
+        }
         let bytes: Option<Option<Vec<u8>>> = db
             .query_row(
                 "SELECT image_bytes FROM merchant_logo_cache WHERE domain = ?1",
@@ -463,6 +468,40 @@ mod logo_tests {
     }
 
     #[test]
+    fn cached_logos_are_hidden_while_online_logos_are_off() {
+        let p_dir = crate::test_support::TempDir::new("girocrab-logos-off");
+        let p = p_dir.join("v.db");
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
+        let logo = png(128, 128, 2000);
+        v.db()
+            .unwrap()
+            .execute(
+                "INSERT INTO merchant_logo_cache(domain, image_bytes, source, updated_at) VALUES ('rewe.de', ?1, 'google', strftime('%s','now'))",
+                [&logo],
+            )
+            .unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        // Off (the default): neither the cache read nor the fetch hands out the cached logo (#422).
+        assert_eq!(v.get_merchant_logo_png("rewe.de".into()).unwrap(), None);
+        assert_eq!(rt.block_on(v.fetch_logo("rewe.de".into())).unwrap(), None);
+        let none = rt
+            .block_on(v.fetch_merchant_logo(vec!["rewe.de".into()]))
+            .unwrap();
+        assert!(none.is_none());
+        // On: the cache answers again, without a request.
+        v.set_setting("merchants.online_logos".into(), "duckduckgo".into())
+            .unwrap();
+        assert_eq!(
+            v.get_merchant_logo_png("rewe.de".into()).unwrap(),
+            Some(logo.clone())
+        );
+        assert_eq!(
+            rt.block_on(v.fetch_logo("rewe.de".into())).unwrap(),
+            Some(logo)
+        );
+    }
+
+    #[test]
     fn merchant_stats_in_account_splits_the_total() {
         let p_dir = crate::test_support::TempDir::new("girocrab-mstats");
         let p = p_dir.join("v.db");
@@ -555,10 +594,11 @@ fn looks_like_image(b: &[u8]) -> bool {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl Vault {
-    /// Tier 2 (opt-in): returns a cached favicon or, if "Händler-Logos online
-    /// laden" is enabled, fetches it once from the selected provider's
-    /// (Google or DuckDuckGo) favicon service and caches it in the encrypted vault. Only the domain
-    /// is sent. Failures are cached for 7 days.
+    /// Tier 2 (opt-in): None while "Logos aus dem Internet laden" is off, even for
+    /// a cached favicon (#422). Otherwise returns the cached favicon or fetches it
+    /// once from the selected provider's (Google or DuckDuckGo) favicon service and
+    /// caches it in the encrypted vault. Only the domain is sent. Failures are
+    /// cached for 7 days.
     pub async fn fetch_logo(&self, domain: String) -> Result<Option<Vec<u8>>, CoreError> {
         let domain = domain.trim().to_lowercase();
         if domain.is_empty()
@@ -571,6 +611,12 @@ impl Vault {
         let provider: &str;
         {
             let db = self.db()?;
+            // Checked before the cache: "Aus" also hides favicons cached earlier (#422).
+            let raw = Vault::setting_inner(&db, "merchants.online_logos")?;
+            provider = normalize_logo_provider(raw.as_deref());
+            if provider == "off" {
+                return Ok(None);
+            }
             let row: Option<(Option<Vec<u8>>, i64)> = db
                 .query_row(
                     "SELECT image_bytes, updated_at FROM merchant_logo_cache WHERE domain = ?1",
@@ -585,11 +631,6 @@ impl Vault {
                     _ if fresh_negative => return Ok(None),
                     _ => {}
                 }
-            }
-            let raw = Vault::setting_inner(&db, "merchants.online_logos")?;
-            provider = normalize_logo_provider(raw.as_deref());
-            if provider == "off" {
-                return Ok(None);
             }
         }
         let client = reqwest::Client::builder()
@@ -630,10 +671,10 @@ impl Vault {
         Ok(found.map(|f| f.0))
     }
 
-    /// Dual-source pipeline step 2: tries every candidate domain in order
-    /// ("enbw.de" -> "enbw.com"): cache, then Google S2 (128 px), then
-    /// DuckDuckGo; the tiny default globe is rejected so the next candidate
-    /// is tried. Returns the first real logo and its domain.
+    /// Tries every candidate domain in order ("enbw.de" -> "enbw.com") via
+    /// `fetch_logo`: cache, then the selected provider; the tiny default globe
+    /// is rejected so the next candidate is tried. Returns the first real logo
+    /// and its domain; None while online logos are off.
     pub async fn fetch_merchant_logo(
         &self,
         candidates: Vec<String>,

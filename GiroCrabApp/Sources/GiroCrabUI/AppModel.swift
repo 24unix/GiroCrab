@@ -72,6 +72,9 @@ public final class AppModel {
 
     // UI state
     var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; reloadSelection(periodChanged: false) } }
+    /// Segmented control of the wealth view (shown in the toolbar instead of the booking scope).
+    var wealthScope: WealthScope = .all
+
     var scope: BookingScope = .all {
         didSet {
             guard scope != oldValue else { return }
@@ -152,6 +155,10 @@ public final class AppModel {
     var selectedBookingID: Booking.ID? {
         didSet {
             if stickyBooking?.id != selectedBookingID { stickyBooking = nil }
+            if let id = lingeringBookingID, id != selectedBookingID {
+                lingeringBookingID = nil
+                bookings.removeAll { $0.id == id }
+            }
             Perf.signposter.emitEvent("selectBooking")
             // A plain selection (click, arrow keys, jumps) replaces a multiple one.
             if let id = selectedBookingID {
@@ -177,6 +184,10 @@ public final class AppModel {
     /// (e.g. "kein Gehalt" in the salary period). It stays selected and visible
     /// in the inspector until the user selects something else, like in Mail.
     var stickyBooking: Booking?
+    /// The sticky booking was checked while selected in a list of new
+    /// bookings: its row stays in place (shown as checked) until the user
+    /// selects something else, instead of vanishing under the cursor.
+    var lingeringBookingID: Booking.ID?
     /// iPhone: set by a tap on a booking row, presents the detail sheet.
     var showBookingSheet = false
     var collapsedGroups: Set<Int64> = Set(UserDefaults.standard.array(forKey: "sidebar.collapsedKindGroups") as? [Int64] ?? []) {
@@ -333,6 +344,15 @@ public final class AppModel {
     var syncLogVersion = 0
     var csvExport = CSVFileDocument(data: Data())
     var showCSVExporter = false
+    /// Unified booking export (PDF / CSV / XML).
+    var showExportSheet = false
+    var exportFile = ExportFileDocument(data: Data())
+    var showExportExporter = false
+    var exportContentType: UTType = .pdf
+    var exportFilename = "Buchungen.pdf"
+    /// When set, the export sheet defaults to these booking ids (context menu).
+    var exportBookingIDs: Set<Int64>?
+    var exportPreferSelection = false
     /// Print dialog (GitHub #53).
     var showPrintSheet = false
     var transferDraft = TransferDraft()
@@ -475,6 +495,9 @@ public final class AppModel {
             case "sparplaene", "sparpläne", "investments": scope = .investments
             case "belege", "documents": sidebarSelection = .documents
             case "geplant", "planned": sidebarSelection = .planned
+            case "vermoegen", "vermögen", "wealth": sidebarSelection = .wealth
+            case "vermoegen-wertpapiere": sidebarSelection = .wealth; wealthScope = .securities
+            case "vermoegen-sachwerte": sidebarSelection = .wealth; wealthScope = .tangibles
             default: break
             }
             if let q = options.selectAccount, let a = allAccounts.first(where: { $0.name.lowercased().contains(q) }) {
@@ -849,7 +872,11 @@ public final class AppModel {
     /// Merges the snapshot with it, then switches this device's vault and
     /// keychain to that key so both devices share one key from now on.
     func adoptSyncKey(_ text: String) {
-        guard let v = ownVault else { return }
+        guard let v = ownVault else {
+            // Locked or still in the demo: nothing to rekey. Say so instead of silently doing nothing.
+            toast = String(localized: "Bitte zuerst Ihren eigenen Tresor öffnen („Eigenen Tresor anzeigen“), dann den Schlüssel einfügen.")
+            return
+        }
         Task {
             do {
                 let pasted = try VaultKeyManager.parseKey(text)
@@ -869,11 +896,24 @@ public final class AppModel {
                     }
                 }
                 await cloud.sync(vault: v)
-                self.reloadAll()
+                self.finishKeyAdoption(vault: v)
                 self.toast = String(localized: "Tresor-Schlüssel übernommen – iCloud Sync aktiv")
             } catch {
                 self.toast = describe(error)
             }
+        }
+    }
+
+    /// After a pasted key opened the synced vault: switch from the demo to it and
+    /// remember that real data exists, so the next start asks for unlock instead of
+    /// showing the welcome/demo screen again (#308).
+    func finishKeyAdoption(vault v: Vault) {
+        let hasData = ((try? v.accountCount()) ?? 0) > 0 || connectionsExist(v)
+        if hasData || !demoActive {
+            useVault(v, demo: false)
+            CloudSyncManager.shared.startAutoSync(vault: v) { [weak self] in self?.reloadAll() }
+        } else {
+            reloadAll()
         }
     }
 
@@ -894,7 +934,7 @@ public final class AppModel {
         }
     }
 
-    private func connectionsExist(_ v: Vault) -> Bool {
+    func connectionsExist(_ v: Vault) -> Bool {
         ((try? v.listBankConnections()) ?? []).isEmpty == false
     }
 

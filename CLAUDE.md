@@ -122,16 +122,36 @@ The PR card (`tools/export-ai-provenance.py`, `docs/ai-transparency.md`) reads o
   (the default for the maintainer's sessions), otherwise the model the contributor names (`ChatGPT`, `Claude`,
   `Cursor`, `GitHub Copilot`, …). A coding agent that writes code adds `AI-Agent: <tool>` or `AI-Model: <model>`.
   Stage 1+2 (framing/orchestration) = `AI-Orchestrator`; stage 3 (code generation) = `Co-authored-by`, `AI-Agent`, `AI-Model`.
-- Every AI-authored PR body ends with this section (German is fine; the three labels stay as written):
+- Every AI-authored PR body ends with this section (German is fine; the five labels stay as written):
   ```
   ### 🤖 AI Process Reflection
   - **Human-Steering:** what the human specified or decided (architecture, security, scope)
   - **AI-Agency:** what the AI decided on its own (names, structure, edge cases)
   - **Review-Focus:** where a human reviewer should look first
+  - **Security-Check:** what was checked for secrets/personal data (logs, `.sensitive()` redaction, new network/process/file access, dependencies + `THIRD_PARTY_NOTICES.md`); "Nothing relevant: <why>" is valid
+  - **Perf-Check:** what was measured or ruled out (`offMain` for calls over ~16 ms, no `list_transactions` for counts/sums, `category_perf` numbers); "No hot path touched: <why>" is valid
   ```
+- Optional trailers `Security-Check:` / `Perf-Check:` carry the same content as the bullets; the card shows both in stage 4. Before pushing run the checks in the PR checklist of `CONTRIBUTING.md`.
 - This is a self-report, shown on the card as unverified. Never put real financial data, IBANs or secrets in it.
+- **Community contributor PRs landed via an `origin` branch** (e.g. to resolve merge conflicts or apply a pre-merge fix
+  without pushing to the contributor's fork): ALWAYS preserve the contributor's credit on squash-merge, either by
+  - keeping their authorship (`git commit --author "<Name> <email>"`, or `gh pr merge --rebase` when the history is clean), OR
+  - adding `Co-authored-by: <Contributor Name> <id+login@users.noreply.github.com>` (copied from the original commit's
+    author header, `git log --format='%an <%ae>'`) to the PR body AND the squash commit message, so GitHub counts the
+    commit in their contributor graph.
 
 ## Workflow
+- **Verify locally first, never block on CI.** Targeted `cargo test`, `swift test`, `clippy`, `cargo fmt --all -- --check`
+  and the `scripts/lint-*.sh` checks run locally before the push (together well under a minute for a focused change).
+  After the PR is open do NOT sit in the session for 10–15 min with `gh pr checks --watch` (and never pipe a `--watch` to `tail`).
+  Either enable auto-merge: `gh pr merge <N> --auto --squash --delete-branch` (enabled on the repo), or merge once the fast required check
+  (lint/`card`) is green when local verification already covered the full test suite. Look at `gh pr checks <N>` (no `--watch`) only on demand.
+- **Merge without waiting for the slow runners:** when the relevant local checks (`cargo test`, `swift test`, `scripts/lint-*.sh`)
+  already passed on this Mac and `card` is green, do NOT wait for the cloud `CI / swift` / `CI / rust` runs: merge immediately with
+  `gh pr merge <N> --squash --delete-branch --admin`.
+- CI is path-aware: `linux.yml`/`flatpak.yml` run only for `girocrab-core/**`, `GiroCrabLinux/**`, `**/Localizable.xcstrings` or their own
+  workflow; in `ci.yml` the `changes` job skips the heavy Rust steps (clippy, tests) and the whole Swift build/test when a PR cannot touch them
+  (the cheap lint steps always run, required check names stay unchanged).
 - Branch from `upstream/main`, push to `origin` (fork), PR against `GiroCrab/GiroCrab`. PR title
   and description in German, conventional-commit prefix (`feat:`, `fix:`, `perf:`, `ci:`, `docs:`).
 - The local xcframework is whatever branch last ran `./build-xcframework.sh`. Before trusting
@@ -155,6 +175,7 @@ whenever `README.md`, `docs/screenshots/**`, `docs/assets/**` or a release chang
 
 ## Third-party notices (dependencies)
 - **Rule:** whenever dependencies in `Cargo.toml` (any workspace crate), `Cargo.lock` or `GiroCrabApp/Package.swift` are added, removed or upgraded (and before every release), `THIRD_PARTY_NOTICES.md` MUST be updated in the same commit/PR (name, version, exact license, repository).
+- Linux: whenever `girocrab-core/Cargo.toml` dependencies or versions change, also sync `GiroCrabLinux/Cargo.lock` (`cargo update -w --manifest-path GiroCrabLinux/Cargo.toml`) and `GiroCrabLinux/packaging/flatpak/cargo-sources.json` (`GiroCrabLinux/packaging/flatpak/update-cargo-sources.sh`) so Flatpak CI (`--locked --offline`) stays green.
 - Check: `scripts/check-third-party-notices.sh` fails if a direct crate or Swift package is missing from the notices (also runs in CI). Run it before pushing and before `scripts/notarize.sh`.
 
 ## Release checklist (`scripts/notarize.sh --upload vX.Y.Z`)

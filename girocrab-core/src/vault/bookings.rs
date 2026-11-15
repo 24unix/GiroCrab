@@ -693,26 +693,7 @@ impl Vault {
     }
 }
 
-/// Quotes a CSV field (semicolon dialect); text fields are neutralised against
-/// spreadsheet formula injection.
-fn csv_field(v: &str, text: bool) -> String {
-    let mut s = v.replace(['\r', '\n'], " ");
-    if text && s.starts_with(['=', '+', '@', '\t']) {
-        s.insert(0, '\'');
-    }
-    if s.contains([';', '"']) {
-        format!("\"{}\"", s.replace('"', "\"\""))
-    } else {
-        s
-    }
-}
-
-/// Formats cents as `-1234,56` (German decimal comma, no grouping).
-fn csv_amount(cents: i64) -> String {
-    let sign = if cents < 0 { "-" } else { "" };
-    let a = cents.unsigned_abs();
-    format!("{sign}{},{:02}", a / 100, a % 100)
-}
+use crate::export::{csv_amount, csv_field};
 
 #[cfg(test)]
 mod paging_tests {

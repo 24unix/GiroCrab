@@ -19,6 +19,8 @@ enum SidebarItem: Hashable {
     case newBookings
     /// „Geplant“ (GitHub #240): future payments with an order at the bank.
     case planned
+    /// "Vermögen": cash and assets (depots) minus liabilities
+    case wealth
 }
 
 /// Period of the booking list and its sums. The menu follows MoneyMoney

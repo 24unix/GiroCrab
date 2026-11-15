@@ -366,6 +366,15 @@ struct CustomPeriodForm: View {
 
 // MARK: - Split booking
 
+/// Split arithmetic in the booking's direction (cents, positive = same sign as the booking).
+enum SplitMath {
+    static func remaining(total: Int64, parts: [Int64]) -> Int64 { total - parts.reduce(0, +) }
+    /// At least two parts, none 0, parts add up to `total`. Negative parts are allowed.
+    static func isValid(total: Int64, parts: [Int64]) -> Bool {
+        parts.count >= 2 && !parts.contains(0) && remaining(total: total, parts: parts) == 0
+    }
+}
+
 struct SplitSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -385,8 +394,10 @@ struct SplitSheet: View {
     private var total: Int64 { abs(booking.amountCents) }
     private var sign: Int64 { booking.amountCents < 0 ? -1 : 1 }
     private func cents(_ p: Part) -> Int64 { (try? parseAmountToCents(text: p.amount)) ?? 0 }
-    private var remaining: Int64 { total - parts.reduce(0) { $0 + cents($1) } }
-    private var valid: Bool { parts.count >= 2 && remaining == 0 && parts.allSatisfy { cents($0) > 0 } }
+    // Amounts are entered in the booking's direction: a negative part counter-books the others
+    // (+59 = +200 and -141, #427). Only the sum must match; no part may be 0.
+    private var remaining: Int64 { SplitMath.remaining(total: total, parts: parts.map(cents)) }
+    private var valid: Bool { SplitMath.isValid(total: total, parts: parts.map(cents)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -412,20 +423,29 @@ struct SplitSheet: View {
                 }
             }
             HStack {
-                Button { parts.append(Part(amount: remaining > 0 ? Money.plain(remaining) : "")) } label: {
+                Button { parts.append(Part(amount: remaining != 0 ? Money.plain(remaining) : "")) } label: {
                     Label("Teil hinzufügen", systemImage: "plus")
                 }
                 .buttonStyle(.borderless)
                 Spacer()
-                Text("Rest: \(Money.format(remaining))")
-                    .appFont(.callout, monospacedDigit: true)
+                Text("Restbetrag: \(Money.format(remaining))")
+                    .appFont(.callout, weight: .semibold, monospacedDigit: true)
                     .foregroundStyle(remaining == 0 ? Theme.inflow : Theme.warning)
+                    .sensitive()
+                if remaining != 0, let last = parts.indices.last {
+                    // one click: the rest goes into the last part (#427)
+                    Button("Rest zuweisen") {
+                        let others = parts.indices.filter { $0 != last }.reduce(0) { $0 + cents(parts[$1]) }
+                        parts[last].amount = Money.plain(total - others)
+                    }
+                    .help("Trägt den Restbetrag im letzten Teil ein")
+                }
             }
             // Why "Speichern" is greyed out (#383): say so instead of leaving it silent.
             if !valid, !parts.isEmpty, error == nil {
                 Text(remaining != 0
-                    ? "Die Teilbeträge müssen zusammen \(Money.format(total)) ergeben, erst dann lässt sich speichern."
-                    : "Jeder Teil braucht einen Betrag größer als 0.")
+                    ? "Die Teilbeträge müssen zusammen \(Money.format(total)) ergeben (Restbetrag: \(Money.format(remaining))), erst dann lässt sich speichern."
+                    : "Jeder Teil braucht einen Betrag ungleich 0.")
                     .appFont(.callout).foregroundStyle(Theme.secondary)
             }
             if let error { Text(error).appFont(.callout).foregroundStyle(Theme.negative) }
@@ -460,7 +480,7 @@ struct SplitSheet: View {
             if existing.isEmpty {
                 parts = [Part(categoryID: booking.categoryId, amount: Money.plain(total)), Part()]
             } else {
-                parts = existing.map { Part(categoryID: $0.categoryId, amount: Money.plain(abs($0.amountCents)), note: $0.note) }
+                parts = existing.map { Part(categoryID: $0.categoryId, amount: Money.plain(sign * $0.amountCents), note: $0.note) }
             }
         }
     }

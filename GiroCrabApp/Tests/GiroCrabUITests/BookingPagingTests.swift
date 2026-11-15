@@ -108,13 +108,16 @@ final class BookingPagingTests: XCTestCase {
         XCTAssertEqual(model.bookingCountLabel, new.count, "the count covers all pages")
         XCTAssertEqual(model.bookings.map(\.id), Array(new.prefix(model.bookings.count)).map(\.id))
 
-        // checking the selected booking: it leaves the list but stays in the inspector
+        // checking the selected booking: its row stays until the selection moves on
         let booking = try XCTUnwrap(model.bookings.first)
+        let next = try XCTUnwrap(model.bookings.dropFirst().first)
         model.selectedBookingID = booking.id
         model.setChecked(true, for: booking)
-        XCTAssertFalse(model.bookings.contains { $0.id == booking.id })
+        XCTAssertTrue(model.bookings.contains { $0.id == booking.id })
         XCTAssertEqual(model.selectedBooking?.id, booking.id)
         XCTAssertEqual(model.selectedBooking?.checked, true)
+        model.selectedBookingID = next.id
+        XCTAssertFalse(model.bookings.contains { $0.id == booking.id })
 
         model.statusFilter = .checked
         XCTAssertTrue(model.bookings.allSatisfy(\.checked))

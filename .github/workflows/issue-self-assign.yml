@@ -1,0 +1,76 @@
+name: Issue Self Assign
+
+# Lets contributors assign themselves with `/assign` (or a few German phrases) and release
+# with `/unassign`. The onboarding comment for new issue authors lives in issue-ai-invite.yml
+# (kept there so authors do not get two comments).
+#
+# SECURITY: comment text is never interpolated into `run:`. It reaches the script only via `env:`.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  assign:
+    if: >-
+      !github.event.issue.pull_request &&
+      github.event.comment.user.type != 'Bot' &&
+      !endsWith(github.event.comment.user.login, '[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      ACTOR: ${{ github.event.comment.user.login }}
+      COMMENT_ID: ${{ github.event.comment.id }}
+      AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
+      COMMENT_BODY: ${{ github.event.comment.body }}
+    steps:
+      - name: Handle assign / unassign commands
+        run: |
+          set -euo pipefail
+          text=$(printf '%s' "$COMMENT_BODY" | tr '[:upper:]' '[:lower:]' | tr -d '\r')
+          react() { gh api -X POST "repos/$GH_REPO/issues/comments/$COMMENT_ID/reactions" -f content="$1" >/dev/null || true; }
+
+          if printf '%s' "$text" | grep -Eq '(^|[[:space:]])/unassign([[:space:]]|$)'; then
+            gh issue edit "$ISSUE_NUMBER" --remove-assignee "$ACTOR"
+            react '+1'
+            exit 0
+          fi
+
+          if ! printf '%s' "$text" | grep -Eq '(^|[[:space:]])(/assign-me|/assign|/take)([[:space:]]|$)|ich übernehme das|ich schaue mir das an|ich schaue es mir|gerne mir zuweisen'; then
+            exit 0
+          fi
+
+          assignees=$(gh issue view "$ISSUE_NUMBER" --json assignees --jq '.assignees[].login')
+          if printf '%s\n' "$assignees" | grep -qx "$ACTOR"; then
+            react 'eyes'
+            exit 0
+          fi
+          if [ -n "$assignees" ]; then
+            other=$(printf '%s' "$assignees" | head -n1)
+            gh issue comment "$ISSUE_NUMBER" --body "Hallo @$ACTOR, dieses Issue ist schon an @$other vergeben. Sprecht euch gern kurz hier ab, bevor ihr doppelt arbeitet. 🦀"
+            exit 0
+          fi
+
+          react 'rocket'
+          gh issue edit "$ISSUE_NUMBER" --add-assignee "$ACTOR"
+          body="Super, @$ACTOR, das Issue ist dir zugewiesen. 🚀 Mit \`/unassign\` gibst du es wieder frei. Details: \`CONTRIBUTING.md\`."
+          if [ "$AUTHOR_ASSOC" = "NONE" ] || [ "$AUTHOR_ASSOC" = "FIRST_TIME_CONTRIBUTOR" ]; then
+            body="$body
+
+          <details>
+          <summary>KI-Schnellstart-Prompt</summary>
+
+          \`\`\`text
+          Lies CLAUDE.md und CONTRIBUTING.md und setze Issue #$ISSUE_NUMBER um: Prüfe zuerst Architektur-, Privacy- (.sensitive()) und Performance-Regeln, schlage einen Plan vor und implementiere ihn inkl. Tests. Führe danach die Tests und alle Linter (scripts/lint-*.sh) aus.
+          \`\`\`
+
+          Anleitung: https://girocrab.de/girocrab_mitbau_anleitung.html
+          </details>"
+          fi
+          gh issue comment "$ISSUE_NUMBER" --body "$body"
