@@ -462,6 +462,8 @@ struct CollectionLine: Identifiable {
     var included: Bool
     var amountText: String
     var purpose: String
+    /// Last collection under the mandate (`FNAL`).
+    var lastCollection = false
     var id: Int64 { mandate.id }
     var cents: Int64? { Money.parseCents(amountText).flatMap { $0 > 0 ? $0 : nil } }
 }

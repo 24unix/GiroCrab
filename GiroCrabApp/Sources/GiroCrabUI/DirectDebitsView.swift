@@ -21,7 +21,7 @@ struct DirectDebitsView: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Lastschriften").appFont(.title2, weight: .semibold)
-                Text("Mandate verwalten und Einzüge als SEPA-Lastschrift-Datei (pain.008) vorbereiten.")
+                Text("Mandate verwalten und Einzüge als SEPA-Lastschrift-Datei (pain.008) vorbereiten. Dateien lassen sich hierher ziehen.")
                     .appFont(.caption).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 20)
@@ -46,10 +46,10 @@ struct DirectDebitsView: View {
                     ContentUnavailableView {
                         Label("Keine Mandate", systemImage: "doc.text")
                     } description: {
-                        Text("Lege ein Mandat an oder importiere eine Mitgliederliste (CSV).")
+                        Text("Lege ein Mandat an oder importiere eine Mitgliederliste (CSV) oder eine SEPA-Lastschriftdatei.")
                     } actions: {
                         Button("Mandat hinzufügen") { model.newMandate() }
-                        Button("CSV importieren …") { showImporter = true }
+                        Button("Importieren …") { showImporter = true }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -65,8 +65,18 @@ struct DirectDebitsView: View {
         }
         .sheet(item: $model.mandateDraft) { MandateEditorSheet(initial: $0) }
         .sheet(isPresented: $model.showCollectionSheet) { CollectionSheet() }
-        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.commaSeparatedText, .plainText, .text]) { result in
-            if case .success(let url) = result { model.importMandateCSV(url) }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.commaSeparatedText, .plainText, .text, .xml]) { result in
+            if case .success(let url) = result { model.importMandateFile(url) }
+        }
+        .fileExporter(isPresented: $model.showMandateExport, document: model.mandateExport, contentType: .commaSeparatedText,
+                      defaultFilename: "mandate.csv") { _ in }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            guard model.effectiveMandateAccount != nil, let p = providers.first else { return false }
+            _ = p.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                Task { @MainActor in model.importMandateFile(url) }
+            }
+            return true
         }
         .confirmationDialog("Mandat löschen?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                             presenting: deleting) { m in
@@ -93,7 +103,10 @@ struct DirectDebitsView: View {
                 .sensitive(.labels)
                 .frame(minWidth: 150, maxWidth: 260)
                 Spacer(minLength: 0)
-                Button("CSV importieren …", systemImage: "square.and.arrow.down") { showImporter = true }
+                Button("Importieren …", systemImage: "square.and.arrow.down") { showImporter = true }
+                    .help("CSV-Mitgliederliste oder SEPA-Lastschriftdatei (pain.008)")
+                Button("Exportieren …", systemImage: "square.and.arrow.up") { model.exportMandates() }
+                    .disabled(model.mandates.isEmpty)
                 Button("Mandat hinzufügen", systemImage: "plus") { model.newMandate() }
                 Button("Einzug vorbereiten …", systemImage: "arrow.down.doc") { model.openCollection() }
                     .buttonStyle(.borderedProminent)
@@ -404,6 +417,10 @@ struct CollectionSheet: View {
                                     .appFont(.caption).foregroundStyle(Theme.secondary).sensitive()
                             }
                             Spacer()
+                            if line.mandate.nextSequence == "RCUR" {
+                                Toggle("Letzter Einzug", isOn: $line.lastCollection).toggleStyle(.checkbox)
+                                    .help("Setzt den Folgetyp FNAL; danach wird das Mandat deaktiviert.")
+                            }
                             TextField("Zweck", text: $line.purpose)
                                 .textFieldStyle(.roundedBorder).frame(width: 180 * textScale)
                             TextField("Betrag", text: $line.amountText)

@@ -73,7 +73,7 @@ pub(super) fn pain_payment(xml: &str) -> Option<PainPayment> {
 }
 
 /// Offset just after the first `<Tag …>` at or after `from` (any prefix).
-fn tag_start(xml: &str, tag: &str, from: usize) -> Option<usize> {
+pub(super) fn tag_start(xml: &str, tag: &str, from: usize) -> Option<usize> {
     let mut pos = from;
     while let Some(i) = xml[pos..].find('<') {
         let open = pos + i + 1;
@@ -89,7 +89,7 @@ fn tag_start(xml: &str, tag: &str, from: usize) -> Option<usize> {
     None
 }
 
-fn tag_text(xml: &str, tag: &str, from: usize) -> Option<String> {
+pub(super) fn tag_text(xml: &str, tag: &str, from: usize) -> Option<String> {
     let start = tag_start(xml, tag, from)?;
     let end = xml[start..].find('<')? + start;
     Some(unescape(xml[start..end].trim()))

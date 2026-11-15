@@ -3,7 +3,9 @@
 //! their errors. Dates may be `YYYY-MM-DD` or `DD.MM.YYYY`.
 
 use crate::batch_csv::{detect_delimiter, is_blank, split_records};
-use crate::connectors::fints::sepa::{normalize_iban, validate_bic, validate_iban};
+use crate::connectors::fints::sepa::{
+    is_sepa_identifier, normalize_iban, validate_bic, validate_iban,
+};
 use crate::i18n::{tr, trf};
 use crate::money::parse_cents;
 
@@ -22,6 +24,8 @@ pub struct MandateCsvRow {
     pub signed_date: String,
     pub scheme: MandateScheme,
     pub one_off: bool,
+    /// `false` only when the file says so (column "Aktiv").
+    pub active: bool,
     pub default_amount_cents: i64,
     pub default_purpose: String,
     /// Empty = the row is fine.
@@ -51,7 +55,7 @@ impl MandateCsvRow {
             default_amount_cents: self.default_amount_cents,
             default_purpose: self.default_purpose.clone(),
             note: String::new(),
-            active: true,
+            active: self.active,
         }
     }
 }
@@ -65,6 +69,7 @@ struct Columns {
     date: Option<usize>,
     scheme: Option<usize>,
     one_off: Option<usize>,
+    active: Option<usize>,
     amount: Option<usize>,
     purpose: Option<usize>,
 }
@@ -87,6 +92,7 @@ fn columns(header: &[String]) -> Option<Columns> {
             | "date" => &mut cols.date,
             "art" | "schema" | "scheme" | "verfahren" => &mut cols.scheme,
             "einmalig" | "einmal" | "oneoff" | "one-off" => &mut cols.one_off,
+            "aktiv" | "active" => &mut cols.active,
             "betrag" | "amount" | "beitrag" => &mut cols.amount,
             "zweck" | "verwendungszweck" | "purpose" => &mut cols.purpose,
             _ => continue,
@@ -138,6 +144,12 @@ fn to_row(line: u32, f: &[String], cols: Columns) -> MandateCsvRow {
     if reference.is_empty() || reference.chars().count() > 35 {
         errors.push(tr("Die Mandatsreferenz fehlt oder ist länger als 35 Zeichen.").to_string());
     }
+    if !reference.is_empty() && !is_sepa_identifier(&reference) {
+        errors.push(
+            tr("Die Mandatsreferenz enthält Zeichen, die SEPA nicht erlaubt (nur Buchstaben ohne Umlaute, Ziffern und / - ? : ( ) . , ' + Leerzeichen).")
+                .to_string(),
+        );
+    }
     let signed_date = match parse_date(&get(cols.date)) {
         Some(d) => d,
         None => {
@@ -179,6 +191,7 @@ fn to_row(line: u32, f: &[String], cols: Columns) -> MandateCsvRow {
         signed_date,
         scheme,
         one_off: yes(&get(cols.one_off)),
+        active: cols.active.is_none() || yes(&get(cols.active)),
         default_amount_cents,
         default_purpose: get(cols.purpose),
         errors,
@@ -231,4 +244,44 @@ pub struct MandateImportResult {
     pub updated: u32,
     /// "line N: reason" for rows that could not be saved.
     pub failed: Vec<String>,
+}
+
+fn field(s: &str) -> String {
+    if s.contains([';', '"', '\n', '\r']) {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+/// The mandates as CSV (`;`, UTF-8) in the layout the import reads back.
+pub(super) fn mandates_to_csv(mandates: &[super::Mandate]) -> String {
+    let mut out =
+        String::from("Name;IBAN;BIC;Mandatsreferenz;Datum;Art;Betrag;Zweck;Einmalig;Aktiv\n");
+    for m in mandates {
+        let amount = if m.default_amount_cents > 0 {
+            format!(
+                "{},{:02}",
+                m.default_amount_cents / 100,
+                m.default_amount_cents % 100
+            )
+        } else {
+            String::new()
+        };
+        let row = [
+            field(&m.debtor_name),
+            m.debtor_iban.clone(),
+            m.debtor_bic.clone(),
+            field(&m.reference),
+            m.signed_date.clone(),
+            m.scheme.debit().code().to_string(),
+            amount,
+            field(&m.default_purpose),
+            if m.one_off { "ja" } else { "nein" }.to_string(),
+            if m.active { "ja" } else { "nein" }.to_string(),
+        ];
+        out.push_str(&row.join(";"));
+        out.push('\n');
+    }
+    out
 }

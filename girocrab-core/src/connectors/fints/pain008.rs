@@ -6,8 +6,10 @@
 //! mixes sequence types or schemes builds one message per group.
 
 use super::sepa::{
-    format_amount, normalize_iban, sanitize_sepa_text, validate_bic, validate_iban, xml_escape,
+    format_amount, is_sepa_identifier, normalize_iban, sanitize_sepa_text, validate_bic,
+    validate_iban, xml_escape,
 };
+use super::standing::{tag_start, tag_text};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 
@@ -199,6 +201,11 @@ pub fn validate_collection(position: usize, c: &Collection) -> CoreResult<()> {
             "Die Mandatsreferenz fehlt oder ist länger als 35 Zeichen.",
         )));
     }
+    if !is_sepa_identifier(c.mandate_id.trim()) {
+        return Err(fail(tr(
+            "Die Mandatsreferenz enthält Zeichen, die SEPA nicht erlaubt (nur Buchstaben ohne Umlaute, Ziffern und / - ? : ( ) . , ' + Leerzeichen).",
+        )));
+    }
     if c.mandate_date.len() != 10 {
         return Err(fail(tr("Das Datum der Mandatsunterschrift fehlt.")));
     }
@@ -297,6 +304,98 @@ pub fn build_pain008(p: &Pain008) -> CoreResult<String> {
     ))
 }
 
+/// One `PmtInf` of a `pain.008` file as read back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedDebitBlock {
+    pub creditor_id: String,
+    pub creditor_iban: String,
+    pub scheme: DebitScheme,
+    pub sequence: SequenceType,
+    /// Due date `YYYY-MM-DD`, "" if the file has none.
+    pub collection_date: String,
+    pub collections: Vec<Collection>,
+}
+
+/// Offsets just after every `<Tag …>` in `xml` (any prefix).
+fn tag_starts(xml: &str, tag: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(i) = tag_start(xml, tag, from) {
+        out.push(i);
+        from = i;
+    }
+    out
+}
+
+/// Text of `tag` that follows the first `<outer>` in `xml`.
+fn nested(xml: &str, outer: &str, tag: &str) -> Option<String> {
+    let at = tag_start(xml, outer, 0)?;
+    tag_text(xml, tag, at)
+}
+
+/// Reads the `PmtInf` blocks of a direct debit file (`pain.008.*`). Tolerant
+/// about prefixes and order; refuses a file without a direct debit.
+pub fn parse_pain008(xml: &str) -> CoreResult<Vec<ParsedDebitBlock>> {
+    let blocks = tag_starts(xml, "PmtInf");
+    let mut out = Vec::new();
+    for (n, &start) in blocks.iter().enumerate() {
+        let end = blocks.get(n + 1).copied().unwrap_or(xml.len());
+        let block = &xml[start..end];
+        let txs = tag_starts(block, "DrctDbtTxInf");
+        let Some(&first_tx) = txs.first() else {
+            continue;
+        };
+        let head = &block[..first_tx];
+        let scheme = tag_text(head, "Cd", tag_start(head, "LclInstrm", 0).unwrap_or(0))
+            .and_then(|c| DebitScheme::from_code(&c))
+            .unwrap_or(DebitScheme::Core);
+        let sequence = tag_text(head, "SeqTp", 0)
+            .and_then(|c| SequenceType::from_code(&c))
+            .unwrap_or(SequenceType::First);
+        let mut collections = Vec::new();
+        for (i, &t) in txs.iter().enumerate() {
+            let tx = &block[t..txs.get(i + 1).copied().unwrap_or(block.len())];
+            let cents = tag_text(tx, "InstdAmt", 0)
+                .and_then(|a| crate::money::parse_cents(&a).ok())
+                .unwrap_or(0);
+            collections.push(Collection {
+                debtor_name: nested(tx, "Dbtr", "Nm").unwrap_or_default(),
+                debtor_iban: nested(tx, "DbtrAcct", "IBAN").unwrap_or_default(),
+                debtor_bic: nested(tx, "DbtrAgt", "BIC")
+                    .or_else(|| nested(tx, "DbtrAgt", "BICFI"))
+                    .filter(|b| !b.is_empty()),
+                amount_cents: cents,
+                purpose: tag_text(tx, "Ustrd", 0).unwrap_or_default(),
+                end_to_end_id: tag_text(tx, "EndToEndId", 0).unwrap_or_default(),
+                mandate_id: tag_text(tx, "MndtId", 0).unwrap_or_default(),
+                mandate_date: tag_text(tx, "DtOfSgntr", 0).unwrap_or_default(),
+            });
+        }
+        out.push(ParsedDebitBlock {
+            creditor_id: nested(head, "CdtrSchmeId", "Id")
+                .and_then(|_| {
+                    let at = tag_start(head, "CdtrSchmeId", 0)?;
+                    let othr = tag_start(head, "Othr", at)?;
+                    tag_text(head, "Id", othr)
+                })
+                .unwrap_or_default(),
+            creditor_iban: nested(head, "CdtrAcct", "IBAN").unwrap_or_default(),
+            scheme,
+            sequence,
+            collection_date: tag_text(head, "ReqdColltnDt", 0)
+                .map(|d| d.trim_start_matches("<Dt>").chars().take(10).collect())
+                .unwrap_or_default(),
+            collections,
+        });
+    }
+    if out.is_empty() {
+        return Err(CoreError::InvalidInput {
+            message: tr("Die Datei enthält keine SEPA-Lastschrift (pain.008).").into(),
+        });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -388,6 +487,8 @@ mod tests {
         let mut cs = [collection(1)];
         cs[0].mandate_id = String::new();
         assert!(build_pain008(&base(&cs)).is_err());
+        cs[0].mandate_id = "Müller_1".into();
+        assert!(build_pain008(&base(&cs)).is_err());
         cs[0].mandate_id = "M-1".into();
         cs[0].amount_cents = 0;
         assert!(build_pain008(&base(&cs)).is_err());
@@ -406,5 +507,68 @@ mod tests {
             Some(DebitVersion::V02)
         );
         assert_eq!(DebitVersion::pick(&[d("urn:other")]), None);
+    }
+
+    #[test]
+    fn reads_back_what_it_writes() {
+        let cs = [collection(1), collection(2)];
+        for version in [DebitVersion::V02, DebitVersion::V08] {
+            let mut p = base(&cs);
+            p.version = version;
+            p.scheme = DebitScheme::B2b;
+            p.sequence = SequenceType::First;
+            let blocks = parse_pain008(&build_pain008(&p).unwrap()).unwrap();
+            assert_eq!(blocks.len(), 1);
+            let b = &blocks[0];
+            assert_eq!(b.creditor_id, "DE98ZZZ09999999999");
+            assert_eq!(b.creditor_iban, "DE02120300000000202051");
+            assert_eq!(
+                (b.scheme, b.sequence),
+                (DebitScheme::B2b, SequenceType::First)
+            );
+            assert_eq!(b.collection_date, "2026-11-30");
+            assert_eq!(b.collections.len(), 2);
+            let c = &b.collections[1];
+            assert_eq!(c.debtor_name, "Mitglied 2 Mueller");
+            assert_eq!(c.debtor_iban, "DE89370400440532013000");
+            assert_eq!(c.amount_cents, 1252);
+            assert_eq!(c.mandate_id, "M-0002");
+            assert_eq!(c.mandate_date, "2024-03-01");
+            assert_eq!(c.purpose, "Mitgliedsbeitrag 2026");
+        }
+        assert!(parse_pain008("<Document/>").is_err());
+    }
+
+    /// Developer aid: writes sample files for every scheme/version into the
+    /// directory in `GIROCRAB_PAIN008_DUMP`, to validate them against the
+    /// published XSDs (`xmllint --noout --schema pain.008.003.02.xsd file.xml`).
+    #[test]
+    #[ignore]
+    fn dump_samples_for_schema_validation() {
+        let Ok(dir) = std::env::var("GIROCRAB_PAIN008_DUMP") else {
+            return;
+        };
+        let cs = [collection(1), collection(2)];
+        for (version, tag) in [(DebitVersion::V02, "003.02"), (DebitVersion::V08, "001.08")] {
+            for scheme in [DebitScheme::Core, DebitScheme::Cor1, DebitScheme::B2b] {
+                let mut p = base(&cs);
+                p.version = version;
+                p.scheme = scheme;
+                let xml = build_pain008(&p).unwrap();
+                std::fs::write(format!("{dir}/pain008-{tag}-{}.xml", scheme.code()), xml).unwrap();
+            }
+        }
+        // creditor and debtor with a BIC, no purpose
+        let mut with_bic = collection(3);
+        with_bic.debtor_bic = Some("COBADEFFXXX".into());
+        with_bic.purpose = String::new();
+        let one = [with_bic];
+        let mut p = base(&one);
+        p.sequence = SequenceType::OneOff;
+        std::fs::write(
+            format!("{dir}/pain008-003.02-bic.xml"),
+            build_pain008(&p).unwrap(),
+        )
+        .unwrap();
     }
 }

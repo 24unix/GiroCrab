@@ -8,13 +8,16 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::connectors::fints::pain008::{validate_creditor_id, DebitScheme, SequenceType};
-use crate::connectors::fints::sepa::{normalize_iban, validate_bic, validate_iban};
+use crate::connectors::fints::sepa::{
+    is_sepa_identifier, normalize_iban, validate_bic, validate_iban,
+};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
 use crate::vault::Vault;
 
 mod collect;
 mod csv;
+mod pain;
 pub use collect::{CollectionItem, DebitFile};
 pub use csv::{parse_mandate_csv, MandateCsvImport, MandateCsvRow, MandateImportResult};
 
@@ -157,6 +160,11 @@ fn check(input: &MandateInput) -> CoreResult<()> {
     if r.is_empty() || r.chars().count() > 35 {
         return Err(invalid(tr(
             "Die Mandatsreferenz fehlt oder ist länger als 35 Zeichen.",
+        )));
+    }
+    if !is_sepa_identifier(r) {
+        return Err(invalid(tr(
+            "Die Mandatsreferenz enthält Zeichen, die SEPA nicht erlaubt (nur Buchstaben ohne Umlaute, Ziffern und / - ? : ( ) . , ' + Leerzeichen).",
         )));
     }
     if chrono::NaiveDate::parse_from_str(&input.signed_date, "%Y-%m-%d").is_err() {
@@ -326,6 +334,11 @@ impl Vault {
             }
         }
         Ok(result)
+    }
+
+    /// All mandates of the account as CSV text, in the layout the import reads.
+    pub fn export_mandates_csv(&self, account_id: i64) -> Result<String, CoreError> {
+        Ok(csv::mandates_to_csv(&self.list_mandates(Some(account_id))?))
     }
 
     /// Removes a mandate for good. Collections already submitted stay in the

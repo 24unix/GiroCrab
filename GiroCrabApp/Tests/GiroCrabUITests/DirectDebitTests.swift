@@ -82,4 +82,27 @@ final class DirectDebitTests: XCTestCase {
         model.moveMandateSelection(1)
         XCTAssertEqual(model.selectedMandateID, ids.last)
     }
+
+    func testExportAndPain008ImportRoundTrip() async throws {
+        await model.reloadMandates()
+        model.exportMandates()
+        await settle()
+        XCTAssertTrue(model.showMandateExport)
+        let csv = String(data: model.mandateExport.data, encoding: .utf8) ?? ""
+        XCTAssertTrue(csv.hasPrefix("Name;IBAN;"))
+        XCTAssertEqual(csv.split(separator: "\n").count, 5)  // header + 4 mandates
+
+        // a file of this account's own collection can be imported again
+        model.openCollection()
+        model.buildCollection(dueDate: Calendar.current.date(byAdding: .day, value: 5, to: Date())!)
+        await settle()
+        let file = try XCTUnwrap(model.collectionFiles.first { $0.sequence == "FRST" })
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("test-\(UUID().uuidString).xml")
+        try file.xml.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        model.importMandateFile(url)
+        await settle()
+        XCTAssertNil(model.mandateError, model.mandateError ?? "")
+        XCTAssertNotNil(model.mandateNote)
+    }
 }

@@ -245,6 +245,8 @@ public final class AppModel {
     var collectionLines: [CollectionLine] = []
     var showCollectionSheet = false
     var collectionFiles: [DebitFile] = []
+    var mandateExport = CSVFileDocument(data: Data())
+    var showMandateExport = false
     var expandedCategories: Set<Int64> = []
     var showRuleEditor = false {
         didSet { if showRuleEditor, rulesStale { reloadRules() } }

@@ -5133,17 +5133,6 @@
         }
       }
     },
-    "CSV importieren …" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Import CSV …"
-          }
-        }
-      }
-    },
     "CSV, camt.053 oder MT940 – um einzelne Konten zu ergänzen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5162,6 +5151,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Import CSV or PDF Statement…"
+          }
+        }
+      }
+    },
+    "CSV-Mitgliederliste oder SEPA-Lastschriftdatei (pain.008)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CSV member list or SEPA direct debit file (pain.008)"
           }
         }
       }
@@ -10430,6 +10429,16 @@
         }
       }
     },
+    "Importieren …" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import …"
+          }
+        }
+      }
+    },
     "Importierte oder abgelegte Dokumente dieses Kontos erscheinen hier." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12694,6 +12703,16 @@
         }
       }
     },
+    "Lege ein Mandat an oder importiere eine Mitgliederliste (CSV) oder eine SEPA-Lastschriftdatei." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add a mandate or import a member list (CSV) or a SEPA direct debit file."
+          }
+        }
+      }
+    },
     "Lege ein Mandat an oder importiere eine Mitgliederliste (CSV)." : {
       "localizations" : {
         "en" : {
@@ -12766,6 +12785,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Last fetch"
+          }
+        }
+      }
+    },
+    "Letzter Einzug" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Final Collection"
           }
         }
       }
@@ -12997,12 +13026,12 @@
         }
       }
     },
-    "Mandate verwalten und Einzüge als SEPA-Lastschrift-Datei (pain.008) vorbereiten." : {
+    "Mandate verwalten und Einzüge als SEPA-Lastschrift-Datei (pain.008) vorbereiten. Dateien lassen sich hierher ziehen." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Manage mandates and prepare collections as SEPA direct debit files (pain.008)."
+            "value" : "Manage mandates and prepare collections as SEPA direct debit files (pain.008). Files can be dropped here."
           }
         }
       }
@@ -16907,6 +16936,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Page %1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "Setzt den Folgetyp FNAL; danach wird das Mandat deaktiviert." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sets the sequence type FNAL; the mandate is deactivated afterwards."
           }
         }
       }

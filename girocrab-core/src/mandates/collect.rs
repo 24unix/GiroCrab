@@ -20,6 +20,8 @@ pub struct CollectionItem {
     pub amount_cents: i64,
     /// Empty = the mandate's default purpose.
     pub purpose: String,
+    /// Last collection under the mandate (`FNAL`; ignored for one-off mandates).
+    pub last_collection: bool,
 }
 
 /// A ready `pain.008` message.
@@ -91,7 +93,10 @@ impl Vault {
                     message: trf("Das Mandat „{0}“ ist nicht aktiv.", &[&m.reference]),
                 });
             }
-            let seq = SequenceType::from_code(&m.next_sequence).unwrap_or(SequenceType::First);
+            let mut seq = SequenceType::from_code(&m.next_sequence).unwrap_or(SequenceType::First);
+            if item.last_collection && seq == SequenceType::Recurring {
+                seq = SequenceType::Final;
+            }
             let purpose = if item.purpose.trim().is_empty() {
                 m.default_purpose.clone()
             } else {

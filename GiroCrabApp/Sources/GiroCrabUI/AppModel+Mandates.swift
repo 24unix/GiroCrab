@@ -99,6 +99,49 @@ extension AppModel {
         }
     }
 
+    /// A dropped or chosen file: a `pain.008` file (.xml) or a CSV member list.
+    func importMandateFile(_ url: URL) {
+        url.pathExtension.lowercased() == "xml" ? importPain008(url) : importMandateCSV(url)
+    }
+
+    func importPain008(_ url: URL) {
+        guard let acc = effectiveMandateAccount?.id else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url), let xml = String(data: data, encoding: .utf8) else {
+            mandateError = String(localized: "Die Datei konnte nicht gelesen werden.")
+            return
+        }
+        let name = url.lastPathComponent
+        Task { @MainActor in
+            do {
+                guard let r = try await vaultOffMain({ try $0.importPain008(accountId: acc, xml: xml) }) else { return }
+                mandatesVersion += 1
+                var note = String(localized: "„\(name)“: \(r.created) neu, \(r.updated) aktualisiert")
+                if !r.failed.isEmpty {
+                    note += String(localized: ", \(r.failed.count) nicht übernommen (Zeile \(r.failed[0]))")
+                }
+                mandateNote = note
+                mandateError = nil
+            } catch {
+                mandateError = describe(error)
+            }
+        }
+    }
+
+    func exportMandates() {
+        guard let acc = effectiveMandateAccount?.id else { return }
+        Task { @MainActor in
+            do {
+                guard let csv = try await vaultOffMain({ try $0.exportMandatesCsv(accountId: acc) }) else { return }
+                mandateExport = CSVFileDocument(data: Data(csv.utf8))
+                showMandateExport = true
+            } catch {
+                mandateError = describe(error)
+            }
+        }
+    }
+
     func importMandateCSV(_ url: URL) {
         guard let acc = effectiveMandateAccount?.id else { return }
         let scoped = url.startAccessingSecurityScopedResource()
@@ -149,7 +192,7 @@ extension AppModel {
     func buildCollection(dueDate: Date) {
         guard let acc = effectiveMandateAccount?.id else { return }
         let items = collectionLines.filter(\.included).compactMap { l -> CollectionItem? in
-            l.cents.map { CollectionItem(mandateId: l.mandate.id, amountCents: $0, purpose: l.purpose) }
+            l.cents.map { CollectionItem(mandateId: l.mandate.id, amountCents: $0, purpose: l.purpose, lastCollection: l.lastCollection) }
         }
         let due = DateText.iso(dueDate)
         Task { @MainActor in
@@ -171,6 +214,10 @@ extension AppModel {
         let due = DateText.iso(dueDate)
         Task { @MainActor in
             _ = try? await vaultOffMain { try $0.markCollected(mandateIds: ids, dueDate: due) }
+            // after the final collection the mandate is done
+            for file in files where file.sequence == "FNAL" {
+                for id in file.mandateIds { if let m = mandates.first(where: { $0.id == id }) { setMandateActive(m, false) } }
+            }
             showCollectionSheet = false
             collectionFiles = []
             mandatesVersion += 1

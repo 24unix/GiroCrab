@@ -91,6 +91,10 @@ fn reference_is_unique_per_account_and_input_is_checked() {
     let mut bad = input(a, "");
     bad.reference = "  ".into();
     assert!(v.save_mandate(None, bad).is_err());
+    let mut bad = input(a, "Müller_2");
+    assert!(v.save_mandate(None, bad.clone()).is_err()); // umlaut and underscore
+    bad.reference = "/M-2".into();
+    assert!(v.save_mandate(None, bad.clone()).is_err());
     let mut bad = input(a, "M-2");
     bad.debtor_bic = "XX".into();
     assert!(v.save_mandate(None, bad).is_err());
@@ -167,6 +171,7 @@ fn collection_files_are_grouped_by_scheme_and_sequence() {
                 mandate_id,
                 amount_cents: 1500,
                 purpose: String::new(),
+                last_collection: false,
             })
             .collect::<Vec<_>>()
     };
@@ -220,4 +225,114 @@ fn collection_files_are_grouped_by_scheme_and_sequence() {
     assert!(v
         .build_collection_files(acc + 1, items(&[a.id]), "2027-01-02".into())
         .is_err());
+}
+
+#[test]
+fn a_pain008_file_is_imported_as_mandates_with_their_sequence() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].clone();
+    let iban = acc.iban.clone();
+    let acc = acc.id;
+    let xml = |seq: &str, iban: &str| {
+        format!(
+            "<Document><CstmrDrctDbtInitn><PmtInf><PmtTpInf><LclInstrm><Cd>CORE</Cd></LclInstrm><SeqTp>{seq}</SeqTp></PmtTpInf>\
+<ReqdColltnDt>2026-11-30</ReqdColltnDt><CdtrAcct><Id><IBAN>{iban}</IBAN></Id></CdtrAcct>\
+<CdtrSchmeId><Id><PrvtId><Othr><Id>DE98ZZZ09999999999</Id></Othr></PrvtId></Id></CdtrSchmeId>\
+<DrctDbtTxInf><PmtId><EndToEndId>E1</EndToEndId></PmtId><InstdAmt Ccy=\"EUR\">12.50</InstdAmt>\
+<DrctDbtTx><MndtRltdInf><MndtId>M-IMP</MndtId><DtOfSgntr>2024-03-01</DtOfSgntr></MndtRltdInf></DrctDbtTx>\
+<Dbtr><Nm>Mia Beispiel</Nm></Dbtr><DbtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></DbtrAcct>\
+<RmtInf><Ustrd>Beitrag</Ustrd></RmtInf></DrctDbtTxInf></PmtInf></CstmrDrctDbtInitn></Document>"
+        )
+    };
+    // a file of another creditor account is refused
+    assert!(v
+        .import_pain008(acc, xml("RCUR", "DE02120300000000202051"))
+        .is_err());
+    assert!(v.import_pain008(acc, "<Document/>".into()).is_err());
+
+    let r = v.import_pain008(acc, xml("RCUR", &iban)).unwrap();
+    assert_eq!(
+        (r.created, r.updated, r.failed.len()),
+        (1, 0, 0),
+        "{:?}",
+        r.failed
+    );
+    let m = &v.list_mandates(Some(acc)).unwrap()[0];
+    assert_eq!(
+        (m.reference.as_str(), m.default_amount_cents),
+        ("M-IMP", 1250)
+    );
+    assert_eq!(m.next_sequence, "RCUR"); // taken over from the file
+    assert_eq!(v.creditor_id(acc).unwrap(), "DE98ZZZ09999999999");
+    // importing it again updates the mandate
+    let r = v.import_pain008(acc, xml("RCUR", &iban)).unwrap();
+    assert_eq!((r.created, r.updated), (0, 1));
+    // a first collection stays FRST
+    v.delete_mandate(m.id).unwrap();
+    v.import_pain008(acc, xml("FRST", &iban)).unwrap();
+    assert_eq!(v.list_mandates(Some(acc)).unwrap()[0].next_sequence, "FRST");
+}
+
+#[test]
+fn csv_export_is_read_back_by_the_import() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    let mut tricky = input(acc, "M-1");
+    tricky.debtor_name = "Muster; \"Bau\" GmbH".into();
+    tricky.active = false;
+    v.save_mandate(None, tricky).unwrap();
+    let mut b2b = input(acc, "M-2");
+    b2b.scheme = MandateScheme::B2b;
+    b2b.one_off = true;
+    v.save_mandate(None, b2b).unwrap();
+    let csv = v.export_mandates_csv(acc).unwrap();
+    let back = parse_mandate_csv(csv);
+    assert!(back.problems.is_empty(), "{:?}", back.problems);
+    assert!(
+        back.rows.iter().all(|r| r.errors.is_empty()),
+        "{:?}",
+        back.rows
+    );
+    let m1 = back.rows.iter().find(|r| r.reference == "M-1").unwrap();
+    assert_eq!(m1.debtor_name, "Muster; \"Bau\" GmbH");
+    assert!(!m1.active);
+    let m2 = back.rows.iter().find(|r| r.reference == "M-2").unwrap();
+    assert!(m2.one_off && m2.scheme == MandateScheme::B2b && m2.active);
+    assert_eq!(m2.default_amount_cents, 1500);
+}
+
+#[test]
+fn the_last_collection_is_final() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    v.set_creditor_id(acc, "DE98ZZZ09999999999".into()).unwrap();
+    let m = v.save_mandate(None, input(acc, "M-F")).unwrap();
+    v.mark_collected(vec![m.id], "2026-10-01".into()).unwrap();
+    let item = |last| {
+        vec![CollectionItem {
+            mandate_id: m.id,
+            amount_cents: 1500,
+            purpose: String::new(),
+            last_collection: last,
+        }]
+    };
+    let f = v
+        .build_collection_files(acc, item(true), "2026-12-01".into())
+        .unwrap();
+    assert_eq!(f[0].sequence, "FNAL");
+    assert!(f[0].xml.contains("<SeqTp>FNAL</SeqTp>"));
+    // a first collection cannot be final
+    let m2 = v.save_mandate(None, input(acc, "M-G")).unwrap();
+    let it = vec![CollectionItem {
+        mandate_id: m2.id,
+        amount_cents: 1500,
+        purpose: String::new(),
+        last_collection: true,
+    }];
+    assert_eq!(
+        v.build_collection_files(acc, it, "2026-12-01".into())
+            .unwrap()[0]
+            .sequence,
+        "FRST"
+    );
 }
