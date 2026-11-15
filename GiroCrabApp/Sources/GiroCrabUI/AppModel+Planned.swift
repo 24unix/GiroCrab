@@ -49,4 +49,12 @@ extension AppModel {
         plannedTotals = result.1
         if let id = selectedPlannedID, !result.0.contains(where: { $0.id == id }) { selectedPlannedID = nil }
     }
+
+    /// ↑/↓ in the list: the neighbour of the selected payment (the first one
+    /// when nothing is selected); stops at both ends like the booking list.
+    func movePlannedSelection(_ delta: Int) {
+        guard !plannedPayments.isEmpty else { return }
+        let idx = selectedPlannedID.flatMap { id in plannedPayments.firstIndex { $0.id == id } } ?? -1
+        selectedPlannedID = plannedPayments[max(0, min(plannedPayments.count - 1, idx + delta))].id
+    }
 }

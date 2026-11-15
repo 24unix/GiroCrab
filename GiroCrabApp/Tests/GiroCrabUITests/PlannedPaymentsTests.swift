@@ -74,6 +74,24 @@ final class PlannedPaymentsTests: XCTestCase {
         XCTAssertNil(model.selectedPlannedID)
     }
 
+    /// ↑/↓ walk through the list and stop at both ends.
+    func testArrowKeysMoveTheSelection() async throws {
+        model.plannedHorizon = .all
+        await model.reloadPlanned()
+        let ids = model.plannedPayments.map(\.id)
+        XCTAssertGreaterThan(ids.count, 2)
+        model.movePlannedSelection(1)
+        XCTAssertEqual(model.selectedPlannedID, ids[0])
+        model.movePlannedSelection(1)
+        XCTAssertEqual(model.selectedPlannedID, ids[1])
+        model.movePlannedSelection(-1)
+        model.movePlannedSelection(-1)
+        XCTAssertEqual(model.selectedPlannedID, ids[0])
+        model.selectedPlannedID = ids.last
+        model.movePlannedSelection(1)
+        XCTAssertEqual(model.selectedPlannedID, ids.last)
+    }
+
     func testRhythmWording() {
         func text(_ unit: String, _ n: UInt32) -> String {
             PlannedPayment(id: "x", kind: .standingOrder, accountId: 1, accountName: "", date: "2026-12-01",

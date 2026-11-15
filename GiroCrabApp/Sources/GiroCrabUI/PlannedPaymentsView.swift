@@ -9,6 +9,7 @@ import AppKit
 /// booking history (those stay in the recurring-payments view).
 struct PlannedPaymentsView: View {
     @Environment(AppModel.self) private var model
+    @FocusState private var listFocused: Bool
 
     private struct Month: Identifiable {
         let id: String // YYYY-MM
@@ -65,18 +66,39 @@ struct PlannedPaymentsView: View {
                     description: Text("Terminüberweisungen und Daueraufträge deiner Bank erscheinen hier bis zur Ausführung."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(months) { month in
-                            monthHeader(month)
-                                .padding(.top, 14)
-                            ForEach(Array(month.items.enumerated()), id: \.element.id) { index, p in
-                                PlannedRow(payment: p, isLast: index == month.items.count - 1)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(months) { month in
+                                monthHeader(month)
+                                    .padding(.top, 14)
+                                ForEach(Array(month.items.enumerated()), id: \.element.id) { index, p in
+                                    PlannedRow(payment: p, isLast: index == month.items.count - 1)
+                                        .id(p.id)
+                                }
                             }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 18)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 18)
+                    // Keyboard like the booking list: ↑/↓ move the selection, which
+                    // scrolls into view; a click on a row gives the list the focus.
+                    .focusable()
+                    .focusEffectDisabled()
+                    .focused($listFocused)
+                    .onKeyPress(.downArrow) { model.movePlannedSelection(1); return .handled }
+                    .onKeyPress(.upArrow) { model.movePlannedSelection(-1); return .handled }
+                    .onKeyPress(.escape) {
+                        guard model.selectedPlannedID != nil else { return .ignored }
+                        model.selectedPlannedID = nil
+                        return .handled
+                    }
+                    .onChange(of: model.selectedPlannedID) { _, id in
+                        listFocused = true
+                        guard let id else { return }
+                        withAnimation(Motion.animation(.easeOut(duration: 0.15))) { proxy.scrollTo(id) }
+                    }
+                    .onAppear { listFocused = model.options.screenshotPath == nil }
                 }
             }
         }
@@ -158,6 +180,8 @@ private struct PlannedRow: View {
             .background(model.selectedPlannedID == p.id ? Theme.selection : Color.clear)
             .contentShape(Rectangle())
             .onTapGesture { model.selectedPlannedID = p.id }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(model.selectedPlannedID == p.id ? [.isButton, .isSelected] : .isButton)
             .contextMenu { PlannedActions(payment: p) }
             if !isLast {
                 Rectangle().fill(Theme.border.opacity(0.7)).frame(height: 1).padding(.leading, 64)
