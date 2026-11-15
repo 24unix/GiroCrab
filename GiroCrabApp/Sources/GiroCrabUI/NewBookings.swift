@@ -19,8 +19,9 @@ enum NewBookings {
     /// in the order they first appear. Each section keeps the bookings' order.
     /// Checked bookings are left out: the previous list may still be on screen
     /// while the page loads in the background.
-    static func sections(bookings: [Booking], accounts: [Account]) -> [NewBookingsSection] {
-        let bookings = bookings.filter { !$0.checked }
+    /// `keeping`: a checked booking that still shows (the row the user just checked).
+    static func sections(bookings: [Booking], accounts: [Account], keeping: Booking.ID? = nil) -> [NewBookingsSection] {
+        let bookings = bookings.filter { !$0.checked || $0.id == keeping }
         let byAccount = Dictionary(grouping: bookings, by: \.accountId)
         var sections = accounts.compactMap { account in
             byAccount[account.id].map { NewBookingsSection(accountID: account.id, account: account, title: account.name, bookings: $0) }

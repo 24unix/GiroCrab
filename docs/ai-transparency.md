@@ -78,6 +78,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 | `AI-Orchestrator:` | 1+2 | orchestrierende KI (Planung, Prompts, Spezifikation), z. B. `AI-Orchestrator: Google Gemini` |
 | `AI-Agency:` / `Review-Focus:` | Reflexion | Selbstauskunft der KI: was sie selbst entschieden hat, was ein Reviewer zuerst prüfen sollte |
 | `Human-Steering:` | 2 | menschliche Vorgaben zu Architektur und Security |
+| `Security-Check:` / `Perf-Check:` | Reflexion | Pflichtangaben: was auf Geheimnisse/personenbezogene Daten (Logs, `.sensitive()`, Netz/Prozess/Dateien, Abhängigkeiten) und was auf Laufzeit (`offMain`, SQL-Aggregate, `category_perf`) geprüft wurde |
 | `Verification:` | 4 | wie geprüft wurde, z. B. Tests oder manueller Test gegen ein echtes Bankportal |
 | `AI-Data-Policy:` | – | Bestätigung der Datenschutz-Garantie (siehe Abschnitt 4) |
 
@@ -100,7 +101,7 @@ Die GitHub Action [`ai-transparency.yml`](../.github/workflows/ai-transparency.y
 | Ebene | Inhalt | Quelle |
 |---|---|---|
 | **1 · Deterministische Telemetrie** | Trailer, KI-Werkzeuge mit Rolle, berührte Schichten, Security-Oberfläche, Test-Delta | Skript, ohne KI |
-| **2 · KI-Selbstreflexion** | `### 🤖 AI Process Reflection` mit `- **Human-Steering:**`, `- **AI-Agency:**`, `- **Review-Focus:**` (oder gleichnamige Trailer) | PR-Body / Commits; **Selbstauskunft, ungeprüft** |
+| **2 · KI-Selbstreflexion** | `### 🤖 AI Process Reflection` mit `- **Human-Steering:**`, `- **AI-Agency:**`, `- **Review-Focus:**` sowie den Pflichtangaben `- **Security-Check:**` und `- **Perf-Check:**` (oder gleichnamige Trailer); fehlt eine Pflichtangabe, markiert die Card sie mit ⚠️ (blockiert nichts). Beide Angaben erscheinen in Stufe 4 „Verification & Audit“ als „🔐 Security-Check dokumentiert“ bzw. „⚡ Perf-Check dokumentiert“ (mit `category_perf`-Zeit, falls genannt) und setzen dort nie das ✅; das erfordert harte Telemetrie (Testdateien/Tests/Verification-Trailer). `Human-Steering` erscheint in Stufe 2 als „Human-Steering dokumentiert (Selbstauskunft)“ und setzt das ✅ nur, wenn keine Security-Oberfläche berührt ist; sonst bleibt menschliches Review bzw. Issue-Diskussion Pflicht. Nennt der PR-Body `category_perf`, ohne einen Perf-Check anzugeben, zeigt die Card das als Hinweis | PR-Body / Commits; **Selbstauskunft, ungeprüft** |
 | **3 · Unabhängiger Prozess-Auditor (Meta-KI)** | 2–3 Sätze „🔍 KI-Prozess-Analyse (Meta-Audit)“: wie Mensch und Modelle zusammenwirkten, was die KI selbst entschied, was ein Reviewer prüfen sollte | LLM, optional |
 
 **Ebene 3 (Provider, in dieser Reihenfolge):** `GEMINI_API_KEY` → Google Gemini (`gemini-2.5-flash`); sonst `GITHUB_TOKEN` → GitHub Models (`openai/gpt-4o-mini`, Workflow-Recht `models: read`); sonst `OPENAI_API_KEY` oder `ANTHROPIC_API_KEY`. Timeout 8 s. Ohne Schlüssel, offline, bei Fehlern oder mit `card --no-llm` entfällt der Abschnitt, und die Card erscheint wie sonst.
@@ -127,7 +128,7 @@ tools/export-ai-provenance.py card --pr 125           # Card lokal ansehen
 
 Voraussetzungen sind Python ≥ 3.9 (nur die Standardbibliothek), `git` und ein angemeldetes `gh`. Die Action und das Skript nutzen **denselben Klassifikator**, deshalb stimmen Card und Datensatz immer überein.
 
-Jede Zeile der JSONL-Datei ist ein Datensatz mit `"schema": 2` und einem der folgenden Typen (`"schema": 2` ergänzt `ai.roles{orchestration,codegen}` und `reflection{present,section,human_steering,ai_agency,review_focus}`; im Datensatz nur als Wahrheitswerte, nie als Text):
+Jede Zeile der JSONL-Datei ist ein Datensatz mit `"schema": 3` und einem der folgenden Typen (`"schema": 2` ergänzte `ai.roles{orchestration,codegen}` und `reflection{present,section,human_steering,ai_agency,review_focus}`; `"schema": 3` ergänzt `reflection.security_check`, `reflection.perf_check` und `reflection.perf_benchmark_mentioned`; im Datensatz nur als Wahrheitswerte, nie als Text. Ältere Datensätze und PRs mit nur den drei ursprünglichen Feldern bleiben gültig, die neuen Schlüssel fehlen dort bzw. sind `false`):
 
 - `"kind": "pr"`: `number`, `title`, `state`, `author`, `from_fork`, `created_at`, `merged_at`, `hours_to_merge`, `size{additions,deletions,files,commits}`, `ai{involved,tools{name:[evidence…]},ai_coauthored_commits,human_only_commits}`, `scope{layers,security_surface,security_files}`, `tests{test_files_changed,tests_added,tests_removed,pr_body_test_section}`, `steering{issue_refs,pr_body_framing_section,reviews,review_states,reviewers,comments,commenters,comments_by_others,linked_issues_with_discussion,pr_body_decision_section,commits_after_first_feedback,human_steering_trailers,human_steering_signal}`, `verification{trailers}`
 - `"kind": "commit"`: alle Commits der First-Parent-Historie von `HEAD` mit `sha`, `author`, `authored_at`, `pr`, `ai`, `scope`, `tests`, `verification`
