@@ -601,8 +601,6 @@ struct ICloudSyncSection: View {
                     Label("Die Daten wurden in den Ordner „GiroCrab“ in iCloud Drive verschoben. Bitte wechseln Sie über „Ordner wählen …“ zu diesem Ordner, damit alle Geräte denselben Ordner nutzen.", systemImage: "exclamationmark.triangle.fill")
                         .appFont(.callout).foregroundStyle(.orange)
                 }
-                // The app's own iCloud container is neither visible in Finder nor
-                // chosen by the user: only a plain folder gets these buttons.
                 if sync.location == .folder {
                     HStack {
                         Button("Ordner wählen …", systemImage: "folder.badge.gearshape") { picking = true }
@@ -610,6 +608,17 @@ struct ICloudSyncSection: View {
                         Button("Im Finder zeigen", systemImage: "folder") { revealFolder() }
                         #endif
                     }
+                    if sync.folderChosen && sync.containerAvailable {
+                        Button("Wieder über iCloud synchronisieren", systemImage: "icloud") {
+                            sync.useContainerAgain(); model.syncNow()
+                        }
+                    }
+                } else {
+                    // The app's own container is invisible in iCloud Drive: a device
+                    // without one (e.g. a Mac) syncs via the folder "GiroCrab" instead (#484).
+                    Button("Ordner wählen …", systemImage: "folder.badge.gearshape") { picking = true }
+                    Text("Nutzt ein anderes Gerät (etwa die Mac-App) den Ordner „GiroCrab“ in iCloud Drive, wählen Sie diesen Ordner, damit beide denselben Tresor sehen.")
+                        .appFont(.caption).foregroundStyle(.secondary)
                 }
                 Button(sync.isSyncing ? LocalizedStringKey("Synchronisiere …") : LocalizedStringKey("Jetzt synchronisieren"), systemImage: "arrow.triangle.2.circlepath") {
                     model.syncNow()
@@ -673,7 +682,7 @@ struct ICloudSyncSection: View {
                     } else if !hasVault {
                         pendingFolder = url
                     } else {
-                        do { try sync.setFolder(url); model.syncNow() } catch { }
+                        do { try sync.setFolder(url, chosen: true); model.syncNow() } catch { }
                     }
                 }
             }
@@ -685,7 +694,7 @@ struct ICloudSyncSection: View {
         }
         .alert("Neuen Tresor in diesem Ordner anlegen?", isPresented: Binding(get: { pendingFolder != nil }, set: { if !$0 { pendingFolder = nil } })) {
             Button("Neuen Tresor anlegen") {
-                if let url = pendingFolder { do { try sync.setFolder(url); model.syncNow() } catch { } }
+                if let url = pendingFolder { do { try sync.setFolder(url, chosen: true); model.syncNow() } catch { } }
                 pendingFolder = nil
             }
             Button("Abbrechen", role: .cancel) { pendingFolder = nil }

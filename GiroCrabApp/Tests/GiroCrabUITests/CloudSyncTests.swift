@@ -394,6 +394,32 @@ final class CloudSyncTests: XCTestCase {
         XCTAssertNil(CloudSyncManager.syncLocation(override: nil, container: nil, bookmark: nil, fallback: nil))
     }
 
+    /// #484: the iPhone (container) picks the folder a Mac without container
+    /// syncs through; that choice beats the container. The default folder
+    /// the app set up by itself does not.
+    func test_a_folder_the_user_chose_wins_over_the_container() {
+        let c = CloudSyncManager.syncLocation(override: nil, chosen: bookmark, container: container, bookmark: bookmark, fallback: fallback)
+        XCTAssertEqual(c?.url, bookmark)
+        XCTAssertEqual(c?.location, .folder)
+    }
+
+    @MainActor
+    func test_choosing_a_folder_and_going_back_to_icloud() throws {
+        let folder = try tempDir()
+        let sync = CloudSyncManager.shared
+        defer { sync.useContainerAgain() }
+        try sync.setFolder(folder, chosen: true)
+        XCTAssertTrue(sync.folderChosen)
+        sync.useContainerAgain()
+        XCTAssertFalse(sync.folderChosen)
+    }
+
+    /// The status line names the place that was actually written.
+    func test_written_status_names_the_location() {
+        XCTAssertEqual(CloudSyncManager.writtenText(.folder), "Tresor in iCloud Drive aktualisiert")
+        XCTAssertEqual(CloudSyncManager.writtenText(.container), "Tresor in iCloud aktualisiert")
+    }
+
     func test_test_override_wins() {
         let o = URL(fileURLWithPath: "/tmp/test")
         XCTAssertEqual(CloudSyncManager.syncLocation(override: o, container: container, bookmark: bookmark, fallback: fallback)?.url, o)
