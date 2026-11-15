@@ -57,13 +57,24 @@ impl TransferSession {
         job: TransferJob,
         account_id: i64,
     ) -> Self {
+        Self::with_batch(vault, connector, ctx, job, None, account_id)
+    }
+
+    fn with_batch(
+        vault: Arc<Vault>,
+        connector: Box<dyn BankConnector>,
+        ctx: ConnectContext,
+        job: TransferJob,
+        batch: Option<BatchTransferJob>,
+        account_id: i64,
+    ) -> Self {
         Self {
             vault,
             state: AsyncMutex::new(TransferState {
                 connector,
                 ctx,
                 job,
-                batch: None,
+                batch,
                 account_id,
                 submitted: false,
                 done: false,
@@ -81,11 +92,7 @@ impl TransferSession {
         summary: TransferJob,
         account_id: i64,
     ) -> Self {
-        let s = Self::new(vault, connector, ctx, summary, account_id);
-        if let Ok(mut st) = s.state.try_lock() {
-            st.batch = Some(batch);
-        }
-        s
+        Self::with_batch(vault, connector, ctx, summary, Some(batch), account_id)
     }
 
     async fn advance(

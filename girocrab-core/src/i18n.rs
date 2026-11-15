@@ -324,6 +324,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Für diese Bank werden Sammelüberweisungen nicht unterstützt." => "Batch transfers are not supported for this bank.",
         "Dieses Konto oder diese Bank erlaubt keine Sammelüberweisungen per FinTS (HKCCM). Bitte in der Banking-App überweisen." => "This account or bank does not allow batch transfers via FinTS (HKCCM). Please transfer in the banking app.",
         "Die Bank erlaubt höchstens {0} Zahlungen pro Sammelüberweisung." => "The bank allows at most {0} payments per batch transfer.",
+        "Die Bank verlangt für diesen Auftrag eine Empfängerprüfung (Verification of Payee), die GiroCrab für Sammelüberweisungen noch nicht unterstützt. Bitte in der Banking-App überweisen." => "The bank requires a payee check (Verification of Payee) for this order, which GiroCrab does not yet support for batch transfers. Please transfer in the banking app.",
         "Die Bank bucht Sammelüberweisungen nur als Sammelbuchung." => "The bank books batch transfers only as a single batch booking.",
         "In der Kopfzeile fehlt die Spalte „{0}“." => "The header line has no “{0}” column.",
         "Die Datei enthält keine Zahlungen." => "The file contains no payments.",

@@ -47,7 +47,12 @@ extension AppModel {
     func importBatchCSV(_ url: URL) {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url) else {
+        // A payment list is a few hundred KB at most; refuse anything else before reading it.
+        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > Self.batchCsvMaxBytes {
+            transferError = String(localized: "Die Datei ist zu groß (höchstens 2 MB).")
+            return
+        }
+        guard let data = try? Data(contentsOf: url), data.count <= Self.batchCsvMaxBytes else {
             transferError = String(localized: "Die Datei konnte nicht gelesen werden.")
             return
         }
@@ -63,9 +68,30 @@ extension AppModel {
         batchDraft.rows.removeAll(where: blank)
         batchDraft.rows.append(contentsOf: imported)
         let faulty = imported.filter { !$0.isValid }.count
-        batchDraft.importNote = faulty == 0
+        var note = faulty == 0
             ? String(localized: "\(imported.count) Zahlungen aus „\(url.lastPathComponent)“ übernommen")
             : String(localized: "\(imported.count) Zahlungen aus „\(url.lastPathComponent)“ übernommen, \(faulty) fehlerhaft")
+        let doubles = Self.duplicatePaymentCount(batchDraft.rows)
+        if doubles > 0 {
+            note += " · " + String(localized: "\(doubles) mögliche Doppelte (gleicher Empfänger, Betrag und Zweck)")
+        }
+        batchDraft.importNote = note
+    }
+
+    /// Largest CSV file the import reads.
+    static let batchCsvMaxBytes = 2_000_000
+
+    /// Rows that repeat an earlier row's IBAN, amount and purpose (a file imported twice,
+    /// or the same member listed twice).
+    static func duplicatePaymentCount(_ rows: [BatchRow]) -> Int {
+        var seen = Set<String>()
+        var doubles = 0
+        for r in rows where !r.iban.isEmpty && !r.amountText.isEmpty {
+            let key = [r.iban.filter { !$0.isWhitespace }.uppercased(), r.amountText.trimmingCharacters(in: .whitespaces),
+                       r.purpose.trimmingCharacters(in: .whitespaces)].joined(separator: "|")
+            if !seen.insert(key).inserted { doubles += 1 }
+        }
+        return doubles
     }
 
     func startBatch() {

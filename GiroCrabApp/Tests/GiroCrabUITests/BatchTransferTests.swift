@@ -40,6 +40,27 @@ final class BatchTransferTests: XCTestCase {
         XCTAssertNotNil(model.batchDraft.importNote)
     }
 
+    func testImportingTheSameFileTwiceHintsAtDuplicates() throws {
+        let url = try csvFile("""
+        Name;IBAN;Betrag;Verwendungszweck
+        Anna Becker;DE89 3704 0044 0532 0130 00;60,00;Beitrag
+        """)
+        model.importBatchCSV(url)
+        XCTAssertFalse(model.batchDraft.importNote?.contains("Doppelte") ?? true)
+        model.importBatchCSV(url)
+        XCTAssertEqual(AppModel.duplicatePaymentCount(model.batchDraft.rows), 1)
+        XCTAssertTrue(model.batchDraft.importNote?.contains("1") ?? false)
+        XCTAssertEqual(model.batchDraft.rows.count, 2) // hint only, nothing dropped
+    }
+
+    func testOversizedCSVIsRefusedUnread() throws {
+        let line = "Name;IBAN;Betrag;Verwendungszweck\n"
+        let url = try csvFile(line + String(repeating: "A;DE89370400440532013000;1,00;x\n", count: 70_000))
+        model.importBatchCSV(url)
+        XCTAssertNotNil(model.transferError)
+        XCTAssertEqual(model.batchDraft.rows.count, 1) // the empty starting row
+    }
+
     func testCSVWithoutIBANColumnReportsProblemAndKeepsRows() throws {
         model.importBatchCSV(try csvFile("Name;Betrag\nA;1,00\n"))
         XCTAssertNotNil(model.transferError)
