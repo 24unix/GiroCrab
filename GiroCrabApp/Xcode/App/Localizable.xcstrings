@@ -987,8 +987,13 @@
       }
     },
     "%lld." : {
-      "extractionState" : "manual",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2780,6 +2785,22 @@
         }
       }
     },
+    "An den Anfang" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An den Anfang"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move to Top"
+          }
+        }
+      }
+    },
     "An diesem Tag ist kein Bestand vorhanden." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3117,6 +3138,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Couldn’t Use Sign-In"
+          }
+        }
+      }
+    },
+    "Ans Ende" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ans Ende"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move to Bottom"
           }
         }
       }
@@ -8949,6 +8986,22 @@
         }
       }
     },
+    "Filter zurücksetzen" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter zurücksetzen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear filter"
+          }
+        }
+      }
+    },
     "FinTS" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14468,6 +14521,38 @@
         }
       }
     },
+    "Nach oben" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach oben"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move Up"
+          }
+        }
+      }
+    },
+    "Nach unten" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach unten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move Down"
+          }
+        }
+      }
+    },
     "Nach „%@“ suchen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17076,6 +17161,22 @@
         }
       }
     },
+    "Regeln filtern (z. B. deu*b) …" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regeln filtern (z. B. deu*b) …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter rules (e.g. deu*b) …"
+          }
+        }
+      }
+    },
     "Regeln jetzt anwenden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17094,6 +17195,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Rules automatically assign new transactions to categories. The first matching rule (by priority) wins; manual assignments are never overwritten."
+          }
+        }
+      }
+    },
+    "Regeln werden von oben nach unten ausgewertet – die erste passende Regel gewinnt. Reihenfolge per Drag & Drop in der Liste ändern." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regeln werden von oben nach unten ausgewertet – die erste passende Regel gewinnt. Reihenfolge per Drag & Drop in der Liste ändern."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rules are evaluated from top to bottom — the first matching rule wins. Drag and drop in the list to reorder."
           }
         }
       }

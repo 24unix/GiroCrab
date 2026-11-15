@@ -89,7 +89,7 @@ struct SyncFolder: Sendable {
     }
 
     /// Whether iCloud has the file's data on this device (true outside iCloud).
-    static func isLocal(_ url: URL) -> Bool {
+    @Sendable static func isLocal(_ url: URL) -> Bool {
         let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
         guard let status = values?.ubiquitousItemDownloadingStatus else { return true }
         return status != .notDownloaded
