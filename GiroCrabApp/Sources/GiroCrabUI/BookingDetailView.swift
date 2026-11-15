@@ -5,6 +5,10 @@ import GiroCrabCore
 struct InspectorView: View {
     @Environment(AppModel.self) private var model
 
+    private func belowHistoryKey(_ b: Booking) -> [Int64] {
+        [b.id, model.merchantStats?.key == b.merchant.key ? 1 : 0, model.merchantAccountStats?.accountId == b.accountId ? 1 : 0]
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -19,8 +23,10 @@ struct InspectorView: View {
                     if b.amountCents > 0 { SalaryCard(booking: b) }
                     RecurringCard(booking: b)
                     MerchantHistoryCard(booking: b)
-                    CategoryGridCard(booking: b)
-                    DocumentsCard(booking: b)
+                    // The history card above changes height when its stats arrive; the cards below
+                    // then kept stale hit-test geometry (#454). A new identity re-lays them out.
+                    CategoryGridCard(booking: b).id(belowHistoryKey(b))
+                    DocumentsCard(booking: b).id(belowHistoryKey(b))
                     RawDataCard(booking: b)
                 } else {
                     VStack(alignment: .leading, spacing: 10) {

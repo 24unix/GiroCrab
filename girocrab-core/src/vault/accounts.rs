@@ -677,6 +677,34 @@ impl Vault {
         Ok(())
     }
 
+    /// Changes the account type (Kontoart), e.g. a checking account that is really a card.
+    pub fn set_account_kind(&self, account_id: i64, kind: AccountKind) -> Result<(), CoreError> {
+        let n = self.db()?.execute(
+            "UPDATE accounts SET kind = ?1 WHERE id = ?2",
+            params![kind.as_str(), account_id],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound {
+                what: trf("Konto {0}", &[&account_id]),
+            });
+        }
+        Ok(())
+    }
+
+    /// Sets the account owner (Kontoinhaber); empty clears it.
+    pub fn set_account_owner(&self, account_id: i64, owner: String) -> Result<(), CoreError> {
+        let n = self.db()?.execute(
+            "UPDATE accounts SET owner = ?1 WHERE id = ?2",
+            params![owner.trim(), account_id],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound {
+                what: trf("Konto {0}", &[&account_id]),
+            });
+        }
+        Ok(())
+    }
+
     /// Sets (or clears with `None`) the original loan amount of an account.
     pub fn set_account_initial_balance(
         &self,
@@ -694,5 +722,43 @@ impl Vault {
             });
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod kind_owner_tests {
+    use super::*;
+
+    #[test]
+    fn set_kind_and_owner() {
+        let dir = std::env::temp_dir().join(format!("gc-kind-owner-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let v = Vault::open(dir.join("v.db").to_string_lossy().into(), vec![7u8; 32]).unwrap();
+        let id = {
+            let db = v.db().unwrap();
+            db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+                .unwrap();
+            let g = db.last_insert_rowid();
+            db.execute(
+                "INSERT INTO accounts(group_id, external_ref, name) VALUES (?1, 'X', 'Konto')",
+                [g],
+            )
+            .unwrap();
+            db.last_insert_rowid()
+        };
+        v.set_account_kind(id, AccountKind::CreditCard).unwrap();
+        v.set_account_owner(id, "  Erika Muster ".into()).unwrap();
+        let a = v
+            .list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.id == id)
+            .unwrap();
+        assert_eq!(a.kind, AccountKind::CreditCard);
+        assert_eq!(a.owner, "Erika Muster");
+        v.set_account_owner(id, String::new()).unwrap();
+        assert!(v.set_account_kind(id + 999, AccountKind::Cash).is_err());
+        drop(v);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

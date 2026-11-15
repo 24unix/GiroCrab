@@ -206,7 +206,44 @@ enum AccountColorNames {
         "#2563EB": "Blau", "#D97706": "Bernstein", "#059669": "Grün", "#DB2777": "Pink",
         "#7C3AED": "Violett", "#0891B2": "Cyan", "#DC2626": "Rot", "#65A30D": "Limette",
         "#C026D3": "Fuchsia", "#EA580C": "Orange", "#4F46E5": "Indigo", "#0D9488": "Petrol",
+        "#CA8A04": "Gelb", "#92400E": "Braun", "#475569": "Schiefer",
     ]
+}
+
+/// What the colour picker offers: the core palette, a few colours it lacks,
+/// and the custom colours already in use in the vault.
+enum ColorChoices {
+    /// Offered in the picker only, never handed out as default colours: the
+    /// core palette assigns defaults by slot, so extending it would recolour
+    /// existing accounts.
+    static let extras = ["#CA8A04", "#92400E", "#475569"]
+    /// Two rows of the popover grid.
+    static let maxCustom = 14
+
+    static func swatches(palette: [String]) -> [String] {
+        palette + extras.filter { !palette.contains($0) }
+    }
+
+    /// Colours in use that are not swatches, most used first (ties: first
+    /// seen), so a custom colour can be given to another account, group or
+    /// category exactly. Derived from the vault: it syncs with it and a colour
+    /// nobody uses any more drops out.
+    static func customColors(used: [String], palette: [String]) -> [String] {
+        let fixed = Set(swatches(palette: palette))
+        var count: [String: Int] = [:]
+        var order: [String] = []
+        for raw in used {
+            let hex = raw.trimmingCharacters(in: .whitespaces).uppercased()
+            guard !hex.isEmpty, !fixed.contains(hex) else { continue }
+            if count[hex] == nil { order.append(hex) }
+            count[hex, default: 0] += 1
+        }
+        let ranked = order.enumerated().sorted {
+            let (a, b) = (count[$0.element]!, count[$1.element]!)
+            return a != b ? a > b : $0.offset < $1.offset
+        }
+        return ranked.prefix(maxCustom).map(\.element)
+    }
 }
 
 /// "Symbol & Farbe …" of an account, group or category: colour palette and
@@ -215,7 +252,7 @@ struct IconColorPopover: View {
     @Environment(AppModel.self) private var model
     let target: IconColorTarget
 
-    private static let palette = accountColorPalette()
+    private static let palette = ColorChoices.swatches(palette: accountColorPalette().map { $0.uppercased() })
     private static let names = AccountColorNames.names
 
     private var account: Account? {
@@ -232,10 +269,27 @@ struct IconColorPopover: View {
     }
     private var colorHex: String { (account?.colorHex ?? group?.colorHex ?? category?.colorHex ?? "").uppercased() }
     private var symbol: String { account?.sfSymbol ?? group?.sfSymbol ?? category?.sfSymbol ?? "" }
-    /// The palette, plus the current colour first if it is not in it (e.g.
-    /// from an import), so the current choice is always marked.
+    /// Custom colours already in use on accounts, groups and categories.
+    private var customColors: [String] {
+        let used = model.allAccounts.map(\.colorHex) + model.userGroups.map(\.colorHex) + model.categories.map(\.colorHex)
+        return ColorChoices.customColors(used: used, palette: Self.palette)
+    }
+    /// The palette, plus the current colour first if it is in neither row
+    /// (e.g. from an import), so the current choice is always marked.
     private var swatches: [String] {
-        colorHex.isEmpty || Self.palette.contains(colorHex) ? Self.palette : [colorHex] + Self.palette
+        colorHex.isEmpty || Self.palette.contains(colorHex) || customColors.contains(colorHex)
+            ? Self.palette : [colorHex] + Self.palette
+    }
+
+    private func swatch(_ hex: String) -> some View {
+        Button { setColor(hex) } label: {
+            Circle().fill(Color.readable(hex: hex))
+                .frame(width: 20, height: 20)
+                .overlay(Circle().strokeBorder(.primary, lineWidth: colorHex == hex ? 2 : 0).padding(-3))
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled() // no focus ring on the first swatch
+        .help(Self.names[hex].map { Text($0) } ?? Text(verbatim: hex))
     }
     /// The chosen colour, else the accent (also marks the current symbol).
     private var tint: Color {
@@ -258,16 +312,7 @@ struct IconColorPopover: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Farbe").appFont(.headline)
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(26), spacing: 6), count: 7), alignment: .leading, spacing: 6) {
-                ForEach(swatches, id: \.self) { hex in
-                    Button { setColor(hex) } label: {
-                        Circle().fill(Color.readable(hex: hex))
-                            .frame(width: 20, height: 20)
-                            .overlay(Circle().strokeBorder(.primary, lineWidth: colorHex == hex ? 2 : 0).padding(-3))
-                    }
-                    .buttonStyle(.plain)
-                    .focusEffectDisabled() // no focus ring on the first swatch
-                    .help(Self.names[hex].map { Text($0) } ?? Text(verbatim: hex))
-                }
+                ForEach(swatches, id: \.self) { hex in swatch(hex) }
                 // a category always has a colour: no "none" for it
                 if category == nil {
                     Button { setColor(nil) } label: {
@@ -291,6 +336,19 @@ struct IconColorPopover: View {
                 .help("Eigene Farbe")
             }
             .frame(maxWidth: .infinity, alignment: .leading) // under its heading, not centred
+            // the same custom colour again with one click (e.g. for a whole group)
+            if !customColors.isEmpty {
+                Text("Eigene Farben").appFont(.caption).foregroundStyle(.secondary)
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(26), spacing: 6), count: 7), alignment: .leading, spacing: 6) {
+                    ForEach(customColors, id: \.self) { hex in
+                        swatch(hex)
+                            .contextMenu {
+                                Button("Entfernen", systemImage: "trash", role: .destructive) { model.removeColor(hex) }
+                            }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
             Divider()
             HStack {
                 Text("Symbol").appFont(.headline)
@@ -394,8 +452,13 @@ struct AccountGroupDialogs: ViewModifier {
     func body(content: Content) -> some View {
         content
             .alert(dialog?.title ?? Text(verbatim: ""), isPresented: presented(text: true), presenting: dialog) { d in
-                TextField("Name, z. B. „Privat“ oder „Geschäft“", text: $text)
-                Button(d.isRename ? "Umbenennen" : "Anlegen") { submit(d) }
+                if case .editOwner = d {
+                    TextField("Name des Kontoinhabers", text: $text)
+                    Button("Sichern") { submit(d) }
+                } else {
+                    TextField("Name, z. B. „Privat“ oder „Geschäft“", text: $text)
+                    Button(d.isRename ? "Umbenennen" : "Anlegen") { submit(d) }
+                }
                 Button("Abbrechen", role: .cancel) {}
             } message: { d in
                 if case .create(let id?, _) = d, let a = model.account(for: id) {
@@ -426,7 +489,7 @@ struct AccountGroupDialogs: ViewModifier {
                     }
                 case .merge(let from, let into):
                     Button("Zusammenführen") { model.mergeUserGroups(from, into: into) }
-                case .create, .rename, .renameAccount, .renameCategory:
+                case .create, .rename, .renameAccount, .renameCategory, .editOwner:
                     EmptyView()
                 }
                 Button("Abbrechen", role: .cancel) {}
@@ -443,6 +506,7 @@ struct AccountGroupDialogs: ViewModifier {
 
     private func submit(_ d: GroupDialog) {
         let name = text.trimmingCharacters(in: .whitespaces)
+        if case .editOwner(let a) = d { model.setAccountOwner(a.id, to: name); return }
         guard !name.isEmpty else { return }
         switch d {
         case .create(let accountID, let parent): model.createUserGroup(name: name, moving: accountID, parent: parent?.uuid)
@@ -451,7 +515,7 @@ struct AccountGroupDialogs: ViewModifier {
             if let next = model.renameUserGroup(g, to: name) { DispatchQueue.main.async { dialog = next } }
         case .renameAccount(let a): model.renameAccount(a.id, to: name)
         case .renameCategory(let c): model.renameCategory(c.id, to: name)
-        case .delete, .moveAccount, .merge: break
+        case .delete, .moveAccount, .merge, .editOwner: break
         }
     }
 }

@@ -6,6 +6,7 @@ import GiroCrabCore
 /// multiplatform target.
 public struct GiroCrabScenes: Scene {
     @State private var model: AppModel
+    @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
     @AppStorage(ViewLayout.inspectorKey) private var showInspector = true
@@ -42,6 +43,7 @@ public struct GiroCrabScenes: Scene {
             GiroCrabRootView()
                 .environment(model)
                 .modifier(AutoLockOnBackground(model: model))
+                .preferredColorScheme(appearance.colorScheme)
                 #if os(macOS)
                 .appTextSize(textSize.effective)
                 // Keep the minimum independent of the split columns' ideal heights.
@@ -74,7 +76,9 @@ public struct GiroCrabScenes: Scene {
             CommandGroup(replacing: .importExport) {
                 Button("Vorhandene Daten importieren …") { model.openMoneyMoneyImport() }
                     .disabled(!model.isUnlocked)
-                Button("Buchungen als CSV exportieren …") { model.exportFilteredBookingsCSV() }
+                Button("Umsätze exportieren …") { model.openBookingExport() }
+                    .disabled(!model.isUnlocked)
+                Button("Umsätze als CSV exportieren …") { model.exportFilteredBookingsCSV() }
                     .disabled(!model.isUnlocked)
             }
             CommandGroup(replacing: .printItem) {
@@ -231,24 +235,28 @@ public struct GiroCrabScenes: Scene {
         Window("Mitteilungen", id: "announcements") {
             AnnouncementsListView()
                 .appTextSize(textSize.effective)
+                .preferredColorScheme(appearance.colorScheme)
         }
         .defaultSize(width: 460, height: 360)
         Window("Abruf-Protokoll", id: "sync-log") {
             SyncLogView()
                 .environment(model)
                 .appTextSize(textSize.effective)
+                .preferredColorScheme(appearance.colorScheme)
         }
         .defaultSize(width: 900, height: 520)
 
         Window("Problem melden", id: "bug-report") {
             BugReportView()
                 .environment(model)
+                .preferredColorScheme(appearance.colorScheme)
         }
         .defaultSize(width: 760, height: 860)
 
         Window("GiroCrab-Hilfe", id: "help") {
             NavigationStack { HelpView() }
                 .appTextSize(textSize.effective)
+                .preferredColorScheme(appearance.colorScheme)
         }
         .defaultSize(width: 640, height: 720)
         Settings {
@@ -256,6 +264,7 @@ public struct GiroCrabScenes: Scene {
             SettingsView()
                 .environment(model)
                 .appTextSize(textSize.effective)
+                .preferredColorScheme(appearance.colorScheme)
         }
         #endif
     }
@@ -466,6 +475,8 @@ struct MainSplitView: View {
                 DocumentsView()
             } else if model.sidebarSelection == .planned {
                 PlannedPaymentsView()
+            } else if model.sidebarSelection == .wealth {
+                WealthView()
             } else {
                 BookingStreamView()
             }

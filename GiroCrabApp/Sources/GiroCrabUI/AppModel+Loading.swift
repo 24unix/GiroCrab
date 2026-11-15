@@ -216,7 +216,7 @@ extension AppModel {
         case .userGroup(let uuid): accountIDs = userGroupAccountIDs(uuid)
         case .category(let id): category = id
         case .uncategorized: uncategorized = true
-        case .allAccounts, .documents, .newBookings, .planned, .none: break
+        case .allAccounts, .documents, .newBookings, .planned, .wealth, .none: break
         }
         // Everything new, whatever the list filters say elsewhere.
         if sidebarSelection == .newBookings {
@@ -244,7 +244,25 @@ extension AppModel {
         )
     }
 
-    /// Exports every booking matching the current list filter as Excel-friendly CSV.
+    /// Opens the compact export dialog (PDF / CSV / XML).
+    /// - Parameter selection: use the current multi-/single selection (context menu).
+    func openBookingExport(selection: Bool = false) {
+        if selection {
+            if selectedBookingIDs.isEmpty, let id = selectedBookingID {
+                exportBookingIDs = [id]
+            } else {
+                exportBookingIDs = selectedBookingIDs
+            }
+            exportPreferSelection = !(exportBookingIDs ?? []).isEmpty
+        } else {
+            exportBookingIDs = nil
+            exportPreferSelection = false
+        }
+        showExportSheet = true
+    }
+
+    /// Exports every booking matching the current list filter as Excel-friendly CSV
+    /// (quick path; the export sheet offers CSV with Salden and other formats).
     func exportFilteredBookingsCSV() {
         guard let vault else { return }
         do {
@@ -292,12 +310,25 @@ extension AppModel {
     /// inspector after an edit moved it out of the filter).
     func publish(_ p: BookingPage) {
         page = p
-        bookings = p.transactions
+        bookings = keepingLingeringRow(p.transactions)
         if let id = selectedBookingID, booking(withID: id) == nil, stickyBooking?.id != id {
             // „Neue Umsätze“: no booking selected unasked, auto review would check it
             selectedBookingID = sidebarSelection == .newBookings ? nil : p.transactions.first?.id
         }
         pruneMultiSelection()
+    }
+
+    /// The lingering booking (checked while selected) at its old place in a
+    /// new page that no longer contains it: before the row that followed it.
+    private func keepingLingeringRow(_ rows: [Booking]) -> [Booking] {
+        guard let id = lingeringBookingID, let kept = stickyBooking, kept.id == id,
+              !rows.contains(where: { $0.id == id }),
+              let old = bookings.firstIndex(where: { $0.id == id }) else { return rows }
+        let ids = Set(rows.map(\.id))
+        let next = bookings[(old + 1)...].first { ids.contains($0.id) }
+        var out = rows
+        out.insert(kept, at: next.flatMap { n in out.firstIndex { $0.id == n.id } } ?? out.endIndex)
+        return out
     }
 
     /// Let the segmented control finish updating immediately. Database work
@@ -417,7 +448,7 @@ extension AppModel {
     }
 
     /// „Neue Umsätze“: the loaded bookings as one card per account.
-    var newBookingSections: [NewBookingsSection] { NewBookings.sections(bookings: bookings, accounts: allAccounts) }
+    var newBookingSections: [NewBookingsSection] { NewBookings.sections(bookings: bookings, accounts: allAccounts, keeping: lingeringBookingID) }
 
     /// Jump to `date` in the booking stream: that day, or the nearest earlier
     /// day with bookings (the balance of a quiet day comes from there).
@@ -493,6 +524,7 @@ extension AppModel {
         case .documents: return String(localized: "Belege & PostBox")
         case .newBookings: return String(localized: "Neue Umsätze")
         case .planned: return String(localized: "Geplant")
+        case .wealth: return String(localized: "Vermögen")
         }
     }
 
@@ -504,7 +536,7 @@ extension AppModel {
         case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .allAccounts, .none: return (String(localized: "Verfügbar (Giro, Tagesgeld, Karten)"), liquidBalance)
         case .category(let id): return categories.first { $0.id == id }.map { (String(localized: "Summe im Zeitraum"), $0.totalCents) }
-        case .uncategorized, .documents, .newBookings, .planned: return nil
+        case .uncategorized, .documents, .newBookings, .planned, .wealth: return nil
         }
     }
 

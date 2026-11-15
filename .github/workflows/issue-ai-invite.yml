@@ -1,0 +1,70 @@
+name: Issue AI Invite
+
+# Invites NEW issue authors once to turn their issue into a PR with AI coding tools
+# (CLAUDE.md, CONTRIBUTING.md, interactive guide). Never contacts maintainers, bots,
+# existing contributors or anyone who already opened a PR / another issue.
+#
+# SECURITY: issue title and body are never used here. Only the issue number and the author
+# login reach the script, and only through `env:` (no ${{ }} inside `run:`).
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  invite:
+    if: >-
+      !endsWith(github.event.issue.user.login, '[bot]') &&
+      github.event.issue.user.login != 'dr-prinz' &&
+      github.event.issue.author_association != 'CONTRIBUTOR' &&
+      github.event.issue.author_association != 'COLLABORATOR' &&
+      github.event.issue.author_association != 'MEMBER' &&
+      github.event.issue.author_association != 'OWNER'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+    steps:
+      - name: Comment once for first-time authors
+        run: |
+          set -euo pipefail
+          prs=$(gh pr list --author "$ISSUE_AUTHOR" --state all --limit 1 --json number --jq 'length')
+          issues=$(gh issue list --author "$ISSUE_AUTHOR" --state all --limit 2 --json number --jq 'length')
+          if [ "$prs" -gt 0 ] || [ "$issues" -gt 1 ]; then
+            echo "Author has opened a PR or an earlier issue; no invite."
+            exit 0
+          fi
+          template=$(cat <<'BODY'
+          👋 Danke für dein Issue, @@AUTHOR@@!
+
+          💡 **Lust, dieses Ticket (#@@NUM@@) direkt selbst mit KI-Unterstützung als Pull Request umzusetzen?**
+          Wir haben dafür eine interaktive Schritt-für-Schritt-Anleitung und ein kurzes 10-Sekunden-Video gebaut – schau mal hier rein (läuft direkt im Browser inkl. Prompt-Kopierfunktion):
+          👉 [**Interaktive Mitbau-Anleitung öffnen (In 4 Schritten mit KI zum eigenen PR)**](https://girocrab.de/girocrab_mitbau_anleitung.html)
+          🎬 [**10s Promo-Animation mit Sound ansehen**](https://girocrab.de/girocrab_10s_promo_video.html)
+
+          **Kurzfassung für #@@NUM@@:**
+          0. **Kurz Bescheid geben:** Antworte kurz hier im Issue (*„Ich übernehme das“*), damit wir es dir zuweisen und niemand doppelt arbeitet (`CONTRIBUTING.md`).
+          1. **Claude Code**, **Cursor** oder **Codex** öffnen und `https://github.com/GiroCrab/GiroCrab.git` forken & klonen.
+          2. **Diesen Prompt in deine KI kopieren:**
+             ```text
+             Lies CLAUDE.md und CONTRIBUTING.md und setze Issue #@@NUM@@ um: Prüfe zuerst die Architektur-, Privacy- (.sensitive()) und Performance-Regeln, schlage einen sauberen Plan vor und implementiere ihn danach inkl. Tests. Führe anschließend cargo test / swift test sowie alle Linter (scripts/lint-*.sh, scripts/xcstrings.py check) aus und starte die App zur Kontrolle im Demo-Modus mit GIROCRAB_DEMO_SEED=1.
+             ```
+          3. **Wenn es in der Demo-Vorschau gut aussieht, einfach eingeben:**
+             ```text
+             Erstelle einen neuen Branch, committe die Änderungen mit den AI-Attribution-Trailern und öffne einen Pull Request für #@@NUM@@ inklusive des "### 🤖 AI Process Reflection"-Blocks (mit Security-Check und Perf-Check).
+             ```
+
+          *(Natürlich völlig freiwillig – allein das Melden des Issues hilft uns schon enorm weiter! 🦀 / English summary: Feel free to turn this issue into a PR using AI tools with `CLAUDE.md` and `CONTRIBUTING.md`!)*
+          BODY
+          )
+          # strip the YAML indentation, then fill the placeholders
+          body=$(printf '%s\n' "$template" | sed 's/^          //')
+          body=${body//@@NUM@@/$ISSUE_NUMBER}
+          body=${body//@@AUTHOR@@/@$ISSUE_AUTHOR}
+          gh issue comment "$ISSUE_NUMBER" --body "$body"

@@ -129,7 +129,10 @@ extension AppModel {
         guard let vault else { return }
         runCore { try vault.setTransactionChecked(transactionId: booking.id, checked: checked) }
         // With "Neu" / "Geprüft" active the booking leaves the list: keep it in the inspector.
-        if leavesListWhenChecked, selectedBookingID == booking.id { stickyBooking = freshBooking(booking) }
+        if leavesListWhenChecked, selectedBookingID == booking.id {
+            stickyBooking = freshBooking(booking)
+            lingeringBookingID = checked ? booking.id : nil
+        }
         reloadBookings(); reloadAccounts()
     }
 
@@ -247,6 +250,21 @@ extension AppModel {
     /// "Symbol & Farbe …" of a category.
     func setCategorySymbol(_ id: Int64, symbol: String) { editCategory(id) { $0.sfSymbol = symbol } }
     func setCategoryColor(_ id: Int64, hex: String) { editCategory(id) { $0.colorHex = hex } }
+
+    /// „Eigene Farben“ › Entfernen: accounts with colour `old` go back to
+    /// their default colour, groups to none, and a category (it always has a
+    /// colour) takes its parent's, a main category slate grey.
+    func removeColor(_ old: String) {
+        let old = old.uppercased()
+        let matches = { (hex: String) in hex.uppercased() == old }
+        for a in allAccounts where matches(a.colorHex) { setAccountColor(a.id, hex: nil) }
+        for g in userGroups where matches(g.colorHex) { setUserGroupColor(g, hex: nil) }
+        let byID = Dictionary(categories.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for c in categories where matches(c.colorHex) {
+            let parent = c.parentId.flatMap { byID[$0]?.colorHex }.flatMap { $0.isEmpty || matches($0) ? nil : $0 }
+            setCategoryColor(c.id, hex: parent ?? ColorChoices.extras[2])
+        }
+    }
 
     /// Where a category can move: every category except itself and its own
     /// sub-categories.

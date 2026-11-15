@@ -42,6 +42,38 @@ The macOS user interface uses only native Apple system frameworks (`SwiftUI`, `A
 |---|---|---|---|
 | **`uniffi`** (`uniffi-bindgen`, feature `cli`) | `0.32.2` | `MPL-2.0` | [https://github.com/mozilla/uniffi-rs](https://github.com/mozilla/uniffi-rs) |
 
+## Linux Direct Dependencies (`GiroCrabLinux`)
+
+The Linux interface (Qt 6 / QML) uses these crates in addition to the core. Crates already listed above (`base64`, `miniz_oxide`, `reqwest`, `serde`, `serde_json`, `tokio`, `zeroize`) are not repeated.
+
+| Crate | Version | License | Repository |
+|---|---|---|---|
+| **`cxx`** | `1.0.205` | `MIT OR Apache-2.0` | [https://github.com/dtolnay/cxx](https://github.com/dtolnay/cxx) |
+| **`cxx-qt`** | `0.10.0` | `MIT OR Apache-2.0` | [https://github.com/KDAB/cxx-qt](https://github.com/KDAB/cxx-qt) |
+| **`cxx-qt-lib`** | `0.10.0` | `MIT OR Apache-2.0` | [https://github.com/KDAB/cxx-qt](https://github.com/KDAB/cxx-qt) |
+| **`cxx-qt-build`** (build only) | `0.10.0` | `MIT OR Apache-2.0` | [https://github.com/KDAB/cxx-qt](https://github.com/KDAB/cxx-qt) |
+| **`keyring`** (Secret Service) | `3.6.3` | `MIT OR Apache-2.0` | [https://github.com/hwchen/keyring-rs](https://github.com/hwchen/keyring-rs) |
+| **`ed25519-dalek`** | `2.2.0` | `BSD-3-Clause` | [https://github.com/dalek-cryptography/curve25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek/tree/main/ed25519-dalek) |
+| **`qrcode`** | `0.14.1` | `MIT OR Apache-2.0` | [https://github.com/kennytm/qrcode-rust](https://github.com/kennytm/qrcode-rust) |
+
+### Linux System Libraries and Programs (dynamically linked or called, not bundled)
+
+| Component | License | Notes |
+|---|---|---|
+| **Qt 6** (Core, Gui, Network, Qml, Quick, QuickControls2, Widgets, PrintSupport, Pdf, WebEngine) | LGPL-3.0 (also GPL-2.0/GPL-3.0) | User interface, printing, PDF preview, bank consent pages and web logins |
+| **KDE Kirigami** | LGPL-2.0-or-later | Breeze icon theme access |
+| **Tesseract OCR** (optional, external program `tesseract`, not linked) | Apache-2.0 | Text recognition for photographed receipts and invoices; called as a separate process when installed |
+
+### Linux Flatpak Bundle (`GiroCrabLinux/packaging/flatpak`)
+
+The Flatpak runs on the KDE runtime (`org.kde.Platform`, Qt 6 and Kirigami, see above) with the QtWebEngine base app (`io.qt.qtwebengine.BaseApp`, Qt WebEngine and Qt Pdf, LGPL-3.0). In addition it bundles these components (built from source; licence texts under `/app/share/licenses/de.girocrab.GiroCrab/`):
+
+| Component | Version | License | Repository |
+|---|---|---|---|
+| **Tesseract OCR** (program `tesseract` and `libtesseract`) | `5.5.4` | `Apache-2.0` | [https://github.com/tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract) |
+| **Leptonica** (image library used by Tesseract) | `1.87.0` | `BSD-2-Clause` | [https://github.com/DanBloomberg/leptonica](https://github.com/DanBloomberg/leptonica) |
+| **tessdata_fast** (`deu.traineddata`, `eng.traineddata`) | `4.1.0` | `Apache-2.0` | [https://github.com/tesseract-ocr/tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) |
+
 ## Swift Packages (`GiroCrabApp`)
 
 | Package | Version | License | Repository |
