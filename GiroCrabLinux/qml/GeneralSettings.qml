@@ -71,7 +71,7 @@ ScrollView {
             }
             Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
                    text: qsTr("Vergrößert die Schrift in der ganzen App. Auch im Menü Darstellung mit %1 / %2 / %3.")
-                             .arg(Fmt.keys("Strg++")).arg(Fmt.keys("Strg+-")).arg(Fmt.keys("Strg+0")) }
+                             .arg(Fmt.keys("Strg+Plus")).arg(Fmt.keys("Strg+Minus")).arg(Fmt.keys("Strg+0")) }
             CheckBox {
                 text: qsTr("Auswertungen in der Übersicht anzeigen")
                 checked: AppModel.showStatistics
