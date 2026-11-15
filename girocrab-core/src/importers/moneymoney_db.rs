@@ -2052,6 +2052,17 @@ fn connection_options(
         .map(|(kind, key)| MoneyMoneyDbConnectionOption::direct(kind, key))
         .into_iter()
         .collect();
+    // comdirect: FinTS as an alternative to its own API (which stays the
+    // default). Only with a real bank code, FinTS needs the one of the IBAN.
+    let code: String = b.bankcode.chars().filter(|c| c.is_ascii_digit()).collect();
+    if out.iter().any(|o| o.connector == ConnectorKind::Comdirect)
+        && crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&code.as_str())
+    {
+        out.push(MoneyMoneyDbConnectionOption::direct(
+            ConnectorKind::FinTsGeneric,
+            ConnectorKind::fints_key(&code),
+        ));
+    }
     if let Some(bank) = match_psd2_bank(&b.name, catalog) {
         out.push(MoneyMoneyDbConnectionOption::enable_banking(bank));
     }
@@ -2691,6 +2702,20 @@ fn import(
             continue;
         }
         let (kind, key) = (chosen.connector, chosen.key.clone());
+        // comdirect per FinTS: its address is not in the generated table,
+        // store it so the login's settings show it (an existing one stays)
+        if let Some(blz) = ConnectorKind::fints_blz(&key) {
+            if crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&blz) {
+                conn.execute(
+                    "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, 0)
+                     ON CONFLICT(key) DO NOTHING",
+                    params![
+                        format!("fints.url.{blz}"),
+                        crate::connectors::fints_directory::COMDIRECT_FINTS_URL
+                    ],
+                )?;
+            }
+        }
         let id = match find_connection(conn, kind, &key, &b.username)? {
             Some(id) => {
                 res.connections_existing += 1;

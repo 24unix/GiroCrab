@@ -665,6 +665,72 @@ fn adopting_wallets_sharing_an_iban_follows_the_currency() {
     );
 }
 
+/// comdirect: its own API stays the default, FinTS (bank code of the login)
+/// is offered next to it and, when chosen, becomes the login's connection.
+#[test]
+fn comdirect_can_be_connected_via_fints() {
+    let v = vault();
+    let path = fake_db();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let bank = p.banks.iter().find(|b| b.mm_id == 1).unwrap();
+    assert_eq!(bank.connector, Some(ConnectorKind::Comdirect));
+    let vias: Vec<_> = bank
+        .connection_options
+        .iter()
+        .map(|o| (o.via, o.connector, o.key.as_str()))
+        .collect();
+    assert_eq!(
+        vias,
+        vec![
+            (
+                MoneyMoneyDbConnectionVia::OwnApi,
+                ConnectorKind::Comdirect,
+                "comdirect"
+            ),
+            (
+                MoneyMoneyDbConnectionVia::FinTs,
+                ConnectorKind::FinTsGeneric,
+                "fints:20041111"
+            ),
+        ]
+    );
+    // no other bank gains an option
+    let vb = p.banks.iter().find(|b| b.mm_id == 2).unwrap();
+    assert_eq!(vb.connection_options.len(), 1);
+
+    let mut o = options_from(&p, true);
+    o.bank_choices = vec![MoneyMoneyDbBankChoice {
+        mm_bank_id: 1,
+        connection: Some(bank.connection_options[1].clone()),
+    }];
+    v.import_moneymoney_database(path, PW.into(), o).unwrap();
+    let conns = v.list_bank_connections().unwrap();
+    assert!(conns
+        .iter()
+        .all(|c| c.connector != ConnectorKind::Comdirect));
+    let fints = conns
+        .iter()
+        .find(|c| c.connector == ConnectorKind::FinTsGeneric)
+        .expect("FinTS connection for comdirect");
+    assert_eq!(fints.login_name, "1234567");
+    assert_eq!(
+        v.get_setting("fints.url.20041111".into())
+            .unwrap()
+            .as_deref(),
+        Some(crate::connectors::fints_directory::COMDIRECT_FINTS_URL)
+    );
+    // the imported accounts hang on the FinTS login; the first sync adopts them
+    let giro = v
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|a| a.name == "Girokonto")
+        .unwrap();
+    assert_eq!(giro.connection_id, Some(fints.id));
+}
+
 #[test]
 fn connections_for_supported_banks_only_and_never_a_pin() {
     let v = vault();

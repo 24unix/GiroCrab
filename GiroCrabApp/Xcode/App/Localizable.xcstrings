@@ -2043,6 +2043,28 @@
         }
       }
     },
+    "Abrufweg" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Access method"
+          }
+        }
+      }
+    },
+    "Abrufweg umstellen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch access method?"
+          }
+        }
+      }
+    },
     "Aktion" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3385,6 +3407,17 @@
         }
       }
     },
+    "Auf FinTS umstellen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to FinTS …"
+          }
+        }
+      }
+    },
     "Auf Gruppe links ziehen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3392,6 +3425,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Drag onto a group on the left"
+          }
+        }
+      }
+    },
+    "Auf die Schnittstelle der Bank umstellen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch to the bank's own interface …"
           }
         }
       }
@@ -9961,6 +10005,28 @@
         }
       }
     },
+    "GiroCrab ruft comdirect danach per FinTS ab. Die Bankleitzahl kommt aus der IBAN Ihrer Konten. Beim ersten Abruf werden PIN und Freigabe in der App erneut abgefragt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab then fetches comdirect via FinTS. The bank code is taken from your accounts' IBAN. The first update asks for your PIN and approval in the app again."
+          }
+        }
+      }
+    },
+    "GiroCrab ruft comdirect danach über die Schnittstelle der Bank ab. Dafür sind Client-ID und Client-Secret nötig." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab then fetches comdirect through the bank's own interface. This needs a client ID and client secret."
+          }
+        }
+      }
+    },
     "GiroCrab startet dazu kurz neu. Sie können die Sprache später in den Einstellungen ändern." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12830,6 +12896,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fetching accounts, fund positions and transaction history …"
+          }
+        }
+      }
+    },
+    "Konten, Kategorien und Notizen bleiben erhalten. Beim nächsten Abruf ordnet GiroCrab Konten und Buchungen dem neuen Weg zu." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accounts, categories and notes are kept. On the next update GiroCrab matches accounts and bookings to the new access method."
           }
         }
       }
@@ -19697,6 +19774,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transaction list · A4 portrait"
+          }
+        }
+      }
+    },
+    "Umstellen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch"
           }
         }
       }

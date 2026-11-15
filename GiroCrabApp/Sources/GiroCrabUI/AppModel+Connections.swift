@@ -270,6 +270,14 @@ extension AppModel {
         reloadAccounts()
     }
 
+    /// comdirect: switches the login between FinTS and comdirect's own API,
+    /// keeping accounts, categories and notes (see `Vault.switchComdirectAccess`).
+    func switchComdirectAccess(_ id: Int64) {
+        guard let vault else { return }
+        runCore { _ = try vault.switchComdirectAccess(connectionId: id) }
+        reloadAll()
+    }
+
     func setConnectionPin(_ id: Int64, _ pin: String?) {
         guard let vault else { return }
         runCore { try vault.setConnectionPin(connectionId: id, pin: pin) }

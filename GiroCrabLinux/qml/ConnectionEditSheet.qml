@@ -23,6 +23,9 @@ Sheet {
     readonly property var descriptor: connection ? AppModel.descriptor(kind) : null
     readonly property bool isTR: kind === "TradeRepublic"
     readonly property bool isPortal: kind === "AmericanExpress" || kind === "AmazonVisa"
+    /// comdirect logins can switch between FinTS and comdirect's own API.
+    readonly property bool isComdirect: kind === "Comdirect"
+        || (kind === "FinTsGeneric" && ["20041111", "20041133", "20041144", "20041155"].indexOf(connection.bank_code) >= 0)
     readonly property bool usesPin: ["VolksbankKasselGoettingen", "Direkt1822", "FinTsGeneric", "Comdirect", "TradeRepublic", "Bunq", "Ibkr"].indexOf(kind) >= 0
     /// Global setting keys relevant for this connector.
     readonly property var allKeys: {
@@ -127,6 +130,16 @@ Sheet {
         onConfirmed: { const id = sheet.connection.id; sheet.close(); AppModel.removeConnection(id) }
     }
     ConfirmDialog {
+        id: confirmSwitch
+        destructive: false
+        heading: qsTr("Abrufweg umstellen?")
+        message: sheet.kind === "Comdirect"
+            ? qsTr("GiroCrab ruft comdirect danach per FinTS ab. Die Bankleitzahl kommt aus der IBAN Ihrer Konten. Beim ersten Abruf werden PIN und Freigabe in der App erneut abgefragt.")
+            : qsTr("GiroCrab ruft comdirect danach über die Schnittstelle der Bank ab. Dafür sind Client-ID und Client-Secret nötig.")
+        actionTitle: qsTr("Umstellen")
+        onConfirmed: { const id = sheet.connection.id; sheet.close(); AppModel.switchComdirectAccess(id) }
+    }
+    ConfirmDialog {
         id: confirmClear
         /// "portal" (web-portal cookies) or "tradeRepublic" (stored session + browser cookies).
         property string kind: "tradeRepublic"
@@ -223,6 +236,15 @@ Sheet {
                     Text { visible: sheet.showAdvanced; Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
                            text: qsTr("Nur für Power-User: Mit eigener Application-ID und PEM-Schlüssel nutzt GiroCrab statt des Web-Logins die PSD2-Schnittstelle von Enable Banking.") }
                     Repeater { model: sheet.showAdvanced ? sheet.advancedKeys : []; KeyField { required property string modelData; key: modelData } }
+                }
+                SettingsFormSection {
+                    visible: sheet.isComdirect
+                    title: qsTr("Abrufweg")
+                    footer: qsTr("Konten, Kategorien und Notizen bleiben erhalten. Beim nächsten Abruf ordnet GiroCrab Konten und Buchungen dem neuen Weg zu.")
+                    SettingsFormRow { label: qsTr("Abrufweg")
+                                      value: sheet.kind === "Comdirect" ? qsTr("Schnittstelle der Bank") : qsTr("Online-Banking (FinTS)") }
+                    Button { text: sheet.kind === "Comdirect" ? qsTr("Auf FinTS umstellen …") : qsTr("Auf die Schnittstelle der Bank umstellen …")
+                             onClicked: confirmSwitch.open() }
                 }
                 SettingsFormSection {
                     title: qsTr("Status")

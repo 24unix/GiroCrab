@@ -512,6 +512,9 @@ fn english(de: &str) -> Option<&'static str> {
         }
         // ------------------------------------------------------------ connections.rs
         "Bankzugang {0}" => "bank connection {0}",
+        "Nur comdirect-Zugänge lassen sich zwischen FinTS und der comdirect-Schnittstelle umstellen." => "Only comdirect logins can be switched between FinTS and comdirect's own interface.",
+        "Keine comdirect-IBAN gefunden: Die Bankleitzahl für FinTS lässt sich nicht bestimmen." => "No comdirect IBAN found: the bank code for FinTS cannot be determined.",
+        "Für diesen Anmeldenamen gibt es den Zugang auf diesem Weg schon." => "A login with this name already exists for this access method.",
         "Keine Sitzungs-Cookies übergeben" => "No session cookies were passed",
         // ------------------------------------------------------------ loans.rs (#36)
         "Bitte einen Namen für das Darlehen angeben." => "Please enter a name for the loan.",

@@ -458,10 +458,303 @@ impl Vault {
     }
 }
 
+/// comdirect bank code of a login: from the first comdirect IBAN among its
+/// accounts (characters 5–12), else the stored bank code. The account's code
+/// decides: comdirect's API logins all carry 20041111.
+fn comdirect_blz(
+    conn: &Connection,
+    connection_id: i64,
+    stored: &str,
+) -> CoreResult<Option<String>> {
+    use crate::connectors::fints_directory::COMDIRECT_BLZ;
+    let mut st = conn.prepare(
+        "SELECT upper(replace(iban, ' ', '')) FROM accounts
+          WHERE connection_id = ?1 AND deleted_ms IS NULL ORDER BY sort_order, id",
+    )?;
+    let ibans: Vec<String> = st
+        .query_map([connection_id], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    let from_iban = ibans.iter().find_map(|i| {
+        let blz = i.get(4..12)?;
+        (i.starts_with("DE") && COMDIRECT_BLZ.contains(&blz)).then(|| blz.to_string())
+    });
+    Ok(from_iban.or_else(|| COMDIRECT_BLZ.contains(&stored).then(|| stored.to_string())))
+}
+
+#[uniffi::export]
+impl Vault {
+    /// Switches a comdirect login between comdirect's own API and FinTS
+    /// (`fints:<blz>`, bank code from the login's IBANs) and back, keeping
+    /// its accounts and bookings. The connector session is cleared; accounts
+    /// and live bookings are marked so the next fetch takes them over by
+    /// IBAN and by booking (amount, date ±2 days, counterparty) instead of
+    /// adding them a second time – the same path as after a database import.
+    /// Returns the new connector key.
+    pub fn switch_comdirect_access(&self, connection_id: i64) -> Result<String, CoreError> {
+        let db = self.db()?;
+        let tx = db.unchecked_transaction()?;
+        let (key, bank_code, login): (String, String, String) = tx
+            .query_row(
+                "SELECT connector, bank_code, login_name FROM bank_connections
+                  WHERE id = ?1 AND deleted_ms IS NULL",
+                [connection_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?
+            .ok_or_else(|| CoreError::NotFound {
+                what: trf("Bankzugang {0}", &[&connection_id]),
+            })?;
+        let from_api = key == ConnectorKind::Comdirect.as_str();
+        let fints_blz = ConnectorKind::fints_blz(&key).map(str::to_string);
+        let is_comdirect_fints = fints_blz
+            .as_deref()
+            .is_some_and(|b| crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&b));
+        if !from_api && !is_comdirect_fints {
+            return Err(CoreError::InvalidInput {
+                message: tr("Nur comdirect-Zugänge lassen sich zwischen FinTS und der comdirect-Schnittstelle umstellen.").into(),
+            });
+        }
+        let (kind, new_key, new_code) = if from_api {
+            let blz = comdirect_blz(&tx, connection_id, &bank_code)?.ok_or_else(|| {
+                CoreError::InvalidInput {
+                    message: tr("Keine comdirect-IBAN gefunden: Die Bankleitzahl für FinTS lässt sich nicht bestimmen.").into(),
+                }
+            })?;
+            (
+                ConnectorKind::FinTsGeneric,
+                ConnectorKind::fints_key(&blz),
+                blz,
+            )
+        } else {
+            (
+                ConnectorKind::Comdirect,
+                ConnectorKind::Comdirect.as_str().to_string(),
+                String::new(),
+            )
+        };
+        // the banking lock may block the new way (e.g. FinTS for this bank code)
+        crate::banking_gate::check_connector(&new_key)?;
+        let clash: bool = tx.query_row(
+            "SELECT EXISTS (SELECT 1 FROM bank_connections
+                 WHERE connector = ?1 AND id <> ?2 AND deleted_ms IS NULL
+                   AND lower(trim(login_name)) = lower(trim(?3)))",
+            params![new_key, connection_id, login],
+            |r| r.get(0),
+        )?;
+        if clash {
+            return Err(CoreError::InvalidInput {
+                message: tr("Für diesen Anmeldenamen gibt es den Zugang auf diesem Weg schon.")
+                    .into(),
+            });
+        }
+        let symbol = crate::connectors::descriptor(kind).sf_symbol;
+        tx.execute(
+            "UPDATE bank_connections SET connector = ?1, bank_code = ?2, sf_symbol = ?3, state_json = '{}'
+              WHERE id = ?4",
+            params![new_key, new_code, symbol, connection_id],
+        )?;
+        // FinTS address shown (and editable) in the login's settings; an
+        // address the user set for this bank code before stays.
+        if kind == ConnectorKind::FinTsGeneric {
+            tx.execute(
+                "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, 0)
+                 ON CONFLICT(key) DO NOTHING",
+                params![
+                    format!("fints.url.{new_code}"),
+                    crate::connectors::fints_directory::COMDIRECT_FINTS_URL
+                ],
+            )?;
+        }
+        // Accounts: re-adoptable by IBAN (`adopt_account` takes over
+        // `moneymoney-db:*` refs of the same login on the next fetch).
+        tx.execute(
+            "UPDATE accounts SET external_ref = 'moneymoney-db:switch:' || external_ref
+              WHERE connection_id = ?1 AND external_ref NOT LIKE 'moneymoney-db:%'",
+            [connection_id],
+        )?;
+        // Live bookings: re-adoptable like imported ones (`mm-*`, with a
+        // fingerprint). Tombstones keep their ids for multi-device merges.
+        let rows: Vec<(i64, String, i64, String, String, String)> = {
+            let mut st = tx.prepare(
+                "SELECT t.id, t.booking_date, t.amount_cents, t.counterparty_iban, t.counterparty, t.purpose
+                   FROM transactions t JOIN accounts a ON a.id = t.account_id
+                  WHERE a.connection_id = ?1 AND t.deleted_ms IS NULL AND t.external_id NOT LIKE 'mm-%'",
+            )?;
+            let r = st
+                .query_map([connection_id], |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                    ))
+                })?
+                .collect::<Result<_, _>>()?;
+            r
+        };
+        for (id, date, cents, iban, name, purpose) in rows {
+            let fp = crate::importers::moneymoney_import::fingerprint(
+                &date, cents, &iban, &name, &purpose,
+            );
+            tx.execute(
+                "UPDATE transactions SET external_id = 'mm-switch-' || external_id,
+                        import_fp = CASE WHEN import_fp = '' THEN ?2 ELSE import_fp END
+                  WHERE id = ?1",
+                params![id, fp],
+            )?;
+        }
+        tx.commit()?;
+        Ok(new_key)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::models::BookingFilter;
+
+    #[test]
+    fn comdirect_switches_between_api_and_fints_keeping_accounts_and_bookings() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![9u8; 32],
+        )
+        .unwrap();
+        let c = v
+            .add_bank_connection(ConnectorKind::Comdirect, String::new(), "12345678".into())
+            .unwrap();
+        let (acc, booking) = {
+            let db = v.db().unwrap();
+            db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+                .unwrap();
+            let g = db.last_insert_rowid();
+            db.execute(
+                "INSERT INTO accounts(connection_id, group_id, external_ref, name, iban)
+                 VALUES (?1, ?2, 'A1B2C3', 'Girokonto', 'DE10 2004 1155 0123 4567 89')",
+                params![c, g],
+            )
+            .unwrap();
+            let acc = db.last_insert_rowid();
+            db.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose, category_source, note)
+                 VALUES (?1, 'rest-1', '2026-11-03', -8600, 'Vattenfall', 'Abschlag', 'manual', 'Strom')",
+                [acc],
+            )
+            .unwrap();
+            let booking = db.last_insert_rowid();
+            db.execute(
+                "UPDATE bank_connections SET state_json = '{\"access_token\":\"x\"}' WHERE id = ?1",
+                [c],
+            )
+            .unwrap();
+            (acc, booking)
+        };
+
+        assert_eq!(v.switch_comdirect_access(c).unwrap(), "fints:20041155");
+        let conn = &v.list_bank_connections().unwrap()[0];
+        assert_eq!(
+            (conn.id, conn.connector, conn.bank_code.as_str()),
+            (c, ConnectorKind::FinTsGeneric, "20041155")
+        );
+        assert_eq!(conn.login_name, "12345678");
+        {
+            let db = v.db().unwrap();
+            let state: String = db
+                .query_row(
+                    "SELECT state_json FROM bank_connections WHERE id = ?1",
+                    [c],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(state, "{}");
+            let url: String = db
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'fints.url.20041155'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(url, crate::connectors::fints_directory::COMDIRECT_FINTS_URL);
+            let (ext_ref, conn_id): (String, i64) = db
+                .query_row(
+                    "SELECT external_ref, connection_id FROM accounts WHERE id = ?1",
+                    [acc],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(
+                (ext_ref.as_str(), conn_id),
+                ("moneymoney-db:switch:A1B2C3", c)
+            );
+            // the first FinTS fetch takes the account over by IBAN …
+            let adopted = crate::importers::moneymoney_db::adopt_account(
+                &db,
+                c,
+                "DE10200411550123456789",
+                "DE10200411550123456789",
+                "EUR",
+                crate::models::AccountKind::Checking,
+            )
+            .unwrap();
+            assert_eq!(adopted, Some(acc));
+            // … and the booking, although FinTS sends another id and text
+            assert!(crate::importers::moneymoney_import::adopt_import(
+                &db,
+                acc,
+                "fints-77",
+                "2026-11-04",
+                -8600,
+                "",
+                "VATTENFALL EUROPE SALES GMBH",
+                "EREF+123 Abschlag Strom",
+                "LASTSCHRIFT",
+            )
+            .unwrap());
+            let (ext, note, source): (String, String, String) = db
+                .query_row(
+                    "SELECT external_id, note, category_source FROM transactions WHERE id = ?1",
+                    [booking],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .unwrap();
+            assert_eq!(
+                (ext.as_str(), note.as_str(), source.as_str()),
+                ("fints-77", "Strom", "manual")
+            );
+            let n: i64 = db
+                .query_row(
+                    "SELECT count(*) FROM transactions WHERE account_id = ?1",
+                    [acc],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 1);
+        }
+
+        // and back to the API
+        assert_eq!(v.switch_comdirect_access(c).unwrap(), "comdirect");
+        let conn = &v.list_bank_connections().unwrap()[0];
+        assert_eq!(
+            (conn.connector, conn.bank_code.as_str()),
+            (ConnectorKind::Comdirect, "")
+        );
+
+        // other banks are refused
+        let ing = v
+            .add_fints_connection(
+                "50010517".into(),
+                "https://fints.ing.de/fints/".into(),
+                "ING".into(),
+                "ing-user".into(),
+                String::new(),
+            )
+            .unwrap();
+        assert!(v.switch_comdirect_access(ing).is_err());
+        assert!(v.switch_comdirect_access(9999).is_err());
+    }
 
     #[test]
     fn dedups_and_keeps_bookings() {
