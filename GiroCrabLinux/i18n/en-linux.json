@@ -39,6 +39,7 @@
   "Der Ordner für die Vorschau ist nicht sicher und wurde nicht verwendet.": "The preview folder is not secure and was not used.",
   "Der Schlüssel liegt im Schlüsselbund Ihrer Sitzung, nie neben der Tresordatei. Sichern Sie ihn, bevor Sie das System neu aufsetzen, und fügen Sie ihn auf einem anderen Rechner ein, um denselben Tresor zu öffnen.": "The key is kept in your session’s keyring, never next to the vault file. Back it up before you reinstall the system, and paste it on another computer to open the same vault.",
   "Der Schlüssel passt nicht zu diesem Tresor.": "The key does not match this vault.",
+  "Der Tresor mit allen Konten und Buchungen, der Tresor-Schlüssel im Schlüsselbund (Secret Service), Ihr Enable-Banking-Zugang und alle Einstellungen werden gelöscht. Ohne eigenes Backup sind die Daten verloren. Zugriffe bei Ihren Banken und Dokumente in Ihrem Dokumentenordner bleiben bestehen. GiroCrab startet danach neu.": "The vault with all accounts and transactions, the vault key in the keyring (Secret Service), your Enable Banking access and all settings will be deleted. Without your own backup the data is lost. Access granted at your banks and documents in your documents folder remain. GiroCrab then restarts.",
   "Der Tresor-Schlüssel im Schlüsselbund ist beschädigt (erwartet 32 Byte).": "The vault key in the keyring is damaged (expected 32 bytes).",
   "Der eigene Tresor ist nicht geöffnet.": "Your own vault is not open.",
   "Die Datei ist zu groß oder nicht lesbar.": "The file is too large or not readable.",

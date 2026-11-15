@@ -54,6 +54,78 @@ pub fn vault_path() -> std::path::PathBuf {
     })
 }
 
+/// QSettings of the app (UserDefaults): `~/.config/GiroCrab/GiroCrab.conf` (XDG config dir).
+pub fn settings_file() -> std::path::PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config")
+        })
+        .join("GiroCrab/GiroCrab.conf")
+}
+
+/// Deletes `path`; a missing file is fine.
+fn remove_if_present(path: &std::path::Path) -> Result<(), String> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
+/// „App zurücksetzen“ ran in this process: `main` deletes the settings once more after
+/// the QML engine is gone (QML `Settings` write pending values back on destruction)
+/// and the new instance starts with `--app-was-reset`.
+static APP_RESET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn app_was_reset() -> bool {
+    APP_RESET.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Removes the settings file (and the lock file QSettings may leave next to it).
+pub fn remove_settings_file() -> Result<(), String> {
+    let conf = settings_file();
+    remove_if_present(&conf)?;
+    remove_if_present(&std::path::PathBuf::from(format!(
+        "{}.lock",
+        conf.display()
+    )))
+}
+
+/// AppModel+Reset.swift / VaultResources.swift (#241): deletes the vault file with its
+/// SQLite side files, the decrypted QuickLook copies, the settings and – last, since an
+/// existing file is unreadable without it – the key in the Secret Service. A failed file
+/// deletion stops before anything else is touched, so vault and key stay together.
+/// Not deleted (as on the Mac): `banking-policy.json` (anti-rollback anchor of the
+/// banking lock), documents exported by the user. Enable Banking credentials live in the
+/// vault on Linux and go with it.
+fn reset_app() -> R {
+    // Tests must never reach the real home directory or keyring.
+    #[cfg(test)]
+    assert!(
+        crate::vault_key::keychain_bypassed()
+            && std::env::var_os("XDG_DATA_HOME").is_some()
+            && std::env::var_os("XDG_CONFIG_HOME").is_some(),
+        "reset_app in tests only with GIROCRAB_NO_KEYCHAIN and temporary XDG dirs"
+    );
+    crate::sessions::cancel_all();
+    *VAULT.lock().unwrap() = None;
+    OWN.lock().unwrap().take();
+    remove_quicklook_files();
+    let vault = vault_path();
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        remove_if_present(&std::path::PathBuf::from(format!(
+            "{}{suffix}",
+            vault.display()
+        )))?;
+    }
+    remove_settings_file()?;
+    crate::vault_key::destroy()?;
+    APP_RESET.store(true, std::sync::atomic::Ordering::SeqCst);
+    ok(())
+}
+
 fn file_size(p: &std::path::Path) -> i64 {
     std::fs::metadata(p).map(|m| m.len() as i64).unwrap_or(-1)
 }
@@ -289,6 +361,7 @@ fn call(method: &str, a: &Value) -> R {
             ok(())
         }
         "is_unlocked" => ok(VAULT.lock().unwrap().is_some()),
+        "reset_app" => reset_app(),
         // catalog / directory (free functions of the core)
         "bank_catalog" => ok(girocrab_core::bank_catalog()),
         "fints_presets" => ok(girocrab_core::connectors::fints_presets::fints_presets()),
@@ -1081,6 +1154,49 @@ mod tests {
             ),
             json!("-----BEGIN PRIVATE KEY-----")
         );
+        call_ok("lock", json!({}));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// „App zurücksetzen“ (#241) with the keychain bypass and temporary XDG dirs only:
+    /// vault, side files and settings go, the banking policy stays, the next start is a
+    /// first start (no vault file, a new one can be created).
+    #[test]
+    fn app_reset_deletes_vault_and_settings() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("girocrab-reset-{}", std::process::id()));
+        let (data, config) = (dir.join("data"), dir.join("config"));
+        std::fs::create_dir_all(config.join("GiroCrab")).unwrap();
+        std::env::set_var("XDG_DATA_HOME", &data);
+        std::env::set_var("XDG_CONFIG_HOME", &config);
+        std::env::set_var("GIROCRAB_NO_KEYCHAIN", "1");
+        assert!(vault_path().starts_with(&data) && settings_file().starts_with(&config));
+        call_ok("unlock_own", json!({ "allow_create": true }));
+        call_ok("use_own", json!({}));
+        call_ok("checkpoint", json!({}));
+        let conf = settings_file();
+        std::fs::write(&conf, "[General]\nhasRealData=true\n").unwrap();
+        let policy = config.join("GiroCrab/banking-policy.json");
+        std::fs::write(&policy, "{}").unwrap();
+        let side = std::path::PathBuf::from(format!("{}-journal", vault_path().display()));
+        std::fs::write(&side, "x").unwrap();
+        assert!(call_ok("vault_info", json!({}))["size"].as_i64().unwrap() > 0);
+
+        call_ok("reset_app", json!({}));
+        assert!(app_was_reset());
+        assert_eq!(call_ok("vault_info", json!({}))["size"], json!(-1));
+        assert!(
+            !side.exists() && !conf.exists(),
+            "side files and settings deleted"
+        );
+        assert!(policy.exists(), "banking policy anchor survives");
+        assert_eq!(call_ok("has_own_vault", json!({})), json!(false));
+        assert_eq!(call_ok("is_unlocked", json!({})), json!(false));
+        // a second reset (nothing left) is no error
+        call_ok("reset_app", json!({}));
+        // first start again: a new, empty vault
+        let r = call_ok("unlock_own", json!({ "allow_create": true }));
+        assert_eq!(r["account_count"], json!(0));
         call_ok("lock", json!({}));
         let _ = std::fs::remove_dir_all(dir);
     }

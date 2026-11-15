@@ -112,6 +112,18 @@ pub fn store(key: &[u8]) -> Result<(), String> {
     entry()?.set_secret(key).map_err(describe)
 }
 
+/// „App zurücksetzen“ (`VaultKeyManager.destroyKey`): removes the key from the Secret
+/// Service; a missing entry is fine. The keychain bypass never touched the keyring.
+pub fn destroy() -> Result<(), String> {
+    if keychain_bypassed() {
+        return Ok(());
+    }
+    match entry()?.delete_credential() {
+        Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
+        Err(e) => Err(describe(e)),
+    }
+}
+
 /// Round trip through the real Secret Service with a throw-away entry
 /// (`cargo test -- --ignored secret_service_round_trip`; needs a session keyring).
 #[cfg(test)]

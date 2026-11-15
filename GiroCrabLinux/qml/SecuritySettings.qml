@@ -18,6 +18,15 @@ Item {
     onVisibleChanged: if (visible) AppModel.vaultInfo = AppModel.core("vault_info")
 
     KeyPasteSheet { id: keyPaste }
+    // .confirmationDialog("GiroCrab zurücksetzen?"): Linux has no owner check (Touch ID /
+    // device passcode) and no iCloud keychain, so the message says what goes here instead.
+    ConfirmDialog {
+        id: confirmReset
+        heading: qsTr("GiroCrab zurücksetzen?")
+        message: qsTr("Der Tresor mit allen Konten und Buchungen, der Tresor-Schlüssel im Schlüsselbund (Secret Service), Ihr Enable-Banking-Zugang und alle Einstellungen werden gelöscht. Ohne eigenes Backup sind die Daten verloren. Zugriffe bei Ihren Banken und Dokumente in Ihrem Dokumentenordner bleiben bestehen. GiroCrab startet danach neu.")
+        actionTitle: qsTr("Alles löschen")
+        onConfirmed: AppModel.resetApp()
+    }
     /// "Schlüssel kopiert (60 s)": the clipboard forgets the key after 60 s.
     property bool keyCopied: false
     Timer { id: keyCopiedReset; interval: 60000; onTriggered: pane.keyCopied = false }
@@ -126,6 +135,17 @@ Item {
             SettingsFormSection {
                 visible: AppModel.hasOwnVault && !AppModel.isDemo
                 IconButton { symbol: "lock"; text: qsTr("Jetzt sperren"); tint: Theme.accent; onClicked: AppModel.lock() }
+            }
+            // „App zurücksetzen“ (#241)
+            SettingsFormSection {
+                title: qsTr("Zurücksetzen")
+                IconButton {
+                    symbol: "trash"; text: qsTr("App zurücksetzen …"); tint: Theme.negative; textColor: Theme.negative
+                    enabled: !AppModel.isResettingApp
+                    onClicked: confirmReset.open()
+                }
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.callout + 1; color: Theme.secondary
+                       text: qsTr("Löscht Tresor, Schlüssel, Einstellungen und Zwischenspeicher auf diesem Gerät und beginnt neu. Das lässt sich nicht rückgängig machen.") }
             }
             Item { implicitHeight: 8 }
         }

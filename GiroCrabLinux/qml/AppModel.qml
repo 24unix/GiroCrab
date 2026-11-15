@@ -246,6 +246,7 @@ QtObject {
     /// Called once by the root view: decides lock vs. demo.
     function bootstrap() {
         if (vaultState !== "starting") return
+        if (appWasReset) toast = qsTr("GiroCrab wurde zurückgesetzt")
         withFreshBankingPolicy(null)
         vaultInfo = core("vault_info")
         if (optionDemoSeed) {
@@ -360,6 +361,11 @@ QtObject {
     function lock() {
         if (!holdsRealData) return
         demoDismissedLock = true
+        releaseVaultState()
+        vaultState = "locked"
+    }
+    /// Ends every bank dialog, drops the vault and clears what it loaded (shared by `lock()` and the app reset).
+    function releaseVaultState() {
         endBankDialogsForLock()
         run(() => core("lock"))   // also cancels every bank dialog in the core (src/sessions.rs)
         hasOwnVault = false
@@ -371,7 +377,34 @@ QtObject {
         ++loanGeneration; loans = []; loanLinks = ({}); loanEditor = null; openingBalanceRequest = null
         tangibleAccountIDs = ({}); assetItemsByAccount = ({}); selectedAssetItemID = null; selectedAssetHistory = []
         assetEditor = null; assetAction = null
-        vaultState = "locked"
+    }
+
+    // MARK: - App zurücksetzen (AppModel+Reset.swift, #241)
+    /// „App zurücksetzen“ is running (guards against a second start).
+    property bool isResettingApp: false
+    /// `--app-was-reset`: the new instance started after „App zurücksetzen“.
+    readonly property bool appWasReset: launchArgs.indexOf("--app-was-reset") >= 0
+    /// Deletes vault, key and settings (core `reset_app`), then starts anew. The Mac app
+    /// bootstraps again in place; here the app restarts, so no `Settings` object keeps
+    /// an old value in memory. The new instance opens the demo and says so.
+    function resetApp() {
+        if (isResettingApp) return
+        isResettingApp = true
+        releaseVaultState()
+        allAccountsCollapsed = false
+        vaultState = "starting"
+        try {
+            core("reset_app")
+        } catch (e) {
+            isResettingApp = false
+            toast = qsTr("Zurücksetzen fehlgeschlagen: %1").arg(e.message)
+            vaultInfo = run(() => core("vault_info")) || vaultInfo
+            if (vaultMayHoldRealData()) vaultState = "locked"
+            else { vaultState = "starting"; bootstrap() }
+            return
+        }
+        run(() => core("request_relaunch"))
+        Qt.quit()
     }
 
     // MARK: loading

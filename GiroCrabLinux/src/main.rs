@@ -63,6 +63,12 @@ fn main() {
     drop(engine);
     // SAFETY: the engine is dropped; nothing uses the application any more.
     unsafe { girocrab_destroy_app() };
+    // „App zurücksetzen“: QML `Settings` may have written values back while closing.
+    if dispatch::app_was_reset() {
+        if let Err(e) = dispatch::remove_settings_file() {
+            eprintln!("GiroCrab: {e}");
+        }
+    }
     // "Neu starten" (Settings › Allgemein › Sprache): the settings are written, start anew.
     i18n::relaunch_if_requested();
     std::process::exit(code);
