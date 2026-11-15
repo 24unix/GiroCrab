@@ -33,6 +33,9 @@ fn store_fetch_matches_depot_holdings_without_iban() {
         .add_bank_connection(ConnectorKind::Comdirect, String::new(), "login".into())
         .unwrap();
     let mk = |r: &str| RemoteHolding {
+        classification: Default::default(),
+        direct_crypto: false,
+
         account_ref: r.into(),
         holding: crate::models::Holding {
             isin: "DE0001234567".into(),

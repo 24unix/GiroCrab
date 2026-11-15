@@ -162,7 +162,10 @@ struct FinTsAddForm: View {
 
     private func apply(_ r: BankSearchResult?) {
         guard let r, r.mode == .finTs else { return }
-        presetID = "custom"
+        // Found by name without a bank code (comdirect): its preset says what to enter.
+        presetID = r.blz.isEmpty && !r.url.isEmpty
+            ? (presets.first { $0.blz.isEmpty && $0.url == r.url }?.id ?? "custom")
+            : "custom"
         bankName = r.name
         autoURL = r.url
         urlEdited = false

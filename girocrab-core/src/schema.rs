@@ -19,11 +19,12 @@
 //!   position fields on `holdings` (previous day, profit/loss, custody type).
 //! - 15: item references on bookings (#354): `transactions.item_refs`, the
 //!   product ids (ASIN) of an Amazon order, one entry per item.
-//! - 16: scheduled transfers (#240): table `planned_transfers`.
-//! - 17: standing orders (#239): table `standing_orders`, replaced per fetch.
-//! - 18: repair: vaults that an early draft of 16 had migrated as "15" skipped
+//! - 16: asset classification (#351): persistent per-field user overrides and local holding metadata.
+//! - 17: scheduled transfers (#240): table `planned_transfers`.
+//! - 18: standing orders (#239): table `standing_orders`, replaced per fetch.
+//! - 19: repair: vaults that an early draft of the scheduled transfers had migrated as "15" skipped
 //!   step 15 and lack `transactions.item_refs`; adds it when missing.
-//! - 19: direct debit mandates and creditor IDs (#143): tables `mandates`, `creditor_ids`,
+//! - 20: direct debit mandates and creditor IDs (#143): tables `mandates`, `creditor_ids`,
 //!   `mandate_deletions` (marks for the vault merge).
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
@@ -56,10 +57,11 @@ const STEPS: &[Step] = &[
     Step::Hook(tangible_assets),                               // 13
     Step::Hook(security_transactions),                         // 14
     Step::Hook(item_refs),                                     // 15
-    Step::Hook(crate::planned::planned_transfers),             // 16
-    Step::Hook(crate::standing_orders::standing_orders_table), // 17
-    Step::Hook(item_refs),                                     // 18 (repair, see above)
-    Step::Hook(crate::mandates::mandates_tables),              // 19
+    Step::Sql(crate::asset_classification::store::SCHEMA),     // 16: asset classification (#351)
+    Step::Hook(crate::planned::planned_transfers),             // 17
+    Step::Hook(crate::standing_orders::standing_orders_table), // 18
+    Step::Hook(item_refs),                                     // 19 (repair, see above)
+    Step::Hook(crate::mandates::mandates_tables),              // 20
 ];
 
 /// Step 14 (#314): securities transactions (buy, sell, dividend, fee, tax …)
@@ -583,7 +585,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 19);
+        assert_eq!(SCHEMA_VERSION, 20);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers

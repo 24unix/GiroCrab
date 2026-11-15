@@ -26,6 +26,11 @@ fn main() {
     {
         let v = Vault::open(path.clone(), KEY.to_vec()).unwrap();
         assert!(v.seed_demo_data().unwrap() > 0, "demo data not seeded");
+        v.set_asset_class_override(
+            "isin:IE00B4L5Y983".into(),
+            Some(girocrab_core::asset_classification::AssetClass::Equity),
+        )
+        .unwrap();
         v.create_user_group("Fixture-Gruppe".into(), "folder".into())
             .unwrap();
         v.create_manual_loan(LoanSetup {

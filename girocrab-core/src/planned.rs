@@ -10,7 +10,7 @@ use crate::connectors::TransferJob;
 use crate::error::{CoreError, CoreResult};
 use crate::vault::Vault;
 
-/// Step 16: scheduled transfers sent to the bank. `end_to_end_id` is the merge
+/// Step 17: scheduled transfers sent to the bank. `end_to_end_id` is the merge
 /// key. Rows stay until the execution date has passed; the bank's booking
 /// then arrives through the normal sync. Idempotent like the steps before.
 pub(crate) fn planned_transfers(conn: &Connection) -> CoreResult<()> {

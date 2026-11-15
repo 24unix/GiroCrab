@@ -376,6 +376,9 @@ mod tests {
             .unwrap();
         let mut initial = parse_overview(&fixture().to_string()).unwrap();
         initial.holdings.push(super::super::RemoteHolding {
+            classification: Default::default(),
+            direct_crypto: false,
+
             account_ref: "D1".into(),
             holding: crate::models::Holding {
                 isin: "DE0001234567".into(),
