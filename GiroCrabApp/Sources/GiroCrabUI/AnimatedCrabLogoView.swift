@@ -97,9 +97,18 @@ public struct AnimatedCrabLogoView: View {
         return -14 * CGFloat(0.5 - 0.5 * cos(2 * .pi * t / 4.2))
     }
 
+    /// Idle waving in degrees for time `t`: the coin claw and the card sway gently and
+    /// out of step. Time-driven like the hover, so it runs from the first frame on
+    /// (start and lock screen) and needs no `onAppear`.
+    static func idleWave(at date: Date) -> (claw: Double, card: Double) {
+        let t = date.timeIntervalSinceReferenceDate
+        return (5 * sin(2 * .pi * t / 2.4), 3.5 * sin(2 * .pi * t / 3.1 + 1.3))
+    }
+
     public var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { context in
-            crab(hoverOffsetY: hoverOffset(at: context.date))
+            let wave = reduceMotion ? (claw: 0, card: 0) : Self.idleWave(at: context.date)
+            crab(hoverOffsetY: hoverOffset(at: context.date), idleClawDegrees: wave.claw, idleCardDegrees: wave.card)
         }
         .frame(width: size, height: size)
         .contentShape(Rectangle())
@@ -121,7 +130,7 @@ public struct AnimatedCrabLogoView: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    private func crab(hoverOffsetY: CGFloat) -> some View {
+    private func crab(hoverOffsetY: CGFloat, idleClawDegrees: Double, idleCardDegrees: Double) -> some View {
         let scale = size / 1024.0
         let totalLift = -(hoverOffsetY + hopOffsetY)
         let clamped = max(-40, min(60, totalLift))
@@ -150,7 +159,7 @@ public struct AnimatedCrabLogoView: View {
                     CrabLeftArmAndCardLayer(shimmerProgress: shimmerProgress)
                 }
                 .rotationEffect(
-                    .degrees(cardTiltDegrees),
+                    .degrees(cardTiltDegrees + idleCardDegrees),
                     anchor: UnitPoint(x: 275.0 / 1024.0, y: 470.0 / 1024.0)
                 )
 
@@ -169,7 +178,7 @@ public struct AnimatedCrabLogoView: View {
                     CrabRightClawFrontLayer()
                 }
                 .rotationEffect(
-                    .degrees(rightClawDegrees),
+                    .degrees(rightClawDegrees + idleClawDegrees),
                     anchor: UnitPoint(x: 715.0 / 1024.0, y: 485.0 / 1024.0)
                 )
 
@@ -201,8 +210,11 @@ public struct AnimatedCrabLogoView: View {
         // Periodisches Blinzeln im Ruhemodus
         idleTask?.cancel()
         idleTask = Task { @MainActor in
+            // the first blink comes early, so even a short start screen shows one
+            var pause = 900
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(3400))
+                try? await Task.sleep(for: .milliseconds(pause))
+                pause = 3400
                 guard !Task.isCancelled, !reduceMotion else { break }
                 await performBlink()
             }

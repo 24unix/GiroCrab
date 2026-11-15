@@ -26,8 +26,18 @@ extension AppModel {
             enableBankingKeyLog.info("open: not shared (opt-in \(VaultKeyManager.shared.syncViaICloudKeychain, privacy: .public), demo \(self.demoActive, privacy: .public))")
             return
         }
-        let here = vaultEnableBankingApp()
-        let action = EnableBankingKeySync.reconcile(vault: here, store: enableBankingKeyStore.load())
+        let store = enableBankingKeyStore
+        // The keychain query can block (iCloud Keychain): never on the main thread at start.
+        Task { [weak self] in
+            let stored = await Task.detached(priority: .utility) { store.load() }.value
+            guard let self, self.vault === vault, self.sharesEnableBankingKey else { return }
+            // read only now: a key saved here meanwhile is what gets compared
+            let here = self.vaultEnableBankingApp()
+            self.applyEnableBankingKey(EnableBankingKeySync.reconcile(vault: here, store: stored), here: here, vault: vault)
+        }
+    }
+
+    private func applyEnableBankingKey(_ action: EnableBankingKeySync.Action, here: EnableBankingApp?, vault: Vault) {
         enableBankingKeyLog.info("open: \(String(describing: action).prefix(8), privacy: .public)")
         switch action {
         case .none:
