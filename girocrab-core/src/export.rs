@@ -157,25 +157,42 @@ pub fn camt053_statement(
             .cmp(&b.booking_date)
             .then_with(|| a.id.cmp(&b.id))
     });
-    let booked: i64 = ordered
-        .iter()
-        .filter(|b| !b.is_pending)
-        .map(|b| b.amount_cents)
-        .sum();
+    let booked_entries: Vec<&&Booking> = ordered.iter().filter(|b| !b.is_pending).collect();
+    let booked: i64 = booked_entries.iter().map(|b| b.amount_cents).sum();
     let closing = opening_cents + booked;
-    let currency = ordered
-        .first()
-        .map(|b| b.currency.clone())
-        .unwrap_or_else(|| account.currency.clone());
-    let from = ordered
+    let acct_ccy = account.currency.trim();
+    let currency = if !acct_ccy.is_empty() {
+        acct_ccy.to_string()
+    } else {
+        ordered
+            .first()
+            .map(|b| b.currency.clone())
+            .filter(|c| !c.trim().is_empty())
+            .unwrap_or_else(|| "EUR".to_string())
+    };
+    let from = booked_entries
         .first()
         .map(|b| b.booking_date.clone())
+        .or_else(|| ordered.first().map(|b| b.booking_date.clone()))
+        .filter(|d| !d.is_empty())
         .unwrap_or_else(|| opening_date.clone());
-    let to = ordered
+    let to = booked_entries
         .last()
         .map(|b| b.booking_date.clone())
+        .or_else(|| ordered.last().map(|b| b.booking_date.clone()))
+        .filter(|d| !d.is_empty())
         .unwrap_or_else(|| opening_date.clone());
     let stmt_id = truncate(&format!("GC-{}-{from}-{to}", account.id), 35);
+    let ts_digits: String = created_at
+        .chars()
+        .filter(|c| c.is_ascii_digit())
+        .take(14)
+        .collect();
+    let msg_id = if ts_digits.is_empty() {
+        truncate(&format!("GC-MSG-{}-{from}-{to}", account.id), 35)
+    } else {
+        truncate(&format!("GC-MSG-{}-{to}-{ts_digits}", account.id), 35)
+    };
     let iban = compact_iban(&account.iban);
     let own_bic = if is_iban(&iban) {
         crate::connectors::fints_directory::bic_for_iban(iban.clone()).unwrap_or_default()
@@ -188,29 +205,36 @@ pub fn camt053_statement(
     out += &format!("<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:camt.053.001.{ns}\">\n");
     out += "<BkToCstmrStmt>\n";
     out += &format!(
-        "<GrpHdr><MsgId>{}</MsgId><CreDtTm>{}</CreDtTm></GrpHdr>\n",
-        esc(&stmt_id),
+        "<GrpHdr><MsgId>{}</MsgId><CreDtTm>{}</CreDtTm><MsgPgntn><PgNb>1</PgNb><LastPgInd>true</LastPgInd></MsgPgntn></GrpHdr>\n",
+        esc(&msg_id),
         esc(&created_at)
     );
     out += "<Stmt>\n";
     out += &format!(
-        "<Id>{}</Id><ElctrncSeqNb>1</ElctrncSeqNb><CreDtTm>{}</CreDtTm>\n",
+        "<Id>{}</Id><ElctrncSeqNb>1</ElctrncSeqNb><CreDtTm>{}</CreDtTm>",
         esc(&stmt_id),
         esc(&created_at)
     );
-    // Acct: Id, Ccy, Ownr, Svcr – schema order.
+    if from.len() == 10 && to.len() == 10 {
+        out += &format!(
+            "<FrToDt><FrDtTm>{}T00:00:00</FrDtTm><ToDtTm>{}T23:59:59</ToDtTm></FrToDt>",
+            esc(&from),
+            esc(&to)
+        );
+    }
+    out += "\n";
     let fallback = format!("GC-{}", account.id);
     out += &format!(
         "<Acct><Id>{}</Id><Ccy>{}</Ccy>",
         account_id_xml(&iban, &account.account_number, &fallback),
         esc(&currency)
     );
-    let owner = if account.owner.trim().is_empty() {
-        &account.name
-    } else {
-        &account.owner
-    };
-    if !owner.trim().is_empty() {
+    let acct_name = account.name.trim();
+    if !acct_name.is_empty() {
+        out += &format!("<Nm>{}</Nm>", esc(&truncate(acct_name, 70)));
+    }
+    let owner = account.owner.trim();
+    if !owner.is_empty() {
         out += &format!("<Ownr><Nm>{}</Nm></Ownr>", esc(&truncate(owner, 140)));
     }
     if !own_bic.is_empty() {
@@ -228,7 +252,7 @@ pub fn camt053_statement(
     out += &balance_xml("OPBD", opening_cents, &currency, open_date);
     out += &balance_xml("CLBD", closing, &currency, &to);
     for b in ordered {
-        out += &entry_xml(b, v08);
+        out += &entry_xml(b, v08, &currency);
     }
     out += "</Stmt>\n</BkToCstmrStmt>\n</Document>\n";
     out
@@ -244,7 +268,87 @@ fn balance_xml(code: &str, cents: i64, currency: &str, date: &str) -> String {
     )
 }
 
-fn entry_xml(b: &Booking, v08: bool) -> String {
+fn bk_tx_code(
+    gvc: &str,
+    debit: bool,
+    purpose_code: &str,
+) -> (&'static str, &'static str, &'static str) {
+    if purpose_code.eq_ignore_ascii_case("SALA") {
+        return ("NTRF", if debit { "IRCT" } else { "ICDT" }, "SALA");
+    }
+    match gvc {
+        "004" | "005" | "104" | "105" | "171" | "835" => ("NDDT", "IDDT", "ESDD"),
+        "009" | "109" => ("NDDT", "IDDT", "UPDD"),
+        "006" | "106" | "108" => ("NCAR", "CCRD", "POSD"),
+        "083" | "183" => ("NCAR", "CCRD", "CWDL"),
+        "008" | "152" => ("NSTO", if debit { "IRCT" } else { "ICDT" }, "STDO"),
+        "805" | "806" | "809" => ("NCHG", "MDOP", "CHRG"),
+        "808" | "814" => ("NINT", "MDOP", "INTR"),
+        "201" | "202" | "205" | "226" => ("NSEC", "TRAD", "SECU"),
+        "020" | "051" | "052" | "053" | "116" | "119" | "151" | "153" | "159" | "166" | "169" => {
+            ("NTRF", if debit { "IRCT" } else { "ICDT" }, "ESCT")
+        }
+        _ if gvc.len() == 3 && gvc.bytes().all(|c| c.is_ascii_digit()) => {
+            ("NTRF", if debit { "IRCT" } else { "ICDT" }, "OTHR")
+        }
+        _ => ("NMSC", if debit { "IRCT" } else { "ICDT" }, "OTHR"),
+    }
+}
+
+fn raw_remittance_purpose<'a>(purpose: &'a str, e2e: &str, mndt: &str) -> &'a str {
+    let mut rest = purpose.trim();
+    if !e2e.is_empty() {
+        let prefix = format!("EREF+{e2e}");
+        if let Some(after) = rest.strip_prefix(&prefix) {
+            rest = after.trim_start();
+        }
+    }
+    if !mndt.is_empty() {
+        let prefix = format!("MREF+{mndt}");
+        if let Some(after) = rest.strip_prefix(&prefix) {
+            rest = after.trim_start();
+        }
+    }
+    if let Some(after) = rest.strip_prefix("SVWZ+") {
+        return after.trim();
+    }
+    purpose
+}
+
+fn detect_return_reason(b: &Booking) -> Option<&'static str> {
+    const CODES: &[&str] = &[
+        "AC01", "AC04", "AC06", "AG01", "AG02", "AM04", "AM05", "BE05", "CNOR", "DNOR", "FF01",
+        "FOCR", "MD01", "MD02", "MD06", "MD07", "MS02", "MS03", "NARR", "RC01", "RR01", "RR02",
+        "RR03", "RR04", "SL01", "TM01",
+    ];
+    let gvc = b.gvc.trim();
+    let is_return_context = matches!(gvc, "009" | "109" | "159")
+        || b.booking_text.to_lowercase().contains("rücklastschrift")
+        || b.booking_text.to_lowercase().contains("ruecklastschrift")
+        || b.purpose.contains("RTRN+")
+        || b.purpose.contains("RTCD+");
+    for token in b
+        .purpose
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .chain(b.booking_text.split(|c: char| !c.is_ascii_alphanumeric()))
+    {
+        if token.len() == 4 {
+            let upper = token.to_ascii_uppercase();
+            if let Some(&found) = CODES.iter().find(|&&c| c == upper) {
+                if is_return_context || matches!(found, "AC04" | "MD01" | "MD06" | "MS03" | "AM04")
+                {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    if matches!(gvc, "009" | "109") {
+        return Some("NARR");
+    }
+    None
+}
+
+fn entry_xml(b: &Booking, v08: bool, default_ccy: &str) -> String {
     let debit = b.amount_cents < 0;
     let ind = if debit { "DBIT" } else { "CRDT" };
     let status = if b.is_pending { "PDNG" } else { "BOOK" };
@@ -253,13 +357,21 @@ fn entry_xml(b: &Booking, v08: bool) -> String {
     } else {
         &b.value_date
     };
-    let name = if b.merchant.name.is_empty() {
+    let name = if !b.counterparty.trim().is_empty() {
         &b.counterparty
     } else {
         &b.merchant.name
     };
-    let purpose = if b.clean_purpose.is_empty() {
-        &b.purpose
+    let e2e = b.end_to_end_id.trim();
+    let mndt = b.mandate_id.trim();
+    let cred_id = b.creditor_id.trim();
+    let acct_svcr_ref = b
+        .external_id
+        .strip_prefix("camt:")
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "NONREF");
+    let raw_purpose = if !b.purpose.trim().is_empty() {
+        raw_remittance_purpose(&b.purpose, e2e, mndt)
     } else {
         &b.clean_purpose
     };
@@ -270,14 +382,18 @@ fn entry_xml(b: &Booking, v08: bool) -> String {
         None
     };
     let bic_tag = if v08 { "BICFI" } else { "BIC" };
+    let entry_ccy = if b.currency.trim().is_empty() {
+        default_ccy
+    } else {
+        b.currency.trim()
+    };
 
     let mut e = String::from("<Ntry>");
     e += &format!(
         "<Amt Ccy=\"{}\">{}</Amt><CdtDbtInd>{ind}</CdtDbtInd>",
-        esc(&b.currency),
+        esc(entry_ccy),
         xml_amount(b.amount_cents)
     );
-    // .08: Sts is a choice (ExternalEntryStatus1Code), .02: a plain code.
     e += &if v08 {
         format!("<Sts><Cd>{status}</Cd></Sts>")
     } else {
@@ -288,42 +404,100 @@ fn entry_xml(b: &Booking, v08: bool) -> String {
         esc(&b.booking_date),
         esc(value)
     );
-    // BkTxCd is mandatory in both versions. A German GVC goes in the DK form
-    // `NTRF+<GVC>+000` (issuer DK) that German banks and importers read.
+    if let Some(svcr_ref) = acct_svcr_ref {
+        e += &format!(
+            "<AcctSvcrRef>{}</AcctSvcrRef>",
+            esc(&truncate(svcr_ref, 35))
+        );
+    }
     let gvc = b.gvc.trim();
+    let code = b.purpose_code.trim();
+    let (swift_cd, fmly, sub_fmly) = bk_tx_code(gvc, debit, code);
+    let domn_xml = format!(
+        "<Domn><Cd>PMNT</Cd><Fmly><Cd>{fmly}</Cd><SubFmlyCd>{sub_fmly}</SubFmlyCd></Fmly></Domn>"
+    );
     e += &if gvc.len() == 3 && gvc.bytes().all(|c| c.is_ascii_digit()) {
-        format!("<BkTxCd><Prtry><Cd>NTRF+{gvc}+000</Cd><Issr>DK</Issr></Prtry></BkTxCd>")
+        format!("<BkTxCd>{domn_xml}<Prtry><Cd>{swift_cd}+{gvc}+000</Cd><Issr>DK</Issr></Prtry></BkTxCd>")
     } else if !gvc.is_empty() {
         format!(
-            "<BkTxCd><Prtry><Cd>{}</Cd></Prtry></BkTxCd>",
+            "<BkTxCd>{domn_xml}<Prtry><Cd>{}</Cd></Prtry></BkTxCd>",
             esc(&truncate(gvc, 35))
         )
     } else {
-        "<BkTxCd/>".to_string()
+        format!("<BkTxCd>{domn_xml}<Prtry><Cd>{swift_cd}</Cd></Prtry></BkTxCd>")
     };
     e += "<NtryDtls><TxDtls>";
-    // TxDtls order: RltdPties, RltdAgts, Purp, RmtInf.
-    if !name.trim().is_empty() || !peer_iban.is_empty() {
-        // Credit → the peer is the debtor; debit → the creditor.
+    if acct_svcr_ref.is_some() || !e2e.is_empty() || !mndt.is_empty() {
+        e += "<Refs>";
+        if let Some(svcr_ref) = acct_svcr_ref {
+            e += &format!(
+                "<AcctSvcrRef>{}</AcctSvcrRef>",
+                esc(&truncate(svcr_ref, 35))
+            );
+        }
+        if !e2e.is_empty() {
+            e += &format!("<EndToEndId>{}</EndToEndId>", esc(&truncate(e2e, 35)));
+        }
+        if !mndt.is_empty() {
+            e += &format!("<MndtId>{}</MndtId>", esc(&truncate(mndt, 35)));
+        }
+        e += "</Refs>";
+    }
+    if !name.trim().is_empty() || !peer_iban.is_empty() || !cred_id.is_empty() {
         let (party, acct, agent) = if debit {
             ("Cdtr", "CdtrAcct", "CdtrAgt")
         } else {
             ("Dbtr", "DbtrAcct", "DbtrAgt")
         };
+        let cred_id_xml = if !cred_id.is_empty() {
+            format!(
+                "<Id><PrvtId><Othr><Id>{}</Id><SchmeNm><Prtry>SEPA</Prtry></SchmeNm></Othr></PrvtId></Id>",
+                esc(&truncate(cred_id, 35))
+            )
+        } else {
+            String::new()
+        };
         e += "<RltdPties>";
-        if !name.trim().is_empty() {
-            let nm = esc(&truncate(name.trim(), 140));
+        if !debit && !cred_id_xml.is_empty() {
+            if !name.trim().is_empty() {
+                let nm = esc(&truncate(name.trim(), 140));
+                e += &if v08 {
+                    format!("<Dbtr><Pty><Nm>{nm}</Nm></Pty></Dbtr>")
+                } else {
+                    format!("<Dbtr><Nm>{nm}</Nm></Dbtr>")
+                };
+            }
+            if !peer_iban.is_empty() {
+                e += &format!(
+                    "<DbtrAcct><Id>{}</Id></DbtrAcct>",
+                    account_id_xml(&peer_iban, &peer_iban, "")
+                );
+            }
             e += &if v08 {
-                format!("<{party}><Pty><Nm>{nm}</Nm></Pty></{party}>")
+                format!("<Cdtr><Pty>{cred_id_xml}</Pty></Cdtr>")
             } else {
-                format!("<{party}><Nm>{nm}</Nm></{party}>")
+                format!("<Cdtr>{cred_id_xml}</Cdtr>")
             };
-        }
-        if !peer_iban.is_empty() {
-            e += &format!(
-                "<{acct}><Id>{}</Id></{acct}>",
-                account_id_xml(&peer_iban, &peer_iban, "")
-            );
+        } else {
+            let extra_id = if debit { cred_id_xml.as_str() } else { "" };
+            if !name.trim().is_empty() || !extra_id.is_empty() {
+                let nm_xml = if !name.trim().is_empty() {
+                    format!("<Nm>{}</Nm>", esc(&truncate(name.trim(), 140)))
+                } else {
+                    String::new()
+                };
+                e += &if v08 {
+                    format!("<{party}><Pty>{nm_xml}{extra_id}</Pty></{party}>")
+                } else {
+                    format!("<{party}>{nm_xml}{extra_id}</{party}>")
+                };
+            }
+            if !peer_iban.is_empty() {
+                e += &format!(
+                    "<{acct}><Id>{}</Id></{acct}>",
+                    account_id_xml(&peer_iban, &peer_iban, "")
+                );
+            }
         }
         e += "</RltdPties>";
         if let Some(bic) = peer_bic.filter(|b| !b.is_empty()) {
@@ -333,12 +507,10 @@ fn entry_xml(b: &Booking, v08: bool) -> String {
             );
         }
     }
-    // ExternalPurpose1Code: 1–4 characters.
-    let code = b.purpose_code.trim();
     if (1..=4).contains(&code.chars().count()) {
         e += &format!("<Purp><Cd>{}</Cd></Purp>", esc(code));
     }
-    let lines = ustrd_lines(purpose);
+    let lines = ustrd_lines(raw_purpose);
     if !lines.is_empty() {
         e += "<RmtInf>";
         for l in lines {
@@ -346,7 +518,21 @@ fn entry_xml(b: &Booking, v08: bool) -> String {
         }
         e += "</RmtInf>";
     }
-    e += "</TxDtls></NtryDtls></Ntry>\n";
+    if let Some(rsn) = detect_return_reason(b) {
+        e += &format!("<RtrInf><Rsn><Cd>{rsn}</Cd></Rsn></RtrInf>");
+    }
+    let btext = b.booking_text.trim();
+    if !btext.is_empty() {
+        e += &format!("<AddtlTxInf>{}</AddtlTxInf>", esc(&truncate(btext, 500)));
+    }
+    e += "</TxDtls></NtryDtls>";
+    if !btext.is_empty() {
+        e += &format!(
+            "<AddtlNtryInf>{}</AddtlNtryInf>",
+            esc(&truncate(btext, 500))
+        );
+    }
+    e += "</Ntry>\n";
     e
 }
 
@@ -463,7 +649,13 @@ mod tests {
         bookings[1].is_pending = true;
         bookings[1].counterparty_iban = "1234567890".into();
         bookings[2].counterparty = "N".repeat(200);
-        bookings[2].merchant.name.clear();
+        bookings[2].merchant.name = "ShouldNotOverrideCounterparty".into();
+        bookings[2].end_to_end_id = "E2E-REF-42".into();
+        bookings[2].mandate_id = "MANDAT-99".into();
+        bookings[2].creditor_id = "DE98ZZZ09999999999".into();
+        bookings[2].external_id = "camt:BANKREF-77".into();
+        bookings[2].gvc = "105".into();
+        bookings[2].purpose = "Rücklastschrift MD06 Beitrag".into();
         bookings[3].gvc = "153".into();
         (account, bookings)
     }
@@ -533,13 +725,24 @@ mod tests {
         assert!(v02.contains("<Sts>BOOK</Sts>"));
         assert!(v02.contains("<Sts>PDNG</Sts>"));
         assert!(v08.contains("<Prtry><Cd>NTRF+153+000</Cd><Issr>DK</Issr></Prtry>"));
+        assert!(v08.contains("<Prtry><Cd>NDDT+105+000</Cd><Issr>DK</Issr></Prtry>"));
+        assert!(v08.contains(
+            "<Domn><Cd>PMNT</Cd><Fmly><Cd>IDDT</Cd><SubFmlyCd>ESDD</SubFmlyCd></Fmly></Domn>"
+        ));
+        assert!(v08.contains("<EndToEndId>E2E-REF-42</EndToEndId>"));
+        assert!(v08.contains("<MndtId>MANDAT-99</MndtId>"));
+        assert!(v08.contains("<AcctSvcrRef>BANKREF-77</AcctSvcrRef>"));
+        assert!(v08.contains("<Id>DE98ZZZ09999999999</Id>"));
+        assert!(v08.contains("<RtrInf><Rsn><Cd>MD06</Cd></Rsn></RtrInf>"));
+        assert!(!v08.contains("ShouldNotOverrideCounterparty"));
+        assert!(v08.contains("<MsgPgntn><PgNb>1</PgNb><LastPgInd>true</LastPgInd></MsgPgntn>"));
+        assert!(v08.contains("<FrToDt><FrDtTm>"));
         for xml in [&v02, &v08] {
-            if let Some(svcr) = xml.find("<Svcr>") {
-                assert!(xml.find("<Ownr>").unwrap() < svcr);
+            if let (Some(ownr), Some(svcr)) = (xml.find("<Ownr>"), xml.find("<Svcr>")) {
+                assert!(ownr < svcr);
             }
             let entry = xml.split("<Ntry>").find(|e| e.contains("<Purp>")).unwrap();
             assert!(entry.find("<Purp>").unwrap() < entry.find("<RmtInf>").unwrap());
-            // 300+ character purpose → several Ustrd lines of ≤ 140
             assert!(entry.matches("<Ustrd>").count() >= 3);
         }
     }
@@ -613,6 +816,50 @@ mod tests {
         let lean = export_csv(vec![row], ExportCsvColumns::default(), vec![]);
         assert!(lean.contains("Datum;Konto;Name;Verwendungszweck;Betrag;Währung\r\n"));
         assert!(!lean.contains("Woche"));
+    }
+
+    #[test]
+    fn balance_history_ignores_pending_and_supports_single_foreign_currency_account() {
+        let (v, path) = demo();
+        let accounts = v.list_accounts().unwrap();
+        let acct = accounts
+            .iter()
+            .find(|a| is_iban(&compact_iban(&a.iban)))
+            .unwrap();
+        let base_hist = v.balance_history(vec![acct.id], 5).unwrap();
+        let today_bal = base_hist.last().unwrap().balance_cents;
+
+        // Insert a pending booking on today: must NOT shift earlier daily balances (#483 point 1).
+        let today_str = base_hist.last().unwrap().date.clone();
+        {
+            let db = v.db().unwrap();
+            db.execute(
+                "INSERT INTO transactions (account_id, external_id, booking_date, value_date, amount_cents, currency, counterparty, purpose) VALUES (?1, 'pending-test-483', ?2, ?2, -50000, 'EUR', 'Test', 'Pending')",
+                rusqlite::params![acct.id, today_str],
+            )
+            .unwrap();
+        }
+        let after_pending = v.balance_history(vec![acct.id], 5).unwrap();
+        assert_eq!(
+            after_pending.first().unwrap().balance_cents,
+            base_hist.first().unwrap().balance_cents
+        );
+        assert_eq!(after_pending.last().unwrap().balance_cents, today_bal);
+
+        // Single foreign-currency account is included when queried explicitly (#483 point 5).
+        {
+            let db = v.db().unwrap();
+            db.execute(
+                "UPDATE accounts SET currency = 'USD' WHERE id = ?1",
+                [acct.id],
+            )
+            .unwrap();
+        }
+        let usd_hist = v.balance_history(vec![acct.id], 5).unwrap();
+        assert_eq!(usd_hist.last().unwrap().balance_cents, today_bal);
+
+        drop(v);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

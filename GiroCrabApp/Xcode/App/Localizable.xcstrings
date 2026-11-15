@@ -6020,6 +6020,22 @@
         }
       }
     },
+    "CAMT.053 ist für Darlehenskonten nicht verfügbar." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CAMT.053 ist für Darlehenskonten nicht verfügbar."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CAMT.053 is not available for loan accounts."
+          }
+        }
+      }
+    },
     "CAMT.053 nur für ein einzelnes Konto (#372)." : {
       "extractionState" : "manual",
       "localizations" : {

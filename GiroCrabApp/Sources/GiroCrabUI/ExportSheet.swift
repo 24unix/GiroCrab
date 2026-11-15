@@ -93,7 +93,10 @@ struct ExportSheet: View {
     }
 
     private var camtAccountOK: Bool {
-        !options.format.isCamt || effectiveAccountIDs.count == 1
+        guard options.format.isCamt else { return true }
+        guard effectiveAccountIDs.count == 1,
+              let account = model.account(for: effectiveAccountIDs[0]) else { return false }
+        return account.kind != .loan
     }
 
     private var canExport: Bool {
@@ -790,7 +793,14 @@ struct ExportSheet: View {
         guard ids.count == 1, let id = ids.first, let account = model.account(for: id) else {
             throw ExportError.camtMultiAccount
         }
-        let first = bookings.map(\.bookingDate).min() ?? ""
+        if account.kind == .loan {
+            throw ExportError.camtLoanAccount
+        }
+        if account.balanceDerived && account.openingBalanceCents == nil {
+            throw ExportError.camtNoOpeningBalance
+        }
+        let bookedDates = bookings.filter { !$0.isPending }.map(\.bookingDate)
+        let first = (bookedDates.min() ?? bookings.map(\.bookingDate).min()) ?? ""
         guard let opening = BookingExportBuilder.camtOpeningBalance(
             endOfDay: dailyBalances[id] ?? [:], firstDate: first) else {
             throw ExportError.camtNoOpeningBalance
@@ -804,11 +814,14 @@ struct ExportSheet: View {
 private enum ExportError: LocalizedError {
     case unsupported
     case camtMultiAccount
+    case camtLoanAccount
     case empty
     case camtNoOpeningBalance
     case camtSelection
     var errorDescription: String? {
         switch self {
+        case .camtLoanAccount:
+            return String(localized: "CAMT.053 ist für Darlehenskonten nicht verfügbar.")
         case .unsupported:
             return String(localized: "PDF-Export ist auf dieser Plattform nicht verfügbar.")
         case .camtMultiAccount:

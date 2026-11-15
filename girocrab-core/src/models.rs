@@ -452,6 +452,14 @@ pub struct Booking {
     /// Product ids (Amazon ASIN) of an order's items, comma separated, one
     /// entry per item in purpose order ("" entry = unknown); "" = none (#354).
     pub item_refs: String,
+    #[uniffi(default = "")]
+    pub end_to_end_id: String,
+    #[uniffi(default = "")]
+    pub mandate_id: String,
+    #[uniffi(default = "")]
+    pub creditor_id: String,
+    #[uniffi(default = "")]
+    pub external_id: String,
 }
 
 /// Dry-run result of a MoneyMoney import (nothing stored).

@@ -1159,6 +1159,10 @@ fn sample(r: &MmRow, i: i64, account_id: i64) -> Booking {
         recurrence_key: String::new(),
         is_pending: false,
         item_refs: String::new(),
+        end_to_end_id: r.end_to_end.clone(),
+        mandate_id: r.mandate_ref.clone(),
+        creditor_id: r.creditor_id.clone(),
+        external_id: String::new(),
     };
     enrich(&mut b);
     b.is_salary = crate::salary::salary_signal(&b);

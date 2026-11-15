@@ -568,10 +568,11 @@ impl Vault {
         days: u32,
     ) -> Result<Vec<DailyBalance>, CoreError> {
         let accounts = self.list_accounts()?;
+        let single_account = account_ids.len() == 1;
         let chosen: Vec<&Account> = accounts
             .iter()
             .filter(|a| {
-                a.currency == "EUR"
+                (single_account || a.currency == "EUR")
                     && if account_ids.is_empty() {
                         a.in_total
                     } else {
@@ -586,12 +587,25 @@ impl Vault {
         let mut per_day: HashMap<String, i64> = HashMap::new();
         if !ids.is_empty() {
             let db = self.db()?;
+            for a in &chosen {
+                let bdate = a.balance_date.trim();
+                if !a.balance_derived && bdate.len() == 10 {
+                    let after: i64 = db
+                        .query_row(
+                            "SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE account_id = ?1 AND booking_date > ?2 AND deleted_ms IS NULL AND external_id NOT LIKE 'pending-%'",
+                            params![a.id, bdate],
+                            |r| r.get(0),
+                        )
+                        .unwrap_or(0);
+                    balance += after;
+                }
+            }
             let list = (0..ids.len())
                 .map(|n| format!("?{}", n + 2))
                 .collect::<Vec<_>>()
                 .join(",");
             let mut stmt = db.prepare(&format!(
-                "SELECT booking_date, SUM(amount_cents) FROM transactions WHERE account_id IN ({list}) AND booking_date > ?1 AND deleted_ms IS NULL GROUP BY booking_date"
+                "SELECT booking_date, SUM(amount_cents) FROM transactions WHERE account_id IN ({list}) AND booking_date > ?1 AND deleted_ms IS NULL AND external_id NOT LIKE 'pending-%' GROUP BY booking_date"
             ))?;
             let date = start.format("%Y-%m-%d").to_string();
             let args: Vec<rusqlite::types::Value> = std::iter::once(date.into())

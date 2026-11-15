@@ -98,7 +98,7 @@ fn booking_columns(share_sql: &str) -> String {
          t.counterparty_iban, t.purpose, t.booking_text, cat.id, t.category_source, r.id, t.checked, a.kind,
          (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note,
          t.purpose_code, t.gvc, t.salary_flag, {share_sql},
-         (t.external_id LIKE 'pending-%'), t.item_refs"
+         (t.external_id LIKE 'pending-%'), t.item_refs, t.end_to_end_id, t.mandate_id, t.creditor_id, t.external_id"
     )
 }
 
@@ -151,6 +151,10 @@ fn booking_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<(i64, Booking)> {
             recurrence_key: String::new(),
             is_pending: r.get::<_, i64>(22)? != 0,
             item_refs: r.get(23)?,
+            end_to_end_id: r.get(24)?,
+            mandate_id: r.get(25)?,
+            creditor_id: r.get(26)?,
+            external_id: r.get(27)?,
         },
     ))
 }

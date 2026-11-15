@@ -276,7 +276,8 @@ pub fn parse(xml: &str, account_ref: &str) -> (Vec<RemoteTransaction>, CamtRepor
                     e.end_to_end = text;
                 } else if ends_with(&stack, &["Refs", "MndtId"]) {
                     e.mandate = text;
-                } else if has(&stack, "CdtrSchmeId")
+                } else if (has(&stack, "CdtrSchmeId")
+                    || (has(&stack, "Cdtr") && has(&stack, "PrvtId") && has(&stack, "Othr")))
                     && stack.last().map(|s| s == "Id").unwrap_or(false)
                 {
                     if e.creditor_id.is_empty() {
