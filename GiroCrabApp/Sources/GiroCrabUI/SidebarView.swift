@@ -365,6 +365,14 @@ struct SidebarView: View {
         // accounts have – then archive / delete
         Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .renameAccount(account) }
         Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .account(account.id) }
+        Menu("Kontoart ändern …", systemImage: "list.bullet.rectangle") {
+            ForEach(AccountKind.importChoices, id: \.self) { k in
+                Button { model.setAccountKind(account.id, to: k) } label: {
+                    Text(verbatim: k == account.kind ? "✓ \(k.label)" : k.label)
+                }
+            }
+        }
+        Button("Kontoinhaber …", systemImage: "person.crop.circle") { model.groupDialog = .editOwner(account) }
         AccountGroupMenu(account: account)
         Divider()
         Button("Alle als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: [account.id]) }
@@ -504,6 +512,10 @@ struct AccountRow: View {
     let account: Account
     var syncing: Bool = false
 
+    private var ownerInitials: String {
+        account.owner.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
+    }
+
     private var repaid: Double? {
         guard account.kind == .loan, let p = account.initialBalanceCents, p > 0 else { return nil }
         return max(0, min(1, 1 - Double(-account.balanceCents) / Double(p)))
@@ -516,6 +528,14 @@ struct AccountRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(account.name).lineLimit(1).sensitive()
+                    if !account.owner.isEmpty {
+                        Text(ownerInitials)
+                            .appFont(.caption2, weight: .semibold)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 4)
+                            .background(.secondary.opacity(0.15), in: Capsule())
+                            .sensitive()
+                    }
                     if account.accessRevoked {
                         Image(systemName: "lock.slash")
                             .appFont(.caption2)

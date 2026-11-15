@@ -452,8 +452,13 @@ struct AccountGroupDialogs: ViewModifier {
     func body(content: Content) -> some View {
         content
             .alert(dialog?.title ?? Text(verbatim: ""), isPresented: presented(text: true), presenting: dialog) { d in
-                TextField("Name, z. B. „Privat“ oder „Geschäft“", text: $text)
-                Button(d.isRename ? "Umbenennen" : "Anlegen") { submit(d) }
+                if case .editOwner = d {
+                    TextField("Name des Kontoinhabers", text: $text)
+                    Button("Sichern") { submit(d) }
+                } else {
+                    TextField("Name, z. B. „Privat“ oder „Geschäft“", text: $text)
+                    Button(d.isRename ? "Umbenennen" : "Anlegen") { submit(d) }
+                }
                 Button("Abbrechen", role: .cancel) {}
             } message: { d in
                 if case .create(let id?, _) = d, let a = model.account(for: id) {
@@ -484,7 +489,7 @@ struct AccountGroupDialogs: ViewModifier {
                     }
                 case .merge(let from, let into):
                     Button("Zusammenführen") { model.mergeUserGroups(from, into: into) }
-                case .create, .rename, .renameAccount, .renameCategory:
+                case .create, .rename, .renameAccount, .renameCategory, .editOwner:
                     EmptyView()
                 }
                 Button("Abbrechen", role: .cancel) {}
@@ -501,6 +506,7 @@ struct AccountGroupDialogs: ViewModifier {
 
     private func submit(_ d: GroupDialog) {
         let name = text.trimmingCharacters(in: .whitespaces)
+        if case .editOwner(let a) = d { model.setAccountOwner(a.id, to: name); return }
         guard !name.isEmpty else { return }
         switch d {
         case .create(let accountID, let parent): model.createUserGroup(name: name, moving: accountID, parent: parent?.uuid)
@@ -509,7 +515,7 @@ struct AccountGroupDialogs: ViewModifier {
             if let next = model.renameUserGroup(g, to: name) { DispatchQueue.main.async { dialog = next } }
         case .renameAccount(let a): model.renameAccount(a.id, to: name)
         case .renameCategory(let c): model.renameCategory(c.id, to: name)
-        case .delete, .moveAccount, .merge: break
+        case .delete, .moveAccount, .merge, .editOwner: break
         }
     }
 }

@@ -5651,6 +5651,17 @@
         }
       }
     },
+    "Das Teilen über den iCloud-Schlüsselbund benötigt ein signiertes Release-Build von GiroCrab und ist in dieser Version nicht verfügbar. Die Option bleibt aus. Kopieren Sie den Tresor-Schlüssel stattdessen manuell („Tresor-Schlüssel kopieren“) und fügen Sie ihn auf dem anderen Gerät ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sharing via iCloud Keychain requires a signed release build of GiroCrab and is not available in this version. The option stays off. Copy the vault key manually instead (“Copy vault key”) and paste it on the other device."
+          }
+        }
+      }
+    },
     "Das ist kein privater Schlüssel. Bitte die .pem-Datei wählen, die enablebanking.com beim Registrieren heruntergeladen hat." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12452,6 +12463,17 @@
         }
       }
     },
+    "Kontoart ändern …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change Account Type …"
+          }
+        }
+      }
+    },
     "Kontoauszug-Import fehlgeschlagen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12602,6 +12624,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Account holder"
+          }
+        }
+      }
+    },
+    "Kontoinhaber …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account Owner …"
           }
         }
       }
@@ -13801,6 +13834,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Recipient name"
+          }
+        }
+      }
+    },
+    "Name des Kontoinhabers" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account owner name"
           }
         }
       }
