@@ -18,6 +18,24 @@ Item {
     /// accessibilityReduceMotion: no hover, blinking, toss or hop. Linux has no system-wide
     /// setting Qt exposes, so callers may set it; off by default.
     property bool reduceMotion: false
+    /// Linux only: the vault takes a while to open (keyring, then loading the bookings on the
+    /// GUI thread), so while `busy` the crab tosses its coin in a loop. The loop uses Animators,
+    /// which run on the scene graph's render thread and keep moving while the GUI thread is busy.
+    property bool busy: false
+    readonly property bool busyTossing: busy && visible && !reduceMotion
+    onBusyTossingChanged: if (!busyTossing) { coinToss.y = 0; coinSpin.rotation = 0 }
+    SequentialAnimation {
+        running: crab.busyTossing
+        loops: Animation.Infinite
+        ParallelAnimation {
+            SequentialAnimation {
+                YAnimator { target: coinToss; from: 0; to: -130; duration: 360; easing.type: Easing.OutQuad }
+                YAnimator { target: coinToss; from: -130; to: 0; duration: 360; easing.type: Easing.InQuad }
+            }
+            RotationAnimator { target: coinSpin; from: 0; to: 720; duration: 720; easing.type: Easing.InOutSine }
+        }
+        PauseAnimation { duration: 420 }
+    }
 
     implicitWidth: size
     implicitHeight: size
@@ -408,18 +426,28 @@ Item {
                     }
                 }
 
-                // gold coin
+                // gold coin; `coinToss` / `coinSpin` move it in the busy loop (render thread)
                 Item {
+                    id: coinToss
                     width: 1024
                     height: 1024
-                    transform: [
-                        Rotation { origin.x: 726; origin.y: 310; axis { x: 0; y: 1; z: 0.1 } angle: crab.coinFlipDegrees },
-                        Translate { y: crab.coinOffsetY }
-                    ]
-                    Rectangle { x: 726 - 84; y: 310 - 84; width: 168; height: 168; radius: 84; color: "#F3C23A" }
-                    Rectangle { x: 726 - 66; y: 310 - 66; width: 132; height: 132; radius: 66; color: "#E5AE27" }
-                    // embossed bar, slightly tilted
-                    Rectangle { x: 726 - 16; y: 310 - 58; width: 32; height: 116; radius: 8; rotation: -18; color: "#F3C23A" }
+                    Item {
+                        id: coinSpin
+                        x: 726 - 84; y: 310 - 84; width: 168; height: 168   // rotates about the coin's centre
+                        Item {
+                            x: -(726 - 84); y: -(310 - 84)
+                            width: 1024
+                            height: 1024
+                            transform: [
+                                Rotation { origin.x: 726; origin.y: 310; axis { x: 0; y: 1; z: 0.1 } angle: crab.coinFlipDegrees },
+                                Translate { y: crab.coinOffsetY }
+                            ]
+                            Rectangle { x: 726 - 84; y: 310 - 84; width: 168; height: 168; radius: 84; color: "#F3C23A" }
+                            Rectangle { x: 726 - 66; y: 310 - 66; width: 132; height: 132; radius: 66; color: "#E5AE27" }
+                            // embossed bar, slightly tilted
+                            Rectangle { x: 726 - 16; y: 310 - 58; width: 32; height: 116; radius: 8; rotation: -18; color: "#F3C23A" }
+                        }
+                    }
                 }
 
                 Vector {

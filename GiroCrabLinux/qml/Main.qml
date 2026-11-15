@@ -229,7 +229,7 @@ ApplicationWindow {
                 anchors.centerIn: parent
                 width: 120; height: 120
                 color: "#263040"
-                AnimatedCrabLogo { size: 120; showBackgroundSquircle: false }
+                AnimatedCrabLogo { size: 120; showBackgroundSquircle: false; busy: true }
             }
             BusyIndicator { anchors.centerIn: parent; anchors.verticalCenterOffset: 96; running: true }
         }

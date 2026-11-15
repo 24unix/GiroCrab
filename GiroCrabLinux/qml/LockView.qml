@@ -24,6 +24,7 @@ Rectangle {
             size: 120
             phase: AppModel.unlockCelebrating ? "unlocked" : lock.error !== "" ? "failed"
                  : lock.unlocking ? "unlocking" : "idle"
+            busy: lock.unlocking
         }
         Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("GiroCrab ist gesperrt"); font.pixelSize: Theme.title + 2; font.weight: Font.Bold; color: Theme.text }
         Text {
