@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Canonical form and merge driver for the String Catalogs (GitHub #271).
+"""Canonical form, translation completeness check, and merge driver for String Catalogs (#271, #539).
 
 The catalogs are kept sorted by key: new keys then land all over the file
 instead of at its end, so parallel PRs rarely touch the same lines. The
 canonical form is exactly what GiroCrabApp/Tools/update-localizations.sh
 writes (keep `dump` and that script in sync).
 
-  scripts/xcstrings.py check  [catalog…]   exit 1 if a catalog is not canonical
+  scripts/xcstrings.py check  [catalog…]   exit 1 if a catalog is not canonical or misses English translations
   scripts/xcstrings.py format [catalog…]   rewrite the catalogs in canonical form
   scripts/xcstrings.py merge %O %A %B      git merge driver (see .gitattributes)
 
@@ -82,6 +82,17 @@ def merge(base_path, ours_path, theirs_path):
     return 1
 
 
+def has_en_translation(entry):
+    if entry.get("shouldTranslate") is False:
+        return True
+    en = entry.get("localizations", {}).get("en", {})
+    if "stringUnit" in en:
+        return bool(en["stringUnit"].get("value", "").strip())
+    if "variations" in en:
+        return True
+    return False
+
+
 def main(argv):
     if len(argv) == 5 and argv[1] == "merge":
         return merge(*argv[2:])
@@ -90,17 +101,28 @@ def main(argv):
         return 2
     paths = argv[2:] or sorted(glob.glob(os.path.join(ROOT, "GiroCrabApp/Xcode/App/*.xcstrings")))
     stale = []
+    missing_en = []
     for path in paths:
         text = read(path)
-        canonical = dump(json.loads(text))
+        catalog = json.loads(text)
+        canonical = dump(catalog)
         if text != canonical:
             stale.append(path)
             if argv[1] == "format":
                 write(path, canonical)
-    if argv[1] == "check" and stale:
-        print("String Catalog nicht sortiert/kanonisch – scripts/xcstrings.py format ausführen:", file=sys.stderr)
-        for path in stale:
-            print("  " + os.path.relpath(path, ROOT), file=sys.stderr)
+        if argv[1] == "check" and os.path.basename(path) == "Localizable.xcstrings":
+            for key, entry in catalog.get("strings", {}).items():
+                if key.strip() and not has_en_translation(entry):
+                    missing_en.append((os.path.relpath(path, ROOT), key))
+    if argv[1] == "check" and (stale or missing_en):
+        if stale:
+            print("String Catalog nicht sortiert/kanonisch – scripts/xcstrings.py format ausführen:", file=sys.stderr)
+            for path in stale:
+                print("  " + os.path.relpath(path, ROOT), file=sys.stderr)
+        if missing_en:
+            print(f"Fehlende englische Übersetzung in Localizable.xcstrings ({len(missing_en)}):", file=sys.stderr)
+            for rel, key in missing_en[:20]:
+                print(f"  {rel}: {key!r}", file=sys.stderr)
         return 1
     print(f"xcstrings: {len(paths)} Kataloge ok" if argv[1] == "check" else f"xcstrings: {len(stale)} Kataloge neu geschrieben")
     return 0

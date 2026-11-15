@@ -286,6 +286,12 @@
             "state" : "new",
             "value" : "%1$@ · %2$@ · %3$u Lastschriften · %4$@"
           }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@ · %3$u direct debits · %4$@"
+          }
         }
       }
     },
@@ -1012,6 +1018,12 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$lld Zahlungen · %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld payments · %2$@"
           }
         }
       }
@@ -25898,6 +25910,12 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "„%1$@“: %2$u neu, %3$u aktualisiert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@”: %2$u new, %3$u updated"
           }
         }
       }
