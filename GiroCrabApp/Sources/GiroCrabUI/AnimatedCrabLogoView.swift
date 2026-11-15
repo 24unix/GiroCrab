@@ -3,6 +3,48 @@ import SwiftUI
 import UIKit
 #endif
 
+/// Start and lock screen on the brand backdrop (iOS, GitHub #505): the dark tone
+/// behind the crab fills the whole screen, so the logo has no visible box.
+public enum BrandBackdrop {
+    /// Same value as the asset colour `LaunchBackground` of the system launch screen.
+    public static let color = Color(hex: 0x1C2331)
+    /// Artwork size on those screens (the crab itself fills about 70 % of it); `LaunchLogo` is rendered from `BrandCrabLogo` at this size.
+    public static let logoSize: CGFloat = 200
+    /// iOS shows start and lock screen on the backdrop; a Mac window keeps the canvas.
+    public static var isPlatformDefault: Bool {
+        #if os(iOS)
+        true
+        #else
+        false
+        #endif
+    }
+}
+
+/// The animated crab without its squircle, on a soft glow that fades into `BrandBackdrop.color`.
+/// Frame = glow = `size × glowFactor`: exactly the artwork of the launch image `LaunchLogo`.
+public struct BrandCrabLogo: View {
+    public static let glowFactor: CGFloat = 1.4
+    public var size: CGFloat
+    public var phase: AnimatedCrabLogoView.Phase
+
+    public init(size: CGFloat = BrandBackdrop.logoSize, phase: AnimatedCrabLogoView.Phase = .idle) {
+        self.size = size
+        self.phase = phase
+    }
+
+    public var body: some View {
+        let frame = size * Self.glowFactor
+        ZStack {
+            RadialGradient(
+                colors: [Color(hex: 0x3B4C6B, opacity: 0.6), Color(hex: 0x3B4C6B, opacity: 0.22), Color(hex: 0x3B4C6B, opacity: 0)],
+                center: .center, startRadius: 0, endRadius: frame / 2
+            )
+            AnimatedCrabLogoView(size: size, phase: phase, showBackgroundSquircle: false)
+        }
+        .frame(width: frame, height: frame)
+    }
+}
+
 /// Animierte Vektor-Krabbe auf Basis von `girocrab-icon.svg` (1024x1024 Koordinatenraum).
 /// Unterstützt:
 /// - Initialen Münzwurf (3D-Flip) & diagonalen Glanz-Schimmer auf der Kreditkarte

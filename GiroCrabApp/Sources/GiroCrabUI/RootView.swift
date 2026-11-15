@@ -298,13 +298,7 @@ public struct GiroCrabRootView: View {
 
     public init() {}
 
-    private var splash: some View {
-        ZStack {
-            Theme.canvas.ignoresSafeArea()
-            StartLogo()
-            ProgressView().offset(y: 96)
-        }
-    }
+    private var splash: some View { SplashView() }
 
     public var body: some View {
         Group {
@@ -374,9 +368,36 @@ struct AutoLockOnBackground: ViewModifier {
     }
 }
 
+/// Start screen: the system launch screen (LaunchInfo.plist) continued, so there is no jump.
+struct SplashView: View {
+    /// Dark brand backdrop with the large crab (iOS, #505) instead of the canvas.
+    var brand = BrandBackdrop.isPlatformDefault
+
+    var body: some View {
+        ZStack {
+            if brand {
+                BrandBackdrop.color.ignoresSafeArea()
+                BrandCrabLogo()
+                ProgressView().tint(.white).offset(y: BrandBackdrop.logoSize * 0.5 + 44)
+            } else {
+                Theme.canvas.ignoresSafeArea()
+                StartLogo()
+                ProgressView().offset(y: 96)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .environment(\.colorScheme, brand ? .dark : scheme)
+    }
+
+    @Environment(\.colorScheme) private var scheme
+}
+
 struct LockView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var scheme
     var error: String?
+    /// Dark brand backdrop, large crab and one unlock control (iOS, #505).
+    var brand = BrandBackdrop.isPlatformDefault
     /// The unlock has been waiting for a while: most likely a Touch ID or
     /// Keychain prompt the user hasn't noticed (behind the window, other screen).
     @State private var waitingLong = false
@@ -396,7 +417,99 @@ struct LockView: View {
         return .idle
     }
 
+    /// One control for both states (#505): the unlock button turns into the
+    /// waiting status instead of a greyed-out button with a second line below.
+    private var brandUnlockControl: some View {
+        let waiting = model.vaultState == .unlocking
+        let name = VaultKeyManager.shared.biometryName
+        let title: LocalizedStringKey = waiting ? "Warten auf \(name) …" : "Mit \(name) entsperren"
+        return Button {
+            model.unlock()
+        } label: {
+            HStack(spacing: 10) {
+                if waiting {
+                    ProgressView().controlSize(.small).tint(.white)
+                } else {
+                    Image(systemName: VaultKeyManager.shared.biometrySymbol)
+                }
+                Text(title)
+            }
+            .appFont(.headline)
+            .foregroundStyle(Color.white.opacity(waiting ? 0.8 : 1))
+            .padding(.horizontal, 20)
+            .frame(maxWidth: 340, minHeight: 54)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(waiting ? AnyShapeStyle(Color.white.opacity(0.1)) : AnyShapeStyle(Theme.accent))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.white.opacity(waiting ? 0.22 : 0))
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(waiting)
+        .animation(Motion.animation(.easeInOut(duration: 0.2)), value: waiting)
+    }
+
+    private var brandBody: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            BrandCrabLogo(phase: crabPhase)
+            Text("GiroCrab ist gesperrt")
+                .appFont(.title, weight: .bold)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+            Text("Ihre Buchungen liegen in einem verschlüsselten Tresor.\nDer Schlüssel verlässt nie den Schlüsselbund dieses Geräts.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Color.white.opacity(0.7))
+                .padding(.top, 10)
+            Spacer(minLength: 24)
+            VStack(spacing: 14) {
+                if let error {
+                    Text(error).appFont(.callout).foregroundStyle(Theme.charge).multilineTextAlignment(.center)
+                }
+                if waitingLong && model.vaultState == .unlocking {
+                    Label(waitingHint, systemImage: "exclamationmark.bubble")
+                        .appFont(.callout)
+                        .foregroundStyle(Theme.warning)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 460)
+                }
+                brandUnlockControl
+                if model.lockPreview && !AppModel.vaultMayHoldRealData && model.vaultState != .unlocking {
+                    Button("Zurück zur Demo") { model.endLockPreview() }
+                        .buttonStyle(.borderless)
+                        .tint(.white)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(BrandBackdrop.color.ignoresSafeArea())
+    }
+
     var body: some View {
+        Group {
+            if brand { brandBody } else { standardBody }
+        }
+        // Theme colours on the dark backdrop resolve to their dark variants.
+        .environment(\.colorScheme, brand ? .dark : scheme)
+        .task {
+            if model.vaultState == .locked && error == nil && !model.demoDismissedLock { model.unlock() }
+        }
+        .task(id: model.vaultState == .unlocking) {
+            waitingLong = false
+            guard model.vaultState == .unlocking else { return }
+            try? await Task.sleep(for: .seconds(5))
+            if !Task.isCancelled && model.vaultState == .unlocking { waitingLong = true }
+        }
+    }
+
+    private var standardBody: some View {
         VStack(spacing: 18) {
             AnimatedCrabLogoView(size: 120, phase: crabPhase)
             Text("GiroCrab ist gesperrt")
@@ -441,15 +554,6 @@ struct LockView: View {
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.canvas)
-        .task {
-            if model.vaultState == .locked && error == nil && !model.demoDismissedLock { model.unlock() }
-        }
-        .task(id: model.vaultState == .unlocking) {
-            waitingLong = false
-            guard model.vaultState == .unlocking else { return }
-            try? await Task.sleep(for: .seconds(5))
-            if !Task.isCancelled && model.vaultState == .unlocking { waitingLong = true }
-        }
     }
 }
 
@@ -705,11 +809,10 @@ struct MainSplitView: View {
     }
 }
 
-/// The launch-screen logo (asset `LaunchLogo`, 120 pt, centred), continued as the animated crab.
-/// Same 360-pt artwork grid and backdrop as the launch image, so the hand-off has no jump.
+/// Start logo in a Mac window (iOS: `BrandCrabLogo` on the brand backdrop, like `LaunchLogo`).
 private struct StartLogo: View {
     var body: some View {
-        // Square #263040 like the launch image (no squircle corners), crab on top.
+        // Square #263040 (no squircle corners), crab on top.
         ZStack {
             Rectangle().fill(Color(red: 0x26 / 255, green: 0x30 / 255, blue: 0x40 / 255))
             AnimatedCrabLogoView(size: 120, phase: .idle, showBackgroundSquircle: false)
