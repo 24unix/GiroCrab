@@ -591,7 +591,7 @@ Rectangle {
             width: parent.width; spacing: 14
             RowLayout {
                 spacing: 12
-                Image { source: "qrc:/qt/qml/GiroCrab/assets/app-icon.png"; sourceSize.width: 56; sourceSize.height: 56 }
+                AnimatedCrabLogo { size: 56 }
                 Text { text: qsTr("Willkommen bei GiroCrab"); font.pixelSize: Theme.title3 + 2; font.weight: Font.DemiBold; color: Theme.text }
             }
             Text { text: qsTr("Ihr Tresor ist eingerichtet, enthält aber noch keine Konten. So geht es weiter:")

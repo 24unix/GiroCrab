@@ -221,12 +221,14 @@ ApplicationWindow {
         // splash (starting)
         Rectangle {
             color: Theme.canvas
-            ColumnLayout {
+            // RootView.swift › StartLogo: square #263040 backdrop, crab on top, spinner 96 below the centre
+            Rectangle {
                 anchors.centerIn: parent
-                spacing: 18
-                Image { Layout.alignment: Qt.AlignHCenter; source: "qrc:/qt/qml/GiroCrab/assets/app-icon.png"; sourceSize.width: 120; sourceSize.height: 120 }
-                BusyIndicator { Layout.alignment: Qt.AlignHCenter; running: true }
+                width: 120; height: 120
+                color: "#263040"
+                AnimatedCrabLogo { size: 120; showBackgroundSquircle: false }
             }
+            BusyIndicator { anchors.centerIn: parent; anchors.verticalCenterOffset: 96; running: true }
         }
 
         // LockView / LockView(error:)

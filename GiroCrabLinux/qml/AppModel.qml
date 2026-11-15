@@ -304,19 +304,22 @@ QtObject {
         coreAsync("unlock_own", { allow_create: vaultInfo.size <= 0 }, r => {
             hasOwnVault = true
             vaultInfo = core("vault_info")
+            // Let the crab's unlock hop play on the lock screen before the main view replaces it.
             unlockCelebrating = true
-            celebrationTimer.restart()
-            if (r.account_count === 0 && !r.has_connections) {
-                // Nothing synced yet: show demo bookings so the UI can be judged.
-                defaults.hasRealData = "false"
-                openDemo()
-                toast = qsTr("Ihr Tresor ist noch leer – Sie sehen Demo-Daten")
-            } else {
-                // The key is there; loading the vault happens on this thread. Show
-                // "Buchungen werden geladen …" first and give it a frame to appear.
-                unlockPhase = "loading"
-                openVaultTimer.restart()
+            celebrationTimer.next = () => {
+                if (r.account_count === 0 && !r.has_connections) {
+                    // Nothing synced yet: show demo bookings so the UI can be judged.
+                    defaults.hasRealData = "false"
+                    openDemo()
+                    toast = qsTr("Ihr Tresor ist noch leer – Sie sehen Demo-Daten")
+                } else {
+                    // The key is there; loading the vault happens on this thread. Show
+                    // "Buchungen werden geladen …" first and give it a frame to appear.
+                    unlockPhase = "loading"
+                    openVaultTimer.restart()
+                }
             }
+            celebrationTimer.restart()
         }, err => {
             if (!hasOwnVault && !vaultMayHoldRealData()) {
                 // Cancelled before any real data exists: back to the demo, never a dead end.
@@ -328,7 +331,12 @@ QtObject {
             }
         })
     }
-    property Timer celebrationTimer: Timer { interval: 320; onTriggered: model.unlockCelebrating = false }
+    property Timer celebrationTimer: Timer {
+        /// what unlock() does once the hop has played
+        property var next: null
+        interval: 320
+        onTriggered: { model.unlockCelebrating = false; const f = next; next = null; if (f) f() }
+    }
     /// "keyring" while the key comes from the Secret Service, "loading" while the vault loads.
     property string unlockPhase: "keyring"
     property Timer openVaultTimer: Timer { interval: 60; onTriggered: model.useVault(false) }

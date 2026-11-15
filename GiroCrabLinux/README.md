@@ -116,6 +116,7 @@ von der nativen Installation wechselt, kopiert `tresor.girocrab` in den neuen Or
 | NewCategoryDialog, SymbolPicker, IconColorPopover | NewCategoryDialog.qml, SymbolPicker.qml, ColorSwatches.qml, IconColorPopover.qml, CategoryDialogs.qml | Neue Kategorie, Farbwahl mit eigenen Farben, Kontextmenü (Umbenennen, Symbol & Farbe, Verschieben, Unterkategorie, Budget, Löschen). Symbole: nächstes Breeze-Icon (SF.qml) |
 | MerchantSignet | MerchantSignet.qml, AccountSignet.qml, SymbolTile.qml | Monogramm, Person, simple-icons-SVG. Online-Logos entfallen. |
 | Onboarding | BookingStreamView.qml (DemoBanner), DemoHintBanner.qml | Banner, Demo-Hinweise |
+| AnimatedCrabLogoView | AnimatedCrabLogo.qml | Animierte Vektor-Krabbe (Qt Quick Shapes): Münzwurf mit Karten-Glanz beim Erscheinen und per Klick, Schweben mit Bodenschatten, Blinzeln, Blick beim Entsperren, Freudensprung nach dem Entsperren, fragender Blick bei Fehler. Auf dem Startbild (Main.qml), dem Sperrbildschirm (LockView.qml) und in „Willkommen bei GiroCrab“ (BookingStreamView.qml › EmptyVaultCard). Die 3D-Drehung der Münze ist ohne Perspektive; „Bewegung reduzieren“ fragt Qt unter Linux nicht ab (Eigenschaft `reduceMotion`) |
 | VaultKeyManager | src/vault_key.rs, LockView.qml, KeyPasteSheet.qml | Secret Service (KWallet / GNOME Keyring) statt Keychain, Sperrbildschirm, Schlüssel sichern/wiederherstellen |
 | AppModel+Reset, VaultResources | SecuritySettings.qml, AppModel.qml, src/dispatch.rs (`reset_app`), src/vault_key.rs | Einstellungen › Sicherheit › „App zurücksetzen …“: löscht Tresor (mit `-wal`/`-shm`/`-journal`), entschlüsselte Belegkopien, Einstellungen (`GiroCrab.conf`) und zuletzt den Schlüssel im Secret Service. Danach startet die App neu (statt wie am Mac im laufenden Prozess) und zeigt wie beim ersten Start die Demo. Die Richtlinie der Sicherheitssperre (`banking-policy.json`) bleibt. Keine Abfrage von Touch ID / Gerätecode (gibt es unter Linux nicht) |
 | ConnectionsUI, AddBankAssistant, BankPicker, FinTsAddForm, EnableBankingSetup | AddBankSheet.qml, BankSetupSheet.qml, SettingField.qml, ConnectionEditSheet.qml, ConfirmDialog.qml, EnableBankingSetupSection.qml | Bank hinzufügen, Einrichten, Bearbeiten, Entfernen, PSD2-Zustimmung + „Neu verbinden …“, Web-Sitzung (Cookies) löschen, CSV/PDF-Kontoauszug-Import, Trade Republic „Im Browser-Fenster anmelden …“ |
@@ -143,7 +144,7 @@ von der nativen Installation wechselt, kopiert `tresor.girocrab` in den neuen Or
 | Announcements | – | offen |
 | SyncFolder, CloudSyncManager | – | offen: Ordner-Sync (Nextcloud/Syncthing) statt iCloud |
 | LanguagePreference | GeneralSettings.qml, LanguagePromptView.qml, Main.qml, cpp/translator.cpp, src/i18n.rs | siehe „Sprache“ |
-| AppUpdates (Sparkle), DockBadge, DesktopFrame, MacFrame, Perf, AnimatedCrabLogoView, MerchantLogoTip, SyncDeviceID, ViewLayout, SVGPath, BankingVersion, BalanceBars | – | entfällt (macOS-spezifisch) |
+| AppUpdates (Sparkle), DockBadge, DesktopFrame, MacFrame, Perf, MerchantLogoTip, SyncDeviceID, ViewLayout, SVGPath, BankingVersion, BalanceBars | – | entfällt (macOS-spezifisch) |
 
 ## Sprache
 
