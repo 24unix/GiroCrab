@@ -2,7 +2,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 import GiroCrabCore
 
-extension SyncLogEntry: @retroactive Identifiable {}
+// Fully qualified instead of `@retroactive`: that attribute warns wherever the
+// core counts as the same package, a plain conformance warns wherever it does not.
+extension GiroCrabCore.SyncLogEntry: Swift.Identifiable {}
 
 extension AppModel {
     /// What started the sync that is running for `connectionID`.

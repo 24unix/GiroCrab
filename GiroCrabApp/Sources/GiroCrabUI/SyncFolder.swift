@@ -13,7 +13,7 @@ struct SyncFolder: Sendable {
     let dir: URL
     let deviceID: String
     /// Whether a file's data is on this device; replaceable in tests.
-    var isDownloaded: @Sendable (URL) -> Bool = SyncFolder.isLocal
+    var isDownloaded: @Sendable (URL) -> Bool = { SyncFolder.isLocal($0) }
 
     var ownURL: URL { dir.appendingPathComponent("tresor-\(deviceID).girocrab") }
     private var legacyURL: URL { dir.appendingPathComponent(Self.legacyName) }
@@ -89,7 +89,7 @@ struct SyncFolder: Sendable {
     }
 
     /// Whether iCloud has the file's data on this device (true outside iCloud).
-    @Sendable static func isLocal(_ url: URL) -> Bool {
+    static func isLocal(_ url: URL) -> Bool {
         let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
         guard let status = values?.ubiquitousItemDownloadingStatus else { return true }
         return status != .notDownloaded
