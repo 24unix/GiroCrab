@@ -73,6 +73,7 @@ public final class AppModel {
     // UI state
     var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; reloadSelection(periodChanged: false) } }
     /// Segmented control of the wealth view (shown in the toolbar instead of the booking scope).
+    var assetClassificationVersion = 0
     var wealthScope: WealthScope = .all
 
     var scope: BookingScope = .all {
@@ -481,6 +482,7 @@ public final class AppModel {
             case "sparplaene", "sparpläne", "investments": scope = .investments
             case "belege", "documents": sidebarSelection = .documents
             case "vermoegen", "vermögen", "wealth": sidebarSelection = .wealth
+            case "vermoegen-cash": sidebarSelection = .wealth; wealthScope = .cash
             case "vermoegen-wertpapiere": sidebarSelection = .wealth; wealthScope = .securities
             case "vermoegen-sachwerte": sidebarSelection = .wealth; wealthScope = .tangibles
             default: break

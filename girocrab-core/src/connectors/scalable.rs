@@ -1232,6 +1232,9 @@ impl ScalableConnector {
             .collect();
         for h in holdings {
             out.holdings.push(RemoteHolding {
+                classification: Default::default(),
+                direct_crypto: false,
+
                 account_ref: depot_ref.clone(),
                 holding: h,
             });

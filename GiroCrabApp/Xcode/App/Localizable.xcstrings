@@ -747,6 +747,16 @@
         }
       }
     },
+    "%lld Positionen noch nicht zugeordnet" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld positions not yet classified"
+          }
+        }
+      }
+    },
     "%lld Raten seit Stichtag · %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1740,6 +1750,17 @@
         }
       }
     },
+    "1 Position noch nicht zugeordnet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 position not yet classified"
+          }
+        }
+      }
+    },
     "1 Treffer" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2136,6 +2157,17 @@
         }
       }
     },
+    "Aktuelle Anlageklasse" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current asset class"
+          }
+        }
+      }
+    },
     "Aktuelle Ansicht" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2154,6 +2186,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Current Balance"
+          }
+        }
+      }
+    },
+    "Aktuelles Instrument" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current instrument"
           }
         }
       }
@@ -2198,6 +2241,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "All (%lld)"
+          }
+        }
+      }
+    },
+    "Alle Anlageklassen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All asset classes"
           }
         }
       }
@@ -2462,6 +2516,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mark All as Read"
+          }
+        }
+      }
+    },
+    "Alle anzeigen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show all"
           }
         }
       }
@@ -3017,6 +3081,37 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Investment gold (coins and bars) with 999.9 ‰ fineness."
+          }
+        }
+      }
+    },
+    "Anlageklasse" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asset class"
+          }
+        }
+      }
+    },
+    "Anlageklassen innerhalb der Depotkonten; Cash-Konten sind nicht enthalten." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asset classes within brokerage accounts; cash accounts are not included."
+          }
+        }
+      }
+    },
+    "Anlageklassen · Vermögenswerte (brutto)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asset classes · Gross assets"
           }
         }
       }
@@ -3898,6 +3993,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Detect Automatically"
+          }
+        }
+      }
+    },
+    "Automatisch ermittelt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatically determined"
           }
         }
       }
@@ -6713,6 +6818,17 @@
         }
       }
     },
+    "Derivat / strukturiertes Produkt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Derivative / structured product"
+          }
+        }
+      }
+    },
     "Details" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6757,6 +6873,16 @@
         }
       }
     },
+    "Diagramm und Anteile zeigen nur zugeordnete Werte. Summen und Positionen bleiben vollständig." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The chart and percentages show classified assets only. Totals and positions remain complete."
+          }
+        }
+      }
+    },
     "Die Amazon-Sitzung ist abgelaufen. Bitte erneut anmelden." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6764,6 +6890,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The Amazon session has expired. Please sign in again."
+          }
+        }
+      }
+    },
+    "Die Anlageklassen zeigen das Bruttovermögen. Abzüglich der Verbindlichkeiten ergibt sich das Nettovermögen oben." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asset classes show gross assets. Subtracting liabilities gives the net worth shown above."
+          }
+        }
+      }
+    },
+    "Die Anlageklassen zeigen das Bruttovermögen. Verbindlichkeiten sind oben derzeit nicht abgezogen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asset classes show gross assets. Liabilities are currently not deducted above."
           }
         }
       }
@@ -7137,6 +7283,17 @@
         }
       }
     },
+    "Die eigene Zuordnung gilt für diesen Sachwert. Automatisch setzt nur das jeweilige Merkmal zurück." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your choice applies to this tangible asset. Automatic resets only the respective field."
+          }
+        }
+      }
+    },
     "Die neue Sprache wird nach einem Neustart verwendet." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7379,6 +7536,16 @@
         }
       }
     },
+    "Direkt gehaltene Immobilien ausblenden" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide directly held real estate"
+          }
+        }
+      }
+    },
     "Direkt-Login (Web-Session)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7386,6 +7553,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Direct Login (Web Session)"
+          }
+        }
+      }
+    },
+    "Direktbesitz" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Direct holding"
           }
         }
       }
@@ -7809,6 +7987,28 @@
         }
       }
     },
+    "Eigene Zuordnung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your classification"
+          }
+        }
+      }
+    },
+    "Eigene Zuordnungen gelten für dieses Wertpapier in allen Depots dieses Tresors. Automatisch setzt nur das jeweilige Merkmal zurück." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your choices apply to this security in every depot in this vault. Automatic resets only the respective field."
+          }
+        }
+      }
+    },
     "Eigenen Tresor anzeigen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8179,6 +8379,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add"
+          }
+        }
+      }
+    },
+    "Einzeltitel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Individual security"
           }
         }
       }
@@ -9937,6 +10148,16 @@
         }
       }
     },
+    "Gilt für Positionen mit Anlageklasse Immobilien und Instrument Direktbesitz." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Applies to positions classified as Real estate with instrument Direct holding."
+          }
+        }
+      }
+    },
     "GiroCode" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10553,6 +10774,17 @@
         }
       }
     },
+    "Gruppierung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grouping"
+          }
+        }
+      }
+    },
     "Größer" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11120,6 +11352,28 @@
         }
       }
     },
+    "Immobilien sind aus dieser Ansicht ausgeblendet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Property is hidden from this view."
+          }
+        }
+      }
+    },
+    "Immobilien sind ausgeblendet, ihre Kredite aber weiterhin abgezogen. Ohne „Kredite und Karten abziehen“ bleibt der Wert vergleichbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Property is hidden, but its loans are still deducted. Without “Deduct loans and cards” the figure stays comparable."
+          }
+        }
+      }
+    },
     "Import abbrechen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11244,6 +11498,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Import"
+          }
+        }
+      }
+    },
+    "Importiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imported"
           }
         }
       }
@@ -11479,6 +11744,17 @@
         }
       }
     },
+    "Inhaber" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Owner"
+          }
+        }
+      }
+    },
     "Inhalt" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11508,6 +11784,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Instrument"
+          }
+        }
+      }
+    },
+    "Instrumente innerhalb der Depotkonten; Cash-Konten sind nicht enthalten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instruments within the securities accounts; cash accounts are not included."
+          }
+        }
+      }
+    },
+    "Instrumente · Vermögenswerte (brutto)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instruments · assets (gross)"
           }
         }
       }
@@ -11772,6 +12070,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sync now"
+          }
+        }
+      }
+    },
+    "Jetzt zuordnen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Classify now"
           }
         }
       }
@@ -12652,6 +12960,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cinema"
+          }
+        }
+      }
+    },
+    "Klassifizierung bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit classification"
           }
         }
       }
@@ -13751,6 +14070,17 @@
         }
       }
     },
+    "Liquidität & Geldmarkt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cash & money market"
+          }
+        }
+      }
+    },
     "Live-Vorschau" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14125,6 +14455,17 @@
         }
       }
     },
+    "Mischanlagen / Multi-Asset" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mixed / multi-asset"
+          }
+        }
+      }
+    },
     "Mit %@ entsperren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14488,6 +14829,17 @@
         }
       }
     },
+    "Nach Anlageklasse" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By asset class"
+          }
+        }
+      }
+    },
     "Nach Bank" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14510,6 +14862,28 @@
         }
       }
     },
+    "Nach Instrument" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By instrument"
+          }
+        }
+      }
+    },
+    "Nach Konto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By account"
+          }
+        }
+      }
+    },
     "Nach Konto gruppieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14528,6 +14902,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "By Account Type"
+          }
+        }
+      }
+    },
+    "Nach Position" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By position"
           }
         }
       }
@@ -14740,6 +15125,17 @@
         }
       }
     },
+    "Negative Werte sind in den Summen enthalten, im Donut werden nur positive Klassenwerte dargestellt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Totals include negative values; the donut shows only positive class totals."
+          }
+        }
+      }
+    },
     "Nein" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14758,6 +15154,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Net worth"
+          }
+        }
+      }
+    },
+    "Nettovermögen ohne Immobilien" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Net worth excluding property"
           }
         }
       }
@@ -15286,6 +15693,27 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Not included in the total"
+          }
+        }
+      }
+    },
+    "Nicht klassifiziert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unclassified"
+          }
+        }
+      }
+    },
+    "Nicht klassifizierte im Diagramm ausblenden" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide unclassified assets in chart"
           }
         }
       }
@@ -16005,6 +16433,17 @@
         }
       }
     },
+    "Ohne Inhaber" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No owner"
+          }
+        }
+      }
+    },
     "Ohne Kategorie" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16034,6 +16473,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No position data"
+          }
+        }
+      }
+    },
+    "Ohne Positionsdaten / Bewertungsdifferenz" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Missing position data / valuation difference"
           }
         }
       }
@@ -16632,6 +17082,17 @@
         }
       }
     },
+    "Position %lld von %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position %1$lld of %2$lld"
+          }
+        }
+      }
+    },
     "Position kopieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16672,6 +17133,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tangible asset items"
+          }
+        }
+      }
+    },
+    "Positionen dieser Gruppe anzeigen oder Filter aufheben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show the positions of this group or clear the filter"
           }
         }
       }
@@ -17431,6 +17903,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Direction"
+          }
+        }
+      }
+    },
+    "Rohstoffe & Edelmetalle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Commodities & precious metals"
           }
         }
       }
@@ -18450,6 +18933,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Save & Apply"
+          }
+        }
+      }
+    },
+    "Speichern & weiter" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save & next"
           }
         }
       }

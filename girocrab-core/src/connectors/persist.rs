@@ -413,7 +413,7 @@ pub(crate) fn store_fetch(
                 _ => None,
             }
         };
-        let mut by_account: HashMap<i64, Vec<&crate::models::Holding>> = HashMap::new();
+        let mut by_account: HashMap<i64, Vec<&RemoteHolding>> = HashMap::new();
         // An explicitly empty inventory must remove stale positions too.
         for account_ref in &data.holdings_fetched {
             if let Some(id) = account_ids.get(account_ref) {
@@ -423,7 +423,7 @@ pub(crate) fn store_fetch(
         let mut unresolved = 0usize;
         for h in &data.holdings {
             if let Some(id) = resolve(&h.account_ref) {
-                by_account.entry(id).or_default().push(&h.holding);
+                by_account.entry(id).or_default().push(h);
             } else {
                 unresolved += 1;
             }
@@ -436,7 +436,8 @@ pub(crate) fn store_fetch(
         ));
         for (acc_id, list) in &by_account {
             tx.execute("DELETE FROM holdings WHERE account_id = ?1", [acc_id])?;
-            for h in list {
+            for remote in list {
+                let h = &remote.holding;
                 tx.execute(
                     "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents,
                             prev_day_price_cents, prev_day_value_cents, profit_loss_purchase_cents, profit_loss_purchase_rel,
@@ -446,6 +447,8 @@ pub(crate) fn store_fetch(
                             h.prev_day_price_cents, h.prev_day_value_cents, h.profit_loss_purchase_cents, h.profit_loss_purchase_rel,
                             h.profit_loss_prev_day_cents, h.profit_loss_prev_day_rel, h.custody_type],
                 )?;
+                tx.execute("INSERT INTO holding_classifications(holding_id,asset_class,instrument,direct_crypto) VALUES (?1,?2,?3,?4)",
+                    params![tx.last_insert_rowid(),remote.classification.asset_class.map(|a|a.as_str()),remote.classification.instrument.map(|a|a.as_str()),remote.direct_crypto])?;
             }
         }
         let mut imported = 0u32;

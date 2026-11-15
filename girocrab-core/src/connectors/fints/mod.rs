@@ -2310,6 +2310,9 @@ impl BankConnector for FinTsConnector {
                         }
                         for h in &st.holdings {
                             result.holdings.push(super::RemoteHolding {
+                                classification: Default::default(),
+                                direct_crypto: false,
+
                                 account_ref: label.clone(),
                                 holding: h.to_model(),
                             });

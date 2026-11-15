@@ -44,6 +44,7 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
 use zeroize::Zeroizing;
 
 use super::moneymoney_import::{find_or_create_category, fingerprint, merge_rows, MmRow, Stats};
+use crate::asset_classification::{AssetClass, ClassificationValues, InstrumentKind};
 use crate::connectors::bank_directory::{match_psd2_bank, psd2_catalog, Psd2Bank};
 use crate::connectors::fints::sepa;
 use crate::connectors::group_for;
@@ -472,6 +473,29 @@ struct SrcDoc {
     digest: String,
 }
 
+struct SrcHolding {
+    holding: Holding,
+    classification: ClassificationValues,
+}
+
+/// Correlated locally with MoneyMoney's named AppleScript exports (2.5.4).
+/// These categories mix exposure and wrapper: ETF/fund do not imply equities,
+/// and crypto does not prove direct coin ownership. Sonstige/unknown stay unset.
+fn moneymoney_classification(value: Option<i64>) -> ClassificationValues {
+    let mut result = ClassificationValues::default();
+    match value {
+        Some(1) => result.asset_class = Some(AssetClass::Equity),
+        Some(2) => result.instrument = Some(InstrumentKind::Fund),
+        Some(3) => result.asset_class = Some(AssetClass::Bond),
+        Some(4) => result.asset_class = Some(AssetClass::RealEstate),
+        Some(5) => result.asset_class = Some(AssetClass::Commodity),
+        Some(6) => result.instrument = Some(InstrumentKind::Etf),
+        Some(7) => result.asset_class = Some(AssetClass::Crypto),
+        _ => {}
+    }
+    result
+}
+
 #[derive(Default)]
 struct Source {
     docs: Vec<SrcDoc>,
@@ -492,7 +516,7 @@ struct Source {
     /// newest `balances` row per (account, currency): (timestamp, initial balance)
     balances: HashMap<(i64, String), (i64, f64)>,
     /// securities positions per MoneyMoney account id (depots)
-    holdings: HashMap<i64, Vec<Holding>>,
+    holdings: HashMap<i64, Vec<SrcHolding>>,
 }
 
 // ------------------------------------------------------------------ helpers
@@ -1071,6 +1095,7 @@ fn read_source(path: &str, password: &SecretString) -> CoreResult<Source> {
                 "purchase",
                 "price",
                 "deleted",
+                "asset_class",
             ],
             "ORDER BY amount DESC, rowid",
         )?;
@@ -1086,10 +1111,12 @@ fn read_source(path: &str, password: &SecretString) -> CoreResult<Source> {
                 vreal(get(r, 6)?),
                 vreal(get(r, 7)?),
                 vint(get(r, 8)?).unwrap_or(0) != 0,
+                vint(get(r, 9)?),
             ))
         })?;
         for row in rows {
-            let (acc, ident, isin, wpn, quantity, amount, purchase, price, deleted) = row?;
+            let (acc, ident, isin, wpn, quantity, amount, purchase, price, deleted, asset_class) =
+                row?;
             let (Some(acc), false) = (acc, deleted) else {
                 continue;
             };
@@ -1097,15 +1124,18 @@ fn read_source(path: &str, password: &SecretString) -> CoreResult<Source> {
             if name.is_empty() && isin.trim().is_empty() {
                 continue;
             }
-            src.holdings.entry(acc).or_default().push(Holding {
-                isin: isin.trim().to_uppercase(),
-                wkn: wpn.trim().to_uppercase(),
-                name,
-                quantity: quantity.unwrap_or(0.0),
-                current_price_cents: price.and_then(real_to_cents).unwrap_or(0),
-                purchase_price_cents: purchase.and_then(real_to_cents).unwrap_or(0),
-                value_cents: amount.and_then(real_to_cents).unwrap_or(0),
-                ..Default::default()
+            src.holdings.entry(acc).or_default().push(SrcHolding {
+                holding: Holding {
+                    isin: isin.trim().to_uppercase(),
+                    wkn: wpn.trim().to_uppercase(),
+                    name,
+                    quantity: quantity.unwrap_or(0.0),
+                    current_price_cents: price.and_then(real_to_cents).unwrap_or(0),
+                    purchase_price_cents: purchase.and_then(real_to_cents).unwrap_or(0),
+                    value_cents: amount.and_then(real_to_cents).unwrap_or(0),
+                    ..Default::default()
+                },
+                classification: moneymoney_classification(asset_class),
             });
         }
     }
@@ -2569,11 +2599,16 @@ fn import(
             // were all sold in MoneyMoney ends up empty here too.
             conn.execute("DELETE FROM holdings WHERE account_id = ?1", [account_id])?;
             if let Some(list) = src.holdings.get(&a.id) {
-                for h in list {
+                for source in list {
+                    let h = &source.holding;
                     conn.execute(
                         "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents)
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                         params![account_id, h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents],
+                    )?;
+                    conn.execute(
+                        "INSERT INTO holding_classifications(holding_id,asset_class,instrument) VALUES (?1,?2,?3)",
+                        params![conn.last_insert_rowid(),source.classification.asset_class.map(AssetClass::as_str),source.classification.instrument.map(InstrumentKind::as_str)],
                     )?;
                 }
                 res.holdings_imported += list.len() as u32;

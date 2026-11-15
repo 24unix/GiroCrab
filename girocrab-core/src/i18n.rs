@@ -248,6 +248,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Bitte bei FNZ anmelden und in FNZsecure freigeben." => "Please sign in to FNZ and approve with FNZsecure.",
         "Bitte im FNZ-Browserfenster abrufen." => "Please fetch data in the FNZ browser window.",
         "FNZ: Unvollständige Konten-, Bestands- oder Umsatzdaten. Es wurden keine Daten übernommen." => "FNZ: Incomplete account, position or transaction data. No data has been imported.",
+        "Ungültiger Klassifizierungsschlüssel." => "Invalid classification key.",
         "FNZ: Unvollständige Portalantwort. Bitte erneut anmelden." => "FNZ: Incomplete portal response. Please sign in again.",
         "FNZ: Ungültige Kontoübersicht." => "FNZ: Invalid account overview.",
         "FNZ: Keine Kontoübersicht erkannt. Bitte erneut anmelden." => "FNZ: No account overview found. Please sign in again.",

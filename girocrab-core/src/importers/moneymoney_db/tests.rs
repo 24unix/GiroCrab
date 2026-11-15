@@ -1520,6 +1520,117 @@ INSERT INTO accounts (rowid, bank_key, account, bankcode, portfolio, iban, bic, 
 }
 
 #[test]
+fn asset_class_numbers_map_only_the_confirmed_axis() {
+    for (number, asset_class, instrument) in [
+        (1, Some(AssetClass::Equity), None),
+        (2, None, Some(InstrumentKind::Fund)),
+        (3, Some(AssetClass::Bond), None),
+        (4, Some(AssetClass::RealEstate), None),
+        (5, Some(AssetClass::Commodity), None),
+        (6, None, Some(InstrumentKind::Etf)),
+        (7, Some(AssetClass::Crypto), None),
+    ] {
+        assert_eq!(
+            moneymoney_classification(Some(number)),
+            ClassificationValues {
+                asset_class,
+                instrument
+            }
+        );
+    }
+    for unknown in [None, Some(0), Some(-1), Some(99)] {
+        assert_eq!(
+            moneymoney_classification(unknown),
+            ClassificationValues::default()
+        );
+    }
+}
+
+#[test]
+fn imported_classification_refreshes_without_losing_user_choices() {
+    use crate::asset_classification::ClassificationSource as S;
+    let v = vault();
+    // Deliberately differs from the dictionary: an explicit imported class wins.
+    let path = fake_db_with(false, "UPDATE securities SET asset_class=3 WHERE rowid=1;");
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
+        .unwrap();
+    let account = account_by_name(&v, "Depot");
+    let classification = || {
+        v.classified_assets(account.id)
+            .unwrap()
+            .into_iter()
+            .find(|a| a.holding.isin == "IE00B4L5Y983")
+            .unwrap()
+            .classification
+    };
+    let first = classification();
+    assert_eq!(
+        (first.asset_class, first.asset_class_source),
+        (AssetClass::Bond, S::Import)
+    );
+    assert_eq!(
+        (first.instrument, first.instrument_source),
+        (InstrumentKind::Etf, S::Rule)
+    );
+    let key = first.security_key.unwrap();
+    v.set_asset_class_override(key.clone(), Some(AssetClass::Commodity))
+        .unwrap();
+    {
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch(&format!(
+            "PRAGMA key='{}'; UPDATE securities SET asset_class=2 WHERE rowid=1;",
+            PW.replace('\'', "''")
+        ))
+        .unwrap();
+    }
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
+        .unwrap();
+    let refreshed = classification();
+    assert_eq!(
+        (refreshed.asset_class, refreshed.asset_class_source),
+        (AssetClass::Commodity, S::User)
+    );
+    assert_eq!(
+        (refreshed.instrument, refreshed.instrument_source),
+        (InstrumentKind::Fund, S::Import)
+    );
+    v.set_asset_class_override(key, None).unwrap();
+    assert_eq!(
+        (
+            classification().asset_class,
+            classification().asset_class_source
+        ),
+        (AssetClass::Equity, S::Rule)
+    );
+    // Replacing two holdings also removes their obsolete cached classification rows.
+    assert_eq!(
+        v.db()
+            .unwrap()
+            .query_row("SELECT count(*) FROM holding_classifications", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+}
+
+#[test]
+fn missing_asset_class_column_preserves_older_database_support() {
+    let path = fake_db_with(false, "ALTER TABLE securities DROP COLUMN asset_class;");
+    let source = read_source(&path, &SecretString::new(PW.into())).unwrap();
+    let holdings = source.holdings.get(&3).unwrap();
+    assert_eq!(holdings.len(), 2);
+    assert!(holdings
+        .iter()
+        .all(|h| h.classification == ClassificationValues::default()));
+}
+
+#[test]
 fn depot_balance_from_shown_balance_and_holdings() {
     let v = vault();
     let path = fake_db();

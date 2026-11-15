@@ -6,6 +6,7 @@ extension AppModel {
     // MARK: - Loading
 
     func reloadAll() {
+        assetClassificationVersion += 1
         let all = Perf.signposter.beginInterval("reloadAll")
         defer { Perf.signposter.endInterval("reloadAll", all) }
         reloadAccounts()

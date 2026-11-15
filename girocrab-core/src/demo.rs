@@ -140,7 +140,7 @@ pub const DEMO_ACCOUNTS: &[DemoAccountSpec] = &[
         kind: AccountKind::Brokerage,
         iban: "",
         account_number: "",
-        opening_cents: 28_450_00,
+        opening_cents: 31_380_00,
         bank_name: "Musterbank",
         principal_cents: None,
     },
@@ -174,6 +174,18 @@ pub const DEMO_ACCOUNTS: &[DemoAccountSpec] = &[
         iban: "",
         account_number: "",
         opening_cents: 6_200_00,
+        bank_name: "Musterbank",
+        principal_cents: None,
+    },
+    // appended: the demo bookings address the accounts above by their index
+    DemoAccountSpec {
+        connector: ConnectorKind::TradeRepublic,
+        external_ref: "demo-einzeltitel",
+        name: "Einzeltitel-Depot",
+        kind: AccountKind::Brokerage,
+        iban: "",
+        account_number: "",
+        opening_cents: 16_590_00,
         bank_name: "Musterbank",
         principal_cents: None,
     },
@@ -1262,7 +1274,7 @@ impl Vault {
             tx.execute(
                 "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban, account_number, currency, kind,
                                       balance_cents, balance_date, sf_symbol, sort_order, initial_balance_cents)
-                 VALUES (?1, ?2, ?3, ?4, ?5, 'Erika Mustermann', ?6, ?7, 'EUR', ?8, ?9, ?10, ?11, ?12, ?13)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?14, ?6, ?7, 'EUR', ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     conn_ids[&spec.connector],
                     gid,
@@ -1276,13 +1288,21 @@ impl Vault {
                     today.format("%Y-%m-%d").to_string(),
                     spec.kind.sf_symbol(),
                     i as i32,
-                    spec.principal_cents
+                    spec.principal_cents,
+                    // a second owner, so the wealth view has people to tell apart (#280, #351)
+                    if matches!(spec.external_ref, "demo-einzeltitel" | "demo-krypto") {
+                        "Anton Mustermann"
+                    } else {
+                        "Erika Mustermann"
+                    }
                 ],
             )?;
             acc_ids.insert(spec.external_ref, tx.last_insert_rowid());
         }
-        // Depot positions: the two savings plans, summing to the depot balance
-        // (28.450,00 EUR), so the "Positionen" card is not empty in the demo.
+        // Depot positions: the two savings plans and a money market ETF, summing to the balance
+        // of the ETF depot (31.380,00 EUR), and single securities in a depot of their own (16.590,00 EUR): five
+        // stocks, a federal bond and a gold ETC. So the "Positionen" cards are not empty in the
+        // demo and the wealth view has several asset classes and instruments to tell apart (#351).
         for (isin, wkn, name, quantity, current, purchase, prev_day) in [
             (
                 "IE00B4L5Y983",
@@ -1302,6 +1322,78 @@ impl Vault {
                 98_10,
                 107_45,
             ),
+            (
+                "LU0290358497",
+                "DBX0AN",
+                "Xtrackers II EUR Overnight Rate Swap UCITS ETF",
+                20.0,
+                146_50,
+                141_20,
+                146_48,
+            ),
+            (
+                "DE0007236101",
+                "723610",
+                "Siemens AG",
+                15.0,
+                180_00,
+                148_00,
+                181_30,
+            ),
+            (
+                "US0378331005",
+                "865985",
+                "Apple Inc.",
+                12.0,
+                210_00,
+                165_00,
+                208_40,
+            ),
+            (
+                "DE0007164600",
+                "716460",
+                "SAP SE",
+                10.0,
+                240_00,
+                131_00,
+                238_20,
+            ),
+            (
+                "US5949181045",
+                "870747",
+                "Microsoft Corp.",
+                6.0,
+                400_00,
+                310_00,
+                397_50,
+            ),
+            (
+                "DE0008404005",
+                "840400",
+                "Allianz SE",
+                8.0,
+                285_00,
+                232_50,
+                286_10,
+            ),
+            (
+                "DE0001102580",
+                "110258",
+                "Bundesrepublik Deutschland Anleihe 2032",
+                20.0,
+                97_50,
+                99_20,
+                97_35,
+            ),
+            (
+                "DE000A0S9GB0",
+                "A0S9GB",
+                "Xetra-Gold",
+                30.0,
+                78_00,
+                52_40,
+                77_60,
+            ),
         ] {
             let value = (quantity * current as f64).round() as i64;
             let day = ((current - prev_day) as f64 * quantity).round() as i64;
@@ -1313,7 +1405,11 @@ impl Vault {
                         profit_loss_prev_day_cents, profit_loss_prev_day_rel)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
-                    acc_ids["demo-depot"],
+                    acc_ids[if name.contains("ETF") {
+                        "demo-depot"
+                    } else {
+                        "demo-einzeltitel"
+                    }],
                     isin,
                     wkn,
                     name,
@@ -1330,6 +1426,14 @@ impl Vault {
                 ],
             )?;
         }
+        // The demo broker reports the type of its stocks, as a connector with explicit labels
+        // does; the ETFs, the bond and the gold ETC are left to the local rules.
+        tx.execute(
+            "INSERT INTO holding_classifications(holding_id, asset_class, instrument)
+             SELECT id, 'equity', 'single' FROM holdings
+             WHERE account_id = ?1 AND isin NOT IN ('DE0001102580', 'DE000A0S9GB0')",
+            [acc_ids["demo-einzeltitel"]],
+        )?;
         // Crypto depot: no ISIN, the ticker stands in the WKN column; BTC 0,05 × 88.000 € and
         // ETH 0,8 × 2.250 € add up to the account balance (6.200,00 EUR).
         for (wkn, name, quantity, current, purchase, prev_day) in [
@@ -1369,6 +1473,9 @@ impl Vault {
                 ],
             )?;
         }
+        // The fixture explicitly models direct BTC/ETH custody; do not infer this from
+        // an arbitrary WKN in real accounts.
+        tx.execute("INSERT OR REPLACE INTO holding_classifications(holding_id,direct_crypto) SELECT id,1 FROM holdings WHERE account_id=?1", [acc_ids["demo-krypto"]])?;
         // Securities transactions of the depot (#314): the two savings plans of the last
         // twelve months, two distributions and one custody fee.
         {
@@ -1466,6 +1573,7 @@ impl Vault {
                 &[
                     "demo-tagesgeld",
                     "demo-depot",
+                    "demo-einzeltitel",
                     "demo-krypto",
                     "demo-sachwerte",
                 ][..],
@@ -1589,18 +1697,65 @@ mod tests {
             .find(|a| a.name == "Welt-Depot ETF")
             .unwrap();
         let holdings = v.list_holdings(depot.id).unwrap();
-        assert_eq!(holdings.len(), 2);
+        assert_eq!(holdings.len(), 3);
         let sum: i64 = holdings.iter().map(|h| h.value_cents).sum();
         assert_eq!(sum, depot.balance_cents);
+        // the ETFs by rule, the single stocks of the second depot as its broker reports them (#351)
+        use crate::asset_classification::{AssetClass, ClassificationSource, InstrumentKind};
+        let etfs = v.classified_assets(depot.id).unwrap();
+        assert!(etfs
+            .iter()
+            .all(|a| a.classification.instrument == InstrumentKind::Etf));
+        // same wrapper, different exposure: two equity ETFs and one money market ETF
+        let classes = |class: AssetClass| {
+            etfs.iter()
+                .filter(|a| a.classification.asset_class == class)
+                .count()
+        };
+        assert_eq!(classes(AssetClass::Equity), 2);
+        assert_eq!(classes(AssetClass::Cash), 1);
+        let stocks = v
+            .list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.name == "Einzeltitel-Depot")
+            .unwrap();
+        let singles = v.classified_assets(stocks.id).unwrap();
+        assert_eq!(singles.len(), 7);
+        let sum: i64 = singles.iter().map(|a| a.holding.value_cents).sum();
+        assert_eq!(sum, stocks.balance_cents);
+        assert!(singles
+            .iter()
+            .all(|a| a.classification.security_key.is_some()));
+        let of = |class: AssetClass, instrument: InstrumentKind, source: ClassificationSource| {
+            singles
+                .iter()
+                .filter(|a| {
+                    a.classification.asset_class == class
+                        && a.classification.instrument == instrument
+                        && a.classification.asset_class_source == source
+                })
+                .count()
+        };
+        use ClassificationSource::{Import, Rule};
+        assert_eq!(
+            of(AssetClass::Equity, InstrumentKind::SingleSecurity, Import),
+            5
+        );
+        assert_eq!(
+            of(AssetClass::Bond, InstrumentKind::SingleSecurity, Rule),
+            1
+        );
+        assert_eq!(of(AssetClass::Commodity, InstrumentKind::EtcEtn, Rule), 1);
     }
 
     #[test]
-    fn demo_seed_has_eight_accounts_and_exactly_fifty_two_bookings() {
+    fn demo_seed_has_nine_accounts_and_exactly_fifty_two_bookings() {
         let dir_dir = crate::test_support::TempDir::new("girocrab-test");
         let dir = dir_dir.join("v.db");
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
         assert_eq!(v.seed_demo_data().unwrap(), 52);
-        assert_eq!(v.account_count().unwrap(), 8);
+        assert_eq!(v.account_count().unwrap(), 9);
         let car = v.list_manual_loans().unwrap();
         assert_eq!(car.len(), 1);
         assert_eq!(car[0].status.payment_count, 2);

@@ -23,6 +23,7 @@
 
 uniffi::setup_scaffolding!();
 
+pub mod asset_classification;
 pub mod assets;
 pub mod banking_gate;
 pub mod connections;

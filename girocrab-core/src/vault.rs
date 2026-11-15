@@ -22,7 +22,7 @@ use zeroize::Zeroizing;
 
 use crate::error::{CoreError, CoreResult};
 
-mod accounts;
+pub(crate) mod accounts;
 mod backup;
 mod bookings;
 mod categories;

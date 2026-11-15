@@ -550,6 +550,9 @@ mod tests {
             .unwrap();
         let mut data = fetch(vec![], vec![]);
         data.holdings = vec![RemoteHolding {
+            classification: Default::default(),
+            direct_crypto: false,
+
             account_ref: "depot".into(),
             holding: Holding {
                 isin: "DE0001234567".into(),
