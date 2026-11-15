@@ -35,6 +35,11 @@ Popup {
         else if (category) AppModel.setCategorySymbol(category.id, s)
     }
 
+    AppMenu {
+        id: removeMenu
+        property string hex: ""
+        AppMenuItem { text: qsTr("Entfernen"); icon.name: SF.icon("trash"); onTriggered: AppModel.removeColor(removeMenu.hex) }
+    }
     ColumnLayout {
         width: pop.availableWidth
         spacing: 10
@@ -43,8 +48,36 @@ Popup {
             Layout.fillWidth: true
             Layout.maximumWidth: 7 * 30
             selection: pop.colorHex
+            swatches: AppModel.colorSwatches
+            elsewhere: AppModel.customColors
             noneTip: pop.account ? qsTr("Standardfarbe") : pop.group ? qsTr("Keine Farbe") : ""
             onChosen: hex => pop.setColor(hex)
+        }
+        // the same custom colour again with one click (e.g. for a whole group)
+        Text { visible: AppModel.customColors.length > 0; text: qsTr("Eigene Farben"); font.pixelSize: Theme.caption; color: Theme.secondary }
+        Flow {
+            visible: AppModel.customColors.length > 0
+            Layout.fillWidth: true
+            Layout.maximumWidth: 7 * 30
+            spacing: 6
+            Repeater {
+                model: AppModel.customColors
+                Rectangle {
+                    id: custom
+                    required property string modelData
+                    width: 24; height: 24; radius: 12
+                    color: "transparent"
+                    border.width: 1.5
+                    border.color: custom.modelData === pop.colorHex ? Theme.withAlpha(Theme.text, 0.6) : "transparent"
+                    Rectangle { anchors.centerIn: parent; width: 18; height: 18; radius: 9; color: Theme.readable(custom.modelData) }
+                    HoverHandler { id: customHover }
+                    ToolTip.visible: customHover.hovered
+                    ToolTip.delay: 600
+                    ToolTip.text: custom.modelData
+                    TapHandler { onTapped: pop.setColor(custom.modelData) }
+                    TapHandler { acceptedButtons: Qt.RightButton; onTapped: { removeMenu.hex = custom.modelData; removeMenu.popup() } }
+                }
+            }
         }
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
         RowLayout {

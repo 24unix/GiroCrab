@@ -1946,8 +1946,44 @@ QtObject {
     readonly property var colorNames: ({
         "#2563EB": qsTr("Blau"), "#D97706": qsTr("Bernstein"), "#059669": qsTr("Grün"), "#DB2777": qsTr("Pink"),
         "#7C3AED": qsTr("Violett"), "#0891B2": qsTr("Cyan"), "#DC2626": qsTr("Rot"), "#65A30D": qsTr("Limette"),
-        "#C026D3": qsTr("Fuchsia"), "#EA580C": qsTr("Orange"), "#4F46E5": qsTr("Indigo"), "#0D9488": qsTr("Petrol")
+        "#C026D3": qsTr("Fuchsia"), "#EA580C": qsTr("Orange"), "#4F46E5": qsTr("Indigo"), "#0D9488": qsTr("Petrol"),
+        "#CA8A04": qsTr("Gelb"), "#92400E": qsTr("Braun"), "#475569": qsTr("Schiefer")
     })
+    /// ColorChoices.extras: offered in the picker only, never handed out as default colours
+    /// (the core assigns defaults by palette slot, so extending it would recolour accounts).
+    readonly property var colorExtras: ["#CA8A04", "#92400E", "#475569"]
+    /// ColorChoices.swatches: the core palette plus the extras.
+    readonly property var colorSwatches: {
+        const p = colorPalette.map(h => h.toUpperCase())
+        return p.concat(colorExtras.filter(h => p.indexOf(h) < 0))
+    }
+    /// ColorChoices.customColors: colours in use on accounts, groups and categories that are
+    /// not swatches, most used first (ties: first seen), at most 14 (two rows).
+    readonly property var customColors: {
+        const used = allAccounts.map(a => a.color_hex).concat(userGroups.map(g => g.color_hex), categories.map(c => c.color_hex))
+        const count = {}, order = []
+        for (const raw of used) {
+            const hex = (raw || "").trim().toUpperCase()
+            if (hex === "" || colorSwatches.indexOf(hex) >= 0) continue
+            if (count[hex] === undefined) { order.push(hex); count[hex] = 0 }
+            count[hex]++
+        }
+        return order.map((h, i) => ({ h: h, i: i })).sort((a, b) => count[b.h] - count[a.h] || a.i - b.i).slice(0, 14).map(x => x.h)
+    }
+    /// AppModel+Editing.swift › removeColor: accounts go back to their default colour, groups to
+    /// none, and a category (it always has a colour) takes its parent's, a main category slate grey.
+    function removeColor(old) {
+        old = old.toUpperCase()
+        const matches = hex => (hex || "").toUpperCase() === old
+        for (const a of allAccounts.slice()) if (matches(a.color_hex)) setAccountColor(a.id, null)
+        for (const g of userGroups.slice()) if (matches(g.color_hex)) setUserGroupColor(g, null)
+        const byID = {}
+        for (const c of categories) if (byID[c.id] === undefined) byID[c.id] = c
+        for (const c of categories.slice()) if (matches(c.color_hex)) {
+            const p = c.parent_id !== null && byID[c.parent_id] ? byID[c.parent_id].color_hex : ""
+            setCategoryColor(c.id, p && !matches(p) ? p : colorExtras[2])
+        }
+    }
 
     function reloadRules() {
         if (!isUnlocked) return
