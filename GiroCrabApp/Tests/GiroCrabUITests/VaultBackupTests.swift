@@ -70,6 +70,23 @@ final class VaultBackupTests: XCTestCase {
         XCTAssertTrue(VaultBackup.acceptable("lang genug", repeated: "lang genug"))
     }
 
+    /// „Passwort vorschlagen“ (#491): three groups of six, no look-alike characters.
+    func testSuggestedPasswordLooksLikeThePasswordsApp() {
+        let p = VaultBackup.suggestedPassword()
+        let groups = p.split(separator: "-", omittingEmptySubsequences: false)
+        XCTAssertEqual(groups.count, 3, p)
+        XCTAssertTrue(groups.allSatisfy { $0.count == 6 }, p)
+        let allowed = Set(VaultBackup.passwordAlphabet)
+        XCTAssertTrue(groups.joined().allSatisfy { allowed.contains($0) }, p)
+        XCTAssertTrue(p.allSatisfy { !"lIO01".contains($0) }, p)
+        XCTAssertTrue(VaultBackup.acceptable(p, repeated: p))
+    }
+
+    func testSuggestedPasswordsDiffer() {
+        let many = Set((0..<50).map { _ in VaultBackup.suggestedPassword() })
+        XCTAssertEqual(many.count, 50)
+    }
+
     func testFileNameCarriesTheDate() {
         var c = DateComponents(); c.year = 2026; c.month = 11; c.day = 15; c.hour = 12
         let date = Calendar.current.date(from: c)!

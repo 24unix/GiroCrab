@@ -11,6 +11,19 @@ enum VaultBackup {
         password.count >= minPasswordLength && password == repeated
     }
 
+    /// „Passwort vorschlagen“: lower-case letters and digits without
+    /// look-alikes (l/1, o/0), easy to read and type if it must be.
+    static let passwordAlphabet = Array("abcdefghijkmnpqrstuvwxyz23456789")
+
+    /// Three groups of six like the Passwords app, e.g. "kawxe7-hupdyq-bomtiz":
+    /// 18 characters from 32, about 90 bits, from the system's secure generator.
+    static func suggestedPassword() -> String {
+        var rng = SystemRandomNumberGenerator()
+        return (0..<3).map { _ in
+            String((0..<6).map { _ in passwordAlphabet.randomElement(using: &rng)! })
+        }.joined(separator: "-")
+    }
+
     /// E.g. "GiroCrab-Sicherung 2026-11-15.girocrab-backup".
     static func fileName(date: Date = .now) -> String {
         let day = date.formatted(.iso8601.year().month().day())
@@ -83,6 +96,9 @@ private struct BackupPasswordSheet: View {
     let confirm: (String) -> Void
     @State private var password = ""
     @State private var repeated = ""
+    /// Shown while both fields still hold the suggested password.
+    @State private var suggestion: String?
+    @State private var copied = false
 
     private var ready: Bool {
         restoring ? !password.isEmpty : VaultBackup.acceptable(password, repeated: repeated)
@@ -92,12 +108,31 @@ private struct BackupPasswordSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(restoring ? "Tresor wiederherstellen" : "Tresor sichern").appFont(.headline)
             SecureField("Passwort", text: $password)
+                // AutoFill from the Passwords app (or another password manager) instead of typing.
+                .textContentType(.password)
             if restoring {
                 Text("Ersetzt alle Daten dieses Tresors durch die Sicherung. Ist iCloud Sync aktiv, kommen Änderungen Ihrer anderen Geräte beim nächsten Abgleich wieder hinzu.")
                     .appFont(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 SecureField("Passwort wiederholen", text: $repeated)
+                Button("Passwort vorschlagen", systemImage: "key") {
+                    let p = VaultBackup.suggestedPassword()
+                    password = p; repeated = p; suggestion = p; copied = false
+                }
+                if let suggestion {
+                    HStack {
+                        Text(suggestion).appFont(.body, design: .monospaced).textSelection(.enabled)
+                        Spacer()
+                        Button(copied ? "Kopiert" : "Kopieren", systemImage: copied ? "checkmark" : "doc.on.doc") {
+                            VaultKeyManager.copyToPasteboard(suggestion)
+                            copied = true
+                        }
+                    }
+                    Text("Sichern Sie das Passwort jetzt in der Passwörter-App oder Ihrem Passwortmanager. Die Zwischenablage wird nach 60 Sekunden geleert.")
+                        .appFont(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Text("Mindestens \(VaultBackup.minPasswordLength) Zeichen. Ohne dieses Passwort lässt sich die Sicherung nicht öffnen – auch nicht von GiroCrab.")
                     .appFont(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -117,5 +152,7 @@ private struct BackupPasswordSheet: View {
         .textFieldStyle(.roundedBorder)
         .padding(20)
         .frame(minWidth: 360)
+        // typed over the suggestion: it no longer applies
+        .onChange(of: password) { _, p in if p != suggestion { suggestion = nil } }
     }
 }

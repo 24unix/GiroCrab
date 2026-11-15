@@ -748,6 +748,7 @@
       }
     },
     "%lld Positionen noch nicht zugeordnet" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -997,6 +998,7 @@
       }
     },
     "%lld." : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2521,6 +2523,7 @@
       }
     },
     "Alle anzeigen" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2850,6 +2853,7 @@
       }
     },
     "An den Anfang" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3097,6 +3101,7 @@
       }
     },
     "Anlageklassen innerhalb der Depotkonten; Cash-Konten sind nicht enthalten." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3107,6 +3112,7 @@
       }
     },
     "Anlageklassen · Vermögenswerte (brutto)" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3238,6 +3244,7 @@
       }
     },
     "Ans Ende" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3998,6 +4005,7 @@
       }
     },
     "Automatisch ermittelt" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6874,6 +6882,7 @@
       }
     },
     "Diagramm und Anteile zeigen nur zugeordnete Werte. Summen und Positionen bleiben vollständig." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6895,6 +6904,7 @@
       }
     },
     "Die Anlageklassen zeigen das Bruttovermögen. Abzüglich der Verbindlichkeiten ergibt sich das Nettovermögen oben." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -6905,6 +6915,7 @@
       }
     },
     "Die Anlageklassen zeigen das Bruttovermögen. Verbindlichkeiten sind oben derzeit nicht abgezogen." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7537,6 +7548,7 @@
       }
     },
     "Direkt gehaltene Immobilien ausblenden" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9220,6 +9232,7 @@
       }
     },
     "Filter zurücksetzen" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10149,6 +10162,7 @@
       }
     },
     "Gilt für Positionen mit Anlageklasse Immobilien und Instrument Direktbesitz." : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -12075,6 +12089,7 @@
       }
     },
     "Jetzt zuordnen" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -13729,6 +13744,17 @@
         }
       }
     },
+    "Kopieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy"
+          }
+        }
+      }
+    },
     "Kopieren Sie den Schlüssel auf Ihrem anderen Gerät (Einstellungen › iCloud Sync › „Tresor-Schlüssel kopieren“) und fügen Sie ihn hier ein. Er wird im Schlüsselbund gespeichert, nie in iCloud Drive." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13736,6 +13762,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copy the key on your other device (Settings › iCloud Sync › “Copy vault key”) and paste it here. It is stored in the Keychain, never in iCloud Drive."
+          }
+        }
+      }
+    },
+    "Kopiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copied"
           }
         }
       }
@@ -14940,6 +14977,7 @@
       }
     },
     "Nach oben" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14956,6 +14994,7 @@
       }
     },
     "Nach unten" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15709,6 +15748,7 @@
       }
     },
     "Nicht klassifizierte im Diagramm ausblenden" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -16917,6 +16957,17 @@
         }
       }
     },
+    "Passwort vorschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suggest Password"
+          }
+        }
+      }
+    },
     "Passwort wiederholen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17678,6 +17729,7 @@
       }
     },
     "Regeln filtern (z. B. deu*b) …" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17716,6 +17768,7 @@
       }
     },
     "Regeln werden von oben nach unten ausgewertet – die erste passende Regel gewinnt. Reihenfolge per Drag & Drop in der Liste ändern." : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18586,6 +18639,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Save"
+          }
+        }
+      }
+    },
+    "Sichern Sie das Passwort jetzt in der Passwörter-App oder Ihrem Passwortmanager. Die Zwischenablage wird nach 60 Sekunden geleert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save the password in the Passwords app or your password manager now. The clipboard is cleared after 60 seconds."
           }
         }
       }
