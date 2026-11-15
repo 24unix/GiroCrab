@@ -120,6 +120,14 @@ fn yes(s: &str) -> bool {
     )
 }
 
+/// Undoes the export's formula guard (see `field`).
+fn unguard(s: String) -> String {
+    match s.strip_prefix('\'') {
+        Some(rest) if rest.starts_with(['=', '+', '-', '@', '\t', '\r']) => rest.to_string(),
+        _ => s,
+    }
+}
+
 fn to_row(line: u32, f: &[String], cols: Columns) -> MandateCsvRow {
     let get = |i: Option<usize>| {
         i.and_then(|i| f.get(i))
@@ -127,7 +135,7 @@ fn to_row(line: u32, f: &[String], cols: Columns) -> MandateCsvRow {
             .unwrap_or_default()
     };
     let mut errors = Vec::new();
-    let name = get(cols.name);
+    let name = unguard(get(cols.name));
     if name.is_empty() {
         errors.push(tr("Der Name des Zahlungspflichtigen fehlt.").to_string());
     }
@@ -140,7 +148,7 @@ fn to_row(line: u32, f: &[String], cols: Columns) -> MandateCsvRow {
     if !bic.is_empty() && !validate_bic(&bic) {
         errors.push(tr("Die BIC ist ungültig.").to_string());
     }
-    let reference = get(cols.reference);
+    let reference = unguard(get(cols.reference));
     if reference.is_empty() || reference.chars().count() > 35 {
         errors.push(tr("Die Mandatsreferenz fehlt oder ist länger als 35 Zeichen.").to_string());
     }
@@ -193,7 +201,7 @@ fn to_row(line: u32, f: &[String], cols: Columns) -> MandateCsvRow {
         one_off: yes(&get(cols.one_off)),
         active: cols.active.is_none() || yes(&get(cols.active)),
         default_amount_cents,
-        default_purpose: get(cols.purpose),
+        default_purpose: unguard(get(cols.purpose)),
         errors,
     }
 }
@@ -246,7 +254,17 @@ pub struct MandateImportResult {
     pub failed: Vec<String>,
 }
 
+/// A cell that starts with `= + - @` (or tab/CR) is read as a formula by
+/// spreadsheets: the export prefixes `'`, the import takes a `'` before such a
+/// character off again.
 fn field(s: &str) -> String {
+    let guarded;
+    let s = if s.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        guarded = format!("'{s}");
+        guarded.as_str()
+    } else {
+        s
+    };
     if s.contains([';', '"', '\n', '\r']) {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {

@@ -175,6 +175,17 @@ fn merge_duplicate_account(conn: &Connection, keep: i64, dup: i64) -> CoreResult
         "UPDATE OR IGNORE planned_transfers SET account_id = ?1 WHERE account_id = ?2",
         params![keep, dup],
     )?;
+    // direct debit data (#143): same reason, no cascade on these tables
+    conn.execute(
+        "UPDATE OR IGNORE mandates SET account_id = ?1 WHERE account_id = ?2",
+        params![keep, dup],
+    )?;
+    conn.execute("DELETE FROM mandates WHERE account_id = ?1", [dup])?;
+    conn.execute(
+        "UPDATE OR IGNORE creditor_ids SET account_id = ?1 WHERE account_id = ?2",
+        params![keep, dup],
+    )?;
+    conn.execute("DELETE FROM creditor_ids WHERE account_id = ?1", [dup])?;
     // standing orders are replaced on every fetch
     conn.execute("DELETE FROM standing_orders WHERE account_id = ?1", [dup])?;
     Ok(())
@@ -471,10 +482,10 @@ mod tests {
     use super::*;
     use crate::models::BookingFilter;
 
-    /// Standing order and planned data hang on the duplicate
+    /// Direct debit, standing order and planned data hang on the duplicate
     /// account: merging must neither fail on the foreign keys nor lose them.
     #[test]
-    fn dedup_moves_planned_data_to_the_kept_account() {
+    fn dedup_moves_mandates_and_planned_data_to_the_kept_account() {
         let dir = crate::test_support::TempDir::new("girocrab-dedup-debit");
         let v = Vault::open(
             dir.join("v.db").to_string_lossy().to_string(),
@@ -506,6 +517,19 @@ mod tests {
         };
         {
             let db = v.db().unwrap();
+            for (acc, reference) in [(keep_acc, "M-1"), (dup_acc, "M-1"), (dup_acc, "M-2")] {
+                db.execute(
+                    "INSERT INTO mandates(account_id, debtor_name, debtor_iban, reference, signed_date, created_ms)
+                     VALUES (?1, 'X', 'DE89370400440532013000', ?2, '2025-01-01', 0)",
+                    params![acc, reference],
+                )
+                .unwrap();
+            }
+            db.execute(
+                "INSERT INTO creditor_ids(account_id, creditor_id, updated_ms) VALUES (?1, 'DE98ZZZ09999999999', 0)",
+                [dup_acc],
+            )
+            .unwrap();
             db.execute(
                 "INSERT INTO standing_orders(account_id, key, amount_cents, first_date, time_unit, interval, exec_day, fetched_ms)
                  VALUES (?1, 'k', 100, '2026-01-01', 'M', 1, 1, 0)",
@@ -530,6 +554,18 @@ mod tests {
             )
             .unwrap();
         assert_eq!(left, keep_acc);
+        // M-1 exists on both (the kept one wins), M-2 moves over
+        assert_eq!(
+            one("SELECT count(*) FROM mandates WHERE account_id = ?1", left),
+            2
+        );
+        assert_eq!(
+            one(
+                "SELECT count(*) FROM creditor_ids WHERE account_id = ?1",
+                left
+            ),
+            1
+        );
         assert_eq!(
             one(
                 "SELECT count(*) FROM planned_transfers WHERE account_id = ?1",

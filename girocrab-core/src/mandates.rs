@@ -173,6 +173,11 @@ fn check(input: &MandateInput) -> CoreResult<()> {
     if input.default_amount_cents < 0 {
         return Err(invalid(tr("Der Betrag muss größer als 0 sein.")));
     }
+    if input.default_amount_cents > crate::connectors::fints::sepa::MAX_AMOUNT_CENTS {
+        return Err(invalid(tr(
+            "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+        )));
+    }
     Ok(())
 }
 
@@ -235,76 +240,10 @@ impl Vault {
     /// Creates (`id` = `None`) or changes a mandate. The reference must be
     /// unique per creditor account.
     pub fn save_mandate(&self, id: Option<i64>, input: MandateInput) -> Result<Mandate, CoreError> {
-        check(&input)?;
-        let iban = normalize_iban(&input.debtor_iban);
-        let bic = normalize_iban(&input.debtor_bic);
-        let reference = input.reference.trim().to_string();
-        let db = self.db()?;
-        let clash: Option<i64> = db
-            .query_row(
-                "SELECT id FROM mandates WHERE account_id = ?1 AND reference = ?2",
-                params![input.account_id, reference],
-                |r| r.get(0),
-            )
-            .optional()?;
-        if clash.is_some_and(|c| Some(c) != id) {
-            return Err(invalid(tr(
-                "Diese Mandatsreferenz gibt es für dieses Konto schon.",
-            )));
-        }
-        let new_id = match id {
-            Some(id) => {
-                let n = db.execute(
-                    "UPDATE mandates SET account_id=?2, debtor_name=?3, debtor_iban=?4, debtor_bic=?5,
-                        reference=?6, signed_date=?7, scheme=?8, one_off=?9, default_amount_cents=?10,
-                        default_purpose=?11, note=?12, active=?13 WHERE id = ?1",
-                    params![
-                        id,
-                        input.account_id,
-                        input.debtor_name.trim(),
-                        iban,
-                        bic,
-                        reference,
-                        input.signed_date,
-                        scheme_code(input.scheme),
-                        input.one_off,
-                        input.default_amount_cents,
-                        input.default_purpose.trim(),
-                        input.note.trim(),
-                        input.active
-                    ],
-                )?;
-                if n == 0 {
-                    return Err(invalid(tr("Das Mandat gibt es nicht mehr.")));
-                }
-                id
-            }
-            None => {
-                db.execute(
-                    "INSERT INTO mandates(account_id, debtor_name, debtor_iban, debtor_bic, reference,
-                        signed_date, scheme, one_off, default_amount_cents, default_purpose, note,
-                        active, created_ms)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                    params![
-                        input.account_id,
-                        input.debtor_name.trim(),
-                        iban,
-                        bic,
-                        reference,
-                        input.signed_date,
-                        scheme_code(input.scheme),
-                        input.one_off,
-                        input.default_amount_cents,
-                        input.default_purpose.trim(),
-                        input.note.trim(),
-                        input.active,
-                        crate::user_groups::now_ms()
-                    ],
-                )?;
-                db.last_insert_rowid()
-            }
+        let new_id = {
+            let db = self.db()?;
+            store_mandate(&db, id, &input)?
         };
-        drop(db);
         self.mandate(new_id)?
             .ok_or_else(|| invalid(tr("Das Mandat gibt es nicht mehr.")))
     }
@@ -318,21 +257,31 @@ impl Vault {
         rows: Vec<MandateCsvRow>,
     ) -> Result<MandateImportResult, CoreError> {
         let mut result = MandateImportResult::default();
+        let db = self.db()?;
+        // one transaction: thousands of members import in one commit
+        let tx = db.unchecked_transaction()?;
+        let mut known = mandate_index(&tx, account_id)?;
         for r in rows {
             if let Some(e) = r.errors.first() {
                 result.failed.push(format!("{}: {e}", r.line));
                 continue;
             }
-            let existing = self
-                .list_mandates(Some(account_id))?
-                .into_iter()
-                .find(|m| m.reference == r.reference.trim());
-            match self.save_mandate(existing.as_ref().map(|m| m.id), r.to_input(account_id)) {
-                Ok(_) if existing.is_some() => result.updated += 1,
-                Ok(_) => result.created += 1,
+            let reference = r.reference.trim().to_string();
+            let existing = known.get(&reference).map(|(id, _, _)| *id);
+            // a failing row must not poison the transaction: it stops at its own check
+            match store_mandate(&tx, existing, &r.to_input(account_id)) {
+                Ok(id) => {
+                    if existing.is_some() {
+                        result.updated += 1;
+                    } else {
+                        result.created += 1;
+                    }
+                    known.insert(reference, (id, String::new(), r.active));
+                }
                 Err(e) => result.failed.push(format!("{}: {e}", r.line)),
             }
         }
+        tx.commit()?;
         Ok(result)
     }
 
@@ -398,6 +347,100 @@ impl Vault {
             .optional()?
             .unwrap_or_default())
     }
+}
+
+/// Validates and writes one mandate on `db`; returns its id. Shared by the
+/// single save and the bulk imports (which run many of these in one transaction).
+pub(crate) fn store_mandate(
+    db: &Connection,
+    id: Option<i64>,
+    input: &MandateInput,
+) -> CoreResult<i64> {
+    check(input)?;
+    let iban = normalize_iban(&input.debtor_iban);
+    let bic = normalize_iban(&input.debtor_bic);
+    let reference = input.reference.trim().to_string();
+    let clash: Option<i64> = db
+        .query_row(
+            "SELECT id FROM mandates WHERE account_id = ?1 AND reference = ?2",
+            params![input.account_id, reference],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if clash.is_some_and(|c| Some(c) != id) {
+        return Err(invalid(tr(
+            "Diese Mandatsreferenz gibt es für dieses Konto schon.",
+        )));
+    }
+    Ok(match id {
+        Some(id) => {
+            let n = db.execute(
+                "UPDATE mandates SET account_id=?2, debtor_name=?3, debtor_iban=?4, debtor_bic=?5,
+                    reference=?6, signed_date=?7, scheme=?8, one_off=?9, default_amount_cents=?10,
+                    default_purpose=?11, note=?12, active=?13 WHERE id = ?1",
+                params![
+                    id,
+                    input.account_id,
+                    input.debtor_name.trim(),
+                    iban,
+                    bic,
+                    reference,
+                    input.signed_date,
+                    scheme_code(input.scheme),
+                    input.one_off,
+                    input.default_amount_cents,
+                    input.default_purpose.trim(),
+                    input.note.trim(),
+                    input.active
+                ],
+            )?;
+            if n == 0 {
+                return Err(invalid(tr("Das Mandat gibt es nicht mehr.")));
+            }
+            id
+        }
+        None => {
+            db.execute(
+                "INSERT INTO mandates(account_id, debtor_name, debtor_iban, debtor_bic, reference,
+                    signed_date, scheme, one_off, default_amount_cents, default_purpose, note,
+                    active, created_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![
+                    input.account_id,
+                    input.debtor_name.trim(),
+                    iban,
+                    bic,
+                    reference,
+                    input.signed_date,
+                    scheme_code(input.scheme),
+                    input.one_off,
+                    input.default_amount_cents,
+                    input.default_purpose.trim(),
+                    input.note.trim(),
+                    input.active,
+                    crate::user_groups::now_ms()
+                ],
+            )?;
+            db.last_insert_rowid()
+        }
+    })
+}
+
+/// (id, note, active) of the mandates of one account by reference: the
+/// bulk imports look rows up here instead of listing all mandates per row.
+pub(crate) fn mandate_index(
+    db: &Connection,
+    account_id: i64,
+) -> CoreResult<std::collections::HashMap<String, (i64, String, bool)>> {
+    let mut q =
+        db.prepare("SELECT reference, id, note, active FROM mandates WHERE account_id = ?1")?;
+    let rows = q.query_map([account_id], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            (r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? != 0),
+        ))
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
 }
 
 #[cfg(test)]

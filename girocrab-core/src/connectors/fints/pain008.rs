@@ -196,6 +196,11 @@ pub fn validate_collection(position: usize, c: &Collection) -> CoreResult<()> {
     if c.amount_cents <= 0 {
         return Err(fail(tr("Der Betrag muss größer als 0 sein.")));
     }
+    if c.amount_cents > super::sepa::MAX_AMOUNT_CENTS {
+        return Err(fail(tr(
+            "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+        )));
+    }
     if c.mandate_id.trim().is_empty() || c.mandate_id.trim().chars().count() > 35 {
         return Err(fail(tr(
             "Die Mandatsreferenz fehlt oder ist länger als 35 Zeichen.",
@@ -206,7 +211,7 @@ pub fn validate_collection(position: usize, c: &Collection) -> CoreResult<()> {
             "Die Mandatsreferenz enthält Zeichen, die SEPA nicht erlaubt (nur Buchstaben ohne Umlaute, Ziffern und / - ? : ( ) . , ' + Leerzeichen).",
         )));
     }
-    if c.mandate_date.len() != 10 {
+    if chrono::NaiveDate::parse_from_str(&c.mandate_date, "%Y-%m-%d").is_err() {
         return Err(fail(tr("Das Datum der Mandatsunterschrift fehlt.")));
     }
     Ok(())

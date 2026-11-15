@@ -2,7 +2,7 @@
 //! club): its debtors become mandates, the creditor ID and the sequence types
 //! are taken over.
 
-use crate::connectors::fints::pain008::{parse_pain008, SequenceType};
+use crate::connectors::fints::pain008::{parse_pain008, validate_creditor_id, SequenceType};
 use crate::connectors::fints::sepa::{normalize_iban, validate_creditor_iban_matches};
 use crate::error::CoreError;
 use crate::i18n::tr;
@@ -29,15 +29,32 @@ impl Vault {
             .ok_or_else(|| invalid(tr("Das Konto gibt es nicht mehr.")))?;
         let blocks = parse_pain008(&xml)?;
         let mut result = MandateImportResult::default();
+        let db = self.db()?;
+        let tx = db.unchecked_transaction()?;
+        let mut known = super::mandate_index(&tx, account_id)?;
         for (n, block) in blocks.iter().enumerate() {
             if !validate_creditor_iban_matches(&block.creditor_iban, &account.iban) {
                 return Err(invalid(tr(
                     "Die Datei gehört zu einem anderen Gläubigerkonto als dem gewählten.",
                 )));
             }
-            if n == 0 && self.creditor_id(account_id)?.is_empty() && !block.creditor_id.is_empty() {
+            if n == 0 && !block.creditor_id.is_empty() {
+                let has: bool = tx.query_row(
+                    "SELECT EXISTS (SELECT 1 FROM creditor_ids WHERE account_id = ?1)",
+                    [account_id],
+                    |r| r.get(0),
+                )?;
                 // an invalid ID in the file is simply not taken over
-                let _ = self.set_creditor_id(account_id, block.creditor_id.clone());
+                if !has && validate_creditor_id(&block.creditor_id) {
+                    tx.execute(
+                        "INSERT INTO creditor_ids(account_id, creditor_id, updated_ms) VALUES (?1, ?2, ?3)",
+                        rusqlite::params![
+                            account_id,
+                            block.creditor_id.trim().to_ascii_uppercase(),
+                            crate::user_groups::now_ms()
+                        ],
+                    )?;
+                }
             }
             let scheme = match block.scheme.code() {
                 "COR1" => MandateScheme::Cor1,
@@ -46,10 +63,8 @@ impl Vault {
             };
             for (i, c) in block.collections.iter().enumerate() {
                 let line = format!("{}.{}", n + 1, i + 1);
-                let existing = self
-                    .list_mandates(Some(account_id))?
-                    .into_iter()
-                    .find(|m| m.reference == c.mandate_id.trim());
+                let reference = c.mandate_id.trim().to_string();
+                let existing = known.get(&reference).cloned();
                 let input = MandateInput {
                     account_id,
                     debtor_name: c.debtor_name.clone(),
@@ -61,19 +76,21 @@ impl Vault {
                     one_off: block.sequence == SequenceType::OneOff,
                     default_amount_cents: c.amount_cents,
                     default_purpose: c.purpose.clone(),
-                    note: existing
-                        .as_ref()
-                        .map(|m| m.note.clone())
-                        .unwrap_or_default(),
-                    active: existing.as_ref().is_none_or(|m| m.active),
+                    note: existing.as_ref().map(|m| m.1.clone()).unwrap_or_default(),
+                    active: existing.as_ref().is_none_or(|m| m.2),
                 };
-                match self.save_mandate(existing.as_ref().map(|m| m.id), input) {
-                    Ok(m) => {
+                match super::store_mandate(&tx, existing.as_ref().map(|m| m.0), &input) {
+                    Ok(id) => {
+                        known.insert(reference, (id, input.note.clone(), input.active));
                         if matches!(
                             block.sequence,
                             SequenceType::Recurring | SequenceType::Final
                         ) {
-                            self.mark_collected(vec![m.id], m.signed_date.clone())?;
+                            tx.execute(
+                                "UPDATE mandates SET last_collected = ?2 WHERE id = ?1
+                                   AND (last_collected IS NULL OR last_collected < ?2)",
+                                rusqlite::params![id, input.signed_date],
+                            )?;
                         }
                         if existing.is_some() {
                             result.updated += 1;
@@ -85,6 +102,7 @@ impl Vault {
                 }
             }
         }
+        tx.commit()?;
         Ok(result)
     }
 }

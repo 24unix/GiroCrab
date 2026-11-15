@@ -83,11 +83,33 @@ impl Vault {
             (MandateScheme, SequenceType, Vec<(i64, Collection)>),
         > = BTreeMap::new();
         let due_compact = collection_date.replace('-', "");
+        // one query instead of one per line: runs can have thousands of lines
+        let by_id: std::collections::HashMap<i64, super::Mandate> = self
+            .list_mandates(Some(account_id))?
+            .into_iter()
+            .map(|m| (m.id, m))
+            .collect();
+        let mut seen = std::collections::HashSet::new();
         for item in &items {
-            let m = self
-                .mandate(item.mandate_id)?
-                .filter(|m| m.account_id == account_id)
+            let m = by_id
+                .get(&item.mandate_id)
                 .ok_or_else(|| invalid(tr("Das Mandat gibt es nicht mehr.")))?;
+            if !seen.insert(m.id) {
+                return Err(CoreError::InvalidInput {
+                    message: trf(
+                        "Das Mandat „{0}“ steht mehrfach im Einzug.",
+                        &[&m.reference],
+                    ),
+                });
+            }
+            if m.one_off && m.last_collected.is_some() {
+                return Err(CoreError::InvalidInput {
+                    message: trf(
+                        "Das einmalige Mandat „{0}“ wurde schon eingezogen.",
+                        &[&m.reference],
+                    ),
+                });
+            }
             if !m.active {
                 return Err(CoreError::InvalidInput {
                     message: trf("Das Mandat „{0}“ ist nicht aktiv.", &[&m.reference]),

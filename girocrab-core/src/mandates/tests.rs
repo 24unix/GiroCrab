@@ -336,3 +336,83 @@ fn the_last_collection_is_final() {
         "FRST"
     );
 }
+
+#[test]
+fn a_run_rejects_duplicates_and_collected_one_off_mandates() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    v.set_creditor_id(acc, "DE98ZZZ09999999999".into()).unwrap();
+    let a = v.save_mandate(None, input(acc, "M-A")).unwrap();
+    let item = |id| CollectionItem {
+        mandate_id: id,
+        amount_cents: 1000,
+        purpose: String::new(),
+        last_collection: false,
+    };
+    let date = "2026-12-01".to_string();
+    let e = v
+        .build_collection_files(acc, vec![item(a.id), item(a.id)], date.clone())
+        .unwrap_err();
+    assert!(
+        e.to_string().contains("mehrfach") || e.to_string().contains("more than once"),
+        "{e}"
+    );
+
+    let mut one = input(acc, "M-ONE");
+    one.one_off = true;
+    let o = v.save_mandate(None, one).unwrap();
+    assert!(v
+        .build_collection_files(acc, vec![item(o.id)], date.clone())
+        .is_ok());
+    v.mark_collected(vec![o.id], date.clone()).unwrap();
+    assert!(v
+        .build_collection_files(acc, vec![item(o.id)], date)
+        .is_err());
+}
+
+#[test]
+fn bulk_import_is_one_pass_and_updates_known_references() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    let mut text = String::from("Name;IBAN;Mandatsreferenz;Datum\n");
+    for i in 0..3000 {
+        text.push_str(&format!(
+            "Mitglied {i};DE89370400440532013000;M-{i};2025-01-15\n"
+        ));
+    }
+    let t = std::time::Instant::now();
+    let parsed = parse_mandate_csv(text.clone());
+    let r = v.import_mandate_rows(acc, parsed.rows).unwrap();
+    assert_eq!((r.created, r.updated, r.failed.len()), (3000, 0, 0));
+    let r = v
+        .import_mandate_rows(acc, parse_mandate_csv(text).rows)
+        .unwrap();
+    assert_eq!((r.created, r.updated), (0, 3000));
+    assert!(
+        t.elapsed().as_secs() < 20,
+        "import too slow: {:?}",
+        t.elapsed()
+    );
+}
+
+#[test]
+fn csv_export_guards_formulas_and_import_takes_the_guard_off() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    let mut m = input(acc, "M-F");
+    m.debtor_name = "=HYPERLINK(\"x\")".into();
+    v.save_mandate(None, m).unwrap();
+    let csv = v.export_mandates_csv(acc).unwrap();
+    assert!(csv.contains("'=HYPERLINK"), "{csv}");
+    let back = parse_mandate_csv(csv);
+    assert_eq!(back.rows[0].debtor_name, "=HYPERLINK(\"x\")");
+}
+
+#[test]
+fn amounts_above_the_sepa_limit_are_refused() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    let mut m = input(acc, "M-BIG");
+    m.default_amount_cents = 100_000_000_000;
+    assert!(v.save_mandate(None, m).is_err());
+}
