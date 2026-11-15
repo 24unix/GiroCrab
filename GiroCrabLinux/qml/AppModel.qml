@@ -925,7 +925,10 @@ QtObject {
             const code = a.currency ? a.currency.toUpperCase() : "EUR"
             sums[code] = (sums[code] || 0) + a.balance_cents
         }
-        return Object.keys(sums).sort((a, b) => (a === "EUR") !== (b === "EUR") ? (a === "EUR" ? 1 : -1) : (a < b ? -1 : a > b ? 1 : 0))
+        // Linux: other currencies that sum to 0 are left out (several of them pushed the euro
+        // total out of the narrow row); the euro total always stays.
+        return Object.keys(sums).filter(c => c === "EUR" || sums[c] !== 0)
+            .sort((a, b) => (a === "EUR") !== (b === "EUR") ? (a === "EUR" ? 1 : -1) : (a < b ? -1 : a > b ? 1 : 0))
             .map(c => ({ currency: c, cents: sums[c] }))
     }
     function toggleCollapsedGroup(id) {

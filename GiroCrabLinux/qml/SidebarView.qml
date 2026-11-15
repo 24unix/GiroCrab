@@ -112,6 +112,8 @@ Rectangle {
                 DelegateChoice { roleValue: "allAccounts"; delegate: SidebarRow {
                     id: allRow
                     selectionKey: "all"
+                    // several currencies: one amount per line, right-aligned (never cut off)
+                    rowHeight: Math.max(30, totalsColumn.implicitHeight + 10)
                     TapHandler { acceptedButtons: Qt.RightButton; onTapped: allMenu.popup() }
                     RowLayout {
                         anchors.fill: parent; anchors.leftMargin: 6; anchors.rightMargin: 10; spacing: 6
@@ -121,12 +123,16 @@ Rectangle {
                         SFIcon { symbol: "square.grid.2x2"; size: 16; color: Theme.secondary; Layout.preferredWidth: 20 }
                         Text { text: qsTr("Alle Konten"); font.pixelSize: Theme.body; font.weight: Font.Medium; color: Theme.text
                                elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: 30 }
-                        Repeater {
-                            model: AppModel.allAccountsTotals
-                            Text { required property var modelData
-                                   text: Fmt.money(modelData.cents, modelData.currency)
-                                   font.pixelSize: Theme.callout; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
-                                   color: allRow.selected ? Theme.text : (modelData.cents < 0 ? Theme.negative : Theme.secondary) }
+                        Column {
+                            id: totalsColumn
+                            Repeater {
+                                model: AppModel.allAccountsTotals
+                                Text { required property var modelData
+                                       anchors.right: parent ? parent.right : undefined
+                                       text: Fmt.money(modelData.cents, modelData.currency)
+                                       font.pixelSize: Theme.callout; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
+                                       color: allRow.selected ? Theme.text : (modelData.cents < 0 ? Theme.negative : Theme.secondary) }
+                            }
                         }
                         Badge { count: AppModel.newCount }
                     }
