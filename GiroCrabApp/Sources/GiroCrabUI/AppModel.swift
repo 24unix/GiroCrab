@@ -78,6 +78,11 @@ public final class AppModel {
             // Any other choice in the sidebar ends the merchant list (#495).
             if !appliesMerchantFocus { merchantFocus = nil; merchantFocusReturn = nil }
             listLimit = Self.defaultListLimit
+            // A category with its own default period switches to it; that load covers the selection too (#425).
+            if case .category(let id)? = sidebarSelection, let saved = categoryPeriod(id), saved != period {
+                period = saved
+                return
+            }
             reloadSelection(periodChanged: false)
         }
     }
@@ -118,7 +123,11 @@ public final class AppModel {
     }
     var interactivePeriod: Period {
         get { period }
-        set { loadsSelectionInBackground = true; period = newValue; loadsSelectionInBackground = false }
+        set {
+            loadsSelectionInBackground = true; period = newValue; loadsSelectionInBackground = false
+            // The user's choice becomes the default of the selected category (#425).
+            if case .category(let id)? = sidebarSelection { setCategoryPeriod(newValue, for: id) }
+        }
     }
     /// Latest salary of the selected accounts; start of the `.sinceSalary` period.
     var salaryCycle: SalaryCycle?

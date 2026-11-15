@@ -276,6 +276,21 @@ extension AppModel {
         if period == .custom { periodDidChange() } else { period = .custom }
     }
 
+    private static let categoryPeriodsKey = "period.byCategory"
+
+    /// The period the user last chose for this category (#425); `nil` = follows the current one.
+    func categoryPeriod(_ id: Int64) -> Period? {
+        let map = UserDefaults.standard.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String]
+        return map?[String(id)].flatMap { Period(storageKey: $0) }
+    }
+
+    func setCategoryPeriod(_ period: Period, for id: Int64) {
+        guard let key = period.storageKey() else { return }
+        var map = UserDefaults.standard.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String] ?? [:]
+        map[String(id)] = key
+        UserDefaults.standard.set(map, forKey: Self.categoryPeriodsKey)
+    }
+
     func periodDidChange() {
         listLimit = Self.defaultListLimit
         reloadSelection(periodChanged: true)
