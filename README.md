@@ -44,16 +44,16 @@ zu Ihren Banken per **FinTS 3.0 / HBCI** und **PSD2 (Enable Banking)** – ohne 
 
 ### Für wen ist GiroCrab?
 
-GiroCrab ist eine freie, quelloffene Banking-App (GPLv3) für macOS und – derzeit als Beta über TestFlight – für iPhone und iPad. Alle Daten liegen verschlüsselt auf deinem Gerät. GiroCrab ist ein junges Community-Projekt: Die Bankenabdeckung wächst noch (siehe Bank-Tabelle), und PSD2-Zugänge laufen über einen eigenen, kostenlosen Enable-Banking-Zugang.
+GiroCrab ist eine freie, quelloffene Banking-App (GPLv3) für macOS, Linux (Qt 6 / QML) und – derzeit als Beta über TestFlight – für iPhone und iPad. Alle Daten liegen verschlüsselt auf deinem Gerät. GiroCrab ist ein junges Community-Projekt: Die Bankenabdeckung wächst noch (siehe Bank-Tabelle), und PSD2-Zugänge laufen über einen eigenen, kostenlosen Enable-Banking-Zugang.
 
-### ✨ Neu in v0.6.3
+### ✨ Neu in v0.7.0
 
-- 🏦 **FinTS: Einschritt-Fallback bei Fehler 9010 (#313):** lehnt die Bank die Dialoginitialisierung mit TAN-Prozess 4 ab, versucht GiroCrab es einmalig im Einschritt-Verfahren 999 und merkt sich die Präferenz für die Verbindung.
-- 🧾 **SEPA-Referenzen werden gespeichert:** End-to-End-ID, Mandatsreferenz und Gläubiger-ID landen bankunabhängig am Umsatz (Schema 12) – befüllt von comdirect, FinTS/CAMT und Enable Banking (Mandatsreferenz). Die SEPA-Rohdaten sind in der Buchung aufklappbar (#320). Vor dem Testen eine Sicherungskopie des Tresors anlegen, falls ältere Versionen ihn wieder öffnen sollen.
-- 🔄 **comdirect-Paging korrigiert:** Kontoumsätze blättern bei voller Seite weiter, die PostBox lädt bis zu 500 statt 50 Dokumente.
-- 🪙 **bunq:** externe Sparkonten werden als Sparkonto erkannt, Konten in Auflösung übersprungen.
-- 🏷️ **Kategorien (#94):** eine manuell gesetzte Kategorie oder ein ETF-Sparplan hat Vorrang vor der Eigenkonto-IBAN-Heuristik; Umbuchungen bleiben nur bei unkategorisierten Buchungen automatisch erkannt.
-- 🛡️ **Weitere Korrekturen:** Passworthinweis beim Datenbank-Import (#321), Symlink-Schutz beim Kontoauszug-Import (#318), iOS-Entsperrtext, Sheet-Breiten auf dem iPhone und Mindestdauer des Krabben-Splash (#317) sowie Hinweise bei lang laufenden Tresor-Zugriffen mit Zählung per SQL-Aggregat (#266).
+- 🐧 **Nativer Linux-Port (`GiroCrabLinux/`, #389, #419):** vollständige Qt-6/QML-Desktop-App auf demselben `girocrab-core` – inkl. Secret Service, QtWebEngine, PDF-Belegen, OCR, GiroCode sowie `.deb`- und Flatpak-Paketen.
+- 📊 **Grafische Vermögensübersicht (#348, #415):** neue Seitenleisten-Ansicht „Vermögen“ mit Nettovermögen, Donut-Charts, Cash-Verlauf und gruppierten Karten für Vermögenswerte und Verbindlichkeiten; dazu „Neue Umsätze“ mit Kontenkarten für ungeprüfte Buchungen.
+- 🏦 **Neue Banken & Verbesserungen bei Brokern:** Consorsbank (FinTS), easybank (Kreditkarte, PDF-Abrechnungen), Sachwerte wie Gold, Immobilien und Fahrzeuge, Scalable-Capital-Rundungs- und Depotübertrags-Fix (#411), FNZ/ebase-Portal mit Wertpapierumsätzen (#314) und Enable-Banking-Setup-Hinweise (#344).
+- 🛒 **Amazon-Produktlinks & Inspector-Komfort (#354, #299, #295, #412, #407):** klickbare Artikel-Links (ASIN) im Buchungsdetail, Händlerhistorie getrennt nach „Dieses Konto / Alle Konten“, Kontogruppen-Sortierung bei Belegen und Regeln sowie klare Hinweise bei Splitbuchungen.
+- ☁️ **iCloud-Drive-Ordner „GiroCrab“ (#437):** der Ordner ersetzt den Altordner, vorhandene Daten werden kopiert; dazu Enable-Banking-Zugang über den iCloud-Schlüsselbund teilen (#356).
+- 🛡️ **Weiteres:** In-App-Fehlerbericht mit automatischer Schwärzung (#301), einstellbare Schriftgröße (#343), App zurücksetzen (#241), Budgets bearbeiten und ausblenden (#430) sowie Sicherheits-Updates für Abhängigkeiten (RUSTSEC-2023-0071, -2026-0387, -2026-0502).
 
 **Highlights aus v0.6.2:**
 
@@ -249,16 +249,16 @@ recognition, savings-plan view, loan repayment progress and direct connections t
 
 ### Who is GiroCrab for?
 
-GiroCrab is a free, open-source banking app (GPLv3) for macOS and – currently in beta via TestFlight – for iPhone and iPad. All data stays encrypted on your device. GiroCrab is a young community project: bank coverage is still growing (see the bank table), and PSD2 access works through your own free Enable Banking account.
+GiroCrab is a free, open-source banking app (GPLv3) for macOS, Linux (Qt 6 / QML) and – currently in beta via TestFlight – for iPhone and iPad. All data stays encrypted on your device. GiroCrab is a young community project: bank coverage is still growing (see the bank table), and PSD2 access works through your own free Enable Banking account.
 
-### ✨ What's new in v0.6.3
+### ✨ What's new in v0.7.0
 
-- 🏦 **FinTS: single-step fallback on error 9010 (#313):** if the bank rejects dialog initialisation with TAN process 4, GiroCrab retries once with single-step method 999 and remembers the preference for that connection.
-- 🧾 **SEPA references are stored:** end-to-end ID, mandate reference and creditor ID are kept per booking, independent of the bank (schema 12) – filled by comdirect, FinTS/CAMT and Enable Banking (mandate reference). Raw SEPA data can be expanded in the booking (#320). Make a vault backup first if you may want to open it in an older version again.
-- 🔄 **comdirect paging fixed:** account transactions keep paging on full pages, and the PostBox loads up to 500 instead of 50 documents.
-- 🪙 **bunq:** external savings accounts are recognised as savings accounts, accounts being closed are skipped.
-- 🏷️ **Categories (#94):** a manually set category or an ETF savings plan takes precedence over the own-account IBAN heuristic; transfers are still detected automatically for uncategorised bookings.
-- 🛡️ **More fixes:** password hint for the database import (#321), symlink protection for statement import (#318), iOS unlock text, sheet widths on iPhone and minimum duration of the crab splash (#317), plus reporting of long-running vault accesses and counts via SQL aggregate (#266).
+- 🐧 **Native Linux port (`GiroCrabLinux/`, #389, #419):** a full Qt 6/QML desktop app on the same `girocrab-core` – including Secret Service, QtWebEngine, PDF receipts, OCR, GiroCode, and `.deb` and Flatpak packages.
+- 📊 **Graphical net-worth overview (#348, #415):** new sidebar view “Net worth” with net worth, donut charts, cash history and grouped cards for assets and liabilities; plus “New transactions” with account cards for unreviewed bookings.
+- 🏦 **New banks & broker improvements:** Consorsbank (FinTS), easybank (credit card, PDF statements), tangible assets such as gold, real estate and vehicles, Scalable Capital rounding and depot-transfer fix (#411), FNZ/ebase portal with security transactions (#314) and Enable Banking setup hints (#344).
+- 🛒 **Amazon product links & inspector comfort (#354, #299, #295, #412, #407):** clickable item links (ASIN) in the booking detail, merchant history split into “This account / All accounts”, account-group ordering for receipts and rules, and clear hints for split bookings.
+- ☁️ **iCloud Drive folder “GiroCrab” (#437):** it replaces the legacy folder, existing data is copied; also sharing the Enable Banking application via iCloud Keychain (#356).
+- 🛡️ **More:** in-app bug report with automatic redaction (#301), adjustable text size (#343), reset app (#241), edit and hide budgets (#430), plus dependency security updates (RUSTSEC-2023-0071, -2026-0387, -2026-0502).
 
 **Highlights from v0.6.2:**
 
