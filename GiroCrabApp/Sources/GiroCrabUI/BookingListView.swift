@@ -49,12 +49,21 @@ struct BookingStreamView: View {
                     // Spacing 0: the stream below is one flat run of day headers and
                     // rows that form the day cards; everything above it is one block.
                     LazyVStack(alignment: .leading, spacing: 0) {
+                        #if !os(iOS)
+                        // The scroll-to-top target is the very first thing in the scroll
+                        // content and carries the gap above the first card itself. As a
+                        // zero-height view below a top padding, `scrollTo(…, anchor: .top)`
+                        // scrolled that padding away: after a scope or period change the
+                        // cards sat a few points higher than after launch (GitHub #423).
+                        Color.clear.frame(height: Self.topGap).id(Self.topID)
+                        #endif
                         VStack(alignment: .leading, spacing: 14) {
                         #if os(iOS)
                         // iPhone: header scrolls away so bookings get the screen.
                         header(isOverview: isOverview, emptyVault: emptyVault, scope: $model.scope)
-                        #endif
+                        // Below the header: "to the top" on iPhone means the newest day.
                         Color.clear.frame(height: 0).id(Self.topID)
+                        #endif
                         if emptyVault {
                             EmptyVaultCard()
                         }
@@ -128,7 +137,9 @@ struct BookingStreamView: View {
                         }
                     }
                     .padding(.horizontal, 20)
+                    #if os(iOS)
                     .padding(.top, 4)
+                    #endif
                     .padding(.bottom, 18)
                     .frame(maxWidth: .infinity)
                     // Sachwerte: a click on empty space (margins, gaps between the
@@ -321,6 +332,10 @@ struct BookingStreamView: View {
     }
 
     private static let topID = "stream-top"
+    #if !os(iOS)
+    /// Gap between the fixed header and the first card of the scroll content.
+    static let topGap: CGFloat = 18
+    #endif
 
 
     private func scrollToTop(_ proxy: ScrollViewProxy) {
