@@ -231,13 +231,15 @@ ApplicationWindow {
                 SplitView.minimumWidth: 240; SplitView.preferredWidth: 260; SplitView.maximumWidth: 480
                 onWidthChanged: window.sidebarWidth = width
             }
-            // bookingColumn: Belege replaces the booking list
+            // bookingColumn: Belege or Vermögen replace the booking list
             StackLayout {
                 SplitView.minimumWidth: Math.max(360, Math.min(560, window.width - sidebarPane.width - (AppModel.showInspector ? 280 : 0) - 2))
                 SplitView.fillWidth: true
-                currentIndex: AppModel.sidebarSelection === "documents" ? 1 : 0
+                currentIndex: AppModel.sidebarSelection === "documents" ? 1 : AppModel.sidebarSelection === "wealth" ? 2 : 0
                 BookingStreamView {}
                 DocumentsView {}
+                // built only while shown (it loads the depot positions and the cash history)
+                Loader { active: AppModel.sidebarSelection === "wealth"; sourceComponent: Component { WealthView {} } }
             }
             InspectorView {
                 visible: AppModel.showInspector
@@ -257,7 +259,15 @@ ApplicationWindow {
             anchors.leftMargin: window.sidebarWidth + 8; anchors.rightMargin: 10
             spacing: 6
             Item { Layout.fillWidth: true }
+            // Same toolbar item, other content: the booking filter makes no sense in the wealth view.
             Segmented {
+                visible: AppModel.sidebarSelection === "wealth"
+                options: AppModel.wealthScopes
+                current: AppModel.wealthScope
+                onActivated: id => AppModel.wealthScope = id
+            }
+            Segmented {
+                visible: AppModel.sidebarSelection !== "wealth"
                 options: AppModel.scopes
                 current: AppModel.scope
                 enabled: AppModel.sidebarSelection !== "documents" && AppModel.sidebarSelection !== "newBookings"

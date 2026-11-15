@@ -841,6 +841,9 @@ vault_methods! {
     rename_account(account_id, name)
     // --- depot / loans / dashboard ---
     set_account_initial_balance(account_id, cents) investment_dashboard(months)
+    // --- Vermögen (WealthView) ---
+    list_security_transactions(account_id)
+    list_tangible_account_ids() list_all_asset_items()
     // --- loans / opening balance ---
     list_manual_loans() list_loan_links() create_manual_loan(setup)
     update_manual_loan(account_id, setup) preview_manual_loan(account_id, setup, limit)
@@ -1242,6 +1245,47 @@ mod tests {
             call_ok("bic_for_iban", json!({ "iban": "DE89370400440532013000" })),
             json!("COBADEFF")
         );
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Vermögen (WealthView.qml): Sachwerte accounts and items, depot transactions,
+    /// with the JSON field names the QML reads.
+    #[test]
+    fn wealth_calls() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-wealth-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![5; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        let tangible = call("list_tangible_account_ids", json!({}));
+        let tangible = tangible.as_array().unwrap();
+        assert!(!tangible.is_empty(), "demo has a Sachwerte account");
+        let items = call("list_all_asset_items", json!({}));
+        let items = items.as_array().unwrap();
+        assert!(!items.is_empty());
+        for it in items {
+            assert!(tangible.contains(&it["account_id"]));
+            assert!(it["setup"]["name"].is_string() && it["setup"]["price_source"].is_string());
+            assert!(it["holding"]["value_cents"].is_i64() && it["holding"]["quantity"].is_f64());
+            assert!(it["sold"].is_boolean());
+        }
+        let accounts = call("list_accounts", json!({}));
+        let depot = accounts
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["kind"] == "Brokerage" && !tangible.contains(&a["id"]))
+            .expect("demo depot")["id"]
+            .clone();
+        let txs = call("list_security_transactions", json!({ "account_id": depot }));
+        for t in txs.as_array().unwrap() {
+            assert!(t["direction"].is_string() && t["booking_date"].is_string());
+            assert!(t["fees_cents"].is_i64() && t["taxes_cents"].is_i64());
+        }
         let _ = std::fs::remove_file(path);
     }
 

@@ -42,6 +42,7 @@ Rectangle {
         }
         // „Neue Umsätze“ (#352): a page across all accounts, like „Belege & PostBox“
         out.push({ type: "nav", key: "newBookings", symbol: "tray.full", title: qsTr("Neue Umsätze"), badge: m.newCount })
+        out.push({ type: "nav", key: "wealth", symbol: "chart.pie", title: qsTr("Vermögen"), badge: 0 })
         out.push({ type: "nav", key: "documents", symbol: "doc.on.doc", title: qsTr("Belege & PostBox"), badge: 0 })
         const pending = m.connections.filter(c => !m.allAccounts.some(a => a.connection_id === c.id))
         if (pending.length) {

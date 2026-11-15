@@ -331,6 +331,7 @@ QtObject {
         rules = []; settings = []; dashboard = null; budgets = []; recurring = []; recurringMonth = null; recurringHidden = []
         selectedBookingID = null; stickyBooking = null; salaryCycle = null
         ++loanGeneration; loans = []; loanLinks = ({}); loanEditor = null; openingBalanceRequest = null
+        tangibleAccountIDs = ({}); assetItemsByAccount = ({})
         vaultState = "locked"
     }
 
@@ -358,6 +359,7 @@ QtObject {
                 sidebarSelection = "all"
             rebuildAccountIndex()
         })
+        reloadAssets()
     }
     function rebuildAccountIndex() {
         reloadLoans()
@@ -865,6 +867,7 @@ QtObject {
         if (sel.startsWith("bank:")) { const g = bankGroup(sel.slice(5)); return g ? g.name : qsTr("Bank") }
         if (sel === "uncategorized") return qsTr("Ohne Kategorie")
         if (sel === "documents") return qsTr("Belege & PostBox")
+        if (sel === "wealth") return qsTr("Vermögen")
         if (sel.startsWith("group:")) { const g = groups.find(g => "group:" + g.id === sel); return g ? g.name : qsTr("Gruppe") }
         if (sel.startsWith("userGroup:")) { const g = userGroups.find(g => "userGroup:" + g.uuid === sel); return g ? g.name : qsTr("Gruppe") }
         if (sel.startsWith("account:")) { const a = accountsByID[Number(sel.slice(8))]; return a ? a.name : qsTr("Konto") }
@@ -1453,6 +1456,30 @@ QtObject {
         reloadAccounts()
     }
     function isDepot(a) { return a !== null && (a.kind === "Brokerage" || a.name.toLowerCase().indexOf("depot") >= 0) }
+
+    // MARK: - Vermögen (WealthView.swift) and Sachwerte (AppModel+Assets.swift)
+    /// WealthScope: segmented control of the wealth view, in the toolbar instead of the booking scope.
+    property string wealthScope: "all"
+    readonly property var wealthScopes: [
+        { id: "all", title: qsTr("Alles") }, { id: "cash", title: qsTr("Cash") },
+        { id: "securities", title: qsTr("Wertpapiere") }, { id: "tangibles", title: qsTr("Sachwerte") }
+    ]
+    /// AssetStore: ids of the Sachwerte accounts (as a set) and their items per account id.
+    property var tangibleAccountIDs: ({})
+    property var assetItemsByAccount: ({})
+    /// AppModel.reloadAssets: one core pass for all accounts (prices and points are loaded once).
+    function reloadAssets() {
+        if (!isUnlocked) return
+        run(() => {
+            const ids = {}, items = {}
+            for (const id of core("list_tangible_account_ids")) { ids[id] = true; items[id] = [] }
+            for (const it of core("list_all_asset_items")) (items[it.account_id] || (items[it.account_id] = [])).push(it)
+            tangibleAccountIDs = ids
+            assetItemsByAccount = items
+        })
+    }
+    function isTangible(accountID) { return !!tangibleAccountIDs[accountID] }
+    function assetItems(accountID) { return assetItemsByAccount[accountID] || [] }
 
     // MARK: - Manual loans (ManualLoansUI.swift) and Startsaldo (OpeningBalanceUI.swift)
     // A manual loan has no account at the bank: the core keeps a Stand (balance at the
@@ -2893,6 +2920,9 @@ QtObject {
         case "alltag": scope = "Everyday"; break
         case "sparplaene": case "sparpläne": case "investments": scope = "Investments"; break
         case "belege": case "documents": sidebarSelection = "documents"; break
+        case "vermoegen": case "vermögen": case "wealth": sidebarSelection = "wealth"; break
+        case "vermoegen-wertpapiere": sidebarSelection = "wealth"; wealthScope = "securities"; break
+        case "vermoegen-sachwerte": sidebarSelection = "wealth"; wealthScope = "tangibles"; break
         }
         const q = launchValue("--select")
         const account = q ? allAccounts.find(a => a.name.toLowerCase().includes(q)) : null
