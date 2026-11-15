@@ -37,6 +37,7 @@ pub mod i18n;
 pub mod importers;
 pub mod insights;
 pub mod loans;
+pub mod local_api;
 pub mod merchants;
 pub mod models;
 pub mod money;
