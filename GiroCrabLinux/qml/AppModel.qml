@@ -147,6 +147,12 @@ QtObject {
     property var selectedBookingIDs: ({})
     onSelectedBookingIDChanged: {
         if (stickyBooking !== null && stickyBooking.id !== selectedBookingID) stickyBooking = null
+        if (lingeringBookingID !== null && lingeringBookingID !== selectedBookingID) {
+            const gone = lingeringBookingID
+            lingeringBookingID = null
+            bookings = bookings.filter(b => b.id !== gone)
+            rebuildStream()
+        }
         const ids = {}
         if (selectedBookingID !== null) ids[selectedBookingID] = true
         if (selectedBookingID === null || !selectedBookingIDs[selectedBookingID]) selectedBookingIDs = ids
@@ -156,6 +162,10 @@ QtObject {
     /// (e.g. "Geprüft" under "Neu", "kein Gehalt" in the salary period). It stays
     /// selected and visible in the inspector until the user selects something else.
     property var stickyBooking: null
+    /// The sticky booking was checked while selected in „Neue Umsätze“ or under "Neu": its row
+    /// stays in place (shown as checked) until the user selects something else,
+    /// instead of vanishing under the cursor (#470).
+    property var lingeringBookingID: null
     /// Booking whose inspector note field should take focus (double-click / Return in the list).
     property var pendingNoteFocus: null
     /// Hands keyboard focus back to the booking list (Esc in the note field).
@@ -448,13 +458,28 @@ QtObject {
         listGeneration++
         isLoadingMoreBookings = false
         page = p
-        bookings = p.transactions
+        bookings = keepingLingeringRow(p.transactions)
         const sticky = stickyBooking !== null && stickyBooking.id === selectedBookingID
         if (selectedBookingID !== null && !sticky && !bookings.some(b => b.id === selectedBookingID))
             // „Neue Umsätze“: no booking selected unasked, auto review would check it
             selectedBookingID = bookings.length && sidebarSelection !== "newBookings" ? bookings[0].id : null
         pruneMultiSelection()
         rebuildStream()
+    }
+    /// The lingering booking (checked while selected) at its old place in a
+    /// new page that no longer contains it: before the row that followed it.
+    function keepingLingeringRow(rows) {
+        const id = lingeringBookingID, kept = stickyBooking
+        if (id === null || kept === null || kept.id !== id || rows.some(b => b.id === id)) return rows
+        const old = bookings.findIndex(b => b.id === id)
+        if (old < 0) return rows
+        const ids = {}
+        for (const b of rows) ids[b.id] = true
+        const next = bookings.slice(old + 1).find(b => ids[b.id])
+        const out = rows.slice()
+        const at = next ? out.findIndex(b => b.id === next.id) : -1
+        out.splice(at >= 0 ? at : out.length, 0, kept)
+        return out
     }
     /// After a reload: the multiple selection keeps only bookings the list still
     /// shows (plus the inspector's own booking, which may be sticky).
@@ -512,9 +537,9 @@ QtObject {
 
     /// NewBookings.sections: the loaded bookings by account, known accounts in sidebar order,
     /// then unknown ones in order of appearance. Checked bookings are left out, except the
-    /// one the user just checked (it stays as the sticky booking until the selection moves).
+    /// one the user just checked (lingeringBookingID: it stays until the selection moves).
     function newBookingSections() {
-        const keep = stickyBooking !== null ? stickyBooking.id : null
+        const keep = lingeringBookingID
         const list = bookings.filter(b => !b.checked || b.id === keep)
         const by = {}
         for (const b of list) (by[b.account_id] = by[b.account_id] || []).push(b)
@@ -1023,8 +1048,12 @@ QtObject {
     }
     function setChecked(on, b) {
         run(() => core("set_transaction_checked", { transaction_id: b.id, checked: on }))
-        // With "Neu" / "Geprüft" active the booking leaves the list: keep it in the inspector.
-        if (statusFilter !== "all" && selectedBookingID === b.id) stickyBooking = freshBooking(b)
+        // With "Neu" / "Geprüft" or in „Neue Umsätze“ the booking leaves the list: keep it in the
+        // inspector, and a just checked row in place until the selection moves (#470).
+        if ((statusFilter !== "all" || sidebarSelection === "newBookings") && selectedBookingID === b.id) {
+            stickyBooking = freshBooking(b)
+            lingeringBookingID = on ? b.id : null
+        }
         reloadBookings(); reloadAccounts()
     }
     /// The Buchung menu entry: nothing to do without new bookings, and not in

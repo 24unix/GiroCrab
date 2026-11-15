@@ -546,7 +546,8 @@ Rectangle {
                     Item { Layout.fillWidth: true }
                 }
             }
-            SFIcon { visible: br.booking && br.booking.checked; symbol: "checkmark"; size: 11; color: Theme.tertiary }
+            // the row just checked in „Neue Umsätze“ or under "Neu" stays without a mark until it leaves
+            SFIcon { visible: br.booking && br.booking.checked && AppModel.lingeringBookingID !== br.booking.id; symbol: "checkmark"; size: 11; color: Theme.tertiary }
             SFIcon { visible: br.booking && br.booking.is_pending; symbol: "clock"; size: 11; color: Theme.tertiary }
             AmountLabel { cents: br.booking ? br.booking.amount_cents : 0 }
         }
