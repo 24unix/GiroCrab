@@ -35,6 +35,7 @@ struct PlannedPaymentsView: View {
                 Text("Zahlungen, die bei der Bank bereits beauftragt, aber noch nicht gebucht sind.")
                     .appFont(.caption).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
             }
+            .padding(.horizontal, 20)
             HStack(spacing: 12) {
                 Picker("Konto", selection: $model.plannedAccountFilter) {
                     Text("Alle Konten").tag(Int64?.none)
@@ -55,7 +56,8 @@ struct PlannedPaymentsView: View {
                 .frame(maxWidth: 140)
                 Spacer(minLength: 0)
             }
-            totals
+            .padding(.horizontal, 20)
+            totals.padding(.horizontal, 20)
             if model.plannedPayments.isEmpty {
                 ContentUnavailableView(
                     "Keine geplanten Zahlungen",
@@ -63,21 +65,23 @@ struct PlannedPaymentsView: View {
                     description: Text("Terminüberweisungen und Daueraufträge deiner Bank erscheinen hier bis zur Ausführung."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(selection: $model.selectedPlannedID) {
-                    ForEach(months) { month in
-                        Section {
-                            ForEach(month.items, id: \.id) { p in
-                                row(p).tag(p.id).contextMenu { PlannedActions(payment: p) }
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(months) { month in
+                            monthHeader(month)
+                                .padding(.top, 14)
+                            ForEach(Array(month.items.enumerated()), id: \.element.id) { index, p in
+                                PlannedRow(payment: p, isLast: index == month.items.count - 1)
                             }
-                        } header: {
-                            Text(DateText.date(month.id + "-01")?.formatted(.dateTime.month(.wide).year()) ?? month.id).appSectionHeader()
                         }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 18)
                 }
-                .listStyle(.inset)
             }
         }
-        .padding(16)
+        .padding(.top, 16)
+        .background(Theme.canvas)
         .task(id: ReloadKey(account: model.plannedAccountFilter, horizon: model.plannedHorizon, version: model.plannedVersion)) {
             await model.reloadPlanned()
         }
@@ -100,26 +104,66 @@ struct PlannedPaymentsView: View {
         }
     }
 
-    private func row(_ p: PlannedPayment) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: p.kind == .standingOrder ? "repeat" : "calendar.badge.clock")
-                .foregroundStyle(Theme.accent).frame(width: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(p.counterparty).fontWeight(.medium).lineLimit(1).sensitive()
-                Text(p.purpose.isEmpty ? p.accountName : "\(p.purpose) · \(p.accountName)")
-                    .appFont(.caption).foregroundStyle(Theme.secondary).lineLimit(1).sensitive()
-                Text(p.kindText).appFont(.caption2).foregroundStyle(Theme.secondary)
+    /// Top of a month card, like the day header of the booking stream.
+    private func monthHeader(_ month: Month) -> some View {
+        let sum = month.items.reduce(Int64(0)) { $0 + $1.amountCents }
+        return VStack(spacing: 0) {
+            HStack {
+                Text(DateText.date(month.id + "-01")?.formatted(.dateTime.month(.wide).year()) ?? month.id)
+                    .appFont(.subheadline, weight: .semibold)
+                    .foregroundStyle(Theme.text)
+                Spacer()
+                Text(Money.signed(sum))
+                    .sensitive()
+                    .appFont(.subheadline, monospacedDigit: true)
+                    .foregroundStyle(sum > 0 ? Theme.inflow : Theme.secondary)
             }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(Money.format(p.amountCents))
-                    .appFont(.body, weight: .medium, monospacedDigit: true)
-                    .foregroundStyle(p.amountCents < 0 ? Theme.negative : Theme.invest)
-                    .fixedSize().sensitive()
-                Text(DateText.medium(p.date)).appFont(.caption, monospacedDigit: true).foregroundStyle(Theme.secondary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            Rectangle().fill(Theme.border).frame(height: 1)
+        }
+        .modifier(DayCardSegment(isTop: true, isBottom: false))
+    }
+}
+
+/// One planned payment as a slice of a month card (same look as a booking row).
+private struct PlannedRow: View {
+    @Environment(AppModel.self) private var model
+    let payment: PlannedPayment
+    let isLast: Bool
+
+    var body: some View {
+        let p = payment
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: p.kind == .standingOrder ? "repeat" : "calendar.badge.clock")
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Theme.accent.opacity(0.12)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(p.counterparty).appFont(.body, weight: .medium).lineLimit(1).sensitive()
+                    Text(p.purpose.isEmpty ? p.accountName : "\(p.purpose) · \(p.accountName)")
+                        .appFont(.callout).foregroundStyle(Theme.secondary).lineLimit(1).sensitive()
+                    Text(p.kindText).appFont(.caption).foregroundStyle(Theme.tertiary)
+                }
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 2) {
+                    AmountLabel(cents: p.amountCents).lineLimit(1).fixedSize()
+                    Text(DateText.medium(p.date)).appFont(.caption, monospacedDigit: true).foregroundStyle(Theme.secondary)
+                }
+            }
+            .frame(minHeight: 44, alignment: .top)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 5)
+            .background(model.selectedPlannedID == p.id ? Theme.selection : Color.clear)
+            .contentShape(Rectangle())
+            .onTapGesture { model.selectedPlannedID = p.id }
+            .contextMenu { PlannedActions(payment: p) }
+            if !isLast {
+                Rectangle().fill(Theme.border.opacity(0.7)).frame(height: 1).padding(.leading, 64)
             }
         }
-        .padding(.vertical, 2)
+        .modifier(DayCardSegment(isTop: false, isBottom: isLast))
     }
 }
 
