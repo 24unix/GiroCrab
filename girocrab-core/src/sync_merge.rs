@@ -479,11 +479,30 @@ pub(crate) fn connection_key(conn: &Connection, id: i64) -> CoreResult<String> {
 }
 
 fn key_of_connection(connector: &str, login: &str, bank: &str) -> String {
+    // comdirect via its own API or via FinTS: „Abrufweg umstellen“ (#486)
+    // moves a login between the two, so every device must see one login (#537)
+    if is_comdirect_route(connector) {
+        let login = crate::connections::normalize_login(ConnectorKind::Comdirect, login);
+        return format!("{}|{login}|", ConnectorKind::Comdirect.as_str());
+    }
     let login = match ConnectorKind::from_str(connector) {
         Some(kind) => crate::connections::normalize_login(kind, login),
         None => login.trim().to_string(),
     };
     format!("{connector}|{login}|{bank}")
+}
+
+fn is_comdirect_route(connector: &str) -> bool {
+    connector == ConnectorKind::Comdirect.as_str()
+        || ConnectorKind::fints_blz(connector)
+            .is_some_and(|b| crate::connectors::fints_directory::COMDIRECT_BLZ.contains(&b))
+}
+
+/// An account reference without the mark „Abrufweg umstellen“ sets (#537).
+fn unmarked(external_ref: &str) -> &str {
+    external_ref
+        .strip_prefix(crate::connections::SWITCH_MARK)
+        .unwrap_or(external_ref)
 }
 
 /// `<connection key>|external_ref`, or `|external_ref` without a connection.
@@ -501,7 +520,7 @@ pub(crate) fn account_key(conn: &Connection, id: i64) -> CoreResult<String> {
         Some(c) => connection_key(conn, c)?,
         None => String::new(),
     };
-    Ok(format!("{prefix}|{external_ref}"))
+    Ok(format!("{prefix}|{}", unmarked(&external_ref)))
 }
 
 /// `<account key>|external_id`
@@ -1493,6 +1512,63 @@ pub(crate) fn merge_connections(conn: &Connection) -> CoreResult<HashMap<i64, i6
 /// to the account's bookings here (`recascade_account`). Returns other id ->
 /// local id and the ids of the accounts inserted (`accounts_added` counts the
 /// live ones).
+/// The other device's account `other_id` under another reference on the
+/// same login: that device fetches it another way (comdirect via FinTS
+/// there, via its API here, #537). Same IBAN and currency – else same
+/// account number – and kind. Each side keeps its own reference, which
+/// its next fetch looks for.
+fn same_account_on_login(
+    conn: &Connection,
+    connection_id: i64,
+    other_id: i64,
+) -> CoreResult<Option<i64>> {
+    #[allow(clippy::type_complexity)]
+    let (iban, number, currency, kind, ext, deleted): (
+        String,
+        String,
+        String,
+        String,
+        String,
+        Option<i64>,
+    ) = conn.query_row(
+        "SELECT upper(replace(IFNULL(iban, ''), ' ', '')), IFNULL(account_number, ''),
+                    upper(IFNULL(currency, '')), kind, external_ref, deleted_ms
+               FROM other.accounts WHERE id = ?1",
+        [other_id],
+        |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+            ))
+        },
+    )?;
+    // live bank accounts only: tombstones and imported accounts follow the
+    // twin rules (`twins`), a tombstone must never delete a live account here
+    if deleted.is_some()
+        || ext.starts_with("moneymoney-db:")
+        || (iban.is_empty() && number.trim().is_empty())
+    {
+        return Ok(None);
+    }
+    Ok(conn
+        .query_row(
+            "SELECT id FROM main.accounts
+              WHERE connection_id = ?1 AND deleted_ms IS NULL AND kind = ?4
+                AND external_ref NOT LIKE 'moneymoney-db:%'
+                AND upper(IFNULL(currency, '')) = ?5
+                AND CASE WHEN ?2 <> '' THEN upper(replace(IFNULL(iban, ''), ' ', '')) = ?2
+                         ELSE trim(IFNULL(account_number, '')) = trim(?3) END
+              ORDER BY id LIMIT 1",
+            params![connection_id, iban, number, kind, currency],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
 pub(crate) fn merge_accounts(
     conn: &Connection,
     conn_map: &HashMap<i64, i64>,
@@ -1536,14 +1612,20 @@ pub(crate) fn merge_accounts(
             let con = ocon.and_then(|c| conn_map.get(&c).copied());
             let existing: Option<i64> = conn
                 .query_row(
-                    // includes soft-deleted rows
-                    "SELECT id FROM accounts WHERE connection_id IS ?1 AND external_ref = ?2",
-                    params![con, ext],
+                    // includes soft-deleted rows; a reference marked by
+                    // „Abrufweg umstellen“ on one side is the same account (#537)
+                    "SELECT id FROM accounts WHERE connection_id IS ?1
+                       AND (external_ref = ?2 OR external_ref = ?3 || ?2 OR ?3 || external_ref = ?2)
+                     ORDER BY external_ref = ?2 DESC, id LIMIT 1",
+                    params![con, ext, crate::connections::SWITCH_MARK],
                     |r| r.get(0),
                 )
                 .optional()?;
             let existing = match (existing, con) {
-                (None, Some(c)) => twins::adopt_on_merge(conn, c, oid)?,
+                (None, Some(c)) => match twins::adopt_on_merge(conn, c, oid)? {
+                    Some(id) => Some(id),
+                    None => same_account_on_login(conn, c, oid)?,
+                },
                 (found, _) => found,
             };
             let id = match existing {
@@ -1721,6 +1803,8 @@ struct OtherBooking {
     account_id: i64,
     external_id: String,
     import_fp: String,
+    /// `import_fp`, or one computed from the booking (see `match_fingerprint`)
+    match_fp: String,
     /// booking_date .. salary_flag, copied as they are into a new row
     rest: Vec<rusqlite::types::Value>,
     /// end_to_end_id, mandate_id, creditor_id, item_refs
@@ -1756,6 +1840,25 @@ fn canonical_external_id<'a>(a: &'a str, b: &'a str) -> &'a str {
 /// field. A won manual clear makes the booking uncategorised and lets the
 /// rules refill it. Afterwards nothing points at a deleted category. Never
 /// stamps anything itself.
+/// The fingerprint a booking is paired by when the two sides know it under
+/// different ids: the stored one (MoneyMoney import, „Abrufweg umstellen“),
+/// else computed the same way from the booking. So a booking fetched over
+/// the bank's API on one device pairs with the same booking another device
+/// fetched via FinTS after switching (#537).
+fn match_fingerprint(
+    stored: String,
+    date: &str,
+    cents: i64,
+    iban: &str,
+    name: &str,
+    purpose: &str,
+) -> String {
+    if !stored.is_empty() {
+        return stored;
+    }
+    crate::importers::moneymoney_import::fingerprint(date, cents, iban, name, purpose)
+}
+
 pub(crate) fn merge_bookings(
     conn: &Connection,
     acc_map: &HashMap<i64, i64>,
@@ -1785,7 +1888,7 @@ pub(crate) fn merge_bookings(
             // includes soft-deleted rows
             "SELECT id, account_id, external_id, import_fp, category_id, category_source,
                     category_ms, note, note_ms, checked, checked_ms, counterparty, purpose,
-                    text_ms, splits_ms, deleted_ms
+                    text_ms, splits_ms, deleted_ms, booking_date, amount_cents, counterparty_iban
              FROM main.transactions ORDER BY id",
         )?;
         let mut rows = st.query([])?;
@@ -1794,10 +1897,15 @@ pub(crate) fn merge_bookings(
             let acc: i64 = r.get(1)?;
             let ext: String = r.get(2)?;
             by_key.insert((acc, ext.clone()), id);
-            let fp: String = r.get(3)?;
-            if !fp.is_empty() {
-                fp_rows.push(((acc, fp), (ext, id)));
-            }
+            let fp = match_fingerprint(
+                r.get(3)?,
+                &r.get::<_, String>(16)?,
+                r.get(17)?,
+                &r.get::<_, String>(18)?,
+                &r.get::<_, String>(11)?,
+                &r.get::<_, String>(12)?,
+            );
+            fp_rows.push(((acc, fp), (ext, id)));
             let source: String = r.get(5)?;
             let manual = if source == "manual" { r.get(4)? } else { None };
             local.insert(
@@ -1831,6 +1939,14 @@ pub(crate) fn merge_bookings(
                 account_id: r.get(1)?,
                 external_id: r.get(2)?,
                 import_fp: r.get(3)?,
+                match_fp: match_fingerprint(
+                    r.get(3)?,
+                    &r.get::<_, String>(4)?,
+                    r.get(6)?,
+                    &r.get::<_, String>(8)?,
+                    &r.get::<_, String>(22)?,
+                    &r.get::<_, String>(23)?,
+                ),
                 rest: (4..14).map(|i| r.get(i)).collect::<Result<_, _>>()?,
                 sepa_refs: (27..31).map(|i| r.get(i)).collect::<Result<_, _>>()?,
                 category_id: cat,
@@ -1912,7 +2028,7 @@ pub(crate) fn merge_bookings(
         o.fields.splits = other_splits.remove(&o.id).unwrap_or_default();
         let existing = match by_key.get(&(acc, o.external_id.clone())) {
             Some(&id) => Some((id, false)),
-            None => match by_fp.get_mut(&(acc, o.import_fp.clone())) {
+            None => match by_fp.get_mut(&(acc, o.match_fp.clone())) {
                 Some(bucket) if !bucket.is_empty() => {
                     let (ext, id) = bucket.remove(0);
                     let key = canonical_external_id(&ext, &o.external_id).to_string();

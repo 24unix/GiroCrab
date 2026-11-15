@@ -504,6 +504,10 @@ fn comdirect_blz(
     Ok(from_iban.or_else(|| COMDIRECT_BLZ.contains(&stored).then(|| stored.to_string())))
 }
 
+/// Reference prefix of the accounts „Abrufweg umstellen“ marks for being
+/// taken over again (`<prefix><old reference>`); the sync ignores it (#537).
+pub(crate) const SWITCH_MARK: &str = "moneymoney-db:switch:";
+
 #[uniffi::export]
 impl Vault {
     /// Switches a comdirect login between comdirect's own API and FinTS
@@ -549,10 +553,12 @@ impl Vault {
                 blz,
             )
         } else {
+            // keep the bank code: an imported comdirect login has one, and the
+            // other devices know the login with it (#537)
             (
                 ConnectorKind::Comdirect,
                 ConnectorKind::Comdirect.as_str().to_string(),
-                String::new(),
+                bank_code.clone(),
             )
         };
         // the banking lock may block the new way (e.g. FinTS for this bank code)
@@ -591,9 +597,9 @@ impl Vault {
         // Accounts: re-adoptable by IBAN (`adopt_account` takes over
         // `moneymoney-db:*` refs of the same login on the next fetch).
         tx.execute(
-            "UPDATE accounts SET external_ref = 'moneymoney-db:switch:' || external_ref
+            "UPDATE accounts SET external_ref = ?2 || external_ref
               WHERE connection_id = ?1 AND external_ref NOT LIKE 'moneymoney-db:%'",
-            [connection_id],
+            params![connection_id, SWITCH_MARK],
         )?;
         // Live bookings: re-adoptable like imported ones (`mm-*`, with a
         // fingerprint). Tombstones keep their ids for multi-device merges.
@@ -855,7 +861,7 @@ mod tests {
         let conn = &v.list_bank_connections().unwrap()[0];
         assert_eq!(
             (conn.connector, conn.bank_code.as_str()),
-            (ConnectorKind::Comdirect, "")
+            (ConnectorKind::Comdirect, "20041155")
         );
 
         // other banks are refused
@@ -1110,5 +1116,244 @@ mod tests {
             1
         );
         let _ = std::fs::remove_file(p);
+    }
+
+    /// A comdirect login (bank code set, as after a database import) with a
+    /// giro account, a depot without IBAN, a deleted imported twin depot and
+    /// one booking. Returns (vault, connection, giro, depot, booking).
+    fn comdirect_vault(
+        dir: &std::path::Path,
+        file: &str,
+    ) -> (std::sync::Arc<Vault>, i64, i64, i64, i64) {
+        let v = Vault::open(dir.join(file).to_string_lossy().to_string(), vec![9u8; 32]).unwrap();
+        let c = v
+            .add_bank_connection(ConnectorKind::Comdirect, String::new(), "12345678".into())
+            .unwrap();
+        let db = v.db().unwrap();
+        db.execute(
+            "UPDATE bank_connections SET bank_code = '20041155' WHERE id = ?1",
+            [c],
+        )
+        .unwrap();
+        db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+            .unwrap();
+        let g = db.last_insert_rowid();
+        let add = |ext: &str, name: &str, kind: &str, iban: &str| -> i64 {
+            db.execute(
+                "INSERT INTO accounts(connection_id, group_id, external_ref, name, kind, iban)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![c, g, ext, name, kind, iban],
+            )
+            .unwrap();
+            db.last_insert_rowid()
+        };
+        let giro = add(
+            "A1B2C3",
+            "Girokonto",
+            "checking",
+            "DE10 2004 1155 0123 4567 89",
+        );
+        let depot = add("dep-1", "Depot", "brokerage", "");
+        let twin = add("moneymoney-db:old-depot", "Depot", "brokerage", "");
+        db.execute("UPDATE accounts SET deleted_ms = 1 WHERE id = ?1", [twin])
+            .unwrap();
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+             VALUES (?1, 'rest-1', '2026-11-03', -8600, 'Vattenfall', 'Abschlag')",
+            [giro],
+        )
+        .unwrap();
+        let booking = db.last_insert_rowid();
+        drop(db);
+        (v, c, giro, depot, booking)
+    }
+
+    /// #537: there and back again keeps the bank code, and the next fetch
+    /// takes the depot (no IBAN, a deleted twin of its kind) over again.
+    #[test]
+    fn switching_back_keeps_bank_code_and_readopts_the_depot() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-back");
+        let (v, c, _, depot, _) = comdirect_vault(dir.path(), "v.db");
+        v.switch_comdirect_access(c).unwrap();
+        assert_eq!(v.switch_comdirect_access(c).unwrap(), "comdirect");
+        let conn = &v.list_bank_connections().unwrap()[0];
+        assert_eq!(conn.bank_code, "20041155");
+        let db = v.db().unwrap();
+        let adopted = crate::importers::moneymoney_db::adopt_account(
+            &db,
+            c,
+            "dep-1",
+            "",
+            "EUR",
+            crate::models::AccountKind::Brokerage,
+        )
+        .unwrap();
+        assert_eq!(adopted, Some(depot));
+        let ext: String = db
+            .query_row(
+                "SELECT external_ref FROM accounts WHERE id = ?1",
+                [depot],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ext, "dep-1");
+    }
+
+    /// #537: device A switches to FinTS and fetches; device B never switched.
+    /// Merging both ways keeps one connection, one account each, one booking.
+    #[test]
+    fn a_switch_on_one_device_does_not_duplicate_on_the_other() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-sync");
+        let (a, c, giro, _, booking) = comdirect_vault(dir.path(), "a.db");
+        let b_path = dir.join("b.db").to_string_lossy().to_string();
+        a.write_snapshot(b_path.clone()).unwrap();
+        let b = Vault::open(b_path.clone(), vec![9u8; 32]).unwrap();
+
+        a.switch_comdirect_access(c).unwrap();
+        {
+            // A's first FinTS fetch: the giro account by IBAN, the booking by fingerprint
+            let db = a.db().unwrap();
+            let iban = "DE10200411550123456789";
+            let adopted = crate::importers::moneymoney_db::adopt_account(
+                &db,
+                c,
+                iban,
+                iban,
+                "EUR",
+                crate::models::AccountKind::Checking,
+            )
+            .unwrap();
+            assert_eq!(adopted, Some(giro));
+            assert!(crate::importers::moneymoney_import::adopt_import(
+                &db,
+                giro,
+                "fints-77",
+                "2026-11-03",
+                -8600,
+                "",
+                "VATTENFALL",
+                "Abschlag",
+                "LASTSCHRIFT",
+            )
+            .unwrap());
+            let ext: String = db
+                .query_row(
+                    "SELECT external_id FROM transactions WHERE id = ?1",
+                    [booking],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(ext, "fints-77");
+        }
+
+        let a_path = dir.join("a-snap.db").to_string_lossy().to_string();
+        a.write_snapshot(a_path.clone()).unwrap();
+        b.merge_other_vault(a_path, vec![9u8; 32]).unwrap();
+        let b_snap = dir.join("b-snap.db").to_string_lossy().to_string();
+        b.write_snapshot(b_snap.clone()).unwrap();
+        a.merge_other_vault(b_snap, vec![9u8; 32]).unwrap();
+
+        for (name, v) in [("A", &a), ("B", &b)] {
+            let db = v.db().unwrap();
+            let n = |sql: &str| -> i64 { db.query_row(sql, [], |r| r.get(0)).unwrap() };
+            assert_eq!(
+                n("SELECT count(*) FROM bank_connections WHERE deleted_ms IS NULL"),
+                1,
+                "{name}: connections"
+            );
+            assert_eq!(
+                n("SELECT count(*) FROM accounts WHERE deleted_ms IS NULL AND kind = 'checking'"),
+                1,
+                "{name}: giro accounts"
+            );
+            assert_eq!(
+                n("SELECT count(*) FROM accounts WHERE deleted_ms IS NULL AND kind = 'brokerage'"),
+                1,
+                "{name}: depots"
+            );
+            assert_eq!(
+                n("SELECT count(*) FROM transactions WHERE deleted_ms IS NULL"),
+                1,
+                "{name}: bookings"
+            );
+        }
+    }
+
+    /// #537, the reported case: there and back again without a FinTS fetch,
+    /// the next fetch over the API, then a sync with a device that never switched.
+    #[test]
+    fn there_and_back_then_sync_keeps_one_of_everything() {
+        let dir = crate::test_support::TempDir::new("girocrab-switch-roundtrip");
+        let (a, c, giro, depot, booking) = comdirect_vault(dir.path(), "a.db");
+        let b_path = dir.join("b.db").to_string_lossy().to_string();
+        a.write_snapshot(b_path.clone()).unwrap();
+        let b = Vault::open(b_path, vec![9u8; 32]).unwrap();
+
+        a.switch_comdirect_access(c).unwrap();
+        a.switch_comdirect_access(c).unwrap();
+        {
+            // the API fetch: same references and ids as before the switch
+            let db = a.db().unwrap();
+            let iban = "DE10200411550123456789";
+            let take = |ext: &str, iban: &str, kind| {
+                crate::importers::moneymoney_db::adopt_account(&db, c, ext, iban, "EUR", kind)
+                    .unwrap()
+            };
+            assert_eq!(
+                take("A1B2C3", iban, crate::models::AccountKind::Checking),
+                Some(giro)
+            );
+            assert_eq!(
+                take("dep-1", "", crate::models::AccountKind::Brokerage),
+                Some(depot)
+            );
+            assert!(crate::importers::moneymoney_import::adopt_import(
+                &db,
+                giro,
+                "rest-1",
+                "2026-11-03",
+                -8600,
+                "",
+                "Vattenfall",
+                "Abschlag",
+                "",
+            )
+            .unwrap());
+            let ext: String = db
+                .query_row(
+                    "SELECT external_id FROM transactions WHERE id = ?1",
+                    [booking],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(ext, "rest-1");
+        }
+
+        let a_snap = dir.join("a-snap.db").to_string_lossy().to_string();
+        a.write_snapshot(a_snap.clone()).unwrap();
+        b.merge_other_vault(a_snap, vec![9u8; 32]).unwrap();
+        let b_snap = dir.join("b-snap.db").to_string_lossy().to_string();
+        b.write_snapshot(b_snap.clone()).unwrap();
+        a.merge_other_vault(b_snap, vec![9u8; 32]).unwrap();
+
+        for (name, v) in [("A", &a), ("B", &b)] {
+            let db = v.db().unwrap();
+            let n = |sql: &str| -> i64 { db.query_row(sql, [], |r| r.get(0)).unwrap() };
+            assert_eq!(
+                n("SELECT count(*) FROM bank_connections WHERE deleted_ms IS NULL"),
+                1,
+                "{name}: connections"
+            );
+            assert_eq!(
+                n("SELECT count(*) FROM accounts WHERE deleted_ms IS NULL"),
+                2,
+                "{name}: accounts"
+            );
+            assert_eq!(
+                n("SELECT count(*) FROM transactions WHERE deleted_ms IS NULL"),
+                1,
+                "{name}: bookings"
+            );
+        }
     }
 }

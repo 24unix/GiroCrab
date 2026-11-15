@@ -2006,7 +2006,18 @@ pub(crate) fn adopt_account(
     kind: AccountKind,
 ) -> CoreResult<Option<i64>> {
     let iban = sepa::normalize_iban(iban);
-    let id: Option<i64> = if iban.is_empty() {
+    // „Abrufweg umstellen“ marked it: the same way back finds it by its old
+    // reference, also without an IBAN (a depot next to a deleted twin, #537)
+    let switched: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref = ?2 AND deleted_ms IS NULL",
+            params![connection_id, format!("{}{external_ref}", crate::connections::SWITCH_MARK)],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let id: Option<i64> = if switched.is_some() {
+        switched
+    } else if iban.is_empty() {
         // Prefer imported accounts without an IBAN; a connector that reports
         // none (Amazon Visa web login) may still find the card with the IBAN
         // MoneyMoney stored for it – if it is the only one of its kind here.
