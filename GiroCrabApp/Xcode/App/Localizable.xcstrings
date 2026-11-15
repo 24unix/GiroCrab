@@ -2347,7 +2347,14 @@
     },
     "Aktien" : {
       "extractionState" : "manual",
-      "shouldTranslate" : false
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stocks"
+          }
+        }
+      }
     },
     "Aktion" : {
       "extractionState" : "manual",
@@ -3490,7 +3497,14 @@
     },
     "Anleihen" : {
       "extractionState" : "manual",
-      "shouldTranslate" : false
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bonds"
+          }
+        }
+      }
     },
     "Anmelden & Abrufen" : {
       "extractionState" : "manual",
@@ -6379,7 +6393,14 @@
     },
     "CSV importieren …" : {
       "extractionState" : "manual",
-      "shouldTranslate" : false
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import CSV…"
+          }
+        }
+      }
     },
     "CSV speichern%@" : {
       "extractionState" : "manual",
@@ -10459,7 +10480,14 @@
     },
     "Fonds" : {
       "extractionState" : "manual",
-      "shouldTranslate" : false
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funds"
+          }
+        }
+      }
     },
     "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein." : {
       "extractionState" : "manual",
@@ -13297,17 +13325,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remove Category"
-          }
-        }
-      }
-    },
-    "Kategorie in der Buchungszeile anzeigen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show category in booking row"
           }
         }
       }
@@ -25347,9 +25364,6 @@
         }
       }
     },
-    "· ⇄ %@" : {
-      "shouldTranslate" : false
-    },
     "Ältere Buchungen (nicht gezählt)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -26010,9 +26024,6 @@
           }
         }
       }
-    },
-    "⇄ %@ (%@)" : {
-      "shouldTranslate" : false
     },
     "⌘-Klick fügt eine Buchung hinzu oder entfernt sie, ⇧-Klick wählt einen Bereich, ⌘A alle." : {
       "extractionState" : "manual",
