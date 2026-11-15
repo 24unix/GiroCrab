@@ -316,8 +316,12 @@ pub fn parse(xml: &str, account_ref: &str) -> (Vec<RemoteTransaction>, CamtRepor
     }
     let mut out = Vec::new();
     let mut seen: std::collections::HashMap<String, u32> = Default::default();
+    // Some banks (ING) reuse one `AcctSvcrRef` for several entries: it is an
+    // id only on its first occurrence in the document (#445).
+    let mut seen_refs: std::collections::HashSet<String> = Default::default();
     for e in entries {
-        if !(e.status.is_empty() || e.status == "BOOK") {
+        let status = e.status.trim();
+        if !(status.is_empty() || status.eq_ignore_ascii_case("BOOK")) {
             continue;
         }
         let Ok(abs) = parse_cents(&e.amount) else {
@@ -382,8 +386,12 @@ pub fn parse(xml: &str, account_ref: &str) -> (Vec<RemoteTransaction>, CamtRepor
             t.booking_date, t.amount_cents, t.counterparty, t.purpose
         );
         let n = seen.entry(key).or_insert(0);
-        t.external_id = if !e.reference.is_empty() && e.reference != "NONREF" {
-            format!("camt:{}", e.reference)
+        let reference = e.reference.trim();
+        t.external_id = if !reference.is_empty()
+            && reference != "NONREF"
+            && seen_refs.insert(reference.to_string())
+        {
+            format!("camt:{reference}")
         } else {
             t.content_id(*n)
         };
@@ -427,6 +435,30 @@ mod tests {
   <Ntry><Amt Ccy="EUR">9.99</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>PDNG</Cd></Sts><BookgDt><Dt>2026-11-09</Dt></BookgDt></Ntry>
  </Rpt></BkToCstmrAcctRpt>
 </Document>"#;
+
+    #[test]
+    fn repeated_acct_svcr_ref_falls_back_to_content_id() {
+        let entry = |amt: &str, purpose: &str, sts: &str| {
+            format!(
+                "<Ntry><Amt Ccy=\"EUR\">{amt}</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts>{sts}</Sts>\
+                 <BookgDt><Dt>2026-11-07</Dt></BookgDt><AcctSvcrRef>REF1</AcctSvcrRef>\
+                 <NtryDtls><TxDtls><RmtInf><Ustrd>{purpose}</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>"
+            )
+        };
+        let xml = format!(
+            "<Document><BkToCstmrAcctRpt><Rpt>{}{}{}</Rpt></BkToCstmrAcctRpt></Document>",
+            entry("1.00", "a", " book "),
+            entry("2.00", "b", "BOOK"),
+            entry("3.00", "c", "BOOK")
+        );
+        let (txs, _) = parse(&xml, "acc");
+        assert_eq!(txs.len(), 3, "Sts is trimmed and case-insensitive");
+        assert_eq!(txs[0].external_id, "camt:REF1");
+        assert!(!txs[1].external_id.starts_with("camt:"));
+        assert!(!txs[2].external_id.starts_with("camt:"));
+        let ids: std::collections::HashSet<_> = txs.iter().map(|t| &t.external_id).collect();
+        assert_eq!(ids.len(), 3);
+    }
 
     #[test]
     fn parses_camt_052() {

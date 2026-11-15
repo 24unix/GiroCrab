@@ -2222,16 +2222,21 @@ impl BankConnector for FinTsConnector {
                 upd.as_ref()
                     .map(|u| u.allowed.is_empty() || u.allowed.contains("HKEKA")),
             );
+            // Not an error (#449): the app reports "no new statements" with a hint.
             if !supported {
-                return Err(CoreError::Bank {
-                    code: "HKEKA".into(),
-                    message: tr(
-                        "Diese Bank bietet keine elektronischen Kontoauszüge per FinTS an.",
-                    )
-                    .into(),
-                });
+                crate::depot_debug::log("statements: HKEKA not offered by the bank");
+                return Ok(result);
             }
-            result.documents = self.statements_pdf(ctx, acc, &wanted).await?;
+            result.documents = match self.statements_pdf(ctx, acc, &wanted).await {
+                Ok(d) => d,
+                Err(CoreError::Bank { code, .. })
+                    if matches!(code.as_str(), "9010" | "9050" | "9130" | "9140") =>
+                {
+                    crate::depot_debug::log(&format!("statements: HKEKA unsupported ({code})"));
+                    return Ok(result);
+                }
+                Err(e) => return Err(e),
+            };
             result.state = Some(serde_json::to_value(&self.st)?);
             return Ok(result);
         }

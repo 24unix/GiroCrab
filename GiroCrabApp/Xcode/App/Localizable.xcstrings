@@ -396,6 +396,17 @@
         }
       }
     },
+    "%@: keine neuen Kontoauszüge. Falls die Bank keine elektronischen Kontoauszüge per FinTS anbietet, lassen sie sich hier nicht abrufen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@: no new statements. If the bank does not offer electronic statements via FinTS, they cannot be fetched here."
+          }
+        }
+      }
+    },
     "%@: Ø %@, Ende %@" : {
       "extractionState" : "manual",
       "localizations" : {

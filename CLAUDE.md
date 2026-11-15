@@ -164,6 +164,7 @@ whenever `README.md`, `docs/screenshots/**`, `docs/assets/**` or a release chang
 
 ## Third-party notices (dependencies)
 - **Rule:** whenever dependencies in `Cargo.toml` (any workspace crate), `Cargo.lock` or `GiroCrabApp/Package.swift` are added, removed or upgraded (and before every release), `THIRD_PARTY_NOTICES.md` MUST be updated in the same commit/PR (name, version, exact license, repository).
+- Linux: whenever `girocrab-core/Cargo.toml` dependencies or versions change, also sync `GiroCrabLinux/Cargo.lock` (`cargo update -w --manifest-path GiroCrabLinux/Cargo.toml`) and `GiroCrabLinux/packaging/flatpak/cargo-sources.json` (`GiroCrabLinux/packaging/flatpak/update-cargo-sources.sh`) so Flatpak CI (`--locked --offline`) stays green.
 - Check: `scripts/check-third-party-notices.sh` fails if a direct crate or Swift package is missing from the notices (also runs in CI). Run it before pushing and before `scripts/notarize.sh`.
 
 ## Release checklist (`scripts/notarize.sh --upload vX.Y.Z`)
