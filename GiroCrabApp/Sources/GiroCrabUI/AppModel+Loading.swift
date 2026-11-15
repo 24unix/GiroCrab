@@ -217,7 +217,7 @@ extension AppModel {
         case .userGroup(let uuid): accountIDs = userGroupAccountIDs(uuid)
         case .category(let id): category = id
         case .uncategorized: uncategorized = true
-        case .allAccounts, .documents, .newBookings, .wealth, .none: break
+        case .allAccounts, .documents, .newBookings, .planned, .wealth, .none: break
         }
         // Everything new, whatever the list filters say elsewhere.
         if sidebarSelection == .newBookings {
@@ -524,6 +524,7 @@ extension AppModel {
         case .uncategorized: return String(localized: "Ohne Kategorie")
         case .documents: return String(localized: "Belege & PostBox")
         case .newBookings: return String(localized: "Neue Umsätze")
+        case .planned: return String(localized: "Geplant")
         case .wealth: return String(localized: "Vermögen")
         }
     }
@@ -536,7 +537,7 @@ extension AppModel {
         case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .allAccounts, .none: return (String(localized: "Verfügbar (Giro, Tagesgeld, Karten)"), liquidBalance)
         case .category(let id): return categories.first { $0.id == id }.map { (String(localized: "Summe im Zeitraum"), $0.totalCents) }
-        case .uncategorized, .documents, .newBookings, .wealth: return nil
+        case .uncategorized, .documents, .newBookings, .planned, .wealth: return nil
         }
     }
 

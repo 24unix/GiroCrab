@@ -473,6 +473,8 @@ struct MainSplitView: View {
         Group {
             if model.sidebarSelection == .documents {
                 DocumentsView()
+            } else if model.sidebarSelection == .planned {
+                PlannedPaymentsView()
             } else if model.sidebarSelection == .wealth {
                 WealthView()
             } else {
@@ -582,6 +584,11 @@ struct MainSplitView: View {
         .sheet(isPresented: $model.showCategorizer) {
             CategorizerSheet()
                 .environment(model)
+        }
+        .sheet(isPresented: $model.showBatchSheet) {
+            BatchTransferSheet()
+                .environment(model)
+                .interactiveDismissDisabled(model.transferBusy)
         }
         .sheet(isPresented: $model.showTransferSheet) {
             TransferSheetView()

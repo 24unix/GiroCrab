@@ -19,8 +19,8 @@
 //!   position fields on `holdings` (previous day, profit/loss, custody type).
 //! - 15: item references on bookings (#354): `transactions.item_refs`, the
 //!   product ids (ASIN) of an Amazon order, one entry per item.
-//!
 //! - 16: asset classification (#351): persistent per-field user overrides and local holding metadata.
+//! - 17: scheduled transfers (#240): table `planned_transfers`.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -53,6 +53,7 @@ const STEPS: &[Step] = &[
     Step::Hook(security_transactions),                     // 14
     Step::Hook(item_refs),                                 // 15
     Step::Sql(crate::asset_classification::store::SCHEMA), // 16: asset classification (#351)
+    Step::Hook(crate::planned::planned_transfers),         // 17
 ];
 
 /// Step 14 (#314): securities transactions (buy, sell, dividend, fee, tax …)
@@ -576,7 +577,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 16);
+        assert_eq!(SCHEMA_VERSION, 17);
     }
 
     #[test]

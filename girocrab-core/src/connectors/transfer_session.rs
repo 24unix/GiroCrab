@@ -15,6 +15,9 @@ struct TransferState {
     connector: Box<dyn BankConnector>,
     ctx: ConnectContext,
     job: TransferJob,
+    /// Set for a batch transfer; `job` then describes the sum (see
+    /// `Vault::begin_batch_transfer`).
+    batch: Option<BatchTransferJob>,
     account_id: i64,
     /// false = still logging in, true = transfer submitted (waiting for TAN).
     submitted: bool,
@@ -54,12 +57,24 @@ impl TransferSession {
         job: TransferJob,
         account_id: i64,
     ) -> Self {
+        Self::with_batch(vault, connector, ctx, job, None, account_id)
+    }
+
+    fn with_batch(
+        vault: Arc<Vault>,
+        connector: Box<dyn BankConnector>,
+        ctx: ConnectContext,
+        job: TransferJob,
+        batch: Option<BatchTransferJob>,
+        account_id: i64,
+    ) -> Self {
         Self {
             vault,
             state: AsyncMutex::new(TransferState {
                 connector,
                 ctx,
                 job,
+                batch,
                 account_id,
                 submitted: false,
                 done: false,
@@ -67,6 +82,17 @@ impl TransferSession {
                 executed: false,
             }),
         }
+    }
+
+    pub(super) fn new_batch(
+        vault: Arc<Vault>,
+        connector: Box<dyn BankConnector>,
+        ctx: ConnectContext,
+        batch: BatchTransferJob,
+        summary: TransferJob,
+        account_id: i64,
+    ) -> Self {
+        Self::with_batch(vault, connector, ctx, summary, Some(batch), account_id)
     }
 
     async fn advance(
@@ -99,7 +125,10 @@ impl TransferSession {
                 }
                 Ok(Phase::Ready) if !st.submitted => {
                     st.submitted = true;
-                    phase = st.connector.send_transfer(&st.ctx, &st.job).await;
+                    phase = match &st.batch {
+                        Some(b) => st.connector.send_batch_transfer(&st.ctx, b).await,
+                        None => st.connector.send_transfer(&st.ctx, &st.job).await,
+                    };
                 }
                 Ok(Phase::Ready) => {
                     st.connector.finish(&st.ctx).await;
@@ -107,15 +136,24 @@ impl TransferSession {
                     return match st.connector.transfer_result() {
                         TransferResult::Executed { instant } => {
                             st.executed = true;
-                            self.vault.record_pending_transfer(
-                                st.account_id,
-                                &st.job,
-                                if instant {
-                                    "Echtzeitüberweisung (vorgemerkt)"
-                                } else {
-                                    "Überweisung (vorgemerkt)"
-                                },
-                            )?;
+                            if let Some(b) = &st.batch {
+                                self.vault
+                                    .record_batch_transfer(st.account_id, b, &st.job)?;
+                            } else if st.job.execution_date.is_some() {
+                                // scheduled: shown under "Geplant" until the
+                                // bank books it, not as a booking dated today
+                                self.vault.record_planned_transfer(st.account_id, &st.job)?;
+                            } else {
+                                self.vault.record_pending_transfer(
+                                    st.account_id,
+                                    &st.job,
+                                    if instant {
+                                        "Echtzeitüberweisung (vorgemerkt)"
+                                    } else {
+                                        "Überweisung (vorgemerkt)"
+                                    },
+                                )?;
+                            }
                             Ok(TransferStep::Finished {
                                 outcome: TransferOutcome {
                                     instant,
@@ -136,6 +174,14 @@ impl TransferSession {
     /// Stores a booking marked "Status unklar" so the possibly executed order
     /// stays visible (until the bank's booking arrives or 14 days pass).
     fn outcome_unknown(&self, st: &TransferState, reason: String) -> CoreResult<TransferStep> {
+        if let Some(b) = &st.batch {
+            self.vault
+                .record_batch_pending(st.account_id, b, &st.job, "(Status unklar)")?;
+            return Ok(TransferStep::OutcomeUnknown {
+                reason,
+                end_to_end_id: st.job.end_to_end_id.clone(),
+            });
+        }
         self.vault.record_pending_transfer(
             st.account_id,
             &st.job,

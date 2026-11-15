@@ -1299,6 +1299,55 @@ impl Vault {
             )?;
             acc_ids.insert(spec.external_ref, tx.last_insert_rowid());
         }
+        // Scheduled transfers for the "Geplant" page (#240): fictional, relative to today.
+        for (n, (days, name, iban, cents, purpose)) in [
+            (
+                6,
+                "Hausverwaltung Nord",
+                "DE02120300000000202051",
+                85_000,
+                "Miete Dezember",
+            ),
+            (
+                12,
+                "Stadtwerke München",
+                "DE89370400440532013000",
+                8_500,
+                "Abschlag Strom Kd-Nr 482910",
+            ),
+            (
+                23,
+                "Finanzamt Musterstadt",
+                "DE75512108001245126199",
+                62_000,
+                "Einkommensteuer Vorauszahlung Q4",
+            ),
+            (
+                41,
+                "Anna Becker",
+                "DE44500105175407324931",
+                15_000,
+                "Anteil Weihnachtsgeschenk",
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            tx.execute(
+                "INSERT INTO planned_transfers(account_id, end_to_end_id, execution_date, recipient_name,
+                        recipient_iban, amount_cents, purpose, created_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)",
+                params![
+                    acc_ids["demo-giro"],
+                    format!("DEMOPLAN{n}"),
+                    (today + chrono::Duration::days(days)).format("%Y-%m-%d").to_string(),
+                    name,
+                    iban,
+                    cents,
+                    purpose
+                ],
+            )?;
+        }
         // Depot positions: the two savings plans and a money market ETF, summing to the balance
         // of the ETF depot (31.380,00 EUR), and single securities in a depot of their own (16.590,00 EUR): five
         // stocks, a federal bond and a gold ETC. So the "Positionen" cards are not empty in the
