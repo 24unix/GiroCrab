@@ -34,8 +34,8 @@ Item {
         { id: "CounterpartyIban", title: qsTr("IBAN") }
     ]
     readonly property var categoryOptions: AppModel.categories.map(c => ({ id: c.id, title: "    ".repeat(c.depth) + c.name }))
-    readonly property var accountOptions: [{ id: null, title: qsTr("Alle Konten") }]
-        .concat(AppModel.allAccounts.map(a => ({ id: a.id, title: a.bank_name + " – " + a.name })))
+    /// same order and groups as the sidebar (#412)
+    readonly property var accountOptions: AppModel.accountMenuOptions(a => a.bank_name + " – " + a.name)
 
     ColumnLayout {
         anchors.fill: parent
@@ -179,8 +179,8 @@ Item {
                             Layout.fillWidth: true
                             model: form.accountOptions
                             textRole: "title"
-                            currentIndex: form.rule ? Math.max(0, form.accountOptions.findIndex(o => o.id === form.rule.account_id)) : 0
-                            onActivated: i => form.set("account_id", form.accountOptions[i].id)
+                            currentIndex: form.rule ? Math.max(0, form.accountOptions.findIndex(o => o.id === form.rule.account_id && !o.header)) : 0
+                            onActivated: i => { if (!form.accountOptions[i].header) form.set("account_id", form.accountOptions[i].id) }
                         }
                     }
                 }

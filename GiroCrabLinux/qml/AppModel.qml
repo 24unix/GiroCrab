@@ -789,6 +789,31 @@ QtObject {
         })
     }
     function bankGroup(key) { return bankGroups.find(g => g.id === key) || null }
+    /// AccountGroupsModel.swift › accountMenuSections: all accounts grouped and ordered like the
+    /// sidebar shows them in the current view; subgroups carry their path ("Familie › Kinder")
+    /// because a menu cannot indent. Empty sections are dropped.
+    readonly property var accountMenuSections: {
+        let sections
+        if (accountView === "byKind") sections = groups.map(g => ({ id: "k" + g.id, title: g.name, accounts: g.accounts }))
+        else if (accountView === "byBank") sections = bankGroups.map(g => ({ id: "b" + g.id, title: g.name, accounts: g.accounts }))
+        else {
+            let path = []
+            sections = userGroups.map(g => {
+                path = path.slice(0, g.depth).concat([g.name])
+                return { id: "g" + g.uuid, title: path.join(" › "), accounts: g.accounts }
+            })
+        }
+        return sections.filter(s => s.accounts.length > 0)
+    }
+    /// Combo box entries: "Alle Konten", then each section title and its accounts (`label(a)`).
+    function accountMenuOptions(label) {
+        const out = [{ id: null, title: qsTr("Alle Konten") }]
+        for (const s of accountMenuSections) {
+            out.push({ id: undefined, title: s.title, header: true })
+            for (const a of s.accounts) out.push({ id: a.id, title: label(a) })
+        }
+        return out
+    }
     function toggleCollapsedBank(key) {
         const c = Object.assign({}, collapsedBankGroups)
         if (c[key]) delete c[key]; else c[key] = true

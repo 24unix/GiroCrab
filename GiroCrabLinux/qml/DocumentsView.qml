@@ -40,11 +40,14 @@ Rectangle {
                        text: qsTr("Wertpapierabrechnungen, Kontoauszüge, Kassenbons – verschlüsselt im Tresor. PDF oder Foto hierher ziehen: GiroCrab ordnet es dem passenden Umsatz zu.") } }
             RowLayout {
                 spacing: 12; Layout.fillWidth: true
+                // same order and groups as the sidebar (#412)
                 AppComboBox {
+                    readonly property var options: AppModel.accountMenuOptions(a => a.name)
                     Layout.minimumWidth: 120; Layout.maximumWidth: 240; Layout.fillWidth: true
-                    model: [qsTr("Alle Konten")].concat(AppModel.allAccounts.map(a => a.name))
-                    currentIndex: AppModel.documentsAccountFilter === null ? 0 : AppModel.allAccounts.findIndex(a => a.id === AppModel.documentsAccountFilter) + 1
-                    onActivated: i => AppModel.documentsAccountFilter = i === 0 ? null : AppModel.allAccounts[i - 1].id
+                    model: options
+                    textRole: "title"
+                    currentIndex: Math.max(0, options.findIndex(o => o.id === AppModel.documentsAccountFilter && !o.header))
+                    onActivated: i => { if (!options[i].header) AppModel.documentsAccountFilter = options[i].id }
                     ToolTip.text: qsTr("Belege eines Kontos anzeigen"); ToolTip.visible: hovered
                 }
                 Switch { text: qsTr("Nur ohne Buchung"); checked: view.unlinkedOnly; onToggled: view.unlinkedOnly = checked }
