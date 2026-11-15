@@ -12,9 +12,6 @@
         }
       }
     },
-    " · " : {
-      "extractionState" : "manual"
-    },
     "%@ (%@)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1893,7 +1890,8 @@
       }
     },
     "0,00" : {
-      "extractionState" : "manual"
+      "extractionState" : "manual",
+      "shouldTranslate" : false
     },
     "1" : {
       "extractionState" : "manual",
@@ -2336,7 +2334,8 @@
       }
     },
     "Aktien" : {
-      "extractionState" : "manual"
+      "extractionState" : "manual",
+      "shouldTranslate" : false
     },
     "Aktion" : {
       "extractionState" : "manual",
@@ -3478,7 +3477,8 @@
       }
     },
     "Anleihen" : {
-      "extractionState" : "manual"
+      "extractionState" : "manual",
+      "shouldTranslate" : false
     },
     "Anmelden & Abrufen" : {
       "extractionState" : "manual",
@@ -6366,7 +6366,8 @@
       }
     },
     "CSV importieren …" : {
-      "extractionState" : "manual"
+      "extractionState" : "manual",
+      "shouldTranslate" : false
     },
     "CSV speichern%@" : {
       "extractionState" : "manual",
@@ -6589,7 +6590,8 @@
       }
     },
     "DE00 …" : {
-      "extractionState" : "manual"
+      "extractionState" : "manual",
+      "shouldTranslate" : false
     },
     "Darlehen" : {
       "extractionState" : "manual",
@@ -10444,7 +10446,8 @@
       }
     },
     "Fonds" : {
-      "extractionState" : "manual"
+      "extractionState" : "manual",
+      "shouldTranslate" : false
     },
     "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein." : {
       "extractionState" : "manual",
