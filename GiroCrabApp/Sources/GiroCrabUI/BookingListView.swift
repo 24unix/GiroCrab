@@ -501,6 +501,36 @@ struct DayCardRow: View {
     }
 }
 
+/// The purpose shown behind the name in a booking row (#497).
+enum ListPurpose {
+    static func text(for b: Booking) -> String? {
+        text(purpose: b.purpose, cleanPurpose: b.cleanPurpose,
+             shownName: b.merchant.name.isEmpty ? b.bookingText : b.merchant.name,
+             counterparty: b.counterparty, paymentMethod: b.paymentMethod, bookingText: b.bookingText)
+    }
+
+    /// One line of purpose, or nil when there is none or it only repeats what the
+    /// row already shows (merchant name, counterparty, payment method), as card
+    /// payments often do.
+    static func text(purpose: String, cleanPurpose: String, shownName: String, counterparty: String,
+                     paymentMethod: String, bookingText: String) -> String? {
+        let raw = cleanPurpose.isEmpty ? purpose : cleanPurpose
+        let line = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let key = normalized(line)
+        guard !key.isEmpty else { return nil }
+        for shown in [shownName, counterparty, paymentMethod, bookingText] {
+            let other = normalized(shown)
+            if !other.isEmpty, other.contains(key) { return nil }
+        }
+        return line
+    }
+
+    /// Letters and digits only, case-insensitive: "REWE Markt GmbH" ≙ "rewe-markt gmbh".
+    private static func normalized(_ s: String) -> String {
+        String(s.lowercased().unicodeScalars.filter(CharacterSet.alphanumerics.contains))
+    }
+}
+
 /// Exactly three elements: signet · name + subtitle · amount.
 struct BookingRow: View {
     @Environment(AppModel.self) private var model
@@ -540,6 +570,19 @@ struct BookingRow: View {
                         .appFont(.body, weight: .semibold)
                         .foregroundStyle(Theme.text)
                         .lineLimit(1)
+                        .layoutPriority(1)
+                    // Purpose behind the name (#497): takes the space the name leaves and
+                    // is cut off first; the tooltip has the whole text.
+                    if amazonRef == nil, let purpose = ListPurpose.text(for: booking) {
+                        Text(purpose)
+                            .sensitive()
+                            .appFont(.callout)
+                            .foregroundStyle(Theme.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(-1)
+                            .help(purpose)
+                    }
                     if booking.documentCount > 0 {
                         Image(systemName: "doc.text.fill")
                             .appFont(.caption)
