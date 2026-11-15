@@ -39,10 +39,12 @@ Card {
                 spacing: 3
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignTop
-                Text { text: card.headerTitle; font.pixelSize: Theme.title2 + 3; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { text: card.headerTitle; font.pixelSize: Theme.title2 + 3; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true
+                       Sensitive { labels: card.account === null } }   // an account name, or a group / category
                 Text {
                     text: card.account ? [card.account.bank_name, Fmt.iban(card.account.iban)].filter(s => s).join(" · ") : AppModel.lastSyncText
                     font.pixelSize: Theme.caption; color: Theme.secondary
+                    Sensitive { when: card.account !== null }   // IBAN
                 }
                 // AccountCopyMenu on the title
                 TapHandler {
@@ -82,6 +84,7 @@ Card {
                     text: card.balance ? Fmt.money(card.balance.cents) : ""
                     font.pixelSize: Theme.largeTitle + 4; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                     color: card.account && card.account.kind === "Loan" ? Theme.loan : Theme.text
+                    Sensitive {}
                 }
                 Text { Layout.alignment: Qt.AlignRight; text: card.balance ? card.balance.label : ""; font.pixelSize: Theme.caption; color: Theme.secondary }
             }

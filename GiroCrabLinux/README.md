@@ -136,6 +136,7 @@ von der nativen Installation wechselt, kopiert `tresor.girocrab` in den neuen Or
 | SettingsView, AutoReview | SettingsWindow.qml, GeneralSettings.qml, BankConnectionsSettings.qml, SecuritySettings.qml, SettingsFormSection.qml, SettingsFormRow.qml | eigenes Fenster (Strg+,): Allgemein (mit Sprache), Banken, Sicherheit. Entfällt: Mitteilungen, Saldoverlauf-Stil, Händler-Logos, Dokumente-Ordner, Updates, Touch ID, iCloud-Sync |
 | SyncLog | SyncLogWindow.qml | Fenster › Abruf-Protokoll: Suche, Konto-Filter, „Nur Fehler“, Sortierung, CSV-Export, Leeren |
 | HelpView | HelpWindow.qml | Hilfe › GiroCrab-Hilfe (Strg+?). Themen und Kürzel-Beschriftungen (de/en) liest `build.rs` direkt aus HelpView.swift; Tresor-Thema und Tastaturkürzel für Linux angepasst |
+| BugReport, BugReportUI, PrivacyRedaction | BugReportWindow.qml, Sensitive.qml, AppModel.qml, src/bug_report.rs, src/dispatch.rs, cpp/prepare.cpp | Hilfe › „Problem melden …“ (Strg+Alt+B, auch in der Hilfe unter Support, #301): eigenes Fenster mit Screenshot des Hauptfensters, in dem persönliche Daten grau abgedeckt sind, eigene schwarze Markierungen per Maus (Strg+Z / Strg+Umschalt+Z), „Kategorien ausblenden“, „Abruf-Protokoll anhängen“ und der mit `sanitize_report_text` bereinigte Diagnoseblock. „Issue auf GitHub öffnen“ legt das Bild in die Zwischenablage und öffnet ein vorausgefülltes Issue im Browser; gesendet wird nichts. Ansichten im Hauptfenster markieren persönliche Inhalte mit `Sensitive {}` (`Sensitive { labels: true }` für Kategorien, Gruppen, Budgets, Wertpapiere). Aufgenommen wird nur der Inhalt des Hauptfensters ohne Sheets und Menüs; das Bild liegt bis zum Schließen des Fensters in `$XDG_RUNTIME_DIR/girocrab-report` |
 | Screenshot, LaunchOptions | Main.qml, AppModel.qml, cpp/prepare.cpp | siehe „Demo- und Screenshot-Optionen“ |
 | ManualLoansUI | LoanEditorSheet.qml, LoanAssignMenu.qml, ManualLoanDetails.qml, LoanProgressCard.qml, AppModel.qml | Neues Darlehen (Ablage), Darlehen bearbeiten, Stand neu setzen, Live-Vorschau, Buchung › Darlehen zuordnen, „Neues Darlehen aus dieser Buchung …“. Fehlt: Widerrufen |
 | OpeningBalanceUI | OpeningBalanceSheet.qml, AppModel.qml | Startsaldo, Stichtag, Kalibrieren, Vorschau, Entfernen. Fehlt: Widerrufen |
@@ -195,6 +196,7 @@ cargo run -- --demo-filter income|expense    # (Demo) Buchungsliste nur mit Einn
 cargo run -- --demo-menu Buchung             # Menü der Menüleiste mit diesem Titel aufklappen (für Screenshots)
 cargo run -- --dark | --light                # Erscheinungsbild erzwingen (Screenshots)
 cargo run -- --text-size larger              # Schriftgröße erzwingen: standard | large | larger (--screenshot allein: standard)
+cargo run -- --redact[=labels]               # (Entwickler) Hauptfenster wie im Screenshot von „Problem melden“ (mit Kategorien)
 cargo run -- --screenshot /tmp/a.png         # Fenster rendern, als PNG speichern, beenden (impliziert --demo-seed)
 ```
 

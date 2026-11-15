@@ -30,6 +30,8 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 qrcode = { version = "0.14", default-features = false }
 # ZUGFeRD XML embedded in dropped PDF invoices (already used by girocrab-core).
 miniz_oxide = "0.9"
+# Local time of the Abrufprotokoll lines in a bug report (already used by girocrab-core).
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [build-dependencies]
 cxx-qt-build = { version = "0.10", features = ["link_qt_object_files"] }

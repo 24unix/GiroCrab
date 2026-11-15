@@ -142,18 +142,19 @@ Item {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Text { text: row.item.setup.name; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { text: row.item.setup.name; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 3
                     SFIcon { visible: !!row.item.missing_price_date; symbol: "exclamationmark.triangle.fill"; size: 11; color: Theme.warning }
-                    Text { text: view.detail(row.item); font.pixelSize: Theme.callout; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
+                    Text { text: view.detail(row.item); font.pixelSize: Theme.callout; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                 }
             }
             Text {
                 visible: !(row.item.sold && row.item.holding.value_cents === 0)
                 text: Fmt.money(row.item.holding.value_cents)
                 font.pixelSize: Theme.body; font.weight: Font.Medium; font.features: { "tnum": 1 }; color: Theme.text
+                Sensitive {}
             }
         }
         MouseArea {

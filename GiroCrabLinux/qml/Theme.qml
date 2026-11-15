@@ -41,6 +41,8 @@ QtObject {
     readonly property color invest: c("#1F7A5C", "#5EC79F")
     readonly property color negative: c("#B91C1C", "#F87171")
     readonly property color personFill: c("#E2E8F0", "#334155")
+    /// PrivacyRedaction.swift `Color.redactionFill` (systemGray): the opaque box of `Sensitive`.
+    readonly property color redactionFill: "#8E8E93"
     readonly property color personText: c("#475569", "#CBD5E1")
     readonly property color neutralTile: c("#F1F3F5", "#273449")
 

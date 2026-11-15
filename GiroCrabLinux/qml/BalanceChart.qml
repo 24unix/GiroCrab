@@ -156,7 +156,8 @@ Item {
         width: tip.implicitWidth + 12; height: tip.implicitHeight + 8
         x: Math.max(0, Math.min(chart.width - width, chart.xAt(chart.hovered) + 8)); y: 0
         Text { id: tip; anchors.centerIn: parent; font.pixelSize: Theme.caption; color: Theme.text
-               text: chart.hovered >= 0 ? Fmt.medium(chart.points[chart.hovered].date) + "  " + Fmt.money(chart.points[chart.hovered].balance_cents) : "" }
+               text: chart.hovered >= 0 ? Fmt.medium(chart.points[chart.hovered].date) + "  " + Fmt.money(chart.points[chart.hovered].balance_cents) : ""
+               Sensitive {} }
     }
     MouseArea {
         anchors.fill: parent

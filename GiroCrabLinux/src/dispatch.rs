@@ -22,6 +22,13 @@ extern "C" {
         title: *const std::os::raw::c_char,
     ) -> bool;
     fn girocrab_copy_secret(text: *const std::os::raw::c_char);
+    fn girocrab_compose_report(
+        base: *const std::os::raw::c_char,
+        masks: *const f64,
+        count: usize,
+        out: *const std::os::raw::c_char,
+    ) -> bool;
+    fn girocrab_copy_image(path: *const std::os::raw::c_char) -> bool;
 }
 
 /// The vault on screen (demo or personal) – `AppModel.vault`. `None` = locked.
@@ -318,6 +325,48 @@ fn call(method: &str, a: &Value) -> R {
             let title = std::ffi::CString::new(title).map_err(|e| e.to_string())?;
             // SAFETY: as above; both strings outlive the call.
             ok(unsafe { girocrab_grab_window_titled(path.as_ptr(), title.as_ptr()) })
+        }
+        // --- Hilfe › Problem melden (BugReport.swift, #301) ---
+        "sanitize_report_text" => ok(girocrab_core::report_sanitizer::sanitize_report_text(
+            arg(a, "text")?,
+            arg(a, "known_terms")?,
+        )),
+        "bug_report_prepare" => {
+            let v = VAULT.lock().unwrap().clone();
+            ok(crate::bug_report::prepare(
+                v.as_deref(),
+                arg(a, "include_log")?,
+                arg(a, "demo")?,
+            ))
+        }
+        "bug_report_issue_url" => ok(crate::bug_report::issue_url(
+            &arg(a, "info")?,
+            &arg::<Vec<String>>(a, "log")?,
+            arg(a, "with_screenshot")?,
+        )),
+        "bug_report_temp_dir" => ok(crate::bug_report::temp_dir()?.display().to_string()),
+        "bug_report_clear" => {
+            crate::bug_report::clear_temp_dir();
+            ok(())
+        }
+        "bug_report_compose" => {
+            // BugReport.compose: black boxes over unit rectangles, saved as PNG.
+            let base =
+                std::ffi::CString::new(arg::<String>(a, "base")?).map_err(|e| e.to_string())?;
+            let out =
+                std::ffi::CString::new(arg::<String>(a, "path")?).map_err(|e| e.to_string())?;
+            let masks: Vec<[f64; 4]> = arg(a, "masks")?;
+            let flat: Vec<f64> = masks.concat();
+            // SAFETY: GUI thread (Core.call); strings and the slice outlive the call.
+            ok(unsafe {
+                girocrab_compose_report(base.as_ptr(), flat.as_ptr(), masks.len(), out.as_ptr())
+            })
+        }
+        "copy_image" => {
+            let path =
+                std::ffi::CString::new(arg::<String>(a, "path")?).map_err(|e| e.to_string())?;
+            // SAFETY: Core.call runs on the GUI thread (QClipboard); the string outlives the call.
+            ok(unsafe { girocrab_copy_image(path.as_ptr()) })
         }
         // --- settings / recurring ---
         "copy_secret" => {
@@ -1082,6 +1131,8 @@ vault_methods! {
     // --- settings / recurring ---
     list_ignored_recurring(account_ids)
     list_sync_log(filter) clear_sync_log()
+    // --- Problem melden (#301) ---
+    counterparty_names(limit)
     // --- main window / editing ---
     set_checked_for_filter(filter, checked) recurring_snapshot(account_ids, year, month)
     log_sync(connection_id, source, outcome, message, imported)
@@ -1798,6 +1849,58 @@ mod tests {
         assert_eq!(refund["booking_text"], json!("Amazon-Erstattung"));
         assert_eq!(refund["account_id"], order["account_id"]);
         call_ok("lock", json!({}));
+    }
+
+    /// Problem melden (#301): the sanitizer through the bridge, the vault's payee names and
+    /// the issue URL. No network: the URL is only built, never opened.
+    #[test]
+    fn bug_report_calls() {
+        let text = call_ok(
+            "sanitize_report_text",
+            json!({ "text": "Überweisung an Erika Mustermann (DE89370400440532013000) über 1.234,56 € abgelehnt\nZeile 2",
+                    "known_terms": ["Erika Mustermann"] }),
+        );
+        let text = text.as_str().unwrap();
+        for leak in ["Erika", "DE89", "0532013000", "1.234,56"] {
+            assert!(!text.contains(leak), "{leak} in {text}");
+        }
+        assert!(
+            text.contains("[REDACTED]") && text.ends_with("\nZeile 2"),
+            "{text}"
+        );
+
+        let path =
+            std::env::temp_dir().join(format!("girocrab-report-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![7; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let names = dispatch_vault(&v, "counterparty_names", &json!({ "limit": 3 }))
+            .unwrap()
+            .unwrap();
+        let names = names.as_array().unwrap();
+        assert!(!names.is_empty() && names.len() <= 3, "{names:?}");
+        let terms = crate::bug_report::known_terms(
+            &v,
+            &names
+                .iter()
+                .map(|n| n.as_str().unwrap().to_string())
+                .collect::<Vec<_>>(),
+            &girocrab_core::bank_catalog(),
+        )
+        .unwrap();
+        assert!(!terms.is_empty());
+        let prepared = crate::bug_report::prepare(Some(&v), true, true);
+        assert_eq!(prepared["log_unavailable"], json!(false));
+        assert!(prepared["text"].as_str().unwrap().starts_with("GiroCrab "));
+        let url = call_ok(
+            "bug_report_issue_url",
+            json!({ "info": prepared["info"], "log": ["2026-11-14 10:00 · FinTS · manual · error · +1"],
+                    "with_screenshot": true }),
+        );
+        let url = url.as_str().unwrap();
+        assert!(url.starts_with("https://github.com/GiroCrab/GiroCrab/issues/new?title="));
+        assert!(url.contains("%2B1") && !url.contains('+'), "{url}");
+        drop(v);
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

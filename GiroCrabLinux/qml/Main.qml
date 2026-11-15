@@ -181,6 +181,9 @@ ApplicationWindow {
             title: qsTr("&Hilfe")
             Action { text: qsTr("GiroCrab-Hilfe"); shortcut: "Ctrl+?"; onTriggered: AppModel.showHelp = true }
             AppMenuSeparator {}
+            // #301: redacted screenshot + scrubbed diagnostics, then a prefilled issue.
+            Action { text: qsTr("Problem melden …"); shortcut: "Ctrl+Alt+B"; onTriggered: AppModel.showBugReport = true }
+            AppMenuSeparator {}
             Action { text: qsTr("Webseite && Dokumentation (girocrab.de)"); onTriggered: Qt.openUrlExternally("https://girocrab.de") }
             Action { text: qsTr("Fehler melden / Issue erstellen (GitHub)"); onTriggered: Qt.openUrlExternally("https://github.com/GiroCrab/GiroCrab/issues") }
             Action { text: qsTr("Community && Diskussionen (GitHub)"); onTriggered: Qt.openUrlExternally("https://github.com/GiroCrab/GiroCrab/discussions") }
@@ -320,6 +323,7 @@ ApplicationWindow {
                 leftPadding: 28
                 SFIcon { symbol: "magnifyingglass"; size: 14; anchors.verticalCenter: parent.verticalCenter; x: 8 }
                 Keys.onEscapePressed: AppModel.searchText = ""
+                Sensitive { when: search.text !== "" }   // typed names, IBANs, amounts (#301)
             }
         }
     }
@@ -359,6 +363,10 @@ ApplicationWindow {
              onLoaded: { item.reload(); item.requestActivate(); item.raise() } }
     Loader { active: AppModel.showHelp; sourceComponent: Component { HelpWindow {} }
              onLoaded: { item.requestActivate(); item.raise(); item.focusSearch() } }
+    // BugReportView: its own window, so the main window stays free to be captured.
+    Loader { active: AppModel.showBugReport
+             sourceComponent: Component { BugReportWindow { mainWindow: window; captureItem: rootLayout } }
+             onLoaded: { item.requestActivate(); item.raise() } }
     TwoFactorSheet {}
     BankSetupSheet {}
     AccountDocumentsSheet {}

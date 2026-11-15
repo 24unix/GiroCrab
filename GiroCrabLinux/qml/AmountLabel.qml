@@ -16,5 +16,6 @@ Rectangle {
         font.weight: parent.inflow ? Font.DemiBold : Font.Medium
         font.features: { "tnum": 1 }
         color: parent.inflow ? Theme.inflow : Theme.outflow
+        Sensitive {}
     }
 }

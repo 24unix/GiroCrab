@@ -5,6 +5,7 @@
 
 mod banking_policy;
 mod bridge;
+mod bug_report;
 mod dispatch;
 mod i18n;
 mod ocr;
@@ -60,6 +61,7 @@ fn main() {
     let code = unsafe { girocrab_exec_app() };
     // Normal quit: the decrypted QuickLook copies go too (start-up cleans up after a crash).
     dispatch::remove_quicklook_files();
+    bug_report::clear_temp_dir();
     drop(engine);
     // SAFETY: the engine is dropped; nothing uses the application any more.
     unsafe { girocrab_destroy_app() };

@@ -2922,6 +2922,22 @@ QtObject {
     function openSettings(tab) { if (tab) settingsTab = tab; showSettings = true }
     property bool showSyncLog: false
     property bool showHelp: false
+    /// Hilfe › Problem melden … (BugReportWindow, #301)
+    property bool showBugReport: false
+    /// PrivacyRedaction.swift `ReportRedaction` as bits: set while the bug report takes its
+    /// screenshot, so the main window draws `Sensitive {}` content as opaque boxes.
+    readonly property int redactPersonal: 1
+    readonly property int redactLabels: 2
+    property int reportRedaction: 0
+    /// (developer) `--redact` / `--redact=labels`: main window drawn as in the screenshot.
+    readonly property int launchRedaction: launchArgs.indexOf("--redact=labels") >= 0 ? redactPersonal | redactLabels
+        : launchArgs.indexOf("--redact") >= 0 ? redactPersonal : 0
+    readonly property int redaction: reportRedaction | launchRedaction
+    /// BugReport.searchPlaceholder: stands in for typed search text in the picture.
+    readonly property string searchPlaceholder: "•••"
+    /// `text`, or the placeholder while the screenshot hides personal data (parameter texts
+    /// such as an empty state that repeats the search).
+    function redactedSearch(text) { return (redaction & redactPersonal) !== 0 && text !== "" ? searchPlaceholder : text }
     property bool showRecurringSheet: false
     /// Booking whose custom recurrence dates are being edited (CustomDatesSheet).
     property var customRecurringBooking: null

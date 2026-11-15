@@ -265,6 +265,7 @@ Rectangle {
                 font.pixelSize: 36; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                 color: Theme.text
                 fontSizeMode: Text.HorizontalFit; minimumPixelSize: 22; elide: Text.ElideNone
+                Sensitive {}
             }
             Bar { title: qsTr("Vermögenswerte"); cents: sc.assets; fraction: sc.assets / sc.scale; tint: Theme.accent }
             Bar { title: qsTr("Verbindlichkeiten"); cents: -sc.debts; fraction: sc.debts / sc.scale; tint: Theme.negative
@@ -290,7 +291,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Text { text: bar.title; font.pixelSize: Theme.subheadline + 1; font.weight: Font.Medium; color: Theme.text; Layout.fillWidth: true }
-            Text { text: Fmt.money(bar.cents); font.pixelSize: Theme.subheadline + 1; font.features: { "tnum": 1 }; color: Theme.text }
+            Text { text: Fmt.money(bar.cents); font.pixelSize: Theme.subheadline + 1; font.features: { "tnum": 1 }; color: Theme.text; Sensitive {} }
         }
         Item {
             Layout.fillWidth: true; implicitHeight: 6
@@ -330,9 +331,9 @@ Rectangle {
                             spacing: 8
                             Rectangle { width: 9; height: 9; radius: 4.5; color: modelData.color }
                             ColumnLayout { spacing: 0
-                                Text { text: modelData.label; font.pixelSize: Theme.callout + 1; color: Theme.text }
+                                Text { text: modelData.label; font.pixelSize: Theme.callout + 1; color: Theme.text; Sensitive {} }
                                 Text { text: Fmt.money(modelData.cents) + " (" + wv.percent(modelData.cents / Math.max(cc.total, 1)) + ")"
-                                       font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary } }
+                                       font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary; Sensitive {} } }
                         }
                     }
                 }
@@ -378,7 +379,7 @@ Rectangle {
             width: 100; spacing: 0
             Text { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: Fmt.money(donut.total)
                    font.pixelSize: Theme.callout + 1; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: Theme.text
-                   fontSizeMode: Text.HorizontalFit; minimumPixelSize: 8 }
+                   fontSizeMode: Text.HorizontalFit; minimumPixelSize: 8; Sensitive {} }
             Text { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: qsTr("Summe"); font.pixelSize: Theme.caption2; color: Theme.secondary }
         }
     }
@@ -390,7 +391,7 @@ Rectangle {
         Layout.fillWidth: true
         Text { text: parent.title; font.pixelSize: Theme.subheadline + 2; font.weight: Font.DemiBold; color: Theme.text; Layout.fillWidth: true }
         Text { visible: parent.total !== null; text: parent.total !== null ? Fmt.money(parent.total) : ""
-               font.pixelSize: Theme.subheadline + 2; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: Theme.text }
+               font.pixelSize: Theme.subheadline + 2; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: Theme.text; Sensitive {} }
     }
     component Divider: Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
 
@@ -415,10 +416,10 @@ Rectangle {
                     spacing: 8
                     SFIcon { symbol: modelData.sf_symbol; size: 15; color: lc.tint; Layout.preferredWidth: 20 }
                     ColumnLayout { spacing: 1; Layout.fillWidth: true
-                        Text { text: modelData.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { text: modelData.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                         Text { visible: modelData.bank_name !== ""; text: modelData.bank_name; font.pixelSize: Theme.caption2; color: Theme.secondary
                                elide: Text.ElideRight; Layout.fillWidth: true } }
-                    Text { text: Fmt.money(modelData.balance_cents); font.pixelSize: Theme.body; font.features: { "tnum": 1 }; color: Theme.text }
+                    Text { text: Fmt.money(modelData.balance_cents); font.pixelSize: Theme.body; font.features: { "tnum": 1 }; color: Theme.text; Sensitive {} }
                     TapHandler { cursorShape: Qt.PointingHandCursor; onTapped: AppModel.sidebarSelection = "account:" + modelData.id }
                 }
             }
@@ -458,16 +459,16 @@ Rectangle {
                     required property var modelData
                     Layout.fillWidth: true
                     ColumnLayout { spacing: 1; Layout.fillWidth: true
-                        Text { text: modelData.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { text: modelData.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive { labels: true } }
                         Text { text: wv.qty(modelData.quantity) + " · " + modelData.id; font.pixelSize: Theme.caption2; color: Theme.secondary
-                               elide: Text.ElideRight; Layout.fillWidth: true } }
+                               elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} } }
                     ColumnLayout { spacing: 1
-                        Text { Layout.alignment: Qt.AlignRight; text: Fmt.money(modelData.valueCents); font.pixelSize: Theme.body; font.features: { "tnum": 1 }; color: Theme.text }
+                        Text { Layout.alignment: Qt.AlignRight; text: Fmt.money(modelData.valueCents); font.pixelSize: Theme.body; font.features: { "tnum": 1 }; color: Theme.text; Sensitive {} }
                         Text { Layout.alignment: Qt.AlignRight; visible: modelData.dayChangeCents !== null
                                text: modelData.dayChangeCents !== null ? Fmt.signed(modelData.dayChangeCents) : ""
-                               font.pixelSize: Theme.caption2; font.features: { "tnum": 1 }; color: wv.tone(modelData.dayChangeCents) }
+                               font.pixelSize: Theme.caption2; font.features: { "tnum": 1 }; color: wv.tone(modelData.dayChangeCents); Sensitive {} }
                         Text { Layout.alignment: Qt.AlignRight; visible: pc.total > 0; text: wv.percent(modelData.valueCents / Math.max(pc.total, 1))
-                               font.pixelSize: Theme.caption2; font.features: { "tnum": 1 }; color: Theme.secondary } }
+                               font.pixelSize: Theme.caption2; font.features: { "tnum": 1 }; color: Theme.secondary; Sensitive {} } }
                 }
             }
         }
@@ -477,7 +478,7 @@ Rectangle {
         property real cents
         spacing: 6
         Text { text: parent.title; font.pixelSize: Theme.caption; color: Theme.secondary }
-        Text { text: Fmt.signed(parent.cents); font.pixelSize: Theme.callout + 1; font.weight: Font.Medium; font.features: { "tnum": 1 }; color: wv.tone(parent.cents) }
+        Text { text: Fmt.signed(parent.cents); font.pixelSize: Theme.callout + 1; font.weight: Font.Medium; font.features: { "tnum": 1 }; color: wv.tone(parent.cents); Sensitive {} }
     }
 
     component TangiblesCard: Card {
@@ -494,13 +495,13 @@ Rectangle {
                     required property var modelData
                     Layout.fillWidth: true
                     ColumnLayout { spacing: 1; Layout.fillWidth: true
-                        Text { text: modelData.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { text: modelData.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                         Text { visible: modelData.subtitle !== ""; text: modelData.subtitle; font.pixelSize: Theme.caption2; color: Theme.secondary
-                               elide: Text.ElideRight; Layout.fillWidth: true } }
+                               elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} } }
                     ColumnLayout { spacing: 1
-                        Text { Layout.alignment: Qt.AlignRight; text: Fmt.money(modelData.valueCents); font.pixelSize: Theme.body; font.features: { "tnum": 1 }; color: Theme.text }
+                        Text { Layout.alignment: Qt.AlignRight; text: Fmt.money(modelData.valueCents); font.pixelSize: Theme.body; font.features: { "tnum": 1 }; color: Theme.text; Sensitive {} }
                         Text { Layout.alignment: Qt.AlignRight; visible: tc.total > 0; text: wv.percent(modelData.valueCents / Math.max(tc.total, 1))
-                               font.pixelSize: Theme.caption2; font.features: { "tnum": 1 }; color: Theme.secondary } }
+                               font.pixelSize: Theme.caption2; font.features: { "tnum": 1 }; color: Theme.secondary; Sensitive {} } }
                 }
             }
         }
@@ -527,7 +528,7 @@ Rectangle {
         visible: cents !== 0
         Layout.fillWidth: true
         Text { text: parent.title; font.pixelSize: Theme.body; color: Theme.text; Layout.fillWidth: true }
-        Text { text: Fmt.money(parent.cents); font.pixelSize: Theme.body; font.features: { "tnum": 1 }; color: parent.tint }
+        Text { text: Fmt.money(parent.cents); font.pixelSize: Theme.body; font.features: { "tnum": 1 }; color: parent.tint; Sensitive {} }
     }
 
     // MARK: cash history (area chart, back-calculated from bookings)
@@ -618,6 +619,7 @@ Rectangle {
                 x: cash.plotWidth + 6
                 y: Math.max(0, Math.min(cash.height - height, cash.yAt(modelData) - height / 2))
                 text: Fmt.money(Math.round(modelData)); font.pixelSize: Theme.caption2; color: Theme.secondary
+                Sensitive {}   // chart axis values
             }
         }
     }

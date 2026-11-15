@@ -153,7 +153,7 @@ Rectangle {
                     SFIcon { Layout.alignment: Qt.AlignHCenter; symbol: AppModel.searchText ? "magnifyingglass" : "tray"; size: 32 }
                     Text { Layout.alignment: Qt.AlignHCenter; text: AppModel.searchText ? qsTr("Keine Treffer") : qsTr("Keine Buchungen"); font.pixelSize: Theme.title2; font.weight: Font.Bold; color: Theme.text }
                     Text { Layout.alignment: Qt.AlignHCenter; color: Theme.secondary; font.pixelSize: Theme.body
-                           text: AppModel.searchText ? qsTr("Nichts passt zu „%1“.").arg(AppModel.searchText) : qsTr("Konto abrufen oder anderen Zeitraum wählen.") }
+                           text: AppModel.searchText ? qsTr("Nichts passt zu „%1“.").arg(AppModel.redactedSearch(AppModel.searchText)) : qsTr("Konto abrufen oder anderen Zeitraum wählen.") }
                 }
                 // NewBookingsCards: ContentUnavailableView "Keine neuen Umsätze"
                 ColumnLayout {
@@ -367,19 +367,19 @@ Rectangle {
             ColumnLayout {
                 spacing: 2; Layout.fillWidth: true; Layout.alignment: Qt.AlignTop
                 Text { text: nh.section ? nh.section.title : ""; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.text
-                       elide: Text.ElideRight; Layout.fillWidth: true }
+                       elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                 Text { visible: nh.detail !== ""; text: nh.detail; font.pixelSize: Theme.caption; color: Theme.secondary
-                       elide: Text.ElideRight; Layout.fillWidth: true }
+                       elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
             }
             ColumnLayout {
                 spacing: 2; Layout.alignment: Qt.AlignTop
                 Text { visible: nh.account !== null; Layout.alignment: Qt.AlignRight
                        text: nh.account ? Fmt.money(nh.account.balance_cents, nh.account.currency) : ""
                        font.pixelSize: Theme.body; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
-                       color: nh.account && nh.account.balance_cents < 0 ? Theme.negative : Theme.text }
+                       color: nh.account && nh.account.balance_cents < 0 ? Theme.negative : Theme.text; Sensitive {} }
                 Text { visible: nh.section !== null && nh.section.pendingCents !== 0; Layout.alignment: Qt.AlignRight
                        text: nh.section ? qsTr("Vorgemerkt: %1").arg(Fmt.money(nh.section.pendingCents, nh.account ? nh.account.currency : "EUR")) : ""
-                       font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary }
+                       font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary; Sensitive {} }
             }
         }
     }
@@ -397,7 +397,7 @@ Rectangle {
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 16
             Text { text: day ? Fmt.dayHeader(day.date) : ""; font.pixelSize: Theme.subheadline + 1; font.weight: Font.DemiBold; color: Theme.text; Layout.fillWidth: true }
-            Text { text: day ? Fmt.signed(day.sum) : ""; font.pixelSize: Theme.subheadline + 1; font.features: { "tnum": 1 }; color: day && day.sum > 0 ? Theme.inflow : Theme.secondary }
+            Text { text: day ? Fmt.signed(day.sum) : ""; font.pixelSize: Theme.subheadline + 1; font.features: { "tnum": 1 }; color: day && day.sum > 0 ? Theme.inflow : Theme.secondary; Sensitive {} }
         }
     }
 
@@ -554,6 +554,7 @@ Rectangle {
                         text: br.booking ? (br.booking.merchant.name || br.booking.booking_text) : ""
                         font.pixelSize: Theme.body + 1; font.weight: Font.DemiBold; color: Theme.text
                         elide: Text.ElideRight; Layout.fillWidth: true; Layout.maximumWidth: Math.ceil(implicitWidth)
+                        Sensitive {}
                     }
                     SFIcon { visible: br.booking && br.booking.document_count > 0; symbol: "doc.text.fill"; size: 11; color: Theme.withAlpha(Theme.accent, 0.8) }
                     SFIcon { visible: br.booking !== null && AppModel.recurringSeries(br.booking) !== null; symbol: "repeat"; size: 11 }
@@ -673,7 +674,7 @@ Rectangle {
         color: Theme.withAlpha(tint, 0.12)
         RowLayout { id: ac; anchors.centerIn: parent; spacing: 4
             SFIcon { symbol: parent.parent.symbol; size: 11; color: parent.parent.tint }
-            Text { text: parent.parent.label; font.pixelSize: Theme.subheadline + 1; font.weight: Font.Medium; color: parent.parent.tint } }
+            Text { text: parent.parent.label; font.pixelSize: Theme.subheadline + 1; font.weight: Font.Medium; color: parent.parent.tint; Sensitive {} } }
     }
 
     component BookingCategoryLabel: RowLayout {
@@ -682,7 +683,8 @@ Rectangle {
         readonly property color tint: none ? Theme.warning : Theme.readable(booking.category_color_hex)
         spacing: 3
         SFIcon { symbol: none ? "questionmark.folder" : (booking.category_symbol || "tag.fill"); size: 11; color: parent.tint }
-        Text { text: none ? qsTr("Ohne Kategorie") : booking.category_name; font.pixelSize: Theme.callout + 1; font.weight: Font.Medium; color: parent.tint; elide: Text.ElideRight }
+        Text { text: none ? qsTr("Ohne Kategorie") : booking.category_name; font.pixelSize: Theme.callout + 1; font.weight: Font.Medium; color: parent.tint; elide: Text.ElideRight
+               Sensitive { labels: true; when: !parent.none } }
     }
 
     // Onboarding.swift › EmptyVaultCard: the personal vault has no accounts yet.

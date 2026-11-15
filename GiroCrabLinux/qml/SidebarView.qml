@@ -190,7 +190,8 @@ Rectangle {
                                        anchors.right: parent ? parent.right : undefined
                                        text: Fmt.money(modelData.cents, modelData.currency)
                                        font.pixelSize: Theme.callout; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
-                                       color: allRow.selected ? Theme.text : (modelData.cents < 0 ? Theme.negative : Theme.secondary) }
+                                       color: allRow.selected ? Theme.text : (modelData.cents < 0 ? Theme.negative : Theme.secondary)
+                                       Sensitive {} }
                             }
                         }
                         Badge { count: AppModel.newCount }
@@ -209,14 +210,16 @@ Rectangle {
                                      accessibleName: open ? qsTr("Gruppe einklappen") : qsTr("Gruppe ausklappen") }
                         SFIcon { symbol: g.sf_symbol; size: 16; Layout.preferredWidth: 20
                                  color: selected || !g.color_hex ? Theme.secondary : Theme.readable(g.color_hex) }
-                        Text { text: g.name; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { text: g.name; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+                               Sensitive { labels: true } }
                         SFIcon { visible: !g.in_total; symbol: "eye.slash"; size: 11
                                  Accessible.name: qsTr("Nicht in der Gesamtsumme")
                                  HoverHandler { id: eyeHover }
                                  ToolTip.visible: eyeHover.hovered; ToolTip.delay: 600; ToolTip.text: qsTr("Nicht in der Gesamtsumme") }
                         Text { text: Fmt.money(g.balance_cents); font.pixelSize: Theme.callout; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                                opacity: g.in_total ? 1 : 0.6
-                               color: selected ? Theme.text : (g.balance_cents < 0 ? Theme.negative : Theme.secondary) }
+                               color: selected ? Theme.text : (g.balance_cents < 0 ? Theme.negative : Theme.secondary)
+                               Sensitive {} }
                     }
                     // an account goes to the top of this group; a group above it
                     // (upper half) or into it as a subgroup (lower half)
@@ -248,9 +251,11 @@ Rectangle {
                                      onToggled: modelData.bank ? AppModel.toggleCollapsedBank(g.id) : AppModel.toggleCollapsedGroup(g.id)
                                      accessibleName: open ? qsTr("„%1“ einklappen").arg(g.name) : qsTr("„%1“ ausklappen").arg(g.name) }
                         SFIcon { symbol: g.sf_symbol; size: 16; Layout.preferredWidth: 20 }
-                        Text { text: g.name; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { text: g.name; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+                               Sensitive { labels: true; when: !modelData.bank } }   // bank names stay visible
                         Text { text: Fmt.money(g.balance_cents); font.pixelSize: Theme.callout; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
-                               color: selected ? Theme.text : (g.balance_cents < 0 && isLoanGroup ? Theme.loan : (g.balance_cents < 0 ? Theme.negative : Theme.secondary)) }
+                               color: selected ? Theme.text : (g.balance_cents < 0 && isLoanGroup ? Theme.loan : (g.balance_cents < 0 ? Theme.negative : Theme.secondary))
+                               Sensitive {} }
                     }
                 } }
                 DelegateChoice { roleValue: "hint"; delegate: Item {
@@ -333,8 +338,8 @@ Rectangle {
                         Disclosure { visible: modelData.hasChildren; open: modelData.open; onToggled: AppModel.toggleExpandedCategory(c.id) }
                         Item { visible: !modelData.hasChildren; implicitWidth: 12 }
                         SFIcon { symbol: c.sf_symbol; size: 15; color: Theme.withAlpha(Theme.readable(c.color_hex), 0.85); Layout.preferredWidth: 20 }
-                        Text { text: c.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
-                        Text { visible: c.total_cents !== 0; text: Fmt.money(c.total_cents); font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary }
+                        Text { text: c.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive { labels: true } }
+                        Text { visible: c.total_cents !== 0; text: Fmt.money(c.total_cents); font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary; Sensitive {} }
                     }
                 } }
             }

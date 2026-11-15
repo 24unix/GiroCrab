@@ -51,11 +51,11 @@ Rectangle {
                     GridLayout {
                         columns: 2; Layout.fillWidth: true; rowSpacing: 4
                         Text { text: qsTr("Summe"); color: Theme.text; font.pixelSize: Theme.callout + 1; Layout.fillWidth: true }
-                        Text { text: Fmt.money(multi.income + multi.expense); color: Theme.secondary; font.pixelSize: Theme.callout + 1 }
+                        Text { text: Fmt.money(multi.income + multi.expense); color: Theme.secondary; font.pixelSize: Theme.callout + 1; Sensitive {} }
                         Text { visible: multi.income !== 0; text: qsTr("Einnahmen"); color: Theme.text; font.pixelSize: Theme.callout + 1 }
-                        Text { visible: multi.income !== 0; text: Fmt.money(multi.income); color: Theme.secondary; font.pixelSize: Theme.callout + 1 }
+                        Text { visible: multi.income !== 0; text: Fmt.money(multi.income); color: Theme.secondary; font.pixelSize: Theme.callout + 1; Sensitive {} }
                         Text { visible: multi.expense !== 0; text: qsTr("Ausgaben"); color: Theme.text; font.pixelSize: Theme.callout + 1 }
-                        Text { visible: multi.expense !== 0; text: Fmt.money(multi.expense); color: Theme.secondary; font.pixelSize: Theme.callout + 1 }
+                        Text { visible: multi.expense !== 0; text: Fmt.money(multi.expense); color: Theme.secondary; font.pixelSize: Theme.callout + 1; Sensitive {} }
                     }
                     Button { text: qsTr("Kategorisieren …"); icon.name: SF.icon("tag"); highlighted: true; Layout.fillWidth: true; onClicked: AppModel.showCategorizer = true }
                     Button { text: qsTr("Auswahl aufheben"); onClicked: AppModel.selectBooking(AppModel.selectedBookingID) }
@@ -150,8 +150,9 @@ Rectangle {
                         FontMetrics { id: nameMetrics; font: merchantName.font }
                         HoverHandler { id: nameHover; enabled: merchantName.truncated }
                         ToolTip.visible: nameHover.hovered; ToolTip.text: text; ToolTip.delay: 500
+                        Sensitive {}
                     }
-                    Text { text: rc.booking.account_name + " · " + rc.booking.payment_method; font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
+                    Text { text: rc.booking.account_name + " · " + rc.booking.payment_method; font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                     MerchantDomainRow { merchant: rc.booking.merchant; Layout.fillWidth: true }
                     Item { Layout.fillHeight: true }
                 }
@@ -160,6 +161,7 @@ Rectangle {
                 text: Fmt.signed(rc.booking.amount_cents)
                 font.pixelSize: Theme.largeTitle + 6; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                 color: rc.booking.amount_cents > 0 ? Theme.inflow : Theme.outflow
+                Sensitive {}
             }
             RowLayout {
                 spacing: 6
@@ -193,6 +195,7 @@ Rectangle {
                 visible: !(rc.amazonRef !== null && rc.amazonRef.itemList.length > 0) && rc.booking.clean_purpose !== ""
                 text: rc.booking.clean_purpose; readOnly: true; selectByMouse: true
                 wrapMode: Text.Wrap; font.pixelSize: Theme.callout + 1; color: Theme.text; Layout.fillWidth: true
+                Sensitive {}
             }
             // refund: jump to the order it belongs to (same order code)
             RowLayout {
@@ -235,7 +238,9 @@ Rectangle {
         SFIcon { symbol: "globe"; size: 10; color: Theme.tertiary }
         Text { text: merchant.domain || (merchant.is_person ? qsTr("Privatperson – kein Logo") : qsTr("Domain festlegen"))
                font.family: "monospace"; font.pixelSize: Theme.caption; color: Theme.tertiary
-               elide: Text.ElideRight; Layout.minimumWidth: 24; Layout.preferredWidth: implicitWidth }
+               elide: Text.ElideRight; Layout.minimumWidth: 24; Layout.preferredWidth: implicitWidth
+               // a guessed domain spells out the (redacted) counterparty; dictionary brands show their logo anyway
+               Sensitive { when: merchant.domain !== "" && merchant.domain_source !== "dictionary" } }
         Text { visible: merchant.domain !== ""; text: "· " + parent.sourceLabel; font.pixelSize: Theme.caption2; color: Theme.tertiary }
         SFIcon { symbol: "pencil"; size: 10; color: Theme.tertiary }
         Item { Layout.fillWidth: true }
@@ -287,6 +292,7 @@ Rectangle {
                 onActiveFocusChanged: if (!activeFocus) nc.save()
                 // Esc: leave the note (saves via focus loss) and go back to the list
                 Keys.onEscapePressed: AppModel.focusList()
+                Sensitive {}
             }
         }
     }
@@ -355,6 +361,7 @@ Rectangle {
                     ? qsTr("Nicht als wiederkehrend erkannt. Markieren Sie die Buchung, damit sie in den anstehenden Fixkosten erscheint.")
                     : rec.series.source === "Manual" ? qsTr("Manuell markiert · ca. %1").arg(Fmt.money(rec.series.amount_cents))
                     : qsTr("Automatisch erkannt aus %1 Buchungen · ca. %2").arg(rec.series.occurrences).arg(Fmt.money(rec.series.amount_cents))
+                Sensitive { when: rec.series !== null }
             }
         }
     }
@@ -367,14 +374,16 @@ Rectangle {
         property string accountName: ""
         spacing: 4; Layout.fillWidth: true
         Text { visible: sr.label !== ""; text: sr.accountName ? sr.label + " · " + sr.accountName : sr.label
-               font.pixelSize: Theme.caption; font.weight: Font.Medium; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
+               font.pixelSize: Theme.caption; font.weight: Font.Medium; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+               Sensitive { when: sr.accountName !== "" } }
         RowLayout {
             spacing: 10; Layout.fillWidth: true
             Repeater {
-                model: sr.stats ? [[qsTr("Buchungen"), sr.stats.count + "×"], [qsTr("Summe"), Fmt.money(sr.stats.total_cents)], [qsTr("Ø Betrag"), Fmt.money(sr.stats.average_cents)]] : []
+                model: sr.stats ? [[qsTr("Buchungen"), sr.stats.count + "×", false], [qsTr("Summe"), Fmt.money(sr.stats.total_cents), true], [qsTr("Ø Betrag"), Fmt.money(sr.stats.average_cents), true]] : []
                 ColumnLayout { required property var modelData; spacing: 2; Layout.fillWidth: true; Layout.preferredWidth: 1
                     Text { text: modelData[0]; font.pixelSize: Theme.caption2; color: Theme.secondary }
-                    Text { text: modelData[1]; font.pixelSize: Theme.callout + 1; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true } }
+                    Text { text: modelData[1]; font.pixelSize: Theme.callout + 1; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true
+                           Sensitive { when: modelData[2] } } }
             }
         }
         Text { visible: sr.stats !== null && sr.stats.first_date !== ""
@@ -443,7 +452,8 @@ Rectangle {
             width: parent.width; spacing: 10
             RowLayout {
                 CardTitle { text: qsTr("Kategorie"); Layout.fillWidth: true }
-                Text { text: cg.booking.category_path || qsTr("Ohne Kategorie"); font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.maximumWidth: 160 }
+                Text { text: cg.booking.category_path || qsTr("Ohne Kategorie"); font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.maximumWidth: 160
+                       Sensitive { labels: true; when: cg.booking.category_path !== "" } }
             }
             ChipGrid { card: cg; Layout.fillWidth: true; nodes: AppModel.categoryTree; selectedId: cg.path.length ? cg.path[0] : -1; level: 0; minimum: 104 }
             Repeater {
@@ -503,7 +513,7 @@ Rectangle {
             anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 5
             SFIcon { symbol: parent.parent.category.sf_symbol; size: 13; color: Theme.text }
             Text { text: parent.parent.category.name; font.pixelSize: Theme.caption + 1; font.weight: parent.parent.selected ? Font.DemiBold : Font.Normal
-                   color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                   color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive { labels: true } }
         }
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked() }
     }
@@ -533,7 +543,7 @@ Rectangle {
                         anchors.fill: parent; anchors.margins: 6; spacing: 8
                         SFIcon { symbol: AppModel.docSymbol(modelData); size: 15; color: Theme.accent; Layout.preferredWidth: 18 }
                         ColumnLayout { spacing: 1; Layout.fillWidth: true
-                            Text { text: modelData.title; font.pixelSize: Theme.callout + 1; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                            Text { text: modelData.title; font.pixelSize: Theme.callout + 1; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                             Text { text: Fmt.medium(modelData.doc_date) + " · " + AppModel.byteCount(modelData.size_bytes); font.pixelSize: Theme.caption2; color: Theme.secondary } }
                         IconButton { symbol: "eye"; symbolSize: 14; ToolTip.text: qsTr("QuickLook (Leertaste)"); onClicked: AppModel.quickLook(modelData) }
                         IconButton { symbol: "ellipsis.circle"; symbolSize: 14; ToolTip.text: qsTr("Aktionen"); onClicked: docMenu.popup() }
@@ -637,6 +647,8 @@ Rectangle {
                             HoverHandler { id: rawHover; enabled: rawValue.url !== ""; cursorShape: Qt.PointingHandCursor }
                             TapHandler { enabled: rawValue.url !== ""; onTapped: Qt.openUrlExternally(rawValue.url) }
                             ToolTip.visible: rawHover.hovered; ToolTip.delay: 500; ToolTip.text: modelData[3] || ""
+                            // raw data is personal; codes and the value date stay visible
+                            Sensitive { when: [qsTr("Purpose-Code"), qsTr("Geschäftsvorfallcode"), qsTr("Wertstellung")].indexOf(modelData[0]) < 0 }
                         } }
                 }
             }

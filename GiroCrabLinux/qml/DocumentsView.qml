@@ -49,6 +49,7 @@ Rectangle {
                     currentIndex: Math.max(0, options.findIndex(o => o.id === AppModel.documentsAccountFilter && !o.header))
                     onActivated: i => { if (!options[i].header) AppModel.documentsAccountFilter = options[i].id }
                     ToolTip.text: qsTr("Belege eines Kontos anzeigen"); ToolTip.visible: hovered
+                    Sensitive { when: AppModel.documentsAccountFilter !== null }   // the selected account's name
                 }
                 Switch { text: qsTr("Nur ohne Buchung"); checked: view.unlinkedOnly; onToggled: view.unlinkedOnly = checked }
                 Item { Layout.fillWidth: true }
@@ -56,7 +57,8 @@ Rectangle {
                          display: view.width < 900 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
                          ToolTip.text: text; ToolTip.visible: hovered && display === AbstractButton.IconOnly }
             }
-            TextField { Layout.fillWidth: true; placeholderText: qsTr("Belege durchsuchen"); onTextChanged: view.search = text }
+            TextField { Layout.fillWidth: true; placeholderText: qsTr("Belege durchsuchen"); onTextChanged: view.search = text
+                        Sensitive { when: parent.text !== "" } }
             ListView {
                 id: list
                 Layout.fillWidth: true; Layout.fillHeight: true
@@ -72,9 +74,9 @@ Rectangle {
                         anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 10
                         SFIcon { symbol: AppModel.docSymbol(modelData); size: 18; color: Theme.accent; Layout.preferredWidth: 22 }
                         ColumnLayout { spacing: 2; Layout.fillWidth: true
-                            Text { text: modelData.title; font.pixelSize: Theme.body + 1; font.weight: Font.Medium; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                            Text { text: modelData.title; font.pixelSize: Theme.body + 1; font.weight: Font.Medium; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                             Text { text: modelData.booking_label || qsTr("PostBox · %1").arg(modelData.account_name); font.pixelSize: Theme.caption
-                                   color: modelData.booking_label ? Theme.secondary : Theme.warning; elide: Text.ElideRight; Layout.fillWidth: true } }
+                                   color: modelData.booking_label ? Theme.secondary : Theme.warning; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} } }
                         Text { text: Fmt.medium(modelData.doc_date); font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary }
                     }
                     MouseArea {
@@ -88,7 +90,8 @@ Rectangle {
                     anchors.centerIn: parent; visible: view.docs.length === 0; spacing: 8; width: parent.width - 40
                     SFIcon { Layout.alignment: Qt.AlignHCenter; symbol: "doc.on.doc"; size: 30 }
                     Text { Layout.alignment: Qt.AlignHCenter; font.pixelSize: Theme.title3 + 1; font.weight: Font.Bold; color: Theme.text
-                           text: view.filterAccount ? qsTr("Keine Belege für „%1“").arg(view.filterAccount.name) : qsTr("Keine Belege") }
+                           text: view.filterAccount ? qsTr("Keine Belege für „%1“").arg(view.filterAccount.name) : qsTr("Keine Belege")
+                           Sensitive { when: view.filterAccount !== null } }
                     Text { visible: !view.filterAccount; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; color: Theme.secondary
                            text: qsTr("Belege kommen beim Abruf (Trade Republic, comdirect-PostBox, FinTS-Kontoauszug) oder per Drag & Drop.") }
                     Button { visible: view.filterAccount !== null; Layout.alignment: Qt.AlignHCenter; text: qsTr("Alle Konten anzeigen"); onClicked: AppModel.documentsAccountFilter = null }

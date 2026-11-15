@@ -30,7 +30,7 @@ ApplicationWindow {
     /// Tastaturkürzel, geprüft gegen die Menüs in Main.qml.
     readonly property var shortcuts: [
         ["Strg+R", "Alle Konten abrufen"], ["Strg+F", "Suchen"], ["Strg+K", "Befehlspalette"], ["Strg+,", "Einstellungen"],
-        ["Strg+?", "GiroCrab-Hilfe"], ["Strg+Meta+L", "Tresor sperren"], ["Strg+Umschalt+N", "Neue Kontogruppe"],
+        ["Strg+?", "GiroCrab-Hilfe"], ["Strg+Alt+B", "Problem melden"],["Strg+Meta+L", "Tresor sperren"], ["Strg+Umschalt+N", "Neue Kontogruppe"],
         ["Strg+N", "Neue Überweisung"], ["Strg+Alt+K", "Regeln"],
         ["C", "Kategorie wählen (in der Buchungsliste)"], ["R", "Regel aus Buchung erstellen (in der Buchungsliste)"],
         ["Strg+Meta+C / Strg+Meta+R", "Kategorisieren / Regel erstellen (Menü Buchung)"],
@@ -139,6 +139,8 @@ ApplicationWindow {
             SettingsFormSection {
                 visible: win.query === ""
                 title: qsTr("Support")
+                // BugReportButton (#301)
+                LinkRow { symbol: "ladybug"; text: qsTr("Problem melden …"); onActivated: AppModel.showBugReport = true }
                 LinkRow { symbol: "globe"; text: qsTr("Webseite & Dokumentation (girocrab.de)"); url: "https://girocrab.de" }
                 LinkRow { symbol: "ladybug"; text: qsTr("Fehler melden / Issue erstellen (GitHub)"); url: "https://github.com/GiroCrab/GiroCrab/issues" }
                 LinkRow { symbol: "bubble.left.and.bubble.right"; text: qsTr("Community & Diskussionen (GitHub)"); url: "https://github.com/GiroCrab/GiroCrab/discussions" }
@@ -152,9 +154,10 @@ ApplicationWindow {
         property string symbol
         property string text
         property string url
+        signal activated()
         spacing: 7
         SFIcon { symbol: lr.symbol; size: 14; color: Theme.accent }
         Text { text: lr.text; font.pixelSize: Theme.body; color: Theme.accent
-               MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: Qt.openUrlExternally(lr.url) } }
+               MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: lr.url !== "" ? Qt.openUrlExternally(lr.url) : lr.activated() } }
     }
 }

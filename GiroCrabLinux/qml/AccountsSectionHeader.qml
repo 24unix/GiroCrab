@@ -65,6 +65,7 @@ Item {
                     text: AppModel.sidebarAccountSearch
                     onTextEdited: AppModel.sidebarAccountSearch = text
                     Keys.onEscapePressed: AppModel.sidebarAccountSearch = ""
+                    Sensitive { when: search.text !== "" }   // typed owner names / IBANs (#301)
                 }
                 IconButton {
                     visible: AppModel.sidebarAccountSearch !== ""

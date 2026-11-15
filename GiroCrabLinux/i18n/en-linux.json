@@ -96,6 +96,7 @@
   "Null KB": "Zero KB",
   "Ordner …": "Folder…",
   "PDF-Dokumente (*.pdf)": "PDF documents (*.pdf)",
+  "PNG-Bild (*.png)": "PNG image (*.png)",
   "PostBox · %1": "PostBox · %1",
   "Privater Schlüssel (*.pem *.key *.txt)": "Private key (*.pem *.key *.txt)",
   "Prüfen Sie die Schreibweise oder versuchen Sie eine neue Suche.": "Check the spelling or try a new search.",
@@ -140,5 +141,6 @@
   "vor 1 Woche": "1 week ago",
   "vorhanden": "existing",
   "Öffnen …": "Open…",
-  "„Systemsprache“ folgt der Sprache Ihrer Arbeitsumgebung (z. B. Systemeinstellungen › Region & Sprache).": "“System Language” follows the language of your desktop (e.g. System Settings › Region & Language)."
+  "„Systemsprache“ folgt der Sprache Ihrer Arbeitsumgebung (z. B. Systemeinstellungen › Region & Sprache).": "“System Language” follows the language of your desktop (e.g. System Settings › Region & Language).",
+  "📋 Der geschwärzte Screenshot liegt in deiner Zwischenablage – klicke hier ins Textfeld und drücke **Strg+V**, um ihn einzufügen.": "📋 The redacted screenshot is on your clipboard – click into the text field here and press **Ctrl+V** to paste it."
 }

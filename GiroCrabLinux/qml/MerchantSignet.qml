@@ -34,6 +34,8 @@ Item {
         font.pixelSize: root.px * (root.person ? 0.36 : (text.length > 2 ? 0.30 : 0.40))
         font.weight: root.person ? Font.DemiBold : Font.Bold
         color: root.person ? Theme.personText : Theme.readable(root.merchant ? root.merchant.color_hex : "")
+        // a person's initials, or those of an unknown counterparty
+        Sensitive { when: root.person || !(root.merchant && root.merchant.known) }
     }
     SFIcon {
         visible: root.useCategory

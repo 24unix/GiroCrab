@@ -45,7 +45,7 @@ SidebarRow {
             RowLayout {
                 spacing: 4
                 Layout.fillWidth: true
-                Text { text: row.account.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.maximumWidth: Math.ceil(implicitWidth); Layout.fillWidth: true }
+                Text { text: row.account.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.maximumWidth: Math.ceil(implicitWidth); Layout.fillWidth: true; Sensitive {} }
                 Rectangle {
                     visible: row.ownerInitials !== ""
                     implicitWidth: initials.implicitWidth + 8; implicitHeight: initials.implicitHeight
@@ -53,6 +53,7 @@ SidebarRow {
                     color: Theme.withAlpha(Theme.secondary, 0.15)
                     Text { id: initials; anchors.centerIn: parent; text: row.ownerInitials
                            font.pixelSize: Theme.caption2; font.weight: Font.DemiBold; color: Theme.secondary }
+                    Sensitive {}
                 }
                 SFIcon { visible: row.account.access_revoked; symbol: "lock.slash"; size: 10; color: "orange"
                          HoverHandler { id: revokedHover }
@@ -74,6 +75,7 @@ SidebarRow {
                 text: row.archived ? qsTr("Archiviert %1").arg(new Date(row.account.archived_unix * 1000).toLocaleDateString(Fmt.locale, Fmt.pattern("dd.MM.yy"))) : row.searchAwareSubtitle
                 font.pixelSize: Theme.caption2; font.family: row.ibanSubtitle ? "monospace" : Qt.application.font.family
                 color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+                Sensitive { when: !row.archived && row.searchAwareSubtitle !== row.account.bank_name }   // owner / IBAN hits
             }
         }
         BusyIndicator { visible: row.syncing; running: row.syncing; implicitWidth: 16; implicitHeight: 16; padding: 0 }
@@ -84,9 +86,10 @@ SidebarRow {
                 text: Fmt.money(row.account.balance_cents, row.account.currency)
                 font.pixelSize: Theme.callout; font.features: { "tnum": 1 }
                 color: row.selected ? Theme.text : (row.account.kind === "Loan" ? Theme.loan : (row.account.balance_cents < 0 ? Theme.negative : Theme.text))
+                Sensitive {}
             }
             Text { visible: row.repaid !== null; Layout.alignment: Qt.AlignRight
-                   text: qsTr("%1 getilgt").arg(Fmt.percent(row.repaid || 0)); font.pixelSize: Theme.caption2; color: Theme.secondary }
+                   text: qsTr("%1 getilgt").arg(Fmt.percent(row.repaid || 0)); font.pixelSize: Theme.caption2; color: Theme.secondary; Sensitive {} }
         }
     }
 
