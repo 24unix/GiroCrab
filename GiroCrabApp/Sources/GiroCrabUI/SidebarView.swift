@@ -49,6 +49,12 @@ struct SidebarView: View {
                     .disabled(model.newCount == 0)
             }
             HStack(spacing: 8) {
+                Image(systemName: "chart.pie").foregroundStyle(Theme.secondary).frame(width: 20)
+                Text("Vermögen").fontWeight(.medium)
+                Spacer()
+            }
+            .tag(SidebarItem.wealth)
+            HStack(spacing: 8) {
                 Image(systemName: "doc.on.doc").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Belege & PostBox").fontWeight(.medium).appDefaultFont()
                 Spacer()

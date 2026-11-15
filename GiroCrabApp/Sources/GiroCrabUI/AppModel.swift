@@ -72,6 +72,9 @@ public final class AppModel {
 
     // UI state
     var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; reloadSelection(periodChanged: false) } }
+    /// Segmented control of the wealth view (shown in the toolbar instead of the booking scope).
+    var wealthScope: WealthScope = .all
+
     var scope: BookingScope = .all {
         didSet {
             guard scope != oldValue else { return }
@@ -460,6 +463,9 @@ public final class AppModel {
             case "alltag": scope = .everyday
             case "sparplaene", "sparpläne", "investments": scope = .investments
             case "belege", "documents": sidebarSelection = .documents
+            case "vermoegen", "vermögen", "wealth": sidebarSelection = .wealth
+            case "vermoegen-wertpapiere": sidebarSelection = .wealth; wealthScope = .securities
+            case "vermoegen-sachwerte": sidebarSelection = .wealth; wealthScope = .tangibles
             default: break
             }
             if let q = options.selectAccount, let a = allAccounts.first(where: { $0.name.lowercased().contains(q) }) {

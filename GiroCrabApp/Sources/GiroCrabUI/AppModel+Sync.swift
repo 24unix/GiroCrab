@@ -97,7 +97,7 @@ extension AppModel {
             return .connection(cid)
         case .userGroup(let uuid) where !uuid.isEmpty:
             return .group(uuid)
-        case .documents:
+        case .documents, .wealth:
             return .none
         default:
             return .all

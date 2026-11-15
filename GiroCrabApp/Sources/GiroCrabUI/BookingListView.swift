@@ -853,8 +853,14 @@ struct MainToolbar: ViewModifier {
         #else
         content.toolbar(id: "girocrab.main") {
             ToolbarItem(id: "scope", placement: .principal) {
-                BookingScopePicker()
-                    .disabled(model.sidebarSelection == .documents || model.sidebarSelection == .newBookings)
+                // Same toolbar item, other content: the booking filter makes no sense in
+                // the wealth view (a customizable toolbar must not lose items).
+                if model.sidebarSelection == .wealth {
+                    WealthScopePicker()
+                } else {
+                    BookingScopePicker()
+                        .disabled(model.sidebarSelection == .documents || model.sidebarSelection == .newBookings)
+                }
             }
             ToolbarItem(id: "transfer", placement: .primaryAction) {
                 Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }

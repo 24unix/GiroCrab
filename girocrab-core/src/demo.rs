@@ -166,6 +166,17 @@ pub const DEMO_ACCOUNTS: &[DemoAccountSpec] = &[
         bank_name: "Musterbank",
         principal_cents: Some(250_000_00),
     },
+    DemoAccountSpec {
+        connector: ConnectorKind::TradeRepublic,
+        external_ref: "demo-krypto",
+        name: "Krypto-Depot",
+        kind: AccountKind::Brokerage,
+        iban: "",
+        account_number: "",
+        opening_cents: 6_200_00,
+        bank_name: "Musterbank",
+        principal_cents: None,
+    },
 ];
 
 type Tree<'a> = &'a [(
@@ -1272,7 +1283,7 @@ impl Vault {
         }
         // Depot positions: the two savings plans, summing to the depot balance
         // (28.450,00 EUR), so the "Positionen" card is not empty in the demo.
-        for (isin, wkn, name, quantity, current, purchase) in [
+        for (isin, wkn, name, quantity, current, purchase, prev_day) in [
             (
                 "IE00B4L5Y983",
                 "A0RPWH",
@@ -1280,6 +1291,7 @@ impl Vault {
                 160.0_f64,
                 104_25_i64,
                 92_40_i64,
+                103_60_i64,
             ),
             (
                 "IE00BK5BQT80",
@@ -1288,11 +1300,18 @@ impl Vault {
                 110.0,
                 107_00,
                 98_10,
+                107_45,
             ),
         ] {
+            let value = (quantity * current as f64).round() as i64;
+            let day = ((current - prev_day) as f64 * quantity).round() as i64;
+            let gain = ((current - purchase) as f64 * quantity).round() as i64;
             tx.execute(
-                "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents,
+                        purchase_price_cents, value_cents, prev_day_price_cents, prev_day_value_cents,
+                        profit_loss_purchase_cents, profit_loss_purchase_rel,
+                        profit_loss_prev_day_cents, profit_loss_prev_day_rel)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     acc_ids["demo-depot"],
                     isin,
@@ -1301,9 +1320,121 @@ impl Vault {
                     quantity,
                     current,
                     purchase,
-                    (quantity * current as f64).round() as i64
+                    value,
+                    prev_day,
+                    value - day,
+                    gain,
+                    (current - purchase) as f64 / purchase as f64 * 100.0,
+                    day,
+                    (current - prev_day) as f64 / prev_day as f64 * 100.0
                 ],
             )?;
+        }
+        // Crypto depot: no ISIN, the ticker stands in the WKN column; BTC 0,05 × 88.000 € and
+        // ETH 0,8 × 2.250 € add up to the account balance (6.200,00 EUR).
+        for (wkn, name, quantity, current, purchase, prev_day) in [
+            (
+                "BTC",
+                "Bitcoin",
+                0.05_f64,
+                88_000_00_i64,
+                61_000_00_i64,
+                87_100_00_i64,
+            ),
+            ("ETH", "Ethereum", 0.8, 2_250_00, 2_480_00, 2_270_00),
+        ] {
+            let value = (quantity * current as f64).round() as i64;
+            let day = ((current - prev_day) as f64 * quantity).round() as i64;
+            let gain = ((current - purchase) as f64 * quantity).round() as i64;
+            tx.execute(
+                "INSERT INTO holdings(account_id, isin, wkn, name, quantity, current_price_cents,
+                        purchase_price_cents, value_cents, prev_day_price_cents, prev_day_value_cents,
+                        profit_loss_purchase_cents, profit_loss_purchase_rel,
+                        profit_loss_prev_day_cents, profit_loss_prev_day_rel)
+                 VALUES (?1, '', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![
+                    acc_ids["demo-krypto"],
+                    wkn,
+                    name,
+                    quantity,
+                    current,
+                    purchase,
+                    value,
+                    prev_day,
+                    value - day,
+                    gain,
+                    (current - purchase) as f64 / purchase as f64 * 100.0,
+                    day,
+                    (current - prev_day) as f64 / prev_day as f64 * 100.0
+                ],
+            )?;
+        }
+        // Securities transactions of the depot (#314): the two savings plans of the last
+        // twelve months, two distributions and one custody fee.
+        {
+            use crate::models::{SecurityDirection, SecurityTransaction};
+            let depot = acc_ids["demo-depot"];
+            let mut n = 0;
+            for months_ago in 0..12_i64 {
+                let day = today - Duration::days(months_ago * 30 + 3);
+                for (isin, name, price) in [
+                    (
+                        "IE00B4L5Y983",
+                        "iShares Core MSCI World UCITS ETF",
+                        98_00_i64,
+                    ),
+                    ("IE00BK5BQT80", "Vanguard FTSE All-World UCITS ETF", 102_00),
+                ] {
+                    n += 1;
+                    let value = 250_00_i64;
+                    crate::security_transactions::upsert(
+                        &tx,
+                        depot,
+                        &SecurityTransaction {
+                            external_id: format!("demo-st-{n}"),
+                            booking_date: day.format("%Y-%m-%d").to_string(),
+                            isin: isin.into(),
+                            name: name.into(),
+                            direction: SecurityDirection::Buy,
+                            quantity: value as f64 / price as f64,
+                            price_cents: price,
+                            currency: "EUR".into(),
+                            value_cents: value,
+                            booking_text: "Sparplan".into(),
+                            ..Default::default()
+                        },
+                    )?;
+                }
+            }
+            for (months_ago, direction, value, text) in [
+                (
+                    2_i64,
+                    SecurityDirection::Dividend,
+                    38_40_i64,
+                    "Ausschüttung",
+                ),
+                (8, SecurityDirection::Dividend, 41_10, "Ausschüttung"),
+                (5, SecurityDirection::Fee, 12_50, "Depotentgelt"),
+            ] {
+                n += 1;
+                crate::security_transactions::upsert(
+                    &tx,
+                    depot,
+                    &SecurityTransaction {
+                        external_id: format!("demo-st-{n}"),
+                        booking_date: (today - Duration::days(months_ago * 30 + 10))
+                            .format("%Y-%m-%d")
+                            .to_string(),
+                        isin: "IE00B4L5Y983".into(),
+                        name: "iShares Core MSCI World UCITS ETF".into(),
+                        direction,
+                        currency: "EUR".into(),
+                        value_cents: value,
+                        booking_text: text.into(),
+                        ..Default::default()
+                    },
+                )?;
+            }
         }
         // manual loan without a bank account (#36): Stand two months ago, rates from the Giro
         // (linked by `apply_rules_inner` below)
@@ -1332,7 +1463,12 @@ impl Vault {
             (
                 "Sparen & Vorsorge",
                 "chart.pie",
-                &["demo-tagesgeld", "demo-depot", "demo-sachwerte"][..],
+                &[
+                    "demo-tagesgeld",
+                    "demo-depot",
+                    "demo-krypto",
+                    "demo-sachwerte",
+                ][..],
             ),
             ("Haus", "house", &["demo-darlehen"][..]),
         ] {
@@ -1459,12 +1595,12 @@ mod tests {
     }
 
     #[test]
-    fn demo_seed_has_seven_accounts_and_exactly_fifty_two_bookings() {
+    fn demo_seed_has_eight_accounts_and_exactly_fifty_two_bookings() {
         let dir_dir = crate::test_support::TempDir::new("girocrab-test");
         let dir = dir_dir.join("v.db");
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
         assert_eq!(v.seed_demo_data().unwrap(), 52);
-        assert_eq!(v.account_count().unwrap(), 7);
+        assert_eq!(v.account_count().unwrap(), 8);
         let car = v.list_manual_loans().unwrap();
         assert_eq!(car.len(), 1);
         assert_eq!(car[0].status.payment_count, 2);

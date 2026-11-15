@@ -17,6 +17,8 @@ enum SidebarItem: Hashable {
     case documents
     /// „Neue Umsätze“ (GitHub #352): unreviewed bookings of all accounts.
     case newBookings
+    /// "Vermögen": cash and assets (depots) minus liabilities
+    case wealth
 }
 
 /// Period of the booking list and its sums. The menu follows MoneyMoney

@@ -67,6 +67,17 @@
         }
       }
     },
+    "%@ Stück" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ pcs"
+          }
+        }
+      }
+    },
     "%@ abrufen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -599,6 +610,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld accounts"
+          }
+        }
+      }
+    },
+    "%lld Konten in Fremdwährung sind nicht enthalten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld accounts in a foreign currency are not included."
           }
         }
       }
@@ -1492,6 +1514,17 @@
         }
       }
     },
+    "1 Jahr" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 year"
+          }
+        }
+      }
+    },
     "1 Konto" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1521,6 +1554,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "12 Months"
+          }
+        }
+      }
+    },
+    "3 Jahre" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 years"
+          }
+        }
+      }
+    },
+    "3 Monate" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 months"
+          }
+        }
+      }
+    },
+    "5 Jahre" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5 years"
           }
         }
       }
@@ -2148,6 +2214,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "All · Everyday · Savings Plans"
+          }
+        }
+      }
+    },
+    "Alles" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All"
           }
         }
       }
@@ -2933,6 +3010,17 @@
         }
       }
     },
+    "Assets" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assets"
+          }
+        }
+      }
+    },
     "Auch möglich: Kontoauszüge als CAMT.053 (XML) oder MT940 (.sta / .mt940)." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3054,6 +3142,17 @@
         }
       }
     },
+    "Aus den Buchungen zurückgerechnet; Depots sind nicht enthalten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calculated back from bookings; depots are not included."
+          }
+        }
+      }
+    },
     "Ausbildung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3161,6 +3260,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "When off, the accounts of this group and its subgroups don’t count towards “Available” or the overview’s balance history – e.g. for business or children’s accounts."
+          }
+        }
+      }
+    },
+    "Ausschüttungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Distributions"
           }
         }
       }
@@ -4921,6 +5031,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Camping"
+          }
+        }
+      }
+    },
+    "Cash" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cash"
+          }
+        }
+      }
+    },
+    "Cash nach Konto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cash by account"
+          }
+        }
+      }
+    },
+    "Cash-Verlauf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cash history"
           }
         }
       }
@@ -6686,6 +6829,17 @@
         }
       }
     },
+    "Edelmetall" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Precious metal"
+          }
+        }
+      }
+    },
     "Edelmetalle & Schmuck" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7430,6 +7584,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Created on %1$@ at %2$@"
+          }
+        }
+      }
+    },
+    "Erträge und Kosten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Income and costs"
           }
         }
       }
@@ -8413,6 +8578,17 @@
         }
       }
     },
+    "Gebühren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fees"
+          }
+        }
+      }
+    },
     "Gefilterte Buchungen als CSV exportieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8706,6 +8882,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Weight and fineness, e.g. 585 ‰ for 14 carat."
+          }
+        }
+      }
+    },
+    "Gewinn/Verlust" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profit/loss"
           }
         }
       }
@@ -9443,6 +9630,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heart"
+          }
+        }
+      }
+    },
+    "Heute" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Today"
           }
         }
       }
@@ -10473,6 +10671,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Card"
+          }
+        }
+      }
+    },
+    "Kartenguthaben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Card credit"
           }
         }
       }
@@ -11968,6 +12177,17 @@
         }
       }
     },
+    "Kredite und Karten abziehen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deduct loans and cards"
+          }
+        }
+      }
+    },
     "Kreditkarte" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12107,6 +12327,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Last 12 Months"
+          }
+        }
+      }
+    },
+    "Letzte 12 Monate, aus den Wertpapierumsätzen der Depots." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last 12 months, from the securities transactions of the depots."
           }
         }
       }
@@ -13156,6 +13387,17 @@
         }
       }
     },
+    "Nettovermögen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Net worth"
+          }
+        }
+      }
+    },
     "Netzwerkfehler: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14135,6 +14377,17 @@
         }
       }
     },
+    "Nur Bestände mit verfügbaren Daten: Heute %lld von %lld, Gewinn/Verlust %lld von %lld." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only holdings with available data: today %lld of %lld, profit/loss %lld of %lld."
+          }
+        }
+      }
+    },
     "Nur Einnahmen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14362,6 +14615,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Without a purchase price, the gold value on the purchase date is used."
+          }
+        }
+      }
+    },
+    "Ohne Positionsdaten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No position data"
           }
         }
       }
@@ -14912,6 +15176,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Positions"
+          }
+        }
+      }
+    },
+    "Positionen aller Depots" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Positions across all depots"
+          }
+        }
+      }
+    },
+    "Positionen der Sachwerte" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tangible asset items"
           }
         }
       }
@@ -15797,6 +16083,17 @@
         }
       }
     },
+    "Sachwerte nach Position" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tangible assets by position"
+          }
+        }
+      }
+    },
     "Salden und Dokumente abrufen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16436,6 +16733,17 @@
         }
       }
     },
+    "Sonstige" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other"
+          }
+        }
+      }
+    },
     "Sonstiges" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16861,6 +17169,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Status: %@"
+          }
+        }
+      }
+    },
+    "Steuern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taxes"
           }
         }
       }
@@ -18114,6 +18433,17 @@
         }
       }
     },
+    "Verbindlichkeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liabilities"
+          }
+        }
+      }
+    },
     "Verbindung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18253,6 +18583,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wealth"
+          }
+        }
+      }
+    },
+    "Vermögenswerte" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Total assets"
           }
         }
       }
@@ -19082,6 +19423,17 @@
         }
       }
     },
+    "Wertpapiere nach Position" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Securities by position"
+          }
+        }
+      }
+    },
     "Wertstellung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19628,6 +19980,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Merge"
+          }
+        }
+      }
+    },
+    "Zusammensetzung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Composition"
           }
         }
       }
