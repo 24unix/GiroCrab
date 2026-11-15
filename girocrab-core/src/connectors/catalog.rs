@@ -34,7 +34,7 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             login_label: tr("Anmeldename / Kontonummer").into(),
             secret_label: tr("Online-Banking-PIN").into(),
             required_settings: s(&["fints.product_id", "fints.url.50050201"]),
-            note: tr("pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs5.s-fints-pt-hs.de").into(),
+            note: tr("Nur lesend über FinTS (Umsätze, Salden, Depot, Dokumente): 1822direkt hat SEPA-Überweisungen über FinTS seit 09/2025 abgeschaltet. pushTAN-App (Decoupled) oder chipTAN. Server: banking-hs5.s-fints-pt-hs.de").into(),
         },
         ConnectorKind::FinTsGeneric => BankDescriptor {
             kind,
@@ -285,7 +285,6 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Transactions,
             Capability::Balances,
             Capability::Securities,
-            Capability::Transfers,
             Capability::Documents,
         ],
         status: Status::Verified,
@@ -590,6 +589,18 @@ mod matrix_tests {
         for e in BANK_MATRIX.iter().filter(|e| e.status == Status::Verified) {
             assert!(e.issues.is_empty(), "{} is verified but has issues", e.name);
         }
+    }
+
+    #[test]
+    fn direkt1822_fints_is_read_only() {
+        // 1822direkt disabled HKCCS/HKIPZ over FinTS in 09/2025 (Discussion #452).
+        let e = BANK_MATRIX
+            .iter()
+            .find(|e| e.kind == Some(ConnectorKind::Direkt1822))
+            .unwrap();
+        assert!(!e.capabilities.contains(&Capability::Transfers));
+        assert!(e.capabilities.contains(&Capability::Transactions));
+        assert!(descriptor(ConnectorKind::Direkt1822).note.contains("09/2025"));
     }
 
     #[test]
