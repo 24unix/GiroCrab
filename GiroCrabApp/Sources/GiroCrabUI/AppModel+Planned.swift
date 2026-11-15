@@ -47,5 +47,6 @@ extension AppModel {
         guard account == plannedAccountFilter, horizon == plannedHorizon, version == plannedVersion else { return }
         plannedPayments = result.0
         plannedTotals = result.1
+        if let id = selectedPlannedID, !result.0.contains(where: { $0.id == id }) { selectedPlannedID = nil }
     }
 }

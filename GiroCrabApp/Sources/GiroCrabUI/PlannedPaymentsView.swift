@@ -1,5 +1,8 @@
 import SwiftUI
 import GiroCrabCore
+#if os(macOS)
+import AppKit
+#endif
 
 /// „Geplant“ (GitHub #240): everything already ordered at the bank but not
 /// booked yet, across accounts. Only real orders – never guesses from the
@@ -60,10 +63,12 @@ struct PlannedPaymentsView: View {
                     description: Text("Terminüberweisungen und Daueraufträge deiner Bank erscheinen hier bis zur Ausführung."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List {
+                List(selection: $model.selectedPlannedID) {
                     ForEach(months) { month in
                         Section {
-                            ForEach(month.items, id: \.id) { row($0) }
+                            ForEach(month.items, id: \.id) { p in
+                                row(p).tag(p.id).contextMenu { PlannedActions(payment: p) }
+                            }
                         } header: {
                             Text(DateText.date(month.id + "-01")?.formatted(.dateTime.month(.wide).year()) ?? month.id).appSectionHeader()
                         }
@@ -137,6 +142,79 @@ extension PlannedPayment {
         case 6: return String(localized: "halbjährlich")
         case 12: return String(localized: "jährlich")
         default: return String(localized: "alle \(n) Monate")
+        }
+    }
+}
+
+/// Actions on one planned payment (context menu and inspector).
+struct PlannedActions: View {
+    @Environment(AppModel.self) private var model
+    let payment: PlannedPayment
+
+    var body: some View {
+        Button("Konto anzeigen", systemImage: "building.columns") {
+            model.sidebarSelection = .account(payment.accountId)
+        }
+        if !payment.counterpartyIban.isEmpty {
+            Button("IBAN kopieren", systemImage: "doc.on.doc") {
+                #if os(macOS)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(payment.counterpartyIban, forType: .string)
+                #else
+                UIPasteboard.general.string = payment.counterpartyIban
+                #endif
+            }
+        }
+    }
+}
+
+/// Inspector of „Geplant“: details of the selected payment (HIG: an inspector
+/// shows the selection, never a leftover from another list).
+struct PlannedInspector: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let p = model.plannedPayments.first(where: { $0.id == model.selectedPlannedID }) {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(p.counterparty).appFont(.title3, weight: .semibold).sensitive()
+                    Text(Money.format(p.amountCents))
+                        .appFont(.title, weight: .semibold, monospacedDigit: true)
+                        .foregroundStyle(p.amountCents < 0 ? Theme.negative : Theme.invest)
+                        .fixedSize().sensitive()
+                    Text(p.kindText).appFont(.callout).foregroundStyle(Theme.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .card()
+                VStack(alignment: .leading, spacing: 10) {
+                    field("Ausführung", DateText.medium(p.date), sensitive: false)
+                    field("Konto", p.accountName)
+                    if !p.counterpartyIban.isEmpty { field("IBAN", p.counterpartyIban, mono: true) }
+                    if !p.purpose.isEmpty { field("Verwendungszweck", p.purpose) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .card()
+                HStack { PlannedActions(payment: p) }
+                    .buttonStyle(.bordered)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Keine Zahlung ausgewählt", systemImage: "calendar.badge.clock")
+                    .appFont(.headline)
+                Text("Wählen Sie eine geplante Zahlung, um Details zu sehen.")
+                    .appFont(.callout).foregroundStyle(Theme.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card()
+        }
+    }
+
+    @ViewBuilder
+    private func field(_ label: LocalizedStringKey, _ value: String, mono: Bool = false, sensitive: Bool = true) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).appFont(.caption).foregroundStyle(Theme.secondary)
+            let t = Text(value).appFont(.callout, monospacedDigit: mono).textSelection(.enabled)
+            if sensitive { t.sensitive() } else { t }
         }
     }
 }

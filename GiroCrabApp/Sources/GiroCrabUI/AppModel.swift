@@ -229,6 +229,7 @@ public final class AppModel {
     var plannedAccountFilter: Int64?
     var plannedHorizon: PlannedHorizon = .days90
     var plannedVersion = 0
+    var selectedPlannedID: String?
     var expandedCategories: Set<Int64> = []
     var showRuleEditor = false {
         didSet { if showRuleEditor, rulesStale { reloadRules() } }

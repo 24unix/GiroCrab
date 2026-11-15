@@ -11442,6 +11442,16 @@
         }
       }
     },
+    "Keine Zahlung ausgewählt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Payment Selected"
+          }
+        }
+      }
+    },
     "Keine geplanten Zahlungen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11917,6 +11927,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fetch the account or choose another period."
+          }
+        }
+      }
+    },
+    "Konto anzeigen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Account"
           }
         }
       }
@@ -19680,6 +19700,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Select a transaction to see its document, merchant history and category."
+          }
+        }
+      }
+    },
+    "Wählen Sie eine geplante Zahlung, um Details zu sehen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select a planned payment to see its details."
           }
         }
       }

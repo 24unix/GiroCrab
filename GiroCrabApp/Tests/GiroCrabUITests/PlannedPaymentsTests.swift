@@ -59,6 +59,21 @@ final class PlannedPaymentsTests: XCTestCase {
         XCTAssertEqual(rent.amountCents, -85_000)
     }
 
+    /// The selection survives a reload while the payment exists and is dropped
+    /// when a filter hides it (the inspector must never show a stale row).
+    func testSelectionFollowsTheList() async throws {
+        model.plannedHorizon = .all
+        await model.reloadPlanned()
+        let first = try XCTUnwrap(model.plannedPayments.first)
+        model.selectedPlannedID = first.id
+        await model.reloadPlanned()
+        XCTAssertEqual(model.selectedPlannedID, first.id)
+        let other = try XCTUnwrap(model.allAccounts.first { $0.id != first.accountId })
+        model.plannedAccountFilter = other.id
+        await model.reloadPlanned()
+        XCTAssertNil(model.selectedPlannedID)
+    }
+
     func testRhythmWording() {
         func text(_ unit: String, _ n: UInt32) -> String {
             PlannedPayment(id: "x", kind: .standingOrder, accountId: 1, accountName: "", date: "2026-12-01",
