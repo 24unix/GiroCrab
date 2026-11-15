@@ -11,17 +11,6 @@ struct PlannedPaymentsView: View {
     @Environment(AppModel.self) private var model
     @FocusState private var listFocused: Bool
 
-    private struct Month: Identifiable {
-        let id: String // YYYY-MM
-        let items: [PlannedPayment]
-    }
-
-    private var months: [Month] {
-        Dictionary(grouping: model.plannedPayments) { String($0.date.prefix(7)) }
-            .map { Month(id: $0.key, items: $0.value) }
-            .sorted { $0.id < $1.id }
-    }
-
     private struct ReloadKey: Equatable {
         let account: Int64?
         let horizon: PlannedHorizon
@@ -69,7 +58,7 @@ struct PlannedPaymentsView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(months) { month in
+                            ForEach(model.plannedMonths) { month in
                                 monthHeader(month)
                                     .padding(.top, 14)
                                 ForEach(Array(month.items.enumerated()), id: \.element.id) { index, p in
@@ -127,8 +116,8 @@ struct PlannedPaymentsView: View {
     }
 
     /// Top of a month card, like the day header of the booking stream.
-    private func monthHeader(_ month: Month) -> some View {
-        let sum = month.items.reduce(Int64(0)) { $0 + $1.amountCents }
+    private func monthHeader(_ month: PlannedMonth) -> some View {
+        let sum = month.sumCents
         return VStack(spacing: 0) {
             HStack {
                 Text(DateText.date(month.id + "-01")?.formatted(.dateTime.month(.wide).year()) ?? month.id)

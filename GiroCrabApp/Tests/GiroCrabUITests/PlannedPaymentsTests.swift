@@ -14,6 +14,22 @@ final class PlannedPaymentsTests: XCTestCase {
 
     override func tearDown() async throws { model = nil }
 
+    /// The month cards are built once per reload and hold every payment exactly once.
+    func testMonthGroupingIsCachedAndComplete() async throws {
+        model.plannedHorizon = .all
+        await model.reloadPlanned()
+        XCTAssertFalse(model.plannedMonths.isEmpty)
+        XCTAssertEqual(model.plannedMonths.flatMap(\.items).map(\.id), model.plannedPayments.map(\.id))
+        XCTAssertEqual(model.plannedMonths.map(\.id), model.plannedMonths.map(\.id).sorted())
+        for m in model.plannedMonths {
+            XCTAssertTrue(m.items.allSatisfy { $0.date.hasPrefix(m.id) })
+            XCTAssertEqual(m.sumCents, m.items.reduce(Int64(0)) { $0 + $1.amountCents })
+        }
+        model.plannedAccountFilter = -1 // no such account: the cards empty out with the list
+        await model.reloadPlanned()
+        XCTAssertTrue(model.plannedMonths.isEmpty)
+    }
+
     /// The demo vault has four scheduled transfers on its Giro account.
     func testDemoVaultLoadsScheduledTransfers() async throws {
         model.sidebarSelection = .planned
