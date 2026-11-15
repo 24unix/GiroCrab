@@ -131,6 +131,7 @@ The PR card (`tools/export-ai-provenance.py`, `docs/ai-transparency.md`) reads o
   - **Security-Check:** what was checked for secrets/personal data (logs, `.sensitive()` redaction, new network/process/file access, dependencies + `THIRD_PARTY_NOTICES.md`); "Nothing relevant: <why>" is valid
   - **Perf-Check:** what was measured or ruled out (`offMain` for calls over ~16 ms, no `list_transactions` for counts/sums, `category_perf` numbers); "No hot path touched: <why>" is valid
   ```
+- Optional trailers `Security-Check:` / `Perf-Check:` carry the same content as the bullets; the card shows both in stage 4. Before pushing run the checks in the PR checklist of `CONTRIBUTING.md`.
 - This is a self-report, shown on the card as unverified. Never put real financial data, IBANs or secrets in it.
 - **Community contributor PRs landed via an `origin` branch** (e.g. to resolve merge conflicts or apply a pre-merge fix
   without pushing to the contributor's fork): ALWAYS preserve the contributor's credit on squash-merge, either by

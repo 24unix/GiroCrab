@@ -54,28 +54,17 @@ by hand, then run `scripts/xcstrings.py format` (CI checks it).
 `git config merge.xcstrings.driver 'scripts/xcstrings.py merge %O %A %B'` makes git merge the
 catalogs per key instead of per line; the hooks in `.githooks` register it automatically.
 
-## Texts and documentation
-
-User-visible texts (README, docs, website, app strings, release notes) do not name brands of other banking or
-finance software and contain no comparisons with other products. Describe GiroCrab's features factually and
-verifiably. Internal code identifiers (module, function, test and file names) are exempt; `scripts/lint-brand-names.sh`
-(CI) checks the documentation and string catalogs.
-
-Nutzersichtbare Texte (README, docs, Website, App-Strings, Release-Notes) nennen keine Marken anderer Banking- oder
-Finanzsoftware und enthalten keine Vergleiche mit Fremdprodukten. Funktionen von GiroCrab werden sachlich und
-belegbar beschrieben.
-
-## Markennamen und Quellen / Trademarks and sources
+## Texts, documentation and trademarks / Texte, Doku und Markennamen
 
 **DE**
-- Andere Finanz- und Banking-Software (z. B. andere Banking-Apps) wird in nutzersichtbaren Texten nicht genannt: weder in README, Doku, Website, App-Texten noch in Release-Notes. Keine Vergleiche mit Fremdprodukten. Interne Code-Bezeichner sind davon ausgenommen. Der CI-Check `scripts/lint-brand-names.sh` prüft das.
+- Nutzersichtbare Texte (README, Doku, Website, App-Strings, Release-Notes) nennen keine Marken anderer Banking- oder Finanzsoftware und enthalten keine Vergleiche mit Fremdprodukten. Interne Code-Bezeichner (Modul-, Funktions-, Test- und Dateinamen) sind ausgenommen. `scripts/lint-brand-names.sh` (CI) prüft Doku und String-Kataloge.
 - Banken, Broker und Zahlungsdienste, die GiroCrab anbindet, dürfen sachlich genannt werden („Connector für Konten bei der X-Bank“). Nicht erlaubt: Formulierungen, die eine Partnerschaft oder offizielle Unterstützung nahelegen, sowie Logos von Banken in Doku und Website.
 - Inoffizielle Schnittstellen werden in Doku und Bank-Tabelle als „inoffiziell“ gekennzeichnet, mit Hinweis auf mögliche Verstöße gegen Nutzungsbedingungen.
 - Kein Kopieren aus proprietärer Dokumentation oder fremdem Code. Fremdcode nur mit GPL-kompatibler Lizenz und Quellenangabe (Projekt, Lizenz, Link). Technische Erkenntnisse in eigenen Worten beschreiben.
 - Funktionen von GiroCrab sachlich und belegbar beschreiben: keine absoluten Versprechen („verlustfrei“, „alle Banken“), keine Zeitangaben ohne Messgrundlage.
 
 **EN**
-- Other finance or banking software is not named in user-facing text (README, docs, website, app strings, release notes), and there are no comparisons with third-party products. Internal code identifiers are exempt. Enforced by `scripts/lint-brand-names.sh`.
+- User-visible texts (README, docs, website, app strings, release notes) do not name brands of other banking or finance software and contain no comparisons with other products. Internal code identifiers (module, function, test and file names) are exempt. `scripts/lint-brand-names.sh` (CI) checks the docs and string catalogs.
 - Banks, brokers and payment services that GiroCrab connects to may be named factually ("connector for accounts at X Bank"). Do not imply a partnership or official support, and do not use bank logos in docs or on the website.
 - Mark unofficial interfaces as "unofficial" in docs and the bank table, noting possible terms-of-service issues.
 - Do not copy from proprietary documentation or third-party code. Third-party code only under a GPL-compatible licence with attribution (project, licence, link). Describe technical findings in your own words.
@@ -116,14 +105,53 @@ To avoid two people building the same thing (it has happened, e.g. account group
 
 * Keep PRs focused; describe what and why.
 * CI runs `cargo fmt --check`, `cargo clippy`, `cargo test -p girocrab-core` and a Swift build.
-* PRs written with AI help end with a `### 🤖 AI Process Reflection` section (see
-  [AI transparency](docs/ai-transparency.md)) containing five bullets: `Human-Steering`, `AI-Agency`,
-  `Review-Focus` and the mandatory **`Security-Check`** and **`Perf-Check`**:
-  * **Security-Check:** what you checked for secrets and personal data (logs, bug-report redaction with
-    `.sensitive()`, new HTTP/process/file access, new or upgraded dependencies, `THIRD_PARTY_NOTICES.md`).
-    "Nothing relevant: <why>" is a valid answer; an empty one is not.
-  * **Perf-Check:** what you measured or ruled out (core calls over ~16 ms go through `offMain`, no
-    `list_transactions` for counts or sums, `category_perf` numbers for changes on the category path).
-    "No hot path touched: <why>" is a valid answer.
-  The card shows both and marks a missing one with ⚠️. It is self-reported and never blocks a merge.
+* Work through the checklist below. Tick what applies, write "n/a: <why>" for the rest.
 * By contributing you agree to license your work under GPL-3.0-or-later.
+
+### Pull-Request-Checkliste: Security, Performance & Qualität / PR Checklist: Security, Performance & Quality
+
+Security and performance are **mandatory** for every PR, with or without AI help. The checklist is
+self-reported; the AI Provenance & Transparency Card shows it (see
+[AI transparency](docs/ai-transparency.md)) and never blocks a merge, but a missing answer is
+marked with ⚠️. / Security und Performance sind **Pflicht** für jeden PR, mit oder ohne KI-Hilfe.
+Die Checkliste ist eine Selbstauskunft; die Card zeigt sie an, blockiert nichts und markiert eine
+fehlende Angabe mit ⚠️.
+
+#### 🔐 Security & Privacy (Pflicht / mandatory)
+
+- [ ] **Redaction:** every new or changed SwiftUI view in the main window marks personal or financial data with `.sensitive()` (amounts, IBANs, names, purposes, notes, documents) or `.sensitive(.labels)` (category, group, budget, security names). Verify with `swift run GiroCrabMac --demo-seed --redact --screenshot /tmp/r.png` (`--redact=labels` for labels). / Neue oder geänderte Ansichten im Hauptfenster markieren personenbezogene und finanzielle Daten mit `.sensitive()`.
+- [ ] **Logs and errors:** text that reaches a log, diagnostics or a public issue goes through `sanitize_report_text` (`report_sanitizer.rs`); new fields get a test. Never paste raw log or bank text.
+- [ ] **File imports:** paths from users or archives are checked against traversal and symlinks (`std::fs::symlink_metadata`, see `importers/moneymoney_db.rs`).
+- [ ] **Exports:** CSV cells that are not numeric are escaped against formula injection (a leading `=`, `+`, `-` or `@` is neutralised, see `csv_field` in `export.rs`).
+- [ ] **Dependencies and licences:** `scripts/check-third-party-notices.sh` passes, and `THIRD_PARTY_NOTICES.md` is updated in the same PR when `Cargo.toml`, `Cargo.lock` or `Package.swift` changed.
+- [ ] **Brand neutrality:** `scripts/lint-brand-names.sh` passes.
+- [ ] **New access:** new network, process or file access is named in the PR description.
+
+#### ⚡ Performance & Responsiveness (Pflicht / mandatory)
+
+- [ ] **16 ms rule:** every core call from Swift is synchronous and holds the vault mutex. Views never touch `model.vault` (`scripts/lint-vault-access.sh`); use `model.vaultOffMain { … }` or `requireVaultOffMain` / `pinVault()` for anything over ~16 ms and check `listGeneration` before publishing.
+- [ ] **Aggregates:** use SQL aggregates, not `list_transactions`, for counts and sums (it enriches every row in the filter). Avoid O(n × m) nested loops over bookings.
+- [ ] **Benchmark:** when core queries, filtering, rules or categories are touched, run `COPIES=600 cargo run --release -q -p girocrab-core --example category_perf` (about 31k bookings) and put the timings in the PR. Measure before claiming a speed-up.
+
+#### ♿ UI scaling, platforms & schema integrity
+
+- [ ] **Text size:** text styles use `.appFont(...)` (`scripts/lint-fonts.sh`); check visually with `--screenshot <png> --text-size larger` next to `--text-size standard`.
+- [ ] **Linux / serde:** every `uniffi::Record` / `uniffi::Enum` carries the `serde` `cfg_attr`. `scripts/lint-serde-feature.sh` passes and `cargo check -q -p girocrab-core --features serde` builds.
+- [ ] **iOS:** with `#if os(macOS)` or other platform-specific APIs, the iOS target still builds (`xcodebuild -quiet`, iOS scheme).
+- [ ] **Schema:** a new table or column is a new entry at the end of `STEPS` in `girocrab-core/src/schema.rs`, plus the fixture (`cargo run -q -p girocrab-core --example make_fixture_vault`). Check what `vault/merge.rs` (iCloud merge) does with it. Never edit an existing step.
+- [ ] **Strings:** `scripts/xcstrings.py check` passes.
+- [ ] **Before pushing:** `cargo fmt --all`, `cargo clippy -q --workspace --all-targets -- -D warnings`, `scripts/lint-appmodel-internals.sh`.
+
+#### 🤖 AI Provenance & Process Reflection
+
+PRs written with AI help carry two things (details and examples: [AI transparency](docs/ai-transparency.md)):
+
+1. **Git trailers** on every AI-authored commit:
+   * `AI-Orchestrator: <model>` is the model that plans and orchestrates the session, with a matching `Co-authored-by: <Model> <email>`.
+   * `AI-Agent: <tool>` or `AI-Model: <model>` is the coding agent that wrote the code.
+   * Optional: `Security-Check: <text>` and `Perf-Check: <text>`, with the same content as the bullets below. The card reads both places.
+2. **A `### 🤖 AI Process Reflection` block** at the end of the PR body with five bullets: `Human-Steering`, `AI-Agency`, `Review-Focus` and the mandatory **`Security-Check`** and **`Perf-Check`**:
+   * **Security-Check:** what you checked for secrets and personal data (logs, `.sensitive()` redaction, new HTTP/process/file access, new or upgraded dependencies, `THIRD_PARTY_NOTICES.md`). "Nothing relevant: <why>" is a valid answer; an empty one is not.
+   * **Perf-Check:** what you measured or ruled out (`offMain` for calls over ~16 ms, no `list_transactions` for counts or sums, `category_perf` numbers for changes on the category path). "No hot path touched: <why>" is a valid answer. Naming `category_perf` in the PR body is shown as a hint.
+
+   The card lists both in stage 4 "Verification & Audit" and in the reflection block. PRs that only have the three original bullets still render.

@@ -32,7 +32,7 @@ import urllib.request
 from collections import Counter
 from datetime import datetime
 
-SCHEMA_VERSION = 2  # 2: ai.roles, reflection
+SCHEMA_VERSION = 3  # 2: ai.roles, reflection; 3: reflection.security_check/perf_check/perf_benchmark_mentioned (older records lack them)
 MARKER = "<!-- girocrab-ai-transparency -->"
 
 # --------------------------------------------------------------------------- rules
@@ -73,6 +73,7 @@ TRAILER_RE = re.compile(
     r"^(Co-Authored-By|AI-Orchestrator|AI-Agent|AI-Model|AI-Assisted|Assisted-By|Generated-By|"
     r"Human-Steering|AI-Agency|Review-Focus|Security-Check|Perf-Check|Verification|AI-Data-Policy)\s*:\s*(.+?)\s*$", re.I | re.M)
 FOOTER_RE = re.compile(r"Generated with \[?(Claude Code|[\w .-]+?)\]?\(", re.I)
+PERF_BENCH_RE = re.compile(r"\bcategory_perf\b", re.I)
 REFLECTION_HEAD_RE = re.compile(r"^#{1,6}\s*(?:🤖\s*)?AI Process Reflection\b.*$", re.I | re.M)
 REFLECTION_ITEM_RE = re.compile(
     r"^\s*(?:[-*]\s*)?\**(Human-Steering|AI-Agency|Review-Focus|Security-Check|Perf-Check)\s*:\**\s*(.+?)\s*$", re.I | re.M)
@@ -177,7 +178,10 @@ def parse_reflection(body, trailers):
             out[key].append(v)
     for k in out:
         out[k] = list(dict.fromkeys(x[:300] for x in out[k]))[:5]
-    return {"present": section or any(out.values()), "section": section, **out}
+    # `category_perf` named anywhere in the PR body counts as perf evidence, even without a Perf-Check item.
+    bench = bool(PERF_BENCH_RE.search(body or ""))
+    return {"present": section or any(out.values()), "section": section,
+            "perf_benchmark_mentioned": bench, **out}
 
 
 def is_bot(actor):
@@ -417,11 +421,20 @@ def stages(f):
         ver.append("Test-Sektion im PR-Body")
     ver += f["verification"]["trailers"][:3]
     ver.append("CI: fmt, clippy -D warnings, cargo test, swift build")
+    ok4 = bool(len(ver) > 1)  # self-reported checks below are shown but never set ✅
+    refl = f.get("reflection") or {}
+    for label, key in (("🔐 Security-Check", "security_check"), ("⚡ Perf-Check", "perf_check")):
+        if refl.get(key):
+            ver.append(f"{label} (Selbstauskunft): " + "; ".join(refl[key][:2]))
+        elif key == "perf_check" and refl.get("perf_benchmark_mentioned"):
+            ver.append("⚡ Perf-Check: category_perf im PR-Body erwähnt")
+        elif ai["involved"]:
+            ver.append(f"{label}: ⚠️ fehlt")
     return [
         ("1 · Problem Framing & Intent", bool(framing), framing),
         ("2 · Architectural & Security Steering", steer_ok, steer),
         ("3 · Code & Test Generation", True, gen),
-        ("4 · Verification & Audit", bool(len(ver) > 1), ver),
+        ("4 · Verification & Audit", ok4, ver),
     ]
 
 
@@ -474,6 +487,8 @@ def render_card(f, repo="GiroCrab/GiroCrab", audit=None):
                            ("Perf-Check", "perf_check")):
             if refl.get(key):
                 lines.append(f"- **{label}:** " + evidence_cell(refl[key]))
+            elif key == "perf_check" and refl.get("perf_benchmark_mentioned"):
+                lines.append(f"- **{label}:** ℹ️ `category_perf` im PR-Body erwähnt, aber nicht als Perf-Check angegeben")
             elif key in ("security_check", "perf_check") and f["ai"]["involved"]:
                 # Pflichtangabe (CONTRIBUTING.md): a gap stays visible, the card never blocks a merge.
                 lines.append(f"- **{label}:** ⚠️ fehlt (Pflichtangabe, siehe `CONTRIBUTING.md`)")
