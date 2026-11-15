@@ -13,6 +13,11 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
 use crate::vault::Vault;
 
+mod collect;
+mod csv;
+pub use collect::{CollectionItem, DebitFile};
+pub use csv::{parse_mandate_csv, MandateCsvImport, MandateCsvRow, MandateImportResult};
+
 const MANDATES: &str = "
 CREATE TABLE IF NOT EXISTS mandates (
     id                   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,7 +135,7 @@ fn scheme_code(s: MandateScheme) -> &'static str {
     s.debit().code()
 }
 
-fn invalid(msg: &str) -> CoreError {
+pub(crate) fn invalid(msg: &str) -> CoreError {
     CoreError::InvalidInput {
         message: msg.to_string(),
     }
@@ -294,6 +299,33 @@ impl Vault {
         drop(db);
         self.mandate(new_id)?
             .ok_or_else(|| invalid(tr("Das Mandat gibt es nicht mehr.")))
+    }
+
+    /// Saves imported rows under the creditor account `account_id`: a row whose
+    /// reference exists already updates that mandate (and keeps its last
+    /// collection), the others are created. Rows with errors are skipped.
+    pub fn import_mandate_rows(
+        &self,
+        account_id: i64,
+        rows: Vec<MandateCsvRow>,
+    ) -> Result<MandateImportResult, CoreError> {
+        let mut result = MandateImportResult::default();
+        for r in rows {
+            if let Some(e) = r.errors.first() {
+                result.failed.push(format!("{}: {e}", r.line));
+                continue;
+            }
+            let existing = self
+                .list_mandates(Some(account_id))?
+                .into_iter()
+                .find(|m| m.reference == r.reference.trim());
+            match self.save_mandate(existing.as_ref().map(|m| m.id), r.to_input(account_id)) {
+                Ok(_) if existing.is_some() => result.updated += 1,
+                Ok(_) => result.created += 1,
+                Err(e) => result.failed.push(format!("{}: {e}", r.line)),
+            }
+        }
+        Ok(result)
     }
 
     /// Removes a mandate for good. Collections already submitted stay in the

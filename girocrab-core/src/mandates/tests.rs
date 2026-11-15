@@ -104,3 +104,113 @@ fn creditor_id_is_per_account_with_a_suggestion() {
     v.set_creditor_id(a, "".into()).unwrap();
     assert_eq!(v.creditor_id(a).unwrap(), "");
 }
+
+#[test]
+fn csv_import_reads_a_member_list_and_reports_faulty_lines() {
+    let text = "\u{feff}Name;IBAN;Mandatsreferenz;Datum;Art;Betrag;Zweck;Einmalig\n\
+Mia Beispiel;DE89 3704 0044 0532 0130 00;M-1;15.01.2025;CORE;12,50;Beitrag;nein\n\
+Jan Muster;DE00;M-2;2025-02-01;;;;\n\
+Eva Probe;DE02120300000000202051;M-3;2025-03-01;B2B;;;ja\n";
+    let imp = parse_mandate_csv(text.into());
+    assert!(imp.problems.is_empty(), "{:?}", imp.problems);
+    assert_eq!(imp.rows.len(), 3);
+    let a = &imp.rows[0];
+    assert_eq!(
+        (a.signed_date.as_str(), a.default_amount_cents),
+        ("2025-01-15", 1250)
+    );
+    assert!(a.errors.is_empty());
+    assert!(!imp.rows[1].errors.is_empty()); // IBAN
+    assert_eq!(imp.rows[2].scheme, MandateScheme::B2b);
+    assert!(imp.rows[2].one_off);
+
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    let r = v.import_mandate_rows(acc, imp.rows.clone()).unwrap();
+    assert_eq!((r.created, r.updated, r.failed.len()), (2, 0, 1));
+    assert!(r.failed[0].starts_with("3:"), "{:?}", r.failed);
+    // importing again updates by reference
+    let r = v.import_mandate_rows(acc, imp.rows).unwrap();
+    assert_eq!((r.created, r.updated), (0, 2));
+    assert_eq!(v.list_mandates(Some(acc)).unwrap().len(), 2);
+}
+
+#[test]
+fn csv_without_header_uses_the_default_order_and_flags_a_missing_file() {
+    let imp = parse_mandate_csv("Mia;DE89370400440532013000;M-1;2025-01-15".into());
+    assert_eq!(imp.rows.len(), 1);
+    assert!(imp.rows[0].errors.is_empty());
+    assert!(!parse_mandate_csv(String::new()).problems.is_empty());
+    let bad = parse_mandate_csv("Name;IBAN\nMia;DE89370400440532013000".into());
+    assert!(!bad.problems.is_empty());
+}
+
+#[test]
+fn collection_files_are_grouped_by_scheme_and_sequence() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    let a = v.save_mandate(None, input(acc, "M-A")).unwrap();
+    let b = v.save_mandate(None, input(acc, "M-B")).unwrap();
+    let mut oneoff = input(acc, "M-C");
+    oneoff.one_off = true;
+    let c = v.save_mandate(None, oneoff).unwrap();
+    let items = |ids: &[i64]| {
+        ids.iter()
+            .map(|&mandate_id| CollectionItem {
+                mandate_id,
+                amount_cents: 1500,
+                purpose: String::new(),
+            })
+            .collect::<Vec<_>>()
+    };
+
+    // no creditor ID yet
+    assert!(v
+        .build_collection_files(acc, items(&[a.id]), "2026-12-01".into())
+        .is_err());
+    v.set_creditor_id(acc, "DE98ZZZ09999999999".into()).unwrap();
+    assert!(v
+        .build_collection_files(acc, vec![], "2026-12-01".into())
+        .is_err());
+    assert!(v
+        .build_collection_files(acc, items(&[a.id]), "01.12.2026".into())
+        .is_err());
+
+    let files = v
+        .build_collection_files(acc, items(&[a.id, b.id, c.id]), "2026-12-01".into())
+        .unwrap();
+    assert_eq!(files.len(), 2); // CORE/FRST (a, b) and CORE/OOFF (c)
+    let frst = files.iter().find(|f| f.sequence == "FRST").unwrap();
+    assert_eq!((frst.count, frst.total_cents), (2, 3000));
+    assert!(frst.xml.contains("<SeqTp>FRST</SeqTp>") && frst.xml.contains("<MndtId>M-A</MndtId>"));
+    assert!(frst.xml.contains("<EndToEndId>M-A-20261201</EndToEndId>"));
+    assert_eq!(frst.file_name, "lastschrift-CORE-FRST-2026-12-01.xml");
+    assert!(files.iter().any(|f| f.sequence == "OOFF" && f.count == 1));
+
+    // after the run the next collection of a recurring mandate is RCUR
+    v.mark_collected(frst.mandate_ids.clone(), "2026-12-01".into())
+        .unwrap();
+    assert_eq!(v.mandate(a.id).unwrap().unwrap().next_sequence, "RCUR");
+    assert_eq!(v.mandate(c.id).unwrap().unwrap().next_sequence, "OOFF");
+    let again = v
+        .build_collection_files(acc, items(&[a.id]), "2027-01-02".into())
+        .unwrap();
+    assert_eq!(again[0].sequence, "RCUR");
+    // an earlier due date never moves the last collection back
+    v.mark_collected(vec![a.id], "2026-06-01".into()).unwrap();
+    assert_eq!(
+        v.mandate(a.id).unwrap().unwrap().last_collected.as_deref(),
+        Some("2026-12-01")
+    );
+
+    // inactive and foreign mandates are refused
+    let mut off = input(acc, "M-D");
+    off.active = false;
+    let d = v.save_mandate(None, off).unwrap();
+    assert!(v
+        .build_collection_files(acc, items(&[d.id]), "2027-01-02".into())
+        .is_err());
+    assert!(v
+        .build_collection_files(acc + 1, items(&[a.id]), "2027-01-02".into())
+        .is_err());
+}

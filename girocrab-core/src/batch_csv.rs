@@ -99,13 +99,13 @@ pub fn parse_batch_csv(text: String) -> BatchCsvImport {
     }
 }
 
-fn is_blank(fields: &[String]) -> bool {
+pub(crate) fn is_blank(fields: &[String]) -> bool {
     fields.iter().all(|f| f.trim().is_empty())
 }
 
 /// The delimiter with the most occurrences in the first non-empty line
 /// (outside quotes); `;` when nothing decides.
-fn detect_delimiter(text: &str) -> char {
+pub(crate) fn detect_delimiter(text: &str) -> char {
     let mut counts = [(';', 0usize), (',', 0), ('\t', 0)];
     let mut quoted = false;
     for c in text.chars() {
@@ -131,7 +131,7 @@ fn detect_delimiter(text: &str) -> char {
 
 /// Splits into records of fields: quotes group, `""` is a quote, a quoted
 /// field may contain delimiters and line breaks. Keeps the start line.
-fn split_records(text: &str, delim: char) -> Vec<(u32, Vec<String>)> {
+pub(crate) fn split_records(text: &str, delim: char) -> Vec<(u32, Vec<String>)> {
     let mut out = Vec::new();
     let mut fields: Vec<String> = Vec::new();
     let mut field = String::new();
