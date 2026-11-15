@@ -44,6 +44,8 @@ pub mod pain008;
 pub mod product_id;
 pub mod sepa;
 mod standing;
+mod standing_order;
+pub(crate) use standing_order::limits_from_state as standing_limits_from_state;
 pub mod syntax;
 
 use std::collections::{HashMap, HashSet};
@@ -55,8 +57,8 @@ use serde::{Deserialize, Serialize};
 use self::syntax::{escape, parse_response, Segment, SegmentBuilder};
 use super::{
     BankConnector, BatchTransferJob, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
-    DebitJob, FetchResult, PayeeCheck, PayeeMatch, Phase, RemoteAccount, TransferJob,
-    TransferResult,
+    DebitJob, FetchResult, PayeeCheck, PayeeMatch, Phase, RemoteAccount, StandingOrderJob,
+    TransferJob, TransferResult,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -99,6 +101,9 @@ struct FinTsState {
     /// Batch transfer parameters from HICCMS; `None` = not offered.
     #[serde(default)]
     batch_params: Option<BatchParams>,
+    /// Limits for creating and changing standing orders (HICDES / HICDNS).
+    #[serde(default)]
+    standing_params: standing_order::StandingParams,
     /// Collection parameters per HKDME/HKDMC/HKBME from the BPD (HIDMES, …).
     #[serde(default)]
     debit_params: HashMap<String, DebitParams>,
@@ -123,6 +128,9 @@ const IMPLEMENTED: &[(&str, &[u32])] = &[
     ("HKCSE", &[1]),
     ("HKCCM", &[1]),
     ("HKCDB", &[1, 2]),
+    ("HKCDE", &[1]),
+    ("HKCDN", &[1]),
+    ("HKCDL", &[1, 2]),
     ("HKDSE", &[1]),
     ("HKDME", &[1]),
     ("HKDSC", &[1]),
@@ -484,6 +492,8 @@ struct PreparedOrder {
     /// Direct debit batches: (send Summenfeld, send single-booking flag),
     /// from the BPD; `None` = read the transfer `batch_params`.
     debit_layout: Option<(bool, bool)>,
+    /// Standing orders (HKCDE/HKCDN/HKCDL): order id and schedule after the pain.001.
+    standing: Option<standing_order::StandingTail>,
 }
 
 /// Longest wait between two name-check polls, and in total.
@@ -909,6 +919,9 @@ impl FinTsConnector {
             ("HICSES", "HKCSE"),
             ("HICCMS", "HKCCM"),
             ("HICDBS", "HKCDB"),
+            ("HICDES", "HKCDE"),
+            ("HICDNS", "HKCDN"),
+            ("HICDLS", "HKCDL"),
             ("HIDSES", "HKDSE"),
             ("HIDMES", "HKDME"),
             ("HIDSCS", "HKDSC"),
@@ -926,6 +939,12 @@ impl FinTsConnector {
         }
         if let Some(seg) = reply.first("HICCMS") {
             self.st.batch_params = Some(parse_batch_params(seg));
+        }
+        if let Some(seg) = reply.first("HICDES") {
+            self.st.standing_params.create = Some(standing_order::parse_create_rules(seg));
+        }
+        if let Some(seg) = reply.first("HICDNS") {
+            self.st.standing_params.change = Some(standing_order::parse_change_rules(seg));
         }
         for (seg, tx) in [
             ("HIDMES", "HKDME"),
@@ -1840,6 +1859,7 @@ impl FinTsConnector {
             recipient_iban: job.recipient_iban.clone(),
             batch: None,
             debit_layout: None,
+            standing: None,
         });
         self.vop_id = None;
         self.vop_with_tan = false;
@@ -1975,6 +1995,7 @@ impl FinTsConnector {
             recipient_iban: String::new(),
             batch: Some((total, !job.batch_booking)),
             debit_layout: None,
+            standing: None,
         });
         self.vop_id = None;
         self.vop_with_tan = false;
@@ -2115,6 +2136,7 @@ impl FinTsConnector {
             recipient_iban: String::new(),
             batch: batch.then_some((total, !job.batch_booking)),
             debit_layout: Some((p.sum_required, p.single_booking_allowed)),
+            standing: None,
         });
         self.vop_id = None;
         self.vop_with_tan = false;
@@ -2202,11 +2224,11 @@ impl FinTsConnector {
                 seg.raw("")
             };
         }
-        payload.push(
-            seg.de(&[order.descriptor])
-                .binary(order.xml.as_bytes())
-                .build(),
-        );
+        seg = seg.de(&[order.descriptor]).binary(order.xml.as_bytes());
+        if let Some(tail) = &order.standing {
+            seg = tail.append(seg);
+        }
+        payload.push(seg.build());
         payload.push(self.hktan_process4(n + 1, order.seg_id));
         Ok(payload)
     }
@@ -3208,6 +3230,22 @@ impl BankConnector for FinTsConnector {
         r
     }
 
+    async fn send_standing_order(
+        &mut self,
+        ctx: &ConnectContext,
+        job: &StandingOrderJob,
+    ) -> CoreResult<Phase> {
+        self.transferring = true;
+        self.result = TransferResult::default();
+        self.order_submitted = false;
+        self.order = None;
+        let r = self.start_standing_order(ctx, job).await;
+        if r.is_err() {
+            self.transferring = false;
+        }
+        r
+    }
+
     async fn send_direct_debit(
         &mut self,
         ctx: &ConnectContext,
@@ -3751,6 +3789,7 @@ mod tests {
             recipient_iban: "DE89370400440532013000".into(),
             batch: None,
             debit_layout: None,
+            standing: None,
         });
     }
 
@@ -3800,6 +3839,104 @@ mod tests {
         let text =
             String::from_utf8_lossy(&c.order_payload(Vop::None).unwrap().concat()).to_string();
         assert!(!text.contains("EUR+"), "{text}");
+    }
+
+    #[test]
+    fn standing_order_limits_come_from_the_stored_state() {
+        use crate::models::StandingOrderAction as A;
+        let raw = b"HICDES:12:1:3+1+1+0+1:2:90:010203:00:00:0'\
+                    HICDNS:13:1:3+1+1+0+1:2:90:J:J:J:J:J:J:J:J:J:010612:010515:00:135'";
+        let mut c = FinTsConnector::new("20041111");
+        c.learn_bpd(&reply(raw));
+        let state = serde_json::to_value(&c.st).unwrap();
+        let create = standing_limits_from_state(&state, A::Create).unwrap();
+        assert_eq!((create.min_days_ahead, create.max_days_ahead), (2, 90));
+        assert_eq!(create.months, [1, 2, 3]);
+        assert!(create.days_of_month.is_empty() && create.weeks.is_empty());
+        assert!(create.weekdays.is_empty(), "0 = every weekday");
+        let change = standing_limits_from_state(&state, A::Change).unwrap();
+        assert_eq!(change.months, [1, 6, 12]);
+        assert_eq!(change.days_of_month, [1, 5, 15]);
+        assert_eq!(change.weekdays, [1, 3, 5]);
+        assert!(standing_limits_from_state(&state, A::Delete).is_none());
+        // Not a FinTS state, or none of the parameters seen yet.
+        assert!(standing_limits_from_state(&serde_json::json!({}), A::Create).is_none());
+    }
+
+    #[test]
+    fn reads_standing_order_parameters_and_builds_the_three_orders() {
+        let raw = b"HICDES:12:1:3+1+1+0+1:2:90:010203:00:00:0'\
+                    HICDNS:13:1:3+1+1+0+1:2:90:J:J:J:J:J:J:J:J:J:010203:00:00:0'\
+                    HICDLS:14:2:3+1+1+0+1:90:J:J'";
+        let mut c = FinTsConnector::new("20041111");
+        c.learn_bpd(&reply(raw));
+        assert!(c.bank_supports("HKCDE") && c.bank_supports("HKCDN") && c.bank_supports("HKCDL"));
+        assert_eq!(c.version("HKCDL"), 2);
+        let create = c.st.standing_params.create.clone().unwrap();
+        assert_eq!(
+            create,
+            standing_order::parse_create_rules(
+                &syntax::parse_response(b"HICDES:12:1:3+1+1+0+1:2:90:010203:00:00:0'").unwrap()[0]
+            )
+        );
+        let change = c.st.standing_params.change.clone().unwrap();
+        assert!(format!("{change:?}").contains("010203"));
+
+        let job =
+            |action, order_id: &str, last: Option<&str>| crate::connectors::StandingOrderJob {
+                action,
+                source_iban: "DE02120300000000202051".into(),
+                source_owner: "A".into(),
+                order_id: order_id.into(),
+                recipient_name: "Vermieter".into(),
+                recipient_iban: "DE89370400440532013000".into(),
+                recipient_bic: None,
+                amount_cents: 85_000,
+                purpose: "Miete".into(),
+                first_date: "2026-12-01".into(),
+                last_date: last.map(str::to_string),
+                time_unit: "M".into(),
+                interval: 1,
+                exec_day: 1,
+            };
+        let payload = |c: &mut FinTsConnector,
+                       seg: &'static str,
+                       j: &crate::connectors::StandingOrderJob,
+                       v: u32| {
+            order_for(c);
+            let with_time = seg == "HKCDL" && v >= 2;
+            let o = c.order.as_mut().unwrap();
+            o.seg_id = seg;
+            o.xml = "<x/>".into();
+            o.standing = Some(standing_order::StandingTail {
+                order_id: (j.action != crate::models::StandingOrderAction::Create)
+                    .then(|| j.order_id.clone()),
+                schedule: standing_order::schedule_components(j, with_time),
+            });
+            String::from_utf8_lossy(&c.order_payload(Vop::None).unwrap().concat()).to_string()
+        };
+        use crate::models::StandingOrderAction as A;
+        let text = payload(&mut c, "HKCDE", &job(A::Create, "", None), 1);
+        assert!(text.contains("+@4@<x/>+20261201:M:1:1'"), "{text}");
+        let text = payload(
+            &mut c,
+            "HKCDN",
+            &job(A::Change, "A1", Some("2027-11-01")),
+            1,
+        );
+        assert!(
+            text.contains("+@4@<x/>++A1+20261201:M:1:1:20271101'"),
+            "{text}"
+        );
+        let text = payload(&mut c, "HKCDL", &job(A::Delete, "A1", None), 2);
+        assert!(text.contains("+@4@<x/>++A1+20261201:M:1:1'"), "{text}");
+        let text = payload(
+            &mut c,
+            "HKCDL",
+            &job(A::Delete, "A1", Some("2027-11-01")),
+            2,
+        );
+        assert!(text.contains("++A1+20261201:M:1:1::20271101'"), "{text}");
     }
 
     #[test]

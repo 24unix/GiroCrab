@@ -3,11 +3,13 @@
 //! executions for the "Geplant" page. Read-only; nothing is sent from here.
 
 use chrono::{Datelike, Duration, NaiveDate};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::connectors::RemoteStandingOrder;
+use crate::connectors::{RemoteStandingOrder, StandingOrderJob};
 use crate::error::CoreResult;
+use crate::models::StandingOrderAction;
 use crate::planned::{PlannedKind, PlannedPayment};
+use crate::vault::Vault;
 
 /// Without an end date a period shows at most this many executions per order
 /// (a weekly order would otherwise fill the page).
@@ -235,5 +237,238 @@ fn last_day_of_month(y: i32, m: u32) -> u32 {
         .map_or(28, |d| d.day())
 }
 
+/// A stored standing order as the bank reported it (#496): what the editor shows
+/// and what a change or deletion refers to.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct StandingOrderInfo {
+    /// Row id, the handle for `StandingOrderRequest::order_row_id`.
+    pub id: i64,
+    pub account_id: i64,
+    pub account_name: String,
+    /// The bank's order id; empty if it did not report one.
+    pub order_id: String,
+    pub recipient_name: String,
+    pub recipient_iban: String,
+    /// Positive = outgoing.
+    pub amount_cents: i64,
+    pub purpose: String,
+    pub first_date: String,
+    pub last_date: Option<String>,
+    pub time_unit: String,
+    pub interval: u32,
+    pub exec_day: u32,
+    pub can_change: bool,
+    pub can_delete: bool,
+}
+
+const INFO_COLUMNS: &str = "s.id, s.account_id, a.name, s.order_id, s.recipient_name,
+        s.recipient_iban, s.amount_cents, s.purpose, s.first_date, s.last_date, s.time_unit,
+        s.interval, s.exec_day, s.can_change, s.can_delete";
+
+fn info_from(r: &rusqlite::Row) -> rusqlite::Result<StandingOrderInfo> {
+    Ok(StandingOrderInfo {
+        id: r.get(0)?,
+        account_id: r.get(1)?,
+        account_name: r.get(2)?,
+        order_id: r.get(3)?,
+        recipient_name: r.get(4)?,
+        recipient_iban: r.get(5)?,
+        amount_cents: r.get(6)?,
+        purpose: r.get(7)?,
+        first_date: r.get(8)?,
+        last_date: r.get(9)?,
+        time_unit: r.get(10)?,
+        interval: r.get(11)?,
+        exec_day: r.get(12)?,
+        can_change: r.get::<_, i64>(13)? != 0,
+        can_delete: r.get::<_, i64>(14)? != 0,
+    })
+}
+
+/// Whether `first` is a day the schedule runs on: the execution day of the month (31 = last
+/// day; a day beyond the month's end means its last day) or the weekday (1 = Monday).
+pub(crate) fn first_date_fits(first: NaiveDate, unit: &str, exec_day: u32) -> bool {
+    if unit == "W" {
+        return first.weekday().number_from_monday() == exec_day;
+    }
+    let (y, m) = (first.year(), first.month());
+    let next_month = if m == 12 {
+        NaiveDate::from_ymd_opt(y + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(y, m + 1, 1)
+    };
+    let month_end = next_month
+        .and_then(|d| d.pred_opt())
+        .map_or(31, |d| d.day());
+    if exec_day >= 31 {
+        return first.day() == month_end;
+    }
+    first.day() == exec_day || (exec_day > month_end && first.day() == month_end)
+}
+
+#[uniffi::export]
+impl Vault {
+    /// The stored standing orders of the given accounts (empty = all), oldest
+    /// first. Only what the last bank fetch reported, plus optimistic changes
+    /// from [`Vault::begin_standing_order`] until the next fetch.
+    pub fn list_standing_orders(
+        &self,
+        account_ids: Vec<i64>,
+    ) -> Result<Vec<StandingOrderInfo>, crate::error::CoreError> {
+        let db = self.db()?;
+        let mut q = db.prepare(&format!(
+            "SELECT {INFO_COLUMNS} FROM standing_orders s JOIN accounts a ON a.id = s.account_id
+             WHERE a.deleted_ms IS NULL ORDER BY s.first_date, s.id"
+        ))?;
+        let rows = q.query_map([], info_from)?;
+        let mut out = Vec::new();
+        for o in rows {
+            let o = o?;
+            if account_ids.is_empty() || account_ids.contains(&o.account_id) {
+                out.push(o);
+            }
+        }
+        Ok(out)
+    }
+
+    /// What the account's bank allows for a new or changed standing order, from the
+    /// parameters it sent at the last synchronisation. `None` when it stated none
+    /// (not a FinTS account, or not synchronised since this was added): the form
+    /// then offers everything and the check happens when sending.
+    pub fn standing_order_limits(
+        &self,
+        account_id: i64,
+        action: crate::models::StandingOrderAction,
+    ) -> Result<Option<crate::models::StandingOrderLimits>, crate::error::CoreError> {
+        let db = self.db()?;
+        let state: Option<String> = db
+            .query_row(
+                "SELECT c.state_json FROM accounts a JOIN bank_connections c ON c.id = a.connection_id
+                 WHERE a.id = ?1 AND a.deleted_ms IS NULL AND c.deleted_ms IS NULL",
+                [account_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(state) = state.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        else {
+            return Ok(None);
+        };
+        Ok(crate::connectors::fints::standing_limits_from_state(
+            &state, action,
+        ))
+    }
+}
+
+impl Vault {
+    /// One stored order by its row id.
+    pub(crate) fn standing_order(&self, row_id: i64) -> CoreResult<Option<StandingOrderInfo>> {
+        let db = self.db()?;
+        let mut q = db.prepare(&format!(
+            "SELECT {INFO_COLUMNS} FROM standing_orders s JOIN accounts a ON a.id = s.account_id
+             WHERE s.id = ?1 AND a.deleted_ms IS NULL"
+        ))?;
+        let mut rows = q.query_map([row_id], info_from)?;
+        Ok(rows.next().transpose()?)
+    }
+
+    /// After the bank accepted the order: mirror it locally until the next fetch
+    /// replaces the account's orders. A new order is not editable before that
+    /// (the bank's order id is not known yet).
+    pub(crate) fn record_standing_order(
+        &self,
+        account_id: i64,
+        job: &StandingOrderJob,
+    ) -> CoreResult<()> {
+        let db = self.db()?;
+        match job.action {
+            StandingOrderAction::Delete => {
+                db.execute(
+                    "DELETE FROM standing_orders WHERE account_id = ?1 AND order_id = ?2",
+                    params![account_id, job.order_id],
+                )?;
+            }
+            StandingOrderAction::Change => {
+                db.execute(
+                    "UPDATE standing_orders SET recipient_name = ?3, recipient_iban = ?4,
+                            amount_cents = ?5, purpose = ?6, first_date = ?7, last_date = ?8,
+                            time_unit = ?9, interval = ?10, exec_day = ?11
+                     WHERE account_id = ?1 AND order_id = ?2",
+                    params![
+                        account_id,
+                        job.order_id,
+                        job.recipient_name,
+                        job.recipient_iban,
+                        job.amount_cents,
+                        job.purpose,
+                        job.first_date,
+                        job.last_date,
+                        job.time_unit,
+                        job.interval,
+                        job.exec_day
+                    ],
+                )?;
+            }
+            StandingOrderAction::Create => {
+                let o = RemoteStandingOrder {
+                    recipient_name: job.recipient_name.clone(),
+                    recipient_iban: job.recipient_iban.clone(),
+                    amount_cents: job.amount_cents,
+                    purpose: job.purpose.clone(),
+                    first_date: job.first_date.clone(),
+                    last_date: job.last_date.clone(),
+                    time_unit: job.time_unit.clone(),
+                    interval: job.interval,
+                    exec_day: job.exec_day,
+                    ..Default::default()
+                };
+                db.execute(
+                    "INSERT OR REPLACE INTO standing_orders(account_id, key, order_id, recipient_name,
+                            recipient_iban, amount_cents, purpose, first_date, last_date, time_unit,
+                            interval, exec_day, can_change, can_delete, fetched_ms)
+                     VALUES (?1,?2,'',?3,?4,?5,?6,?7,?8,?9,?10,?11,0,0,?12)",
+                    params![
+                        account_id,
+                        key_of(&o),
+                        o.recipient_name,
+                        o.recipient_iban,
+                        o.amount_cents,
+                        o.purpose,
+                        o.first_date,
+                        o.last_date,
+                        o.time_unit,
+                        o.interval,
+                        o.exec_day,
+                        crate::user_groups::now_ms()
+                    ],
+                )?;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod day_tests {
+    use super::*;
+
+    #[test]
+    fn first_date_must_match_the_execution_day() {
+        let d = |y, m, day| NaiveDate::from_ymd_opt(y, m, day).unwrap();
+        assert!(first_date_fits(d(2026, 12, 3), "M", 3));
+        assert!(!first_date_fits(d(2026, 11, 16), "M", 3));
+        assert!(first_date_fits(d(2027, 2, 28), "M", 31), "31 = last day");
+        assert!(!first_date_fits(d(2027, 2, 27), "M", 31));
+        assert!(
+            first_date_fits(d(2027, 2, 28), "M", 30),
+            "30 in a short month"
+        );
+        assert!(first_date_fits(d(2026, 11, 30), "M", 31));
+        assert!(first_date_fits(d(2026, 11, 16), "W", 1), "a Monday");
+        assert!(!first_date_fits(d(2026, 11, 17), "W", 1));
+        assert!(first_date_fits(d(2026, 11, 22), "W", 7), "a Sunday");
+    }
+}

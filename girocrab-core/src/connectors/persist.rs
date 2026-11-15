@@ -1232,6 +1232,198 @@ impl Vault {
         )))
     }
 
+    /// Prepares creating, changing or deleting a standing order at the bank
+    /// (HKCDE / HKCDN / HKCDL), confirmed with a TAN like a transfer. FinTS
+    /// accounts only. Change and delete refer to a stored order by row id; the
+    /// bank's order id and, for a deletion, the data to send come from the vault.
+    pub fn begin_standing_order(
+        self: Arc<Self>,
+        request: crate::models::StandingOrderRequest,
+        secret: String,
+        demo: bool,
+    ) -> Result<Arc<TransferSession>, CoreError> {
+        use crate::connectors::fints::sepa;
+        use crate::models::StandingOrderAction as Action;
+        let bad = |m: &str| CoreError::InvalidInput { message: m.into() };
+        let (connection_id, iban, owner, key_str, kind, demo) =
+            self.transfer_source(request.account_id, demo)?;
+        if !matches!(
+            kind,
+            ConnectorKind::VolksbankKasselGoettingen
+                | ConnectorKind::Direkt1822
+                | ConnectorKind::FinTsGeneric
+        ) {
+            return Err(bad(tr(
+                "Daueraufträge lassen sich nur bei FinTS-Konten ändern.",
+            )));
+        }
+        let order = match request.action {
+            Action::Create | Action::Change => {
+                let name = request.recipient_name.trim().to_string();
+                if name.is_empty() || name.chars().count() > 70 {
+                    return Err(bad(tr(
+                        "Der Empfängername muss 1 bis 70 Zeichen lang sein.",
+                    )));
+                }
+                let purpose = request.purpose.trim().to_string();
+                if purpose.chars().count() > 140 {
+                    return Err(bad(tr(
+                        "Der Verwendungszweck darf höchstens 140 Zeichen lang sein.",
+                    )));
+                }
+                let recipient_iban = sepa::normalize_iban(&request.recipient_iban);
+                if !sepa::validate_iban(&recipient_iban) {
+                    return Err(bad(tr("Die Empfänger-IBAN ist ungültig.")));
+                }
+                if request.amount_cents <= 0 {
+                    return Err(bad(tr("Der Betrag muss größer als 0 sein.")));
+                }
+                let today = chrono::Local::now().date_naive();
+                let date = |d: &str| chrono::NaiveDate::parse_from_str(d.trim(), "%Y-%m-%d").ok();
+                let first = date(&request.first_date)
+                    .ok_or_else(|| bad(tr("Der erste Termin ist ungültig (JJJJ-MM-TT).")))?;
+                if first <= today {
+                    return Err(bad(tr("Der erste Termin muss in der Zukunft liegen.")));
+                }
+                let last = match request.last_date.as_deref().map(str::trim) {
+                    None | Some("") => None,
+                    Some(l) => {
+                        let l = date(l).ok_or_else(|| {
+                            bad(tr("Der letzte Termin ist ungültig (JJJJ-MM-TT)."))
+                        })?;
+                        if l < first {
+                            return Err(bad(tr(
+                                "Der letzte Termin darf nicht vor dem ersten liegen.",
+                            )));
+                        }
+                        Some(l.to_string())
+                    }
+                };
+                let max_day = match request.time_unit.as_str() {
+                    "M" => 31,
+                    "W" => 7,
+                    _ => return Err(bad(tr("Der Rhythmus muss Monate oder Wochen sein."))),
+                };
+                if !(1..=99).contains(&request.interval) {
+                    return Err(bad(tr("Der Rhythmus muss zwischen 1 und 99 liegen.")));
+                }
+                if !(1..=max_day).contains(&request.exec_day) {
+                    return Err(bad(tr("Der Ausführungstag ist ungültig.")));
+                }
+                if !crate::standing_orders::first_date_fits(
+                    first,
+                    &request.time_unit,
+                    request.exec_day,
+                ) {
+                    return Err(bad(tr(
+                        "Die erste Ausführung passt nicht zum Ausführungstag.",
+                    )));
+                }
+                let order_id = if request.action == Action::Change {
+                    self.stored_order(&request)?.order_id
+                } else {
+                    String::new()
+                };
+                crate::connectors::StandingOrderJob {
+                    action: request.action,
+                    source_iban: iban.clone(),
+                    source_owner: owner.clone(),
+                    order_id,
+                    recipient_name: name,
+                    recipient_iban,
+                    recipient_bic: request
+                        .recipient_bic
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|b| !b.is_empty())
+                        .map(sepa::normalize_iban),
+                    amount_cents: request.amount_cents,
+                    purpose,
+                    first_date: first.to_string(),
+                    last_date: last,
+                    time_unit: request.time_unit.clone(),
+                    interval: request.interval,
+                    exec_day: request.exec_day,
+                }
+            }
+            Action::Delete => {
+                let o = self.stored_order(&request)?;
+                if !o.can_delete {
+                    return Err(bad(tr(
+                        "Die Bank erlaubt nicht, diesen Dauerauftrag zu löschen.",
+                    )));
+                }
+                crate::connectors::StandingOrderJob {
+                    action: Action::Delete,
+                    source_iban: iban.clone(),
+                    source_owner: owner.clone(),
+                    order_id: o.order_id,
+                    recipient_name: o.recipient_name,
+                    recipient_iban: o.recipient_iban,
+                    recipient_bic: None,
+                    amount_cents: o.amount_cents,
+                    purpose: o.purpose,
+                    first_date: o.first_date,
+                    last_date: o.last_date,
+                    time_unit: o.time_unit,
+                    interval: o.interval,
+                    exec_day: o.exec_day,
+                }
+            }
+        };
+        let sync = self.clone().begin_sync(connection_id, secret, demo)?;
+        let ctx = sync.clone_context()?;
+        let summary = TransferJob {
+            source_iban: iban,
+            source_owner: owner,
+            recipient_name: order.recipient_name.clone(),
+            recipient_iban: order.recipient_iban.clone(),
+            recipient_bic: order.recipient_bic.clone(),
+            amount_cents: order.amount_cents,
+            purpose: order.purpose.clone(),
+            instant: false,
+            execution_date: None,
+            end_to_end_id: new_end_to_end_id(),
+        };
+        Ok(Arc::new(TransferSession::new_standing(
+            self.clone(),
+            make_connector_for(kind, &key_str, demo),
+            ctx,
+            order,
+            summary,
+            request.account_id,
+        )))
+    }
+
+    /// The stored order a change or deletion refers to: it must exist, belong to
+    /// the account, carry the bank's order id and (for a change) be changeable.
+    fn stored_order(
+        &self,
+        request: &crate::models::StandingOrderRequest,
+    ) -> CoreResult<crate::standing_orders::StandingOrderInfo> {
+        let bad = |m: &str| CoreError::InvalidInput { message: m.into() };
+        let o = request
+            .order_row_id
+            .map(|id| self.standing_order(id))
+            .transpose()?
+            .flatten()
+            .filter(|o| o.account_id == request.account_id)
+            .ok_or_else(|| {
+                bad(tr(
+                    "Der Dauerauftrag ist nicht mehr vorhanden. Bitte die Konten neu abrufen.",
+                ))
+            })?;
+        if o.order_id.trim().is_empty() {
+            return Err(bad(tr("Die Bank hat für diesen Dauerauftrag keine Auftragsnummer gemeldet. Bitte in der Banking-App ändern.")));
+        }
+        if request.action == crate::models::StandingOrderAction::Change && !o.can_change {
+            return Err(bad(tr(
+                "Die Bank erlaubt nicht, diesen Dauerauftrag zu ändern.",
+            )));
+        }
+        Ok(o)
+    }
+
     /// Prepares handing one file of a collection run (see
     /// `build_collection_files`) to the bank: HKDME/HKDSE and the COR1/B2B
     /// variants, confirmed with a TAN like a transfer. FinTS accounts only.

@@ -69,9 +69,11 @@ extension AppModel {
         let horizon = plannedHorizon
         guard let result = try? await vaultOffMain({ v in
             (try v.listPlannedPayments(from: nil, to: to, accountIds: accounts),
-             try v.plannedPaymentTotals(from: nil, to: to, accountIds: accounts))
+             try v.plannedPaymentTotals(from: nil, to: to, accountIds: accounts),
+             try v.listStandingOrders(accountIds: []))
         }) else { return }
         guard account == plannedAccountFilter, horizon == plannedHorizon, version == plannedVersion else { return }
+        standingOrders = result.2
         plannedPayments = result.0
         plannedMonths = PlannedMonth.group(result.0)
         plannedTotals = result.1

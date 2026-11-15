@@ -12,6 +12,9 @@
         }
       }
     },
+    " · " : {
+      "extractionState" : "manual"
+    },
     "%@ (%@)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -794,6 +797,17 @@
         }
       }
     },
+    "%lld Monate" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld months"
+          }
+        }
+      }
+    },
     "%lld Monatsraten" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -944,6 +958,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld transactions imported. For older transactions, choose “Umsätze anzeigen” in the portal and confirm the SMS code – the import then continues automatically."
+          }
+        }
+      }
+    },
+    "%lld Wochen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld weeks"
           }
         }
       }
@@ -1960,6 +1985,17 @@
         }
       }
     },
+    "1 Monat" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 month"
+          }
+        }
+      }
+    },
     "1 Position noch nicht zugeordnet" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1978,6 +2014,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 match"
+          }
+        }
+      }
+    },
+    "1 Woche" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 week"
           }
         }
       }
@@ -2990,6 +3037,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Everyday & Spending"
+          }
+        }
+      }
+    },
+    "Als Dauerauftrag anlegen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create Standing Order…"
           }
         }
       }
@@ -4125,6 +4183,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Execution date"
+          }
+        }
+      }
+    },
+    "Ausführungstag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Execution day"
           }
         }
       }
@@ -5802,6 +5871,17 @@
         }
       }
     },
+    "Bitte Empfänger und IBAN genau prüfen. Die Bank bestätigt den Auftrag mit einer TAN." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please check the recipient and IBAN carefully. The bank confirms the order with a TAN."
+          }
+        }
+      }
+    },
     "Bitte Empfänger und IBAN genau prüfen. Eine freigegebene Überweisung lässt sich meist nicht mehr zurückholen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7000,6 +7080,116 @@
         }
       }
     },
+    "Dauerauftrag abgebrochen – es wurde nichts gesendet, solange die TAN nicht bestätigt wurde." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standing order cancelled – nothing was sent as long as the TAN was not confirmed."
+          }
+        }
+      }
+    },
+    "Dauerauftrag angelegt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standing order created"
+          }
+        }
+      }
+    },
+    "Dauerauftrag anlegen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Standing Order…"
+          }
+        }
+      }
+    },
+    "Dauerauftrag gelöscht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standing order deleted"
+          }
+        }
+      }
+    },
+    "Dauerauftrag geändert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standing order changed"
+          }
+        }
+      }
+    },
+    "Dauerauftrag löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Standing Order"
+          }
+        }
+      }
+    },
+    "Dauerauftrag löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Standing Order…"
+          }
+        }
+      }
+    },
+    "Dauerauftrag prüfen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review Standing Order"
+          }
+        }
+      }
+    },
+    "Dauerauftrag ändern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change Standing Order"
+          }
+        }
+      }
+    },
+    "Dauerauftrag ändern …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change Standing Order…"
+          }
+        }
+      }
+    },
     "Deaktivieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7264,6 +7454,17 @@
         }
       }
     },
+    "Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Bitte zuerst im Online-Banking prüfen, ob der Dauerauftrag angelegt, geändert oder gelöscht wurde, bevor Sie es erneut versuchen.\n\nBank: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The order reached the bank, but its answer is unclear. Please check in online banking first whether the standing order was created, changed or deleted before you try again.\n\nBank: %@"
+          }
+        }
+      }
+    },
     "Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Die Überweisung wurde möglicherweise bereits ausgeführt.\n\nBitte prüfen Sie zuerst Ihr Konto (Umsätze oder Online-Banking), bevor Sie sie erneut senden. In GiroCrab ist sie als „Status unklar“ vorgemerkt.\n\nReferenz (EndToEnd-ID): %@\nBank: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7271,6 +7472,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The order reached the bank, but the reply is not clear. The transfer may already have been executed.\n\nPlease check your account (transactions or online banking) before sending it again. GiroCrab has recorded it as “status unclear”.\n\nReference (EndToEnd ID): %1$@\nBank: %2$@"
+          }
+        }
+      }
+    },
+    "Der Dauerauftrag wird bei der Bank gelöscht. Danach werden keine weiteren Zahlungen mehr ausgeführt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The standing order is deleted at the bank. No further payments will be made afterwards."
           }
         }
       }
@@ -9698,6 +9910,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Refund for: %@"
+          }
+        }
+      }
+    },
+    "Erste Ausführung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "First execution"
           }
         }
       }
@@ -15260,6 +15483,17 @@
         }
       }
     },
+    "Legt bei der Bank einen neuen Dauerauftrag an (mit TAN)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Creates a new standing order at the bank (with TAN)."
+          }
+        }
+      }
+    },
     "Lese Rechnung …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -15322,6 +15556,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Last 5 years"
+          }
+        }
+      }
+    },
+    "Letzte Ausführung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last execution"
           }
         }
       }
@@ -15399,6 +15644,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Last sync"
+          }
+        }
+      }
+    },
+    "Letzter Tag des Monats" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last day of the month"
           }
         }
       }
@@ -15960,6 +16216,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Load with DuckDuckGo"
+          }
+        }
+      }
+    },
+    "Mit Enddatum" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With end date"
           }
         }
       }
@@ -16962,6 +17229,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Create a new vault in this folder?"
+          }
+        }
+      }
+    },
+    "Neuer Dauerauftrag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Standing Order"
           }
         }
       }
@@ -19542,6 +19820,17 @@
         }
       }
     },
+    "Rhythmus" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frequency"
+          }
+        }
+      }
+    },
     "Richtlinie" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21074,6 +21363,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transfer status unclear"
+          }
+        }
+      }
+    },
+    "Status des Dauerauftrags unklar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standing order status unclear"
           }
         }
       }
@@ -23988,6 +24288,28 @@
         }
       }
     },
+    "Wochen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weeks"
+          }
+        }
+      }
+    },
+    "Wochentag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weekday"
+          }
+        }
+      }
+    },
     "Wohnung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24648,6 +24970,17 @@
         }
       }
     },
+    "am %lld." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "on day %lld"
+          }
+        }
+      }
+    },
     "am %u." : {
       "comment" : "Savings plan execution day of month",
       "extractionState" : "manual",
@@ -24660,6 +24993,17 @@
         }
       }
     },
+    "am letzten Tag des Monats" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "on the last day of the month"
+          }
+        }
+      }
+    },
     "bereits vorhanden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24667,6 +25011,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "already present"
+          }
+        }
+      }
+    },
+    "bis auf Widerruf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "until cancelled"
           }
         }
       }
@@ -25415,6 +25770,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Change…"
+          }
+        }
+      }
+    },
+    "Änderung prüfen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review Change"
           }
         }
       }

@@ -1445,7 +1445,8 @@ impl Vault {
             )?;
         }
         // Standing orders as the bank reports them (#239): rent monthly, a savings
-        // transfer quarterly and a weekly payment.
+        // transfer quarterly and a weekly payment. The monthly ones are changeable and
+        // deletable (#496), the weekly one is read-only.
         for (name, iban, cents, purpose, unit, interval, day, last) in [
             (
                 "Hausverwaltung Nord",
@@ -1482,7 +1483,7 @@ impl Vault {
                 "INSERT INTO standing_orders(account_id, key, order_id, recipient_name, recipient_iban,
                         amount_cents, purpose, first_date, last_date, time_unit, interval, exec_day,
                         can_change, can_delete, fetched_ms)
-                 VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, '2025-01-01', ?7, ?8, ?9, ?10, 0, 0, 0)",
+                 VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, '2025-01-01', ?7, ?8, ?9, ?10, ?11, ?11, 0)",
                 params![
                     acc_ids["demo-giro"],
                     format!("DEMO-{purpose}"),
@@ -1493,7 +1494,9 @@ impl Vault {
                     last,
                     unit,
                     interval,
-                    day
+                    day,
+                    // Rent and savings can be changed (as with a bank that allows it); the weekly one cannot.
+                    i64::from(unit == "M"),
                 ],
             )?;
         }

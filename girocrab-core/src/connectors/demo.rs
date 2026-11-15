@@ -240,6 +240,26 @@ impl BankConnector for DemoConnector {
         Ok(Phase::Challenge(c))
     }
 
+    async fn send_standing_order(
+        &mut self,
+        ctx: &ConnectContext,
+        job: &super::StandingOrderJob,
+    ) -> CoreResult<Phase> {
+        let summary = TransferJob {
+            source_iban: job.source_iban.clone(),
+            source_owner: job.source_owner.clone(),
+            recipient_name: job.recipient_name.clone(),
+            recipient_iban: job.recipient_iban.clone(),
+            recipient_bic: job.recipient_bic.clone(),
+            amount_cents: job.amount_cents,
+            purpose: job.purpose.clone(),
+            instant: false,
+            execution_date: None,
+            end_to_end_id: String::new(),
+        };
+        self.send_transfer(ctx, &summary).await
+    }
+
     async fn send_batch_transfer(
         &mut self,
         ctx: &ConnectContext,

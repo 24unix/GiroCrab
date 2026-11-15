@@ -467,6 +467,12 @@ extension AppModel {
                 cancelTransferSession(t, confirmedMessage: nil)
                 return
             }
+            if activeTransferIsStanding {
+                // not a transfer: the standing-order sheet comes back, not the transfer form
+                cancelStandingOrderRun()
+                cancelTransferSession(t, confirmedMessage: nil)
+                return
+            }
             // The bank has to confirm: a bunq draft stays approvable until it is rejected.
             cancelTransferSession(t, confirmedMessage: String(localized: "Überweisung abgebrochen – es wurde nichts gesendet, solange die TAN nicht bestätigt wurde."))
             return

@@ -751,6 +751,16 @@ struct MainSplitView: View {
                 .environment(model)
                 .interactiveDismissDisabled(model.transferBusy)
         }
+        .sheet(isPresented: $model.showStandingSheet) {
+            StandingOrderSheet()
+                .environment(model)
+                .interactiveDismissDisabled(model.transferBusy)
+        }
+        .alert("Status des Dauerauftrags unklar", isPresented: Binding(get: { model.standingUnknown != nil }, set: { if !$0 { model.standingUnknown = nil } })) {
+            Button("Verstanden", role: .cancel) { model.standingUnknown = nil }
+        } message: {
+            Text("Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Bitte zuerst im Online-Banking prüfen, ob der Dauerauftrag angelegt, geändert oder gelöscht wurde, bevor Sie es erneut versuchen.\n\nBank: \(model.standingUnknown ?? "")")
+        }
         .sheet(isPresented: $model.showTransferSheet) {
             TransferSheetView()
                 .environment(model)

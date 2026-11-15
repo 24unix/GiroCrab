@@ -148,6 +148,10 @@ extension AppModel {
                 finishDebitGroup(connection: connection)
                 return
             }
+            if activeTransferIsStanding {
+                finishStandingOrder()
+                return
+            }
             plannedVersion += 1 // a scheduled transfer now shows under „Geplant“
             pollTask?.cancel()
             activeChallenge = nil
@@ -173,6 +177,10 @@ extension AppModel {
         case .outcomeUnknown(let reason, let endToEndId):
             if activeTransferIsDebit {
                 debitOutcomeUnknown(reason: reason)
+                return
+            }
+            if activeTransferIsStanding {
+                standingOrderOutcomeUnknown(reason: reason)
                 return
             }
             // May have been executed: no retry button, clear the draft so it
@@ -266,6 +274,8 @@ extension AppModel {
         transferError = describe(error)
         if activeTransferIsDebit {
             failDebitRun(error)
+        } else if activeTransferIsStanding {
+            failStandingOrder()
         } else if activeTransferIsBatch {
             batchDraft.pin = ""
             activeTransferIsBatch = false

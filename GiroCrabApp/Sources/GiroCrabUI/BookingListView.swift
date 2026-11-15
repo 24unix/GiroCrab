@@ -504,6 +504,8 @@ struct DayCardRow: View {
         .disabled(b.counterparty.isEmpty && b.merchantName.isEmpty)
         Button("Neue Überweisung aus Buchung …", systemImage: "paperplane") { model.openTransfer(from: b) }
             .disabled(!model.canTransfer)
+        Button("Als Dauerauftrag anlegen …", systemImage: "repeat") { model.newStandingOrder(from: b) }
+            .disabled(!model.canMakeStandingOrder(from: b))
         Button("Umsatz kopieren", systemImage: "doc.on.doc") { copyToPasteboard(b.clipboardLine) }
         exportMenuButton(for: b)
         Divider()

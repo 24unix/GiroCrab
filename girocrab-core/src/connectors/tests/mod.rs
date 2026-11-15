@@ -1275,5 +1275,6 @@ mod banking_gate;
 mod batch_transfer;
 mod content_id;
 mod direct_debit;
+mod standing_order;
 mod statements_auto;
 mod transfer_cancel;

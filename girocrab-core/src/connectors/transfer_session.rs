@@ -17,6 +17,14 @@ pub(crate) struct DebitSubmission {
     pub mandate_ids: Vec<i64>,
 }
 
+/// The kinds of order besides a single transfer; at most one is set.
+#[derive(Default)]
+struct Extras {
+    batch: Option<BatchTransferJob>,
+    debit: Option<DebitSubmission>,
+    standing: Option<StandingOrderJob>,
+}
+
 struct TransferState {
     connector: Box<dyn BankConnector>,
     ctx: ConnectContext,
@@ -26,6 +34,8 @@ struct TransferState {
     batch: Option<BatchTransferJob>,
     /// Set for a direct debit collection; `job` then describes the sum.
     debit: Option<DebitSubmission>,
+    /// Set for a standing order change; `job` is then a placeholder.
+    standing: Option<StandingOrderJob>,
     account_id: i64,
     /// false = still logging in, true = transfer submitted (waiting for TAN).
     submitted: bool,
@@ -65,7 +75,7 @@ impl TransferSession {
         job: TransferJob,
         account_id: i64,
     ) -> Self {
-        Self::with_parts(vault, connector, ctx, job, None, None, account_id)
+        Self::with_parts(vault, connector, ctx, job, Extras::default(), account_id)
     }
 
     fn with_parts(
@@ -73,8 +83,7 @@ impl TransferSession {
         connector: Box<dyn BankConnector>,
         ctx: ConnectContext,
         job: TransferJob,
-        batch: Option<BatchTransferJob>,
-        debit: Option<DebitSubmission>,
+        extras: Extras,
         account_id: i64,
     ) -> Self {
         Self {
@@ -83,8 +92,9 @@ impl TransferSession {
                 connector,
                 ctx,
                 job,
-                batch,
-                debit,
+                batch: extras.batch,
+                debit: extras.debit,
+                standing: extras.standing,
                 account_id,
                 submitted: false,
                 done: false,
@@ -107,8 +117,10 @@ impl TransferSession {
             connector,
             ctx,
             summary,
-            Some(batch),
-            None,
+            Extras {
+                batch: Some(batch),
+                ..Default::default()
+            },
             account_id,
         )
     }
@@ -126,8 +138,31 @@ impl TransferSession {
             connector,
             ctx,
             summary,
-            None,
-            Some(debit),
+            Extras {
+                debit: Some(debit),
+                ..Default::default()
+            },
+            account_id,
+        )
+    }
+
+    pub(crate) fn new_standing(
+        vault: Arc<Vault>,
+        connector: Box<dyn BankConnector>,
+        ctx: ConnectContext,
+        order: StandingOrderJob,
+        summary: TransferJob,
+        account_id: i64,
+    ) -> Self {
+        Self::with_parts(
+            vault,
+            connector,
+            ctx,
+            summary,
+            Extras {
+                standing: Some(order),
+                ..Default::default()
+            },
             account_id,
         )
     }
@@ -162,10 +197,11 @@ impl TransferSession {
                 }
                 Ok(Phase::Ready) if !st.submitted => {
                     st.submitted = true;
-                    phase = match (&st.debit, &st.batch) {
-                        (Some(d), _) => st.connector.send_direct_debit(&st.ctx, &d.job).await,
-                        (None, Some(b)) => st.connector.send_batch_transfer(&st.ctx, b).await,
-                        (None, None) => st.connector.send_transfer(&st.ctx, &st.job).await,
+                    phase = match (&st.standing, &st.debit, &st.batch) {
+                        (Some(o), _, _) => st.connector.send_standing_order(&st.ctx, o).await,
+                        (None, Some(d), _) => st.connector.send_direct_debit(&st.ctx, &d.job).await,
+                        (None, None, Some(b)) => st.connector.send_batch_transfer(&st.ctx, b).await,
+                        (None, None, None) => st.connector.send_transfer(&st.ctx, &st.job).await,
                     };
                 }
                 Ok(Phase::Ready) => {
@@ -174,7 +210,9 @@ impl TransferSession {
                     return match st.connector.transfer_result() {
                         TransferResult::Executed { instant } => {
                             st.executed = true;
-                            if let Some(d) = &st.debit {
+                            if let Some(o) = &st.standing {
+                                self.vault.record_standing_order(st.account_id, o)?;
+                            } else if let Some(d) = &st.debit {
                                 self.vault.record_direct_debit(st.account_id, d)?;
                             } else if let Some(b) = &st.batch {
                                 self.vault
@@ -214,6 +252,14 @@ impl TransferSession {
     /// Stores a booking marked "Status unklar" so the possibly executed order
     /// stays visible (until the bank's booking arrives or 14 days pass).
     fn outcome_unknown(&self, st: &TransferState, reason: String) -> CoreResult<TransferStep> {
+        if st.standing.is_some() {
+            // A standing order is no booking: nothing to show until the next fetch,
+            // where it appears (or does not). The user checks with the bank first.
+            return Ok(TransferStep::OutcomeUnknown {
+                reason,
+                end_to_end_id: st.job.end_to_end_id.clone(),
+            });
+        }
         if st.debit.is_some() {
             // A collection is incoming money: no optimistic booking and no
             // mandate update. The user checks with the bank first.

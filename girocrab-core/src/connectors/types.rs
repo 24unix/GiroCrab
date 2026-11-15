@@ -525,6 +525,17 @@ pub trait BankConnector: Send {
             message: tr("Für diese Bank werden Sammelüberweisungen nicht unterstützt.").into(),
         })
     }
+    /// Create, change or delete a standing order (HKCDE/HKCDN/HKCDL). Same
+    /// session rules as `send_transfer`.
+    async fn send_standing_order(
+        &mut self,
+        _ctx: &ConnectContext,
+        _job: &StandingOrderJob,
+    ) -> CoreResult<Phase> {
+        Err(CoreError::InvalidInput {
+            message: tr("Für diese Bank werden Daueraufträge nicht unterstützt.").into(),
+        })
+    }
     /// Submit a direct debit collection (SEPA-Lastschrift, HKDSE/HKDME/…).
     /// Same session rules as `send_transfer`.
     async fn send_direct_debit(
@@ -604,6 +615,28 @@ pub struct RemoteStandingOrder {
     pub exec_day: u32,
     pub can_change: bool,
     pub can_delete: bool,
+}
+
+/// A standing order to create, change or delete at the bank (#496). The data
+/// is what goes into the order: new values for `Create`/`Change`, the stored
+/// ones for `Delete`.
+#[derive(Debug, Clone)]
+pub struct StandingOrderJob {
+    pub action: crate::models::StandingOrderAction,
+    pub source_iban: String,
+    pub source_owner: String,
+    /// The bank's order id (`Change`/`Delete`), else empty.
+    pub order_id: String,
+    pub recipient_name: String,
+    pub recipient_iban: String,
+    pub recipient_bic: Option<String>,
+    pub amount_cents: i64,
+    pub purpose: String,
+    pub first_date: String,
+    pub last_date: Option<String>,
+    pub time_unit: String,
+    pub interval: u32,
+    pub exec_day: u32,
 }
 
 /// Transfer request plus the source account data resolved from the vault.
