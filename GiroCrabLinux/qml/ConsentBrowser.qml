@@ -30,7 +30,9 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: 1
         profile: WebEngineProfile { offTheRecord: true }
-        Component.onCompleted: url = browser.url
+        // the host sets `url` after creating this item (Loader.onLoaded): follow it
+        Component.onCompleted: if (browser.url) url = browser.url
+        Connections { target: browser; function onUrlChanged() { if (browser.url) view.url = browser.url } }
         // Links and server redirects: catch the redirect URL before it loads.
         onNavigationRequested: request => {
             const u = request.url.toString()
