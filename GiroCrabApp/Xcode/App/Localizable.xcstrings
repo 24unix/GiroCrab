@@ -564,6 +564,17 @@
         }
       }
     },
+    "%lld Dateien in Downloads gespeichert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld files saved to Downloads"
+          }
+        }
+      }
+    },
     "%lld Depotpositionen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -708,6 +719,28 @@
         }
       }
     },
+    "%lld Umsaetze" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld transactions"
+          }
+        }
+      }
+    },
+    "%lld Umsätze" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld transactions"
+          }
+        }
+      }
+    },
     "%lld Umsätze als gelesen markiert" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -726,6 +759,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld transactions recognised – import starts automatically once the page has finished loading."
+          }
+        }
+      }
+    },
+    "%lld Umsätze exportieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export %lld transactions…"
           }
         }
       }
@@ -833,6 +877,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$lld of %2$lld selected"
+          }
+        }
+      }
+    },
+    "%lld von %lld gewählt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld of %lld selected"
+          }
+        }
+      }
+    },
+    "%lld × Umsaetze-….pdf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld × Umsaetze-….pdf"
           }
         }
       }
@@ -1514,6 +1580,17 @@
         }
       }
     },
+    "1 Buchung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 booking"
+          }
+        }
+      }
+    },
     "1 Jahr" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1877,6 +1954,17 @@
         }
       }
     },
+    "Aktuelle Ansicht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Current view"
+          }
+        }
+      }
+    },
     "Aktueller Kontostand" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2185,6 +2273,17 @@
         }
       }
     },
+    "Alle aufklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expand all"
+          }
+        }
+      }
+    },
     "Alle auswählen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2203,6 +2302,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Export All…"
+          }
+        }
+      }
+    },
+    "Alle in einer Datei" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All in one file"
+          }
+        }
+      }
+    },
+    "Alle speichern (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save all (%lld)"
+          }
+        }
+      }
+    },
+    "Alle zuklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse all"
           }
         }
       }
@@ -2544,6 +2676,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Other folder …"
+          }
+        }
+      }
+    },
+    "Anfangssaldo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opening balance"
           }
         }
       }
@@ -3065,6 +3208,17 @@
         }
       }
     },
+    "Aufklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expand"
+          }
+        }
+      }
+    },
     "Aufteilung aufheben" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3209,6 +3363,17 @@
         }
       }
     },
+    "Ausgabe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Output"
+          }
+        }
+      }
+    },
     "Ausgaben" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3282,6 +3447,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Selection"
+          }
+        }
+      }
+    },
+    "Auswahl (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selection (%lld)"
           }
         }
       }
@@ -4683,6 +4859,17 @@
         }
       }
     },
+    "Bitte mindestens ein Konto wählen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please select at least one account."
+          }
+        }
+      }
+    },
     "Bitte prüfen Sie die markierten Konten. Ein erneuter Import ergänzt fehlende Buchungen, ohne Duplikate anzulegen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4969,6 +5156,72 @@
         }
       }
     },
+    "CAMT speichern%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save CAMT%@"
+          }
+        }
+      }
+    },
+    "CAMT.053" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CAMT.053"
+          }
+        }
+      }
+    },
+    "CAMT.053 (älter)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CAMT.053 (legacy)"
+          }
+        }
+      }
+    },
+    "CAMT.053 gilt immer für genau ein Konto (#372)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CAMT.053 always applies to exactly one account (#372)."
+          }
+        }
+      }
+    },
+    "CAMT.053 nur für ein einzelnes Konto (#372)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CAMT.053 only for a single account (#372)."
+          }
+        }
+      }
+    },
+    "CAMT.053 nur für einen Zeitraum: Ein Kontoauszug braucht alle Buchungen, sonst stimmt der Endsaldo nicht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CAMT.053 only for a period: a statement needs all bookings, otherwise the closing balance is wrong."
+          }
+        }
+      }
+    },
     "CSV exportieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4987,6 +5240,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Export CSV…"
+          }
+        }
+      }
+    },
+    "CSV speichern%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save CSV%@"
           }
         }
       }
@@ -6526,6 +6790,17 @@
         }
       }
     },
+    "Dieser Umsatz" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This booking"
+          }
+        }
+      }
+    },
     "Dieses Jahr" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7093,6 +7368,28 @@
         }
       }
     },
+    "Eine Datei pro gewähltem Konto nach Downloads" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One file per selected account to Downloads"
+          }
+        }
+      }
+    },
+    "Eine Umsatzliste mit den gewählten Konten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One transaction list with the selected accounts"
+          }
+        }
+      }
+    },
     "Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7258,6 +7555,17 @@
         }
       }
     },
+    "Einstellungen bleiben gespeichert. Anfangssaldo und Endsaldo stehen immer im Kopf." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings are remembered. Opening and closing balance always appear in the header."
+          }
+        }
+      }
+    },
     "Einstellungen …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7419,6 +7727,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Delete Permanently"
+          }
+        }
+      }
+    },
+    "Endsaldo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Closing balance"
           }
         }
       }
@@ -7731,6 +8050,17 @@
         }
       }
     },
+    "Excel · Semikolon · UTF-8" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Excel · semicolon · UTF-8"
+          }
+        }
+      }
+    },
     "Export fehlgeschlagen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7738,6 +8068,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Export Failed"
+          }
+        }
+      }
+    },
+    "Export nicht möglich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export not possible"
           }
         }
       }
@@ -8523,6 +8864,17 @@
         }
       }
     },
+    "Für dieses Konto gibt es keinen Tagessaldo zum Beginn des Zeitraums, daher fehlt der Anfangssaldo für CAMT.053. Bitte das Konto synchronisieren oder einen anderen Zeitraum wählen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "There is no daily balance for this account at the start of the period, so the opening balance for CAMT.053 is missing. Please sync the account or choose another period."
+          }
+        }
+      }
+    },
     "Für „Privacy URL“ und „Terms URL“ genügt z. B. https://girocrab.de oder https://github.com/GiroCrab/GiroCrab." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8805,6 +9157,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Saved – enter again to replace"
+          }
+        }
+      }
+    },
+    "Gespeichert: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved: %@"
           }
         }
       }
@@ -9876,6 +10239,28 @@
         }
       }
     },
+    "ISO 20022 · aktueller Standard" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ISO 20022 · current standard"
+          }
+        }
+      }
+    },
+    "ISO 20022 · für ältere Programme" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ISO 20022 · for older software"
+          }
+        }
+      }
+    },
     "Ihr Mac verwendet jetzt %@, GiroCrab ist auf %@ eingestellt. Zum Wechseln startet GiroCrab neu." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10532,6 +10917,17 @@
         }
       }
     },
+    "Jedes Konto einzeln" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each account separately"
+          }
+        }
+      }
+    },
     "Jetzt abrufen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10994,6 +11390,17 @@
         }
       }
     },
+    "Kein Gehalt erkannt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No salary detected"
+          }
+        }
+      }
+    },
     "Kein Logo" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11342,6 +11749,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No Transactions Found"
+          }
+        }
+      }
+    },
+    "Keine Umsätze für den Export." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No transactions to export."
           }
         }
       }
@@ -11898,6 +12316,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Account · %@"
+          }
+        }
+      }
+    },
+    "Konto, Bank oder IBAN" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account, bank, or IBAN"
           }
         }
       }
@@ -14410,6 +14839,39 @@
         }
       }
     },
+    "Nur die markierten Buchungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only the selected bookings"
+          }
+        }
+      }
+    },
+    "Nur die markierten Buchungen. Konten und Zeitraum brauchst du hier nicht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only the selected bookings. You don’t need accounts or a period here."
+          }
+        }
+      }
+    },
+    "Nur erste Zeile Verwendungszweck" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Purpose first line only"
+          }
+        }
+      }
+    },
     "Nur erste Zeile des Verwendungszwecks" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14784,6 +15246,17 @@
         }
       }
     },
+    "PDF" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF"
+          }
+        }
+      }
+    },
     "PDF %lld von %lld …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14791,6 +15264,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "PDF %1$lld of %2$lld…"
+          }
+        }
+      }
+    },
+    "PDF konnte nicht erzeugt werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not create the PDF."
+          }
+        }
+      }
+    },
+    "PDF speichern%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save PDF%@"
+          }
+        }
+      }
+    },
+    "PDF-Export ist auf dieser Plattform nicht verfügbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PDF export is not available on this platform."
           }
         }
       }
@@ -14824,6 +15330,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Drop a PDF invoice or receipt here"
+          }
+        }
+      }
+    },
+    "PDF-Seiten konnten nicht zusammengefügt werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not merge PDF pages."
           }
         }
       }
@@ -15308,6 +15825,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Private person – no logo"
+          }
+        }
+      }
+    },
+    "Pro gewähltem Konto entsteht eine eigene Datei." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A separate file is created for each selected account."
           }
         }
       }
@@ -16430,6 +16958,17 @@
         }
       }
     },
+    "Seit %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Since %@"
+          }
+        }
+      }
+    },
     "Seit %@ · zuletzt %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16476,6 +17015,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Page %1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "Seite %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page %lld"
+          }
+        }
+      }
+    },
+    "Seite %lld/%lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page %lld/%lld"
           }
         }
       }
@@ -17756,6 +18317,17 @@
         }
       }
     },
+    "Tagessaldo-Spalte" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Daily balance column"
+          }
+        }
+      }
+    },
     "Tanken" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18141,6 +18713,17 @@
         }
       }
     },
+    "Umsatz" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transaction"
+          }
+        }
+      }
+    },
     "Umsatz aufteilen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18163,6 +18746,28 @@
         }
       }
     },
+    "Umsatz exportieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export transaction"
+          }
+        }
+      }
+    },
+    "Umsatz exportieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export transaction…"
+          }
+        }
+      }
+    },
     "Umsatz kopieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18170,6 +18775,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copy Transaction"
+          }
+        }
+      }
+    },
+    "Umsatzliste · A4 Hochformat" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transaction list · A4 portrait"
+          }
+        }
+      }
+    },
+    "Umsätze" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transactions"
           }
         }
       }
@@ -18185,6 +18812,50 @@
         }
       }
     },
+    "Umsätze als CSV exportieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export transactions as CSV…"
+          }
+        }
+      }
+    },
+    "Umsätze als PDF, CSV oder CAMT.053 exportieren … (#53 / #372)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export transactions as PDF, CSV, or CAMT.053… (#53 / #372)"
+          }
+        }
+      }
+    },
+    "Umsätze exportieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export transactions"
+          }
+        }
+      }
+    },
+    "Umsätze exportieren …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export transactions…"
+          }
+        }
+      }
+    },
     "Umsätze exportieren … → XML oder CSV" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18192,6 +18863,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Export transactions… → XML or CSV"
+          }
+        }
+      }
+    },
+    "Umsätze sichern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save transactions"
           }
         }
       }
@@ -18269,6 +18951,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Insecure page blocked (%@) – only HTTPS pages are opened."
+          }
+        }
+      }
+    },
+    "Unter …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save as…"
           }
         }
       }
@@ -18807,6 +19500,17 @@
         }
       }
     },
+    "Von–Bis wählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose from–to"
+          }
+        }
+      }
+    },
     "Voraussichtlich noch" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19258,6 +19962,17 @@
         }
       }
     },
+    "Weitere Optionen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More options"
+          }
+        }
+      }
+    },
     "Weitergeleitete Adresse hier einfügen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19573,6 +20288,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Will be created under “%@”."
+          }
+        }
+      }
+    },
+    "Wird erstellt …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Creating…"
           }
         }
       }
@@ -19903,6 +20629,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Access withdrawn: the bank no longer provides this account. Its bookings are kept."
+          }
+        }
+      }
+    },
+    "Zuklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse"
           }
         }
       }
@@ -21197,6 +21934,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "“Cancel import” discards everything – nothing is imported then."
+          }
+        }
+      }
+    },
+    "„Speichern“ legt direkt in Downloads ab. „Unter …“ fragt nach dem Ort." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Save” writes directly to Downloads. “Save as…” asks for a location."
           }
         }
       }

@@ -239,11 +239,20 @@ struct BookingStreamView: View {
         .modifier(WindowTitle(title: model.title))
         #endif
         .sheet(isPresented: $model.showPrintSheet) { PrintSheet() }
+        .sheet(isPresented: $model.showExportSheet) { ExportSheet() }
         .fileExporter(
             isPresented: $model.showCSVExporter,
             document: model.csvExport,
             contentType: .commaSeparatedText,
             defaultFilename: "GiroCrab-Buchungen"
+        ) { result in
+            if case .failure(let e) = result { model.showError(String(localized: "Export fehlgeschlagen"), e.localizedDescription) }
+        }
+        .fileExporter(
+            isPresented: $model.showExportExporter,
+            document: model.exportFile,
+            contentType: model.exportContentType,
+            defaultFilename: model.exportFilename
         ) { result in
             if case .failure(let e) = result { model.showError(String(localized: "Export fehlgeschlagen"), e.localizedDescription) }
         }
@@ -444,8 +453,22 @@ struct DayCardRow: View {
         Button("Neue Überweisung aus Buchung …", systemImage: "paperplane") { model.openTransfer(from: b) }
             .disabled(!model.canTransfer)
         Button("Umsatz kopieren", systemImage: "doc.on.doc") { copyToPasteboard(b.clipboardLine) }
+        exportMenuButton(for: b)
         Divider()
         Button(b.checked ? "Als neu markieren" : "Als geprüft markieren", systemImage: "checkmark.circle") { model.setChecked(!b.checked, for: b) }
+    }
+
+    @ViewBuilder
+    private func exportMenuButton(for b: Booking) -> some View {
+        let count = model.isMultiSelection && model.selectedBookingIDs.contains(b.id)
+            ? model.selectedBookingIDs.count : 1
+        Button(count > 1
+               ? String(localized: "\(count) Umsätze exportieren …")
+               : String(localized: "Umsatz exportieren …"),
+               systemImage: "square.and.arrow.up") {
+            if !model.selectedBookingIDs.contains(b.id) { model.selectedBookingID = b.id }
+            model.openBookingExport(selection: true)
+        }
     }
 }
 
@@ -835,7 +858,7 @@ struct MainToolbar: ViewModifier {
                 Menu {
                     Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
                         .disabled(!model.canTransfer)
-                    Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren …", systemImage: "square.and.arrow.up") }
+                    Button { model.openBookingExport() } label: { Label("Umsätze exportieren …", systemImage: "square.and.arrow.up") }
                     Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
                     Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
                     Button { model.showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
@@ -880,9 +903,9 @@ struct MainToolbar: ViewModifier {
                 Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }
                     .help("Befehlspalette (⌘K)")
             }
-            ToolbarItem(id: "csv", placement: .primaryAction, showsByDefault: false) {
-                Button { model.exportFilteredBookingsCSV() } label: { Label("CSV exportieren", systemImage: "square.and.arrow.up") }
-                    .help("Gefilterte Buchungen als CSV exportieren …")
+            ToolbarItem(id: "export", placement: .primaryAction, showsByDefault: false) {
+                Button { model.openBookingExport() } label: { Label("Umsätze exportieren", systemImage: "square.and.arrow.up") }
+                    .help("Umsätze als PDF, CSV oder CAMT.053 exportieren … (#53 / #372)")
             }
             ToolbarItem(id: "print", placement: .primaryAction, showsByDefault: false) {
                 Button { model.showPrintSheet = true } label: { Label("Drucken", systemImage: "printer") }

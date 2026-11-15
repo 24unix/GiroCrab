@@ -322,6 +322,15 @@ public final class AppModel {
     var syncLogVersion = 0
     var csvExport = CSVFileDocument(data: Data())
     var showCSVExporter = false
+    /// Unified booking export (PDF / CSV / XML).
+    var showExportSheet = false
+    var exportFile = ExportFileDocument(data: Data())
+    var showExportExporter = false
+    var exportContentType: UTType = .pdf
+    var exportFilename = "Buchungen.pdf"
+    /// When set, the export sheet defaults to these booking ids (context menu).
+    var exportBookingIDs: Set<Int64>?
+    var exportPreferSelection = false
     /// Print dialog (GitHub #53).
     var showPrintSheet = false
     var transferDraft = TransferDraft()

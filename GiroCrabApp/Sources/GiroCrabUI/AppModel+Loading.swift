@@ -244,7 +244,25 @@ extension AppModel {
         )
     }
 
-    /// Exports every booking matching the current list filter as Excel-friendly CSV.
+    /// Opens the compact export dialog (PDF / CSV / XML).
+    /// - Parameter selection: use the current multi-/single selection (context menu).
+    func openBookingExport(selection: Bool = false) {
+        if selection {
+            if selectedBookingIDs.isEmpty, let id = selectedBookingID {
+                exportBookingIDs = [id]
+            } else {
+                exportBookingIDs = selectedBookingIDs
+            }
+            exportPreferSelection = !(exportBookingIDs ?? []).isEmpty
+        } else {
+            exportBookingIDs = nil
+            exportPreferSelection = false
+        }
+        showExportSheet = true
+    }
+
+    /// Exports every booking matching the current list filter as Excel-friendly CSV
+    /// (quick path; the export sheet offers CSV with Salden and other formats).
     func exportFilteredBookingsCSV() {
         guard let vault else { return }
         do {

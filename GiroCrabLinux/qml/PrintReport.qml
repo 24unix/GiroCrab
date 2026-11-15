@@ -134,7 +134,7 @@ QtObject {
         h += "</div>"
         const footer = report.title + " · " + report.period_label
         const pageOf = qsTr("Seite %1 von %2").arg("{p}").arg("{n}")
-        h += "<script>(function(){\nvar W=210, H=297, FOOTER=" + jsString(footer) + ", PAGEOF=" + jsString(pageOf) + ";\n"
+        h += "<script>(function(){\nvar W=210, H=297, FOOTER=" + jsString(footer) + ", FOOTERMID=\"\", BODYCLASS=\"paged\", PAGEOF=" + jsString(pageOf) + ";\n"
            + assets.paginator + "</script>"
         h += "</body></html>"
         return h

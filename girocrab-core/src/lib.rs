@@ -32,6 +32,7 @@ pub mod demo;
 pub mod depot_debug;
 pub mod documents;
 pub mod error;
+pub mod export;
 pub mod i18n;
 pub mod importers;
 pub mod insights;
