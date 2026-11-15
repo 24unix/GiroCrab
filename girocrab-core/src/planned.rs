@@ -250,21 +250,57 @@ impl Vault {
         Ok(out)
     }
 
-    /// Sums of [`Self::list_planned_payments`] without loading the rows.
+    /// Count and sums of what [`Self::list_planned_payments`] would return, as one SQL
+    /// aggregate (no rows are loaded or built).
     pub fn planned_payment_totals(
         &self,
         from: Option<String>,
         to: Option<String>,
         account_ids: Vec<i64>,
     ) -> Result<PlannedTotals, CoreError> {
-        let rows = self.list_planned_payments(from, to, account_ids)?;
-        let mut t = PlannedTotals::default();
-        for p in rows {
-            t.count += 1;
-            if p.amount_cents < 0 {
-                t.outgoing_cents += p.amount_cents;
-            } else {
-                t.incoming_cents += p.amount_cents;
+        let from = from.unwrap_or_else(today);
+        check_date("from", &from)?;
+        if let Some(t) = &to {
+            check_date("to", t)?;
+        }
+        // Integer ids only: safe to inline.
+        let filter = if account_ids.is_empty() {
+            String::new()
+        } else {
+            let ids: Vec<String> = account_ids.iter().map(i64::to_string).collect();
+            format!(" AND p.account_id IN ({})", ids.join(","))
+        };
+        let sql = format!(
+            "SELECT count(*),
+                    coalesce(sum(CASE WHEN p.kind = 'debit' THEN 0 ELSE p.amount_cents END), 0),
+                    coalesce(sum(CASE WHEN p.kind = 'debit' THEN p.amount_cents ELSE 0 END), 0)
+             FROM planned_transfers p JOIN accounts a ON a.id = p.account_id
+             WHERE a.deleted_ms IS NULL AND p.execution_date >= ?1
+               AND (?2 IS NULL OR p.execution_date <= ?2){filter}"
+        );
+        let db = self.db()?;
+        let (count, out, inc): (i64, i64, i64) = db.query_row(&sql, params![from, to], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })?;
+        // Scheduled transfers are stored as positive amounts and listed as outgoing;
+        // scheduled direct debits are incoming.
+        let mut t = PlannedTotals {
+            count: u32::try_from(count).unwrap_or(u32::MAX),
+            outgoing_cents: -out,
+            incoming_cents: inc,
+        };
+        // Standing orders only exist as computed executions (few orders, no row load of
+        // the transfers needed).
+        let parse = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
+        if let Some(f) = parse(&from) {
+            let end = to.as_deref().and_then(parse);
+            for p in crate::standing_orders::planned_executions(&db, f, end, &account_ids)? {
+                t.count += 1;
+                if p.amount_cents < 0 {
+                    t.outgoing_cents += p.amount_cents;
+                } else {
+                    t.incoming_cents += p.amount_cents;
+                }
             }
         }
         Ok(t)
