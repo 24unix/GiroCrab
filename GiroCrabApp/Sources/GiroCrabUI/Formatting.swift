@@ -371,6 +371,7 @@ extension BankConnection {
         guard connector == .finTsGeneric else { return nil }
         switch bankCode {
         case "76030080", "70120400": return ("#0A7EA4", "CB") // Consorsbank
+        case "50070439": return ("#05164D", "MM") // Miles & More Kreditkarte (Deutsche Bank)
         default: return nil
         }
     }

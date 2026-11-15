@@ -427,7 +427,9 @@ fn english(de: &str) -> Option<&'static str> {
         "{0}: Depotbestand (HKWPD) – Wert einzelner Positionen fehlt" => "{0}: holdings (HKWPD) – value of some positions missing",
         "{0}: Umsätze (HKCAZ/camt.052) – {1}" => "{0}: transactions (HKCAZ/camt.052) – {1}",
         "{0}: Umsätze (HKKAZ/MT940) – {1}" => "{0}: transactions (HKKAZ/MT940) – {1}",
-        "Mit echtem Konto getestet: Verrechnungs-, Giro- und Tagesgeldkonto sowie Depotbestand; die Bank liefert per FinTS nur die Umsätze der letzten 90 Tage." => "Tested with a real account: settlement, current and savings accounts plus depot holdings; via FinTS the bank only provides the transactions of the last 90 days.",
+        "{0}: Kartenumsätze (HKKKU) – {1}" => "{0}: card transactions (HKKKU) – {1}",
+        "{0}: Die Freigabe in der Banking-App ist nicht rechtzeitig erfolgt. Bitte erneut abrufen und in der App bestätigen." => "{0}: the approval in the banking app did not arrive in time. Please fetch again and confirm in the app.",
+        "Die Bank verlangt den Namen Ihres TAN-Mediums (z. B. den Gerätenamen aus der BestSign-Verwaltung). Tragen Sie ihn im Bankzugang unter „TAN-Medium“ ein und rufen Sie erneut ab." => "The bank requires the name of your TAN medium (e.g. the device name from your BestSign management). Enter it under “TAN medium” in the bank connection and fetch again.",
         "{0}: Die Bank hat nur einen Teil des angeforderten Zeitraums geliefert (Rückmeldung 3997)." => "{0}: the bank delivered only part of the requested period (return code 3997).",
         // ------------------------------------------------------------ connectors/fints transfer codes
         "Die Nachricht enthält Fehler." => "The message contains errors.",

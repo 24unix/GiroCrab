@@ -66,3 +66,31 @@ fn fints_accounts_use_and_follow_the_display_name() {
         .unwrap();
     assert_eq!(bank_name(&v), "Aus MoneyMoney");
 }
+
+/// Adding the same login again (e.g. after removing it) under the bank's proper
+/// name: the kept accounts follow, like on a rename.
+#[test]
+fn accounts_follow_the_name_when_a_login_is_added_again() {
+    let p_dir = crate::test_support::TempDir::new("girocrab-bankname-readd");
+    let v = Vault::open(
+        p_dir.join("v.db").to_string_lossy().to_string(),
+        vec![6u8; 32],
+    )
+    .unwrap();
+    let add = |name: &str| {
+        v.add_fints_connection(
+            "12345678".into(),
+            "https://bank.example/fints".into(),
+            name.into(),
+            "user".into(),
+            String::new(),
+        )
+        .unwrap()
+    };
+    let conn = add("FinTS-Bank 12345678");
+    store_fetch(&v, ConnectorKind::FinTsGeneric, conn, fetch()).unwrap();
+    assert_eq!(bank_name(&v), "FinTS-Bank 12345678");
+
+    assert_eq!(add("Musterbank"), conn, "same login: no second connection");
+    assert_eq!(bank_name(&v), "Musterbank");
+}

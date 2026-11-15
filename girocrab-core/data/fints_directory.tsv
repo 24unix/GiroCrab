@@ -4,7 +4,8 @@
 # (CC0-1.0, derived from the public DK institute list), with legacy Fiducia/GAD
 # hosts and the Sparda bankingonline.de gateway mapped to the current Atruvia endpoint, HypoVereinsbank mapped to its
 # current endpoint, and explicit overrides for ING, GLS, DKB, Consorsbank, Norisbank,
-# BBBank, apoBank, EthikBank and Postbank. Every URL is https and was taken from
+# BBBank, apoBank, EthikBank, Postbank and the Deutsche Bank code for Miles & More
+# credit cards (50070439, added by hand). Every URL is https and was taken from
 # the dataset or the maintainers' list – none is derived from a pattern.
 # Columns (tab-separated): blz, bank name, FinTS URL. Sorted by BLZ.
 10010010	Postbank	https://hbci.postbank.de/banking/hbci.do
@@ -780,6 +781,7 @@
 50069976	Volksbank Wißmar	https://fints1.atruvia.de/cgi-bin/hbciservlet
 50070010	Deutsche Bank Filiale	https://fints.deutsche-bank.de/
 50070024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
+50070439	Miles & More Kreditkarte (Deutsche Bank)	https://fints.deutsche-bank.de/
 50073019	Deutsche Bank	https://fints.deutsche-bank.de/
 50073024	Deutsche Bank Privat und Geschäftskunden	https://fints.deutsche-bank.de/
 50090500	Sparda-Bank Hessen eG	https://fints1.atruvia.de/cgi-bin/hbciservlet

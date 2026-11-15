@@ -116,9 +116,21 @@ impl Vault {
                     .eq_ignore_ascii_case(&login_name)
         }) {
             if !display_name.trim().is_empty() {
+                let old_name: String = conn.query_row(
+                    "SELECT display_name FROM bank_connections WHERE id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )?;
                 conn.execute(
                     "UPDATE bank_connections SET display_name = ?1 WHERE id = ?2",
                     params![display_name.trim(), id],
+                )?;
+                // Accounts kept from the earlier login show `accounts.bank_name`: it
+                // follows the new name like on a rename (`update_bank_connection`).
+                conn.execute(
+                    "UPDATE accounts SET bank_name = ?1
+                     WHERE connection_id = ?2 AND bank_name IN (?3, ?4, '') AND bank_name <> ?1",
+                    params![display_name.trim(), id, old_name, info.name],
                 )?;
             }
             if *deleted {

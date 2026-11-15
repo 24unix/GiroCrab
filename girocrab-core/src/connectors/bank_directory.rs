@@ -185,17 +185,12 @@ fn matches_all(haystack: &str, words: &[&str]) -> bool {
     words.iter().all(|w| haystack.contains(w))
 }
 
-/// FinTS banks verified with a real account: BLZ → what was tested.
-fn fints_tested(blz: &str) -> String {
-    match blz {
-        "76030080" => tr("Mit echtem Konto getestet: Verrechnungs-, Giro- und Tagesgeldkonto sowie Depotbestand; die Bank liefert per FinTS nur die Umsätze der letzten 90 Tage.").into(),
-        _ => String::new(),
-    }
-}
-
 /// Extra search words for FinTS banks whose directory name lacks them
 /// (former names, parent company): (BLZ, words).
-const FINTS_ALIASES: &[(&str, &str)] = &[("76030080", "dab bnp paribas")];
+const FINTS_ALIASES: &[(&str, &str)] = &[
+    ("76030080", "dab bnp paribas"),
+    ("50070439", "lufthansa mastercard"),
+];
 
 fn fints_result(b: FinTsBankInfo) -> BankSearchResult {
     BankSearchResult {
@@ -203,7 +198,7 @@ fn fints_result(b: FinTsBankInfo) -> BankSearchResult {
         name: b.name,
         mode: BankAccessMode::FinTs,
         country: "DE".into(),
-        tested: fints_tested(&b.blz),
+        tested: String::new(),
         blz: b.blz,
         url: b.url,
         connector: None,
@@ -624,14 +619,21 @@ mod tests {
     }
 
     #[test]
-    fn consorsbank_is_found_by_former_names_and_carries_its_test_note() {
+    fn miles_and_more_card_is_found_by_name_and_bank_code() {
+        for q in ["miles", "miles more", "lufthansa", "50070439"] {
+            let r = search(q, vec![], 12);
+            let c = r.iter().find(|b| b.blz == "50070439");
+            assert!(c.is_some_and(|b| b.name.contains("Miles & More")), "{q}");
+        }
+    }
+
+    #[test]
+    fn consorsbank_is_found_by_former_names() {
         for q in ["consors", "dab", "bnp paribas", "76030080"] {
             let r = search(q, vec![], 12);
             let c = r.iter().find(|b| b.blz == "76030080");
-            assert!(c.is_some_and(|b| b.tested.contains("90")), "{q}");
+            assert!(c.is_some(), "{q}");
         }
-        // other FinTS banks carry no note
-        assert!(search("10050000", vec![], 12)[0].tested.is_empty());
     }
 
     #[test]

@@ -170,6 +170,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | ✅ Verifiziert |
 | FinTS-Bank (BLZ + URL) | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verifiziert |
 | ING | FinTS 3.0 | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#313](https://github.com/GiroCrab/GiroCrab/issues/313) |
+| Miles & More Kreditkarte (Deutsche Bank) | FinTS 3.0 | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
 | Volksbank Kassel Göttingen | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verifiziert |
 | bunq | REST-API | ✓ | ✓ | – | ✓ | – | ✓ | ✅ Verifiziert |
 | comdirect | REST-API | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
@@ -186,7 +187,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Mit Einschränkungen |
 
-Weitere deutsche Banken mit FinTS 3.0 (PIN/TAN) lassen sich über BLZ und FinTS-URL anbinden (2.010 Institute im FinTS-Verzeichnis); europäische PSD2-Banken über Enable Banking mit einer eigenen, kostenlosen Anwendung.
+Weitere deutsche Banken mit FinTS 3.0 (PIN/TAN) lassen sich über BLZ und FinTS-URL anbinden (2.011 Institute im FinTS-Verzeichnis); europäische PSD2-Banken über Enable Banking mit einer eigenen, kostenlosen Anwendung.
 
 <sub>✅ mit echten Konten getestet · 🧪 implementiert, Rückmeldungen aus der Praxis willkommen (Issue verlinkt) · ⚠️ bekannte Einschränkungen · ✓ umgesetzt · – nicht umgesetzt. Bei FinTS hängen Depot und PDF-Kontoauszüge vom Angebot der jeweiligen Bank ab.</sub>
 <!-- sync:connectors:end -->
@@ -367,6 +368,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | ✅ Verified |
 | FinTS bank (bank code + URL) | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verified |
 | ING | FinTS 3.0 | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#313](https://github.com/GiroCrab/GiroCrab/issues/313) |
+| Miles & More Kreditkarte (Deutsche Bank) | FinTS 3.0 | ✓ | ✓ | – | – | – | – | ✅ Verified |
 | Volksbank Kassel Göttingen | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verified |
 | bunq | REST-API | ✓ | ✓ | – | ✓ | – | ✓ | ✅ Verified |
 | comdirect | REST-API | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
@@ -383,7 +385,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Limited |
 
-Further German banks with FinTS 3.0 (PIN/TAN) can be connected via bank code and FinTS URL (2,010 institutions in the FinTS directory); European PSD2 banks via Enable Banking with your own free application.
+Further German banks with FinTS 3.0 (PIN/TAN) can be connected via bank code and FinTS URL (2,011 institutions in the FinTS directory); European PSD2 banks via Enable Banking with your own free application.
 
 <sub>✅ tested with real accounts · 🧪 implemented, feedback from real accounts welcome (issue linked) · ⚠️ known limitations · ✓ implemented · – not implemented. For FinTS, securities and PDF statements depend on what the individual bank offers.</sub>
 <!-- sync:connectors:end -->

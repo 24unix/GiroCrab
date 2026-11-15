@@ -37,6 +37,7 @@
 //! Settings (`fints.product_id`).
 
 pub mod camt;
+pub mod kku;
 pub mod mt535;
 pub mod mt940;
 pub mod pain008;
@@ -79,6 +80,18 @@ struct FinTsState {
     /// camt descriptors from HICAZS, best first.
     #[serde(default)]
     camt_formats: Vec<String>,
+    /// The bank accepted the TAN medium only as `SO:<name>` (BestSign security
+    /// object); the user enters the plain device name.
+    #[serde(default)]
+    tan_medium_so: bool,
+    /// HIKKUS (card transactions): the bank takes no date range / no account.
+    #[serde(default)]
+    kku_no_date_range: bool,
+    #[serde(default)]
+    kku_no_account: bool,
+    /// HIKKUS: days of card history the bank keeps (0 = unknown).
+    #[serde(default)]
+    kku_storage_days: i64,
     /// pain.001 descriptors per transfer transaction (HKCCS/HKIPZ/HKCSE) from the BPD
     /// parameter segments HICCSS / HIIPZS / HICSES.
     #[serde(default)]
@@ -123,6 +136,7 @@ const IMPLEMENTED: &[(&str, &[u32])] = &[
     ("HKTAB", &[4, 5]),
     ("HKEKA", &[3, 4, 5]),
     ("HKWPD", &[5, 6]),
+    ("HKKKU", &[1]),
 ];
 
 /// What the bank allows for batch transfers (BPD HICCMS).
@@ -237,6 +251,34 @@ struct UpdAccount {
     product: String,
     /// Business transactions allowed for this account (empty = unknown, all).
     allowed: HashSet<String>,
+}
+
+/// Start date of a card statement request: `since`, but not further back than the
+/// bank's storage period (`storage_days`, 0 = unknown). Dates are `YYYY-MM-DD`.
+fn card_since(since: &str, today: &str, storage_days: i64) -> String {
+    let parse = |d: &str| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok();
+    match (parse(since), parse(today)) {
+        (Some(s), Some(t)) if storage_days > 0 => {
+            let oldest = t - chrono::Duration::days(storage_days);
+            s.max(oldest).format("%Y-%m-%d").to_string()
+        }
+        _ => since.to_string(),
+    }
+}
+
+/// Reply to a decoupled status poll (HKTAN process S): the approval in the app
+/// is still outstanding. Standard is 3956; Deutsche Bank answers with warnings
+/// only (3060, no success code) until the user has confirmed.
+fn approval_pending(reply: &BankReply) -> bool {
+    reply.errors().is_empty()
+        && (reply.has("3956") || !reply.codes.iter().any(|c| c.0.starts_with('0')))
+}
+
+/// Whether a TAN medium name already carries the "SO:" (security object) prefix.
+fn has_so_prefix(medium: &str) -> bool {
+    medium
+        .get(..3)
+        .is_some_and(|p| p.eq_ignore_ascii_case("SO:"))
 }
 
 /// Consorsbank (BNP Paribas): see `docs/consorsbank-connector.md`.
@@ -733,7 +775,9 @@ impl FinTsConnector {
             for c in codes.iter().filter(|c| {
                 c.0.starts_with('9')
                     || (c.0.starts_with('3')
-                        && !matches!(c.0.as_str(), "3050" | "3060" | "3076" | "3920"))
+                        && (!matches!(c.0.as_str(), "3050" | "3060" | "3076" | "3920")
+                            // 3060 on a segment: e.g. "approval still pending" at some banks
+                            || (c.0 == "3060" && c.1.is_some())))
             }) {
                 crate::depot_debug::log(&format!(
                     "fints {} {}: {} (params: {})",
@@ -767,6 +811,26 @@ impl FinTsConnector {
     }
 
     fn learn_bpd(&mut self, reply: &BankReply) {
+        if crate::depot_debug::enabled() {
+            // Which business transactions the bank offers at all (segment names and
+            // versions only), incl. bank-specific ones such as DIKKUS (card statements).
+            let mut offered: Vec<String> = reply
+                .segments
+                .iter()
+                .filter(|s| {
+                    let id = s.id();
+                    id.len() == 6
+                        && id.ends_with('S')
+                        && (id.starts_with("HI") || id.starts_with("DI"))
+                })
+                .map(|s| format!("{}:{}", s.id(), s.version()))
+                .collect();
+            if offered.len() > 5 {
+                offered.sort();
+                offered.dedup();
+                crate::depot_debug::log(&format!("fints BPD offers: {}", offered.join(" ")));
+            }
+        }
         for s in &reply.segments {
             let id = s.id();
             if id.starts_with("HI") && id.ends_with('S') && id.len() == 6 {
@@ -775,7 +839,7 @@ impl FinTsConnector {
                 if !v.contains(&s.version()) {
                     v.push(s.version());
                 }
-                if id == "HIKAZS" {
+                if id == "HIKAZS" || id == "HIKKUS" || id == "HIKKSS" {
                     // bank parameters only: storage period (days), flags
                     let params: Vec<String> = s
                         .elements
@@ -784,7 +848,7 @@ impl FinTsConnector {
                         .map(|el| el.iter().map(|v| v.text()).collect::<Vec<_>>().join(":"))
                         .collect();
                     crate::depot_debug::log(&format!(
-                        "fints BPD HIKAZS v{} params={}",
+                        "fints BPD {id} v{} params={}",
                         s.version(),
                         params.join("+")
                     ));
@@ -820,6 +884,12 @@ impl FinTsConnector {
                     }
                 }
             }
+        }
+        // HIKKUS: storage days : max entries allowed : date range allowed : account required
+        if let Some(p) = reply.all("HIKKUS").last() {
+            self.st.kku_storage_days = p.get(4, 0).parse().unwrap_or(0);
+            self.st.kku_no_date_range = p.get(4, 2) == "N";
+            self.st.kku_no_account = p.get(4, 3) == "N";
         }
         for cazs in reply.all("HICAZS") {
             for el in &cazs.elements {
@@ -1120,6 +1190,7 @@ impl FinTsConnector {
                 .ok_or_else(|| CoreError::Protocol {
                     message: trf("{0}: Freigabe ohne Auftragsreferenz", &[&seg_id]),
                 })?;
+            let mut approved = false;
             for _ in 0..60 {
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                 let seg = SegmentBuilder::new("HKTAN", 3, self.version("HKTAN"))
@@ -1131,10 +1202,20 @@ impl FinTsConnector {
                     .raw("N")
                     .build();
                 let r = self.send(ctx, vec![seg], &sec, None).await?;
-                if !r.has("3956") {
+                if !approval_pending(&r) {
                     reply = r;
+                    approved = true;
                     break;
                 }
+            }
+            if !approved {
+                return Err(CoreError::Bank {
+                    code: "3956".into(),
+                    message: trf(
+                        "{0}: Die Freigabe in der Banking-App ist nicht rechtzeitig erfolgt. Bitte erneut abrufen und in der App bestätigen.",
+                        &[&seg_id],
+                    ),
+                });
             }
         } else if reply.has("0030") {
             return Err(CoreError::Bank {
@@ -1184,9 +1265,19 @@ impl FinTsConnector {
         for u in self.upd.clone() {
             // Only accounts of this bank with at least one usable transaction
             let usable = u.allowed.is_empty()
-                || ["HKSAL", "HKCAZ", "HKKAZ", "HKWPD"]
+                || ["HKSAL", "HKCAZ", "HKKAZ", "HKWPD", "HKKKU"]
                     .iter()
                     .any(|t| u.allowed.contains(*t));
+            if crate::depot_debug::enabled() {
+                let mut allowed: Vec<&str> = u.allowed.iter().map(String::as_str).collect();
+                allowed.sort_unstable();
+                crate::depot_debug::log(&format!(
+                    "fints UPD account: kind_code={} has_iban={} usable={usable} allowed=[{}]",
+                    u.kind_code,
+                    !u.iban.is_empty(),
+                    allowed.join(",")
+                ));
+            }
             if !usable {
                 continue;
             }
@@ -1439,6 +1530,64 @@ impl FinTsConnector {
         }
         txs.extend(pending);
         Ok((txs, closing))
+    }
+
+    /// HKKKU: bookings and balance of a credit card account, all pages.
+    async fn statements_card(
+        &mut self,
+        ctx: &ConnectContext,
+        acc: &SepaAccount,
+        label: &str,
+        currency: &str,
+    ) -> CoreResult<(Vec<super::RemoteTransaction>, Option<kku::CardBalance>)> {
+        let v = self.version("HKKKU");
+        let (from, to) = if self.st.kku_no_date_range {
+            (String::new(), String::new())
+        } else {
+            // Never ask for more than the bank keeps: an older start date is an error.
+            let since = card_since(&ctx.since, &super::today(), self.st.kku_storage_days);
+            (since.replace('-', ""), super::today().replace('-', ""))
+        };
+        let account = if self.st.kku_no_account {
+            String::new()
+        } else {
+            Self::kti(acc)
+        };
+        let mut touchdown: Option<String> = None;
+        let mut txs = Vec::new();
+        let mut balance = None;
+        for page in 0..50 {
+            let mut b = SegmentBuilder::new("HKKKU", 3, v)
+                .raw(&account)
+                .de(&[&acc.account_number])
+                .de(&[&acc.sub_account])
+                .raw(&from)
+                .raw(&to)
+                .raw("");
+            if let Some(t) = &touchdown {
+                b = b.de(&[t]);
+            }
+            let r = self.request(ctx, "HKKKU", b.build()).await?;
+            let (t, bal) = kku::parse(r.all("HIKKU"), label, currency);
+            crate::depot_debug::log(&format!(
+                "fints HKKKU page {page}: HIKKU segments={} groups={:?} parsed={} balance={}",
+                r.all("HIKKU").count(),
+                r.all("HIKKU")
+                    .map(|s| s.elements.len().saturating_sub(6))
+                    .collect::<Vec<_>>(),
+                t.len(),
+                bal.is_some()
+            ));
+            txs.extend(t);
+            if balance.is_none() {
+                balance = bal;
+            }
+            touchdown = r.code("3040").and_then(|c| c.3.first().cloned());
+            if touchdown.is_none() {
+                break;
+            }
+        }
+        Ok((txs, balance))
     }
 
     async fn statements_mt940(
@@ -2253,6 +2402,32 @@ impl FinTsConnector {
             }
         }
         self.learn_bpd(&reply);
+        // The bank wants the TAN device name in every HKTAN and offered no way to
+        // look it up (Deutsche Bank BestSign rejects HKTAB without it): say what to do.
+        // The name was sent but not accepted: some banks (BestSign) list the device as
+        // "SO:<name>". Try that once so the user only has to enter the device name.
+        if reply.has("9210")
+            && !self.st.tan_medium.is_empty()
+            && !has_so_prefix(&self.st.tan_medium)
+        {
+            let plain = std::mem::take(&mut self.st.tan_medium);
+            self.st.tan_medium = format!("SO:{plain}");
+            self.end_dialog(ctx, &sec).await;
+            let retry = self.send_dialog_init(ctx, &sec).await?;
+            self.learn_bpd(&retry);
+            if retry.has("9210") {
+                self.st.tan_medium = plain;
+            } else {
+                self.st.tan_medium_so = true;
+            }
+            reply = retry;
+        }
+        if reply.has("9210") && self.st.tan_medium.is_empty() {
+            return Err(CoreError::Bank {
+                code: "9210".into(),
+                message: tr("Die Bank verlangt den Namen Ihres TAN-Mediums (z. B. den Gerätenamen aus der BestSign-Verwaltung). Tragen Sie ihn im Bankzugang unter „TAN-Medium“ ein und rufen Sie erneut ab.").into(),
+            });
+        }
         if let Err(e) = reply.check() {
             // Stale system ID / TAN method -> force re-sync next time.
             if reply.has("9931") || reply.has("9942") || reply.has("9010") {
@@ -2620,7 +2795,12 @@ impl BankConnector for FinTsConnector {
             .trim()
             .to_string();
         if !self.tan_medium_override.is_empty() {
-            self.st.tan_medium = self.tan_medium_override.clone();
+            self.st.tan_medium =
+                if self.st.tan_medium_so && !has_so_prefix(&self.tan_medium_override) {
+                    format!("SO:{}", self.tan_medium_override)
+                } else {
+                    self.tan_medium_override.clone()
+                };
         }
         if self.st.system_id.is_empty() || self.st.sec_func.is_empty() {
             self.sync_dialog(ctx).await?;
@@ -2664,7 +2844,7 @@ impl BankConnector for FinTsConnector {
                     .build();
                 payload.push(seg);
                 let reply = self.send(ctx, payload, &sec, None).await?;
-                if reply.has("3956") && reply.errors().is_empty() {
+                if approval_pending(&reply) {
                     let c = self.challenge.clone().ok_or(CoreError::SessionClosed)?;
                     return Ok(Phase::Pending(c));
                 }
@@ -2753,8 +2933,15 @@ impl BankConnector for FinTsConnector {
                 kind = AccountKind::Brokerage;
             }
             crate::depot_debug::log(&format!(
-                "fints account: kind={kind:?} kind_code={:?} is_depot={} upd_found={} hkwpd_allowed={} bank_supports_hkwpd={}",
+                "fints account: kind={kind:?} kind_code={:?} allowed=[{}] is_depot={} upd_found={} hkwpd_allowed={} bank_supports_hkwpd={}",
                 upd.as_ref().map(|u| u.kind_code),
+                upd.as_ref()
+                    .map(|u| {
+                        let mut a: Vec<&str> = u.allowed.iter().map(String::as_str).collect();
+                        a.sort_unstable();
+                        a.join(",")
+                    })
+                    .unwrap_or_default(),
                 kind == AccountKind::Brokerage,
                 upd.is_some(),
                 allowed("HKWPD"),
@@ -2838,7 +3025,30 @@ impl BankConnector for FinTsConnector {
             // included only when HIUPD permits it (or lists nothing); every request is
             // its own FinTS message, so a 9050 on one loan is just collected in `errors`.
             let mut txs = Vec::new();
-            {
+            // Credit cards the bank serves through HKKKU (explicitly allowed in HIUPD).
+            let can_card = self.bank_supports("HKKKU")
+                && upd.as_ref().is_some_and(|u| u.allowed.contains("HKKKU"));
+            if can_card {
+                if kind == AccountKind::Checking {
+                    kind = AccountKind::CreditCard;
+                }
+                match self.statements_card(ctx, acc, &label, &currency).await {
+                    Ok((t, bal)) => {
+                        txs = t;
+                        if let Some(b) = bal {
+                            balance = Some(b.cents);
+                            if !b.currency.is_empty() {
+                                currency = b.currency;
+                            }
+                            if !b.date.is_empty() {
+                                balance_date = b.date;
+                            }
+                        }
+                        ok_any = true;
+                    }
+                    Err(e) => errors.push(trf("{0}: Kartenumsätze (HKKKU) – {1}", &[&label, &e])),
+                }
+            } else {
                 let can_camt = self.bank_supports("HKCAZ")
                     && allowed("HKCAZ")
                     && !self.st.camt_formats.is_empty();
@@ -3251,6 +3461,41 @@ mod tests {
         assert_eq!((segs[1].id(), segs[1].get(1, 1)), ("HNVSK", "1"));
         assert_eq!((segs[2].id(), segs[2].get(1, 1)), ("HNSHK", "1"));
         assert_eq!(segs[2].get(2, 0), "999");
+    }
+
+    #[test]
+    fn card_request_starts_within_the_storage_period() {
+        // 775 days kept: two years back is fine, three years is cut to the limit
+        assert_eq!(card_since("2024-11-15", "2026-11-15", 775), "2024-11-15");
+        assert_eq!(card_since("2023-11-15", "2026-11-15", 775), "2024-10-01");
+        // unknown storage period: unchanged
+        assert_eq!(card_since("2020-01-01", "2026-11-15", 0), "2020-01-01");
+    }
+
+    #[test]
+    fn decoupled_poll_recognises_a_pending_approval() {
+        // standard: 3956
+        assert!(approval_pending(&reply(
+            b"HIRMG:2:2+3060::Bitte beachten Sie die enthaltenen Warnungen.'HIRMS:3:2:3+3956::Starke Kundenauthentifizierung noch ausstehend.'"
+        )));
+        // warnings only, no success code (Deutsche Bank)
+        assert!(approval_pending(&reply(
+            b"HIRMG:2:2+3060::Teilweise liegen Warnungen vor.'HIRMS:3:2:3+3060::Hinweis.'"
+        )));
+        // approved: success code
+        assert!(!approval_pending(&reply(
+            b"HIRMG:2:2+0010::Nachricht entgegengenommen.'HIRMS:3:2:3+0020::Auftrag ausgef\xfchrt.'"
+        )));
+        // rejected: an error ends the wait
+        assert!(!approval_pending(&reply(
+            b"HIRMG:2:2+9050::Teilweise fehlerhaft.'HIRMS:3:2:3+9210::Keine Daten.'"
+        )));
+    }
+
+    #[test]
+    fn so_prefix_of_a_tan_medium_is_recognised() {
+        assert!(has_so_prefix("SO:Mein Gerät") && has_so_prefix("so:x"));
+        assert!(!has_so_prefix("MH AIR") && !has_so_prefix("SO") && !has_so_prefix("Ää"));
     }
 
     #[test]

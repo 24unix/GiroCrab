@@ -1966,6 +1966,17 @@
         }
       }
     },
+    "2 Jahre" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2 years"
+          }
+        }
+      }
+    },
     "3 Jahre" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2017,6 +2028,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "8 digits or IBAN"
+          }
+        }
+      }
+    },
+    "90 Tage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "90 days"
           }
         }
       }
@@ -7387,6 +7409,17 @@
         }
       }
     },
+    "Deutsche Bank ID" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Bank ID"
+          }
+        }
+      }
+    },
     "Diagnose" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10303,13 +10336,13 @@
         }
       }
     },
-    "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein, z. B. SO:Gerätename." : {
+    "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "If the bank asks for a TAN medium (error 9210), enter the device name from the BestSign or app management, e.g. SO:DeviceName."
+            "value" : "If the bank asks for a TAN medium (error 9210), enter the device name from the BestSign or app management."
           }
         }
       }
@@ -10838,6 +10871,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Device Passcode"
+          }
+        }
+      }
+    },
+    "Gerätename aus BestSign" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Device name from BestSign"
           }
         }
       }
@@ -15674,6 +15718,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Rent"
+          }
+        }
+      }
+    },
+    "Miles & More: Mit der Deutsche Bank ID und dem Passwort der Kreditkarte anmelden. Als TAN-Medium den Gerätenamen aus der BestSign-Verwaltung eintragen – ohne ihn lehnt die Bank die Anmeldung ab." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Miles & More: sign in with the Deutsche Bank ID and the password of the credit card. Enter the device name from your BestSign management as TAN medium – without it the bank rejects the login."
           }
         }
       }
@@ -23514,6 +23569,17 @@
         }
       }
     },
+    "Wie weit GiroCrab beim ersten Abruf eines neuen Kontos zurückgeht. Viele Banken liefern nur 90 Tage oder verlangen für mehr eine TAN. Bereits abgerufene Konten betrifft das nicht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How far back GiroCrab goes on the first fetch of a new account. Many banks only provide 90 days or require a TAN for more. Accounts already fetched are not affected."
+          }
+        }
+      }
+    },
     "Wieder einblenden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -23895,6 +23961,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Period"
+          }
+        }
+      }
+    },
+    "Zeitraum beim ersten Abruf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Period of the first fetch"
           }
         }
       }

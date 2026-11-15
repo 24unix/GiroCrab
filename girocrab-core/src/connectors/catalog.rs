@@ -328,6 +328,15 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[],
     },
     MatrixEntry {
+        name: "Miles & More Kreditkarte (Deutsche Bank)",
+        kind: None,
+        interface: Interface::Fints,
+        official: Some(true),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
         name: "comdirect",
         kind: Some(ConnectorKind::Comdirect),
         interface: Interface::RestApi,

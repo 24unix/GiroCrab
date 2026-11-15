@@ -122,6 +122,9 @@ struct ConnectionEditSheet: View {
     @State private var login = ""
     @State private var pin = ""
     @State private var storePin = false
+    @State private var tanMedium = ""
+    private var isFinTs: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric].contains(connection.connector) }
+    private var tanMediumKey: String { "fints.tan_medium.\(connection.id)" }
     @State private var values: [String: String] = [:]
     @State private var revealed: Set<String> = []
     @State private var importingKey = false
@@ -251,6 +254,12 @@ struct ConnectionEditSheet: View {
                         if storePin {
                             SecureField(status?.hasPin == true ? "Gespeicherte PIN (leer = unverändert)" : (connection.connector == .ibkr ? "Flex-Query-ID" : connection.connector == .easybank ? "Passwort" : "PIN"), text: $pin)
                         }
+                    }
+                    if isFinTs {
+                        // Name of the TAN device some banks require in every TAN request
+                        // (Deutsche Bank / Postbank BestSign, error 9210).
+                        TextField("TAN-Medium", text: $tanMedium, prompt: Text("Optional"))
+                            .autocorrectionDisabled()
                     }
                 } header: { Text("Zugang").appSectionHeader() }
                 if !keys.isEmpty {
@@ -489,6 +498,7 @@ struct ConnectionEditSheet: View {
         login = connection.loginName
         status = model.connectionStatus(connection.id)
         storePin = status?.hasPin ?? false
+        if isFinTs { tanMedium = model.revealSetting(tanMediumKey) }
         for key in keys + advancedKeys {
             let e = model.settingEntry(key)
             if e?.isSecret == true {
@@ -515,6 +525,10 @@ struct ConnectionEditSheet: View {
             if v != current {
                 model.saveSetting(key, v)
             }
+        }
+        if isFinTs {
+            let medium = tanMedium.trimmingCharacters(in: .whitespaces)
+            if medium != model.revealSetting(tanMediumKey) { model.saveSetting(tanMediumKey, medium) }
         }
         pin = ""
     }

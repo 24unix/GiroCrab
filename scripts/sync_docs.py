@@ -96,6 +96,7 @@ CONNECTOR_DOCS = {
     "consorsbank": ("Consorsbank", "Consorsbank"),
     "easybank": ("easybank (ehem. Barclays)", "easybank"),
     "fnz": ("FNZ Bank", "FNZ Bank"),
+    "miles-and-more": ("Miles & More Kreditkarte (Deutsche Bank)", "Deutsche Bank / Miles & More"),
     "quirion": ("quirion", "quirion"),
     "scalable-capital": ("Scalable Capital", "Scalable Capital"),
 }

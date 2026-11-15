@@ -36,10 +36,16 @@ struct FinTsAddForm: View {
     /// Consorsbank (BLZ 76030080, former DAB 70120400): the FinTS login is the
     /// account number + "001", not the web login.
     private var isConsors: Bool { blz == "76030080" || blz == "70120400" || bankName_lc.contains("consors") }
+    /// Miles & More credit card: Deutsche Bank's own bank code for the cards.
+    private var isMilesAndMore: Bool { blz == "50070439" }
     private var needsMediumHint: Bool {
         isPostbank || bankName_lc.contains("deutsche bank") || bankName_lc.contains("norisbank")
     }
-    private var canAdd: Bool { blzValid && urlValid && !login.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var canAdd: Bool {
+        blzValid && urlValid && !login.trimmingCharacters(in: .whitespaces).isEmpty
+            // the bank rejects every login without the TAN medium name
+            && (!isMilesAndMore || !tanMedium.trimmingCharacters(in: .whitespaces).isEmpty)
+    }
 
     /// Opened by the user, or because the address was changed.
     @State private var showAdvanced = false
@@ -91,9 +97,9 @@ struct FinTsAddForm: View {
 
         Section {
             if model.demoActive || blz == "99999999" { DemoHintBanner(style: .credentials) { login = "demo" } }
-            TextField("Anmeldename", text: $login, prompt: Text(isPostbank ? "Postbank ID" : isConsors ? "Kontonummer (10-stellig) + 001" : "z. B. VR-NetKey oder Kontonummer"))
+            TextField("Anmeldename", text: $login, prompt: Text(isPostbank ? "Postbank ID" : isMilesAndMore ? "Deutsche Bank ID" : isConsors ? "Kontonummer (10-stellig) + 001" : "z. B. VR-NetKey oder Kontonummer"))
                 .autocorrectionDisabled()
-            TextField("TAN-Medium", text: $tanMedium, prompt: Text("Optional"))
+            TextField("TAN-Medium", text: $tanMedium, prompt: Text(isMilesAndMore ? "Gerätename aus BestSign" : "Optional"))
                 .autocorrectionDisabled()
             if submit == nil {
                 Button("Bank hinzufügen") { commit() }
@@ -105,10 +111,10 @@ struct FinTsAddForm: View {
         } footer: {
             AddFormFooter(lines: [
                 isConsors ? String(localized: "Consorsbank: Als Anmeldename die 10-stellige Kontonummer des Verrechnungskontos (mit führenden Nullen) gefolgt von 001 verwenden, z. B. 0001234567001 – nicht den Anmeldenamen der Website. Ein falscher Anmeldename wird als „PIN ungültig“ gemeldet.") : "",
-                known ? (prefill?.tested ?? "") : "",
+                isMilesAndMore ? String(localized: "Miles & More: Mit der Deutsche Bank ID und dem Passwort der Kreditkarte anmelden. Als TAN-Medium den Gerätenamen aus der BestSign-Verwaltung eintragen – ohne ihn lehnt die Bank die Anmeldung ab.") : "",
                 isPostbank ? String(localized: "Postbank: Als Anmeldename die Postbank ID verwenden, nicht die Kontonummer.") : "",
-                needsMediumHint
-                    ? String(localized: "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein, z. B. SO:Gerätename.")
+                isMilesAndMore ? "" : needsMediumHint
+                    ? String(localized: "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein.")
                     : String(localized: "Das TAN-Medium brauchen Sie nur, wenn die Bank danach fragt."),
             ])
         }

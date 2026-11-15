@@ -61,6 +61,14 @@ struct GeneralSettings: View {
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
     @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
 
+    /// Core setting `sync.days_back`: how far the first fetch of a new account reaches back.
+    private var firstFetchDays: Binding<Int> {
+        Binding(
+            get: { Int(model.settingEntry("sync.days_back")?.value ?? "") ?? 90 },
+            set: { model.saveSetting("sync.days_back", String($0)) }
+        )
+    }
+
     var body: some View {
         @Bindable var model = model
         Form {
@@ -106,6 +114,17 @@ struct GeneralSettings: View {
                     ForEach(AutoReviewDelay.allCases) { Text($0.title).tag($0) }
                 }
                 Text("Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie.")
+                    .appFont(.caption).foregroundStyle(.secondary)
+                Picker("Zeitraum beim ersten Abruf", selection: firstFetchDays) {
+                    Text("90 Tage").tag(90)
+                    Text("1 Jahr").tag(365)
+                    Text("2 Jahre").tag(730)
+                    // a value set elsewhere (e.g. synced from another device) stays selectable
+                    if ![90, 365, 730].contains(firstFetchDays.wrappedValue) {
+                        Text("\(firstFetchDays.wrappedValue) Tage").tag(firstFetchDays.wrappedValue)
+                    }
+                }
+                Text("Wie weit GiroCrab beim ersten Abruf eines neuen Kontos zurückgeht. Viele Banken liefern nur 90 Tage oder verlangen für mehr eine TAN. Bereits abgerufene Konten betrifft das nicht.")
                     .appFont(.caption).foregroundStyle(.secondary)
             } header: { Text("Buchungen").appSectionHeader() }
             BalanceChartSettingsSection()
