@@ -45,7 +45,7 @@ ColumnLayout {
     }
 
     readonly property string subtitle: {
-        if (step === "file") return qsTr("Wählen Sie, woher die Daten kommen. MoneyMoney und seine Daten bleiben unverändert.")
+        if (step === "file") return qsTr("Wählen Sie, woher die Daten kommen. Die Originaldaten bleiben unverändert.")
         if (!preview) return fileName
         return [fileName, qsTr("%1 neue Buchungen").arg(Fmt.count(preview.new_bookings)), Fmt.yearSpan(preview)]
             .filter(x => !!x).join(" · ")
@@ -88,7 +88,7 @@ ColumnLayout {
             preview = null
             const e = AppModel.parseCoreError(err)
             error = e.kind === "InvalidInput"
-                ? qsTr("In dieser Datei wurden keine MoneyMoney-Umsätze erkannt (erwartet: CSV mit Datum/Betrag oder XML <transactions>).")
+                ? qsTr("In dieser Datei wurden keine Umsätze erkannt (erwartet: CSV mit Datum/Betrag, XML <transactions>, camt.053 oder MT940).")
                 : e.message
         })
     }
@@ -117,7 +117,7 @@ ColumnLayout {
     }
 
     ImportAssistantHeader {
-        title: v.step === "file" ? qsTr("Aus MoneyMoney importieren") : qsTr("Übernahme")
+        title: v.step === "file" ? qsTr("Vorhandene Daten importieren") : qsTr("Übernahme")
         subtitle: v.subtitle
     }
 

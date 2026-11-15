@@ -34,7 +34,6 @@ ColumnLayout {
     property bool importNotes: true
     property bool importGroups: true
     property bool createConnections: true
-    property bool importPins: false
     /// Enable Banking credentials entered in the assistant.
     property var ebValues: ({})
     property bool loading: false
@@ -56,7 +55,7 @@ ColumnLayout {
     function reset() {
         step = "source"; filePath = ""; fileIsFolder = false; statementsPath = ""; importStatements = true
         password = ""; preview = null; choices = ({}); bankChoice = ({}); importCategories = true; importNotes = true
-        importGroups = true; createConnections = true; importPins = false; ebValues = ({}); loading = false
+        importGroups = true; createConnections = true; ebValues = ({}); loading = false
         progress = null; cancelling = false; error = ""; result = null; checksExpanded = false
         tableSelection = ({}); tableAnchor = -1
         if (AppModel.demoDbPreview) {
@@ -80,7 +79,7 @@ ColumnLayout {
     readonly property bool allChecksOk: result !== null && result.account_checks.every(c => c.ok)
     readonly property string stepTitle: {
         switch (step) {
-        case "source": return qsTr("Aus MoneyMoney importieren")
+        case "source": return qsTr("Vorhandene Daten importieren")
         case "accounts": return qsTr("Konten")
         case "banks": return qsTr("Übernahme")
         case "enableBanking": return qsTr("Enable Banking einrichten")
@@ -90,7 +89,7 @@ ColumnLayout {
     }
     readonly property string stepSubtitle: {
         switch (step) {
-        case "source": return qsTr("Wählen Sie, woher die Daten kommen. MoneyMoney und seine Daten bleiben unverändert.")
+        case "source": return qsTr("Wählen Sie, woher die Daten kommen. Die Originaldaten bleiben unverändert.")
         case "accounts":
             if (!preview) return ""
             return [qsTr("%1 Konten").arg(preview.accounts.length), qsTr("%1 Buchungen").arg(Fmt.count(preview.total_bookings)), Fmt.yearSpan(preview)]
@@ -104,9 +103,9 @@ ColumnLayout {
             const checks = result.account_checks
             const problems = checks.filter(c => !c.ok).length
             if (!checks.length) return line
-            if (problems > 0) return line + " " + qsTr("%1 von %2 Konten weichen von MoneyMoney ab.").arg(problems).arg(checks.length)
-            return line + " " + (checks.length === 1 ? qsTr("Das Konto stimmt mit MoneyMoney überein.")
-                                                       : qsTr("Alle %1 Konten stimmen mit MoneyMoney überein.").arg(checks.length))
+            if (problems > 0) return line + " " + qsTr("%1 von %2 Konten weichen von den importierten Daten ab.").arg(problems).arg(checks.length)
+            return line + " " + (checks.length === 1 ? qsTr("Das Konto stimmt mit den importierten Daten überein.")
+                                                       : qsTr("Alle %1 Konten stimmen mit den importierten Daten überein.").arg(checks.length))
         }
         }
     }
@@ -219,7 +218,6 @@ ColumnLayout {
     }
     function chosenOption(b) { const k = chosenKey(b); return connectionOptions(b).find(o => o.key === k) || null }
     function setBankChoice(b, key) { const c = Object.assign({}, bankChoice); c[b.mm_id] = key; bankChoice = c }
-    function usesPin(b) { const o = chosenOption(b); return o !== null && o.via !== "EnableBanking" }
     function optionLabel(o) {
         return o.via === "FinTs" ? qsTr("Online-Banking (FinTS)") : o.via === "OwnApi" ? qsTr("Schnittstelle der Bank") : qsTr("Enable Banking")
     }
@@ -317,7 +315,6 @@ ColumnLayout {
             import_categories: importCategories,
             import_notes: importNotes,
             create_connections: createConnections,
-            import_pins: createConnections && importPins,
             import_groups: importGroups,
             import_statements: importStatements && preview.statements_found > 0,
             statements_dir: statementsPath === "" ? null : statementsPath,
@@ -356,7 +353,7 @@ ColumnLayout {
     }
 
     function progressStatus(p) {
-        if (!p || p.account_index === 0) return qsTr("MoneyMoney-Datenbank wird gelesen …")
+        if (!p || p.account_index === 0) return qsTr("Datenbank wird gelesen …")
         if (p.account_index > p.account_count) return qsTr("Bankzugänge und Gruppen werden angelegt …")
         return qsTr("Konto %1 von %2 · %3").arg(p.account_index).arg(p.account_count).arg(p.account_name)
     }
@@ -372,7 +369,7 @@ ColumnLayout {
         if (c.deleted_bookings > 0) parts.push(qsTr("%1 in GiroCrab gelöscht").arg(c.deleted_bookings))
         if (c.other_bookings > 0) parts.push(qsTr("%1 weitere von der Bank").arg(c.other_bookings))
         if (c.balance_from_bank) parts.push(qsTr("Saldo von der Bank"))
-        if (!c.mm_balance_shown) parts.push(qsTr("MoneyMoney-Saldo berechnet"))
+        if (!c.mm_balance_shown) parts.push(qsTr("Saldo aus Umsätzen berechnet"))
         return parts.join(" · ")
     }
 
@@ -400,10 +397,10 @@ ColumnLayout {
             FormSection {
                 title: qsTr("Datenbank")
                 footers: [qsTr("MoneyMoney läuft nur auf dem Mac. Kopieren Sie dort den MoneyMoney-Ordner (~/Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney) auf diesen Rechner und wählen Sie ihn hier, damit auch die Kontoauszüge übernommen werden. Eine einzelne Datei (MoneyMoney.sqlite), etwa aus einem Backup, geht auch."),
-                          qsTr("Kein Datenbank-Passwort in MoneyMoney? Dann vorher eines festlegen (Einstellungen → Sicherheit)."),
-                          qsTr("Das Passwort wird in der App MoneyMoney festgelegt, nicht in GiroCrab. Tragen Sie es hier im Feld oben ein.")]
+                          qsTr("Kein Datenbank-Passwort festgelegt? Legen Sie vorher eines in dem Programm fest, das die Datenbank erstellt hat."),
+                          qsTr("Das Passwort der Datenbank wurde nicht in GiroCrab festgelegt. Tragen Sie es hier im Feld oben ein.")]
                 ImportFileRow {
-                    label: qsTr("MoneyMoney-Daten")
+                    label: qsTr("Importdaten")
                     path: v.filePath
                     name: v.filePath.split("/").pop()
                     isFolder: v.fileIsFolder
@@ -613,11 +610,6 @@ ColumnLayout {
                         }
                     }
                 }
-                FormSection {
-                    visible: v.preview !== null && v.createConnections && v.preview.banks.some(b => b.has_saved_pin && v.usesPin(b))
-                    footers: [qsTr("Die PINs aus MoneyMoney kommen verschlüsselt in den GiroCrab-Tresor. Ohne diese Option werden sie nicht gelesen.")]
-                    FormRow { label: qsTr("Gespeicherte PINs übernehmen"); Switch { checked: v.importPins; onToggled: v.importPins = checked } }
-                }
             }
         }
 
@@ -703,7 +695,6 @@ ColumnLayout {
                     CountRow { label: qsTr("Depotpositionen"); n: doneCol.r ? doneCol.r.holdings_imported : 0 }
                     CountRow { label: qsTr("Bankzugänge"); n: doneCol.r ? doneCol.r.connections_created : 0
                                detail: doneCol.r && doneCol.r.connections_existing > 0 ? qsTr("%1 bereits vorhanden").arg(doneCol.r.connections_existing) : "" }
-                    CountRow { label: qsTr("PINs im Tresor"); n: doneCol.r ? doneCol.r.pins_stored : 0 }
                 }
 
                 // What the import left out, each with its reason.
@@ -785,7 +776,7 @@ ColumnLayout {
         property var view
         readonly property bool open: problems > 0 || cs.view.checksExpanded
         Layout.fillWidth: true
-        title: qsTr("Abgleich mit MoneyMoney")
+        title: qsTr("Abgleich mit den importierten Daten")
         footers: [problems > 0 ? qsTr("Bitte prüfen Sie die markierten Konten. Ein erneuter Import ergänzt fehlende Buchungen, ohne Duplikate anzulegen.") : ""]
         RowLayout {
             visible: cs.problems === 0
@@ -801,7 +792,7 @@ ColumnLayout {
             spacing: 16
             Text { text: qsTr("Konto"); Layout.fillWidth: true; font.pixelSize: Theme.caption; color: Theme.secondary }
             Text { text: qsTr("Buchungen"); Layout.preferredWidth: 90; horizontalAlignment: Text.AlignRight; font.pixelSize: Theme.caption; color: Theme.secondary }
-            Text { text: qsTr("Saldo MoneyMoney"); Layout.preferredWidth: 120; horizontalAlignment: Text.AlignRight; font.pixelSize: Theme.caption; color: Theme.secondary }
+            Text { text: qsTr("Saldo laut Import"); Layout.preferredWidth: 120; horizontalAlignment: Text.AlignRight; font.pixelSize: Theme.caption; color: Theme.secondary }
             Text { text: qsTr("Saldo GiroCrab"); Layout.preferredWidth: 120; horizontalAlignment: Text.AlignRight; font.pixelSize: Theme.caption; color: Theme.secondary }
         }
         Repeater {

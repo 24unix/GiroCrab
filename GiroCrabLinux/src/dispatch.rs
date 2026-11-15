@@ -102,11 +102,13 @@ fn import_key(a: &Value) -> R {
 fn restore_key(key: &[u8]) -> R {
     let path = vault_path();
     if file_size(&path) <= 0 {
-        return Err("Es gibt noch keinen Tresor, zu dem der Schlüssel passen könnte.".into());
+        return Err(crate::i18n::tr(
+            "Es gibt noch keinen Tresor, zu dem der Schlüssel passen könnte.",
+        ));
     }
     let v = Vault::open(path.display().to_string(), key.to_vec()).map_err(|e| match e {
         girocrab_core::CoreError::WrongKey => {
-            "Der Schlüssel passt nicht zu diesem Tresor.".to_string()
+            crate::i18n::tr("Der Schlüssel passt nicht zu diesem Tresor.")
         }
         e => e.to_string(),
     })?;
@@ -121,7 +123,7 @@ fn read_text_file(a: &Value) -> R {
     let path = path.strip_prefix("file://").unwrap_or(&path).to_string();
     let size = file_size(std::path::Path::new(&path));
     if !(0..=1_048_576).contains(&size) {
-        return Err("Die Datei ist zu groß oder nicht lesbar.".into());
+        return Err(crate::i18n::tr("Die Datei ist zu groß oder nicht lesbar."));
     }
     ok(std::fs::read_to_string(&path).map_err(|e| e.to_string())?)
 }
@@ -155,7 +157,9 @@ pub fn call_json(method: &str, args: &str) -> String {
                 .map(|s| s.to_string())
                 .or_else(|| p.downcast_ref::<String>().cloned())
                 .unwrap_or_default();
-            Err(format!("Interner Fehler in {method}: {what}"))
+            Err(crate::i18n::tr("Interner Fehler in %1: %2")
+                .replace("%1", method)
+                .replace("%2", &what))
         });
     match result {
         Ok(v) => json!({ "ok": v }).to_string(),
@@ -177,12 +181,33 @@ fn vault() -> Result<Arc<Vault>, String> {
         .lock()
         .unwrap()
         .clone()
-        .ok_or_else(|| "Tresor ist gesperrt".to_string())
+        .ok_or_else(|| crate::i18n::tr("Tresor ist gesperrt"))
 }
 
 fn call(method: &str, a: &Value) -> R {
     match method {
         "core_version" => ok(girocrab_core::core_version()),
+        // --- Settings › Allgemein › Sprache (LanguagePreference.swift) ---
+        // HelpView.swift › HelpCatalog, read by build.rs: topics (de/en) and shortcut labels.
+        "help_content" => {
+            serde_json::from_str::<Value>(include_str!(concat!(env!("OUT_DIR"), "/help.json")))
+                .map_err(|e| e.to_string())
+        }
+        "language_state" => ok(json!({
+            "choice": crate::i18n::choice(),
+            "system": crate::i18n::system_language(),
+            "running": crate::i18n::running(),
+            "question": crate::i18n::question(),
+        })),
+        "acknowledge_system_language" => {
+            crate::i18n::acknowledge_system_language();
+            ok(())
+        }
+        "set_language_choice" => ok(crate::i18n::set_choice(&arg::<String>(a, "choice")?)?),
+        "request_relaunch" => {
+            crate::i18n::request_relaunch();
+            ok(())
+        }
         "fints_builtin_product_id_available" => {
             ok(girocrab_core::fints_builtin_product_id_available())
         }
@@ -246,7 +271,7 @@ fn call(method: &str, a: &Value) -> R {
                 .lock()
                 .unwrap()
                 .clone()
-                .ok_or("Der eigene Tresor ist nicht geöffnet.")?;
+                .ok_or_else(|| crate::i18n::tr("Der eigene Tresor ist nicht geöffnet."))?;
             *VAULT.lock().unwrap() = Some(own);
             ok(())
         }
@@ -498,7 +523,9 @@ fn print_pdf(a: &Value) -> R {
     match r {
         1 => ok("printed"),
         0 => ok("cancelled"),
-        _ => Err("Der Druckauftrag konnte nicht erstellt werden.".into()),
+        _ => Err(crate::i18n::tr(
+            "Der Druckauftrag konnte nicht erstellt werden.",
+        )),
     }
 }
 
@@ -581,8 +608,9 @@ fn document_temp_file(doc_id: i64, mime: String) -> R {
     let bytes = vault()?
         .get_document_bytes(doc_id)
         .map_err(|e| e.to_string())?;
-    let dir = prepared_quicklook_dir()
-        .ok_or("Der Ordner für die Vorschau ist nicht sicher und wurde nicht verwendet.")?;
+    let dir = prepared_quicklook_dir().ok_or_else(|| {
+        crate::i18n::tr("Der Ordner für die Vorschau ist nicht sicher und wurde nicht verwendet.")
+    })?;
     let ext = match mime.as_str() {
         "image/png" => "png",
         "image/jpeg" => "jpg",
@@ -761,7 +789,7 @@ fn read_invoice(a: &Value) -> R {
     let path: String = arg(a, "path")?;
     let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
     if size > MAX_INVOICE_FILE {
-        return Err("Die Datei ist zu groß.".into());
+        return Err(crate::i18n::tr("Die Datei ist zu groß."));
     }
     let data = std::fs::read(&path).map_err(|e| e.to_string())?;
     let is_pdf = data.starts_with(b"%PDF");

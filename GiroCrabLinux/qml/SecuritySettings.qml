@@ -33,7 +33,7 @@ Item {
         const g = p.gate
         if (!g) {
             if (p.relies_on_bundled && p.bundled_valid_until_ms)
-                return qsTr("Keine Sperre (Stand dieser Version, bis %1)").arg(new Date(p.bundled_valid_until_ms).toLocaleDateString(Qt.locale(), "d. MMM yyyy"))
+                return qsTr("Keine Sperre (Stand dieser Version, bis %1)").arg(new Date(p.bundled_valid_until_ms).toLocaleDateString(Fmt.locale, Fmt.pattern("d. MMM yyyy")))
             return !p.last_check_ms && !p.verified_online ? qsTr("Wird geprüft …") : qsTr("Keine Sperre")
         }
         if (g.reason === "checkUnavailable") return qsTr("Prüfung nicht möglich")

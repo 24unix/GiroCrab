@@ -47,7 +47,7 @@ SidebarRow {
             }
             Text {
                 visible: row.repaid === null
-                text: row.archived ? qsTr("Archiviert %1").arg(new Date(row.account.archived_unix * 1000).toLocaleDateString(Qt.locale(), "dd.MM.yy")) : row.account.bank_name
+                text: row.archived ? qsTr("Archiviert %1").arg(new Date(row.account.archived_unix * 1000).toLocaleDateString(Fmt.locale, Fmt.pattern("dd.MM.yy"))) : row.account.bank_name
                 font.pixelSize: Theme.caption2; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
             }
         }

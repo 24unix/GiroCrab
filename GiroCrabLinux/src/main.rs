@@ -6,6 +6,7 @@
 mod banking_policy;
 mod bridge;
 mod dispatch;
+mod i18n;
 mod ocr;
 mod sessions;
 mod vault_key;
@@ -40,9 +41,11 @@ fn main() {
             .collect(),
     ));
     let argc = (argv.len() - 1) as c_int;
-    let version = CString::new(env!("CARGO_PKG_VERSION")).unwrap_or_default();
+    let version = CString::new(env!("GIROCRAB_VERSION")).unwrap_or_default();
     // SAFETY: argv is leaked (valid for the program's lifetime) and null-terminated.
     unsafe { girocrab_create_app(argc, argv.as_mut_ptr(), version.as_ptr()) };
+    // Settings › Allgemein › Sprache: translator, locale and core texts before any QML loads.
+    i18n::setup();
     // Fusion follows the KDE/Plasma palette. Set after the QApplication exists:
     // the KDE platform theme it loads would otherwise pick org.kde.desktop, whose
     // native ToolButton background draws the label a second time.
@@ -60,5 +63,7 @@ fn main() {
     drop(engine);
     // SAFETY: the engine is dropped; nothing uses the application any more.
     unsafe { girocrab_destroy_app() };
+    // "Neu starten" (Settings › Allgemein › Sprache): the settings are written, start anew.
+    i18n::relaunch_if_requested();
     std::process::exit(code);
 }

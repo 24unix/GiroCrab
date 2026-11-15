@@ -165,7 +165,7 @@ ApplicationWindow {
                     anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10
                     spacing: 10
                     Text { Layout.preferredWidth: win.timeWidth; font.pixelSize: Theme.body; font.features: { "tnum": 1 }; color: Theme.text
-                           text: new Date(rowItem.modelData.timestamp_ms).toLocaleString(Fmt.locale, "d. MMM yyyy, HH:mm:ss") }
+                           text: new Date(rowItem.modelData.timestamp_ms).toLocaleString(Fmt.locale, Fmt.pattern("d. MMM yyyy, HH:mm:ss")) }
                     Text { Layout.preferredWidth: win.connectionWidth; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight
                            text: rowItem.modelData.connection_name === "" ? "–" : rowItem.modelData.connection_name }
                     RowLayout { Layout.preferredWidth: win.outcomeWidth; Layout.fillWidth: false; spacing: 5

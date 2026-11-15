@@ -85,7 +85,7 @@ ColumnLayout {
                 id: hints
                 x: 8; y: 8; width: parent.width - 16
                 spacing: 4
-                Text { text: qsTr("Aus Ihrem MoneyMoney-Import:"); font.pixelSize: Theme.caption; font.weight: Font.Medium; color: Theme.text }
+                Text { text: qsTr("Aus Ihrem Datenimport:"); font.pixelSize: Theme.caption; font.weight: Font.Medium; color: Theme.text }
                 Repeater {
                     model: AppModel.psd2LinkHints
                     ColumnLayout {

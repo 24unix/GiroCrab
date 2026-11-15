@@ -2,6 +2,7 @@
 // from the Mac app's own markup, stylesheet and paginator (WebPrinter.qml, QtWebEngine)
 // and arrives here as a PDF. This file shows the system print dialog, which also offers
 // "In Datei drucken (PDF)", and sends the pages to the printer.
+#include <QtCore/QCoreApplication>
 #include <QtCore/QFile>
 #include <QtCore/QString>
 #include <QtGui/QGuiApplication>
@@ -84,7 +85,7 @@ extern "C" int girocrab_print_pdf(const char *path, const char *job_name)
     };
 
     QPrintPreviewDialog dialog(&printer);
-    dialog.setWindowTitle(QStringLiteral("Druckvorschau"));
+    dialog.setWindowTitle(QCoreApplication::translate("GiroCrab", "Druckvorschau"));
     dialog.resize(900, 1000);
     dialog.winId();
     if (QWindow *owner = QGuiApplication::focusWindow(); owner && dialog.windowHandle())

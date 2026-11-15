@@ -1955,7 +1955,7 @@ QtObject {
     function finishMoneyMoneyImport(r) {
         reloadAll()
         if (r.account_created) sidebarSelection = "account:" + r.account_id
-        toast = qsTr("MoneyMoney: %1 Buchungen importiert").arg(r.imported)
+        toast = qsTr("Import: %1 Buchungen importiert").arg(r.imported)
             + (r.enriched > 0 ? qsTr(", %1 ergänzt").arg(r.enriched) : "")
             + (r.duplicates > 0 ? qsTr(", %1 bereits vorhanden").arg(r.duplicates) : "")
     }
@@ -1963,7 +1963,7 @@ QtObject {
     function finishMoneyMoneyDbImport(r) {
         reloadAll()
         if (r.psd2_connections.length) psd2LinkHints = r.psd2_connections
-        toast = qsTr("MoneyMoney: %1 Buchungen in %2 Konten importiert").arg(r.bookings_new).arg(r.accounts_created + r.accounts_merged)
+        toast = qsTr("Import: %1 Buchungen in %2 Konten importiert").arg(r.bookings_new).arg(r.accounts_created + r.accounts_merged)
             + (r.bookings_duplicates > 0 ? qsTr(", %1 bereits vorhanden").arg(r.bookings_duplicates) : "")
     }
 
@@ -2100,7 +2100,7 @@ QtObject {
         function direct(via, kind, key) { return { via: via, connector: kind, key: key, psd2_bank: null } }
         function bank(id, code, name, login, customer, connector, pin, count, options) {
             return { mm_id: id, bank_code: code, name: name, login_name: login, customer_id: customer, connector: connector,
-                     has_saved_pin: pin, existing_connection_id: null, account_count: count, connection_options: options }
+                     existing_connection_id: null, account_count: count, connection_options: options }
         }
         let psd2 = []
         try { psd2 = core("psd2_catalog") } catch (e) {}
@@ -2132,7 +2132,7 @@ QtObject {
         return {
             accounts_created: p.accounts.length, accounts_merged: 0, groups_created: 2, bookings_new: p.total_bookings,
             bookings_duplicates: 0, bookings_enriched: 0, pending_skipped: p.pending_bookings, notes_imported: p.notes_count,
-            categories_created: p.category_paths.length, connections_created: 4, connections_existing: 0, pins_stored: 0,
+            categories_created: p.category_paths.length, connections_created: 4, connections_existing: 0,
             banks_skipped_unsupported: 1, banks_skipped_names: ["Musterbank"], documents_imported: statements ? p.statements_found : 0,
             documents_existing: 0, documents_missing: 0, documents_mismatched: 0, documents_too_large: 0, documents_unlisted: 0,
             holdings_imported: 3, rules_created: 0, rules_disabled: 0,
@@ -2599,7 +2599,7 @@ QtObject {
     function customDateDisplay(mmdd) {
         const p = mmdd.split("-").map(Number)
         if (p.length !== 2 || isNaN(p[0]) || isNaN(p[1])) return mmdd
-        return new Date(2024, p[0] - 1, p[1]).toLocaleDateString(Fmt.locale, "d. MMMM")
+        return new Date(2024, p[0] - 1, p[1]).toLocaleDateString(Fmt.locale, Fmt.pattern("d. MMMM"))
     }
     /// CustomDates.parse: "15.03.", "15.3", "03-15" → valid MM-DD (sorted) and unreadable tokens.
     function parseCustomDates(text) {

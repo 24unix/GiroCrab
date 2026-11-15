@@ -84,12 +84,19 @@ Rectangle {
             reuseItems: true
             cacheBuffer: 800
             boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: AppScrollBar {}
+            ScrollBar.vertical: AppScrollBar { id: vbar }
             bottomMargin: 18
             // The statistics cards above the stream grow after the first load:
             // stay at the top unless the user has scrolled away.
             property bool pinnedTop: true
-            onMovingChanged: if (!moving) pinnedTop = atYBeginning
+            onMovingChanged: { if (!moving) pinnedTop = atYBeginning; else scrollDate.show() }
+
+            // Linux addition (not in the Mac app): while the list is scrolled by hand, a bubble
+            // next to the scroll bar handle shows the day of the topmost visible booking.
+            // mouse wheel / touchpad (not always reported as `moving`), flicking, dragging the handle;
+            // programmatic jumps (selection, paging) happen without the pointer over the list
+            HoverHandler { id: listHover }
+            readonly property bool userScrolling: moving || vbar.pressed || listHover.hovered
 
             header: ColumnLayout {
                 width: list.width
@@ -163,7 +170,7 @@ Rectangle {
                 AppModel.loadMoreBookings(Math.min(3000, Math.max(AppModel.defaultListLimit,
                                                                   Math.ceil(missing / perBooking) + 100)))
             }
-            onContentYChanged: Qt.callLater(loadVisible)
+            onContentYChanged: { Qt.callLater(loadVisible); if (userScrolling) scrollDate.show() }
             onHeightChanged: Qt.callLater(loadVisible)
             Connections {
                 target: AppModel
@@ -227,6 +234,56 @@ Rectangle {
                     isLast: !!item.modelData.isLast
                     x: 20; width: item.width - 40
                 }
+            }
+
+            Rectangle {
+                id: scrollDate
+                /// Day of the topmost visible booking ("" over the cards above the list).
+                property string label: ""
+                function show() {
+                    const i = list.indexAt(40, list.contentY + 1)
+                    const item = i >= 0 ? AppModel.streamItems[i] : null
+                    const day = !item ? "" : item.type === "header" ? item.day.date : item.type === "row" ? item.booking.booking_date : ""
+                    const d = Fmt.date(day)
+                    label = d ? d.toLocaleDateString(Fmt.locale, Fmt.pattern("d. MMMM yyyy")) : estimate()
+                    hideTimer.restart()
+                }
+                /// In the reserved space of bookings not loaded yet: month and year estimated from
+                /// the pace of the loaded ones ("ca. März 2021"), "" elsewhere.
+                function estimate() {
+                    const f = list.footerItem, b = AppModel.bookings
+                    if (!f || !f.visible || b.length < 2 || list.placeholderHeight <= 0) return ""
+                    const start = f.y + f.height - list.placeholderHeight
+                    const y = list.contentY + 1
+                    if (y < start) return ""
+                    const perBooking = (AppModel.streamModel.count / b.length) * list.estItemHeight
+                    const below = Math.min(AppModel.remainingBookingCount, (y - start) / perBooking)
+                    const first = Fmt.date(b[0].booking_date), last = Fmt.date(b[b.length - 1].booking_date)
+                    if (!first || !last) return ""
+                    const est = new Date(last.getTime() + (last.getTime() - first.getTime()) * below / b.length)
+                    return qsTr("ca. %1").arg(est.toLocaleDateString(Fmt.locale, "MMMM yyyy"))
+                }
+                visible: opacity > 0
+                opacity: label !== "" && (list.moving || vbar.pressed || hideTimer.running) ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+                z: 10
+                parent: list
+                radius: height / 2
+                color: Theme.withAlpha(Theme.text, 0.82)
+                implicitWidth: dateText.implicitWidth + 24
+                implicitHeight: dateText.implicitHeight + 10
+                x: list.width - width - 18
+                // next to the middle of the scroll bar handle
+                y: Math.max(4, Math.min(list.height - height - 4,
+                                        (vbar.position + vbar.size / 2) * list.height - height / 2))
+                Text {
+                    id: dateText
+                    anchors.centerIn: parent
+                    text: scrollDate.label
+                    font.pixelSize: Theme.callout; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
+                    color: Theme.canvas
+                }
+                Timer { id: hideTimer; interval: 700 }
             }
 
             function revealSelection() {
@@ -474,7 +531,7 @@ Rectangle {
             }
             Button { text: qsTr("Bank suchen und hinzufügen …"); icon.name: SF.icon("magnifyingglass"); highlighted: true
                      Layout.fillWidth: true; implicitHeight: 34; onClicked: AppModel.showAddBank = true }
-            Button { text: qsTr("Aus MoneyMoney importieren …"); icon.name: SF.icon("square.and.arrow.down.on.square"); highlighted: true
+            Button { text: qsTr("Vorhandene Daten importieren …"); icon.name: SF.icon("square.and.arrow.down.on.square"); highlighted: true
                      Layout.fillWidth: true; implicitHeight: 34; onClicked: AppModel.openMoneyMoneyImport() }
             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
             RowLayout {

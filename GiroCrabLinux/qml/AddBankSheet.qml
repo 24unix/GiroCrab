@@ -182,7 +182,7 @@ Sheet {
                     spacing: 18
                     Button { flat: true; text: qsTr("Demo-Bank ausprobieren"); onClicked: { AppModel.addDemoBank(); sheet.close() }
                              ToolTip.text: qsTr("Ohne echte Bank: Kennung „demo“, PIN 12345, beliebige TAN"); ToolTip.visible: hovered }
-                    Button { flat: true; text: qsTr("Von MoneyMoney umsteigen …"); onClicked: { sheet.close(); AppModel.showMoneyMoneyImport = true } }
+                    Button { flat: true; text: qsTr("Vorhandene Daten importieren …"); onClicked: { sheet.close(); AppModel.showMoneyMoneyImport = true } }
                 }
             }
 

@@ -234,7 +234,7 @@ Sheet {
                         label: qsTr("Zustimmung")
                         Text {
                             text: sheet.consentStage === "none" ? qsTr("keine Zustimmung gespeichert")
-                                : qsTr("gültig bis %1").arg(sheet.consentEnd.toLocaleDateString(Fmt.locale, "d. MMM yyyy"))
+                                : qsTr("gültig bis %1").arg(sheet.consentEnd.toLocaleDateString(Fmt.locale, Fmt.pattern("d. MMM yyyy")))
                             font.pixelSize: Theme.callout + 1; color: sheet.consentStage === "none" ? Theme.secondary : Theme.text
                         }
                         SFIcon { visible: sheet.consentStage === "expired" || sheet.consentStage === "expiringSoon"; symbol: "exclamationmark.triangle"; size: 12

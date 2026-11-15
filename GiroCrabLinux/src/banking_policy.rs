@@ -19,6 +19,8 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::i18n::tr;
+
 pub const DISTRIBUTION: &str = "linux";
 const SUPPORTED_SCHEMA: i64 = 1;
 const URL: &str =
@@ -125,9 +127,9 @@ pub fn verify(json: &[u8], sig: &[u8]) -> bool {
 }
 
 fn parse(json: &[u8]) -> Result<Document, String> {
-    let d: Document = serde_json::from_slice(json).map_err(|_| "Unbekanntes Format".to_string())?;
+    let d: Document = serde_json::from_slice(json).map_err(|_| tr("Unbekanntes Format"))?;
     if d.schema != SUPPORTED_SCHEMA {
-        return Err("Unbekanntes Format".into());
+        return Err(tr("Unbekanntes Format"));
     }
     Ok(d)
 }
@@ -189,7 +191,7 @@ pub fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
 
 /// BankingPolicyEvaluation.gate for this build (`linux`, channel from the version).
 fn evaluate(doc: &Document) -> Option<Gate> {
-    evaluate_for(doc, env!("CARGO_PKG_VERSION"))
+    evaluate_for(doc, env!("GIROCRAB_VERSION"))
 }
 
 fn evaluate_for(doc: &Document, version: &str) -> Option<Gate> {
@@ -303,9 +305,18 @@ fn relies_on_bundled() -> bool {
         && SystemTime::now() < build_time() + BUNDLED_GRACE
 }
 
-const UNCHECKED_TITLE: &str = "Sicherheitsprüfung nicht möglich";
-const UNCHECKED_DETAIL: &str = "GiroCrab konnte nicht prüfen, ob diese Version noch sicher mit Banken kommunizieren darf. Bitte später erneut versuchen oder in der Firewall Verbindungen zu raw.githubusercontent.com erlauben.";
-const UNCHECKED: &str = "Sicherheitsprüfung nicht möglich. GiroCrab konnte nicht prüfen, ob diese Version noch sicher mit Banken kommunizieren darf. Bitte später erneut versuchen oder in der Firewall Verbindungen zu raw.githubusercontent.com erlauben.";
+fn unchecked_title() -> String {
+    tr("Sicherheitsprüfung nicht möglich")
+}
+
+fn unchecked_detail() -> String {
+    tr("GiroCrab konnte nicht prüfen, ob diese Version noch sicher mit Banken kommunizieren darf. Bitte später erneut versuchen oder in der Firewall Verbindungen zu raw.githubusercontent.com erlauben.")
+}
+
+/// Title and detail as one message (the core's error while no check has succeeded).
+fn unchecked() -> String {
+    format!("{}. {}", unchecked_title(), unchecked_detail())
+}
 
 /// Recomputes the gate and hands it to the core.
 fn apply(st: &mut State) {
@@ -321,7 +332,7 @@ fn apply(st: &mut State) {
         } else if st.last_failure.is_none() {
             // Not tried yet: no banner, but the core stays closed until the first check.
             st.gate = None;
-            set_banking_block(true, vec![], UNCHECKED.into());
+            set_banking_block(true, vec![], unchecked());
             return;
         } else {
             Some(Gate {
@@ -344,18 +355,18 @@ fn apply(st: &mut State) {
 }
 
 /// `BankingGate.title`: banner headline and alert title.
-pub fn title(g: &Gate) -> &'static str {
+pub fn title(g: &Gate) -> String {
     if g.reason == "checkUnavailable" {
-        UNCHECKED_TITLE
+        unchecked_title()
     } else {
-        "Bankverbindungen gesperrt"
+        tr("Bankverbindungen gesperrt")
     }
 }
 
 /// `BankingGate.message`: full sentence(s) for the core error.
 pub fn message(g: &Gate) -> String {
     if g.reason == "checkUnavailable" {
-        return UNCHECKED.into();
+        return unchecked();
     }
     detail(g)
 }
@@ -388,11 +399,14 @@ pub fn display_name(id: &str) -> String {
     }
 }
 
-/// ListFormatter (German): "A", "A und B", "A, B und C".
-fn german_list(items: &[String]) -> String {
+/// ListFormatter: "A", "A und B", "A, B und C" (English "A, B, and C").
+fn list(items: &[String]) -> String {
+    let english = crate::i18n::running() == "en";
     match items {
         [] => String::new(),
         [one] => one.clone(),
+        [a, b] if english => format!("{a} and {b}"),
+        [init @ .., last] if english => format!("{}, and {last}", init.join(", ")),
         [init @ .., last] => format!("{} und {last}", init.join(", ")),
     }
 }
@@ -400,22 +414,20 @@ fn german_list(items: &[String]) -> String {
 /// `BankingGate.detail`: explanation below the headline (alert text).
 pub fn detail(g: &Gate) -> String {
     if g.reason == "checkUnavailable" {
-        return UNCHECKED_DETAIL.into();
+        return unchecked_detail();
     }
     let mut t = if g.all {
-        "Bankverbindungen sind gesperrt, weil diese Version eine Sicherheitslücke oder einen schweren Fehler im Bankzugang enthält. Ihre Daten bleiben lesbar.".to_string()
+        tr("Bankverbindungen sind gesperrt, weil diese Version eine Sicherheitslücke oder einen schweren Fehler im Bankzugang enthält. Ihre Daten bleiben lesbar.")
     } else {
         let names: Vec<String> = g.connector_ids.iter().map(|id| display_name(id)).collect();
-        format!(
-            "Verbindungen über {} sind gesperrt, weil diese Version eine Sicherheitslücke oder einen schweren Fehler im Bankzugang enthält. Ihre Daten bleiben lesbar.",
-            german_list(&names)
-        )
+        tr("Verbindungen über %1 sind gesperrt, weil diese Version eine Sicherheitslücke oder einen schweren Fehler im Bankzugang enthält. Ihre Daten bleiben lesbar.")
+            .replace("%1", &list(&names))
     };
     t.push(' ');
-    t.push_str(if g.update_available {
-        "Bitte aktualisieren Sie GiroCrab."
+    t.push_str(&if g.update_available {
+        tr("Bitte aktualisieren Sie GiroCrab.")
     } else {
-        "Ein Update ist in Vorbereitung."
+        tr("Ein Update ist in Vorbereitung.")
     });
     t
 }
@@ -435,7 +447,7 @@ fn fetch() -> Result<(Vec<u8>, Vec<u8>), String> {
                 }
                 let b = r.bytes().await.map_err(|e| e.to_string())?;
                 if b.len() > MAX_BYTES {
-                    return Err("Antwort zu groß".to_string());
+                    return Err(tr("Antwort zu groß"));
                 }
                 Ok(b.to_vec())
             }
@@ -473,7 +485,7 @@ pub fn refresh(force: bool) -> Value {
         Err(e) => st.last_failure = Some(e),
         Ok((json, sig)) => {
             if !verify(&json, &sig) {
-                st.last_failure = Some("Ungültige Signatur".into());
+                st.last_failure = Some(tr("Ungültige Signatur"));
             } else {
                 match parse(&json) {
                     Err(e) => st.last_failure = Some(e),
@@ -483,11 +495,18 @@ pub fn refresh(force: bool) -> Value {
                             .as_ref()
                             .is_some_and(|c| doc.sequence < c.sequence) =>
                     {
-                        st.last_failure = Some(format!(
-                            "Veraltete Richtlinie (sequence {} < {})",
-                            doc.sequence,
-                            st.document.as_ref().map(|c| c.sequence).unwrap_or(0)
-                        ))
+                        st.last_failure = Some(
+                            tr("Veraltete Richtlinie (sequence %1 < %2)")
+                                .replace("%1", &doc.sequence.to_string())
+                                .replace(
+                                    "%2",
+                                    &st.document
+                                        .as_ref()
+                                        .map(|c| c.sequence)
+                                        .unwrap_or(0)
+                                        .to_string(),
+                                ),
+                        )
                     }
                     Ok(doc) => {
                         save_stored(&json, &sig, true);

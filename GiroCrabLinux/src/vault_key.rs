@@ -37,12 +37,15 @@ fn entry() -> Result<Entry, String> {
 
 fn describe(e: KeyringError) -> String {
     match e {
-        KeyringError::NoStorageAccess(inner) => format!(
-            "Kein Zugriff auf den Schlüsselbund (KWallet / GNOME Schlüsselbund): {inner}. \
-             Ist der Schlüsselbund entsperrt und der Secret-Service-Dienst aktiv?"
-        ),
-        KeyringError::PlatformFailure(inner) => format!("Schlüsselbund-Fehler: {inner}"),
-        other => format!("Schlüsselbund-Fehler: {other}"),
+        KeyringError::NoStorageAccess(inner) => crate::i18n::tr(
+            "Kein Zugriff auf den Schlüsselbund (KWallet / GNOME Schlüsselbund): %1. \
+             Ist der Schlüsselbund entsperrt und der Secret-Service-Dienst aktiv?",
+        )
+        .replace("%1", &inner.to_string()),
+        KeyringError::PlatformFailure(inner) => {
+            crate::i18n::tr("Schlüsselbund-Fehler: %1").replace("%1", &inner.to_string())
+        }
+        other => crate::i18n::tr("Schlüsselbund-Fehler: %1").replace("%1", &other.to_string()),
     }
 }
 
@@ -59,7 +62,9 @@ pub fn unlock(allow_create: bool) -> Result<Unlocked, String> {
     let e = entry()?;
     match e.get_secret() {
         Ok(k) if k.len() == 32 => Ok(Unlocked { key: zeroize::Zeroizing::new(k), created: false }),
-        Ok(_) => Err("Der Tresor-Schlüssel im Schlüsselbund ist beschädigt (erwartet 32 Byte).".into()),
+        Ok(_) => Err(crate::i18n::tr(
+            "Der Tresor-Schlüssel im Schlüsselbund ist beschädigt (erwartet 32 Byte).",
+        )),
         Err(KeyringError::NoEntry) if allow_create => {
             let key = zeroize::Zeroizing::new(girocrab_core::generate_master_key());
             e.set_secret(&key).map_err(describe)?;
@@ -89,7 +94,7 @@ pub fn parse_key(text: &str) -> Result<zeroize::Zeroizing<Vec<u8>>, String> {
         .filter(|k| k.len() == 32);
     let key = b64.or_else(|| (t.len() == 64).then(|| hex_decode(t)).flatten());
     key.map(zeroize::Zeroizing::new)
-        .ok_or_else(|| "Ungültiger Schlüssel (erwartet 32 Byte, Base64 oder Hex).".to_string())
+        .ok_or_else(|| crate::i18n::tr("Ungültiger Schlüssel (erwartet 32 Byte, Base64 oder Hex)."))
 }
 
 fn hex_decode(t: &str) -> Option<Vec<u8>> {

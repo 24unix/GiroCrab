@@ -116,8 +116,8 @@ modules:
       - install -Dm644 -t /app/share/licenses/de.girocrab.GiroCrab LICENSE THIRD_PARTY_NOTICES.md
     sources:
       # The checkout this manifest lives in (CI builds the code of the pull request).
-      # Only what the build needs: the core, the Linux port, the banking policy, icon
-      # and licence texts.
+      # Only what the build needs: the core, the Linux port, the banking policy, icon,
+      # licence texts and the Mac app's print stylesheet and string catalog (build.rs).
       - type: dir
         path: ../../..
         skip:
@@ -127,7 +127,8 @@ modules:
           - target
           - GiroCrabLinux/target
           - GiroCrabApp/Tests
-          - GiroCrabApp/Xcode
+          - GiroCrabApp/Xcode/GiroCrab.xcodeproj
+          - GiroCrabApp/Xcode/App/Assets.xcassets
           - docs
           - generated
           - CashCrabApp

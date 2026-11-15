@@ -3,7 +3,30 @@ import QtQuick
 
 // Formatting.swift › enum Money, enum DateText, formatIBAN.
 QtObject {
+    /// The UI language with the system's region (cpp/translator.cpp sets the default locale),
+    /// like Locale.autoupdatingCurrent on the Mac: "en_DE" for English on a German system.
     readonly property var locale: Qt.locale()
+    readonly property bool english: locale.name.startsWith("en")
+    /// The locale writes the day before the month ("9 November", not "November 9").
+    readonly property bool dayFirst: {
+        const f = locale.dateFormat(Locale.LongFormat)
+        return f.indexOf("d") < f.indexOf("M")
+    }
+    /// A German date pattern in the UI language (the templates of DateText:
+    /// "9. November" / "09.11.2026" in German, "November 9" / "11/09/2026" in English).
+    function pattern(p) {
+        if (!english) return p
+        const en = dayFirst
+            ? { "dd.MM.yyyy": "dd/MM/yyyy", "dd.MM.yy": "dd/MM/yy", "d. MMMM": "d MMMM", "d. MMMM yyyy": "d MMMM yyyy",
+                "d. MMM": "d MMM", "d. MMM yyyy": "d MMM yyyy", "dddd, d. MMMM yyyy": "dddd, d MMMM yyyy",
+                "d. MMM yyyy, HH:mm:ss": "d MMM yyyy, HH:mm:ss" }
+            : { "dd.MM.yyyy": "MM/dd/yyyy", "dd.MM.yy": "MM/dd/yy", "d. MMMM": "MMMM d", "d. MMMM yyyy": "MMMM d, yyyy",
+                "d. MMM": "MMM d", "d. MMM yyyy": "MMM d, yyyy", "dddd, d. MMMM yyyy": "dddd, MMMM d, yyyy",
+                "d. MMM yyyy, HH:mm:ss": "MMM d, yyyy, HH:mm:ss" }
+        return en[p] || p
+    }
+    /// Key names of a shortcut in the UI language: "Strg+Umschalt+N" → "Ctrl+Shift+N".
+    function keys(s) { return english ? s.replace(/Strg/g, "Ctrl").replace(/Umschalt/g, "Shift") : s }
 
     function currencySymbol(code) {
         return ({ "EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF" })[code || "EUR"] || code
@@ -27,9 +50,9 @@ QtObject {
         const pad = n => (n < 10 ? "0" : "") + n
         return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
     }
-    function medium(s) { const d = date(s); return d ? d.toLocaleDateString(locale, "dd.MM.yyyy") : s }
-    function longDate(s) { const d = date(s); return d ? d.toLocaleDateString(locale, "dddd, d. MMMM yyyy") : s }
-    function shortDay(d) { return d.toLocaleDateString(locale, "d. MMM") }
+    function medium(s) { const d = date(s); return d ? d.toLocaleDateString(locale, pattern("dd.MM.yyyy")) : s }
+    function longDate(s) { const d = date(s); return d ? d.toLocaleDateString(locale, pattern("dddd, d. MMMM yyyy")) : s }
+    function shortDay(d) { return d.toLocaleDateString(locale, pattern("d. MMM")) }
 
     /// "Heute, 9. November" / "Gestern, 8. November" / "Montag, 2. November" (+ year if not this year).
     function dayHeader(s) {
@@ -37,7 +60,7 @@ QtObject {
         if (!d) return s
         const now = new Date()
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-        const dm = d.toLocaleDateString(locale, d.getFullYear() === now.getFullYear() ? "d. MMMM" : "d. MMMM yyyy")
+        const dm = d.toLocaleDateString(locale, pattern(d.getFullYear() === now.getFullYear() ? "d. MMMM" : "d. MMMM yyyy"))
         const diff = Math.round((today - d) / 86400000)
         if (diff === 0) return qsTr("Heute, %1").arg(dm)
         if (diff === 1) return qsTr("Gestern, %1").arg(dm)
@@ -47,13 +70,14 @@ QtObject {
     /// RelativeDateTimeFormatter (.full): "vor 1 Stunde".
     function relative(unix) {
         const secs = Math.max(0, Date.now() / 1000 - unix)
-        const units = [[31536000, "Jahr", "Jahren"], [2592000, "Monat", "Monaten"], [604800, "Woche", "Wochen"],
-                       [86400, "Tag", "Tagen"], [3600, "Stunde", "Stunden"], [60, "Minute", "Minuten"]]
+        const units = [[31536000, qsTr("vor 1 Jahr"), qsTr("vor %1 Jahren")], [2592000, qsTr("vor 1 Monat"), qsTr("vor %1 Monaten")],
+                       [604800, qsTr("vor 1 Woche"), qsTr("vor %1 Wochen")], [86400, qsTr("vor 1 Tag"), qsTr("vor %1 Tagen")],
+                       [3600, qsTr("vor 1 Stunde"), qsTr("vor %1 Stunden")], [60, qsTr("vor 1 Minute"), qsTr("vor %1 Minuten")]]
         for (const u of units) {
             const n = Math.floor(secs / u[0])
-            if (n >= 1) return "vor " + n + " " + (n === 1 ? u[1] : u[2])
+            if (n >= 1) return n === 1 ? u[1] : u[2].arg(n)
         }
-        return "gerade eben"
+        return qsTr("gerade eben")
     }
 
     /// "DE12 3456 …" in blocks of four.

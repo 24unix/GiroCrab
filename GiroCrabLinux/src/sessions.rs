@@ -39,7 +39,7 @@ pub fn get(id: u64) -> Result<Session, String> {
         .unwrap()
         .get(&id)
         .cloned()
-        .ok_or_else(|| "Der Bankdialog ist bereits beendet.".to_string())
+        .ok_or_else(|| crate::i18n::tr("Der Bankdialog ist bereits beendet."))
 }
 
 pub fn remove(id: u64) {

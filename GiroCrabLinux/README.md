@@ -105,7 +105,7 @@ von der nativen Installation wechselt, kopiert `tresor.girocrab` in den neuen Or
 | AppModel, AccountGroupsModel | AppModel.qml | Auswahl, Zeitraum, Filter, Laden, Tagesgruppen, Marker, KPIs, Bearbeiten, Abruf, Überweisung, Import |
 | Formatting | Theme.qml, Fmt.qml | Tokens, Money, DateText, IBAN |
 | SidebarView, AccountGroupsUI | SidebarView.qml, SidebarRow.qml, AccountRow.qml, AccountsSectionHeader.qml, DropSlot.qml | Übersicht, Belege, Gruppen/Kontoart, Konten, Kategorienbaum, Fußzeile, Drag & Drop, Kontextmenüs |
-| BookingListView | BookingStreamView.qml | Tageskarten, Zeilen, Chips, Mehrfachauswahl, Kontextmenü, Tastatur (Pfeile, C, R), „Weitere Buchungen laden“ |
+| BookingListView | BookingStreamView.qml | Tageskarten, Zeilen, Chips, Mehrfachauswahl, Kontextmenü, Tastatur (Pfeile, C, R), „Weitere Buchungen laden“. Nur unter Linux: Beim Scrollen zeigt eine Blase am Griff den Tag der obersten Buchung, im noch nicht geladenen Bereich geschätzt („ca. März 2021“) |
 | BalanceHeaderView | StreamHeaderCard.qml, KPI.qml, BalanceChart.qml, HoldingsCard.qml | Titel, Saldo, Linien-Chart, KPIs, Filterzeile, Depot-Positionen. Balken-Stil entfällt. |
 | PlanningUI | CashflowCard.qml, BudgetProgressCard.qml, BudgetEditorSheet.qml, SplitSheet.qml, CustomPeriodForm.qml | Karten, Budget-Editor, Umsatz aufteilen, eigener Zeitraum (QSettings `period/customFrom`, `period/customTo`) |
 | BookingDetailView | InspectorView.qml | Beleg, Notiz, Gehalt, Wiederkehrend, Händler-Historie, Kategorie-Raster, Rohdaten, Belege, Mehrfachauswahl |
@@ -124,9 +124,9 @@ von der nativen Installation wechselt, kopiert `tresor.girocrab` in den neuen Or
 | MoneyMoneyImportSheet, MoneyMoneyDatabaseImportView | MoneyMoneyImportSheet.qml, MoneyMoneyExportImportView.qml, MoneyMoneyDatabaseImportView.qml, ImportAssistantHeader.qml, AssistantFooter.qml, ImportSourceSection.qml, ImportFileRow.qml, FormSection.qml, FormRow.qml | Exportdatei (CSV/XML/CAMT/MT940) und Datenbank (SQLCipher, Fortschritt, Abbrechen, Abgleich). Datenbank bzw. MoneyMoney-Ordner vom Mac kopieren. Enable-Banking-Schritt ohne Live-Bankliste |
 | PrintSheet, PrintReport | PrintSheet.qml, PrintReport.qml, cpp/printing.cpp | QTextDocument + QPrinter/QPrintDialog (auch PDF), Fußzeile, Logo, Wasserzeichen |
 | AppModel.exportFilteredBookingsCSV | Main.qml (FileDialog), AppModel.qml | „GiroCrab-Buchungen.csv“ |
-| SettingsView, AutoReview | SettingsWindow.qml, GeneralSettings.qml, BankConnectionsSettings.qml, SecuritySettings.qml, SettingsFormSection.qml, SettingsFormRow.qml | eigenes Fenster (Strg+,): Allgemein, Banken, Sicherheit. Entfällt: Sprache, Mitteilungen, Saldoverlauf-Stil, Händler-Logos, Dokumente-Ordner, Updates, Touch ID, iCloud-Sync |
+| SettingsView, AutoReview | SettingsWindow.qml, GeneralSettings.qml, BankConnectionsSettings.qml, SecuritySettings.qml, SettingsFormSection.qml, SettingsFormRow.qml | eigenes Fenster (Strg+,): Allgemein (mit Sprache), Banken, Sicherheit. Entfällt: Mitteilungen, Saldoverlauf-Stil, Händler-Logos, Dokumente-Ordner, Updates, Touch ID, iCloud-Sync |
 | SyncLog | SyncLogWindow.qml | Fenster › Abruf-Protokoll: Suche, Konto-Filter, „Nur Fehler“, Sortierung, CSV-Export, Leeren |
-| HelpView | HelpWindow.qml | Hilfe › GiroCrab-Hilfe (Strg+?), deutsch, Tastaturkürzel für Linux |
+| HelpView | HelpWindow.qml | Hilfe › GiroCrab-Hilfe (Strg+?). Themen und Kürzel-Beschriftungen (de/en) liest `build.rs` direkt aus HelpView.swift; Tresor-Thema und Tastaturkürzel für Linux angepasst |
 | Screenshot, LaunchOptions | Main.qml, AppModel.qml, cpp/prepare.cpp | siehe „Demo- und Screenshot-Optionen“ |
 | ManualLoansUI | LoanEditorSheet.qml, LoanAssignMenu.qml, ManualLoanDetails.qml, LoanProgressCard.qml, AppModel.qml | Neues Darlehen (Ablage), Darlehen bearbeiten, Stand neu setzen, Live-Vorschau, Buchung › Darlehen zuordnen, „Neues Darlehen aus dieser Buchung …“. Fehlt: Widerrufen |
 | OpeningBalanceUI | OpeningBalanceSheet.qml, AppModel.qml | Startsaldo, Stichtag, Kalibrieren, Vorschau, Entfernen. Fehlt: Widerrufen |
@@ -135,7 +135,33 @@ von der nativen Installation wechselt, kopiert `tresor.girocrab` in den neuen Or
 | AccountGroupsUI › Dialoge, GroupManagerSheet | AccountGroupDialogs.qml, GroupManagerSheet.qml | Neue Gruppe/Untergruppe, Umbenennen, Löschen, Zusammenführen, Konto archivieren/löschen, Gruppen bearbeiten |
 | Announcements | – | offen |
 | SyncFolder, CloudSyncManager | – | offen: Ordner-Sync (Nextcloud/Syncthing) statt iCloud |
-| AppUpdates (Sparkle), DockBadge, DesktopFrame, MacFrame, Perf, AnimatedCrabLogoView, MerchantLogoTip, LanguagePreference, SyncDeviceID, ViewLayout, SVGPath, BankingVersion, BalanceBars | – | entfällt (macOS-spezifisch) |
+| LanguagePreference | GeneralSettings.qml, LanguagePromptView.qml, Main.qml, cpp/translator.cpp, src/i18n.rs | siehe „Sprache“ |
+| AppUpdates (Sparkle), DockBadge, DesktopFrame, MacFrame, Perf, AnimatedCrabLogoView, MerchantLogoTip, SyncDeviceID, ViewLayout, SVGPath, BankingVersion, BalanceBars | – | entfällt (macOS-spezifisch) |
+
+## Sprache
+
+Deutsch und Englisch wie in der Mac-App. Einstellungen › Allgemein › Sprache: „Systemsprache“, „Deutsch“ oder
+„English“; gespeichert als `language` in `~/.config/GiroCrab/GiroCrab.conf` und nach „Neu starten“ wirksam, damit ein
+Lauf nie Sprachen mischt. „Systemsprache“ nimmt den ersten deutschen oder englischen Eintrag aus `LANGUAGE` / `LC_ALL` /
+`LC_MESSAGES` / `LANG` (`QLocale::system().uiLanguages()`), sonst Deutsch. Wie auf dem Mac fragt die App nur, wenn sich
+die Systemsprache seit dem letzten Start geändert hat (`language.lastSystemLanguage`): Spricht das System keine der beiden
+Sprachen, erscheint vor dem Entsperren „Sprache wählen“ (LanguagePromptView); wechselt das System weg von einer
+ausdrücklich gewählten Sprache, bietet ein Hinweis einmal den Wechsel an.
+
+- Quelltexte sind deutsch (`qsTr("…")` in QML, `QCoreApplication::translate` in C++, `i18n::tr` in Rust).
+- Das Englische kommt beim Bauen aus dem String-Katalog der Mac-App (`GiroCrabApp/Xcode/App/Localizable.xcstrings`):
+  `build.rs` wandelt die Swift-Platzhalter (`%@`, `%lld`, `%1$@`) in Qt-Platzhalter (`%1`, `%2`) um, nimmt bei
+  Pluralformen „other“ und schreibt `OUT_DIR/en.json`. Ändert sich das Format des Katalogs, bricht der Build mit einer
+  Meldung ab.
+- `i18n/en-linux.json` enthält nur die Linux-eigenen Texte (Deutsch → Englisch, gleiche Platzhalter) und gewinnt
+  gegen den Katalog. Begriffe wie in der Mac-App (Tresor = vault, Buchung = transaction), Schlüsselbund = keyring.
+- `cpp/translator.cpp` (ein `QTranslator`, nur bei Englisch installiert) schlägt jeden Text in dieser Tabelle nach;
+  ohne Eintrag bleibt der deutsche Text stehen. Zahlen und Datumsangaben folgen wie am Mac der Sprache mit der Region
+  des Systems (`QLocale::setDefault`, z. B. `en_DE`); der Kern bekommt die Sprache über `i18n::set_language`.
+- `python3 -I scripts/i18n-report.py` listet Texte ohne Englisch und endet dann mit Fehler (läuft in der CI).
+- Die Hilfe (HelpWindow.qml) kommt zweisprachig direkt aus `HelpView.swift` (`build.rs`, `help.json`); nur das
+  Tresor-Thema ist für Linux eigen (Secret Service statt Schlüsselbund von macOS, kein iCloud-Sync).
+- Nicht übersetzt: Demo-Inhalte (Regel-, Konto- und Buchungsnamen) und Texte der Banken. Datei-Dialoge und Druckdialog kommen von der Arbeitsumgebung bzw. Qt.
 
 ## Demo- und Screenshot-Optionen
 

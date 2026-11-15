@@ -24,10 +24,12 @@ cd "$crate"
 
 pkg=girocrab
 app_id=de.girocrab.GiroCrab
-version="$(sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1)"
-# Every build from git gets its own, increasing version (0.6.3+git202611142247.5372f85), so
+# The version of the GiroCrab workspace (core and Mac app), like build.rs.
+version="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' "$repo/Cargo.toml" | head -1)"
+[ -n "$version" ] || { echo "Keine Version in $repo/Cargo.toml" >&2; exit 1; }
+# Every build from git gets its own, increasing version (0.7.0+git202611142247.5372f85), so
 # `apt install ./girocrab_….deb` replaces an installed build of the same release. Uncommitted
-# changes use the build time. DEB_VERSION overrides it (e.g. DEB_VERSION=0.6.3 for a release).
+# changes use the build time. DEB_VERSION overrides it (e.g. DEB_VERSION=0.7.0 for a release).
 if [ -n "${DEB_VERSION:-}" ]; then
     version="$DEB_VERSION"
 elif git rev-parse --git-dir >/dev/null 2>&1; then

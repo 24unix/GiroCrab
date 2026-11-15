@@ -12,7 +12,7 @@ FormSection {
     title: qsTr("Quelle")
     Repeater {
         model: [
-            { id: "database", title: qsTr("MoneyMoney-Datenbank"),
+            { id: "database", title: qsTr("Datenbank"),
               detail: qsTr("Alle Konten mit Kategorien, Regeln, Bankzugängen und Kontoauszügen – empfohlen beim Umstieg.") },
             { id: "export", title: qsTr("Exportdatei eines Kontos"),
               detail: qsTr("CSV, camt.053 oder MT940 – um einzelne Konten zu ergänzen.") }
