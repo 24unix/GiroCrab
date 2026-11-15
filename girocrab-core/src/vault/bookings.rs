@@ -49,7 +49,7 @@ fn is_account_number_query(compact: &str) -> bool {
 }
 
 /// WHERE clause "booking `t` belongs to the categories `cat_match`" (e.g. `= ?3`,
-/// `IS NULL`), split-aware like `planning::EFFECTIVE_SQL`: an unsplit booking by
+/// `IS NULL`), split-aware like `planning::effective_sql`: an unsplit booking by
 /// its own category, a split booking only by the categories of its parts.
 fn category_match_sql(cat_match: &str) -> String {
     format!(
@@ -83,6 +83,154 @@ pub(crate) fn enrich(t: &mut Booking) {
     t.payment_method = payment_method(&t.booking_text, &t.purpose, t.account_kind, t.amount_cents);
     t.clean_purpose = clean_purpose(&t.purpose);
     t.recurrence_key = crate::recurring::series_key(t);
+}
+
+/// Tables behind a booking row; a deleted category or rule reads as none
+/// (what the old SET NULL did).
+const BOOKING_FROM_SQL: &str = "FROM transactions t JOIN accounts a ON a.id = t.account_id
+     LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL
+     LEFT JOIN rules r ON r.id = t.rule_id AND r.deleted_ms IS NULL";
+
+/// SELECT list read by `booking_from_row`; `share_sql` is the KPI share (column 21).
+fn booking_columns(share_sql: &str) -> String {
+    format!(
+        "t.id, t.account_id, a.name, t.booking_date, t.value_date, t.amount_cents, t.currency, t.counterparty,
+         t.counterparty_iban, t.purpose, t.booking_text, cat.id, t.category_source, r.id, t.checked, a.kind,
+         (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note,
+         t.purpose_code, t.gvc, t.salary_flag, {share_sql},
+         (t.external_id LIKE 'pending-%'), t.item_refs"
+    )
+}
+
+/// (KPI share, raw booking) of one `booking_columns` row; `BookingFinisher` fills the rest.
+fn booking_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<(i64, Booking)> {
+    let cat: Option<i64> = r.get(11)?;
+    let src: String = r.get(12)?;
+    let share: i64 = r.get(21)?;
+    Ok((
+        share,
+        Booking {
+            id: r.get(0)?,
+            account_id: r.get(1)?,
+            account_name: r.get(2)?,
+            booking_date: r.get(3)?,
+            value_date: r.get(4)?,
+            amount_cents: r.get(5)?,
+            currency: r.get(6)?,
+            counterparty: r.get(7)?,
+            counterparty_iban: r.get(8)?,
+            purpose: r.get(9)?,
+            booking_text: r.get(10)?,
+            category_id: cat,
+            category_name: String::new(),
+            category_path: String::new(),
+            category_color_hex: String::new(),
+            category_symbol: String::new(),
+            category_source: match src.as_str() {
+                "rule" => CategorySource::Rule,
+                "manual" => CategorySource::Manual,
+                _ => CategorySource::None,
+            },
+            rule_id: r.get(13)?,
+            checked: r.get::<_, i64>(14)? != 0,
+            merchant: MerchantResolver::placeholder(),
+            merchant_name: String::new(),
+            merchant_domain: None,
+            merchant_svg_path: None,
+            merchant_hex_color: String::new(),
+            payment_method: String::new(),
+            flow: FlowKind::Consumption,
+            clean_purpose: String::new(),
+            account_kind: AccountKind::from_str(&r.get::<_, String>(15)?),
+            document_count: r.get::<_, i64>(16)? as u32,
+            note: r.get(17)?,
+            purpose_code: r.get(18)?,
+            gvc: r.get(19)?,
+            salary_flag: r.get::<_, Option<i64>>(20)?.map(|f| f != 0),
+            is_salary: false,
+            recurrence_key: String::new(),
+            is_pending: r.get::<_, i64>(22)? != 0,
+            item_refs: r.get(23)?,
+        },
+    ))
+}
+
+/// Everything a raw booking row needs to read like the booking list: category
+/// names, merchant, flow (salary, own transfers, loans), domain overrides.
+/// With `visible` accounts (local interface, #136), a payment linked to a loan
+/// outside them reads as a transfer: the loan itself must not show.
+pub(super) struct BookingFinisher {
+    paths: std::collections::HashMap<i64, (String, String, String, String)>,
+    salary_ibans: std::collections::HashSet<String>,
+    overrides: std::collections::HashMap<String, String>,
+    own_ibans: std::collections::HashSet<String>,
+    loan_links: std::collections::HashMap<i64, i64>,
+    visible: Option<std::collections::HashSet<i64>>,
+}
+
+impl BookingFinisher {
+    pub(super) fn load(
+        db: &rusqlite::Connection,
+        visible: Option<&[i64]>,
+    ) -> Result<Self, CoreError> {
+        let paths = Vault::category_paths(db)?;
+        let loan_links = crate::loans::link_map(db)?;
+        let salary_ibans = crate::salary::marked_salary_ibans(db)?;
+        let overrides = crate::insights::load_overrides(db).unwrap_or_default();
+        // Own IBANs: uncategorised bookings to / from them are transfers (Issue #94).
+        let own_ibans: std::collections::HashSet<String> = {
+            let mut st =
+                db.prepare("SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != '' AND deleted_ms IS NULL")?;
+            let ibans = st
+                .query_map([], |r| r.get::<_, String>(0))?
+                .filter_map(Result::ok)
+                .map(|i| crate::connectors::fints::sepa::normalize_iban(&i))
+                .collect();
+            ibans
+        };
+        Ok(Self {
+            paths,
+            salary_ibans,
+            overrides,
+            own_ibans,
+            loan_links,
+            visible: visible.map(|v| v.iter().copied().collect()),
+        })
+    }
+
+    pub(super) fn finish(&self, t: &mut Booking) {
+        if let Some((name, path, color, sym)) = t.category_id.and_then(|c| self.paths.get(&c)) {
+            t.category_name = name.clone();
+            t.category_path = path.clone();
+            t.category_color_hex = color.clone();
+            t.category_symbol = sym.clone();
+        }
+        enrich(t);
+        t.is_salary = crate::salary::is_salary(t, &self.salary_ibans);
+        // A salary stays income although its booking text names a transfer
+        // (comdirect: "Übertrag / Überweisung"); a transfer category still wins.
+        if t.is_salary && t.flow == FlowKind::Transfer {
+            t.flow = FlowKind::Income;
+        }
+        if is_own_transfer(t, &self.own_ibans) {
+            t.flow = FlowKind::Transfer;
+        }
+        // Localise after `enrich`: flow classification needs the stored names.
+        t.category_name = display_name(&t.category_name);
+        t.category_path = display_path(&t.category_path);
+        if let Some(d) = self.overrides.get(&t.merchant.key) {
+            t.merchant.domain = d.clone();
+            t.merchant.domain_candidates = vec![d.clone()];
+            t.merchant.domain_source = "override".into();
+            t.merchant_domain = Some(d.clone());
+        }
+        if let Some(loan) = self.loan_links.get(&t.id) {
+            t.flow = match &self.visible {
+                Some(v) if !v.contains(loan) => FlowKind::Transfer,
+                _ => FlowKind::Loan,
+            };
+        }
+    }
 }
 
 impl Vault {
@@ -149,7 +297,7 @@ impl Vault {
             ));
             wh.push(format!("({clause})"));
         }
-        // Category filters follow `planning::EFFECTIVE_SQL`: a split booking belongs
+        // Category filters follow `planning::effective_sql`: a split booking belongs
         // to the categories of its parts (never to its own category), and only the
         // parts of the filtered category count in the KPI sums (`share_sql`).
         let cat_match: Option<String> = if filter.uncategorized_only {
@@ -293,6 +441,72 @@ impl Vault {
     }
 }
 
+impl Vault {
+    /// Bookings of `filter` after the keyset cursor `after` = (booking_date, id),
+    /// newest first, at most `limit` (0 = all); for the local read-only interface
+    /// (#136). SQL cuts the page, so only its rows are enriched (`list_transactions`
+    /// enriches the whole filter on every page). `scope`, `merchant_key`, `limit`,
+    /// `offset` and `whole_days` of `filter` are ignored. `only_accounts` is a hard
+    /// limit on the booking's own account: the loan view behind
+    /// `filter.account_ids` also pulls in bookings of other accounts. `visible`:
+    /// the accounts the caller may see (`BookingFinisher`). Takes the caller's
+    /// connection, so several reads can share one lock.
+    pub(crate) fn booking_page_after(
+        db: &rusqlite::Connection,
+        filter: &BookingFilter,
+        only_accounts: &[i64],
+        visible: &[i64],
+        after: Option<(&str, i64)>,
+        limit: u32,
+    ) -> Result<Vec<Booking>, CoreError> {
+        if only_accounts.is_empty() {
+            return Ok(Vec::new());
+        }
+        let (cte, mut where_sql, mut args, share_sql) = Self::filter_clauses(db, filter)?;
+        let ph: Vec<String> = only_accounts
+            .iter()
+            .map(|id| {
+                args.push(Box::new(*id));
+                format!("?{}", args.len())
+            })
+            .collect();
+        // `+`: walk `tx_date_id` newest first and stop at the page end, instead of
+        // collecting and sorting every booking of the accounts.
+        where_sql.push_str(&format!(" AND +t.account_id IN ({})", ph.join(",")));
+        if let Some((date, id)) = after {
+            args.push(Box::new(date.to_string()));
+            let d = args.len();
+            args.push(Box::new(id));
+            where_sql.push_str(&format!(
+                " AND (t.booking_date < ?{d} OR (t.booking_date = ?{d} AND t.id < ?{}))",
+                args.len()
+            ));
+        }
+        let limit_sql = if limit == 0 {
+            String::new()
+        } else {
+            format!(" LIMIT {limit}")
+        };
+        let sql = format!(
+            "{cte}SELECT {} {BOOKING_FROM_SQL} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC{limit_sql}",
+            booking_columns(&share_sql)
+        );
+        let finisher = BookingFinisher::load(db, Some(visible))?;
+        let mut stmt = db.prepare(&sql)?;
+        let rows = stmt.query_map(
+            params_from_iter(args.iter().map(|b| b.as_ref())),
+            booking_from_row,
+        )?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (_, mut t) = row?;
+            finisher.finish(&mut t);
+            out.push(t);
+        }
+        Ok(out)
+    }
+}
+
 #[uniffi::export]
 impl Vault {
     /// Marks every booking matching `filter` as checked / unchecked in one
@@ -385,120 +599,24 @@ impl Vault {
 
     pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
         let db = self.db()?;
-        let paths = Self::category_paths(&db)?;
         let (cte, where_sql, args, share_sql) = Self::filter_clauses(&db, &filter)?;
-        let loan_links = crate::loans::link_map(&db)?;
-        // a deleted category or rule reads as none (what the old SET NULL did)
-        let from_sql = "FROM transactions t JOIN accounts a ON a.id = t.account_id
-             LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL
-             LEFT JOIN rules r ON r.id = t.rule_id AND r.deleted_ms IS NULL";
         let sql = format!(
-            "{cte}SELECT t.id, t.account_id, a.name, t.booking_date, t.value_date, t.amount_cents, t.currency, t.counterparty,
-                    t.counterparty_iban, t.purpose, t.booking_text, cat.id, t.category_source, r.id, t.checked, a.kind,
-                    (SELECT count(*) FROM booking_documents d WHERE d.booking_id = t.id), t.note,
-                    t.purpose_code, t.gvc, t.salary_flag, {share_sql},
-                    (t.external_id LIKE 'pending-%'), t.item_refs
-             {from_sql} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC"
+            "{cte}SELECT {} {BOOKING_FROM_SQL} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC",
+            booking_columns(&share_sql)
         );
         let mut stmt = db.prepare(&sql)?;
-        let rows = stmt.query_map(params_from_iter(args.iter().map(|b| b.as_ref())), |r| {
-            let cat: Option<i64> = r.get(11)?;
-            let src: String = r.get(12)?;
-            let share: i64 = r.get(21)?;
-            Ok((
-                share,
-                Booking {
-                    id: r.get(0)?,
-                    account_id: r.get(1)?,
-                    account_name: r.get(2)?,
-                    booking_date: r.get(3)?,
-                    value_date: r.get(4)?,
-                    amount_cents: r.get(5)?,
-                    currency: r.get(6)?,
-                    counterparty: r.get(7)?,
-                    counterparty_iban: r.get(8)?,
-                    purpose: r.get(9)?,
-                    booking_text: r.get(10)?,
-                    category_id: cat,
-                    category_name: String::new(),
-                    category_path: String::new(),
-                    category_color_hex: String::new(),
-                    category_symbol: String::new(),
-                    category_source: match src.as_str() {
-                        "rule" => CategorySource::Rule,
-                        "manual" => CategorySource::Manual,
-                        _ => CategorySource::None,
-                    },
-                    rule_id: r.get(13)?,
-                    checked: r.get::<_, i64>(14)? != 0,
-                    merchant: MerchantResolver::placeholder(),
-                    merchant_name: String::new(),
-                    merchant_domain: None,
-                    merchant_svg_path: None,
-                    merchant_hex_color: String::new(),
-                    payment_method: String::new(),
-                    flow: FlowKind::Consumption,
-                    clean_purpose: String::new(),
-                    account_kind: AccountKind::from_str(&r.get::<_, String>(15)?),
-                    document_count: r.get::<_, i64>(16)? as u32,
-                    note: r.get(17)?,
-                    purpose_code: r.get(18)?,
-                    gvc: r.get(19)?,
-                    salary_flag: r.get::<_, Option<i64>>(20)?.map(|f| f != 0),
-                    is_salary: false,
-                    recurrence_key: String::new(),
-                    is_pending: r.get::<_, i64>(22)? != 0,
-                    item_refs: r.get(23)?,
-                },
-            ))
-        })?;
+        let rows = stmt.query_map(
+            params_from_iter(args.iter().map(|b| b.as_ref())),
+            booking_from_row,
+        )?;
         let mut txs = Vec::new();
-        let salary_ibans = crate::salary::marked_salary_ibans(&db)?;
-        let overrides = crate::insights::load_overrides(&db).unwrap_or_default();
-        // Own IBANs: uncategorised bookings to / from them are transfers (Issue #94).
-        let own_ibans: std::collections::HashSet<String> = {
-            let mut st =
-                db.prepare("SELECT iban FROM accounts WHERE iban IS NOT NULL AND iban != '' AND deleted_ms IS NULL")?;
-            let ibans = st
-                .query_map([], |r| r.get::<_, String>(0))?
-                .filter_map(Result::ok)
-                .map(|i| crate::connectors::fints::sepa::normalize_iban(&i))
-                .collect();
-            ibans
-        };
+        let finisher = BookingFinisher::load(&db, None)?;
         let (mut income, mut expense, mut consumption, mut investment, mut perk) =
             (0i64, 0i64, 0i64, 0i64, 0i64);
         let mut flow = SelectionFlow::default();
         for row in rows {
             let (share, mut t) = row?;
-            if let Some((name, path, color, sym)) = t.category_id.and_then(|c| paths.get(&c)) {
-                t.category_name = name.clone();
-                t.category_path = path.clone();
-                t.category_color_hex = color.clone();
-                t.category_symbol = sym.clone();
-            }
-            enrich(&mut t);
-            t.is_salary = crate::salary::is_salary(&t, &salary_ibans);
-            // A salary stays income although its booking text names a transfer
-            // (comdirect: "Übertrag / Überweisung"); a transfer category still wins.
-            if t.is_salary && t.flow == FlowKind::Transfer {
-                t.flow = FlowKind::Income;
-            }
-            if is_own_transfer(&t, &own_ibans) {
-                t.flow = FlowKind::Transfer;
-            }
-            // Localise after `enrich`: flow classification needs the stored names.
-            t.category_name = display_name(&t.category_name);
-            t.category_path = display_path(&t.category_path);
-            if let Some(d) = overrides.get(&t.merchant.key) {
-                t.merchant.domain = d.clone();
-                t.merchant.domain_candidates = vec![d.clone()];
-                t.merchant.domain_source = "override".into();
-                t.merchant_domain = Some(d.clone());
-            }
-            if loan_links.contains_key(&t.id) {
-                t.flow = FlowKind::Loan;
-            }
+            finisher.finish(&mut t);
             let keep = match filter.scope {
                 BookingScope::All => true,
                 BookingScope::Everyday => !matches!(t.flow, FlowKind::Investment | FlowKind::Perk),

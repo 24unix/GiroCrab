@@ -16,7 +16,7 @@ use crate::vault::Vault;
 
 use super::invalid;
 
-/// Step 21: date up to which the returns of a mandate were acknowledged.
+/// Step 22: date up to which the returns of a mandate were acknowledged.
 pub(crate) fn mandate_return_ack(conn: &Connection) -> CoreResult<()> {
     let has: i64 = conn.query_row(
         "SELECT count(*) FROM pragma_table_info('mandates') WHERE name = 'returns_ack'",

@@ -65,6 +65,18 @@ struct WealthSummary: Equatable {
     func netCents(includingLiabilities: Bool) -> Int64 {
         grossCents + (includingLiabilities ? liabilitiesCents : 0)
     }
+    func scoped(to scope: WealthScope) -> Self {
+        guard scope != .all else { return self }
+        let bucket: WealthBucket = switch scope {
+        case .cash: .cash
+        case .securities: .securities
+        case .tangibles: .tangibles
+        case .all: .cash // handled above
+        }
+        var filtered = Self()
+        filtered.buckets[bucket] = accounts(bucket)
+        return filtered
+    }
 }
 
 /// One security summed over all depots.
@@ -172,6 +184,17 @@ struct WealthSlice: Identifiable, Equatable {
     let label: String
     let cents: Int64
     let color: Color
+
+    /// Charts returns a value on the cumulative positive-value scale, not a sector index.
+    static func id(at value: Double, in slices: [Self]) -> String? {
+        guard value.isFinite, value >= 0 else { return nil }
+        var end = 0.0
+        for slice in slices where slice.cents > 0 {
+            end += Double(slice.cents)
+            if value < end { return slice.id }
+        }
+        return nil
+    }
 }
 
 enum WealthPalette {
@@ -180,9 +203,11 @@ enum WealthPalette {
         Color(light: "#2F6FDB", dark: "#6EA0F5"), Color(light: "#1F7A5C", dark: "#5EC79F"),
         Color(light: "#D98A00", dark: "#F5B94A"), Color(light: "#8E4FC4", dark: "#B98AE6"),
         Color(light: "#D1495B", dark: "#F27F8E"), Color(light: "#0E8FA8", dark: "#5CC6DB"),
-        Color(light: "#7A8B99", dark: "#A3B1C4"),
+        Color(light: "#7C9A2D", dark: "#A9C95C"), Color(light: "#B0568F", dark: "#DB8FC0"),
     ]
     static func color(_ i: Int) -> Color { hues[i % hues.count] }
+    /// The folded remainder ("Sonstige"): neutral, so it never looks like one of the named slices.
+    static let rest = Color(light: "#B4BEC8", dark: "#6B7785")
 }
 
 /// Toolbar control of the wealth view (replaces the booking scope there).
@@ -202,20 +227,86 @@ struct WealthScopePicker: View {
 /// "Vermögen": cash and assets (depots) at a glance, minus liabilities.
 struct WealthView: View {
     @Environment(AppModel.self) private var model
-    @State private var positions: [WealthPosition] = []
     @State private var income = WealthIncome()
+    @State private var classified: [Int64: [ClassifiedAsset]] = [:]
+    @State private var editingClassification: ClassificationEditRequest?
+    /// "Nach Konto" keeps the cash history, gains and income cards; the class view is opt-in.
+    @AppStorage("wealth.grouping") private var storedGrouping = WealthGrouping.account
+    private var grouping: WealthGrouping { storedGrouping.effective(in: scope) }
+    /// The selected donut slice: a class or instrument in the grouped view, else a section, account or position.
+    @State private var classFilter = "all"
+    @AppStorage("wealth.hideUnclassifiedInChart") private var hideUnclassifiedInChart = false
+    @AppStorage("wealth.hideDirectProperty") private var hideDirectProperty = false
     private var scope: WealthScope { model.wealthScope }
+    /// Grouped by a classification (asset class or instrument) instead of by account.
+    private var classMode: Bool { grouping != .account && scope != .cash }
     /// Credit cards and loans reduce the net worth (on by default).
     @AppStorage("wealth.includeLiabilities") private var includeLiabilities = true
     @State private var historyDays = 90
     @State private var history: [DailyBalance] = []
 
-    private var summary: WealthSummary {
+    @State private var ownerFilter = WealthOwnerFilter.all
+    /// Every counted account: what is loaded, and what the owner choices are built from.
+    private var allSummary: WealthSummary {
         WealthSummary(accounts: model.allAccounts, tangibleIds: Set(model.allAccounts.map(\.id).filter { model.isTangible($0) }))
+    }
+    private var ownerOptions: [WealthOwnerFilter] {
+        WealthOwnerFilter.options(for: WealthBucket.allCases.flatMap { allSummary.accounts($0) })
+    }
+    /// An owner that no longer exists (renamed, account archived) shows everybody.
+    private var activeOwner: WealthOwnerFilter { ownerOptions.contains(ownerFilter) ? ownerFilter : .all }
+    /// The accounts of the selected owner; everything below derives from this.
+    private var fullSummary: WealthSummary {
+        let owner = activeOwner
+        let accounts = owner == .all ? model.allAccounts : model.allAccounts.filter(owner.keeps)
+        return WealthSummary(accounts: accounts, tangibleIds: Set(accounts.map(\.id).filter { model.isTangible($0) }))
+    }
+    /// Everything the cards derive from accounts and positions, built once per render.
+    private struct Derived {
+        let selection: WealthAssetSelection
+        /// Limited to the selected tab.
+        let summary: WealthSummary
+        let positions: [WealthPosition]
+        /// Class view only: the rows of the selected tab, before the class filter.
+        let classRows: [WealthClassRow]
+    }
+    private var derived: Derived {
+        let selection = WealthAssetSelection(summary: fullSummary, assets: classified, hideDirectProperty: hideDirectProperty)
+        let rows = classMode
+            ? WealthClassRow.make(selection.summary, assets: selection.assets).filter { scope == .all || $0.scope == scope }
+            : []
+        return Derived(selection: selection, summary: selection.summary.scoped(to: scope),
+                       positions: WealthPosition.aggregate(selection.summary.depots.map { (selection.assets[$0.id] ?? []).map(\.holding) }),
+                       classRows: rows)
+    }
+    /// The selected donut slice of the account view, applied to the lists below it.
+    struct SliceFilter {
+        /// nil: nothing selected, or the selected slice is gone.
+        var id: String?
+        /// Slices shown by name; "Sonstige" stands for everything else.
+        var named: Set<String> = []
+        var isActive: Bool { id != nil }
+        func keeps(_ candidate: String) -> Bool {
+            guard let id else { return true }
+            return id == "rest" ? !named.contains(candidate) : id == candidate
+        }
+        init(selected: String, slices: [WealthSlice]) {
+            guard slices.contains(where: { $0.id == selected }) else { return }
+            id = selected
+            named = Set(slices.map(\.id)).subtracting(["rest"])
+        }
+    }
+
+    /// A filter whose class no longer exists (last position reassigned) shows everything.
+    private func activeFilter(_ d: Derived) -> String {
+        d.classRows.contains { $0.group(by: grouping).key == classFilter } ? classFilter : "all"
     }
 
     var body: some View {
-        let s = summary
+        let d = derived
+        let s = d.summary
+        // account view only: the grouped view filters its own cards
+        let slice = SliceFilter(selected: classMode ? "all" : classFilter, slices: classMode ? [] : slices(s, d).slices)
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
@@ -225,29 +316,60 @@ struct WealthView: View {
                     WealthScopePicker() // macOS: lives in the toolbar
                     #endif
                 }
+                ownerChips
                 // side by side when there is room, else stacked (narrow window, iPhone)
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 16) {
-                        summaryCard(s).frame(maxWidth: 340)
-                        compositionCard(s)
+                        summaryCard(s, d).frame(maxWidth: 340)
+                        compositionCard(s, d)
                     }
                     VStack(alignment: .leading, spacing: 16) {
-                        summaryCard(s)
-                        compositionCard(s)
+                        summaryCard(s, d)
+                        compositionCard(s, d)
                     }
                 }
-                if scope == .all || scope == .cash { cashHistoryCard(s) }
-                if scope == .all || scope == .cash { listCard("Cash", total: s.cashCents, accounts: s.cash, tint: Theme.inflow) }
-                if scope == .all || scope == .securities {
+                if classMode {
+                    // income and costs come from the depots: next to them in the securities tab,
+                    // after the classes where cash and property are listed too
                     if scope == .securities { incomeCard }
-                    listCard(WealthBucket.securities.title, total: s.cents(.securities), accounts: s.depots, tint: Theme.invest)
+                    HStack {
+                        Text(LocalizedStringKey(grouping == .instrument ? "Instrumente · Vermögenswerte (brutto)" : "Anlageklassen · Vermögenswerte (brutto)"))
+                            .appFont(.subheadline, weight: .semibold)
+                        Spacer()
+                        Text(Money.format(d.classRows.reduce(0) { $0 + $1.cents })).sensitive().monospacedDigit()
+                    }
+                    classCards(d)
                     if scope == .all { incomeCard }
-                    positionsCard(total: s.cents(.securities))
                 }
-                if scope == .all { listCard(WealthBucket.tangibles.title, total: s.cents(.tangibles), accounts: s.tangibles, tint: Theme.invest) }
-                if scope == .tangibles { tangiblesCard(total: s.cents(.tangibles)) }
-                if scope == .all && !s.liabilities.isEmpty {
-                    listCard("Verbindlichkeiten", total: s.cents(.liabilities), accounts: s.liabilities, tint: Theme.negative)
+                else {
+                    // "Alles": a slice is a whole section; in a tab it is one account or position
+                    let section = { (id: String) in scope != .all || slice.keeps(id) }
+                    if scope == .all || scope == .cash, section("cash") {
+                        let cash = scope == .cash ? s.cash.filter { slice.keeps($0.id.description) } : s.cash
+                        if !s.cash.isEmpty { cashHistoryCard(s) }
+                        listCard("Cash", total: cash.reduce(0) { $0 + $1.balanceCents }, accounts: cash, tint: Theme.inflow)
+                    }
+                    if scope == .all || scope == .securities, section("\(WealthBucket.securities)") {
+                        if scope == .securities { incomeCard }
+                        listCard(WealthBucket.securities.title, total: s.cents(.securities), accounts: s.depots, tint: Theme.invest)
+                        if scope == .all { incomeCard }
+                        positionsCard(total: s.cents(.securities),
+                                      positions: scope == .securities ? d.positions.filter { slice.keeps($0.id) } : d.positions)
+                    }
+                    if scope == .all, section("\(WealthBucket.tangibles)") {
+                        listCard(WealthBucket.tangibles.title, total: s.cents(.tangibles), accounts: s.tangibles, tint: Theme.invest)
+                    }
+                    if scope == .tangibles { tangiblesCard(s, total: s.cents(.tangibles), slice: slice) }
+                }
+                let debtAccounts = classMode ? s.liabilities.filter { $0.balanceCents < 0 } : s.liabilities
+                if scope == .all && !debtAccounts.isEmpty {
+                    if classMode {
+                        Text(includeLiabilities
+                             ? String(localized: "Die Anlageklassen zeigen das Bruttovermögen. Abzüglich der Verbindlichkeiten ergibt sich das Nettovermögen oben.")
+                             : String(localized: "Die Anlageklassen zeigen das Bruttovermögen. Verbindlichkeiten sind oben derzeit nicht abgezogen."))
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
+                    }
+                    listCard("Verbindlichkeiten", total: debtAccounts.reduce(0) { $0 + $1.balanceCents }, accounts: debtAccounts, tint: Theme.negative)
                 }
                 if scope == .all && s.foreignCurrencyCount > 0 {
                     Text("\(s.foreignCurrencyCount) Konten in Fremdwährung sind nicht enthalten.")
@@ -260,8 +382,69 @@ struct WealthView: View {
         .background(Theme.canvas)
         // positions and transactions can change while the depot total stays the same: a finished
         // sync (last sync time per login) or a new balance date reloads them as well
-        .task(id: positionsKey(s)) { await loadPositions(s.depots) }
+        // loaded for all owners: switching the owner filters what is already there
+        .task(id: positionsKey(allSummary) + ":\(model.assetClassificationVersion)") { await loadPositions(allSummary.depots, tangibles: allSummary.tangibles) }
+        .sheet(item: $editingClassification) { request in AssetClassificationSheet(request: request).environment(model) }
         .task(id: historyKey(s)) { await loadHistory(s.cash.map(\.id)) }
+        .onAppear {
+            // (developer) `--demo-filter wealth:<slice id>`: a selected donut slice for screenshots
+            if let wanted = model.options.demoFilter, wanted.hasPrefix("wealth:") { classFilter = String(wanted.dropFirst(7)) }
+        }
+        .onChange(of: scope) { classFilter = "all" }
+        .onChange(of: ownerFilter) { classFilter = "all" }
+        .onChange(of: storedGrouping) { classFilter = "all" }
+        .onChange(of: hideDirectProperty) { classFilter = "all" }
+        .onChange(of: hideUnclassifiedInChart) {
+            if hideUnclassifiedInChart && classFilter == Self.unclassifiedKey { classFilter = "all" }
+        }
+    }
+
+    // MARK: owner filter
+
+    /// One chip per owner with that owner's share of the shown total; hidden while there is nobody to tell apart.
+    @ViewBuilder
+    private var ownerChips: some View {
+        let options = ownerOptions
+        if !options.isEmpty {
+            let selected = activeOwner
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(options, id: \.self) { option in
+                        // the same figure as the summary card would show for this owner: it follows
+                        // the tab and the property switch, so the chips split what is on screen
+                        let accounts = model.allAccounts.filter(option.keeps)
+                        let owned = WealthSummary(accounts: accounts, tangibleIds: Set(accounts.map(\.id).filter { model.isTangible($0) }))
+                        let net = WealthAssetSelection(summary: owned, assets: classified, hideDirectProperty: hideDirectProperty)
+                            .summary.scoped(to: scope).netCents(includingLiabilities: includeLiabilities)
+                        Button { ownerFilter = option } label: {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Group {
+                                    switch option {
+                                    case .all: Text("Alle")
+                                    case .unassigned: Text("Ohne Inhaber")
+                                    case .owner(let name): Text(verbatim: name).sensitive()
+                                    }
+                                }
+                                .appFont(.callout, weight: .semibold)
+                                Text(Money.format(net)).sensitive()
+                                    .appFont(.caption).foregroundStyle(Theme.secondary).monospacedDigit()
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background(option == selected ? Theme.accent.opacity(0.14) : Theme.neutralTile,
+                                        in: RoundedRectangle(cornerRadius: 9))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 9)
+                                    .stroke(option == selected ? Theme.accent : .clear, lineWidth: 1)
+                            }
+                            .contentShape(RoundedRectangle(cornerRadius: 9))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(option == selected ? .isSelected : [])
+                    }
+                }
+            }
+            .accessibilityLabel("Inhaber")
+        }
     }
 
     /// Late bookings can change the history while today's balance stays the same.
@@ -275,25 +458,37 @@ struct WealthView: View {
     }
 
     private func positionsKey(_ s: WealthSummary) -> String {
-        let depots = s.depots.map { "\($0.id):\($0.balanceCents):\($0.balanceDate)" }.joined(separator: ",")
+        let depots = (s.depots + s.tangibles).map { "\($0.id):\($0.balanceCents):\($0.balanceDate)" }.joined(separator: ",")
         return depots + "|" + syncStamp
     }
 
     // MARK: summary (net worth + assets / liabilities bars)
 
-    private func summaryCard(_ s: WealthSummary) -> some View {
+    private func summaryCard(_ s: WealthSummary, _ d: Derived) -> some View {
         let assets = max(s.grossCents, 0)
         let debts = -min(s.liabilitiesCents, 0)
         let scale = Double(max(assets, debts, 1))
+        // direct property of the selected tab; the switch is offered where it can have an effect
+        let properties = switch scope {
+        case .all: d.selection.directPropertyCount
+        case .securities: d.selection.directProperty[.securities] ?? 0
+        case .tangibles: d.selection.directProperty[.tangibles] ?? 0
+        case .cash: 0
+        }
+        let offerPropertySwitch = properties > 0 || (scope != .cash && scope != .securities && !fullSummary.tangibles.isEmpty)
+        let propertyHidden = hideDirectProperty && properties > 0
         return VStack(alignment: .leading, spacing: 14) {
-            Text("Nettovermögen").appFont(.caption).foregroundStyle(Theme.secondary)
+            Text(scope == .all ? LocalizedStringKey(propertyHidden ? "Nettovermögen ohne Immobilien" : "Nettovermögen") : scope.title)
+                .appFont(.caption).foregroundStyle(Theme.secondary)
             Text(Money.format(s.netCents(includingLiabilities: includeLiabilities)))
                 .sensitive()
                 .font(.system(size: 36, weight: .semibold)).monospacedDigit()
                 .minimumScaleFactor(0.6).lineLimit(1)
-            bar("Vermögenswerte", assets, Double(assets) / scale, Theme.accent)
-            bar("Verbindlichkeiten", -debts, Double(debts) / scale, Theme.negative)
-                .opacity(includeLiabilities ? 1 : 0.45)
+            if scope == .all {
+                bar("Vermögenswerte", assets, Double(assets) / scale, Theme.accent)
+                bar("Verbindlichkeiten", -debts, Double(debts) / scale, Theme.negative)
+                    .opacity(includeLiabilities ? 1 : 0.45)
+            }
             if debts > 0 {
                 Toggle("Kredite und Karten abziehen", isOn: $includeLiabilities)
                     #if os(macOS)
@@ -303,6 +498,27 @@ struct WealthView: View {
                     .toggleStyle(.switch)
                     .appFont(.callout)
                     #endif
+            }
+            if offerPropertySwitch {
+                Toggle("Direkt gehaltene Immobilien ausblenden", isOn: $hideDirectProperty)
+                    #if os(macOS)
+                    .toggleStyle(.checkbox)
+                    #else
+                    .toggleStyle(.switch)
+                    #endif
+                    .appFont(.callout)
+                if properties == 0 {
+                    Text("Gilt für Positionen mit Anlageklasse Immobilien und Instrument Direktbesitz.")
+                        .appFont(.caption2).foregroundStyle(Theme.secondary)
+                } else if propertyHidden && scope == .all && includeLiabilities && debts > 0 {
+                    // no loan is tied to a property: say so instead of showing a silent, too low figure
+                    Label("Immobilien sind ausgeblendet, ihre Kredite aber weiterhin abgezogen. Ohne „Kredite und Karten abziehen“ bleibt der Wert vergleichbar.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .appFont(.caption2).foregroundStyle(Theme.warning)
+                } else if propertyHidden {
+                    Text("Immobilien sind aus dieser Ansicht ausgeblendet.")
+                        .appFont(.caption2).foregroundStyle(Theme.secondary)
+                }
             }
         }
         .card(padding: 18)
@@ -327,7 +543,13 @@ struct WealthView: View {
 
     // MARK: composition donut
 
-    private func slices(_ s: WealthSummary) -> (title: String, slices: [WealthSlice]) {
+    private func slices(_ s: WealthSummary, _ d: Derived) -> (title: String, slices: [WealthSlice]) {
+        if classMode {
+            return (String(localized: "Zusammensetzung"), groups(d.classRows).map { group, rows in
+                WealthSlice(id: group.key, label: group.title, cents: rows.reduce(0) { $0 + $1.cents },
+                            color: group.unclassified ? Theme.secondary : WealthPalette.color(group.order))
+            })
+        }
         switch scope {
         case .all:
             // one fixed colour per bucket, so the legend colours never collide
@@ -344,8 +566,8 @@ struct WealthView: View {
         case .securities:
             // securities only: no accounts or tangibles mixed into the positions
             // depots that only report a total (no positions): visible remainder, not 100 % of the known part
-            let rest = s.cents(.securities) - positions.reduce(0) { $0 + $1.valueCents }
-            var parts = top(positions.map { ($0.id, $0.name, $0.valueCents) })
+            let rest = s.cents(.securities) - d.positions.reduce(0) { $0 + $1.valueCents }
+            var parts = top(d.positions.map { ($0.id, $0.name, $0.valueCents) })
             if rest > 0 {
                 parts.append(WealthSlice(id: "uncovered", label: String(localized: "Ohne Positionsdaten"), cents: rest, color: Theme.neutralTile))
             }
@@ -354,6 +576,16 @@ struct WealthView: View {
             return (String(localized: "Sachwerte nach Position"),
                     top(tangibleRows(s).map { ($0.id, $0.name, $0.valueCents) }))
         }
+    }
+
+    /// Both dimensions name their gap the same way.
+    private static let unclassifiedKey = AssetClass.unclassified.key
+
+    /// The rows of each group of the active grouping, in the fixed order of its dimension.
+    private func groups(_ rows: [WealthClassRow]) -> [(group: WealthGroup, rows: [WealthClassRow])] {
+        Dictionary(grouping: rows) { $0.group(by: grouping) }
+            .sorted { $0.key.order < $1.key.order }
+            .map { (group: $0.key, rows: $0.value) }
     }
 
     private func bucketLabel(_ b: WealthBucket) -> String {
@@ -370,15 +602,30 @@ struct WealthView: View {
         let sorted = rows.filter { $0.2 > 0 }.sorted { $0.2 > $1.2 }
         var out = sorted.prefix(7).enumerated().map { WealthSlice(id: $1.0, label: $1.1, cents: $1.2, color: WealthPalette.color($0)) }
         let rest = sorted.dropFirst(7).reduce(Int64(0)) { $0 + $1.2 }
-        if rest > 0 { out.append(WealthSlice(id: "rest", label: String(localized: "Sonstige"), cents: rest, color: WealthPalette.color(6))) }
+        if rest > 0 { out.append(WealthSlice(id: "rest", label: String(localized: "Sonstige"), cents: rest, color: WealthPalette.rest)) }
         return out
     }
 
-    private func compositionCard(_ s: WealthSummary) -> some View {
-        let (title, parts) = slices(s)
-        let total = parts.reduce(Int64(0)) { $0 + $1.cents }
+    private func compositionCard(_ s: WealthSummary, _ d: Derived) -> some View {
+        let (title, allParts) = slices(s, d)
+        let parts = classMode && hideUnclassifiedInChart ? allParts.filter { $0.id != Self.unclassifiedKey } : allParts
+        let total = parts.filter { $0.cents > 0 }.reduce(Int64(0)) { $0 + $1.cents }
         return VStack(alignment: .leading, spacing: 12) {
-            Text(verbatim: title).appFont(.caption).foregroundStyle(Theme.secondary)
+            HStack {
+                Text(verbatim: title).appFont(.caption).foregroundStyle(Theme.secondary)
+                Spacer()
+                if parts.contains(where: { $0.id == classFilter }) {
+                    Button("Alle anzeigen", systemImage: "xmark.circle.fill") { classFilter = "all" }
+                        .buttonStyle(.plain).appFont(.caption).foregroundStyle(Theme.accent)
+                }
+                if scope != .cash {
+                    // always names the active grouping; one more case in `WealthGrouping` is one more entry
+                    Picker("Gruppierung", selection: Binding(get: { grouping }, set: { storedGrouping = $0 })) {
+                        ForEach(WealthGrouping.available(in: scope)) { Text($0.title(in: scope)).tag($0) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                }
+            }
             if parts.isEmpty {
                 Text("Keine Daten").foregroundStyle(Theme.secondary).frame(maxWidth: .infinity, minHeight: 120)
             } else {
@@ -388,40 +635,78 @@ struct WealthView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
             }
+            if classMode && allParts.contains(where: { $0.id == Self.unclassifiedKey }) {
+                Toggle("Nicht klassifizierte im Diagramm ausblenden", isOn: $hideUnclassifiedInChart)
+                    .appFont(.caption)
+                    #if os(macOS)
+                    .toggleStyle(.checkbox)
+                    #endif
+                if hideUnclassifiedInChart {
+                    Text("Diagramm und Anteile zeigen nur zugeordnete Werte. Summen und Positionen bleiben vollständig.")
+                        .appFont(.caption2).foregroundStyle(Theme.secondary)
+                }
+            }
+            if scope == .securities && classMode {
+                Text(LocalizedStringKey(grouping == .instrument
+                     ? "Instrumente innerhalb der Depotkonten; Cash-Konten sind nicht enthalten."
+                     : "Anlageklassen innerhalb der Depotkonten; Cash-Konten sind nicht enthalten."))
+                    .appFont(.caption2).foregroundStyle(Theme.secondary)
+            }
         }
         .card(padding: 18)
     }
 
     /// Donut and legend, next to each other or (vertical) stacked.
     private func donutRow(_ parts: [WealthSlice], total: Int64, spacing: CGFloat = 36, vertical: Bool = false) -> some View {
-        let chart = Chart(parts) { p in
+        let selected = parts.first { $0.id == classFilter }
+        let chart = Chart(parts.filter { $0.cents > 0 }) { p in
             SectorMark(angle: .value("Wert", p.cents), innerRadius: .ratio(0.62), angularInset: 1.5)
                 .cornerRadius(3).foregroundStyle(p.color)
+                .opacity(selected == nil || p.id == selected?.id ? 1 : 0.25)
         }
         .chartLegend(.hidden)
-        .frame(width: 190, height: 190)
-        .overlay {
-            VStack(spacing: 0) {
-                Text(Money.format(total)).sensitive().appFont(.callout, weight: .semibold).monospacedDigit()
-                    .minimumScaleFactor(0.6).lineLimit(1)
-                Text("Summe").appFont(.caption2).foregroundStyle(Theme.secondary)
-            }
-            .frame(width: 100)
-        }
-        let legend = VStack(alignment: .leading, spacing: 12) {
-            ForEach(parts) { p in
-                HStack(spacing: 8) {
-                    Circle().fill(p.color).frame(width: 9, height: 9)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(p.label).sensitive().appFont(.callout).lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                        Text("\(Money.format(p.cents)) (\((Double(p.cents) / Double(max(total, 1))).formatted(.percent.precision(.fractionLength(1)))))")
-                            .sensitive()
-                            .appFont(.caption).foregroundStyle(Theme.secondary).monospacedDigit()
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
+        .chartOverlay { proxy in
+            GeometryReader { geo in
+                Group {
+                    Color.clear.contentShape(Rectangle())
+                        .onTapGesture { location in
+                            guard let plot = proxy.plotFrame else { return }
+                            let frame = geo[plot]
+                            let dx = location.x - frame.midX, dy = location.y - frame.midY
+                            let distance = hypot(dx, dy), radius = min(frame.width, frame.height) / 2
+                            if distance < radius * 0.62 { classFilter = "all"; return }
+                            guard distance <= radius else { return }
+                            let radians = atan2(dx, -dy)
+                            let angle = Angle.radians(radians < 0 ? radians + 2 * .pi : radians)
+                            guard let value: Double = proxy.value(atAngle: angle),
+                                  let id = WealthSlice.id(at: value, in: parts) else { return }
+                            toggleClassFilter(id)
+                        }
                 }
             }
         }
+        .frame(width: 190, height: 190)
+        .overlay {
+            VStack(spacing: 0) {
+                Text(Money.format(selected?.cents ?? total)).sensitive().appFont(.callout, weight: .semibold).monospacedDigit()
+                    .minimumScaleFactor(0.6).lineLimit(1)
+                Text(selected == nil ? String(localized: "Summe") : String(localized: "Auswahl"))
+                    .appFont(.caption2).foregroundStyle(Theme.secondary)
+            }
+            .frame(width: 100)
+            .allowsHitTesting(false)
+        }
+        let legend = VStack(alignment: .leading, spacing: 12) {
+            ForEach(parts) { p in
+                Button { toggleClassFilter(p.id) } label: {
+                    legendEntry(p, total: total, selected: selected?.id == p.id)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected?.id == p.id ? .isSelected : [])
+                .accessibilityHint("Positionen dieser Gruppe anzeigen oder Filter aufheben")
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
         return Group {
             if vertical {
                 VStack(alignment: .center, spacing: 16) { chart; legend }
@@ -429,6 +714,25 @@ struct WealthView: View {
                 HStack(alignment: .center, spacing: spacing) { chart; legend }
             }
         }
+    }
+
+    private func legendEntry(_ p: WealthSlice, total: Int64, selected: Bool = false) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: selected ? "checkmark.circle.fill" : "circle.fill")
+                .foregroundStyle(p.color).appFont(.caption2).frame(width: 14)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(p.label).sensitive().appFont(.callout, weight: selected ? .semibold : .regular)
+                    .lineLimit(2).multilineTextAlignment(.leading)
+                Text("\(Money.format(p.cents)) (\((Double(p.cents) / Double(max(total, 1))).formatted(.percent.precision(.fractionLength(1)))))")
+                    .sensitive().appFont(.caption).foregroundStyle(Theme.secondary).monospacedDigit()
+                    .lineLimit(1)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func toggleClassFilter(_ id: String) {
+        classFilter = classFilter == id ? "all" : id
     }
 
     // MARK: lists
@@ -466,7 +770,7 @@ struct WealthView: View {
     }
 
     @ViewBuilder
-    private func positionsCard(total: Int64) -> some View {
+    private func positionsCard(total: Int64, positions: [WealthPosition]) -> some View {
         let shown = positions
         if !shown.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
@@ -522,8 +826,9 @@ struct WealthView: View {
     }
 
     private func tangibleRows(_ s: WealthSummary) -> [TangibleRow] {
-        s.tangibles.flatMap { account in
-            model.assetItems(account.id).filter { !$0.sold }.map { item in
+        let hiddenIds = hideDirectProperty ? Set(classified.values.flatMap { $0 }.filter(WealthAssetSelection.isDirectProperty).compactMap(\.assetItemId)) : []
+        return s.tangibles.flatMap { account in
+            model.assetItems(account.id).filter { !$0.sold && !hiddenIds.contains($0.id) }.map { item in
                 TangibleRow(id: "i\(item.id)", name: item.setup.name,
                             subtitle: WealthView.tangibleSubtitle(item), valueCents: item.holding.valueCents)
             }
@@ -542,8 +847,8 @@ struct WealthView: View {
     }
 
     @ViewBuilder
-    private func tangiblesCard(total: Int64) -> some View {
-        let rows = tangibleRows(summary)
+    private func tangiblesCard(_ s: WealthSummary, total: Int64, slice: SliceFilter) -> some View {
+        let rows = tangibleRows(s).filter { slice.keeps($0.id) }
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Positionen der Sachwerte").appFont(.headline)
@@ -569,6 +874,61 @@ struct WealthView: View {
                 }
             }
             .card(padding: 18)
+        }
+    }
+
+    private func classCards(_ d: Derived) -> some View {
+        let filter = activeFilter(d)
+        let classRows = filter == "all" ? d.classRows : d.classRows.filter { $0.group(by: grouping).key == filter }
+        return VStack(alignment: .leading, spacing: 16) {
+            if classRows.isEmpty { Text("Keine Daten").foregroundStyle(Theme.secondary) }
+            if classRows.contains(where: { $0.cents < 0 }) {
+                Text("Negative Werte sind in den Summen enthalten, im Donut werden nur positive Klassenwerte dargestellt.")
+                    .appFont(.caption).foregroundStyle(Theme.secondary)
+            }
+            ForEach(groups(classRows), id: \.group) { group, rows in
+                Group {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(group.title).appFont(.headline)
+                            Spacer()
+                            Text(Money.format(rows.reduce(0) { $0 + $1.cents })).sensitive().monospacedDigit()
+                        }
+                        Divider()
+                        // every open position in one pass: the sheet steps through them
+                        let open = ClassificationEditRequest(entries: group.unclassified ? rows.map { .init(name: $0.name, classification: $0.classification) } : [])
+                        if !open.entries.isEmpty {
+                            HStack {
+                                Text(open.entries.count == 1
+                                     ? String(localized: "1 Position noch nicht zugeordnet")
+                                     : String(localized: "\(open.entries.count) Positionen noch nicht zugeordnet"))
+                                    .foregroundStyle(Theme.secondary)
+                                Spacer()
+                                Button("Jetzt zuordnen") { editingClassification = open }
+                                    .buttonStyle(.borderless).foregroundStyle(Theme.accent)
+                            }.appFont(.caption)
+                        }
+                        ForEach(rows) { row in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(row.name).sensitive(row.scope == .tangibles ? .personal : .labels).lineLimit(1)
+                                    Text(row.subtitle(by: grouping))
+                                        .appFont(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
+                                        .help(row.classification.sourceDescription)
+                                        .sensitive()
+                                }
+                                Spacer()
+                                Text(Money.format(row.cents)).sensitive().monospacedDigit()
+                                if row.classification.securityKey != nil {
+                                    Button { editingClassification = ClassificationEditRequest(name: row.name, classification: row.classification) } label: {
+                                        Image(systemName: "pencil")
+                                    }.buttonStyle(.borderless).help("Klassifizierung bearbeiten")
+                                }
+                            }
+                        }
+                    }.card(padding: 18)
+                }
+            }
         }
     }
 
@@ -661,20 +1021,28 @@ struct WealthView: View {
         guard !ids.isEmpty else { history = []; return }
         let days = UInt32(historyDays)
         let loaded = try? await model.vaultOffMain { vault in try vault.balanceHistory(accountIds: ids, days: days) }
-        if let loaded { history = loaded }
+        if !Task.isCancelled, let loaded { history = loaded }
     }
 
-    private func loadPositions(_ depots: [Account]) async {
+    private func loadPositions(_ depots: [Account], tangibles: [Account]) async {
         let ids = depots.map(\.id)
         let since = (Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date())
             .formatted(.iso8601.year().month().day())
         let loaded = try? await model.vaultOffMain { vault in
-            (try ids.map { try vault.listHoldings(accountId: $0) },
+            (try Dictionary(uniqueKeysWithValues: (depots + tangibles).map { ($0.id, try vault.classifiedAssets(accountId: $0.id)) }),
              try ids.flatMap { try vault.listSecurityTransactions(accountId: $0) })
         }
-        if let (holdings, transactions) = loaded {
-            positions = WealthPosition.aggregate(holdings)
+        guard !Task.isCancelled else { return }
+        if let (assets, transactions) = loaded {
+            classified = assets
             income = WealthIncome.make(transactions, since: since)
+            // (developer) `--demo-sheet classification`: the assign queue of the open positions
+            if model.options.demoSheet == "classification", editingClassification == nil {
+                let open = ClassificationEditRequest(entries: assets.values.flatMap { $0 }
+                    .filter { $0.classification.assetClass == .unclassified }
+                    .map { .init(name: $0.holding.name, classification: $0.classification) })
+                if !open.entries.isEmpty { editingClassification = open }
+            }
         }
     }
 }

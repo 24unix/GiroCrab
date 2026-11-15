@@ -948,6 +948,9 @@ fn build_fetch(xml: &str, since: &str) -> CoreResult<FetchResult> {
         });
         out.holdings
             .extend(holdings.into_iter().map(|holding| RemoteHolding {
+                classification: Default::default(),
+                direct_crypto: false,
+
                 account_ref: depot_ref.clone(),
                 holding,
             }));

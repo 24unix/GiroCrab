@@ -200,6 +200,15 @@ fn snapshot(json: &str) -> CoreResult<FetchResult> {
                 let value = cents(item, "value")?;
                 total += value;
                 result.holdings.push(RemoteHolding {
+                    classification: crate::asset_classification::from_labels(
+                        item["assetClass1"]
+                            .as_str()
+                            .or(item["class"].as_str())
+                            .unwrap_or_default(),
+                        "",
+                    ),
+                    direct_crypto: false,
+
                     account_ref: depot_ref.clone(),
                     holding: Holding {
                         isin: isin.into(),

@@ -23,6 +23,7 @@
 
 uniffi::setup_scaffolding!();
 
+pub mod asset_classification;
 pub mod assets;
 pub mod banking_gate;
 pub mod batch_csv;
@@ -38,6 +39,7 @@ pub mod i18n;
 pub mod importers;
 pub mod insights;
 pub mod loans;
+pub mod local_api;
 pub mod mandates;
 pub mod merchants;
 pub mod models;

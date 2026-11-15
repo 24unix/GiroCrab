@@ -50,12 +50,31 @@ fn digits(s: &str) -> String {
     s.chars().filter(|c| c.is_ascii_digit()).collect()
 }
 
+/// comdirect's bank codes; the code of an account is in its IBAN.
+pub(crate) const COMDIRECT_BLZ: [&str; 4] = ["20041111", "20041133", "20041144", "20041155"];
+
+/// comdirect's FinTS 3.0 PIN/TAN endpoint, the same for all four bank codes
+/// (DK institute list).
+pub(crate) const COMDIRECT_FINTS_URL: &str = "https://fints.comdirect.de/fints";
+
+/// comdirect via FinTS, the alternative to its own API (which needs a depot
+/// contract and API credentials). Resolved by bank code only: the generated
+/// table and the name search leave comdirect out, so the bank picker lists
+/// it once (`bank_directory::search`) instead of once per bank code.
+static COMDIRECT: [Bank; 4] = [
+    (COMDIRECT_BLZ[0], "comdirect", COMDIRECT_FINTS_URL),
+    (COMDIRECT_BLZ[1], "comdirect", COMDIRECT_FINTS_URL),
+    (COMDIRECT_BLZ[2], "comdirect", COMDIRECT_FINTS_URL),
+    (COMDIRECT_BLZ[3], "comdirect", COMDIRECT_FINTS_URL),
+];
+
 fn find(blz: &str) -> Option<&'static Bank> {
     let banks = banks();
     banks
         .binary_search_by(|e| e.0.cmp(blz))
         .ok()
         .map(|i| &banks[i])
+        .or_else(|| COMDIRECT.iter().find(|e| e.0 == blz))
 }
 
 /// Number of banks in the directory.
@@ -266,8 +285,28 @@ mod tests {
         assert_eq!(lookup("1234567"), None);
         assert_eq!(lookup("1234567x"), None);
         assert_eq!(lookup(""), None);
-        // comdirect has its own connector, not a FinTS entry
-        assert_eq!(lookup("20041111"), None);
+    }
+
+    #[test]
+    fn comdirect_resolves_by_bank_code_but_not_by_name() {
+        for blz in COMDIRECT_BLZ {
+            let b = lookup(blz).unwrap_or_else(|| panic!("{blz} missing"));
+            assert_eq!(
+                (b.name.as_str(), b.url.as_str()),
+                ("comdirect", COMDIRECT_FINTS_URL)
+            );
+            assert_eq!(url_for_blz(blz), Some(COMDIRECT_FINTS_URL));
+        }
+        assert_eq!(
+            lookup_fints_bank_by_input("DE10 2004 1155 0123 4567 89".into())
+                .unwrap()
+                .blz,
+            "20041155"
+        );
+        // not part of the generated table: one row in the picker, not four
+        assert!(search("comdirect", 10).is_empty());
+        assert!(search("2004111", 10).is_empty());
+        assert!(banks().iter().all(|e| !COMDIRECT_BLZ.contains(&e.0)));
     }
 
     #[test]
