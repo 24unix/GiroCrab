@@ -23,7 +23,8 @@
 //! - 17: standing orders (#239): table `standing_orders`, replaced per fetch.
 //! - 18: repair: vaults that an early draft of 16 had migrated as "15" skipped
 //!   step 15 and lack `transactions.item_refs`; adds it when missing.
-//! - 19: direct debit mandates and creditor IDs (#143): tables `mandates`, `creditor_ids`.
+//! - 19: direct debit mandates and creditor IDs (#143): tables `mandates`, `creditor_ids`,
+//!   `mandate_deletions` (marks for the vault merge).
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run

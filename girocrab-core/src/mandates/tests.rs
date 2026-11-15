@@ -416,3 +416,127 @@ fn amounts_above_the_sepa_limit_are_refused() {
     m.default_amount_cents = 100_000_000_000;
     assert!(v.save_mandate(None, m).is_err());
 }
+
+// --- vault merge (iCloud peer snapshot) ---
+
+fn tick() {
+    // stamps are milliseconds: let the next edit be strictly newer
+    std::thread::sleep(std::time::Duration::from_millis(3));
+}
+
+fn merge(into: &Vault, from: &Vault) {
+    into.merge_other_vault(from.file_path(), vec![5u8; 32])
+        .unwrap();
+}
+
+fn first_account(v: &Vault) -> i64 {
+    v.list_accounts()
+        .unwrap()
+        .into_iter()
+        .find(|a| a.name == "Musterbank Girokonto")
+        .unwrap()
+        .id
+}
+
+fn by_ref(v: &Vault, reference: &str) -> Option<Mandate> {
+    v.list_mandates(None)
+        .unwrap()
+        .into_iter()
+        .find(|m| m.reference == reference)
+}
+
+#[test]
+fn merge_brings_over_new_mandates_and_the_creditor_id() {
+    let (a, _da) = vault();
+    let (b, _db) = vault();
+    let acc = first_account(&b);
+    b.save_mandate(None, input(acc, "M-1")).unwrap();
+    b.set_creditor_id(acc, "DE98ZZZ09999999999".into()).unwrap();
+    merge(&a, &b);
+    let m = by_ref(&a, "M-1").unwrap();
+    assert_eq!(m.account_id, first_account(&a));
+    assert_eq!(
+        a.creditor_id(first_account(&a)).unwrap(),
+        "DE98ZZZ09999999999"
+    );
+    // merging again changes nothing
+    merge(&a, &b);
+    assert_eq!(a.list_mandates(None).unwrap().len(), 1);
+}
+
+#[test]
+fn merge_newest_edit_wins_but_collections_are_never_taken_back() {
+    let (a, _da) = vault();
+    let (b, _db) = vault();
+    let (acc_a, acc_b) = (first_account(&a), first_account(&b));
+    let m = a.save_mandate(None, input(acc_a, "M-1")).unwrap();
+    merge(&b, &a);
+    tick();
+    // b edits the mandate, a collects it later
+    let mb = by_ref(&b, "M-1").unwrap();
+    let mut edit = input(acc_b, "M-1");
+    edit.default_amount_cents = 2500;
+    b.save_mandate(Some(mb.id), edit).unwrap();
+    tick();
+    a.mark_collected(vec![m.id], "2026-10-01".into()).unwrap();
+    merge(&a, &b);
+    let got = by_ref(&a, "M-1").unwrap();
+    assert_eq!(got.default_amount_cents, 2500, "b's later edit wins");
+    assert_eq!(got.last_collected.as_deref(), Some("2026-10-01"));
+    merge(&b, &a);
+    let got = by_ref(&b, "M-1").unwrap();
+    assert_eq!(got.last_collected.as_deref(), Some("2026-10-01"));
+    assert_eq!(got.default_amount_cents, 2500);
+}
+
+#[test]
+fn merge_keeps_a_deleted_mandate_deleted_unless_it_was_edited_afterwards() {
+    let (a, _da) = vault();
+    let (b, _db) = vault();
+    let acc_a = first_account(&a);
+    let m = a.save_mandate(None, input(acc_a, "M-1")).unwrap();
+    merge(&b, &a);
+    tick();
+    a.delete_mandate(m.id).unwrap();
+    // the older copy on b does not bring it back, and b learns the deletion
+    merge(&a, &b);
+    assert!(by_ref(&a, "M-1").is_none());
+    merge(&b, &a);
+    assert!(by_ref(&b, "M-1").is_none());
+    // an edit made after the deletion wins
+    tick();
+    let acc_b = first_account(&b);
+    b.save_mandate(None, input(acc_b, "M-1")).unwrap();
+    merge(&a, &b);
+    assert!(by_ref(&a, "M-1").is_some());
+}
+
+#[test]
+fn renaming_the_reference_does_not_leave_the_old_one_behind() {
+    let (a, _da) = vault();
+    let (b, _db) = vault();
+    let acc_a = first_account(&a);
+    let m = a.save_mandate(None, input(acc_a, "M-OLD")).unwrap();
+    merge(&b, &a);
+    tick();
+    a.save_mandate(Some(m.id), input(acc_a, "M-NEW")).unwrap();
+    merge(&b, &a);
+    assert!(by_ref(&b, "M-OLD").is_none());
+    assert!(by_ref(&b, "M-NEW").is_some());
+}
+
+#[test]
+fn merge_creditor_id_newest_wins_and_a_removal_travels() {
+    let (a, _da) = vault();
+    let (b, _db) = vault();
+    let (acc_a, acc_b) = (first_account(&a), first_account(&b));
+    a.set_creditor_id(acc_a, "DE98ZZZ09999999999".into())
+        .unwrap();
+    merge(&b, &a);
+    assert_eq!(b.creditor_id(acc_b).unwrap(), "DE98ZZZ09999999999");
+    tick();
+    a.set_creditor_id(acc_a, String::new()).unwrap();
+    merge(&b, &a);
+    assert_eq!(b.creditor_id(acc_b).unwrap(), "");
+    assert_eq!(b.suggested_creditor_id().unwrap(), "");
+}

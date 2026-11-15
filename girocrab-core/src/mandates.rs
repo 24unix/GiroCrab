@@ -17,9 +17,11 @@ use crate::vault::Vault;
 
 mod collect;
 mod csv;
+mod merge;
 mod pain;
 pub use collect::{CollectionItem, DebitFile};
 pub use csv::{parse_mandate_csv, MandateCsvImport, MandateCsvRow, MandateImportResult};
+pub(crate) use merge::merge_attached;
 
 const MANDATES: &str = "
 CREATE TABLE IF NOT EXISTS mandates (
@@ -38,7 +40,15 @@ CREATE TABLE IF NOT EXISTS mandates (
     active               INTEGER NOT NULL DEFAULT 1,
     last_collected       TEXT,                          -- due date of the last collection
     created_ms           INTEGER NOT NULL,
+    updated_ms           INTEGER NOT NULL DEFAULT 0,    -- last edit, for the vault merge
     UNIQUE(account_id, reference)
+);
+-- a deleted mandate leaves a mark so that a merge does not bring it back
+CREATE TABLE IF NOT EXISTS mandate_deletions (
+    account_id   INTEGER NOT NULL,
+    reference    TEXT    NOT NULL,
+    deleted_ms   INTEGER NOT NULL,
+    PRIMARY KEY (account_id, reference)
 );
 CREATE INDEX IF NOT EXISTS mandates_account ON mandates(account_id);
 CREATE TABLE IF NOT EXISTS creditor_ids (
@@ -294,7 +304,17 @@ impl Vault {
     /// bookings; the mandate reference remains in their text.
     pub fn delete_mandate(&self, id: i64) -> Result<(), CoreError> {
         let db = self.db()?;
+        let key: Option<(i64, String)> = db
+            .query_row(
+                "SELECT account_id, reference FROM mandates WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
         db.execute("DELETE FROM mandates WHERE id = ?1", [id])?;
+        if let Some((account_id, reference)) = key {
+            merge::mark_deleted(&db, account_id, &reference, crate::user_groups::now_ms())?;
+        }
         Ok(())
     }
 
@@ -317,9 +337,10 @@ impl Vault {
         let id = creditor_id.trim().to_ascii_uppercase();
         let db = self.db()?;
         if id.is_empty() {
+            // kept as an empty value with a stamp: a merge then sees the removal
             db.execute(
-                "DELETE FROM creditor_ids WHERE account_id = ?1",
-                [account_id],
+                "UPDATE creditor_ids SET creditor_id = '', updated_ms = ?2 WHERE account_id = ?1",
+                params![account_id, crate::user_groups::now_ms()],
             )?;
             return Ok(());
         }
@@ -340,7 +361,7 @@ impl Vault {
         let db = self.db()?;
         Ok(db
             .query_row(
-                "SELECT creditor_id FROM creditor_ids ORDER BY updated_ms DESC, account_id LIMIT 1",
+                "SELECT creditor_id FROM creditor_ids WHERE creditor_id <> '' ORDER BY updated_ms DESC, account_id LIMIT 1",
                 [],
                 |r| r.get(0),
             )
@@ -372,12 +393,21 @@ pub(crate) fn store_mandate(
             "Diese Mandatsreferenz gibt es für dieses Konto schon.",
         )));
     }
+    let now = crate::user_groups::now_ms();
     Ok(match id {
         Some(id) => {
+            // a changed reference or account is a deletion of the old key for the merge
+            let old: Option<(i64, String)> = db
+                .query_row(
+                    "SELECT account_id, reference FROM mandates WHERE id = ?1",
+                    [id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
             let n = db.execute(
                 "UPDATE mandates SET account_id=?2, debtor_name=?3, debtor_iban=?4, debtor_bic=?5,
                     reference=?6, signed_date=?7, scheme=?8, one_off=?9, default_amount_cents=?10,
-                    default_purpose=?11, note=?12, active=?13 WHERE id = ?1",
+                    default_purpose=?11, note=?12, active=?13, updated_ms=?14 WHERE id = ?1",
                 params![
                     id,
                     input.account_id,
@@ -391,20 +421,27 @@ pub(crate) fn store_mandate(
                     input.default_amount_cents,
                     input.default_purpose.trim(),
                     input.note.trim(),
-                    input.active
+                    input.active,
+                    now
                 ],
             )?;
             if n == 0 {
                 return Err(invalid(tr("Das Mandat gibt es nicht mehr.")));
             }
+            if let Some((acc, old_ref)) = old {
+                if acc != input.account_id || old_ref != reference {
+                    merge::mark_deleted(db, acc, &old_ref, now)?;
+                }
+            }
+            merge::unmark_deleted(db, input.account_id, &reference)?;
             id
         }
         None => {
             db.execute(
                 "INSERT INTO mandates(account_id, debtor_name, debtor_iban, debtor_bic, reference,
                     signed_date, scheme, one_off, default_amount_cents, default_purpose, note,
-                    active, created_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                    active, created_ms, updated_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)",
                 params![
                     input.account_id,
                     input.debtor_name.trim(),
@@ -418,9 +455,10 @@ pub(crate) fn store_mandate(
                     input.default_purpose.trim(),
                     input.note.trim(),
                     input.active,
-                    crate::user_groups::now_ms()
+                    now
                 ],
             )?;
+            merge::unmark_deleted(db, input.account_id, &reference)?;
             db.last_insert_rowid()
         }
     })

@@ -182,6 +182,11 @@ fn merge_duplicate_account(conn: &Connection, keep: i64, dup: i64) -> CoreResult
     )?;
     conn.execute("DELETE FROM mandates WHERE account_id = ?1", [dup])?;
     conn.execute(
+        "UPDATE OR IGNORE mandate_deletions SET account_id = ?1 WHERE account_id = ?2",
+        params![keep, dup],
+    )?;
+    conn.execute("DELETE FROM mandate_deletions WHERE account_id = ?1", [dup])?;
+    conn.execute(
         "UPDATE OR IGNORE creditor_ids SET account_id = ?1 WHERE account_id = ?2",
         params![keep, dup],
     )?;

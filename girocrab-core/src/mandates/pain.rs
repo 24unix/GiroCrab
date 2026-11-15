@@ -40,14 +40,15 @@ impl Vault {
             }
             if n == 0 && !block.creditor_id.is_empty() {
                 let has: bool = tx.query_row(
-                    "SELECT EXISTS (SELECT 1 FROM creditor_ids WHERE account_id = ?1)",
+                    "SELECT EXISTS (SELECT 1 FROM creditor_ids WHERE account_id = ?1 AND creditor_id <> '')",
                     [account_id],
                     |r| r.get(0),
                 )?;
                 // an invalid ID in the file is simply not taken over
                 if !has && validate_creditor_id(&block.creditor_id) {
                     tx.execute(
-                        "INSERT INTO creditor_ids(account_id, creditor_id, updated_ms) VALUES (?1, ?2, ?3)",
+                        "INSERT INTO creditor_ids(account_id, creditor_id, updated_ms) VALUES (?1, ?2, ?3)
+                         ON CONFLICT(account_id) DO UPDATE SET creditor_id = ?2, updated_ms = ?3",
                         rusqlite::params![
                             account_id,
                             block.creditor_id.trim().to_ascii_uppercase(),
