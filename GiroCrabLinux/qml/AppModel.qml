@@ -168,12 +168,35 @@ QtObject {
     property int listLimit: defaultListLimit
 
     // MARK: enums (titles as in the Swift extensions)
-    readonly property var periods: [
-        { id: "all", title: qsTr("Gesamter Zeitraum") }, { id: "thisMonth", title: qsTr("Dieser Monat") },
-        { id: "lastMonth", title: qsTr("Letzter Monat") }, { id: "last3Months", title: qsTr("Letzte 3 Monate") },
-        { id: "last12Months", title: qsTr("Letzte 12 Monate") }, { id: "thisQuarter", title: qsTr("Dieses Quartal") },
-        { id: "thisYear", title: qsTr("Dieses Jahr") }, { id: "lastYear", title: qsTr("Letztes Jahr") },
-        { id: "sinceSalary", title: qsTr("Seit letztem Gehalt") }]
+    // Period ids (AppModelTypes.swift › Period): "all", "days:<n>", "months12", "sinceSalary",
+    // "month:<y>:<m>", "quarter:<y>:<q>", "year:<y>", "custom".
+    /// The menu sections like MoneyMoney (GitHub #382): rolling windows, then the latest months,
+    /// quarters and years by name, counted back from today; "custom" comes from the date dialog.
+    function periodMenu(now) {
+        now = now || new Date()
+        const y = now.getFullYear(), m = now.getMonth() + 1
+        const months = [0, 1, 2].map(back => { const i = y * 12 + (m - 1) - back; return "month:" + Math.floor(i / 12) + ":" + (i % 12 + 1) })
+        const quarters = [0, 1, 2].map(back => { const i = y * 4 + Math.floor((m - 1) / 3) - back; return "quarter:" + Math.floor(i / 4) + ":" + (i % 4 + 1) })
+        return [["all"], ["days:30", "days:90", "months12", "sinceSalary"], months, quarters, [0, 1, 2].map(b => "year:" + (y - b))]
+    }
+    /// The month before the current one (default of the date dialog, demo print).
+    function previousMonthPeriod() { return periodMenu()[2][1] }
+    /// The year before the current one.
+    function previousYearPeriod() { return periodMenu()[4][1] }
+    function periodTitleOf(p) {
+        const a = p.split(":")
+        switch (a[0]) {
+        case "all": return qsTr("Gesamter Zeitraum")
+        case "days": return qsTr("%1 Tage").arg(a[1])
+        case "months12": return qsTr("12 Monate")
+        case "sinceSalary": return qsTr("Seit letztem Gehalt")
+        case "month": return new Date(Number(a[1]), Number(a[2]) - 1, 1).toLocaleDateString(Fmt.locale, "MMMM yyyy")
+        case "quarter": return qsTr("%1. Quartal %2").arg(a[2]).arg(a[1])
+        case "year": return qsTr("Jahr %1").arg(a[1])
+        case "custom": return qsTr("Benutzerdefiniert")
+        }
+        return p
+    }
     readonly property var scopes: [
         { id: "All", title: qsTr("Alle Buchungen"), shortTitle: qsTr("Alle") },
         { id: "Everyday", title: qsTr("Alltag & Konsum"), shortTitle: qsTr("Alltag") },
@@ -648,18 +671,19 @@ QtObject {
     function periodRange(p) {
         p = p || period
         const now = new Date()
-        const som = new Date(now.getFullYear(), now.getMonth(), 1)
-        const soy = new Date(now.getFullYear(), 0, 1)
         const I = Fmt.iso
-        switch (p) {
-        case "sinceSalary": return salaryCycle ? [salaryCycle.last_date, null] : [I(som), null]
-        case "thisMonth": return [I(som), null]
-        case "lastMonth": return [I(new Date(now.getFullYear(), now.getMonth() - 1, 1)), I(new Date(now.getFullYear(), now.getMonth(), 0))]
-        case "last3Months": return [I(new Date(now.getFullYear(), now.getMonth() - 2, 1)), null]
-        case "last12Months": return [I(new Date(now.getFullYear(), now.getMonth() - 11, 1)), null]
-        case "thisQuarter": return [I(new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)), null]
-        case "thisYear": return [I(soy), null]
-        case "lastYear": return [I(new Date(now.getFullYear() - 1, 0, 1)), I(new Date(now.getFullYear() - 1, 11, 31))]
+        // first day of a month and the day before the first of `months` later
+        const span = (y, m, months) => [I(new Date(y, m - 1, 1)), I(new Date(y, m - 1 + months, 0))]
+        const a = p.split(":").map((x, i) => i ? Number(x) : x)
+        switch (a[0]) {
+        case "days": return [I(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (a[1] - 1))), null]
+        // rolling year: from the same day a year ago (exclusive) to today
+        case "months12": return [I(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate() + 1)), null]
+        // calendar month as fallback without a detected salary
+        case "sinceSalary": return salaryCycle ? [salaryCycle.last_date, null] : [I(new Date(now.getFullYear(), now.getMonth(), 1)), null]
+        case "month": return span(a[1], a[2], 1)
+        case "quarter": return span(a[1], (a[2] - 1) * 3 + 1, 3)
+        case "year": return span(a[1], 1, 12)
         case "custom": return [customPeriodFrom || null, customPeriodTo || null]
         default: return [null, null]
         }
@@ -893,7 +917,7 @@ QtObject {
         return latest ? qsTr("Aktualisiert %1").arg(Fmt.relative(latest)) : qsTr("Noch nie aktualisiert")
     }
     readonly property string periodTitle: period === "custom"
-        ? Fmt.medium(customPeriodFrom) + " – " + Fmt.medium(customPeriodTo) : titleOf(periods, period)
+        ? Fmt.medium(customPeriodFrom) + " – " + Fmt.medium(customPeriodTo) : periodTitleOf(period)
     /// Subtitle of the period-based KPI tiles.
     readonly property string periodSubtitle: period !== "sinceSalary" ? periodTitle
         : salaryCycle ? qsTr("Seit Gehalt am %1").arg(Fmt.medium(salaryCycle.last_date)) : qsTr("Monat (kein Gehalt)")
@@ -2817,7 +2841,7 @@ QtObject {
 
     // Custom period (GitHub #53): remembered across launches.
     Component.onCompleted: {
-        const d = periodRange("lastMonth")
+        const d = periodRange(previousMonthPeriod())
         customPeriodFrom = String(defaults.value("period/customFrom", "")) || d[0]
         customPeriodTo = String(defaults.value("period/customTo", "")) || d[1]
     }
@@ -3079,7 +3103,7 @@ QtObject {
         case "category": if (top) newCategoryRequest = { parent: top.id }; break
         case "print":
             // Print dialog (GitHub #53) on last month's demo bookings.
-            period = "lastMonth"
+            period = previousMonthPeriod()
             showPrintSheet = true
             break
         case "transfer":

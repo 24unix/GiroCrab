@@ -133,17 +133,26 @@ Card {
             spacing: 12
             MenuLabel {
                 symbol: "calendar"; text: AppModel.periodTitle
-                onClicked: periodMenu.popup()
+                onClicked: { periodMenu.rebuild(); periodMenu.popup() }
+                // MoneyMoney's sections (#382), separated by dividers; rebuilt on every open
+                // because the named months, quarters and years count back from today.
+                Component { id: periodEntry
+                    AppMenuItem { property string periodID; text: AppModel.periodTitleOf(periodID); checkable: true
+                                  checked: AppModel.period === periodID; onTriggered: AppModel.period = periodID } }
+                Component { id: periodDivider; AppMenuSeparator {} }
                 AppMenu {
                     id: periodMenu
-                    Instantiator {
-                        model: AppModel.periods
-                        AppMenuItem { required property var modelData; text: modelData.title; checkable: true
-                                   checked: AppModel.period === modelData.id; onTriggered: AppModel.period = modelData.id }
-                        onObjectAdded: (index, object) => periodMenu.insertItem(index, object)
-                        onObjectRemoved: (index, object) => periodMenu.removeItem(object)
+                    property var entries: []
+                    function rebuild() {
+                        for (const o of entries) removeItem(o)   // Menu.removeItem destroys it
+                        const built = []
+                        for (const section of AppModel.periodMenu()) {
+                            for (const id of section) built.push(periodEntry.createObject(null, { periodID: id }))
+                            built.push(periodDivider.createObject(null))
+                        }
+                        built.forEach((o, i) => insertItem(i, o))
+                        entries = built
                     }
-                    AppMenuSeparator {}
                     // The checkmark shows while the custom range is active (PlanningUI.swift › CustomPeriodForm).
                     AppMenuItem {
                         text: AppModel.period === "custom" ? qsTr("Benutzerdefiniert: %1 …").arg(AppModel.periodTitle) : qsTr("Benutzerdefiniert …")

@@ -25,8 +25,9 @@ Sheet {
         add(qsTr("Buchungen drucken"), action + " · " + Fmt.keys("Strg+P"), "printer", () => m.showPrintSheet = true)
         add(qsTr("Wiederkehrende Buchungen"), action, "repeat", () => m.showRecurringSheet = true)
         add(qsTr("Zeitraum: Seit letztem Gehalt"), view, "banknote", () => m.period = "sinceSalary")
-        add(qsTr("Zeitraum: Letzte 12 Monate"), view, "calendar", () => m.period = "last12Months")
-        add(qsTr("Zeitraum: Letztes Jahr"), view, "calendar", () => m.period = "lastYear")
+        add(qsTr("Zeitraum: 12 Monate"), view, "calendar", () => m.period = "months12")
+        const previousYear = m.previousYearPeriod()
+        add(qsTr("Zeitraum: %1").arg(m.periodTitleOf(previousYear)), view, "calendar", () => m.period = previousYear)
         add(qsTr("Zeitraum: Benutzerdefiniert …"), view, "calendar.badge.clock", () => m.showCustomPeriod = true)
         const b = m.selectedBooking
         if (b) {
