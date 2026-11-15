@@ -2275,7 +2275,9 @@ QtObject {
             match_kind: "Keyword",
             pattern: b ? (known ? b.merchant.name : b.counterparty.split(" ").filter(x => x !== "").slice(0, 2).join(" ")) : "",
             case_sensitive: false,
-            min_amount_cents: null,
+            // Direction follows the booking (#295): a rule made from an income
+            // must not also categorise the outgoing transfers to the same payee.
+            min_amount_cents: b && b.amount_cents > 0 ? 1 : null,
             max_amount_cents: b && b.amount_cents < 0 ? 0 : null,
             account_id: null,
             priority: rules.reduce((m, r) => Math.max(m, r.priority), 0) + 10,
