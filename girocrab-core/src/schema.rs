@@ -21,6 +21,8 @@
 //!   product ids (ASIN) of an Amazon order, one entry per item.
 //! - 16: scheduled transfers (#240): table `planned_transfers`.
 //! - 17: standing orders (#239): table `standing_orders`, replaced per fetch.
+//! - 18: repair: vaults that an early draft of 16 had migrated as "15" skipped
+//!   step 15 and lack `transactions.item_refs`; adds it when missing.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -54,6 +56,7 @@ const STEPS: &[Step] = &[
     Step::Hook(item_refs),                                     // 15
     Step::Hook(crate::planned::planned_transfers),             // 16
     Step::Hook(crate::standing_orders::standing_orders_table), // 17
+    Step::Hook(item_refs),                                     // 18 (repair, see above)
 ];
 
 /// Step 14 (#314): securities transactions (buy, sell, dividend, fee, tax …)
@@ -577,7 +580,22 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 17);
+        assert_eq!(SCHEMA_VERSION, 18);
+    }
+
+    /// A vault that an early draft migrated as version 15 (scheduled transfers
+    /// in place of the item references) gets `item_refs` back.
+    #[test]
+    fn vault_that_skipped_item_refs_is_repaired() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE transactions DROP COLUMN item_refs; PRAGMA user_version = 15;",
+        )
+        .unwrap();
+        assert!(!has_column(&conn, "transactions", "item_refs").unwrap());
+        migrate(&mut conn).unwrap();
+        assert!(has_column(&conn, "transactions", "item_refs").unwrap());
     }
 
     #[test]
