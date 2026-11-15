@@ -21,6 +21,8 @@ enum SidebarItem: Hashable {
     case planned
     /// „Lastschriften“ (GitHub #143): mandates and collections.
     case directDebits
+    /// "Vermögen": cash and assets (depots) minus liabilities
+    case wealth
 }
 
 /// Period of the booking list and its sums. The menu follows MoneyMoney

@@ -1,6 +1,7 @@
 """Unit tests for tools/export-ai-provenance.py (run: python3 -m unittest tools/test_export_ai_provenance.py)."""
 import importlib.util
 import pathlib
+import copy
 import unittest
 from unittest import mock
 
@@ -79,6 +80,105 @@ class Reflection(unittest.TestCase):
         self.assertEqual([k for k, _ in t], ["AI-Agency", "Review-Focus", "AI-Model"])
 
 
+    FULL = ("### 🤖 AI Process Reflection\n- **Human-Steering:** a\n- **AI-Agency:** b\n- **Review-Focus:** c\n"
+            "- **Security-Check:** Nothing relevant: docs only\n- **Perf-Check:** No hot path touched\n")
+
+    def test_security_and_perf_from_section(self):
+        r = prov.parse_reflection(self.FULL, [])
+        self.assertEqual(r["security_check"], ["Nothing relevant: docs only"])
+        self.assertEqual(r["perf_check"], ["No hot path touched"])
+
+    def test_security_and_perf_from_trailers(self):
+        r = prov.parse_reflection("", [("Security-Check", "s"), ("Perf-Check", "p")])
+        self.assertTrue(r["present"])
+        self.assertEqual((r["security_check"], r["perf_check"]), (["s"], ["p"]))
+
+    def test_legacy_three_item_reflection_still_parses(self):
+        r = prov.parse_reflection(self.BODY, [])
+        self.assertEqual((r["security_check"], r["perf_check"]), ([], []))
+        self.assertFalse(r["perf_benchmark_mentioned"])
+
+    def test_category_perf_mention_detected(self):
+        self.assertTrue(prov.parse_reflection("COPIES=600 cargo run --example category_perf: 12 ms", [])
+                        ["perf_benchmark_mentioned"])
+
+
+class Stage4(unittest.TestCase):
+    def feats(self, refl, involved=True):
+        f = copy.deepcopy(FEATURES)
+        f["ai"]["involved"] = involved
+        f.update(reflection=refl, verification={"trailers": []}, scope={"layers": {}, "security_surface": []},
+                 tests={"test_files_changed": 0, "tests_added": 0, "tests_removed": 0, "pr_body_test_section": False})
+        f["steering"].update(issue_refs=[], pr_body_framing_section=False, review_states={}, reviewers=[],
+                             commenters=[], comments_by_others=0, linked_issues_with_discussion=[],
+                             pr_body_decision_section=False, human_steering_trailers=[], human_steering_signal=False)
+        return f
+
+    def stage4(self, refl, involved=True):
+        return prov.stages(self.feats(refl, involved))[3]
+
+    def test_checks_shown_but_do_not_set_status(self):
+        refl = prov.parse_reflection(Reflection.FULL, [])
+        _, ok, ev = self.stage4(refl)
+        self.assertFalse(ok)
+        self.assertTrue(any("Security-Check" in e for e in ev) and any("Perf-Check" in e for e in ev))
+
+    def test_missing_flagged_for_ai_prs_only(self):
+        refl = prov.parse_reflection("", [])
+        self.assertEqual(sum("fehlt" in e for e in self.stage4(refl)[2]), 2)
+        self.assertEqual(sum("fehlt" in e for e in self.stage4(refl, involved=False)[2]), 0)
+
+    def test_stage4_tolerates_old_reflection_without_new_keys(self):
+        _, _, ev = self.stage4({"present": True, "human_steering": ["x"]})
+        self.assertTrue(any("fehlt" in e for e in ev))
+
+    def test_benchmark_mention_counts_as_perf_evidence(self):
+        refl = prov.parse_reflection("category_perf: 9 ms", [])
+        self.assertTrue(any("category_perf" in e for e in self.stage4(refl)[2]))
+
+    def test_evidence_labels_and_no_self_certification(self):
+        refl = {"present": True, "security_check": ["keine Secrets"],
+                "perf_check": ["category_perf: 12 ms"]}
+        _, ok, ev = self.stage4(refl)
+        self.assertFalse(ok)
+        self.assertIn("🔐 Security-Check dokumentiert (Selbstauskunft)", ev)
+        self.assertTrue(any(e.startswith("⚡ Perf-Check dokumentiert") and "12 ms" in e for e in ev))
+
+    def test_trailer_checks_also_labelled(self):
+        refl = prov.parse_reflection("", [("Security-Check", "ok"), ("Perf-Check", "n/a")])
+        _, ok, ev = self.stage4(refl)
+        self.assertFalse(ok)
+        self.assertEqual(sum("dokumentiert" in e for e in ev), 2)
+
+    def test_hard_telemetry_still_sets_stage4(self):
+        f = self.feats({"present": True, "security_check": ["x"]})
+        f["tests"]["tests_added"] = 2
+        self.assertTrue(prov.stages(f)[3][1])
+
+
+class Stage2(Stage4):
+    def stage2(self, refl, surface=()):
+        f = self.feats(refl)
+        f["scope"]["security_surface"] = list(surface)
+        return prov.stages(f)[1]
+
+    def test_human_steering_selfreport_ok_without_security_surface(self):
+        _, ok, ev = self.stage2({"present": True, "human_steering": ["Scope entschieden"]})
+        self.assertTrue(ok)
+        self.assertIn("Human-Steering dokumentiert (Selbstauskunft)", ev)
+
+    def test_human_steering_selfreport_not_enough_on_security_surface(self):
+        _, ok, ev = self.stage2({"present": True, "human_steering": ["x"]}, ["vault"])
+        self.assertFalse(ok)
+        self.assertIn("Human-Steering dokumentiert (Selbstauskunft)", ev)
+        self.assertTrue(any("Review Pflicht" in e for e in ev))
+
+    def test_no_reflection_no_label(self):
+        _, ok, ev = self.stage2({"present": False})
+        self.assertFalse(ok)
+        self.assertFalse(any("dokumentiert" in e for e in ev))
+
+
 FEATURES = {"title": "t", "ai": {"involved": True, "tools": {"Gemini": ["trailer:ai-orchestrator"]}, "roles": {}},
             "scope": {"layers": {"ui": 1}, "security_surface": []}, "size": {},
             "tests": {"test_files_changed": 0, "tests_added": 0},
@@ -138,3 +238,4 @@ class MetaAudit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

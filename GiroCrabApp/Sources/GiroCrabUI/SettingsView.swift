@@ -58,6 +58,7 @@ struct GeneralSettings: View {
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
+    @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
 
     var body: some View {
         @Bindable var model = model
@@ -74,6 +75,11 @@ struct GeneralSettings: View {
             LanguageSettingsSection()
             AnnouncementsSettingsSection()
             Section {
+                Picker("Erscheinungsbild", selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
+                }
+                Text("Hell oder Dunkel gilt nur für GiroCrab; „System“ folgt der Einstellung des Systems.")
+                    .appFont(.caption).foregroundStyle(.secondary)
                 #if os(macOS)
                 // iOS: the system's Dynamic Type setting (Einstellungen › Anzeige & Helligkeit).
                 Picker("Schriftgröße", selection: $textSize) {
@@ -297,7 +303,9 @@ struct MerchantLogoSettingsSection: View {
         Section {
             Picker("Logos aus dem Internet laden", selection: Binding(
                 get: { model.logoProvider },
-                set: { model.logoProvider = $0; model.saveSettingInBackground("merchants.online_logos", $0) }
+                // `logoProvider` follows once the core has stored it: the core gates
+                // cached logos on the same setting, so an earlier switch would load nothing (#422).
+                set: { model.saveSettingInBackground("merchants.online_logos", $0) }
             )) {
                 Text("Aus").tag("off")
                 Text("DuckDuckGo").tag("duckduckgo")
@@ -551,6 +559,7 @@ struct ICloudSyncSection: View {
     @State private var picking = false
     #if os(iOS)
     @State private var pendingFolder: URL?
+    @State private var wrongFolderHint: String?
     #endif
     @State private var keychainSync = VaultKeyManager.shared.syncViaICloudKeychain
     @State private var showKeySheet = false
@@ -642,15 +651,26 @@ struct ICloudSyncSection: View {
         #if os(iOS)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { r in
             if case .success(let url) = r {
-                let scoped = url.startAccessingSecurityScopedResource()
-                let isNew = ICloudFolderMigration.needsNewVaultConfirmation(url)
-                if scoped { url.stopAccessingSecurityScopedResource() }
-                if isNew {
-                    pendingFolder = url
-                } else {
-                    do { try sync.setFolder(url); model.syncNow() } catch { }
+                Task {
+                    let scoped = url.startAccessingSecurityScopedResource()
+                    // iCloud may still be listing the folder: wait briefly before calling it empty.
+                    let hasVault = await ICloudFolderMigration.waitForVault(in: url, wait: 6)
+                    let sub = hasVault ? nil : ICloudFolderMigration.vaultSubfolder(in: url)
+                    if scoped { url.stopAccessingSecurityScopedResource() }
+                    if let sub {
+                        wrongFolderHint = sub
+                    } else if !hasVault {
+                        pendingFolder = url
+                    } else {
+                        do { try sync.setFolder(url); model.syncNow() } catch { }
+                    }
                 }
             }
+        }
+        .alert("Tresor liegt in einem Unterordner", isPresented: Binding(get: { wrongFolderHint != nil }, set: { if !$0 { wrongFolderHint = nil } })) {
+            Button("OK", role: .cancel) { wrongFolderHint = nil }
+        } message: {
+            Text("Der gewählte Ordner enthält einen Unterordner „\(wrongFolderHint ?? "GiroCrab")“ mit Ihrem Tresor. Wählen Sie bitte genau diesen Unterordner aus, damit kein neuer Tresor angelegt wird.")
         }
         .alert("Neuen Tresor in diesem Ordner anlegen?", isPresented: Binding(get: { pendingFolder != nil }, set: { if !$0 { pendingFolder = nil } })) {
             Button("Neuen Tresor anlegen") {

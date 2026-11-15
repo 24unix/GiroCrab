@@ -64,6 +64,7 @@ struct DepotPositionsView: View {
                             name: h.name.isEmpty ? (h.isin.isEmpty ? h.wkn : h.isin) : h.name,
                             detail: "\(NumberText.format(h.quantity)) × \(Money.format(h.currentPriceCents)) · \(h.isin.isEmpty ? h.wkn : h.isin)",
                             valueCents: h.valueCents,
+                            nameRedaction: .personal,
                             gain: Self.calculatedGain(h))
                     .contextMenu {
                         Button("Position kopieren", systemImage: "doc.on.doc") { copyToPasteboard(Self.line(h)) }

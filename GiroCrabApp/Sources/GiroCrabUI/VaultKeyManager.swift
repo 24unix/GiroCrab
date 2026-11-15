@@ -29,11 +29,15 @@ public final class VaultKeyManager: @unchecked Sendable {
         case keyMissing
         /// Writing the new key failed and writing the previous one back too.
         case keyNotRestored(OSStatus)
+        /// iCloud Keychain sharing needs the keychain-sync entitlement of a signed release build.
+        case iCloudSyncUnavailable
 
         public var errorDescription: String? {
             switch self {
             case .biometryUnavailable(let why): return String(localized: "Face ID / Touch ID ist nicht verfügbar: \(why)")
             case .cancelled: return String(localized: "Entsperren abgebrochen.")
+            case .iCloudSyncUnavailable:
+                return String(localized: "Das Teilen über den iCloud-Schlüsselbund benötigt ein signiertes Release-Build von GiroCrab und ist in dieser Version nicht verfügbar. Die Option bleibt aus. Kopieren Sie den Tresor-Schlüssel stattdessen manuell („Tresor-Schlüssel kopieren“) und fügen Sie ihn auf dem anderen Gerät ein.")
             case .keyMissing:
                 return String(localized: "Der Schlüssel für den vorhandenen Tresor fehlt im Schlüsselbund. Wenn Sie den iCloud-Schlüsselbund nutzen, warten Sie, bis er synchronisiert ist, und versuchen Sie es erneut. Es wurde kein neuer Schlüssel angelegt.")
             case .keyNotRestored(let status):
@@ -263,7 +267,7 @@ public final class VaultKeyManager: @unchecked Sendable {
         destroyKey()
         syncViaICloudKeychain = syncing
         do {
-            try store(key)
+            try store(key, strictSync: syncing && !previousMode)
         } catch {
             syncViaICloudKeychain = previousMode
             do {
@@ -335,7 +339,9 @@ public final class VaultKeyManager: @unchecked Sendable {
         return nil
     }
 
-    private func store(_ key: Data) throws {
+    /// `strictSync`: the user just asked for iCloud Keychain sharing, so a missing
+    /// entitlement is an error instead of a silent local-only fallback.
+    private func store(_ key: Data, strictSync: Bool = false) throws {
         if syncViaICloudKeychain {
             var q = baseQuery()
             q[kSecValueData as String] = key
@@ -345,6 +351,7 @@ public final class VaultKeyManager: @unchecked Sendable {
             let status = SecItemAdd(q as CFDictionary, nil)
             if status == errSecSuccess { return }
             if status != errSecMissingEntitlement { throw KeyError.keychain(status) }
+            if strictSync { throw KeyError.iCloudSyncUnavailable }
         }
         var acError: Unmanaged<CFError>?
         let flags: SecAccessControlCreateFlags = requireBiometrics ? .userPresence : []

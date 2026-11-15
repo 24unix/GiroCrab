@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=GiroCrab
+GenericName=Finanzverwaltung
+GenericName[en]=Personal Finance
+Comment=Verschlüsselte Finanzverwaltung für deutsche Bankkonten (FinTS, PSD2)
+Comment[en]=Encrypted personal finance for German bank accounts (FinTS, PSD2)
+Exec=girocrab
+Icon=de.girocrab.GiroCrab
+Terminal=false
+Categories=Office;Finance;Qt;
+Keywords=Bank;Banking;Konto;Umsätze;FinTS;HBCI;Überweisung;Finanzen;MoneyMoney;
+StartupWMClass=girocrab
