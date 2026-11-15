@@ -406,7 +406,8 @@ Rectangle {
         property var booking
         property bool isLast
         readonly property bool selected: booking !== null && !!AppModel.selectedBookingIDs[booking.id]
-        height: 54 + (isLast ? 0 : 0)
+        // Amazon drill-down (all items below the row); collapsed rows keep the uniform height
+        height: 54 + row.drillHeight
 
         // background: rounded only at the bottom of the day's last row
         Rectangle {
@@ -426,7 +427,7 @@ Rectangle {
             radius: dc.isLast ? 10 : 0
             color: dc.selected ? Theme.selection : "transparent"
         }
-        BookingRow { anchors.fill: parent; booking: dc.booking }
+        BookingRow { id: row; anchors.fill: parent; booking: dc.booking }
         DropArea {
             id: rowDrop
             anchors.fill: parent
@@ -441,6 +442,9 @@ Rectangle {
                 stream.forceActiveFocus()
                 // the context menu acts on its own row and leaves the selection alone
                 if (m.button === Qt.RightButton) { stream.openRowMenu(dc.booking, dc, m.x, m.y); return }
+                // the Amazon drill-down chevron sits below this area
+                const c = row.chevron
+                if (c.visible && c.contains(c.mapFromItem(dc, m.x, m.y))) { stream.toggleAmazonExpanded(dc.booking.id); return }
                 AppModel.selectBooking(dc.booking.id, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier)
             }
             onDoubleClicked: m => { if (m.button === Qt.LeftButton) AppModel.editNote(dc.booking) }
@@ -508,14 +512,31 @@ Rectangle {
                    onTriggered: AppModel.setChecked(!stream.menuBooking.checked, stream.menuBooking) }
     }
 
+    /// BookingRow.amazonExpanded (`@State` per row on the Mac): booking ids with an
+    /// open Amazon drill-down. Kept here, ListView delegates are recycled.
+    property var amazonExpanded: ({})
+    function toggleAmazonExpanded(id) {
+        const e = Object.assign({}, amazonExpanded)
+        if (e[id]) delete e[id]; else e[id] = true
+        amazonExpanded = e
+    }
+
     // BookingListView.swift › BookingRow
     component BookingRow: Item {
         id: br
         property var booking
+        /// Amazon orders: items, order code and the drill-down instead of the payment method.
+        readonly property var amazonRef: AmazonOrderRef.parse(booking)
+        /// Refunds show the refunded order's items (joined via the order code).
+        readonly property var refundSource: amazonRef !== null && amazonRef.isRefund ? AmazonOrderRef.refundSource(booking, AppModel.bookings) : null
+        readonly property bool expanded: amazonRef !== null && booking !== null && !!stream.amazonExpanded[booking.id]
+        readonly property real drillHeight: drill.visible ? drill.implicitHeight + 4 : 0
+        property alias chevron: chevron
         RowLayout {
             visible: br.booking !== null
-            anchors.fill: parent
-            anchors.leftMargin: 14; anchors.rightMargin: 14; anchors.topMargin: 5; anchors.bottomMargin: 5
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            height: 44
+            anchors.leftMargin: 14; anchors.rightMargin: 14; anchors.topMargin: 5
             spacing: 12
             MerchantSignet {
                 merchant: br.booking ? br.booking.merchant : null
@@ -550,9 +571,57 @@ Rectangle {
                     }
                     BookingCategoryLabel { booking: br.booking }
                     Text {
-                        visible: br.booking && br.booking.payment_method !== ""
+                        visible: br.amazonRef === null && br.booking && br.booking.payment_method !== ""
                         text: br.booking ? "· " + br.booking.payment_method : ""
                         font.pixelSize: Theme.callout + 1; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+                    }
+                    // Amazon order: what was ordered beats the "Bestellung" kind label.
+                    // Refund rows start flush like every other row ("· item…");
+                    // the ↩ marker goes at the end of the item text.
+                    Text {
+                        id: amazonItems
+                        visible: text !== ""
+                        text: br.refundSource ? "· " + br.refundSource.items + "  ↩"
+                            : br.amazonRef !== null && br.amazonRef.items !== "" ? "· " + br.amazonRef.items : ""
+                        font.pixelSize: Theme.callout + 1; color: Theme.secondary; elide: Text.ElideRight
+                        Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
+                        HoverHandler { id: itemsHover }
+                        ToolTip.visible: itemsHover.hovered; ToolTip.delay: 600
+                        ToolTip.text: br.amazonRef === null ? "" : br.amazonRef.isRefund
+                            ? qsTr("Erstattung für Bestellung #%1").arg(br.amazonRef.code) : br.amazonRef.itemList.join("\n")
+                    }
+                    // items beyond the two shown; the drill-down lists everything
+                    Text {
+                        visible: br.amazonRef !== null && br.amazonRef.moreCount > 0
+                        text: visible ? qsTr("+%1 weitere").arg(br.amazonRef.moreCount) : ""
+                        font.pixelSize: Theme.caption2; font.weight: Font.Medium; color: Theme.tertiary
+                        HoverHandler { id: moreHover }
+                        ToolTip.visible: moreHover.hovered; ToolTip.delay: 600
+                        ToolTip.text: br.amazonRef !== null ? br.amazonRef.itemList.slice(2).join("\n") : ""
+                    }
+                    // "D01-…" charges are the recurring Spar-Abo, plain orders are one-off
+                    RowLayout {
+                        visible: br.amazonRef !== null && br.amazonRef.isSubscription
+                        spacing: 3
+                        SFIcon { symbol: "arrow.triangle.2.circlepath"; size: 10; color: Theme.tertiary }
+                        Text { text: qsTr("Abo"); font.pixelSize: Theme.caption2; font.weight: Font.Medium; color: Theme.tertiary }
+                        HoverHandler { id: aboHover }
+                        ToolTip.visible: aboHover.hovered; ToolTip.delay: 600
+                        ToolTip.text: qsTr("Abonnement (Spar-Abo) – wiederkehrende Abbuchung")
+                    }
+                    Text {
+                        visible: br.amazonRef !== null
+                        text: visible ? "· #" + br.amazonRef.code : ""
+                        font.pixelSize: Theme.callout + 1; font.features: { "tnum": 1 }; color: Theme.tertiary
+                    }
+                    // drill-down when there is more than the head can show (clicks: DayCardRow)
+                    SFIcon {
+                        id: chevron
+                        visible: br.amazonRef !== null && (br.amazonRef.itemList.length > 1 || br.refundSource !== null)
+                        symbol: br.expanded ? "chevron.down" : "chevron.right"; size: 10; color: Theme.tertiary
+                        HoverHandler { id: chevronHover }
+                        ToolTip.visible: chevronHover.hovered; ToolTip.delay: 600
+                        ToolTip.text: br.expanded ? qsTr("Artikel einklappen") : qsTr("Alle Artikel anzeigen")
                     }
                     Item { Layout.fillWidth: true }
                 }
@@ -560,7 +629,38 @@ Rectangle {
             // the row just checked in „Neue Umsätze“ or under "Neu" stays without a mark until it leaves
             SFIcon { visible: br.booking && br.booking.checked && AppModel.lingeringBookingID !== br.booking.id; symbol: "checkmark"; size: 11; color: Theme.tertiary }
             SFIcon { visible: br.booking && br.booking.is_pending; symbol: "clock"; size: 11; color: Theme.tertiary }
-            AmountLabel { cents: br.booking ? br.booking.amount_cents : 0 }
+            AmountLabel { visible: br.amazonRef === null; cents: br.booking ? br.booking.amount_cents : 0 }
+            // Order account: no signs — colour says the direction. Charges and
+            // refunds are badged symmetrically (same padding, same alignment).
+            Rectangle {
+                visible: br.amazonRef !== null
+                implicitWidth: orderAmount.implicitWidth + 16; implicitHeight: orderAmount.implicitHeight + 6
+                radius: height / 2
+                color: br.amazonRef !== null && br.amazonRef.isRefund ? Theme.inflowBadge : Theme.outflowBadge
+                Text {
+                    id: orderAmount
+                    anchors.centerIn: parent
+                    text: br.amazonRef === null ? "" : Fmt.money(br.amazonRef.isRefund ? br.booking.amount_cents : Math.abs(br.booking.amount_cents))
+                    font.pixelSize: Theme.body; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
+                    color: br.amazonRef !== null && br.amazonRef.isRefund ? Theme.inflow : Theme.charge
+                }
+                HoverHandler { id: orderAmountHover }
+                ToolTip.visible: orderAmountHover.hovered; ToolTip.delay: 600
+                ToolTip.text: br.amazonRef !== null && br.amazonRef.isRefund ? qsTr("Gutschrift (Erstattung)") : qsTr("Bestellung")
+            }
+        }
+        // drill-down: every item on its own line, indented under the signet
+        ColumnLayout {
+            id: drill
+            visible: br.expanded
+            x: 14 + 48; y: 49; width: parent.width - x - 14
+            spacing: 2
+            Text { visible: br.refundSource !== null; text: qsTr("Erstattung zu:"); font.pixelSize: Theme.caption2; color: Theme.tertiary }
+            Repeater {
+                model: !br.expanded ? [] : br.refundSource !== null ? br.refundSource.list : br.amazonRef.itemList
+                Text { required property string modelData; text: modelData; font.pixelSize: Theme.callout + 1; color: Theme.secondary
+                       elide: Text.ElideRight; Layout.fillWidth: true }
+            }
         }
     }
 

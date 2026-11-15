@@ -1747,6 +1747,59 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
+    /// Amazon orders (#333, #349, #354): the booking JSON carries what
+    /// AmazonOrderRef.qml reads – the purpose "<items> – Bestellung <code>" (items
+    /// joined by "; "), the refund purpose, the booking texts and `item_refs` with
+    /// one ASIN per item. No network: the capture JSON is invented.
+    #[test]
+    fn amazon_order_bookings_carry_items_and_asins() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        call_ok("open_demo", json!({}));
+        let conn = call_ok(
+            "add_bank_connection",
+            json!({ "connector": "AmazonOrders", "display_name": "Amazon Bestellungen", "login_name": "" }),
+        );
+        let orders = json!({ "orders": [{
+            "code": "302-1234567-7654321", "date": "12. März 2025",
+            "items": [{ "title": "USB-Kabel", "qty": 2, "asin": "B08XYZ1234" },
+                      { "title": "Buch" },
+                      { "title": "Lampe", "asin": "3453146883" }],
+            "rows": [{ "label": "Gesamtsumme:", "value": "45,98 €", "bold": true },
+                     { "label": "Erstattung gesamt", "value": "10,00 €" }] }] });
+        call_ok(
+            "import_amazon_orders",
+            json!({ "connection_id": conn, "orders_json": orders.to_string() }),
+        );
+        let filter = json!({ "account_ids": [], "category_id": null, "include_subcategories": true,
+            "uncategorized_only": false, "search": "302-1234567-7654321", "date_from": null,
+            "date_to": null, "limit": 0, "offset": 0, "scope": "All", "merchant_key": null,
+            "direction": "All", "checked": null, "whole_days": true });
+        let list =
+            call_ok("list_transactions", json!({ "filter": filter }))["transactions"].clone();
+        let list = list.as_array().unwrap();
+        let order = list
+            .iter()
+            .find(|b| b["amount_cents"] == json!(-4598))
+            .expect("order booking");
+        assert_eq!(
+            order["purpose"],
+            json!("2× USB-Kabel; Buch; Lampe – Bestellung 302-1234567-7654321")
+        );
+        assert_eq!(order["booking_text"], json!("Amazon-Bestellung"));
+        assert_eq!(order["item_refs"], json!("B08XYZ1234,,3453146883"));
+        let refund = list
+            .iter()
+            .find(|b| b["amount_cents"] == json!(1000))
+            .expect("refund booking");
+        assert_eq!(
+            refund["purpose"],
+            json!("Erstattung für Bestellung 302-1234567-7654321")
+        );
+        assert_eq!(refund["booking_text"], json!("Amazon-Erstattung"));
+        assert_eq!(refund["account_id"], order["account_id"]);
+        call_ok("lock", json!({}));
+    }
+
     #[test]
     fn parse_key_accepts_base64_and_hex() {
         assert_eq!(

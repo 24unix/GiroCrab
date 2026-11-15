@@ -97,6 +97,7 @@ Rectangle {
     component ReceiptCard: Card {
         id: rc
         property var booking
+        readonly property var amazonRef: AmazonOrderRef.parse(booking)
         ColumnLayout {
             width: parent.width; spacing: 12
             RowLayout {
@@ -166,10 +167,48 @@ Rectangle {
                 Text { text: Fmt.longDate(rc.booking.booking_date); font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
                 FlowBadge { flow: rc.booking.flow }
             }
+            // Amazon order: one item per line instead of the ";" purpose run;
+            // an item with a stored ASIN opens its product page (#354)
+            ColumnLayout {
+                visible: rc.amazonRef !== null && rc.amazonRef.itemList.length > 0
+                Layout.fillWidth: true; spacing: 2
+                Repeater {
+                    model: visible ? rc.amazonRef.itemList : []
+                    TextEdit {
+                        id: amazonItem
+                        required property int index
+                        required property string modelData
+                        readonly property string url: AmazonOrderRef.productURL(rc.amazonRef, index)
+                        text: modelData; readOnly: true; selectByMouse: url === ""
+                        wrapMode: Text.Wrap; font.pixelSize: Theme.callout + 1; Layout.fillWidth: true
+                        color: url !== "" ? Theme.accent : Theme.text
+                        HoverHandler { id: itemHover; enabled: amazonItem.url !== ""; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { enabled: amazonItem.url !== ""; onTapped: Qt.openUrlExternally(amazonItem.url) }
+                        ToolTip.visible: itemHover.hovered; ToolTip.delay: 500
+                        ToolTip.text: qsTr("Produkt auf %1 öffnen").arg(rc.amazonRef.domain)
+                    }
+                }
+            }
             TextEdit {
-                visible: rc.booking.clean_purpose !== ""
+                visible: !(rc.amazonRef !== null && rc.amazonRef.itemList.length > 0) && rc.booking.clean_purpose !== ""
                 text: rc.booking.clean_purpose; readOnly: true; selectByMouse: true
                 wrapMode: Text.Wrap; font.pixelSize: Theme.callout + 1; color: Theme.text; Layout.fillWidth: true
+            }
+            // refund: jump to the order it belongs to (same order code)
+            RowLayout {
+                id: refundJump
+                readonly property var source: AmazonOrderRef.refundSource(rc.booking, AppModel.bookings)
+                visible: source !== null
+                Layout.fillWidth: true; spacing: 5
+                SFIcon { symbol: "arrow.uturn.backward"; size: 11; color: Theme.accent; Layout.alignment: Qt.AlignTop; Layout.topMargin: 2 }
+                Text {
+                    text: refundJump.source ? qsTr("Erstattung zu: %1").arg(refundJump.source.items) : ""
+                    font.pixelSize: Theme.caption; color: Theme.accent; wrapMode: Text.Wrap; Layout.fillWidth: true
+                }
+                HoverHandler { id: refundHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: AppModel.selectedBookingID = refundJump.source.id }
+                ToolTip.visible: refundHover.hovered; ToolTip.delay: 600
+                ToolTip.text: qsTr("Zur erstatteten Bestellung springen")
             }
             RowLayout {
                 Text { text: qsTr("Geprüft"); font.pixelSize: Theme.caption; color: Theme.text }
@@ -555,6 +594,12 @@ Rectangle {
         readonly property var rows: {
             const r = [[qsTr("Verwendungszweck (roh)"), booking.purpose || "–"]]
             if (booking.booking_text) r.push([qsTr("Buchungstext"), booking.booking_text])
+            const ref = AmazonOrderRef.parse(booking)
+            if (ref) {
+                // the order number opens the order on the shop (third entry: link)
+                r.push([qsTr("Bestellnummer"), ref.code, AmazonOrderRef.orderURL(ref), qsTr("Bestellung auf %1 öffnen").arg(ref.domain)])
+                if (ref.isSubscription) r.push([qsTr("Bestelltyp"), qsTr("Abonnement (Spar-Abo) – wiederkehrende Abbuchung")])
+            }
             const e = sepa("EREF"), m = sepa("MREF"), c = sepa("CRED")
             if (e) r.push([qsTr("EREF (Ende-zu-Ende-Referenz)"), e])
             if (m) r.push([qsTr("MREF (Mandatsreferenz)"), m])
@@ -583,8 +628,16 @@ Rectangle {
                     model: raw.expanded ? raw.rows : []
                     ColumnLayout { required property var modelData; spacing: 1; Layout.fillWidth: true
                         Text { text: modelData[0]; font.pixelSize: Theme.caption2; color: Theme.secondary }
-                        TextEdit { text: modelData[1]; readOnly: true; selectByMouse: true; wrapMode: Text.WrapAnywhere
-                                   font.family: "monospace"; font.pixelSize: Theme.caption; color: Theme.text; Layout.fillWidth: true } }
+                        TextEdit {
+                            id: rawValue
+                            readonly property string url: modelData[2] || ""
+                            text: modelData[1]; readOnly: true; selectByMouse: url === ""; wrapMode: Text.WrapAnywhere
+                            font.family: "monospace"; font.pixelSize: Theme.caption; color: url !== "" ? Theme.accent : Theme.text
+                            Layout.fillWidth: url === ""
+                            HoverHandler { id: rawHover; enabled: rawValue.url !== ""; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { enabled: rawValue.url !== ""; onTapped: Qt.openUrlExternally(rawValue.url) }
+                            ToolTip.visible: rawHover.hovered; ToolTip.delay: 500; ToolTip.text: modelData[3] || ""
+                        } }
                 }
             }
         }
