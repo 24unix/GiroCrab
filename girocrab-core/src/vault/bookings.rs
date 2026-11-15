@@ -9,19 +9,27 @@ use crate::merchants::{classify, clean_purpose, payment_method, FlowKind, Mercha
 use crate::models::*;
 use crate::money::parse_cents;
 
-/// Booking between two own accounts. A category segment that marks a transfer
-/// (MoneyMoney "Umbuchung", "Geldtransit" …) always wins. The counterparty-IBAN
-/// heuristic only applies to bookings the user has not categorised and that
-/// `classify()` did not already see as investment / perk: an explicit category
-/// ("Sonstige Einnahmen" on a child's account) or an ETF savings plan on a depot
-/// settlement account must keep its flow (Issue #94).
-fn is_own_transfer(t: &Booking, own_ibans: &std::collections::HashSet<String>) -> bool {
-    if t.category_path.split(" › ").any(|s| {
+/// A category segment that marks a transfer (MoneyMoney "Umbuchung",
+/// "Geldtransit" …).
+fn transfer_named(category_path: &str) -> bool {
+    category_path.split(" › ").any(|s| {
         matches!(
             s.trim().to_lowercase().as_str(),
             "umbuchung" | "umbuchungen" | "geldtransit" | "transfer" | "transfers"
         )
-    }) {
+    })
+}
+
+/// Booking between two own accounts. A transfer-named category always wins.
+/// Both transfer heuristics — the counterparty-IBAN check and `classify()`'s
+/// transfer wording in the booking text (MoneyMoney types internal transfers
+/// "Umbuchung", comdirect "Übertrag / Überweisung") — only apply to bookings
+/// the user has not categorised and that `classify()` did not already see as
+/// investment / perk: an explicit category ("Sonstige Einnahmen" on a child's
+/// account) or an ETF savings plan on a depot settlement account must keep its
+/// flow (Issue #94).
+fn is_own_transfer(t: &Booking, own_ibans: &std::collections::HashSet<String>) -> bool {
+    if transfer_named(&t.category_path) {
         return true;
     }
     if t.category_id.is_some() || matches!(t.flow, FlowKind::Investment | FlowKind::Perk) {
@@ -215,6 +223,21 @@ impl BookingFinisher {
         // (comdirect: "Übertrag / Überweisung"); a transfer category still wins.
         if t.is_salary && t.flow == FlowKind::Transfer {
             t.flow = FlowKind::Income;
+        }
+        // An explicit category also beats the transfer wording of the booking
+        // text: MoneyMoney types internal transfers "Umbuchung" (Issue #94), so
+        // a categorised credit ("Sonstige Einnahmen") on the child's account
+        // must stay income instead of silently dropping out of the Einnahmen
+        // KPI. Uncategorised bookings keep the wording heuristic.
+        if t.flow == FlowKind::Transfer
+            && t.category_id.is_some()
+            && !transfer_named(&t.category_path)
+        {
+            t.flow = if t.amount_cents > 0 {
+                FlowKind::Income
+            } else {
+                FlowKind::Consumption
+            };
         }
         if is_own_transfer(t, &self.own_ibans) {
             t.flow = FlowKind::Transfer;
@@ -1260,6 +1283,51 @@ mod own_transfer_tests {
         assert_eq!(f.income_cents, 500_00);
         let page = v.list_transactions(BookingFilter::default()).unwrap();
         assert_eq!(page.income_cents, 500_00);
+    }
+
+    /// Issue #94 follow-up (NiTRoeSE, 2026-11-15): MoneyMoney types internal
+    /// transfers "Umbuchung" (`unformatted_type` → booking text, comdirect
+    /// "Übertrag / Überweisung"). An explicit non-transfer category must keep
+    /// its flow despite that wording — otherwise the categorised credits on a
+    /// child's account silently drop out of the Einnahmen KPI.
+    #[test]
+    fn explicit_category_beats_umbuchung_booking_text() {
+        let (_d, v, ids) = vault_with(&[
+            ("Mama", 500_00, "Taschengeld", Some("Einnahmen/Sonstiges")),
+            ("Papa", -40_00, "Miete", Some("Wohnen")),
+        ]);
+        v.db()
+            .unwrap()
+            .execute(
+                "UPDATE transactions SET booking_text = CASE WHEN amount_cents > 0 \
+                 THEN 'Umbuchung' ELSE 'Übertrag / Überweisung' END",
+                [],
+            )
+            .unwrap();
+        assert_eq!(flow_of(&v, ids[0]), FlowKind::Income);
+        assert_eq!(flow_of(&v, ids[1]), FlowKind::Consumption);
+        let page = v.list_transactions(BookingFilter::default()).unwrap();
+        assert_eq!(page.income_cents, 500_00);
+        assert_eq!(page.expense_cents, -40_00);
+    }
+
+    /// Without an explicit category the transfer wording of the booking text
+    /// still decides (comdirect books incoming transfers "Übertrag /
+    /// Überweisung") — the rescue above must not weaken that heuristic.
+    #[test]
+    fn uncategorised_transfer_wording_stays_a_transfer() {
+        let (_d, v, ids) = vault_with(&[("Mama", 500_00, "Taschengeld", None)]);
+        v.db()
+            .unwrap()
+            .execute(
+                "UPDATE transactions SET booking_text = 'Übertrag / Überweisung', \
+                 counterparty_iban = 'DE75512108001245126199'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(flow_of(&v, ids[0]), FlowKind::Transfer);
+        let page = v.list_transactions(BookingFilter::default()).unwrap();
+        assert_eq!(page.income_cents, 0);
     }
 
     #[test]
