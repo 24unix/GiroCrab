@@ -271,6 +271,8 @@ fn english(de: &str) -> Option<&'static str> {
         "Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind." => "For business direct debits (B2B) you must confirm that the mandates are on file at the debtors' banks.",
         "Lastschriften können nur über FinTS-Konten eingereicht werden." => "Direct debits can only be submitted from FinTS accounts.",
         "Lastschrift-Einzug ({0} Lastschriften)" => "Direct debit collection ({0} collections)",
+        "Der Zeitraum endet vor seinem Beginn." => "The period ends before it begins.",
+        "CAMT.053 gibt es nicht für Darlehen und Depots: Ihr Saldo ergibt sich nicht aus eigenen Umsätzen." => "CAMT.053 is not available for loans and securities accounts: their balance is not the sum of their own bookings.",
         "quirion: Unvollständige oder ungültige Portalantwort. Es wurden keine Daten übernommen." => "quirion: Incomplete or invalid portal response. No data was imported.",
         "Bitte bei quirion im Browserfenster anmelden und die Daten abrufen." => "Please sign in to quirion in the browser window and fetch your data.",
         "Bitte bei quirion im Browserfenster abrufen." => "Please fetch your data in the quirion browser window.",

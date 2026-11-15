@@ -431,21 +431,30 @@ enum BookingExportBuilder {
         return exportCsv(rows: out, columns: columns, balanceLines: lines)
     }
 
-    /// CAMT.053 account statement for one account (GitHub #372), written by the core
-    /// (`camt053_statement`, tested against the ISO 20022 XSDs there).
-    /// OPBD = balance at the start of the first day; CLBD = OPBD + booked entries.
-    static func camt053(
-        account: Account,
-        bookings: [Booking],
+    /// CAMT.053 cannot state a balance after today: the core caps the end date,
+    /// so the file name uses the same bound (`camtRange` passes it on).
+    static func camtEndDate(_ requested: String?, today: String = DateText.iso(Date())) -> String? {
+        requested.map { min($0, today) }
+    }
+
+    /// Request for the core's CAMT.053 export (#483). The core reads the
+    /// entries and the booked balances itself; `from`/`to`/`bookingIDs` only
+    /// narrow the statement.
+    static func camtRequest(
+        accountID: Int64,
         format: BookingExportFormat,
-        openingCents: Int64,
-        openingDate: String,
+        from: String?,
+        to: String?,
+        bookingIDs: Set<Int64>?,
         created: Date = Date()
-    ) -> String {
-        camt053Statement(account: account, bookings: bookings,
-                         version: format == .camt053v02 ? .v02 : .v08,
-                         openingCents: openingCents, openingDate: openingDate,
-                         createdAt: isoDateTime(created))
+    ) -> Camt053Request {
+        Camt053Request(
+            accountId: accountID,
+            dateFrom: from,
+            dateTo: to,
+            bookingIds: bookingIDs.map { Array($0).sorted() },
+            version: format == .camt053v02 ? .v02 : .v08,
+            createdAt: isoDateTime(created))
     }
 
     /// Suggested save name, e.g. `Umsaetze-Girokonto-2025-03-01_2025-03-31.pdf`.
@@ -453,13 +462,15 @@ enum BookingExportBuilder {
         accounts: [PrintAccount],
         rows: [PrintRow],
         format: BookingExportFormat,
-        fallbackTitle: String = ""
+        fallbackTitle: String = "",
+        rangeFrom: String? = nil,
+        rangeTo: String? = nil
     ) -> String {
         let ids = Set(rows.map(\.accountId))
         let used = accounts.filter { ids.contains($0.id) }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         let dates = rows.map(\.date).filter { !$0.isEmpty }.sorted()
-        let from = dates.first
-        let to = dates.last
+        let from = rangeFrom ?? dates.first
+        let to = rangeTo ?? dates.last
         let range: String
         if let from, let to {
             range = from == to ? from : "\(from)_\(to)"
@@ -518,21 +529,6 @@ enum BookingExportBuilder {
             .split(whereSeparator: { $0.isWhitespace })
             .joined(separator: "-")
         return String(collapsed.prefix(80))
-    }
-
-    /// Opening balance at the start of `firstDate` (= end of the previous day) from the
-    /// end-of-day history (#372). `nil` when the history has no value for that day (e.g. a
-    /// foreign-currency account): a CAMT file must not invent a 0 opening balance.
-    static func camtOpeningBalance(endOfDay: [String: Int64], firstDate: String) -> Int64? {
-        guard let prev = previousISODate(firstDate) else { return nil }
-        return endOfDay[prev]
-    }
-
-    /// Day before `iso` (`yyyy-MM-dd`), for loading the history the opening balance needs.
-    static func previousISODate(_ iso: String) -> String? {
-        guard let d = DateText.date(iso) else { return nil }
-        guard let prev = Calendar(identifier: .gregorian).date(byAdding: .day, value: -1, to: d) else { return nil }
-        return DateText.iso(prev)
     }
 
     private static func isoDateTime(_ date: Date) -> String {

@@ -1,12 +1,18 @@
-//! Booking export generators (GitHub #372, #401): Excel CSV and ISO 20022
+//! Booking export generators (GitHub #372, #401, #483): Excel CSV and ISO 20022
 //! CAMT.053 account statements (`camt.053.001.02` and `.08`).
 //!
-//! Pure functions without vault access: the app loads bookings and end-of-day
-//! balances, prepares rows (order, purpose line, balance column) and the core
-//! writes the file. Tests validate the XML against the official XSDs in
+//! CSV is a pure function: the app loads bookings, prepares rows (order,
+//! purpose line, balance column) and the core writes the file. CAMT.053 reads
+//! statement entries and booked balances straight from the vault, so pending
+//! entries, an older bank balance, foreign currency and a computed balance do
+//! not distort OPBD/CLBD. Tests validate the XML against the official XSDs in
 //! `tests/fixtures/iso20022/` and read it back with the FinTS CAMT parser.
 
-use crate::models::{Account, Booking};
+use crate::error::{CoreError, CoreResult};
+use crate::i18n::{tr, trf};
+use crate::models::{Account, AccountKind};
+use crate::vault::Vault;
+use rusqlite::{params, Connection};
 
 // MARK: - CSV
 
@@ -134,65 +140,322 @@ pub enum CamtVersion {
     V08,
 }
 
-/// CAMT.053 account statement for one account.
-///
-/// `opening_cents` is the balance at the start of `opening_date` (end of the
-/// day before). CLBD = OPBD + booked entries; pending entries (`PDNG`) are
-/// listed but not part of CLBD, like on a bank statement. `created_at` is an
-/// ISO date-time (`2025-03-31T12:00:00+02:00`) for `CreDtTm`.
+/// What a CAMT.053 export covers.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Camt053Request {
+    pub account_id: i64,
+    /// First day (`YYYY-MM-DD`); `None` = the day of the first exported booking.
+    pub date_from: Option<String>,
+    /// Last day; `None` = the day of the last exported booking. A day after
+    /// today is capped at today (or at the last exported booking).
+    pub date_to: Option<String>,
+    /// Only these bookings (marked in the list); `None` = all of the period.
+    pub booking_ids: Option<Vec<i64>>,
+    pub version: CamtVersion,
+    /// ISO date-time for `CreDtTm` (`2025-03-31T12:00:00+02:00`).
+    pub created_at: String,
+}
+
+/// A booking as the bank delivered it (no merchant names, no cleaned purpose).
+#[derive(Debug, Clone, Default)]
+struct CamtEntry {
+    date: String,
+    value_date: String,
+    amount_cents: i64,
+    currency: String,
+    counterparty: String,
+    counterparty_iban: String,
+    purpose: String,
+    booking_text: String,
+    purpose_code: String,
+    gvc: String,
+    end_to_end_id: String,
+    mandate_id: String,
+    creditor_id: String,
+    /// Bank's own reference (`camt:<ref>` in `external_id`), for `AcctSvcrRef`.
+    external_id: String,
+    pending: bool,
+}
+
+/// Day part of a stored date (`2025-03-01T10:00:00` → `2025-03-01`).
+const DAY_SQL: &str = "substr(t.booking_date, 1, 10)";
+const PENDING_SQL: &str = "t.external_id LIKE 'pending-%'";
+
 #[uniffi::export]
-pub fn camt053_statement(
-    account: Account,
-    bookings: Vec<Booking>,
+impl Vault {
+    /// CAMT.053 statement of one account, read straight from the vault
+    /// (#372, #483). Names, purposes and references are written as the bank
+    /// delivered them. OPBD is the booked balance at the start of the first
+    /// day, CLBD the one at the end of the last day, both in the account
+    /// currency (see [`booked_balance`]). Pending entries are listed as
+    /// `PDNG`, entries in another currency with their own; neither counts.
+    /// For a period CLBD = OPBD + booked entries; for marked bookings both
+    /// stay the account's real balances. Loans and depots are refused: their
+    /// balance is no sum of own bookings.
+    pub fn camt053_export(&self, request: Camt053Request) -> Result<String, CoreError> {
+        let mut account = self
+            .list_accounts()?
+            .into_iter()
+            .find(|a| a.id == request.account_id)
+            .ok_or_else(|| CoreError::NotFound {
+                what: trf("Konto {0}", &[&request.account_id]),
+            })?;
+        if matches!(account.kind, AccountKind::Loan | AccountKind::Brokerage) {
+            return Err(CoreError::InvalidInput {
+                message: tr("CAMT.053 gibt es nicht für Darlehen und Depots: Ihr Saldo ergibt sich nicht aus eigenen Umsätzen.").to_string(),
+            });
+        }
+        let date_from = request.date_from.as_deref().map(parse_day).transpose()?;
+        let date_to = request.date_to.as_deref().map(parse_day).transpose()?;
+        let currency = account_currency(&account.currency);
+        let today = chrono::Local::now()
+            .date_naive()
+            .format("%Y-%m-%d")
+            .to_string();
+        let db = self.db()?;
+        // `list_accounts` replaces a stored 0 of a credit card with the open
+        // cycle's amount, counted over every row; the balance walk below counts
+        // booked rows in the account currency only, so recompute that amount.
+        if !account.balance_derived && account.kind == AccountKind::CreditCard {
+            let stored: i64 = db.query_row(
+                "SELECT balance_cents FROM accounts WHERE id = ?1",
+                [account.id],
+                |r| r.get(0),
+            )?;
+            if stored == 0 && account.balance_cents != 0 {
+                let mut st = db.prepare(&format!(
+                    "SELECT t.booking_date, t.amount_cents,
+                            t.counterparty || ' ' || t.purpose || ' ' || t.booking_text
+                       FROM transactions t
+                      WHERE t.account_id = ?1 AND t.deleted_ms IS NULL
+                        AND NOT ({PENDING_SQL})
+                        AND (trim(t.currency) = '' OR upper(trim(t.currency)) = ?2)
+                      ORDER BY t.booking_date, t.id"
+                ))?;
+                let rows: Vec<(String, i64, String)> = st
+                    .query_map(params![account.id, currency], |r| {
+                        Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                    })?
+                    .collect::<Result<_, _>>()?;
+                account.balance_cents = crate::connectors::open_card_balance(&rows).unwrap_or(0);
+                account.balance_date = today.clone();
+            }
+        }
+        let ids: Option<std::collections::HashSet<i64>> = request
+            .booking_ids
+            .as_ref()
+            .map(|ids| ids.iter().copied().collect());
+        let entries = camt_entries(
+            &db,
+            account.id,
+            date_from.as_deref(),
+            date_to.as_deref(),
+            ids.as_ref(),
+        )?;
+        let entries: Vec<CamtEntry> = entries.into_iter().map(|(_, e)| e).collect();
+        let first = entries.first().map(|e| e.date.clone());
+        let last = entries.last().map(|e| e.date.clone());
+        // An end date after today describes a statement up to today (or up to
+        // the last exported booking, when that lies further ahead).
+        let to = date_to
+            .map(|to| to.min(last.clone().unwrap_or_default().max(today.clone())))
+            .or(last)
+            .unwrap_or(today);
+        // Without bookings the end date also bounds the start, so a request for
+        // "everything up to <past day>" stays a valid, empty statement.
+        let from = date_from.or(first).unwrap_or_else(|| to.clone());
+        if to < from {
+            return Err(CoreError::InvalidInput {
+                message: tr("Der Zeitraum endet vor seinem Beginn.").to_string(),
+            });
+        }
+        let opening = booked_balance(&db, &account, &currency, &previous_day(&from))?;
+        let closing = booked_balance(&db, &account, &currency, &to)?;
+        Ok(statement_xml(
+            &account,
+            &currency,
+            &entries,
+            request.version,
+            (opening, &from),
+            (closing, &to),
+            &request.created_at,
+        ))
+    }
+}
+
+fn parse_day(s: &str) -> CoreResult<String> {
+    let day: String = s.trim().chars().take(10).collect();
+    chrono::NaiveDate::parse_from_str(&day, "%Y-%m-%d")
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .map_err(|_| CoreError::InvalidInput {
+            message: trf("Ungültiges Datum: {0}", &[&s]),
+        })
+}
+
+fn previous_day(day: &str) -> String {
+    chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
+        .ok()
+        .and_then(|d| d.pred_opt())
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
+
+/// ISO 4217 code of the account; `EUR` where none is stored.
+fn account_currency(s: &str) -> String {
+    let c = s.trim().to_ascii_uppercase();
+    if c.len() == 3 && c.bytes().all(|b| b.is_ascii_uppercase()) {
+        c
+    } else {
+        "EUR".into()
+    }
+}
+
+/// The account's bookings in `[from, to]` (by day), oldest first, with their
+/// ids; `ids` narrows them without reading the others.
+fn camt_entries(
+    db: &Connection,
+    account_id: i64,
+    from: Option<&str>,
+    to: Option<&str>,
+    ids: Option<&std::collections::HashSet<i64>>,
+) -> CoreResult<Vec<(i64, CamtEntry)>> {
+    let id_filter = ids
+        .map(|ids| {
+            // SQLite has no `IN ()`: an empty marking is an empty statement.
+            if ids.is_empty() {
+                return "AND 0".to_string();
+            }
+            let list = (0..ids.len())
+                .map(|n| format!("?{}", n + 4))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("AND t.id IN ({list})")
+        })
+        .unwrap_or_default();
+    let mut st = db.prepare(&format!(
+        "SELECT t.id, {DAY_SQL}, substr(t.value_date, 1, 10), t.amount_cents, t.currency, t.counterparty,
+                t.counterparty_iban, t.purpose, t.booking_text, t.purpose_code, t.gvc, t.end_to_end_id,
+                t.mandate_id, t.creditor_id, t.external_id, {PENDING_SQL}
+           FROM transactions t
+          WHERE t.account_id = ?1 AND t.deleted_ms IS NULL
+            AND (?2 IS NULL OR t.booking_date >= ?2)
+            AND (?3 IS NULL OR t.booking_date < date(?3, '+1 day')) {id_filter}
+          ORDER BY t.booking_date, t.id"
+    ))?;
+    let mut args = vec![
+        rusqlite::types::Value::Integer(account_id),
+        from.map_or(rusqlite::types::Value::Null, |s| {
+            rusqlite::types::Value::Text(s.to_string())
+        }),
+        to.map_or(rusqlite::types::Value::Null, |s| {
+            rusqlite::types::Value::Text(s.to_string())
+        }),
+    ];
+    if let Some(ids) = ids {
+        args.extend(ids.iter().map(|&id| rusqlite::types::Value::Integer(id)));
+    }
+    let rows = st.query_map(rusqlite::params_from_iter(args), |r| {
+        Ok((
+            r.get(0)?,
+            CamtEntry {
+                date: r.get(1)?,
+                value_date: r.get(2)?,
+                amount_cents: r.get(3)?,
+                currency: r.get(4)?,
+                counterparty: r.get(5)?,
+                counterparty_iban: r.get(6)?,
+                purpose: r.get(7)?,
+                booking_text: r.get(8)?,
+                purpose_code: r.get(9)?,
+                gvc: r.get(10)?,
+                end_to_end_id: r.get(11)?,
+                mandate_id: r.get(12)?,
+                creditor_id: r.get(13)?,
+                external_id: r.get(14)?,
+                pending: r.get(15)?,
+            },
+        ))
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// Booked balance at the end of `day` in `currency` – pending entries never
+/// count, days lose their time part, other currencies stay out.
+///
+/// - A computed balance (`balance_derived`) is the opening balance plus every
+///   booking from its date on, so the booked entries up to `day` are summed.
+/// - A balance from the bank holds at the end of `balance_date` (today if
+///   unknown) without pending entries: booked entries between that day and
+///   `day` are taken off or added.
+fn booked_balance(db: &Connection, a: &Account, currency: &str, day: &str) -> CoreResult<i64> {
+    let booked = format!("t.deleted_ms IS NULL AND NOT ({PENDING_SQL})");
+    let same_currency = "(trim(t.currency) = '' OR upper(trim(t.currency)) = ?4)";
+    if a.balance_derived {
+        let since = if a.opening_balance_cents.is_some() {
+            a.opening_balance_date.as_str()
+        } else {
+            ""
+        };
+        // The Startsaldo is the balance at the start of its date, so it covers
+        // every earlier booking. A day before that date takes the bookings
+        // between it and the Startsaldo off again.
+        let delta: i64 = db.query_row(
+            &format!(
+                "SELECT IFNULL(SUM(CASE
+                      WHEN (?3 = '' OR {DAY_SQL} >= ?3) AND {DAY_SQL} <= ?2 THEN t.amount_cents
+                      WHEN {DAY_SQL} > ?2 AND {DAY_SQL} < ?3 THEN -t.amount_cents
+                      ELSE 0 END), 0)
+                   FROM transactions t
+                  WHERE t.account_id = ?1 AND {booked} AND {same_currency}
+                    AND t.booking_date >= min(?2, ?3)
+                    AND t.booking_date < date(max(?2, ?3), '+1 day')"
+            ),
+            params![a.id, day, since, currency],
+            |r| r.get(0),
+        )?;
+        return Ok(a.opening_balance_cents.unwrap_or(0) + delta);
+    }
+    let at: String = a.balance_date.chars().take(10).collect();
+    let anchor = if at.is_empty() {
+        chrono::Local::now()
+            .date_naive()
+            .format("%Y-%m-%d")
+            .to_string()
+    } else {
+        at
+    };
+    let delta: i64 = db.query_row(
+        &format!(
+            "SELECT IFNULL(SUM(CASE
+                      WHEN {DAY_SQL} > ?3 AND {DAY_SQL} <= ?2 THEN t.amount_cents
+                      WHEN {DAY_SQL} > ?2 AND {DAY_SQL} <= ?3 THEN -t.amount_cents
+                      ELSE 0 END), 0)
+               FROM transactions t
+              WHERE t.account_id = ?1 AND {booked} AND {same_currency}
+                AND t.booking_date >= min(?2, ?3)
+                AND t.booking_date < date(max(?2, ?3), '+1 day')"
+        ),
+        params![a.id, day, anchor, currency],
+        |r| r.get(0),
+    )?;
+    Ok(a.balance_cents + delta)
+}
+
+/// The XML of one statement; `entries` are sorted by day.
+fn statement_xml(
+    account: &Account,
+    currency: &str,
+    entries: &[CamtEntry],
     version: CamtVersion,
-    opening_cents: i64,
-    opening_date: String,
-    created_at: String,
+    opening: (i64, &str),
+    closing: (i64, &str),
+    created_at: &str,
 ) -> String {
     let v08 = version == CamtVersion::V08;
     let ns = if v08 { "08" } else { "02" };
-    let mut ordered: Vec<&Booking> = bookings.iter().collect();
-    ordered.sort_by(|a, b| {
-        a.booking_date
-            .cmp(&b.booking_date)
-            .then_with(|| a.id.cmp(&b.id))
-    });
-    let booked_entries: Vec<&&Booking> = ordered.iter().filter(|b| !b.is_pending).collect();
-    let booked: i64 = booked_entries.iter().map(|b| b.amount_cents).sum();
-    let closing = opening_cents + booked;
-    let acct_ccy = account.currency.trim();
-    let currency = if !acct_ccy.is_empty() {
-        acct_ccy.to_string()
-    } else {
-        ordered
-            .first()
-            .map(|b| b.currency.clone())
-            .filter(|c| !c.trim().is_empty())
-            .unwrap_or_else(|| "EUR".to_string())
-    };
-    let from = booked_entries
-        .first()
-        .map(|b| b.booking_date.clone())
-        .or_else(|| ordered.first().map(|b| b.booking_date.clone()))
-        .filter(|d| !d.is_empty())
-        .unwrap_or_else(|| opening_date.clone());
-    let to = booked_entries
-        .last()
-        .map(|b| b.booking_date.clone())
-        .or_else(|| ordered.last().map(|b| b.booking_date.clone()))
-        .filter(|d| !d.is_empty())
-        .unwrap_or_else(|| opening_date.clone());
-    let stmt_id = truncate(&format!("GC-{}-{from}-{to}", account.id), 35);
-    let ts_digits: String = created_at
-        .chars()
-        .filter(|c| c.is_ascii_digit())
-        .take(14)
-        .collect();
-    let msg_id = if ts_digits.is_empty() {
-        truncate(&format!("GC-MSG-{}-{from}-{to}", account.id), 35)
-    } else {
-        truncate(&format!("GC-MSG-{}-{to}-{ts_digits}", account.id), 35)
-    };
+    // Unique per export (ISO 20022): readers drop a repeated message id.
+    let msg_id = format!("GC{}", uuid::Uuid::new_v4().simple());
     let iban = compact_iban(&account.iban);
     let own_bic = if is_iban(&iban) {
         crate::connectors::fints_directory::bic_for_iban(iban.clone()).unwrap_or_default()
@@ -205,33 +468,31 @@ pub fn camt053_statement(
     out += &format!("<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:camt.053.001.{ns}\">\n");
     out += "<BkToCstmrStmt>\n";
     out += &format!(
-        "<GrpHdr><MsgId>{}</MsgId><CreDtTm>{}</CreDtTm><MsgPgntn><PgNb>1</PgNb><LastPgInd>true</LastPgInd></MsgPgntn></GrpHdr>\n",
-        esc(&msg_id),
-        esc(&created_at)
+        "<GrpHdr><MsgId>{msg_id}</MsgId><CreDtTm>{}</CreDtTm><MsgPgntn><PgNb>1</PgNb><LastPgInd>true</LastPgInd></MsgPgntn></GrpHdr>\n",
+        esc(created_at)
     );
     out += "<Stmt>\n";
     out += &format!(
-        "<Id>{}</Id><ElctrncSeqNb>1</ElctrncSeqNb><CreDtTm>{}</CreDtTm>",
-        esc(&stmt_id),
-        esc(&created_at)
+        "<Id>{msg_id}</Id><ElctrncSeqNb>1</ElctrncSeqNb><CreDtTm>{}</CreDtTm>",
+        esc(created_at)
     );
-    if from.len() == 10 && to.len() == 10 {
+    // The days OPBD/CLBD are dated for; `FrDtTm`/`ToDtTm` need a time part.
+    if opening.1.len() == 10 && closing.1.len() == 10 {
         out += &format!(
             "<FrToDt><FrDtTm>{}T00:00:00</FrDtTm><ToDtTm>{}T23:59:59</ToDtTm></FrToDt>",
-            esc(&from),
-            esc(&to)
+            esc(opening.1),
+            esc(closing.1)
         );
     }
     out += "\n";
+    // Acct: Id, Ccy, Nm, Ownr, Svcr – schema order.
     let fallback = format!("GC-{}", account.id);
     out += &format!(
-        "<Acct><Id>{}</Id><Ccy>{}</Ccy>",
-        account_id_xml(&iban, &account.account_number, &fallback),
-        esc(&currency)
+        "<Acct><Id>{}</Id><Ccy>{currency}</Ccy>",
+        account_id_xml(&iban, &account.account_number, &fallback)
     );
-    let acct_name = account.name.trim();
-    if !acct_name.is_empty() {
-        out += &format!("<Nm>{}</Nm>", esc(&truncate(acct_name, 70)));
+    if !account.name.trim().is_empty() {
+        out += &format!("<Nm>{}</Nm>", esc(&truncate(account.name.trim(), 70)));
     }
     let owner = account.owner.trim();
     if !owner.is_empty() {
@@ -244,15 +505,10 @@ pub fn camt053_statement(
         );
     }
     out += "</Acct>\n";
-    let open_date = if opening_date.is_empty() {
-        &from
-    } else {
-        &opening_date
-    };
-    out += &balance_xml("OPBD", opening_cents, &currency, open_date);
-    out += &balance_xml("CLBD", closing, &currency, &to);
-    for b in ordered {
-        out += &entry_xml(b, v08, &currency);
+    out += &balance_xml("OPBD", opening.0, currency, opening.1);
+    out += &balance_xml("CLBD", closing.0, currency, closing.1);
+    for e in entries {
+        out += &entry_xml(e, currency, owner, v08);
     }
     out += "</Stmt>\n</BkToCstmrStmt>\n</Document>\n";
     out
@@ -268,6 +524,31 @@ fn balance_xml(code: &str, cents: i64, currency: &str, date: &str) -> String {
     )
 }
 
+/// A party of `RltdPties` (`Dbtr` / `Cdtr`): name and, for a creditor, the
+/// SEPA creditor identifier (`Id/PrvtId/Othr`, scheme `SEPA`).
+fn party_xml(tag: &str, name: &str, creditor_id: &str, v08: bool) -> String {
+    let mut p = String::new();
+    if !name.is_empty() {
+        p += &format!("<Nm>{}</Nm>", esc(&truncate(name, 140)));
+    }
+    if !creditor_id.is_empty() {
+        p += &format!(
+            "<Id><PrvtId><Othr><Id>{}</Id><SchmeNm><Prtry>SEPA</Prtry></SchmeNm></Othr></PrvtId></Id>",
+            esc(&truncate(creditor_id, 35))
+        );
+    }
+    if p.is_empty() {
+        return p;
+    }
+    if v08 {
+        format!("<{tag}><Pty>{p}</Pty></{tag}>")
+    } else {
+        format!("<{tag}>{p}</{tag}>")
+    }
+}
+
+/// ISO bank transaction code (`Domn/Fmly/SubFmlyCd`) and the German DK code
+/// for a GVC; `SALA` purpose codes are salary payments.
 fn bk_tx_code(
     gvc: &str,
     debit: bool,
@@ -295,6 +576,8 @@ fn bk_tx_code(
     }
 }
 
+/// The purpose without a SEPA envelope (`EREF+…`, `MREF+…`, `SVWZ+`) when the
+/// bank delivered the references inside it.
 fn raw_remittance_purpose<'a>(purpose: &'a str, e2e: &str, mndt: &str) -> &'a str {
     let mut rest = purpose.trim();
     if !e2e.is_empty() {
@@ -315,22 +598,23 @@ fn raw_remittance_purpose<'a>(purpose: &'a str, e2e: &str, mndt: &str) -> &'a st
     purpose
 }
 
-fn detect_return_reason(b: &Booking) -> Option<&'static str> {
+/// SEPA return reason (`RtrInf`) from the GVC or the bank's text, when the
+/// booking is a return.
+fn detect_return_reason(gvc: &str, purpose: &str, booking_text: &str) -> Option<&'static str> {
     const CODES: &[&str] = &[
         "AC01", "AC04", "AC06", "AG01", "AG02", "AM04", "AM05", "BE05", "CNOR", "DNOR", "FF01",
         "FOCR", "MD01", "MD02", "MD06", "MD07", "MS02", "MS03", "NARR", "RC01", "RR01", "RR02",
         "RR03", "RR04", "SL01", "TM01",
     ];
-    let gvc = b.gvc.trim();
+    let text = booking_text.to_lowercase();
     let is_return_context = matches!(gvc, "009" | "109" | "159")
-        || b.booking_text.to_lowercase().contains("rücklastschrift")
-        || b.booking_text.to_lowercase().contains("ruecklastschrift")
-        || b.purpose.contains("RTRN+")
-        || b.purpose.contains("RTCD+");
-    for token in b
-        .purpose
+        || text.contains("rücklastschrift")
+        || text.contains("ruecklastschrift")
+        || purpose.contains("RTRN+")
+        || purpose.contains("RTCD+");
+    for token in purpose
         .split(|c: char| !c.is_ascii_alphanumeric())
-        .chain(b.booking_text.split(|c: char| !c.is_ascii_alphanumeric()))
+        .chain(booking_text.split(|c: char| !c.is_ascii_alphanumeric()))
     {
         if token.len() == 4 {
             let upper = token.to_ascii_uppercase();
@@ -348,33 +632,24 @@ fn detect_return_reason(b: &Booking) -> Option<&'static str> {
     None
 }
 
-fn entry_xml(b: &Booking, v08: bool, default_ccy: &str) -> String {
+fn entry_xml(b: &CamtEntry, account_currency: &str, owner: &str, v08: bool) -> String {
     let debit = b.amount_cents < 0;
     let ind = if debit { "DBIT" } else { "CRDT" };
-    let status = if b.is_pending { "PDNG" } else { "BOOK" };
-    let value = if b.value_date.is_empty() {
-        &b.booking_date
-    } else {
-        &b.value_date
-    };
-    let name = if !b.counterparty.trim().is_empty() {
-        &b.counterparty
-    } else {
-        &b.merchant.name
-    };
+    let status = if b.pending { "PDNG" } else { "BOOK" };
+    let currency = account_currency_or(&b.currency, account_currency);
+    let name = b.counterparty.trim();
     let e2e = b.end_to_end_id.trim();
-    let mndt = b.mandate_id.trim();
-    let cred_id = b.creditor_id.trim();
-    let acct_svcr_ref = b
+    let mandate = b.mandate_id.trim();
+    let creditor_id = b.creditor_id.trim();
+    let gvc = b.gvc.trim();
+    let purpose_code = b.purpose_code.trim();
+    let purpose = raw_remittance_purpose(&b.purpose, e2e, mandate);
+    // The bank's own reference; `external_id` is `camt:<ref>` for CAMT syncs.
+    let svcr_ref = b
         .external_id
         .strip_prefix("camt:")
         .map(str::trim)
         .filter(|s| !s.is_empty() && *s != "NONREF");
-    let raw_purpose = if !b.purpose.trim().is_empty() {
-        raw_remittance_purpose(&b.purpose, e2e, mndt)
-    } else {
-        &b.clean_purpose
-    };
     let peer_iban = compact_iban(&b.counterparty_iban);
     let peer_bic = if is_iban(&peer_iban) {
         crate::connectors::fints_directory::bic_for_iban(peer_iban.clone())
@@ -382,135 +657,113 @@ fn entry_xml(b: &Booking, v08: bool, default_ccy: &str) -> String {
         None
     };
     let bic_tag = if v08 { "BICFI" } else { "BIC" };
-    let entry_ccy = if b.currency.trim().is_empty() {
-        default_ccy
-    } else {
-        b.currency.trim()
-    };
 
     let mut e = String::from("<Ntry>");
     e += &format!(
-        "<Amt Ccy=\"{}\">{}</Amt><CdtDbtInd>{ind}</CdtDbtInd>",
-        esc(entry_ccy),
+        "<Amt Ccy=\"{currency}\">{}</Amt><CdtDbtInd>{ind}</CdtDbtInd>",
         xml_amount(b.amount_cents)
     );
+    // .08: Sts is a choice (ExternalEntryStatus1Code), .02: a plain code.
     e += &if v08 {
         format!("<Sts><Cd>{status}</Cd></Sts>")
     } else {
         format!("<Sts>{status}</Sts>")
     };
-    e += &format!(
-        "<BookgDt><Dt>{}</Dt></BookgDt><ValDt><Dt>{}</Dt></ValDt>",
-        esc(&b.booking_date),
-        esc(value)
-    );
-    if let Some(svcr_ref) = acct_svcr_ref {
+    e += &format!("<BookgDt><Dt>{}</Dt></BookgDt>", esc(&b.date));
+    if !b.value_date.is_empty() {
+        e += &format!("<ValDt><Dt>{}</Dt></ValDt>", esc(&b.value_date));
+    }
+    if let Some(reference) = svcr_ref {
         e += &format!(
             "<AcctSvcrRef>{}</AcctSvcrRef>",
-            esc(&truncate(svcr_ref, 35))
+            esc(&truncate(reference, 35))
         );
     }
-    let gvc = b.gvc.trim();
-    let code = b.purpose_code.trim();
-    let (swift_cd, fmly, sub_fmly) = bk_tx_code(gvc, debit, code);
-    let domn_xml = format!(
-        "<Domn><Cd>PMNT</Cd><Fmly><Cd>{fmly}</Cd><SubFmlyCd>{sub_fmly}</SubFmlyCd></Fmly></Domn>"
+    // BkTxCd is mandatory in both versions: the ISO domain/family for the GVC
+    // plus, for a numeric GVC, the German DK form `NTRF+<GVC>+000` that
+    // importers read. Anything else is classified by the ISO code alone (no
+    // proprietary code without an issuer).
+    let (swift_code, family, sub_family) = bk_tx_code(gvc, debit, purpose_code);
+    let domain = format!(
+        "<Domn><Cd>PMNT</Cd><Fmly><Cd>{family}</Cd><SubFmlyCd>{sub_family}</SubFmlyCd></Fmly></Domn>"
     );
     e += &if gvc.len() == 3 && gvc.bytes().all(|c| c.is_ascii_digit()) {
-        format!("<BkTxCd>{domn_xml}<Prtry><Cd>{swift_cd}+{gvc}+000</Cd><Issr>DK</Issr></Prtry></BkTxCd>")
-    } else if !gvc.is_empty() {
-        format!(
-            "<BkTxCd>{domn_xml}<Prtry><Cd>{}</Cd></Prtry></BkTxCd>",
-            esc(&truncate(gvc, 35))
-        )
+        format!("<BkTxCd>{domain}<Prtry><Cd>{swift_code}+{gvc}+000</Cd><Issr>DK</Issr></Prtry></BkTxCd>")
     } else {
-        format!("<BkTxCd>{domn_xml}<Prtry><Cd>{swift_cd}</Cd></Prtry></BkTxCd>")
+        format!("<BkTxCd>{domain}</BkTxCd>")
     };
     e += "<NtryDtls><TxDtls>";
-    if acct_svcr_ref.is_some() || !e2e.is_empty() || !mndt.is_empty() {
+    // TxDtls order: Refs, RltdPties, RltdAgts, Purp, RmtInf, RtrInf.
+    if svcr_ref.is_some() || !e2e.is_empty() || !mandate.is_empty() {
         e += "<Refs>";
-        if let Some(svcr_ref) = acct_svcr_ref {
+        if let Some(reference) = svcr_ref {
             e += &format!(
                 "<AcctSvcrRef>{}</AcctSvcrRef>",
-                esc(&truncate(svcr_ref, 35))
+                esc(&truncate(reference, 35))
             );
         }
         if !e2e.is_empty() {
             e += &format!("<EndToEndId>{}</EndToEndId>", esc(&truncate(e2e, 35)));
         }
-        if !mndt.is_empty() {
-            e += &format!("<MndtId>{}</MndtId>", esc(&truncate(mndt, 35)));
+        if !mandate.is_empty() {
+            e += &format!("<MndtId>{}</MndtId>", esc(&truncate(mandate, 35)));
         }
         e += "</Refs>";
     }
-    if !name.trim().is_empty() || !peer_iban.is_empty() || !cred_id.is_empty() {
-        let (party, acct, agent) = if debit {
-            ("Cdtr", "CdtrAcct", "CdtrAgt")
+    // The peer is the creditor of a debit, of a direct debit (a mandate or
+    // creditor id) and of a returned direct debit (GVC 009/109/159), also when
+    // that comes back as a credit.
+    let is_return = matches!(gvc, "009" | "109" | "159");
+    let peer_is_creditor = debit || is_return || !mandate.is_empty() || !creditor_id.is_empty();
+    let (debtor, creditor) = if peer_is_creditor {
+        (
+            party_xml("Dbtr", owner, "", v08),
+            party_xml("Cdtr", name, creditor_id, v08),
+        )
+    } else {
+        (
+            party_xml("Dbtr", name, "", v08),
+            party_xml("Cdtr", owner, "", v08),
+        )
+    };
+    let peer_acct = if peer_iban.is_empty() {
+        String::new()
+    } else {
+        let acct = if peer_is_creditor {
+            "CdtrAcct"
         } else {
-            ("Dbtr", "DbtrAcct", "DbtrAgt")
+            "DbtrAcct"
         };
-        let cred_id_xml = if !cred_id.is_empty() {
-            format!(
-                "<Id><PrvtId><Othr><Id>{}</Id><SchmeNm><Prtry>SEPA</Prtry></SchmeNm></Othr></PrvtId></Id>",
-                esc(&truncate(cred_id, 35))
-            )
+        format!(
+            "<{acct}><Id>{}</Id></{acct}>",
+            account_id_xml(&peer_iban, &peer_iban, "")
+        )
+    };
+    // RltdPties order: Dbtr, DbtrAcct, Cdtr, CdtrAcct.
+    let parties = if peer_is_creditor {
+        format!("{debtor}{creditor}{peer_acct}")
+    } else {
+        format!("{debtor}{peer_acct}{creditor}")
+    };
+    if !parties.is_empty() {
+        e += &format!("<RltdPties>{parties}</RltdPties>");
+    }
+    if let Some(bic) = peer_bic.filter(|b| !b.is_empty()) {
+        let agent = if peer_is_creditor {
+            "CdtrAgt"
         } else {
-            String::new()
+            "DbtrAgt"
         };
-        e += "<RltdPties>";
-        if !debit && !cred_id_xml.is_empty() {
-            if !name.trim().is_empty() {
-                let nm = esc(&truncate(name.trim(), 140));
-                e += &if v08 {
-                    format!("<Dbtr><Pty><Nm>{nm}</Nm></Pty></Dbtr>")
-                } else {
-                    format!("<Dbtr><Nm>{nm}</Nm></Dbtr>")
-                };
-            }
-            if !peer_iban.is_empty() {
-                e += &format!(
-                    "<DbtrAcct><Id>{}</Id></DbtrAcct>",
-                    account_id_xml(&peer_iban, &peer_iban, "")
-                );
-            }
-            e += &if v08 {
-                format!("<Cdtr><Pty>{cred_id_xml}</Pty></Cdtr>")
-            } else {
-                format!("<Cdtr>{cred_id_xml}</Cdtr>")
-            };
-        } else {
-            let extra_id = if debit { cred_id_xml.as_str() } else { "" };
-            if !name.trim().is_empty() || !extra_id.is_empty() {
-                let nm_xml = if !name.trim().is_empty() {
-                    format!("<Nm>{}</Nm>", esc(&truncate(name.trim(), 140)))
-                } else {
-                    String::new()
-                };
-                e += &if v08 {
-                    format!("<{party}><Pty>{nm_xml}{extra_id}</Pty></{party}>")
-                } else {
-                    format!("<{party}>{nm_xml}{extra_id}</{party}>")
-                };
-            }
-            if !peer_iban.is_empty() {
-                e += &format!(
-                    "<{acct}><Id>{}</Id></{acct}>",
-                    account_id_xml(&peer_iban, &peer_iban, "")
-                );
-            }
-        }
-        e += "</RltdPties>";
-        if let Some(bic) = peer_bic.filter(|b| !b.is_empty()) {
-            e += &format!(
-                "<RltdAgts><{agent}><FinInstnId><{bic_tag}>{}</{bic_tag}></FinInstnId></{agent}></RltdAgts>",
-                esc(&bic)
-            );
-        }
+        e += &format!(
+            "<RltdAgts><{agent}><FinInstnId><{bic_tag}>{}</{bic_tag}></FinInstnId></{agent}></RltdAgts>",
+            esc(&bic)
+        );
     }
-    if (1..=4).contains(&code.chars().count()) {
-        e += &format!("<Purp><Cd>{}</Cd></Purp>", esc(code));
+    // ExternalPurpose1Code: 1–4 characters.
+    if (1..=4).contains(&purpose_code.chars().count()) {
+        e += &format!("<Purp><Cd>{}</Cd></Purp>", esc(purpose_code));
     }
-    let lines = ustrd_lines(raw_purpose);
+    let lines = ustrd_lines(purpose);
     if !lines.is_empty() {
         e += "<RmtInf>";
         for l in lines {
@@ -518,22 +771,26 @@ fn entry_xml(b: &Booking, v08: bool, default_ccy: &str) -> String {
         }
         e += "</RmtInf>";
     }
-    if let Some(rsn) = detect_return_reason(b) {
-        e += &format!("<RtrInf><Rsn><Cd>{rsn}</Cd></Rsn></RtrInf>");
-    }
-    let btext = b.booking_text.trim();
-    if !btext.is_empty() {
-        e += &format!("<AddtlTxInf>{}</AddtlTxInf>", esc(&truncate(btext, 500)));
+    if let Some(reason) = detect_return_reason(gvc, &b.purpose, &b.booking_text) {
+        e += &format!("<RtrInf><Rsn><Cd>{reason}</Cd></Rsn></RtrInf>");
     }
     e += "</TxDtls></NtryDtls>";
-    if !btext.is_empty() {
-        e += &format!(
-            "<AddtlNtryInf>{}</AddtlNtryInf>",
-            esc(&truncate(btext, 500))
-        );
+    let text = b.booking_text.trim();
+    if !text.is_empty() {
+        e += &format!("<AddtlNtryInf>{}</AddtlNtryInf>", esc(&truncate(text, 500)));
     }
     e += "</Ntry>\n";
     e
+}
+
+/// An entry's ISO 4217 code; the account's where none (or no valid one) is stored.
+fn account_currency_or(s: &str, account_currency: &str) -> String {
+    let c = s.trim().to_ascii_uppercase();
+    if c.len() == 3 && c.bytes().all(|b| b.is_ascii_uppercase()) {
+        c
+    } else {
+        account_currency.to_string()
+    }
 }
 
 /// `<IBAN>` when `iban` is one, else `<Othr><Id>` (Max34Text): the schema's
@@ -605,70 +862,137 @@ pub fn esc(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::BookingFilter;
-    use crate::vault::Vault;
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::sync::Arc;
 
-    fn demo() -> (Arc<Vault>, PathBuf) {
-        let p = std::env::temp_dir().join(format!("girocrab-export-{}.db", uuid::Uuid::new_v4()));
-        let v = Vault::open(p.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
-        v.seed_demo_data().unwrap();
+    fn vault(tag: &str) -> (Arc<Vault>, PathBuf) {
+        let p = crate::test_support::thread_temp_path(tag);
+        let v = Vault::open(p.to_string_lossy().into(), vec![7u8; 32]).unwrap();
         (v, p)
     }
 
-    /// Demo bookings of one IBAN account plus edge cases: pending entry, control
-    /// characters, a long purpose and name, a non-IBAN counterparty, GVC forms.
-    fn fixture() -> (Account, Vec<Booking>) {
-        let (v, p) = demo();
-        let account = v
-            .list_accounts()
-            .unwrap()
-            .into_iter()
-            .find(|a| is_iban(&compact_iban(&a.iban)))
-            .expect("demo account with IBAN");
-        let filter = BookingFilter {
-            account_ids: vec![account.id],
-            ..BookingFilter::default()
-        };
-        let mut bookings: Vec<Booking> = v
-            .list_transactions(filter)
-            .unwrap()
-            .transactions
-            .into_iter()
-            .take(6)
-            .collect();
-        drop(v);
-        let _ = std::fs::remove_file(p);
-        assert!(bookings.len() >= 4, "demo bookings");
-        bookings[0].purpose = format!("Rechnung\u{1}Nr. 7 & <Sonder> \u{b}{}", "x".repeat(300));
-        bookings[0].clean_purpose.clear();
-        bookings[0].gvc.clear();
-        bookings[0].purpose_code = "SALA".into();
-        bookings[1].is_pending = true;
-        bookings[1].counterparty_iban = "1234567890".into();
-        bookings[2].counterparty = "N".repeat(200);
-        bookings[2].merchant.name = "ShouldNotOverrideCounterparty".into();
-        bookings[2].end_to_end_id = "E2E-REF-42".into();
-        bookings[2].mandate_id = "MANDAT-99".into();
-        bookings[2].creditor_id = "DE98ZZZ09999999999".into();
-        bookings[2].external_id = "camt:BANKREF-77".into();
-        bookings[2].gvc = "105".into();
-        bookings[2].purpose = "Rücklastschrift MD06 Beitrag".into();
-        bookings[3].gvc = "153".into();
-        (account, bookings)
+    fn group(db: &Connection) -> i64 {
+        db.execute(
+            "INSERT INTO account_groups(name, sf_symbol, sort_order) VALUES ('G', 'tray', 1)
+             ON CONFLICT DO NOTHING",
+            [],
+        )
+        .unwrap();
+        db.query_row("SELECT id FROM account_groups WHERE name = 'G'", [], |r| {
+            r.get(0)
+        })
+        .unwrap()
     }
 
-    fn statement(account: &Account, bookings: &[Booking], version: CamtVersion) -> String {
-        camt053_statement(
-            account.clone(),
-            bookings.to_vec(),
-            version,
-            100_000,
-            "2025-01-01".into(),
-            "2025-03-31T12:00:00+02:00".into(),
+    /// An account with a balance the bank reported at `balance_date`.
+    fn bank_account(v: &Vault, tag: &str, currency: &str, balance: i64, balance_date: &str) -> i64 {
+        let db = v.db().unwrap();
+        let g = group(&db);
+        db.execute(
+            "INSERT INTO bank_connections(connector, display_name) VALUES ('fints', 'Bank')",
+            [],
         )
+        .unwrap();
+        let c = db.last_insert_rowid();
+        db.execute(
+            "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban,
+                                  account_number, currency, kind, balance_cents, balance_date, balance_derived)
+             VALUES (?1, ?2, ?3, 'Giro', 'Bank', 'Erika Muster', 'DE02120300000000202051',
+                     '4711', ?4, 'checking', ?5, ?6, 0)",
+            params![c, g, format!("bank-{tag}"), currency, balance, balance_date],
+        )
+        .unwrap();
+        db.last_insert_rowid()
+    }
+
+    /// An account whose balance GiroCrab computes: an optional Startsaldo plus
+    /// the bookings. `balance_cents` mirrors what the list shows.
+    fn computed_account(
+        v: &Vault,
+        tag: &str,
+        kind: &str,
+        opening: Option<i64>,
+        opening_date: &str,
+    ) -> i64 {
+        let db = v.db().unwrap();
+        let g = group(&db);
+        db.execute(
+            "INSERT INTO accounts(group_id, external_ref, name, currency, kind, balance_cents, balance_date)
+             VALUES (?1, ?2, 'Konto', 'EUR', ?3, 0, '')",
+            params![g, format!("computed-{tag}"), kind],
+        )
+        .unwrap();
+        let id = db.last_insert_rowid();
+        if let Some(cents) = opening {
+            db.execute(
+                "INSERT INTO opening_balances(account_id, opening_date, opening_cents, updated_ms)
+                 VALUES (?1, ?2, ?3, 0)",
+                params![id, opening_date, cents],
+            )
+            .unwrap();
+        }
+        id
+    }
+
+    fn add(v: &Vault, account: i64, tag: &str, day: &str, cents: i64) -> i64 {
+        add_in(v, account, tag, day, cents, "EUR")
+    }
+
+    fn add_in(v: &Vault, account: i64, tag: &str, day: &str, cents: i64, currency: &str) -> i64 {
+        let db = v.db().unwrap();
+        db.execute(
+            "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, currency,
+                                      counterparty, counterparty_iban, purpose, booking_text)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'Gegenpartei', '', '', '')",
+            params![account, tag, day, cents, currency],
+        )
+        .unwrap();
+        db.last_insert_rowid()
+    }
+
+    /// `days` from today (`-5` = five days ago).
+    fn day(offset: i64) -> String {
+        (chrono::Local::now().date_naive() + chrono::Duration::days(offset))
+            .format("%Y-%m-%d")
+            .to_string()
+    }
+
+    fn export(
+        v: &Vault,
+        account: i64,
+        from: Option<&str>,
+        to: Option<&str>,
+        ids: Option<Vec<i64>>,
+        version: CamtVersion,
+    ) -> String {
+        v.camt053_export(Camt053Request {
+            account_id: account,
+            date_from: from.map(str::to_string),
+            date_to: to.map(str::to_string),
+            booking_ids: ids,
+            version,
+            created_at: "2026-03-31T12:00:00+02:00".into(),
+        })
+        .unwrap()
+    }
+
+    /// Cents and currency of the `OPBD` / `CLBD` balance.
+    fn balance(xml: &str, code: &str) -> (i64, String) {
+        let bal = xml
+            .split("<Bal>")
+            .find(|b| b.contains(&format!("<Cd>{code}</Cd>")))
+            .and_then(|b| b.split("</Bal>").next())
+            .unwrap_or_else(|| panic!("{code} in {xml}"));
+        let amt = bal.split("<Amt Ccy=\"").nth(1).unwrap();
+        let currency = amt.split('"').next().unwrap().to_string();
+        let text = amt.split('>').nth(1).unwrap().split('<').next().unwrap();
+        let (euro, cent) = text.split_once('.').unwrap();
+        let mut cents = euro.parse::<i64>().unwrap() * 100 + cent.parse::<i64>().unwrap();
+        if bal.contains("<CdtDbtInd>DBIT</CdtDbtInd>") {
+            cents = -cents;
+        }
+        (cents, currency)
     }
 
     /// `xmllint --schema` against the official ISO 20022 XSD; skipped where
@@ -695,76 +1019,497 @@ mod tests {
         }
     }
 
+    /// A bank statement with every optional detail: pending entry, control
+    /// characters, a long purpose and counterparty, SEPA references, both GVC
+    /// forms and a value date.
+    fn rich(v: &Vault) -> i64 {
+        let a = bank_account(v, "rich", "EUR", 1_000_000, &day(0));
+        let one = add(v, a, "b1", &day(-20), 500_000);
+        let pending = add(v, a, "pending-1", &day(-2), -50_000);
+        let debit = add(v, a, "b3", &day(-5), -10_000);
+        let gvc = add(v, a, "b4", &day(-1), -1_000);
+        let svwz = add(v, a, "b5", &day(-4), 2_000);
+        let ret = add(v, a, "b6", &day(-3), 7_000);
+        let db = v.db().unwrap();
+        db.execute(
+            "UPDATE transactions SET purpose = ?1, purpose_code = 'SALA' WHERE id = ?2",
+            params![
+                format!("Rechnung\u{1}Nr. 7 & <Sonder> \u{b}{}", "x".repeat(300)),
+                one
+            ],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE transactions SET counterparty_iban = '1234567890' WHERE id = ?1",
+            [pending],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE transactions SET counterparty = ?1, end_to_end_id = 'E2E-7', mandate_id = 'M-7',
+                    creditor_id = 'DE98ZZZ09999999999', booking_text = 'SEPA-Lastschrift',
+                    value_date = ?2, external_id = 'camt:BANKREF-77'
+             WHERE id = ?3",
+            params![format!("{} <&>", "N".repeat(200)), day(-6), debit],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE transactions SET purpose = 'EREF+SVWZ-9 MREF+M-9 SVWZ+Stripped purpose',
+                    end_to_end_id = 'SVWZ-9', mandate_id = 'M-9'
+             WHERE id = ?1",
+            [svwz],
+        )
+        .unwrap();
+        db.execute(
+            "UPDATE transactions SET gvc = '109', booking_text = 'Rücklastschrift' WHERE id = ?1",
+            [ret],
+        )
+        .unwrap();
+        db.execute("UPDATE transactions SET gvc = '153' WHERE id = ?1", [gvc])
+            .unwrap();
+        drop(db);
+        a
+    }
+
     #[test]
     fn camt053_validates_against_iso20022_schemas() {
-        let (account, bookings) = fixture();
+        let (v, _) = vault("camt-xsd");
+        let a = rich(&v);
         for (version, schema) in [
             (CamtVersion::V02, "camt.053.001.02"),
             (CamtVersion::V08, "camt.053.001.08"),
         ] {
-            let xml = statement(&account, &bookings, version);
-            assert!(!xml.contains('\u{1}'));
+            let xml = export(&v, a, Some(&day(-30)), Some(&day(0)), None, version);
+            assert!(!xml.contains('\u{1}'), "{xml}");
             validate(&xml, schema);
         }
         // Account without IBAN → <Othr><Id>
-        let mut no_iban = account.clone();
-        no_iban.iban.clear();
-        no_iban.account_number = "4711".into();
-        let xml = statement(&no_iban, &bookings, CamtVersion::V08);
+        let no_iban = bank_account(&v, "no-iban", "EUR", 0, &day(0));
+        v.db()
+            .unwrap()
+            .execute(
+                "UPDATE accounts SET iban = '', owner = '' WHERE id = ?1",
+                [no_iban],
+            )
+            .unwrap();
+        add(&v, no_iban, "n1", &day(-1), -100);
+        let xml = export(
+            &v,
+            no_iban,
+            Some(&day(-30)),
+            Some(&day(0)),
+            None,
+            CamtVersion::V08,
+        );
         assert!(xml.contains("<Othr><Id>4711</Id></Othr>"), "{xml}");
+        // No owner: the account name stays in Nm, Ownr is omitted.
+        assert!(xml.contains("<Nm>Giro</Nm>"), "{xml}");
+        assert!(!xml.contains("<Ownr>"), "{xml}");
         validate(&xml, "camt.053.001.08");
     }
 
+    /// #483 (1, 2, 6): pending entries and bookings after today never move the
+    /// balances, and a time part in `booking_date` still lands on its day.
     #[test]
-    fn camt053_status_order_and_gvc() {
-        let (account, bookings) = fixture();
-        let v08 = statement(&account, &bookings, CamtVersion::V08);
-        let v02 = statement(&account, &bookings, CamtVersion::V02);
-        assert!(v08.contains("<Sts><Cd>BOOK</Cd></Sts>"));
-        assert!(v08.contains("<Sts><Cd>PDNG</Cd></Sts>"));
-        assert!(v02.contains("<Sts>BOOK</Sts>"));
-        assert!(v02.contains("<Sts>PDNG</Sts>"));
-        assert!(v08.contains("<Prtry><Cd>NTRF+153+000</Cd><Issr>DK</Issr></Prtry>"));
-        assert!(v08.contains("<Prtry><Cd>NDDT+105+000</Cd><Issr>DK</Issr></Prtry>"));
-        assert!(v08.contains(
-            "<Domn><Cd>PMNT</Cd><Fmly><Cd>IDDT</Cd><SubFmlyCd>ESDD</SubFmlyCd></Fmly></Domn>"
-        ));
-        assert!(v08.contains("<EndToEndId>E2E-REF-42</EndToEndId>"));
-        assert!(v08.contains("<MndtId>MANDAT-99</MndtId>"));
-        assert!(v08.contains("<AcctSvcrRef>BANKREF-77</AcctSvcrRef>"));
-        assert!(v08.contains("<Id>DE98ZZZ09999999999</Id>"));
-        assert!(v08.contains("<RtrInf><Rsn><Cd>MD06</Cd></Rsn></RtrInf>"));
-        assert!(!v08.contains("ShouldNotOverrideCounterparty"));
-        assert!(v08.contains("<MsgPgntn><PgNb>1</PgNb><LastPgInd>true</LastPgInd></MsgPgntn>"));
-        assert!(v08.contains("<FrToDt><FrDtTm>"));
-        for xml in [&v02, &v08] {
-            if let (Some(ownr), Some(svcr)) = (xml.find("<Ownr>"), xml.find("<Svcr>")) {
-                assert!(ownr < svcr);
-            }
-            let entry = xml.split("<Ntry>").find(|e| e.contains("<Purp>")).unwrap();
-            assert!(entry.find("<Purp>").unwrap() < entry.find("<RmtInf>").unwrap());
-            assert!(entry.matches("<Ustrd>").count() >= 3);
+    fn camt053_balances_ignore_pending_and_future_bookings() {
+        let (v, _) = vault("camt-balances");
+        // Bank balance 1.000,00 from today.
+        let bank = bank_account(&v, "pending", "EUR", 100_000, &day(0));
+        add(&v, bank, "b1", &day(-20), 50_000);
+        add(&v, bank, "b2", &day(-5), -10_000);
+        v.db()
+            .unwrap()
+            .execute(
+                "UPDATE transactions SET booking_date = ?1 WHERE account_id = ?2 AND external_id = 'b2'",
+                params![format!("{}T10:00:00", day(-5)), bank],
+            )
+            .unwrap();
+        add(&v, bank, "pending-1", &day(-2), -5_000);
+        let xml = export(
+            &v,
+            bank,
+            Some(&day(-30)),
+            Some(&day(0)),
+            None,
+            CamtVersion::V08,
+        );
+        assert_eq!(balance(&xml, "OPBD").0, 60_000, "{xml}");
+        assert_eq!(balance(&xml, "CLBD").0, 100_000, "{xml}");
+
+        // Computed balance: sum of all bookings, the future one included.
+        let computed = computed_account(&v, "future", "checking", None, "");
+        add(&v, computed, "c1", &day(-40), 100_000);
+        add(&v, computed, "c2", &day(-10), -10_000);
+        add(&v, computed, "c3", &day(3), -20_000);
+        let xml = export(
+            &v,
+            computed,
+            Some(&day(-30)),
+            Some(&day(0)),
+            None,
+            CamtVersion::V08,
+        );
+        assert_eq!(balance(&xml, "OPBD").0, 100_000, "{xml}");
+        assert_eq!(balance(&xml, "CLBD").0, 90_000, "{xml}");
+        // The future booking is not part of a statement that ends today.
+        assert_eq!(xml.matches("<Ntry>").count(), 1, "{xml}");
+    }
+
+    /// #483 (3): a bank balance is valid at its `balance_date`, not today.
+    #[test]
+    fn camt053_honours_the_balance_date() {
+        let (v, _) = vault("camt-balance-date");
+        let a = bank_account(&v, "old", "EUR", 100_000, &day(-10));
+        add(&v, a, "b1", &day(-20), 20_000);
+        add(&v, a, "b2", &day(-3), -10_000);
+        let xml = export(
+            &v,
+            a,
+            Some(&day(-30)),
+            Some(&day(0)),
+            None,
+            CamtVersion::V08,
+        );
+        assert_eq!(balance(&xml, "OPBD").0, 80_000, "{xml}");
+        assert_eq!(balance(&xml, "CLBD").0, 90_000, "{xml}");
+    }
+
+    /// #483 (4): the statement uses the account's currency, entries in another
+    /// one keep theirs and stay out of the balances, an empty code falls back.
+    #[test]
+    fn camt053_currency_comes_from_the_account() {
+        let (v, _) = vault("camt-currency");
+        let usd = bank_account(&v, "usd", "USD", 100_000, &day(0));
+        add_in(&v, usd, "u1", &day(-5), -10_000, "USD");
+        let xml = export(
+            &v,
+            usd,
+            Some(&day(-30)),
+            Some(&day(0)),
+            None,
+            CamtVersion::V08,
+        );
+        assert_eq!(balance(&xml, "OPBD"), (110_000, "USD".into()), "{xml}");
+        assert_eq!(balance(&xml, "CLBD"), (100_000, "USD".into()), "{xml}");
+        assert!(xml.contains("<Ccy>USD</Ccy>"), "{xml}");
+
+        let eur = bank_account(&v, "eur-mixed", "EUR", 100_000, &day(0));
+        add_in(&v, eur, "m1", &day(-6), -1_000, "USD");
+        add_in(&v, eur, "m2", &day(-5), -10_000, "EUR");
+        add_in(&v, eur, "m3", &day(-4), 500, "");
+        let xml = export(
+            &v,
+            eur,
+            Some(&day(-30)),
+            Some(&day(0)),
+            None,
+            CamtVersion::V08,
+        );
+        assert_eq!(balance(&xml, "OPBD"), (109_500, "EUR".into()), "{xml}");
+        assert_eq!(balance(&xml, "CLBD"), (100_000, "EUR".into()), "{xml}");
+        assert!(xml.contains("<Amt Ccy=\"USD\">10.00</Amt>"), "{xml}");
+        assert!(xml.contains("<Amt Ccy=\"EUR\">5.00</Amt>"), "{xml}");
+        validate(&xml, "camt.053.001.08");
+    }
+
+    /// #483 (5): a loan's balance is no sum of its own bookings, a depot has
+    /// none either – both are refused in the core.
+    #[test]
+    fn camt053_refuses_loans_and_depots() {
+        let (v, _) = vault("camt-refused");
+        for kind in ["loan", "brokerage"] {
+            let id = computed_account(&v, kind, kind, None, "");
+            add(&v, id, "x", &day(-1), -30_000);
+            let err = v
+                .camt053_export(Camt053Request {
+                    account_id: id,
+                    date_from: None,
+                    date_to: None,
+                    booking_ids: None,
+                    version: CamtVersion::V08,
+                    created_at: "2026-03-31T12:00:00+02:00".into(),
+                })
+                .unwrap_err();
+            assert!(
+                matches!(err, CoreError::InvalidInput { .. }),
+                "{kind}: {err:?}"
+            );
         }
     }
 
+    /// #483 (#403): marked bookings are allowed – the balances stay the real
+    /// ones at the edges of the marked period, even with unmarked entries.
+    #[test]
+    fn camt053_marked_bookings_keep_the_real_balances() {
+        let (v, _) = vault("camt-selection");
+        let a = bank_account(&v, "selection", "EUR", 100_000, &day(0));
+        let first = add(&v, a, "b1", &day(-20), 50_000);
+        add(&v, a, "b2", &day(-5), -10_000);
+        let last = add(&v, a, "b3", &day(-1), -2_000);
+        let xml = export(&v, a, None, None, Some(vec![first, last]), CamtVersion::V08);
+        assert_eq!(xml.matches("<Ntry>").count(), 2, "{xml}");
+        // The unmarked -100,00 entry stays out.
+        assert!(!xml.contains("<Amt Ccy=\"EUR\">100.00</Amt>"), "{xml}");
+        assert_eq!(balance(&xml, "OPBD").0, 62_000, "{xml}");
+        assert_eq!(balance(&xml, "CLBD").0, 100_000, "{xml}");
+    }
+
+    /// #483 (7–18): bank data stays as delivered, the missing references and
+    /// parties are written, and two exports never share a message id.
+    #[test]
+    fn camt053_writes_bank_data_and_references() {
+        let (v, _) = vault("camt-details");
+        let a = rich(&v);
+        let xml = export(
+            &v,
+            a,
+            Some(&day(-30)),
+            Some(&day(0)),
+            None,
+            CamtVersion::V08,
+        );
+        // Account: name, owner only when set.
+        assert!(
+            xml.contains(
+                "<Acct><Id><IBAN>DE02120300000000202051</IBAN></Id><Ccy>EUR</Ccy><Nm>Giro</Nm>\
+             <Ownr><Nm>Erika Muster</Nm></Ownr>"
+            ),
+            "{xml}"
+        );
+        // Pagination and statement period.
+        assert!(
+            xml.contains("<MsgPgntn><PgNb>1</PgNb><LastPgInd>true</LastPgInd></MsgPgntn>"),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(&format!(
+                "<FrToDt><FrDtTm>{}T00:00:00</FrDtTm><ToDtTm>{}T23:59:59</ToDtTm></FrToDt>",
+                day(-30),
+                day(0)
+            )),
+            "{xml}"
+        );
+        // Bank purpose (no cleaned text, control characters dropped).
+        assert!(xml.contains("RechnungNr. 7 &amp; &lt;Sonder&gt;"), "{xml}");
+        assert!(!xml.contains('\u{1}'));
+        // A SEPA envelope around the purpose is unwrapped.
+        assert!(xml.contains("<Ustrd>Stripped purpose</Ustrd>"), "{xml}");
+        // Direct debit: bank reference, references, creditor id, owner as debtor.
+        let debit = xml.split("<Ntry>").find(|e| e.contains("E2E-7")).unwrap();
+        assert!(
+            debit.contains("<AcctSvcrRef>BANKREF-77</AcctSvcrRef>"),
+            "{debit}"
+        );
+        assert!(
+            debit.contains(
+                "<Refs><AcctSvcrRef>BANKREF-77</AcctSvcrRef><EndToEndId>E2E-7</EndToEndId>\
+                 <MndtId>M-7</MndtId></Refs>"
+            ),
+            "{debit}"
+        );
+        assert!(debit.contains("<Cdtr><Pty><Nm>",), "{debit}");
+        assert!(debit.contains(
+            "<Id><PrvtId><Othr><Id>DE98ZZZ09999999999</Id><SchmeNm><Prtry>SEPA</Prtry></SchmeNm></Othr></PrvtId></Id>"
+        ), "{debit}");
+        assert!(
+            debit.contains("<Dbtr><Pty><Nm>Erika Muster</Nm></Pty></Dbtr>"),
+            "{debit}"
+        );
+        // Booking text as AddtlNtryInf; no GVC → ISO domain/family only.
+        assert!(
+            debit.contains("<AddtlNtryInf>SEPA-Lastschrift</AddtlNtryInf>"),
+            "{debit}"
+        );
+        assert!(debit.contains(
+            "<BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>IRCT</Cd><SubFmlyCd>OTHR</SubFmlyCd></Fmly></Domn></BkTxCd>"
+        ), "{debit}");
+        // A return carries its reason and keeps the direct debit's roles:
+        // the peer stays the creditor even though the amount is a credit.
+        let ret = xml.split("<Ntry>").find(|e| e.contains("NARR")).unwrap();
+        assert!(
+            ret.contains("<RtrInf><Rsn><Cd>NARR</Cd></Rsn></RtrInf>"),
+            "{ret}"
+        );
+        assert!(
+            ret.contains("<Dbtr><Pty><Nm>Erika Muster</Nm></Pty></Dbtr>"),
+            "{ret}"
+        );
+        assert!(
+            ret.contains("<Cdtr><Pty><Nm>Gegenpartei</Nm></Pty></Cdtr>"),
+            "{ret}"
+        );
+        // A credit without mandate: the peer is the debtor, the owner the creditor.
+        let credit = xml.split("<Ntry>").find(|e| e.contains("<Ustrd>")).unwrap();
+        assert!(
+            credit.contains("<Dbtr><Pty><Nm>Gegenpartei</Nm></Pty></Dbtr>"),
+            "{credit}"
+        );
+        assert!(
+            credit.contains("<Cdtr><Pty><Nm>Erika Muster</Nm></Pty></Cdtr>"),
+            "{credit}"
+        );
+        // GVC 153: ISO domain/family plus the German DK form.
+        assert!(xml.contains(
+            "<BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>IRCT</Cd><SubFmlyCd>ESCT</SubFmlyCd></Fmly></Domn>\
+             <Prtry><Cd>NTRF+153+000</Cd><Issr>DK</Issr></Prtry></BkTxCd>"
+        ), "{xml}");
+        // Value date only where the bank delivered one.
+        assert_eq!(xml.matches("<ValDt>").count(), 1, "{xml}");
+        // Pending entry listed as such.
+        assert!(xml.contains("<Sts><Cd>PDNG</Cd></Sts>"), "{xml}");
+        // A second export gets a new message id.
+        let again = export(
+            &v,
+            a,
+            Some(&day(-30)),
+            Some(&day(0)),
+            None,
+            CamtVersion::V08,
+        );
+        let id = |x: &str| {
+            x.split("<MsgId>")
+                .nth(1)
+                .unwrap()
+                .split('<')
+                .next()
+                .unwrap()
+                .to_string()
+        };
+        assert_ne!(id(&xml), id(&again));
+        assert_eq!(
+            id(&xml),
+            xml.split("<Id>").nth(1).unwrap().split('<').next().unwrap()
+        );
+    }
+
+    /// A GVC that is not a 3-digit DK code: the ISO domain/family classifies
+    /// the entry, and no proprietary code without an issuer is invented.
+    #[test]
+    fn camt053_non_numeric_gvc_uses_the_iso_code_only() {
+        let (v, _) = vault("camt-gvc-text");
+        let a = bank_account(&v, "gvc-text", "EUR", 0, &day(0));
+        let b = add(&v, a, "b1", &day(-1), -100);
+        v.db()
+            .unwrap()
+            .execute("UPDATE transactions SET gvc = 'CARD' WHERE id = ?1", [b])
+            .unwrap();
+        let xml = export(
+            &v,
+            a,
+            Some(&day(-30)),
+            Some(&day(0)),
+            None,
+            CamtVersion::V08,
+        );
+        assert!(!xml.contains("<Prtry>"), "{xml}");
+        assert!(
+            xml.contains(
+                "<BkTxCd><Domn><Cd>PMNT</Cd><Fmly><Cd>IRCT</Cd><SubFmlyCd>OTHR</SubFmlyCd></Fmly></Domn></BkTxCd>"
+            ),
+            "{xml}"
+        );
+        validate(&xml, "camt.053.001.08");
+    }
+
+    /// A dated Startsaldo is the balance at the start of its day and covers
+    /// everything before it: periods before that day must take later bookings
+    /// off it again, so CLBD = OPBD + booked entries holds on both sides.
+    #[test]
+    fn camt053_computed_balance_around_the_startsaldo() {
+        let (v, _) = vault("camt-startsaldo");
+        let a = computed_account(&v, "opening", "checking", Some(50_000), &day(-10));
+        add(&v, a, "b1", &day(-20), 20_000);
+        add(&v, a, "b2", &day(-5), -5_000);
+        // Before the Startsaldo: +200,00 lies in the period, the balance
+        // before it is the Startsaldo minus that entry.
+        let xml = export(
+            &v,
+            a,
+            Some(&day(-30)),
+            Some(&day(-12)),
+            None,
+            CamtVersion::V08,
+        );
+        assert_eq!(balance(&xml, "OPBD").0, 30_000, "{xml}");
+        assert_eq!(balance(&xml, "CLBD").0, 50_000, "{xml}");
+        // From the Startsaldo on: it is the opening balance, bookings count.
+        let xml = export(
+            &v,
+            a,
+            Some(&day(-10)),
+            Some(&day(0)),
+            None,
+            CamtVersion::V08,
+        );
+        assert_eq!(balance(&xml, "OPBD").0, 50_000, "{xml}");
+        assert_eq!(balance(&xml, "CLBD").0, 45_000, "{xml}");
+    }
+
+    /// A card stored with balance 0 gets the open cycle's amount from
+    /// `list_accounts`; that amount holds now, not at the stored date.
+    #[test]
+    fn camt053_anchors_a_zero_card_balance_at_today() {
+        let (v, _) = vault("camt-card");
+        let card = bank_account(&v, "card", "EUR", 0, &day(-20));
+        v.db()
+            .unwrap()
+            .execute(
+                "UPDATE accounts SET kind = 'credit_card' WHERE id = ?1",
+                [card],
+            )
+            .unwrap();
+        add(&v, card, "c1", &day(-10), -4_000);
+        add(&v, card, "pending-1", &day(-5), -2_000);
+        let xml = export(
+            &v,
+            card,
+            Some(&day(-30)),
+            Some(&day(0)),
+            None,
+            CamtVersion::V08,
+        );
+        // The hold is listed, but the anchor is the booked open cycle only.
+        assert_eq!(xml.matches("<Sts><Cd>PDNG</Cd></Sts>").count(), 1, "{xml}");
+        assert_eq!(balance(&xml, "OPBD").0, 0, "{xml}");
+        assert_eq!(balance(&xml, "CLBD").0, -4_000, "{xml}");
+    }
+
+    /// An empty marking is a valid, empty statement – not a broken SQL list.
+    #[test]
+    fn camt053_empty_marking_is_an_empty_statement() {
+        let (v, _) = vault("camt-empty-ids");
+        let a = bank_account(&v, "empty-ids", "EUR", 100_000, &day(0));
+        add(&v, a, "b1", &day(-1), -1_000);
+        let xml = export(&v, a, None, None, Some(vec![]), CamtVersion::V08);
+        assert_eq!(xml.matches("<Ntry>").count(), 0, "{xml}");
+        assert_eq!(balance(&xml, "CLBD").0, 100_000, "{xml}");
+    }
+
+    /// An end date alone bounds an empty statement instead of failing.
+    #[test]
+    fn camt053_accepts_an_end_date_without_bookings() {
+        let (v, _) = vault("camt-end-only");
+        let a = bank_account(&v, "end-only", "EUR", 100_000, &day(0));
+        add(&v, a, "later", &day(-20), -10_000);
+        let xml = export(&v, a, None, Some(&day(-40)), None, CamtVersion::V08);
+        assert_eq!(xml.matches("<Ntry>").count(), 0, "{xml}");
+        // The -100,00 lies after the end date and is not in the balance yet.
+        assert_eq!(balance(&xml, "OPBD").0, 110_000, "{xml}");
+        assert_eq!(balance(&xml, "CLBD").0, 110_000, "{xml}");
+    }
+
     /// The FinTS CAMT parser reads the export back: booked entries with their
-    /// amounts and GVC, pending ones skipped, CLBD = OPBD + booked entries.
+    /// amounts and GVC, pending ones skipped, CLBD as written.
     #[test]
     fn camt053_round_trips_through_the_camt_parser() {
-        let (account, bookings) = fixture();
-        let booked: Vec<&Booking> = bookings.iter().filter(|b| !b.is_pending).collect();
-        let sum: i64 = booked.iter().map(|b| b.amount_cents).sum();
+        let (v, _) = vault("camt-roundtrip");
+        let a = rich(&v);
         for version in [CamtVersion::V02, CamtVersion::V08] {
-            let xml = statement(&account, &bookings, version);
+            let xml = export(&v, a, Some(&day(-30)), Some(&day(0)), None, version);
             let (txs, report) = crate::connectors::fints::camt::parse(&xml, "");
-            assert_eq!(txs.len(), booked.len(), "{version:?}");
-            let mut got: Vec<i64> = txs.iter().map(|t| t.amount_cents).collect();
-            let mut want: Vec<i64> = booked.iter().map(|b| b.amount_cents).collect();
-            got.sort_unstable();
-            want.sort_unstable();
-            assert_eq!(got, want, "{version:?}");
-            assert_eq!(report.closing_balance_cents, Some(100_000 + sum));
+            assert_eq!(txs.len(), 5, "{version:?}: {xml}");
+            assert_eq!(report.closing_balance_cents, Some(balance(&xml, "CLBD").0));
             assert!(txs.iter().any(|t| t.gvc == "153"), "{version:?}");
+            assert!(txs.iter().any(|t| t.purpose_code == "SALA"), "{version:?}");
         }
     }
 
@@ -816,50 +1561,6 @@ mod tests {
         let lean = export_csv(vec![row], ExportCsvColumns::default(), vec![]);
         assert!(lean.contains("Datum;Konto;Name;Verwendungszweck;Betrag;Währung\r\n"));
         assert!(!lean.contains("Woche"));
-    }
-
-    #[test]
-    fn balance_history_ignores_pending_and_supports_single_foreign_currency_account() {
-        let (v, path) = demo();
-        let accounts = v.list_accounts().unwrap();
-        let acct = accounts
-            .iter()
-            .find(|a| is_iban(&compact_iban(&a.iban)))
-            .unwrap();
-        let base_hist = v.balance_history(vec![acct.id], 5).unwrap();
-        let today_bal = base_hist.last().unwrap().balance_cents;
-
-        // Insert a pending booking on today: must NOT shift earlier daily balances (#483 point 1).
-        let today_str = base_hist.last().unwrap().date.clone();
-        {
-            let db = v.db().unwrap();
-            db.execute(
-                "INSERT INTO transactions (account_id, external_id, booking_date, value_date, amount_cents, currency, counterparty, purpose) VALUES (?1, 'pending-test-483', ?2, ?2, -50000, 'EUR', 'Test', 'Pending')",
-                rusqlite::params![acct.id, today_str],
-            )
-            .unwrap();
-        }
-        let after_pending = v.balance_history(vec![acct.id], 5).unwrap();
-        assert_eq!(
-            after_pending.first().unwrap().balance_cents,
-            base_hist.first().unwrap().balance_cents
-        );
-        assert_eq!(after_pending.last().unwrap().balance_cents, today_bal);
-
-        // Single foreign-currency account is included when queried explicitly (#483 point 5).
-        {
-            let db = v.db().unwrap();
-            db.execute(
-                "UPDATE accounts SET currency = 'USD' WHERE id = ?1",
-                [acct.id],
-            )
-            .unwrap();
-        }
-        let usd_hist = v.balance_history(vec![acct.id], 5).unwrap();
-        assert_eq!(usd_hist.last().unwrap().balance_cents, today_bal);
-
-        drop(v);
-        let _ = std::fs::remove_file(path);
     }
 
     #[test]

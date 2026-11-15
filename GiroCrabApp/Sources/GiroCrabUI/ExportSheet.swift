@@ -92,11 +92,22 @@ struct ExportSheet: View {
             && selectedAccounts.count > 1
     }
 
+    /// A loan's balance is no sum of its own bookings, a depot has none: CAMT.053
+    /// refuses both in the core, so the picker does too (#483).
+    private func camtUsable(_ account: Account) -> Bool {
+        account.kind != .loan && account.kind != .brokerage
+    }
+
     private var camtAccountOK: Bool {
         guard options.format.isCamt else { return true }
-        guard effectiveAccountIDs.count == 1,
-              let account = model.account(for: effectiveAccountIDs[0]) else { return false }
-        return account.kind != .loan
+        let ids = effectiveAccountIDs
+        guard ids.count == 1, let id = ids.first, let account = model.account(for: id) else { return false }
+        return camtUsable(account)
+    }
+
+    /// First account a CAMT.053 statement can cover.
+    private var firstCamtAccount: Account? {
+        selectedAccounts.first(where: camtUsable) ?? poolAccounts.first(where: camtUsable)
     }
 
     private var canExport: Bool {
@@ -236,14 +247,10 @@ struct ExportSheet: View {
         .onChange(of: canUseSelection) { _, ok in
             if !ok, !isSelectionExport { options.scope = .filtered }
         }
-        .onChange(of: options.scope) { _, scope in
-            if scope == .selection, options.format.isCamt { options.format = .pdf }
-        }
         .onChange(of: options.format) { _, format in
             if format.isCamt {
                 options.accountOutput = .combined
-                if !isSelectionExport, selectedIDs.count != 1,
-                   let first = selectedAccounts.first ?? poolAccounts.first {
+                if !isSelectionExport, !camtAccountOK, let first = firstCamtAccount {
                     selectedIDs = [first.id]
                 }
             }
@@ -269,8 +276,8 @@ struct ExportSheet: View {
             snapshot.customTo = previous.customTo
             snapshot.selectedAccountIDs = previous.selectedAccountIDs
             snapshot.accountOutput = previous.accountOutput
-            // CAMT is not offered for marked bookings; keep it as the saved choice.
-            if previous.format.isCamt, snapshot.format == .pdf { snapshot.format = previous.format }
+            // Keep the saved format; the selection export may use it too.
+            snapshot.format = previous.format
         } else {
             snapshot.selectedAccountIDs = Array(selectedIDs).sorted()
             if snapshot.scope == .selection { snapshot.scope = .filtered }
@@ -391,8 +398,9 @@ struct ExportSheet: View {
             .help(expanded ? String(localized: "Zuklappen") : String(localized: "Aufklappen"))
 
             Button {
-                if options.format.isCamt, let one = accounts.first {
-                    selectedIDs = [one.id]
+                if options.format.isCamt {
+                    // A group without a CAMT-capable account: leave the choice alone.
+                    if let one = accounts.first(where: camtUsable) { selectedIDs = [one.id] }
                 } else if allOn {
                     selectedIDs.subtract(ids)
                 } else {
@@ -422,7 +430,9 @@ struct ExportSheet: View {
 
     private func accountCheckRow(_ account: Account) -> some View {
         let on = selectedIDs.contains(account.id)
+        let usable = !options.format.isCamt || camtUsable(account)
         return Button {
+            guard usable else { return }
             if options.format.isCamt {
                 selectedIDs = [account.id]
             } else if on {
@@ -436,14 +446,21 @@ struct ExportSheet: View {
                     .foregroundStyle(on ? Color.accentColor : .secondary)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(account.name)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(usable ? .primary : .secondary)
                         .lineLimit(1)
-                    let sub = accountSubtitle(account)
-                    if !sub.isEmpty {
-                        Text(sub)
+                    if options.format.isCamt, !camtUsable(account) {
+                        Text("Nicht für Darlehen und Depots")
                             .appFont(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                    } else {
+                        let sub = accountSubtitle(account)
+                        if !sub.isEmpty {
+                            Text(sub)
+                                .appFont(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
                 Spacer(minLength: 4)
@@ -454,6 +471,7 @@ struct ExportSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!usable)
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
@@ -533,7 +551,7 @@ struct ExportSheet: View {
 
     private var formatSection: some View {
         Section {
-            ForEach(availableFormats) { format in
+            ForEach(BookingExportFormat.allCases) { format in
                 choiceRow(title: format.title, subtitle: format.subtitle, selected: options.format == format) {
                     options.format = format
                 }
@@ -541,17 +559,20 @@ struct ExportSheet: View {
         } header: {
             Text("Format").appSectionHeader()
         } footer: {
-            if options.scope == .selection {
-                Text("CAMT.053 nur für einen Zeitraum: Ein Kontoauszug braucht alle Buchungen, sonst stimmt der Endsaldo nicht.")
+            if options.format.isCamt, !camtAccountOK {
+                if effectiveAccountIDs.count == 1, let id = effectiveAccountIDs.first,
+                   let account = model.account(for: id), !camtUsable(account) {
+                    Text("Für Darlehen und Depots gibt es keinen CAMT.053-Auszug.")
+                        .leadingFooter()
+                } else {
+                    Text("CAMT.053 gilt immer für genau ein Konto (#372).")
+                        .leadingFooter()
+                }
+            } else if options.scope == .selection, options.format.isCamt {
+                Text("CAMT.053 für markierte Buchungen enthält deren Zeitraum mit den echten Salden des Kontos.")
                     .leadingFooter()
             }
         }
-    }
-
-    /// CAMT.053 is a statement: OPBD + all entries = CLBD. Marked bookings alone
-    /// would give a closing balance that differs from the bank's, so it needs a period.
-    private var availableFormats: [BookingExportFormat] {
-        options.scope == .selection ? BookingExportFormat.allCases.filter { !$0.isCamt } : BookingExportFormat.allCases
     }
 
     private var detailsSection: some View {
@@ -604,7 +625,6 @@ struct ExportSheet: View {
         if isSelectionExport {
             // Context menu: only the marked bookings — ignore saved period/account prefs.
             options.scope = .selection
-            if options.format.isCamt { options.format = .pdf }
             let bookingAccounts = accountIDsForSelectedBookings
             selectedIDs = bookingAccounts.isEmpty ? Set(poolAccounts.map(\.id)) : bookingAccounts
         } else {
@@ -620,7 +640,10 @@ struct ExportSheet: View {
                 }
             }
             if options.format.isCamt, ids.count != 1 {
-                ids = poolAccounts.first.map { [$0.id] } ?? []
+                ids = firstCamtAccount.map { [$0.id] } ?? []
+            } else if options.format.isCamt, let one = ids.first,
+                      let account = model.account(for: one), !camtUsable(account) {
+                ids = firstCamtAccount.map { [$0.id] } ?? []
             }
             selectedIDs = ids
             options.selectedAccountIDs = Array(ids).sorted()
@@ -648,14 +671,27 @@ struct ExportSheet: View {
             let report = model.exportReport(bookings: bookings, accountIDs: key.accountIDs, period: exportPeriod,
                                             bookingIDs: key.bookingIDs, options: key.options)
             previewCount = report.rows.count
+            let range = camtRange(options: key.options, accountIDs: key.accountIDs,
+                                  period: exportPeriod, bookingIDs: key.bookingIDs)
             previewName = BookingExportBuilder.defaultFilename(
                 accounts: report.accounts, rows: report.rows, format: key.options.format,
-                fallbackTitle: fallbackTitle)
+                fallbackTitle: fallbackTitle, rangeFrom: range?.from, rangeTo: range?.to)
         } catch {
             guard !Task.isCancelled else { return }
             previewCount = 0
             previewName = nil
         }
+    }
+
+    /// Period the core states for a CAMT.053 export (`nil` for other formats and
+    /// marked bookings, where the rows set it). Also names the file, so name and
+    /// OPBD/CLBD dates agree.
+    private func camtRange(options: ExportOptions, accountIDs: [Int64], period: ExportPeriodPreset,
+                           bookingIDs: Set<Int64>?) -> (from: String?, to: String?)? {
+        guard options.format.isCamt, bookingIDs == nil else { return nil }
+        let filter = model.exportFilter(accountIDs: accountIDs, period: period, options: options,
+                                        ignoreListFilters: true)
+        return (filter.dateFrom, BookingExportBuilder.camtEndDate(filter.dateTo))
     }
 
     /// Bookings for an export, off the main thread. CAMT.053 ignores the list's search,
@@ -757,12 +793,10 @@ struct ExportSheet: View {
         report.logoDataURI = nil
         report = BookingExportBuilder.prepareStatement(report)
         let print = options.asPrintOptions
-        let needsDaily = options.format == .pdf || options.format.isCamt || options.showDailyBalance
+        let needsDaily = options.format == .pdf || (options.showDailyBalance && !options.format.isCamt)
         if needsDaily, let earliest = report.rows.map(\.date).min() {
             let ids = Array(Set(report.rows.map(\.accountId))).sorted()
-            // From the day before: CAMT's opening balance is that day's end balance.
-            let from = BookingExportBuilder.previousISODate(earliest) ?? earliest
-            guard let balances = try await model.loadDailyBalances(accountIds: ids, from: from) else {
+            guard let balances = try await model.loadDailyBalances(accountIds: ids, from: earliest) else {
                 throw CancellationError()
             }
             report.dailyBalances = balances
@@ -772,8 +806,21 @@ struct ExportSheet: View {
         case .csv:
             data = Data(BookingExportBuilder.csv(report, options: options).utf8)
         case .camt053v08, .camt053v02:
-            guard bookingIDs == nil else { throw ExportError.camtSelection }
-            data = try Data(camtXML(bookings: bookings, dailyBalances: report.dailyBalances, options: options).utf8)
+            guard accountIDs.count == 1, let accountID = accountIDs.first else {
+                throw ExportError.camtMultiAccount
+            }
+            // The core reads entries and booked balances from the vault. Marked
+            // bookings export their own period; a period export uses the same
+            // bounds as the list, without its search/category filters.
+            let range = camtRange(options: options, accountIDs: accountIDs, period: period,
+                                  bookingIDs: bookingIDs)
+            let request = BookingExportBuilder.camtRequest(
+                accountID: accountID, format: options.format,
+                from: range?.from, to: range?.to, bookingIDs: bookingIDs)
+            guard let xml = try await model.vaultOffMain({ try $0.camt053Export(request: request) }) else {
+                throw CancellationError()
+            }
+            data = Data(xml.utf8)
         case .pdf:
             let html = PrintReportBuilder.html(report, options: print, paper: .a4)
             #if os(macOS) || os(iOS)
@@ -782,56 +829,28 @@ struct ExportSheet: View {
             throw ExportError.unsupported
             #endif
         }
+        let range = camtRange(options: options, accountIDs: accountIDs, period: period,
+                              bookingIDs: bookingIDs)
         let name = BookingExportBuilder.defaultFilename(
-            accounts: report.accounts, rows: report.rows, format: options.format, fallbackTitle: report.title)
+            accounts: report.accounts, rows: report.rows, format: options.format,
+            fallbackTitle: report.title, rangeFrom: range?.from, rangeTo: range?.to)
         return (data, name)
     }
 
-    private func camtXML(bookings: [Booking], dailyBalances: [Int64: [String: Int64]],
-                         options: ExportOptions) throws -> String {
-        let ids = Set(bookings.map(\.accountId))
-        guard ids.count == 1, let id = ids.first, let account = model.account(for: id) else {
-            throw ExportError.camtMultiAccount
-        }
-        if account.kind == .loan {
-            throw ExportError.camtLoanAccount
-        }
-        if account.balanceDerived && account.openingBalanceCents == nil {
-            throw ExportError.camtNoOpeningBalance
-        }
-        let bookedDates = bookings.filter { !$0.isPending }.map(\.bookingDate)
-        let first = (bookedDates.min() ?? bookings.map(\.bookingDate).min()) ?? ""
-        guard let opening = BookingExportBuilder.camtOpeningBalance(
-            endOfDay: dailyBalances[id] ?? [:], firstDate: first) else {
-            throw ExportError.camtNoOpeningBalance
-        }
-        return BookingExportBuilder.camt053(
-            account: account, bookings: bookings, format: options.format,
-            openingCents: opening, openingDate: first)
-    }
 }
 
 private enum ExportError: LocalizedError {
     case unsupported
     case camtMultiAccount
-    case camtLoanAccount
     case empty
-    case camtNoOpeningBalance
-    case camtSelection
     var errorDescription: String? {
         switch self {
-        case .camtLoanAccount:
-            return String(localized: "CAMT.053 ist für Darlehenskonten nicht verfügbar.")
         case .unsupported:
             return String(localized: "PDF-Export ist auf dieser Plattform nicht verfügbar.")
         case .camtMultiAccount:
             return String(localized: "CAMT.053 nur für ein einzelnes Konto (#372).")
         case .empty:
             return String(localized: "Keine Umsätze für den Export.")
-        case .camtSelection:
-            return String(localized: "CAMT.053 nur für einen Zeitraum: Ein Kontoauszug braucht alle Buchungen, sonst stimmt der Endsaldo nicht.")
-        case .camtNoOpeningBalance:
-            return String(localized: "Für dieses Konto gibt es keinen Tagessaldo zum Beginn des Zeitraums, daher fehlt der Anfangssaldo für CAMT.053. Bitte das Konto synchronisieren oder einen anderen Zeitraum wählen.")
         }
     }
 }

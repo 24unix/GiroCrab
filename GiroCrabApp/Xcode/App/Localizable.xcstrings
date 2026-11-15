@@ -6282,6 +6282,17 @@
         }
       }
     },
+    "CAMT.053 für markierte Buchungen enthält deren Zeitraum mit den echten Salden des Kontos." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "For marked bookings, CAMT.053 covers their period with the account's real balances."
+          }
+        }
+      }
+    },
     "CAMT.053 gilt immer für genau ein Konto (#372)." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6317,17 +6328,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "CAMT.053 only for a single account (#372)."
-          }
-        }
-      }
-    },
-    "CAMT.053 nur für einen Zeitraum: Ein Kontoauszug braucht alle Buchungen, sonst stimmt der Endsaldo nicht." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "CAMT.053 only for a period: a statement needs all bookings, otherwise the closing balance is wrong."
           }
         }
       }
@@ -10644,6 +10644,17 @@
         }
       }
     },
+    "Für Darlehen und Depots gibt es keinen CAMT.053-Auszug." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "There is no CAMT.053 statement for loans and securities accounts."
+          }
+        }
+      }
+    },
     "Für Dinge ohne Kurs, z. B. Haus, Auto oder Kunst: Sie tragen den Wert zu Stichtagen selbst ein." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10728,17 +10739,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The price API has no gold price for this day (its data goes back to about 2000). Your value applies until the first available price and is never overwritten."
-          }
-        }
-      }
-    },
-    "Für dieses Konto gibt es keinen Tagessaldo zum Beginn des Zeitraums, daher fehlt der Anfangssaldo für CAMT.053. Bitte das Konto synchronisieren oder einen anderen Zeitraum wählen." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "There is no daily balance for this account at the start of the period, so the opening balance for CAMT.053 is missing. Please sync the account or choose another period."
           }
         }
       }
@@ -17095,6 +17095,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Not detected as recurring. Mark this transaction so it shows up in upcoming fixed costs."
+          }
+        }
+      }
+    },
+    "Nicht für Darlehen und Depots" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not for loans and securities accounts"
           }
         }
       }

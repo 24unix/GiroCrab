@@ -66,21 +66,21 @@ final class BookingExportTests: XCTestCase {
         return try XCTUnwrap(rows)
     }
 
-    /// Demo bookings of one IBAN account plus edge cases: pending entry, control
-    /// characters, a long purpose, a non-IBAN counterparty and no GVC.
-    private func camtFixture() async throws -> (Account, [Booking]) {
-        let model = demoModel()
-        let account = try XCTUnwrap(model.allAccounts.first { !$0.iban.isEmpty })
-        var bookings = Array(try await demoBookings(model, account: account.id).prefix(6))
-        XCTAssertGreaterThanOrEqual(bookings.count, 3)
-        bookings[0].purpose = "Rechnung\u{1}Nr. 7 & <Sonder> \u{0B}" + String(repeating: "x", count: 300)
-        bookings[0].cleanPurpose = ""
-        bookings[0].gvc = ""
-        bookings[0].purposeCode = "SALA"
-        bookings[1].isPending = true
-        bookings[1].counterpartyIban = "1234567890"
-        bookings[2].counterparty = String(repeating: "N", count: 200)
-        return (account, bookings)
+    /// A demo account a CAMT.053 statement may cover.
+    private func camtAccount(_ model: AppModel) throws -> Account {
+        try XCTUnwrap(model.allAccounts.first {
+            !$0.iban.isEmpty && $0.kind != .loan && $0.kind != .brokerage
+        })
+    }
+
+    /// The core writes the statement; the app only hands over the request.
+    private func camtXML(_ model: AppModel, account: Int64, format: BookingExportFormat,
+                         from: String? = nil, to: String? = nil,
+                         bookingIDs: Set<Int64>? = nil) async throws -> String {
+        let request = BookingExportBuilder.camtRequest(
+            accountID: account, format: format, from: from, to: to, bookingIDs: bookingIDs)
+        let xml = try await model.vaultOffMain { try $0.camt053Export(request: request) }
+        return try XCTUnwrap(xml)
     }
 
     private func validate(_ xml: String, schema: String) throws {
@@ -106,57 +106,57 @@ final class BookingExportTests: XCTestCase {
     }
 
     func testCamt053ValidatesAgainstISO20022Schemas() async throws {
-        let (account, bookings) = try await camtFixture()
-        for (format, schema) in [(BookingExportFormat.camt053v02, "camt.053.001.02"), (.camt053v08, "camt.053.001.08")] {
-            let xml = BookingExportBuilder.camt053(
-                account: account, bookings: bookings, format: format,
-                openingCents: 100_000, openingDate: bookings.map(\.bookingDate).min()!)
-            XCTAssertFalse(xml.contains("\u{1}"))
+        let model = demoModel()
+        let account = try camtAccount(model)
+        for (format, schema) in [(BookingExportFormat.camt053v02, "camt.053.001.02"),
+                                 (.camt053v08, "camt.053.001.08")] {
+            let xml = try await camtXML(model, account: account.id, format: format)
+            XCTAssertTrue(xml.contains("<MsgPgntn><PgNb>1</PgNb><LastPgInd>true</LastPgInd></MsgPgntn>"), xml)
+            XCTAssertTrue(xml.contains("<Ntry>"), xml)
             try validate(xml, schema: schema)
         }
-        // Account without IBAN → <Othr><Id>
-        var noIBAN = account
-        noIBAN.iban = ""
-        noIBAN.accountNumber = "4711"
-        let xml = BookingExportBuilder.camt053(
-            account: noIBAN, bookings: bookings, format: .camt053v08, openingCents: 0, openingDate: "2025-01-01")
-        XCTAssertTrue(xml.contains("<Othr><Id>4711</Id></Othr>"), xml)
-        try validate(xml, schema: "camt.053.001.08")
     }
 
-    func testCamt053StatusOrderAndClosingBalance() async throws {
-        let (account, bookings) = try await camtFixture()
-        let v08 = BookingExportBuilder.camt053(
-            account: account, bookings: bookings, format: .camt053v08, openingCents: 100_000, openingDate: "2025-01-01")
-        XCTAssertTrue(v08.contains("<Sts><Cd>BOOK</Cd></Sts>"))
-        XCTAssertTrue(v08.contains("<Sts><Cd>PDNG</Cd></Sts>"))
-        let v02 = BookingExportBuilder.camt053(
-            account: account, bookings: bookings, format: .camt053v02, openingCents: 100_000, openingDate: "2025-01-01")
-        XCTAssertTrue(v02.contains("<Sts>BOOK</Sts>"))
-        XCTAssertTrue(v02.contains("<Sts>PDNG</Sts>"))
-        // Acct: Ownr before Svcr; TxDtls: Purp before RmtInf
-        for xml in [v02, v08] {
-            if let svcr = xml.range(of: "<Svcr>") {
-                XCTAssertLessThan(try XCTUnwrap(xml.range(of: "<Ownr>")).lowerBound, svcr.lowerBound)
-            }
-            let entry = try XCTUnwrap(xml.components(separatedBy: "<Ntry>").first { $0.contains("<Purp>") })
-            XCTAssertLessThan(try XCTUnwrap(entry.range(of: "<Purp>")).lowerBound,
-                              try XCTUnwrap(entry.range(of: "<RmtInf>")).lowerBound)
-        }
-        // CLBD = OPBD + booked entries only (the pending one is left out).
-        let booked = bookings.filter { !$0.isPending }.reduce(Int64(0)) { $0 + $1.amountCents }
-        let closing = 100_000 + booked
-        let amount = "\(closing.magnitude / 100).\(String(format: "%02llu", closing.magnitude % 100))"
-        let clbd = try XCTUnwrap(v08.range(of: "<Cd>CLBD</Cd>"))
-        XCTAssertTrue(v08[clbd.upperBound...].hasPrefix("</CdOrPrtry></Tp><Amt Ccy=\"EUR\">\(amount)</Amt>"), v08)
+    func testCamtEndDateCapsFuturePeriodsAtToday() {
+        XCTAssertEqual(BookingExportBuilder.camtEndDate("2026-11-30", today: "2026-11-15"), "2026-11-15")
+        XCTAssertEqual(BookingExportBuilder.camtEndDate("2026-10-31", today: "2026-11-15"), "2026-10-31")
+        XCTAssertEqual(BookingExportBuilder.camtEndDate("2026-11-15", today: "2026-11-15"), "2026-11-15")
+        XCTAssertNil(BookingExportBuilder.camtEndDate(nil, today: "2026-11-15"))
     }
 
-    func testCamtOpeningBalanceIsPreviousDayEndOrMissing() {
-        XCTAssertEqual(BookingExportBuilder.camtOpeningBalance(
-            endOfDay: ["2025-02-28": 50_000, "2025-03-01": 60_000], firstDate: "2025-03-01"), 50_000)
-        // No history for the day before → no invented 0
-        XCTAssertNil(BookingExportBuilder.camtOpeningBalance(endOfDay: ["2025-03-01": 60_000], firstDate: "2025-03-01"))
-        XCTAssertNil(BookingExportBuilder.camtOpeningBalance(endOfDay: [:], firstDate: ""))
+    func testCamtRequestCarriesFormatPeriodAndSelection() {
+        let created = Date(timeIntervalSince1970: 0)
+        let request = BookingExportBuilder.camtRequest(
+            accountID: 7, format: .camt053v02, from: "2026-01-01", to: "2026-01-31",
+            bookingIDs: [9, 3], created: created)
+        XCTAssertEqual(request.accountId, 7)
+        XCTAssertEqual(request.dateFrom, "2026-01-01")
+        XCTAssertEqual(request.dateTo, "2026-01-31")
+        XCTAssertEqual(request.bookingIds, [3, 9])
+        XCTAssertEqual(request.version, .v02)
+        XCTAssertTrue(request.createdAt.hasPrefix("1970-01-01T"), request.createdAt)
+
+        let all = BookingExportBuilder.camtRequest(
+            accountID: 7, format: .camt053v08, from: nil, to: nil, bookingIDs: nil)
+        XCTAssertNil(all.dateFrom)
+        XCTAssertNil(all.dateTo)
+        XCTAssertNil(all.bookingIds)
+        XCTAssertEqual(all.version, .v08)
+    }
+
+    /// Marked bookings are a statement too (#483): only they are listed, their
+    /// own period sets the edges.
+    func testCamt053MarkedBookingsUseTheirOwnPeriod() async throws {
+        let model = demoModel()
+        let account = try camtAccount(model)
+        let bookings = Array(try await demoBookings(model, account: account.id).prefix(2))
+        XCTAssertEqual(bookings.count, 2)
+        let xml = try await camtXML(model, account: account.id, format: .camt053v08,
+                                    bookingIDs: Set(bookings.map(\.id)))
+        XCTAssertEqual(xml.components(separatedBy: "<Ntry>").count - 1, 2, xml)
+        let dates = bookings.map(\.bookingDate).sorted()
+        XCTAssertTrue(xml.contains("<Dt>\(dates[0])</Dt>"), xml)
+        XCTAssertTrue(xml.contains("<Dt>\(dates[1])</Dt>"), xml)
     }
 
     func testCamtFilterIgnoresListFilters() {
@@ -226,6 +226,12 @@ final class BookingExportTests: XCTestCase {
         let camt = BookingExportBuilder.defaultFilename(
             accounts: report().accounts, rows: rows, format: .camt053v08)
         XCTAssertTrue(camt.contains("CAMT053-001-08"), camt)
+
+        // A statement's name uses its statement period, not the booking days.
+        let stated = BookingExportBuilder.defaultFilename(
+            accounts: report().accounts, rows: rows, format: .camt053v08,
+            rangeFrom: "2025-02-28", rangeTo: "2025-03-31")
+        XCTAssertTrue(stated.contains("CAMT053-001-08-2025-02-28_2025-03-31"), stated)
 
         let prepared = BookingExportBuilder.prepareStatement(report())
         XCTAssertEqual(prepared.title, "Giro")
