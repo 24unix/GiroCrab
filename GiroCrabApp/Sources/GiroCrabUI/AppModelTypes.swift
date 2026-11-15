@@ -19,6 +19,8 @@ enum SidebarItem: Hashable {
     case newBookings
     /// „Geplant“ (GitHub #240): future payments with an order at the bank.
     case planned
+    /// „Lastschriften“ (GitHub #143): mandates and collections.
+    case directDebits
     /// "Vermögen": cash and assets (depots) minus liabilities
     case wealth
 }

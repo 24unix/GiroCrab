@@ -194,6 +194,23 @@ pub fn sanitize_sepa_text(s: &str) -> String {
     out
 }
 
+/// Whether two IBANs are the same account (spaces and case ignored).
+pub fn validate_creditor_iban_matches(a: &str, b: &str) -> bool {
+    !a.trim().is_empty() && normalize_iban(a) == normalize_iban(b)
+}
+
+/// Whether `s` is allowed as a SEPA identifier (mandate reference, creditor
+/// reference): only `a-z A-Z 0-9 / - ? : ( ) . , ' + space`, and it must not
+/// begin or end with `/` or contain `//` (EPC rulebook).
+pub fn is_sepa_identifier(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/-?:().,'+ ".contains(c))
+        && !s.starts_with('/')
+        && !s.ends_with('/')
+        && !s.contains("//")
+}
+
 fn clip(s: &str, max: usize) -> String {
     sanitize_sepa_text(s)
         .split_whitespace()

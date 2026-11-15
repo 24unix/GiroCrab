@@ -1401,6 +1401,75 @@ impl Vault {
                 ],
             )?;
         }
+        // Direct debit demo (#143): creditor ID and a few member mandates.
+        tx.execute(
+            "INSERT INTO creditor_ids(account_id, creditor_id, updated_ms) VALUES (?1, 'DE98ZZZ09999999999', 0)",
+            params![acc_ids["demo-giro"]],
+        )?;
+        for (name, iban, reference, signed, scheme, cents, purpose, active, last) in [
+            (
+                "Mia Beispiel",
+                "DE89370400440532013000",
+                "M-2024-001",
+                "2024-03-01",
+                "CORE",
+                1_250,
+                "Mitgliedsbeitrag",
+                1,
+                Some("2026-10-01"),
+            ),
+            (
+                "Jan Muster",
+                "DE02120300000000202051",
+                "M-2025-014",
+                "2025-01-15",
+                "CORE",
+                1_250,
+                "Mitgliedsbeitrag",
+                1,
+                None,
+            ),
+            (
+                "Muster Bau GmbH",
+                "DE44500105175407324931",
+                "M-2025-020",
+                "2025-06-02",
+                "B2B",
+                25_000,
+                "Wartungsvertrag",
+                1,
+                Some("2026-10-15"),
+            ),
+            (
+                "Eva Probe",
+                "DE89370400440532013000",
+                "M-2023-007",
+                "2023-09-10",
+                "CORE",
+                1_250,
+                "Mitgliedsbeitrag",
+                0,
+                Some("2025-12-01"),
+            ),
+        ] {
+            tx.execute(
+                "INSERT INTO mandates(account_id, debtor_name, debtor_iban, reference, signed_date, scheme,
+                        default_amount_cents, default_purpose, active, last_collected, created_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0)",
+                params![
+                    acc_ids["demo-giro"],
+                    name,
+                    iban,
+                    reference,
+                    signed,
+                    scheme,
+                    cents,
+                    purpose,
+                    active,
+                    last
+                ],
+            )?;
+        }
         // Depot positions: the two savings plans and a money market ETF, summing to the balance
         // of the ETF depot (31.380,00 EUR), and single securities in a depot of their own (16.590,00 EUR): five
         // stocks, a federal bond and a gold ETC. So the "Positionen" cards are not empty in the

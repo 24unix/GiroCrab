@@ -475,6 +475,8 @@ struct MainSplitView: View {
                 DocumentsView()
             } else if model.sidebarSelection == .planned {
                 PlannedPaymentsView()
+            } else if model.sidebarSelection == .directDebits {
+                DirectDebitsView()
             } else if model.sidebarSelection == .wealth {
                 WealthView()
             } else {

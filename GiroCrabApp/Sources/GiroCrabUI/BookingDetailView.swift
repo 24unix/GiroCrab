@@ -14,6 +14,8 @@ struct InspectorView: View {
             VStack(alignment: .leading, spacing: 14) {
                 if model.sidebarSelection == .planned {
                     PlannedInspector()
+                } else if model.sidebarSelection == .directDebits {
+                    MandateInspector()
                 } else {
                 if case .account(let id) = model.sidebarSelection, let a = model.account(for: id), a.kind == .loan {
                     LoanProgressCard(account: a)

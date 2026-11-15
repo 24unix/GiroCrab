@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS standing_orders (
 );
 ";
 
-/// Step 17: the table (guarded like step 16: old vaults are rebuilt from the current schema).
+/// Step 18: the table (guarded like step 17: old vaults are rebuilt from the current schema).
 pub(crate) fn standing_orders_table(conn: &Connection) -> CoreResult<()> {
     conn.execute_batch(STANDING_ORDERS)?;
     Ok(())

@@ -55,6 +55,13 @@ struct SidebarView: View {
                 Spacer()
             }
             .tag(SidebarItem.planned)
+            // „Lastschriften“ (#143): mandates and collections
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.left.arrow.up.right.square").foregroundStyle(Theme.secondary).frame(width: 20)
+                Text("Lastschriften").fontWeight(.medium).appDefaultFont()
+                Spacer()
+            }
+            .tag(SidebarItem.directDebits)
             HStack(spacing: 8) {
                 Image(systemName: "chart.pie").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Vermögen").fontWeight(.medium).appDefaultFont()
