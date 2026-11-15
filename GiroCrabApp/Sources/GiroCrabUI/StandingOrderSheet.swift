@@ -7,6 +7,9 @@ struct StandingOrderSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.textScale) private var textScale
+    #if os(iOS)
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    #endif
     @State private var reviewing = false
 
     private var draft: StandingDraft { model.standingDraft }
@@ -31,7 +34,16 @@ struct StandingOrderSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20).padding(.vertical, 14)
             Divider()
-            if reviewing || isDelete { review } else { editor }
+            if reviewing || isDelete {
+                #if os(iOS)
+                // large text: the review scrolls instead of being squeezed (values stay whole, buttons stay reachable)
+                ScrollView { review }
+                #else
+                review
+                #endif
+            } else {
+                editor
+            }
             #if os(iOS)
             Spacer(minLength: 0)  // a tall sheet keeps the title and the content at the top
             #endif
@@ -201,32 +213,65 @@ struct StandingOrderSheet: View {
     private func line(_ label: LocalizedStringKey, _ value: String, mono: Bool = false, sensitive: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).appFont(.caption).foregroundStyle(Theme.secondary)
+            // never truncate: recipient and IBAN are what the person checks here
             let t = Text(value).appFont(.callout, monospacedDigit: mono).textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
             if sensitive { t.sensitive() } else { t }
         }
     }
 
     // MARK: buttons
 
-    private var buttons: some View {
-        HStack {
-            Button("Abbrechen", role: .cancel) { model.cancelStandingSheet(); dismiss() }
-                .keyboardShortcut(.cancelAction)
-            Spacer()
-            if reviewing || isDelete {
-                if !isDelete { Button("Zurück") { reviewing = false; model.transferError = nil } }
-                if isDelete {
-                    // HIG: a destructive action is never the default button (Return does nothing here)
-                    Button("Dauerauftrag löschen", role: .destructive) { model.startStandingOrder() }
-                        .buttonStyle(.borderedProminent).tint(.red)
-                } else {
-                    Button("Jetzt mit TAN freigeben") { model.startStandingOrder() }
-                        .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
-                }
+    private var cancelButton: some View {
+        Button("Abbrechen", role: .cancel) { model.cancelStandingSheet(); dismiss() }
+            .keyboardShortcut(.cancelAction)
+    }
+
+    @ViewBuilder private var backButton: some View {
+        if (reviewing || isDelete) && !isDelete {
+            Button("Zurück") { reviewing = false; model.transferError = nil }
+        }
+    }
+
+    @ViewBuilder private var primaryButton: some View {
+        if reviewing || isDelete {
+            if isDelete {
+                // HIG: a destructive action is never the default button (Return does nothing here)
+                Button("Dauerauftrag löschen", role: .destructive) { model.startStandingOrder() }
+                    .buttonStyle(.borderedProminent).tint(.red)
             } else {
-                Button("Weiter") { model.transferError = nil; reviewing = true }
-                    .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(!draft.isValid)
+                Button("Jetzt mit TAN freigeben") { model.startStandingOrder() }
+                    .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
             }
+        } else {
+            Button("Weiter") { model.transferError = nil; reviewing = true }
+                .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(!draft.isValid)
+        }
+    }
+
+    @ViewBuilder private var buttons: some View {
+        #if os(iOS)
+        if dynamicTypeSize.isAccessibilitySize {
+            // large text: stacked, the main action on top (side by side the labels break into many lines)
+            VStack(spacing: 12) {
+                primaryButton.frame(maxWidth: .infinity).fixedSize(horizontal: false, vertical: true)
+                backButton
+                cancelButton
+            }
+        } else {
+            sideBySideButtons
+        }
+        #else
+        sideBySideButtons
+        #endif
+    }
+
+    private var sideBySideButtons: some View {
+        HStack {
+            cancelButton
+            Spacer()
+            backButton
+            primaryButton
         }
     }
 }
