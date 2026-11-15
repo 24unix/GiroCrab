@@ -338,6 +338,9 @@ pub struct Pain001Batch<'a> {
     pub batch_booking: bool,
 }
 
+/// Largest amount of one SEPA payment: 999 999 999,99 EUR (pain.001/.008 `ActiveOrHistoricCurrencyAndAmount`).
+pub const MAX_AMOUNT_CENTS: i64 = 99_999_999_999;
+
 /// Sum of all payments in cents; `None` on overflow.
 pub fn batch_total_cents(payments: &[BatchPayment]) -> Option<i64> {
     payments
@@ -358,6 +361,11 @@ pub fn validate_batch_payment(position: usize, p: &BatchPayment) -> CoreResult<(
     }
     if p.amount_cents <= 0 {
         return Err(fail(tr("Der Betrag muss größer als 0 sein.")));
+    }
+    if p.amount_cents > MAX_AMOUNT_CENTS {
+        return Err(fail(tr(
+            "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
+        )));
     }
     Ok(())
 }

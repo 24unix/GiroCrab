@@ -240,6 +240,8 @@ fn english(de: &str) -> Option<&'static str> {
         "Zugangsbezeichnung" => "Connection label",
         "Der Saldo dieses Kontos kommt von der Bank. Ein Startsaldo gilt nur für Konten, deren Saldo GiroCrab aus den Umsätzen berechnet." => "This account's balance comes from the bank. An opening balance only applies to accounts whose balance GiroCrab computes from the bookings.",
         "Ungültiges Datum: {0}" => "Invalid date: {0}",
+        "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €)." => "The amount exceeds what SEPA allows (999,999,999.99 EUR).",
+        "Die Bank lieferte die Daueraufträge nicht vollständig (zu viele Seiten)." => "The bank did not return the standing orders completely (too many pages).",
         "quirion: Unvollständige oder ungültige Portalantwort. Es wurden keine Daten übernommen." => "quirion: Incomplete or invalid portal response. No data was imported.",
         "Bitte bei quirion im Browserfenster anmelden und die Daten abrufen." => "Please sign in to quirion in the browser window and fetch your data.",
         "Bitte bei quirion im Browserfenster abrufen." => "Please fetch your data in the quirion browser window.",

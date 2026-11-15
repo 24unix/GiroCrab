@@ -141,3 +141,26 @@ fn an_open_period_shows_at_most_twelve_executions_per_order() {
     let v = occurrences(&o, d("2026-11-15"), d("2027-11-15"));
     assert!(v.len() > 12); // the order itself runs weekly; only the list is capped
 }
+
+#[test]
+fn very_old_orders_still_reach_today() {
+    // weekly since 2005: more than 1000 steps before today
+    let w = row("W", 1, 3, "2005-01-05", None);
+    assert_eq!(
+        dates(&w, "2026-11-10", "2026-11-25"),
+        ["2026-11-11", "2026-11-18", "2026-11-25"]
+    );
+    // every second week keeps its rhythm from the first date
+    let w2 = row("W", 2, 3, "2005-01-05", None);
+    let got = dates(&w2, "2026-11-01", "2026-12-31");
+    assert!(!got.is_empty());
+    for pair in got.windows(2) {
+        assert_eq!((d(&pair[1]) - d(&pair[0])).num_days(), 14);
+    }
+    // monthly since 1990 on the 31st
+    let m = row("M", 1, 31, "1990-01-31", None);
+    assert_eq!(
+        dates(&m, "2026-11-01", "2027-01-31"),
+        ["2026-11-30", "2026-12-31", "2027-01-31"]
+    );
+}

@@ -1176,10 +1176,15 @@ impl FinTsConnector {
             }
             touchdown = r.code("3040").and_then(|c| c.3.first().cloned());
             if touchdown.is_none() {
-                break;
+                return Ok(out);
             }
         }
-        Ok(out)
+        // 20 pages and the bank still has more: not complete, so the caller keeps the stored list
+        Err(CoreError::Bank {
+            code: "HKCDB".into(),
+            message: tr("Die Bank lieferte die Daueraufträge nicht vollständig (zu viele Seiten).")
+                .into(),
+        })
     }
 
     /// HKWPD: holdings statement of a depot (MT535), all pages.

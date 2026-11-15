@@ -194,7 +194,9 @@ fn occurrences(o: &Row, from: NaiveDate, to: NaiveDate) -> Vec<NaiveDate> {
     if o.unit == "W" {
         let monday = o.first - Duration::days(o.first.weekday().num_days_from_monday() as i64);
         let day = Duration::days(o.exec_day.clamp(1, 7) as i64 - 1);
-        for k in 0..1000 {
+        // start just before `from`: an old order must not run out of the 1000-step cap
+        let k0 = ((from - monday).num_days() / (7 * step) - 1).max(0);
+        for k in k0..k0 + 1000 {
             let d = monday + Duration::days(7 * step * k) + day;
             if d > end {
                 break;
@@ -204,8 +206,11 @@ fn occurrences(o: &Row, from: NaiveDate, to: NaiveDate) -> Vec<NaiveDate> {
             }
         }
     } else {
-        for k in 0..1000 {
-            let months = o.first.year() as i64 * 12 + o.first.month0() as i64 + step * k;
+        let first_months = o.first.year() as i64 * 12 + o.first.month0() as i64;
+        let from_months = from.year() as i64 * 12 + from.month0() as i64;
+        let k0 = ((from_months - first_months) / step - 1).max(0);
+        for k in k0..k0 + 1000 {
+            let months = first_months + step * k;
             let (y, m) = ((months / 12) as i32, (months % 12) as u32 + 1);
             let last_day = last_day_of_month(y, m);
             let day = o.exec_day.clamp(1, 31).min(last_day);

@@ -75,6 +75,16 @@ pub struct PlannedTotals {
     pub incoming_cents: i64,
 }
 
+/// Rows whose date is long past never show again (the list starts at today);
+/// dropped on every insert so the table cannot grow without bound.
+fn prune_old(db: &Connection) -> CoreResult<()> {
+    db.execute(
+        "DELETE FROM planned_transfers WHERE execution_date < date('now', '-400 days')",
+        [],
+    )?;
+    Ok(())
+}
+
 fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
@@ -90,6 +100,7 @@ impl Vault {
             return Ok(());
         };
         let db = self.db()?;
+        prune_old(&db)?;
         db.execute(
             "INSERT OR IGNORE INTO planned_transfers(account_id, end_to_end_id, execution_date,
                     recipient_name, recipient_iban, amount_cents, purpose, created_ms)
