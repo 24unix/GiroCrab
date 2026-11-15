@@ -347,6 +347,32 @@ struct StreamHeaderCard: View {
         }
     }
 
+    /// Category views: only the bookings of the chosen accounts (GitHub #406).
+    private var categoryAccountMenu: some View {
+        Menu {
+            Toggle("Alle Konten", isOn: Binding(
+                get: { model.categoryAccountIDs.isEmpty },
+                set: { _ in model.categoryAccountFilter = [] }
+            ))
+            Divider()
+            ForEach(model.allAccounts, id: \.id) { a in
+                Toggle(isOn: Binding(
+                    get: { model.categoryAccountIDs.contains(a.id) },
+                    set: { _ in model.toggleCategoryAccount(a.id) }
+                )) {
+                    Text(verbatim: a.bankName.isEmpty || a.name.localizedCaseInsensitiveContains(a.bankName) ? a.name : "\(a.name) · \(a.bankName)")
+                }
+            }
+        } label: {
+            Label(model.categoryAccountFilterTitle,
+                  systemImage: model.categoryAccountIDs.isEmpty ? "building.columns" : "building.columns.fill")
+                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Nur Buchungen ausgewählter Konten anzeigen")
+    }
+
     @ViewBuilder
     private var filterContent: some View {
         @Bindable var model = model
@@ -388,6 +414,9 @@ struct StreamHeaderCard: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 .help("Nach Status oder nach Einnahmen und Ausgaben filtern")
+                if model.showsCategoryAccountFilter && model.allAccounts.count > 1 {
+                    categoryAccountMenu
+                }
                 if let a = account {
                     Button { showDocuments = true } label: {
                         Label("Dokumente", systemImage: "doc.text")

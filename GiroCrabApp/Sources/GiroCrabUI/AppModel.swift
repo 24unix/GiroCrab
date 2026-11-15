@@ -165,6 +165,15 @@ public final class AppModel {
             reloadBookings()
         }
     }
+    /// Accounts whose bookings the category views show („Ohne Kategorie“ and
+    /// a category, GitHub #406); empty = all accounts. Kept while the app runs.
+    var categoryAccountFilter: Set<Int64> = [] {
+        didSet {
+            guard categoryAccountFilter != oldValue, showsCategoryAccountFilter else { return }
+            listLimit = Self.defaultListLimit
+            reloadSelection(periodChanged: false)
+        }
+    }
     var searchText: String = "" { didSet { scheduleSearch() } }
     /// Filters the accounts section of the sidebar (name, owner, IBAN / account number).
     var sidebarAccountSearch: String = ""

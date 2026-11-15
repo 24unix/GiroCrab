@@ -14035,6 +14035,28 @@
         }
       }
     },
+    "Konten: %lld von %lld" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accounts: %1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "Konten: Alle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accounts: All"
+          }
+        }
+      }
+    },
     "Kontenauswahl" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17136,6 +17158,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Only holdings with available data: today %lld of %lld, profit/loss %lld of %lld."
+          }
+        }
+      }
+    },
+    "Nur Buchungen ausgewählter Konten anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show only bookings of selected accounts"
           }
         }
       }

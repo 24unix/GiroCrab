@@ -205,6 +205,35 @@ extension AppModel {
         reloadBookings()
     }
 
+    /// The category views („Ohne Kategorie“, a category) can be narrowed to accounts (#406).
+    var showsCategoryAccountFilter: Bool {
+        switch sidebarSelection {
+        case .category, .uncategorized: true
+        default: false
+        }
+    }
+
+    /// The chosen accounts that still exist, in sidebar order; empty = all accounts.
+    var categoryAccountIDs: [Int64] {
+        guard !categoryAccountFilter.isEmpty else { return [] }
+        return allAccounts.map(\.id).filter(categoryAccountFilter.contains)
+    }
+
+    /// Adds or removes one account; choosing every account is the same as no filter.
+    func toggleCategoryAccount(_ id: Int64) {
+        var next = Set(categoryAccountIDs)
+        if !next.insert(id).inserted { next.remove(id) }
+        categoryAccountFilter = next.count == allAccounts.count ? [] : next
+    }
+
+    /// Label of the account menu; never names an account (the header is part of bug report screenshots).
+    var categoryAccountFilterTitle: String {
+        let chosen = categoryAccountIDs.count
+        return chosen == 0
+            ? String(localized: "Konten: Alle")
+            : String(localized: "Konten: \(chosen) von \(allAccounts.count)")
+    }
+
     var currentFilter: BookingFilter {
         let (from, to) = periodRange
         var accountIDs: [Int64] = []
@@ -215,8 +244,8 @@ extension AppModel {
         case .group(let gid): accountIDs = groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
         case .bank(let key): accountIDs = bankGroup(for: key)?.accounts.map(\.id) ?? []
         case .userGroup(let uuid): accountIDs = userGroupAccountIDs(uuid)
-        case .category(let id): category = id
-        case .uncategorized: uncategorized = true
+        case .category(let id): category = id; accountIDs = categoryAccountIDs
+        case .uncategorized: uncategorized = true; accountIDs = categoryAccountIDs
         case .allAccounts, .documents, .newBookings, .planned, .directDebits, .wealth, .none: break
         }
         // Everything new, whatever the list filters say elsewhere.
@@ -537,7 +566,8 @@ extension AppModel {
         case .bank(let key): return bankGroup(for: key).map { (String(localized: "Summe"), $0.balanceCents) }
         case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .allAccounts, .none: return (String(localized: "Verfügbar (Giro, Tagesgeld, Karten)"), liquidBalance)
-        case .category(let id): return categories.first { $0.id == id }.map { (String(localized: "Summe im Zeitraum"), $0.totalCents) }
+        // The category total covers all accounts: no figure while accounts are filtered (#406).
+        case .category(let id): return categoryAccountIDs.isEmpty ? categories.first { $0.id == id }.map { (String(localized: "Summe im Zeitraum"), $0.totalCents) } : nil
         case .uncategorized, .documents, .newBookings, .planned, .directDebits, .wealth: return nil
         }
     }
