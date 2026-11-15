@@ -400,6 +400,11 @@ def stages(f):
     if st["human_steering_trailers"]:
         steer.append("Human-Steering: " + "; ".join(st["human_steering_trailers"][:3]))
     steer_ok = st["human_steering_signal"]
+    refl = f.get("reflection") or {}
+    if refl.get("human_steering"):
+        steer.append("Human-Steering dokumentiert (Selbstauskunft)")
+        if not f["scope"]["security_surface"]:  # self-report alone suffices only off the security surface
+            steer_ok = True
     if f["scope"]["security_surface"]:  # a requirement, not evidence -> does not set ✅
         steer.append("🔐 Security-Oberfläche berührt → menschliches Review Pflicht")
     orch = ai.get("roles", {}).get("orchestration", [])
@@ -422,10 +427,14 @@ def stages(f):
     ver += f["verification"]["trailers"][:3]
     ver.append("CI: fmt, clippy -D warnings, cargo test, swift build")
     ok4 = bool(len(ver) > 1)  # self-reported checks below are shown but never set ✅
-    refl = f.get("reflection") or {}
     for label, key in (("🔐 Security-Check", "security_check"), ("⚡ Perf-Check", "perf_check")):
         if refl.get(key):
-            ver.append(f"{label} (Selbstauskunft): " + "; ".join(refl[key][:2]))
+            item = f"{label} dokumentiert (Selbstauskunft)"
+            if key == "perf_check":
+                tm = re.search(r"category_perf[^\n]{0,80}?(\d+(?:[.,]\d+)?\s?ms)", " ".join(refl[key]), re.I)
+                if tm:
+                    item += f", category_perf {tm.group(1)}"
+            ver.append(item)
         elif key == "perf_check" and refl.get("perf_benchmark_mentioned"):
             ver.append("⚡ Perf-Check: category_perf im PR-Body erwähnt")
         elif ai["involved"]:

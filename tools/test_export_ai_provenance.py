@@ -136,6 +136,48 @@ class Stage4(unittest.TestCase):
         refl = prov.parse_reflection("category_perf: 9 ms", [])
         self.assertTrue(any("category_perf" in e for e in self.stage4(refl)[2]))
 
+    def test_evidence_labels_and_no_self_certification(self):
+        refl = {"present": True, "security_check": ["keine Secrets"],
+                "perf_check": ["category_perf: 12 ms"]}
+        _, ok, ev = self.stage4(refl)
+        self.assertFalse(ok)
+        self.assertIn("🔐 Security-Check dokumentiert (Selbstauskunft)", ev)
+        self.assertTrue(any(e.startswith("⚡ Perf-Check dokumentiert") and "12 ms" in e for e in ev))
+
+    def test_trailer_checks_also_labelled(self):
+        refl = prov.parse_reflection("", [("Security-Check", "ok"), ("Perf-Check", "n/a")])
+        _, ok, ev = self.stage4(refl)
+        self.assertFalse(ok)
+        self.assertEqual(sum("dokumentiert" in e for e in ev), 2)
+
+    def test_hard_telemetry_still_sets_stage4(self):
+        f = self.feats({"present": True, "security_check": ["x"]})
+        f["tests"]["tests_added"] = 2
+        self.assertTrue(prov.stages(f)[3][1])
+
+
+class Stage2(Stage4):
+    def stage2(self, refl, surface=()):
+        f = self.feats(refl)
+        f["scope"]["security_surface"] = list(surface)
+        return prov.stages(f)[1]
+
+    def test_human_steering_selfreport_ok_without_security_surface(self):
+        _, ok, ev = self.stage2({"present": True, "human_steering": ["Scope entschieden"]})
+        self.assertTrue(ok)
+        self.assertIn("Human-Steering dokumentiert (Selbstauskunft)", ev)
+
+    def test_human_steering_selfreport_not_enough_on_security_surface(self):
+        _, ok, ev = self.stage2({"present": True, "human_steering": ["x"]}, ["vault"])
+        self.assertFalse(ok)
+        self.assertIn("Human-Steering dokumentiert (Selbstauskunft)", ev)
+        self.assertTrue(any("Review Pflicht" in e for e in ev))
+
+    def test_no_reflection_no_label(self):
+        _, ok, ev = self.stage2({"present": False})
+        self.assertFalse(ok)
+        self.assertFalse(any("dokumentiert" in e for e in ev))
+
 
 FEATURES = {"title": "t", "ai": {"involved": True, "tools": {"Gemini": ["trailer:ai-orchestrator"]}, "roles": {}},
             "scope": {"layers": {"ui": 1}, "security_surface": []}, "size": {},
