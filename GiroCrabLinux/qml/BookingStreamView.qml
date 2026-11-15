@@ -553,7 +553,7 @@ Rectangle {
                     Text {
                         text: br.booking ? (br.booking.merchant.name || br.booking.booking_text) : ""
                         font.pixelSize: Theme.body + 1; font.weight: Font.DemiBold; color: Theme.text
-                        elide: Text.ElideRight; Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
+                        elide: Text.ElideRight; Layout.fillWidth: true; Layout.maximumWidth: Math.ceil(implicitWidth)
                     }
                     SFIcon { visible: br.booking && br.booking.document_count > 0; symbol: "doc.text.fill"; size: 11; color: Theme.withAlpha(Theme.accent, 0.8) }
                     SFIcon { visible: br.booking !== null && AppModel.recurringSeries(br.booking) !== null; symbol: "repeat"; size: 11 }
@@ -584,7 +584,7 @@ Rectangle {
                         text: br.refundSource ? "· " + br.refundSource.items + "  ↩"
                             : br.amazonRef !== null && br.amazonRef.items !== "" ? "· " + br.amazonRef.items : ""
                         font.pixelSize: Theme.callout + 1; color: Theme.secondary; elide: Text.ElideRight
-                        Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
+                        Layout.fillWidth: true; Layout.maximumWidth: Math.ceil(implicitWidth)
                         HoverHandler { id: itemsHover }
                         ToolTip.visible: itemsHover.hovered; ToolTip.delay: 600
                         ToolTip.text: br.amazonRef === null ? "" : br.amazonRef.isRefund

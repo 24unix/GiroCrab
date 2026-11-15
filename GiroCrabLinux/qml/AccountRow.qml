@@ -45,7 +45,7 @@ SidebarRow {
             RowLayout {
                 spacing: 4
                 Layout.fillWidth: true
-                Text { text: row.account.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.maximumWidth: implicitWidth; Layout.fillWidth: true }
+                Text { text: row.account.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.maximumWidth: Math.ceil(implicitWidth); Layout.fillWidth: true }
                 Rectangle {
                     visible: row.ownerInitials !== ""
                     implicitWidth: initials.implicitWidth + 8; implicitHeight: initials.implicitHeight

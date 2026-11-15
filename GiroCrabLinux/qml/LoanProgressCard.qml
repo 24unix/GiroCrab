@@ -55,7 +55,7 @@ Rectangle {
                 text: card.initial === null ? qsTr("Betrag eingeben") : qsTr("Ursprünglich: %1").arg(Fmt.money(card.initial))
                 font.pixelSize: Theme.caption
                 // narrow inspector: the title shrinks (…) instead of running past the card
-                Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
+                Layout.fillWidth: true; Layout.maximumWidth: Math.ceil(implicitWidth)
                 implicitWidth: origText.implicitWidth + 12
                 contentItem: Text { id: origText; text: parent.text; elide: Text.ElideRight; horizontalAlignment: Text.AlignRight
                                     verticalAlignment: Text.AlignVCenter; font.pixelSize: Theme.caption; color: Theme.text }
