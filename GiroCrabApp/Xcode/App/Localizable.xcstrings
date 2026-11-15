@@ -13,7 +13,8 @@
       }
     },
     " · " : {
-      "extractionState" : "manual"
+      "extractionState" : "manual",
+      "shouldTranslate" : false
     },
     "%@ (%@)" : {
       "extractionState" : "manual",
