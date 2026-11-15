@@ -2485,22 +2485,6 @@ impl BankConnector for FinTsConnector {
                 }
             }
 
-            // --- Standing orders (HKCDB), read-only; a bank that wants a TAN for it
-            // is skipped: a sync never asks for one the user did not start.
-            if kind == AccountKind::Checking
-                && self.bank_supports("HKCDB")
-                && allowed("HKCDB")
-                && !self.needs_hktan("HKCDB")
-            {
-                match self.standing_orders(ctx, acc, &label).await {
-                    Ok(orders) => {
-                        result.standing_orders.extend(orders);
-                        result.standing_orders_fetched.push(label.clone());
-                    }
-                    Err(e) => errors.push(trf("{0}: Daueraufträge – {1}", &[&label, &e])),
-                }
-            }
-
             // --- Depot value (HKWPD / MT535), only for depots that allow it
             // Some banks omit HKWPD from HIUPD although HIWPDS is in the BPD: try it
             // anyway for depots; a 9xxx rejection just lands in the error list.
@@ -2602,6 +2586,19 @@ impl BankConnector for FinTsConnector {
                 }
             }
             result.transactions.extend(txs);
+
+            // --- Standing orders (HKCDB), read-only. Sent right after the statements,
+            // in the same dialog: a bank that wants SCA for it usually accepts the
+            // approval just given. A decoupled (push) approval is handled by `request`.
+            if kind == AccountKind::Checking && self.bank_supports("HKCDB") && allowed("HKCDB") {
+                match self.standing_orders(ctx, acc, &label).await {
+                    Ok(orders) => {
+                        result.standing_orders.extend(orders);
+                        result.standing_orders_fetched.push(label.clone());
+                    }
+                    Err(e) => errors.push(trf("{0}: Daueraufträge – {1}", &[&label, &e])),
+                }
+            }
 
             // Opt-in (GitHub #57): PDF statements, at most weekly per account. A failure
             // never fails the sync; the explicit fetch reports errors instead.
