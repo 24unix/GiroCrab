@@ -47,3 +47,19 @@ struct CollectionLine: Identifiable {
     var id: Int64 { mandate.id }
     var cents: Int64? { Money.parseCents(amountText).flatMap { $0 > 0 ? $0 : nil } }
 }
+
+/// A collection being handed to the bank: one session (and TAN) per scheme/sequence group.
+struct DebitRun {
+    let accountID: Int64
+    let items: [CollectionItem]
+    let due: String
+    /// Files still to submit; the first is running. Each carries its own mandates
+    /// and sequence type: after one file went through, its mandates change their
+    /// sequence, so a position in the run would point at the wrong group.
+    var remaining: [DebitFile]
+    let total: Int
+    let batchBooking: Bool
+    let b2bConfirmed: Bool
+    var pin: String
+    var done: Int { total - remaining.count }
+}

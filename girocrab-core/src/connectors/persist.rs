@@ -1224,6 +1224,90 @@ impl Vault {
         )))
     }
 
+    /// Prepares handing one file of a collection run (see
+    /// `build_collection_files`) to the bank: HKDME/HKDSE and the COR1/B2B
+    /// variants, confirmed with a TAN like a transfer. FinTS accounts only.
+    pub fn begin_direct_debit(
+        self: Arc<Self>,
+        request: crate::mandates::DirectDebitRequest,
+        secret: String,
+        demo: bool,
+    ) -> Result<Arc<TransferSession>, CoreError> {
+        use crate::connectors::fints::pain008::DebitScheme;
+        let plan =
+            self.plan_collection(request.account_id, &request.items, &request.collection_date)?;
+        // the items are one file's mandates: exactly one group, with the sequence
+        // type the user saw; anything else means the mandates changed meanwhile
+        let mut groups = plan.groups.into_iter();
+        let group = match (groups.next(), groups.next()) {
+            (Some(g), None) if g.sequence.code() == request.sequence => g,
+            _ => {
+                return Err(CoreError::InvalidInput {
+                    message: tr("Die Mandate haben sich seit dem Erzeugen der Dateien geändert. Bitte die Dateien neu erzeugen.").into(),
+                })
+            }
+        };
+        let scheme = group.scheme.debit();
+        if scheme == DebitScheme::B2b && !request.b2b_confirmed {
+            return Err(CoreError::InvalidInput {
+                message: tr("Bei Firmen-Lastschriften (B2B) muss bestätigt werden, dass die Mandate bei den Banken der Zahlungspflichtigen hinterlegt sind.").into(),
+            });
+        }
+        let (connection_id, iban, owner, key_str, kind, demo) =
+            self.transfer_source(request.account_id, demo)?;
+        if !matches!(
+            kind,
+            ConnectorKind::VolksbankKasselGoettingen
+                | ConnectorKind::Direkt1822
+                | ConnectorKind::FinTsGeneric
+        ) {
+            return Err(CoreError::InvalidInput {
+                message: tr("Lastschriften können nur über FinTS-Konten eingereicht werden.")
+                    .into(),
+            });
+        }
+        let (ids, collections): (Vec<i64>, Vec<_>) = group.rows.into_iter().unzip();
+        let total: i64 = collections.iter().map(|c| c.amount_cents).sum();
+        let sync = self.clone().begin_sync(connection_id, secret, demo)?;
+        let ctx = sync.clone_context()?;
+        let summary = TransferJob {
+            source_iban: iban.clone(),
+            source_owner: owner,
+            recipient_name: trf(
+                "Lastschrift-Einzug ({0} Lastschriften)",
+                &[&collections.len()],
+            ),
+            recipient_iban: String::new(),
+            recipient_bic: None,
+            amount_cents: total,
+            purpose: String::new(),
+            instant: false,
+            execution_date: Some(request.collection_date.clone()),
+            end_to_end_id: new_end_to_end_id(),
+        };
+        let job = DebitJob {
+            source_iban: iban,
+            creditor_name: plan.creditor_name,
+            creditor_id: plan.creditor_id,
+            scheme,
+            sequence: group.sequence,
+            collection_date: request.collection_date,
+            collections,
+            batch_booking: request.batch_booking,
+        };
+        Ok(Arc::new(TransferSession::new_debit(
+            self.clone(),
+            make_connector_for(kind, &key_str, demo),
+            ctx,
+            DebitSubmission {
+                job,
+                mandate_ids: ids,
+            },
+            summary,
+            request.account_id,
+        )))
+    }
+
     /// Known recipients (name + IBAN) from past outgoing bookings, most used
     /// first. `query` filters by name/IBAN substring (empty = all).
     pub fn suggest_recipients(
@@ -1264,7 +1348,7 @@ impl Vault {
     /// Debit account of a transfer: connection, IBAN, owner, connector and the
     /// gate/kind checks shared by single and batch transfers.
     #[allow(clippy::type_complexity)]
-    fn transfer_source(
+    pub(crate) fn transfer_source(
         &self,
         account_id: i64,
         demo: bool,
@@ -1403,6 +1487,75 @@ impl Vault {
                 &format!("Überweisung {state}"),
             )?;
         }
+        Ok(())
+    }
+}
+
+impl Vault {
+    /// After the bank accepted a collection: shows it under "Geplant" (as
+    /// incoming, one sum or one line per collection) and advances the
+    /// mandates (`RCUR` next; after `FNAL` they are switched off).
+    pub(crate) fn record_direct_debit(
+        &self,
+        account_id: i64,
+        d: &DebitSubmission,
+    ) -> CoreResult<()> {
+        use crate::connectors::fints::pain008::SequenceType;
+        let job = &d.job;
+        let db = self.db()?;
+        // all or nothing: a half-recorded run would offer the same mandates again
+        let tx = db.unchecked_transaction()?;
+        let plan = |e2e: &str, name: &str, iban: &str, cents: i64, purpose: &str| {
+            Vault::insert_planned_debit(
+                &tx,
+                account_id,
+                e2e,
+                &job.collection_date,
+                name,
+                iban,
+                cents,
+                purpose,
+            )
+        };
+        if job.batch_booking {
+            let total: i64 = job.collections.iter().map(|c| c.amount_cents).sum();
+            let first = job.collections.first().map(|c| c.end_to_end_id.as_str());
+            plan(
+                &format!("{}-SUM", first.unwrap_or("GC")),
+                &trf(
+                    "Lastschrift-Einzug ({0} Lastschriften)",
+                    &[&job.collections.len()],
+                ),
+                "",
+                total,
+                "",
+            )?;
+        } else {
+            for c in &job.collections {
+                plan(
+                    &c.end_to_end_id,
+                    &c.debtor_name,
+                    &c.debtor_iban,
+                    c.amount_cents,
+                    &c.purpose,
+                )?;
+            }
+        }
+        for id in &d.mandate_ids {
+            tx.execute(
+                "UPDATE mandates SET last_collected = ?2 WHERE id = ?1
+                   AND (last_collected IS NULL OR last_collected < ?2)",
+                params![id, job.collection_date],
+            )?;
+            if job.sequence == SequenceType::Final {
+                // the switch-off is an edit: the stamp lets a vault merge carry it over
+                tx.execute(
+                    "UPDATE mandates SET active = 0, updated_ms = ?2 WHERE id = ?1",
+                    params![id, crate::user_groups::now_ms()],
+                )?;
+            }
+        }
+        tx.commit()?;
         Ok(())
     }
 }

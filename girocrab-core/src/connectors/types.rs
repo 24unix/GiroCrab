@@ -523,6 +523,17 @@ pub trait BankConnector: Send {
             message: tr("Für diese Bank werden Sammelüberweisungen nicht unterstützt.").into(),
         })
     }
+    /// Submit a direct debit collection (SEPA-Lastschrift, HKDSE/HKDME/…).
+    /// Same session rules as `send_transfer`.
+    async fn send_direct_debit(
+        &mut self,
+        _ctx: &ConnectContext,
+        _job: &DebitJob,
+    ) -> CoreResult<Phase> {
+        Err(CoreError::InvalidInput {
+            message: tr("Für diese Bank werden Lastschriften nicht unterstützt.").into(),
+        })
+    }
     /// After `send_transfer` reached `Ready`: executed (instant or regular),
     /// instant declined before any approval, or result unknown.
     /// Default: executed as a regular transfer.
@@ -551,6 +562,22 @@ pub struct BatchTransferJob {
     /// (only if the bank allows it, see `BatchParams`).
     pub batch_booking: bool,
     pub execution_date: Option<String>,
+}
+
+/// One collection (Einzug) to hand to the bank: all lines share scheme,
+/// sequence type and due date, as in one pain.008 message.
+#[derive(Debug, Clone)]
+pub struct DebitJob {
+    pub source_iban: String,
+    pub creditor_name: String,
+    pub creditor_id: String,
+    pub scheme: crate::connectors::fints::pain008::DebitScheme,
+    pub sequence: crate::connectors::fints::pain008::SequenceType,
+    /// Due date, `YYYY-MM-DD`.
+    pub collection_date: String,
+    pub collections: Vec<crate::connectors::fints::pain008::Collection>,
+    /// true = the bank books one sum, false = one booking per collection.
+    pub batch_booking: bool,
 }
 
 /// A standing order (Dauerauftrag) held by the bank, read-only (#239).

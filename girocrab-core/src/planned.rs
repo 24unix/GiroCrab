@@ -32,6 +32,23 @@ pub(crate) fn planned_transfers(conn: &Connection) -> CoreResult<()> {
     Ok(())
 }
 
+/// Step 20 (#143): `kind` tells scheduled transfers (`transfer`, outgoing)
+/// from submitted direct debit collections (`debit`, incoming); amounts stay
+/// positive. Idempotent.
+pub(crate) fn planned_kind(conn: &Connection) -> CoreResult<()> {
+    let has: i64 = conn.query_row(
+        "SELECT count(*) FROM pragma_table_info('planned_transfers') WHERE name = 'kind'",
+        [],
+        |r| r.get(0),
+    )?;
+    if has == 0 {
+        conn.execute_batch(
+            "ALTER TABLE planned_transfers ADD COLUMN kind TEXT NOT NULL DEFAULT 'transfer';",
+        )?;
+    }
+    Ok(())
+}
+
 /// What kind of order a planned payment comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -40,6 +57,8 @@ pub enum PlannedKind {
     ScheduledTransfer,
     /// Standing order (Dauerauftrag, #239), read from the bank.
     StandingOrder,
+    /// Direct debit collection handed to the bank (#143), incoming.
+    DirectDebit,
 }
 
 /// One future payment with an order at the bank.
@@ -120,6 +139,39 @@ impl Vault {
     }
 }
 
+impl Vault {
+    /// Remembers a collection the bank accepted (incoming on `date`).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn insert_planned_debit(
+        db: &Connection,
+        account_id: i64,
+        end_to_end_id: &str,
+        date: &str,
+        debtor_name: &str,
+        debtor_iban: &str,
+        amount_cents: i64,
+        purpose: &str,
+    ) -> CoreResult<()> {
+        prune_old(db)?;
+        db.execute(
+            "INSERT OR IGNORE INTO planned_transfers(account_id, end_to_end_id, execution_date,
+                    recipient_name, recipient_iban, amount_cents, purpose, created_ms, kind)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'debit')",
+            params![
+                account_id,
+                end_to_end_id,
+                date,
+                debtor_name,
+                debtor_iban,
+                amount_cents,
+                purpose,
+                crate::user_groups::now_ms()
+            ],
+        )?;
+        Ok(())
+    }
+}
+
 fn check_date(label: &str, d: &str) -> CoreResult<()> {
     chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
         .map(|_| ())
@@ -146,22 +198,31 @@ impl Vault {
         let db = self.db()?;
         let mut q = db.prepare(
             "SELECT p.id, p.account_id, a.name, p.execution_date, p.recipient_name,
-                    p.recipient_iban, p.amount_cents, p.purpose
+                    p.recipient_iban, p.amount_cents, p.purpose, p.kind
              FROM planned_transfers p JOIN accounts a ON a.id = p.account_id
              WHERE a.deleted_ms IS NULL AND p.execution_date >= ?1
                AND (?2 IS NULL OR p.execution_date <= ?2)
              ORDER BY p.execution_date, p.id",
         )?;
         let rows = q.query_map(params![from, to], |r| {
+            let debit = r.get::<_, String>(8)? == "debit";
             Ok(PlannedPayment {
                 id: format!("transfer-{}", r.get::<_, i64>(0)?),
-                kind: PlannedKind::ScheduledTransfer,
+                kind: if debit {
+                    PlannedKind::DirectDebit
+                } else {
+                    PlannedKind::ScheduledTransfer
+                },
                 account_id: r.get(1)?,
                 account_name: r.get(2)?,
                 date: r.get(3)?,
                 counterparty: r.get(4)?,
                 counterparty_iban: r.get(5)?,
-                amount_cents: -r.get::<_, i64>(6)?,
+                amount_cents: if debit {
+                    r.get::<_, i64>(6)?
+                } else {
+                    -r.get::<_, i64>(6)?
+                },
                 purpose: r.get(7)?,
                 rhythm_unit: String::new(),
                 rhythm_interval: 0,
@@ -224,12 +285,31 @@ pub(crate) fn merge_attached(
     if has == 0 {
         return Ok(());
     }
-    let rows: Vec<(i64, String, String, String, String, i64, String, i64)> = {
-        let mut q = conn.prepare(
+    let has_kind: i64 = conn.query_row(
+        "SELECT count(*) FROM pragma_table_info('planned_transfers', 'other') WHERE name = 'kind'",
+        [],
+        |r| r.get(0),
+    )?;
+    let rows: Vec<(
+        i64,
+        String,
+        String,
+        String,
+        String,
+        i64,
+        String,
+        i64,
+        String,
+    )> = {
+        let mut q = conn.prepare(if has_kind > 0 {
             "SELECT account_id, end_to_end_id, execution_date, recipient_name, recipient_iban,
-                    amount_cents, purpose, created_ms
-             FROM other.planned_transfers",
-        )?;
+                    amount_cents, purpose, created_ms, kind
+             FROM other.planned_transfers"
+        } else {
+            "SELECT account_id, end_to_end_id, execution_date, recipient_name, recipient_iban,
+                    amount_cents, purpose, created_ms, 'transfer'
+             FROM other.planned_transfers"
+        })?;
         let it = q.query_map([], |r| {
             Ok((
                 r.get(0)?,
@@ -240,19 +320,20 @@ pub(crate) fn merge_attached(
                 r.get(5)?,
                 r.get(6)?,
                 r.get(7)?,
+                r.get(8)?,
             ))
         })?;
         it.collect::<Result<_, _>>()?
     };
-    for (acc, e2e, date, name, iban, cents, purpose, created) in rows {
+    for (acc, e2e, date, name, iban, cents, purpose, created, kind) in rows {
         let Some(&mine) = acc_map.get(&acc) else {
             continue;
         };
         conn.execute(
             "INSERT OR IGNORE INTO planned_transfers(account_id, end_to_end_id, execution_date,
-                    recipient_name, recipient_iban, amount_cents, purpose, created_ms)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-            params![mine, e2e, date, name, iban, cents, purpose, created],
+                    recipient_name, recipient_iban, amount_cents, purpose, created_ms, kind)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            params![mine, e2e, date, name, iban, cents, purpose, created, kind],
         )?;
     }
     Ok(())

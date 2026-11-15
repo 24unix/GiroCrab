@@ -19,7 +19,7 @@ mod collect;
 mod csv;
 mod merge;
 mod pain;
-pub use collect::{CollectionItem, DebitFile};
+pub use collect::{CollectionItem, DebitFile, DirectDebitRequest};
 pub use csv::{parse_mandate_csv, MandateCsvImport, MandateCsvRow, MandateImportResult};
 pub(crate) use merge::merge_attached;
 

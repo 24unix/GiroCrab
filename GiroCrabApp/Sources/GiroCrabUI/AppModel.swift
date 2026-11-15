@@ -244,6 +244,9 @@ public final class AppModel {
     var suggestedCreditorID = ""
     var collectionLines: [CollectionLine] = []
     var showCollectionSheet = false
+    /// Direct debit submission via FinTS (#143): the running job and whether the active session is one.
+    var debitRun: DebitRun?
+    var activeTransferIsDebit = false
     var collectionFiles: [DebitFile] = []
     var mandateExport = CSVFileDocument(data: Data())
     var showMandateExport = false
@@ -539,7 +542,7 @@ public final class AppModel {
     /// Screenshot helper: open a sheet pre-filled with fictional data.
     private func presentDemoSheet(_ name: String) {
         switch name {
-        case "mandate", "collection":
+        case "mandate", "collection", "collection-files":
             // Lastschriften (#143): the mandate form / the collection sheet
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -547,7 +550,11 @@ public final class AppModel {
                 if name == "mandate" { self.newMandate(); self.mandateDraft?.name = "Mia Beispiel"; self.mandateDraft?.iban = "DE89 3704 0044 0532 0130 00"
                     self.mandateDraft?.reference = "M-2026-001"; self.mandateDraft?.amountText = "12,50"
                     self.mandateDraft?.purpose = "Mitgliedsbeitrag" }
-                else { self.openCollection() }
+                else {
+                    self.openCollection()
+                    // `collection-files`: the step after "Dateien erzeugen", with the submit area
+                    if name == "collection-files" { self.buildCollection(dueDate: Date().addingTimeInterval(5 * 86_400)) }
+                }
             }
         case "account-selection":
             // choice of accounts another login already delivers (#346)
@@ -1042,6 +1049,8 @@ public final class AppModel {
         showTransferSheet = false
         showBatchSheet = false
         activeTransferIsBatch = false
+        activeTransferIsDebit = false
+        debitRun = nil
         transferDraft.pin = ""
         batchDraft.pin = ""
         Task {

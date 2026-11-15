@@ -147,7 +147,7 @@ private struct PlannedRow: View {
         let p = payment
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: p.kind == .standingOrder ? "repeat" : "calendar.badge.clock")
+                Image(systemName: p.kindSymbol)
                     .foregroundStyle(Theme.accent)
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(Theme.accent.opacity(0.12)))
@@ -181,8 +181,17 @@ private struct PlannedRow: View {
 }
 
 extension PlannedPayment {
-    /// "Terminüberweisung" or "Dauerauftrag · monatlich".
+    var kindSymbol: String {
+        switch kind {
+        case .standingOrder: "repeat"
+        case .directDebit: "arrow.down.circle"
+        case .scheduledTransfer: "calendar.badge.clock"
+        }
+    }
+
+    /// "Terminüberweisung", "Lastschrift" or "Dauerauftrag · monatlich".
     var kindText: String {
+        if kind == .directDebit { return String(localized: "Lastschrift") }
         guard kind == .standingOrder else { return String(localized: "Terminüberweisung") }
         return String(localized: "Dauerauftrag") + " · " + rhythmText
     }

@@ -24,6 +24,25 @@ pub struct CollectionItem {
     pub last_collection: bool,
 }
 
+/// Hands one group of a collection run to the bank (FinTS).
+#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DirectDebitRequest {
+    pub account_id: i64,
+    pub items: Vec<CollectionItem>,
+    /// Due date `YYYY-MM-DD`.
+    pub collection_date: String,
+    /// Sequence type (`FRST`, `RCUR`, `OOFF`, `FNAL`) of the file being submitted.
+    /// `items` holds only that file's mandates (`DebitFile::mandate_ids`); after an
+    /// earlier file of the same run went through, mandates change their
+    /// sequence type, so a position in the run would point at the wrong group.
+    pub sequence: String,
+    /// B2B only: the user confirmed the mandates are on file at the debtors' banks.
+    pub b2b_confirmed: bool,
+    /// true = the bank books one sum, false = one booking per collection.
+    pub batch_booking: bool,
+}
+
 /// A ready `pain.008` message.
 #[derive(Debug, Clone, uniffi::Record)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -46,18 +65,30 @@ fn check_date(d: &str) -> CoreResult<()> {
         .map_err(|_| invalid(tr("Das Fälligkeitsdatum ist ungültig.")))
 }
 
-#[uniffi::export]
+/// One scheme/sequence group of a run: becomes one message and one submission.
+pub(crate) struct CollectionGroup {
+    pub scheme: MandateScheme,
+    pub sequence: SequenceType,
+    pub rows: Vec<(i64, Collection)>,
+}
+
+pub(crate) struct CollectionPlan {
+    pub creditor_id: String,
+    pub creditor_name: String,
+    pub creditor_iban: String,
+    pub groups: Vec<CollectionGroup>,
+}
+
 impl Vault {
-    /// Builds the `pain.008` files for `items` under the creditor account
-    /// `account_id`, due on `collection_date` (`YYYY-MM-DD`). The creditor ID
-    /// of the account must be set. Nothing is marked as collected.
-    pub fn build_collection_files(
+    /// Groups `items` by scheme and sequence type (stable order: scheme code,
+    /// then sequence code) after checking creditor ID, mandates and date.
+    pub(crate) fn plan_collection(
         &self,
         account_id: i64,
-        items: Vec<CollectionItem>,
-        collection_date: String,
-    ) -> Result<Vec<DebitFile>, CoreError> {
-        check_date(&collection_date)?;
+        items: &[CollectionItem],
+        collection_date: &str,
+    ) -> CoreResult<CollectionPlan> {
+        check_date(collection_date)?;
         if items.is_empty() {
             return Err(invalid(tr("Der Einzug enthält keine Lastschrift.")));
         }
@@ -77,11 +108,7 @@ impl Vault {
         } else {
             account.owner.clone()
         };
-        // (scheme code, sequence code) -> collections, in the order given
-        let mut groups: BTreeMap<
-            (String, String),
-            (MandateScheme, SequenceType, Vec<(i64, Collection)>),
-        > = BTreeMap::new();
+        let mut groups: BTreeMap<(String, String), CollectionGroup> = BTreeMap::new();
         let due_compact = collection_date.replace('-', "");
         // one query instead of one per line: runs can have thousands of lines
         let by_id: std::collections::HashMap<i64, super::Mandate> = self
@@ -90,7 +117,7 @@ impl Vault {
             .map(|m| (m.id, m))
             .collect();
         let mut seen = std::collections::HashSet::new();
-        for item in &items {
+        for item in items {
             let m = by_id
                 .get(&item.mandate_id)
                 .ok_or_else(|| invalid(tr("Das Mandat gibt es nicht mehr.")))?;
@@ -140,39 +167,69 @@ impl Vault {
             };
             groups
                 .entry((m.scheme.debit().code().to_string(), seq.code().to_string()))
-                .or_insert_with(|| (m.scheme, seq, Vec::new()))
-                .2
+                .or_insert_with(|| CollectionGroup {
+                    scheme: m.scheme,
+                    sequence: seq,
+                    rows: Vec::new(),
+                })
+                .rows
                 .push((m.id, c));
         }
+        Ok(CollectionPlan {
+            creditor_id,
+            creditor_name,
+            creditor_iban: account.iban,
+            groups: groups.into_values().collect(),
+        })
+    }
+}
+
+#[uniffi::export]
+impl Vault {
+    /// Builds the `pain.008` files for `items` under the creditor account
+    /// `account_id`, due on `collection_date` (`YYYY-MM-DD`). The creditor ID
+    /// of the account must be set. Nothing is marked as collected. The order
+    /// of the files is the group order `begin_direct_debit` takes.
+    pub fn build_collection_files(
+        &self,
+        account_id: i64,
+        items: Vec<CollectionItem>,
+        collection_date: String,
+    ) -> Result<Vec<DebitFile>, CoreError> {
+        let plan = self.plan_collection(account_id, &items, &collection_date)?;
         let now = chrono::Local::now();
         let created = now.format("%Y-%m-%dT%H:%M:%S").to_string();
         let stamp = now.format("%Y%m%d%H%M%S").to_string();
         let mut files = Vec::new();
-        for (n, ((scheme_code, seq_code), (scheme, seq, rows))) in groups.into_iter().enumerate() {
-            let collections: Vec<Collection> = rows.iter().map(|(_, c)| c.clone()).collect();
+        for (n, g) in plan.groups.iter().enumerate() {
+            let collections: Vec<Collection> = g.rows.iter().map(|(_, c)| c.clone()).collect();
             let message_id = format!("GC{stamp}-{}", n + 1);
             let xml = build_pain008(&Pain008 {
                 message_id: &message_id,
                 created: &created,
                 collection_date: &collection_date,
-                creditor_name: &creditor_name,
-                creditor_iban: &account.iban,
+                creditor_name: &plan.creditor_name,
+                creditor_iban: &plan.creditor_iban,
                 creditor_bic: "",
-                creditor_id: &creditor_id,
-                scheme: scheme.debit(),
-                sequence: seq,
+                creditor_id: &plan.creditor_id,
+                scheme: g.scheme.debit(),
+                sequence: g.sequence,
                 collections: &collections,
                 version: DebitVersion::V02,
                 batch_booking: true,
             })?;
             files.push(DebitFile {
-                file_name: format!("lastschrift-{scheme_code}-{seq_code}-{collection_date}.xml"),
-                scheme,
-                sequence: seq_code,
+                file_name: format!(
+                    "lastschrift-{}-{}-{collection_date}.xml",
+                    g.scheme.debit().code(),
+                    g.sequence.code()
+                ),
+                scheme: g.scheme,
+                sequence: g.sequence.code().to_string(),
                 count: collections.len() as u32,
                 total_cents: collections.iter().map(|c| c.amount_cents).sum(),
                 xml,
-                mandate_ids: rows.iter().map(|(id, _)| *id).collect(),
+                mandate_ids: g.rows.iter().map(|(id, _)| *id).collect(),
             });
         }
         Ok(files)
