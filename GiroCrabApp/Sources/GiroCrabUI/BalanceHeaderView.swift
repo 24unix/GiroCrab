@@ -47,10 +47,15 @@ struct StreamHeaderCard: View {
     #endif
     @State private var showDocuments = false
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics: Bool = true
+    @AppStorage(ViewLayout.compactHeaderKey) private var compactHeader: Bool = false
 
     private var account: Account? {
         if case .account(let id) = model.sidebarSelection { return model.account(for: id) }
         return nil
+    }
+
+    private var compactHeaderTitle: LocalizedStringKey {
+        compactHeader ? "Kopfbereich einblenden" : "Kopfbereich minimieren"
     }
 
     /// Depots show positions; bookings (buys, sells) live on the clearing account.
@@ -64,7 +69,8 @@ struct StreamHeaderCard: View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(headerTitle).sensitive(account == nil ? .labels : .personal).appFont(.title2, weight: .semibold).foregroundStyle(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
+                    Text(headerTitle).sensitive(account == nil ? .labels : .personal).appFont(compactHeader ? .headline : .title2, weight: .semibold).foregroundStyle(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
+                    if !compactHeader {
                     Group {
                         if let a = account {
                             Text([a.bankName, a.iban.isEmpty ? "" : formatIBAN(a.iban)].filter { !$0.isEmpty }.joined(separator: " · "))
@@ -75,10 +81,24 @@ struct StreamHeaderCard: View {
                     }
                     .appFont(.caption)
                     .foregroundStyle(Theme.secondary)
+                    }
                 }
                 .contextMenu {
                     if let a = account { AccountCopyMenu(account: a) }
                 }
+                // Minimise the header: more room for the booking list (GitHub #358).
+                Button {
+                    withAnimation(Motion.animation(.easeInOut(duration: 0.25))) { compactHeader.toggle() }
+                } label: {
+                    Image(systemName: compactHeader ? "chevron.down" : "chevron.up")
+                        .appFont(.caption, weight: .semibold)
+                        .foregroundStyle(Theme.secondary)
+                        .padding(4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(compactHeaderTitle)
+                .accessibilityLabel(compactHeaderTitle)
                 #if os(iOS)
                 // long-press is invisible on iPhone/iPad: show an explicit entry too
                 if let a = account {
@@ -93,11 +113,13 @@ struct StreamHeaderCard: View {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(Money.format(hb.cents))
                             .sensitive()
-                            .appFont(.largeTitle, weight: .semibold, monospacedDigit: true)
+                            .appFont(compactHeader ? .title3 : .largeTitle, weight: .semibold, monospacedDigit: true)
                             .foregroundStyle(account?.kind == .loan ? Theme.loan : Theme.text)
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
-                        Text(hb.label).appFont(.caption).foregroundStyle(Theme.secondary)
+                        if !compactHeader {
+                            Text(hb.label).appFont(.caption).foregroundStyle(Theme.secondary)
+                        }
                     }
                     .contextMenu {
                         Button("\(hb.label) kopieren", systemImage: "doc.on.doc") { copyToPasteboard(Money.clipboard(hb.cents)) }
@@ -105,14 +127,16 @@ struct StreamHeaderCard: View {
                 }
             }
 
-            if let a = account, a.kind == .loan {
+            if !compactHeader, let a = account, a.kind == .loan {
                 LoanProgressCard(account: a, compact: true)
             }
 
             if isDepot {
                 // positions are cards below; the chart shows the value history
                 // (Sachwerte: of the selected item, if one is selected)
-                if let hint = depotSinglePointHint {
+                if compactHeader {
+                    EmptyView()
+                } else if let hint = depotSinglePointHint {
                     Text(hint)
                         .appFont(.caption)
                         .foregroundStyle(Theme.secondary)
@@ -131,7 +155,7 @@ struct StreamHeaderCard: View {
                         CustomPeriodForm()
                     }
             } else {
-                if showStatistics && model.scope != .investments {
+                if !compactHeader && showStatistics && model.scope != .investments {
                     // iOS: 44 pt = HIG minimum hit region (the chart is tappable);
                     // macOS: room for the min/max/0 axis labels (GitHub #203).
                     #if os(iOS)
@@ -143,6 +167,7 @@ struct StreamHeaderCard: View {
                     #endif
                 }
 
+                if !compactHeader {
                 #if os(iOS)
                 HStack(spacing: 10) {
                     Text("Konsum \(kpiValue(-model.consumptionThisMonth))").foregroundStyle(Theme.outflow).sensitive()
@@ -157,6 +182,7 @@ struct StreamHeaderCard: View {
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
                 #endif
+                }
 
                 filterRow
             }

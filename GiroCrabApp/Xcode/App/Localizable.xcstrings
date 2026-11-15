@@ -14447,6 +14447,28 @@
         }
       }
     },
+    "Kopfbereich einblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Header"
+          }
+        }
+      }
+    },
+    "Kopfbereich minimieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minimize Header"
+          }
+        }
+      }
+    },
     "Kopieren" : {
       "extractionState" : "manual",
       "localizations" : {
