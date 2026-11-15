@@ -498,6 +498,7 @@ ApplicationWindow {
     // MARK: account groups & command palette (AccountGroupsUI.swift, CommandPalette.swift)
     AccountGroupDialogs {}
     Loader { active: AppModel.showGroupManager; sourceComponent: Component { GroupManagerSheet {} } }
+    Loader { active: AppModel.accountSelectionConnection !== null; sourceComponent: Component { AccountSelectionSheet {} } }
     Loader { active: AppModel.showCommandPalette; sourceComponent: Component { CommandPaletteSheet {} } }
 
     // MARK: - Web logins

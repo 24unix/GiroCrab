@@ -119,6 +119,7 @@ von der nativen Installation wechselt, kopiert `tresor.girocrab` in den neuen Or
 | VaultKeyManager | src/vault_key.rs, LockView.qml, KeyPasteSheet.qml | Secret Service (KWallet / GNOME Keyring) statt Keychain, Sperrbildschirm, Schlüssel sichern/wiederherstellen |
 | AppModel+Reset, VaultResources | SecuritySettings.qml, AppModel.qml, src/dispatch.rs (`reset_app`), src/vault_key.rs | Einstellungen › Sicherheit › „App zurücksetzen …“: löscht Tresor (mit `-wal`/`-shm`/`-journal`), entschlüsselte Belegkopien, Einstellungen (`GiroCrab.conf`) und zuletzt den Schlüssel im Secret Service. Danach startet die App neu (statt wie am Mac im laufenden Prozess) und zeigt wie beim ersten Start die Demo. Die Richtlinie der Sicherheitssperre (`banking-policy.json`) bleibt. Keine Abfrage von Touch ID / Gerätecode (gibt es unter Linux nicht) |
 | ConnectionsUI, AddBankAssistant, BankPicker, FinTsAddForm, EnableBankingSetup | AddBankSheet.qml, BankSetupSheet.qml, SettingField.qml, ConnectionEditSheet.qml, ConfirmDialog.qml, EnableBankingSetupSection.qml | Bank hinzufügen, Einrichten, Bearbeiten, Entfernen, PSD2-Zustimmung + „Neu verbinden …“, Web-Sitzung (Cookies) löschen, CSV/PDF-Kontoauszug-Import, Trade Republic „Im Browser-Fenster anmelden …“ |
+| AccountSelectionView | AccountSelectionList.qml, AccountSelectionPanel.qml, AccountSelectionSheet.qml, AppModel.qml, ConnectionEditSheet.qml, FnzWebLoginFlow.qml, WebLoginSheet.qml | Kontoauswahl pro Bankzugang (#346): Liefert ein Abruf Konten, die schon über einen anderen Zugang eingebunden sind, fragt die App danach (auch nach quirion), welche abgerufen werden; beim FNZ-Abruf über dem Browser, bevor die PDFs geladen werden. Bankzugang bearbeiten › „Kontenauswahl“ ändert die Wahl später |
 | TwoFactorSheet, PSD2Consent, ConsentBrowser, AutoSyncState | TwoFactorSheet.qml, PinSheet.qml, ConsentBrowser.qml (QtWebEngine), SyncPromptButtons.qml, SyncBatchProgressLabel.qml, src/sessions.rs | Abruf einzeln und „Alle abrufen“, PIN, TAN (Push, Eingabe), Zustimmung im Browserfenster |
 | TransferSheetView, PayeeCheckSheet, GiroCode, PaymentParser | TransferSheet.qml, PayeeCheckSheet.qml, GiroCode.qml, GiroCodeImage.qml, PaymentParser.qml | Formular, Vorlagen, Echtzeit/Termin, Empfängervorschläge, Einfügen, Rechnung (ZUGFeRD-XML, PDF-Text) per Drag & Drop, Bestätigung, GiroCode, Namensprüfung, TAN. Fehlt: QR-Erkennung in Bildern/PDFs |
 | BankingPolicy | src/banking_policy.rs, BankingPolicyBanner.qml, SecuritySettings.qml | signierte Richtlinie, Distribution `linux`, Abschnitt in Einstellungen › Sicherheit. Das Projekt veröffentlicht noch keine Regeln für `linux`. |
@@ -183,9 +184,10 @@ cargo run -- --view vermoegen[-wertpapiere|-sachwerte]  # (Demo) Start in „Ver
 cargo run -- --select visa                   # (Demo) Konto vorwählen, dessen Name den Text enthält
 cargo run -- --pick rewe                     # (Demo) Buchung vorwählen, deren Händler/Gegenseite den Text enthält
 cargo run -- --demo-sheet <Name>             # (Demo) Sheet mit erfundenen Daten öffnen (Liste unten)
-cargo run -- --demo-settings general|banks|groups|security[:edit|:add|:remove]
+cargo run -- --demo-settings general|banks|groups|security[:edit|:add|:remove|:select]
                                              # (Demo) Einstellungen auf diesem Reiter, optional mit dem
-                                             # Bearbeiten-/Hinzufügen-/Entfernen-Sheet der ersten Bank;
+                                             # Bearbeiten-/Hinzufügen-/Entfernen-Sheet der ersten Bank
+                                             # (`:select`: Bearbeiten eines zweiten Zugangs mit Kontoauswahl);
                                              # `groups` öffnet den Gruppen-Editor im Hauptfenster
 cargo run -- --demo-filter income|expense    # (Demo) Buchungsliste nur mit Einnahmen bzw. Ausgaben
 cargo run -- --demo-menu Buchung             # Menü der Menüleiste mit diesem Titel aufklappen (für Screenshots)
@@ -194,7 +196,7 @@ cargo run -- --text-size larger              # Schriftgröße erzwingen: standar
 cargo run -- --screenshot /tmp/a.png         # Fenster rendern, als PNG speichern, beenden (impliziert --demo-seed)
 ```
 
-`--demo-sheet`: `transfer`, `moneymoney`, `moneymoney-db`, `recurring`, `print`, `rules`, `palette` (Befehlspalette),
+`--demo-sheet`: `account-selection` (Kontoauswahl eines zweiten Bankzugangs), `transfer`, `moneymoney`, `moneymoney-db`, `recurring`, `print`, `rules`, `palette` (Befehlspalette),
 `categorizer`, `payee-match`, `payee-close`, `payee-nomatch`, `error` (Abruf-Fehler mit Alternativen zur
 FinTS-Registrierung), `rule-edit`, `icon-color` (Symbol & Farbe des ersten Kontos), `category` (neue Unterkategorie),
 `icon-color-category`, `asset` (neuer Sachwert), `asset-edit`, `asset-values`, `asset-quantities` (das Auto der Demo).

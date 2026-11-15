@@ -25,6 +25,9 @@ WebLoginFlow {
     property string progress: ""
     property string notice: ""
     property int generation: 0
+    /// Accounts another login already delivers: asked before the documents are downloaded (#346).
+    property bool askedInFlow: false
+    property var choiceDone: null
     readonly property string unreadable: qsTr("FNZ: Die Portalantwort konnte nicht gelesen werden.")
     readonly property var cancelled: ({ fnz: "cancelled" })
 
@@ -104,6 +107,7 @@ return btoa(bin);`
 
     function close(success) {
         generation++
+        endAccountChoice()
         if (success) AppModel.closeWebLogin()
         else AppModel.cancelWebLogin()
     }
@@ -129,6 +133,19 @@ return btoa(bin);`
             .then(overview => AppModel.corePromise("import_fnz_overview", { connection_id: id, overview_json: overview }))
             .then(s => {
                 summary = s
+                // Held-back accounts: ask now, so their documents are fetched (or skipped) accordingly.
+                return AppModel.corePromise("pending_account_selection_connections", {})
+            })
+            .then(open => {
+                if (gen !== generation) throw cancelled
+                if (open.indexOf(id) < 0) return null
+                askedInFlow = true
+                progress = qsTr("Auswahl der Konten …")
+                choosingAccounts = true
+                return new Promise(resolve => { choiceDone = resolve })
+            })
+            .then(() => {
+                if (gen !== generation) throw cancelled
                 if (!includeDocuments.checked) return null
                 progress = qsTr("Postkorb und Archiv auflisten …")
                 return run(documentsScript, {}, gen)
@@ -177,8 +194,19 @@ return btoa(bin);`
     function finish() {
         try { AppModel.core("checkpoint") } catch (e) {}
         running = false
+        endAccountChoice()
         AppModel.documentsVersion++
         AppModel.reloadAll()
+        // Skipped ("Später") accounts were already offered in this run.
+        if (!askedInFlow) AppModel.checkPendingAccountSelection()
+        askedInFlow = false
+    }
+    /// "Später" / "Übernehmen und fortfahren" in the panel over the browser (or cancel).
+    function endAccountChoice() {
+        choosingAccounts = false
+        const done = choiceDone
+        choiceDone = null
+        if (done) done()
     }
 
     Button { text: qsTr("Schließen"); onClicked: flow.close(false) }

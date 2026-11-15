@@ -225,6 +225,10 @@ Sheet {
                     Repeater { model: sheet.showAdvanced ? sheet.advancedKeys : []; KeyField { required property string modelData; key: modelData } }
                 }
                 SettingsFormSection {
+                    title: qsTr("Kontenauswahl")
+                    AccountSelectionList { connection: sheet.visible ? sheet.connection : null }
+                }
+                SettingsFormSection {
                     title: qsTr("Status")
                     SettingsFormRow { visible: sheet.status !== null; label: qsTr("Konten"); value: sheet.status ? String(sheet.status.account_count) : "" }
                     SettingsFormRow { visible: sheet.status !== null; label: qsTr("Buchungen"); value: sheet.status ? String(sheet.status.booking_count) : "" }

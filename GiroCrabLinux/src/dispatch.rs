@@ -189,6 +189,15 @@ fn restore_key(key: &[u8]) -> R {
     ok(())
 }
 
+/// AccountSelectionList.save (#346): takes `self: Arc<Vault>` (a held-back fetch is
+/// imported right away), so not part of `vault_methods!`.
+fn set_connection_account_choices(v: &Arc<Vault>, a: &Value) -> R {
+    v.clone()
+        .set_connection_account_choices(arg(a, "connection_id")?, arg(a, "enabled_refs")?)
+        .map_err(|e| e.to_string())?;
+    ok(())
+}
+
 /// Text file chosen in a file dialog (Enable Banking .pem key); at most 1 MB.
 fn read_text_file(a: &Value) -> R {
     let path: String = arg(a, "path")?;
@@ -362,6 +371,7 @@ fn call(method: &str, a: &Value) -> R {
         }
         "is_unlocked" => ok(VAULT.lock().unwrap().is_some()),
         "reset_app" => reset_app(),
+        "set_connection_account_choices" => set_connection_account_choices(&vault()?, a),
         // catalog / directory (free functions of the core)
         "bank_catalog" => ok(girocrab_core::bank_catalog()),
         "fints_presets" => ok(girocrab_core::connectors::fints_presets::fints_presets()),
@@ -1075,6 +1085,9 @@ vault_methods! {
     // --- main window / editing ---
     set_checked_for_filter(filter, checked) recurring_snapshot(account_ids, year, month)
     log_sync(connection_id, source, outcome, message, imported)
+    // --- account selection per login (AccountSelectionView.swift, #346) ---
+    connection_account_choices(connection_id) pending_account_selection_connections()
+    seed_demo_account_selection()
 }
 
 #[cfg(test)]
@@ -1491,6 +1504,51 @@ mod tests {
             call_ok("bic_for_iban", json!({ "iban": "DE89370400440532013000" })),
             json!("COBADEFF")
         );
+        // Kontoauswahl (#346): a second login reaching accounts the first one delivers
+        let second = call("seed_demo_account_selection", json!({}));
+        assert_eq!(
+            call("pending_account_selection_connections", json!({})),
+            json!([second])
+        );
+        let choices = call(
+            "connection_account_choices",
+            json!({ "connection_id": second }),
+        );
+        let rows = choices.as_array().unwrap();
+        assert!(rows
+            .iter()
+            .any(|c| c["pending"] == true && c["enabled"] == false));
+        assert!(rows
+            .iter()
+            .all(|c| c["account_ref"].is_string() && c["existing_connection"].is_string()));
+        let keep: Vec<Value> = rows
+            .iter()
+            .filter(|c| c["enabled"] == true)
+            .map(|c| c["account_ref"].clone())
+            .collect();
+        set_connection_account_choices(
+            &v,
+            &json!({ "connection_id": second, "enabled_refs": keep }),
+        )
+        .unwrap();
+        assert_eq!(
+            call("pending_account_selection_connections", json!({})),
+            json!([])
+        );
+        let after = call(
+            "connection_account_choices",
+            json!({ "connection_id": second }),
+        );
+        assert!(after
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["pending"] == false));
+        assert!(set_connection_account_choices(
+            &v,
+            &json!({ "connection_id": second, "enabled_refs": ["unknown"] }),
+        )
+        .is_err());
         let _ = std::fs::remove_file(path);
     }
 

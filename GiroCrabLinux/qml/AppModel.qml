@@ -251,6 +251,11 @@ QtObject {
         vaultInfo = core("vault_info")
         if (optionDemoSeed) {
             openDemo()
+            if (demoSheet === "account-selection" || demoSettings === "banks:select") {
+                // a second login reaching accounts the first one delivers (#346)
+                run(() => core("seed_demo_account_selection"))
+                reloadAll()
+            }
             applyLaunchSelection()
             // --demo-sheet / --demo-settings: presentLaunchOptions() once the vault is open
             return
@@ -1385,8 +1390,20 @@ QtObject {
                 toast = syncNotice(connection, s)
             }
             reloadAll()
+            checkPendingAccountSelection()
             syncNextInQueue()
         }
+    }
+    /// Login with accounts that another login already delivers: asks which to fetch (#346).
+    property var accountSelectionConnection: null
+    /// Opens the account choice for the first login whose new accounts overlap with
+    /// another login (#346). No-op while a choice is already shown.
+    function checkPendingAccountSelection() {
+        if (accountSelectionConnection !== null) return
+        coreAsync("pending_account_selection_connections", {}, ids => {
+            if (!ids.length || accountSelectionConnection !== null) return
+            accountSelectionConnection = connections.find(c => c.id === ids[0]) || null
+        }, () => {})
     }
     function syncNotice(connection, s) {
         const parts = [qsTr("%1: %2 neue Buchungen, %3 kategorisiert").arg(connection.display_name).arg(s.transactions_imported).arg(s.transactions_categorized)]
@@ -3177,6 +3194,10 @@ QtObject {
     function presentDemoSheet(name) {
         const top = categories.find(c => c.depth === 0)
         switch (name) {
+        case "account-selection":
+            // choice of accounts another login already delivers (#346)
+            accountSelectionConnection = connections.length ? connections[connections.length - 1] : null
+            break
         case "icon-color": {
             // the "Symbol & Farbe" popover of the first account (#167)
             const a = allAccounts.length ? allAccounts[0] : null
@@ -3328,7 +3349,7 @@ QtObject {
                 model.errorMessage = model.bankingPolicy.message
             }
         }
-        function onVaultStateChanged() { if (model.vaultState !== "open") model.webLoginConnection = null }
+        function onVaultStateChanged() { if (model.vaultState !== "open") { model.webLoginConnection = null; model.accountSelectionConnection = null } }
     }
 
     /// Portal sheet closed after its work (Swift: `model.webLoginConnection = nil`): a batch
