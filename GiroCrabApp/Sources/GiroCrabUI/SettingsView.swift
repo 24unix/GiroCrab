@@ -57,6 +57,7 @@ struct GeneralSettings: View {
     @State private var showHelp = false
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
+    @AppStorage(NegativeAmountStyle.defaultsKey) private var negativeAmountStyle: NegativeAmountStyle = .neutral
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
     @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
 
@@ -93,6 +94,11 @@ struct GeneralSettings: View {
                     .appFont(.caption).foregroundStyle(.secondary)
                 Toggle("Budgets anzeigen", isOn: $showBudgets)
                 Text("Wer keine Monatsbudgets nutzt, blendet die Budget-Karte und „Monatsbudget festlegen …“ ganz aus. Auch im Menü Ansicht umschaltbar.")
+                    .appFont(.caption).foregroundStyle(.secondary)
+                Picker("Negative Beträge", selection: $negativeAmountStyle) {
+                    ForEach(NegativeAmountStyle.allCases) { Text($0.title).tag($0) }
+                }
+                Text("Farbe von Abbuchungen in der Buchungsliste: neutral wie der übrige Text oder rot wie negative Salden in der Seitenleiste. Das Minuszeichen bleibt immer sichtbar.")
                     .appFont(.caption).foregroundStyle(.secondary)
             } header: { Text("Ansicht").appSectionHeader() }
             Section {

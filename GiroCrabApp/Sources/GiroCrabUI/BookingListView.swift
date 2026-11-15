@@ -844,9 +844,10 @@ struct AccountChip: View {
     }
 }
 
-/// Outflows dark slate, inflows an emerald badge.
+/// Outflows dark slate (or red, Einstellungen › Allgemein, #218), inflows an emerald badge.
 struct AmountLabel: View {
     let cents: Int64
+    @AppStorage(NegativeAmountStyle.defaultsKey) private var negativeStyle: NegativeAmountStyle = .neutral
 
     var body: some View {
         if cents > 0 {
@@ -860,7 +861,7 @@ struct AmountLabel: View {
             Text(Money.format(cents))
                 .sensitive()
                 .appFont(.body, weight: .medium, monospacedDigit: true)
-                .foregroundStyle(Theme.outflow)
+                .foregroundStyle(cents < 0 ? negativeStyle.color : Theme.outflow)
         }
     }
 }

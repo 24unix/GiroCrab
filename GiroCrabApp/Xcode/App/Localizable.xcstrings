@@ -9627,6 +9627,17 @@
         }
       }
     },
+    "Farbe von Abbuchungen in der Buchungsliste: neutral wie der übrige Text oder rot wie negative Salden in der Seitenleiste. Das Minuszeichen bleibt immer sichtbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Color of debits in the booking list: neutral like the rest of the text, or red like negative balances in the sidebar. The minus sign always stays visible."
+          }
+        }
+      }
+    },
     "Farbschema" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16019,6 +16030,17 @@
         }
       }
     },
+    "Negative Beträge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Negative Amounts"
+          }
+        }
+      }
+    },
     "Negative Werte sind in den Summen enthalten, im Donut werden nur positive Klassenwerte dargestellt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16510,6 +16532,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Newest First"
+          }
+        }
+      }
+    },
+    "Neutral" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neutral"
           }
         }
       }
