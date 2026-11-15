@@ -5,10 +5,6 @@ import GiroCrabCore
 struct InspectorView: View {
     @Environment(AppModel.self) private var model
 
-    private func belowHistoryKey(_ b: Booking) -> [Int64] {
-        [b.id, model.merchantStats?.key == b.merchant.key ? 1 : 0, model.merchantAccountStats?.accountId == b.accountId ? 1 : 0]
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -27,11 +23,12 @@ struct InspectorView: View {
                     NoteCard(booking: b).id(b.id)
                     if b.amountCents > 0 { SalaryCard(booking: b) }
                     RecurringCard(booking: b)
+                    // The merchant-history stats load asynchronously and grow the history card.
+                    // It sits below the interactive cards (category, documents) so that growth
+                    // never shifts them and leaves their hit-test geometry stale (#454, #492).
+                    CategoryGridCard(booking: b)
+                    DocumentsCard(booking: b)
                     MerchantHistoryCard(booking: b)
-                    // The history card above changes height when its stats arrive; the cards below
-                    // then kept stale hit-test geometry (#454). A new identity re-lays them out.
-                    CategoryGridCard(booking: b).id(belowHistoryKey(b))
-                    DocumentsCard(booking: b).id(belowHistoryKey(b))
                     RawDataCard(booking: b)
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
@@ -540,6 +537,7 @@ struct CategoryChip: View {
             .fontWeight(selected ? .semibold : nil)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(selected ? Theme.selection : (filled ? Theme.canvas : Theme.card)))
             .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(selected ? Theme.accent : Theme.border, lineWidth: selected ? 1.5 : 1))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])

@@ -1,6 +1,9 @@
 import SwiftUI
 import QuickLook
 import GiroCrabCore
+#if os(macOS)
+import AppKit
+#endif
 
 /// The app's scenes, shared by the macOS executable and the Xcode
 /// multiplatform target.
@@ -580,6 +583,8 @@ struct MainSplitView: View {
     #if os(macOS)
     @State private var columns: NavigationSplitViewVisibility = .all
     @AppStorage(ViewLayout.inspectorKey) private var showInspector = true
+    @State private var inspectorWidth: CGFloat = 320
+    @State private var inspectorDragStart: CGFloat?
     @Environment(\.openSettings) private var openSettings
     #else
     @State private var columns: NavigationSplitViewVisibility = .automatic
@@ -619,21 +624,52 @@ struct MainSplitView: View {
     }
 
     #if os(macOS)
-    /// macOS: the detail column is a system inspector (HIG "Inspectors"), toggled
-    /// from the toolbar and View menu; the state is remembered (GitHub #234).
+    /// macOS: the right pane sits next to the booking column in the `detail`
+    /// column instead of the system `.inspector`. On macOS 27 the inspector
+    /// renders its content a few points below where it hit-tests, so clicks in
+    /// it land one row off (#492); a plain view does not have that offset.
     private var splitView: some View {
         NavigationSplitView(columnVisibility: $columns) {
             sidebar
         } detail: {
+            HStack(spacing: 0) {
+                bookingColumn
+                if showInspector {
+                    inspectorSplitter
+                    InspectorView()
+                        .frame(width: inspectorWidth * textScale)
+                        .frame(minHeight: 0, maxHeight: .infinity)
+                }
+            }
+            .frame(minHeight: 0, maxHeight: .infinity)
             // min widths: 240 (sidebar) + 560 + 280 (inspector) keep the minimum window size
-            bookingColumn
-                .macColumnWidth(min: 560, ideal: 700)
+            .macColumnWidth(min: showInspector ? 560 + inspectorWidth : 560,
+                            ideal: showInspector ? 700 + inspectorWidth : 700)
         }
         .navigationSplitViewStyle(.balanced)
-        .inspector(isPresented: $showInspector) {
-            InspectorView()
-                .inspectorColumnWidth(min: 280, ideal: 320, max: 380)
+    }
+
+    /// Draggable grip between the booking column and the inspector; the system
+    /// `.inspector` provided one, so the replacement HStack re-implements it.
+    private var inspectorSplitter: some View {
+        ZStack {
+            Color.clear.frame(width: 10)
+            Color(nsColor: .separatorColor).frame(width: 1).frame(maxHeight: .infinity)
         }
+        .contentShape(Rectangle())
+        .frame(width: 10)
+        .onHover { inside in
+            if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if inspectorDragStart == nil { inspectorDragStart = inspectorWidth }
+                    let proposed = (inspectorDragStart ?? inspectorWidth) - value.translation.width
+                    inspectorWidth = min(380, max(280, proposed))
+                }
+                .onEnded { _ in inspectorDragStart = nil }
+        )
     }
     #else
     private var splitView: some View {
