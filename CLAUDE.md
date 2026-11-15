@@ -132,6 +132,12 @@ The PR card (`tools/export-ai-provenance.py`, `docs/ai-transparency.md`) reads o
   - **Perf-Check:** what was measured or ruled out (`offMain` for calls over ~16 ms, no `list_transactions` for counts/sums, `category_perf` numbers); "No hot path touched: <why>" is valid
   ```
 - This is a self-report, shown on the card as unverified. Never put real financial data, IBANs or secrets in it.
+- **Community contributor PRs landed via an `origin` branch** (e.g. to resolve merge conflicts or apply a pre-merge fix
+  without pushing to the contributor's fork): ALWAYS preserve the contributor's credit on squash-merge, either by
+  - keeping their authorship (`git commit --author "<Name> <email>"`, or `gh pr merge --rebase` when the history is clean), OR
+  - adding `Co-authored-by: <Contributor Name> <id+login@users.noreply.github.com>` (copied from the original commit's
+    author header, `git log --format='%an <%ae>'`) to the PR body AND the squash commit message, so GitHub counts the
+    commit in their contributor graph.
 
 ## Workflow
 - Branch from `upstream/main`, push to `origin` (fork), PR against `GiroCrab/GiroCrab`. PR title
