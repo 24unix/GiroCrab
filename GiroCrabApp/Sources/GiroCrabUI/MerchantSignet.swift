@@ -20,7 +20,8 @@ struct MerchantSignet: View {
 
     var body: some View {
         let size = self.size * textScale   // grows with the text size (#343)
-        let logo = model.cachedLogo(for: merchant) ?? loadedLogo
+        // A logo loaded before "Aus" was picked must vanish at once, not after the task reran (#422).
+        let logo = model.cachedLogo(for: merchant) ?? (model.onlineLogos ? loadedLogo : nil)
         let shape = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
         let brand = Color(hex: merchant.colorHex)
         let sharpLogo = logo.flatMap { $0.pixels >= 48 ? $0.image : nil }
@@ -74,7 +75,10 @@ struct MerchantSignet: View {
         .task(id: merchant.domainCandidates.joined(separator: "|") + merchant.domain + model.logoProvider + "\(model.logoVersion)") {
             // cached: drawn above already – no second render
             guard model.cachedLogo(for: merchant) == nil else { return }
-            loadedLogo = await model.logo(for: merchant)
+            let logo = await model.logo(for: merchant)
+            // a task of an older id (provider switched meanwhile) must not overwrite the newer one
+            guard !Task.isCancelled else { return }
+            loadedLogo = logo
         }
         // The blue dot is the only "new" signal on screen: say it, too.
         .accessibilityLabel(showNewDot ? Text("\(merchant.name), neu") : Text(merchant.name))

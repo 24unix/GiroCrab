@@ -303,7 +303,9 @@ struct MerchantLogoSettingsSection: View {
         Section {
             Picker("Logos aus dem Internet laden", selection: Binding(
                 get: { model.logoProvider },
-                set: { model.logoProvider = $0; model.saveSettingInBackground("merchants.online_logos", $0) }
+                // `logoProvider` follows once the core has stored it: the core gates
+                // cached logos on the same setting, so an earlier switch would load nothing (#422).
+                set: { model.saveSettingInBackground("merchants.online_logos", $0) }
             )) {
                 Text("Aus").tag("off")
                 Text("DuckDuckGo").tag("duckduckgo")

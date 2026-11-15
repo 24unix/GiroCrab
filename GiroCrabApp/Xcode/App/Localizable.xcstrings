@@ -7043,6 +7043,23 @@
         }
       }
     },
+    "Domain für %@: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain für %1$@: %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain for %1$@: %2$@"
+          }
+        }
+      }
+    },
     "Domain für %@: %@ – Logo wird geladen" : {
       "extractionState" : "manual",
       "localizations" : {
