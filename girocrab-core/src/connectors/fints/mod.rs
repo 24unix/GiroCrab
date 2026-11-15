@@ -1658,7 +1658,23 @@ impl FinTsConnector {
         self.vop_with_tan = false;
         self.vop_pending = None;
         let reply = self.send_order(ctx, Vop::None).await?;
-        self.finish_submit(&reply)
+        // The bank lists HKCCM among the orders that need a name check (VoP): batches are
+        // sent without one, so a refusal most likely means exactly that. Say so instead
+        // of showing a bare bank code.
+        let needs_vop =
+            !self.st.vop_format.is_empty() && self.st.vop_orders.iter().any(|o| o == seg_id);
+        match self.finish_submit(&reply) {
+            Err(CoreError::Bank { code, message }) if needs_vop && !is_auth_error(&code) => {
+                Err(CoreError::Bank {
+                    code,
+                    message: format!(
+                        "{message} {}",
+                        tr("Die Bank verlangt für diesen Auftrag eine Empfängerprüfung (Verification of Payee), die GiroCrab für Sammelüberweisungen noch nicht unterstützt. Bitte in der Banking-App überweisen.")
+                    ),
+                })
+            }
+            other => other,
+        }
     }
 
     /// Instant not possible before anything was sent: nothing to approve.

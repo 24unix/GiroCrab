@@ -823,6 +823,17 @@
         }
       }
     },
+    "%lld mögliche Doppelte (gleicher Empfänger, Betrag und Zweck)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld possible duplicates (same recipient, amount and purpose)"
+          }
+        }
+      }
+    },
     "%lld neue Buchungen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6101,6 +6112,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The bank still requires your explicit confirmation before it asks for the approval."
+          }
+        }
+      }
+    },
+    "Die Datei ist zu groß (höchstens 2 MB)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The file is too large (2 MB at most)."
           }
         }
       }

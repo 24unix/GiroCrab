@@ -394,6 +394,22 @@ fn pending_batch_booking_is_replaced_by_the_banks_booking_whatever_its_iban() {
             .unwrap()
     };
     assert_eq!(pending(), 2);
+    // A single payment of the same size is no batch booking: both stay pending.
+    let today = chrono::Local::now().date_naive().to_string();
+    let other = RemoteTransaction {
+        account_ref: "f:1".into(),
+        external_id: "bank-0".into(),
+        booking_date: today.clone(),
+        value_date: today,
+        amount_cents: -3_550,
+        currency: "EUR".into(),
+        counterparty: "Shop".into(),
+        counterparty_iban: "DE89370400440532013000".into(),
+        booking_text: "Kartenzahlung".into(),
+        ..Default::default()
+    };
+    store_fetch(&v, ConnectorKind::FinTsGeneric, conn, fetch(vec![other])).unwrap();
+    assert_eq!(pending(), 2);
     // The bank books 35,50 € and names the own IBAN as counterparty.
     let booked = RemoteTransaction {
         account_ref: "f:1".into(),

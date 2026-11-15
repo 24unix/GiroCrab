@@ -614,8 +614,13 @@ pub(crate) fn store_fetch(
                       AND r.external_id NOT LIKE 'pending-%' AND r.amount_cents = transactions.amount_cents
                       AND (r.counterparty_iban = transactions.counterparty_iban
                            -- a batch booking carries no recipient IBAN; banks put
-                           -- whatever they like there (often the own account)
-                           OR transactions.booking_text LIKE 'Sammelüberweisung%')
+                           -- whatever they like there (often the own account). So a
+                           -- batch only matches a booking that says \"Sammel…\" itself,
+                           -- shortly after it was placed: a same-sized single payment
+                           -- must not hide it.
+                           OR (transactions.booking_text LIKE 'Sammelüberweisung%'
+                               AND (r.booking_text LIKE '%Sammel%' OR r.purpose LIKE '%Sammel%')
+                               AND r.booking_date <= date(transactions.booking_date, '+7 days')))
                       AND r.booking_date >= transactions.booking_date))",
             [crate::user_groups::now_ms()],
         )?;
