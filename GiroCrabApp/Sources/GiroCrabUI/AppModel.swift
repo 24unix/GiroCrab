@@ -351,13 +351,18 @@ public final class AppModel {
     /// Connector key per login (`fints:<BLZ>`, …) for the banking policy.
     var connectionKeys: [Int64: String] = [:]
     /// Showing the throw-away demo vault (also when the own vault is still empty).
-    var demoActive = false
+    /// The external analysis never serves while the demo is shown (#136).
+    var demoActive = false {
+        didSet { if demoActive { stopLocalApiServer() } }
+    }
     /// Where the own Enable Banking application is shared between devices.
     @ObservationIgnored var enableBankingKeyStore: EnableBankingKeyStore = KeychainEnableBankingKeyStore()
     /// Taken over from another device; shown once unless the user turned it off.
     var enableBankingAdoptNotice: EnableBankingAdoptNotice?
     /// The personal vault while demo data is shown (nil if never unlocked).
     private(set) var ownVault: Vault?
+    /// Socket of the read-only interface for external analysis (#136), see AppModel+LocalApi.
+    var localApiServer: LocalApiServer?
     var activeChallenge: ActiveChallenge?
     var payeeCheck: PendingPayeeCheck?
     var syncingConnectionID: Int64?
@@ -1129,6 +1134,7 @@ public final class AppModel {
         selectedBookingID = bookings.first?.id
         if demo { stopAutoSync() } else { startAutoSync() }
         if !demo { reconcileEnableBankingKey() }
+        refreshLocalApiServer()
     }
 
     /// Switch to the demo data (own vault stays unlocked in the background).
@@ -1201,6 +1207,7 @@ public final class AppModel {
         loanStore.loadTask?.cancel()
         loanStore.loans = []; loanStore.linkByBooking = [:]
         stopAutoSync()
+        stopLocalApiServer()
         endBankDialogsForLock()
         quickLookURL = nil
         Self.removeQuickLookFiles()

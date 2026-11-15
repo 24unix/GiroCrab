@@ -22,7 +22,7 @@ import Foundation
 ///               asset|asset-edit|asset-values|asset-quantities|mandate|collection|collection-files|mandate-select
 ///                         (demo) open that sheet pre-filled with fictional data,
 ///                         for README / PR screenshots
-///  --demo-settings general|banks|groups|documents|security[:edit|:add|:remove|:select]
+///  --demo-settings general|banks|groups|documents|security|external[:edit|:add|:remove|:select]
 ///                         (demo) open the Settings window on that tab (`groups` opens the
 ///                         group editor sheet instead), optionally with
 ///                         the first bank's edit sheet or the "add bank" sheet;

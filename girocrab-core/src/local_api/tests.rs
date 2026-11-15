@@ -30,7 +30,7 @@ fn share(v: &Vault, accounts: &[i64], edit: impl FnOnce(&mut ShareScope)) {
         ..Default::default()
     };
     edit(&mut scope);
-    v.set_local_api_scope(&scope).unwrap();
+    v.set_local_api_scope(scope).unwrap();
 }
 
 fn call(v: &Vault, method: &str, params: Value) -> Value {

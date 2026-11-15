@@ -1,8 +1,9 @@
 //! Read-only local interface for external analysis tools (GitHub #136).
 //!
 //! A versioned JSON request/response layer over the open vault: accounts,
-//! categories, bookings (keyset-paged) and period summaries. No transport here:
-//! the app serves it while the vault is unlocked (local socket, MCP adapter).
+//! categories, bookings (keyset-paged) and period summaries. The app serves it
+//! on a local socket while the vault is unlocked ([`server`]); every socket
+//! request carries the access token the user created in the app.
 //!
 //! - Opt-in: off until the user stores an enabled [`ShareScope`]; the scope is
 //!   read on every request, so revoking takes effect at once.
@@ -47,7 +48,7 @@ const MAX_SUMMARY_DAYS: i64 = 3 * 366;
 
 /// What the user shares. Accounts are an explicit allow list: an account added
 /// later is not shared until the user selects it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
 #[serde(default)]
 pub struct ShareScope {
     pub enabled: bool,
@@ -58,6 +59,9 @@ pub struct ShareScope {
     /// Purpose and booking text.
     pub share_purpose: bool,
     pub share_notes: bool,
+    /// SHA-256 (hex) of the access token; "" = none, socket requests are refused.
+    /// Only `create_local_api_token` / `revoke_local_api_token` change it.
+    pub token_sha256: String,
 }
 
 impl Default for ShareScope {
@@ -69,6 +73,7 @@ impl Default for ShareScope {
             share_counterparty: true,
             share_purpose: true,
             share_notes: false,
+            token_sha256: String::new(),
         }
     }
 }
@@ -192,6 +197,9 @@ pub struct ApiSummary {
 struct Request {
     #[serde(default)]
     v: Option<u32>,
+    /// Required on the socket, ignored in process.
+    #[serde(default)]
+    token: Option<String>,
     method: String,
     #[serde(default)]
     params: Value,
@@ -225,6 +233,10 @@ struct SummaryParams {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiErrorCode {
     Disabled,
+    /// Missing or wrong access token.
+    Unauthorized,
+    /// The vault is locked (socket only).
+    Locked,
     UnsupportedVersion,
     UnknownMethod,
     InvalidParams,
@@ -236,6 +248,8 @@ impl ApiErrorCode {
     pub fn as_str(&self) -> &'static str {
         match self {
             ApiErrorCode::Disabled => "disabled",
+            ApiErrorCode::Unauthorized => "unauthorized",
+            ApiErrorCode::Locked => "locked",
             ApiErrorCode::UnsupportedVersion => "unsupported_version",
             ApiErrorCode::UnknownMethod => "unknown_method",
             ApiErrorCode::InvalidParams => "invalid_params",
@@ -275,6 +289,7 @@ type ApiResult<T> = Result<T, ApiError>;
 
 // MARK: - Vault
 
+#[uniffi::export]
 impl Vault {
     /// The stored scope; default (disabled, nothing shared) when none is stored.
     pub fn local_api_scope(&self) -> Result<ShareScope, CoreError> {
@@ -284,7 +299,41 @@ impl Vault {
             .unwrap_or_default())
     }
 
-    pub fn set_local_api_scope(&self, scope: &ShareScope) -> Result<(), CoreError> {
+    /// Stores what is shared. The token stays as stored (`token_sha256` of
+    /// `scope` is ignored), so saving a toggle never revokes or restores access.
+    pub fn set_local_api_scope(&self, scope: ShareScope) -> Result<(), CoreError> {
+        let token_sha256 = self.local_api_scope()?.token_sha256;
+        self.store_local_api_scope(&ShareScope {
+            token_sha256,
+            ..scope
+        })
+    }
+
+    /// A new access token for external tools, shown once: only its hash is
+    /// stored, and it replaces (revokes) the previous one.
+    pub fn create_local_api_token(&self) -> Result<String, CoreError> {
+        use rand::RngCore;
+        let mut raw = [0u8; 32];
+        rand::rng().fill_bytes(&mut raw);
+        let token = format!("gcapi_{}", hex::encode(raw));
+        self.store_local_api_scope(&ShareScope {
+            token_sha256: token_hash(&token),
+            ..self.local_api_scope()?
+        })?;
+        Ok(token)
+    }
+
+    /// Revokes access: socket requests are refused until a new token exists.
+    pub fn revoke_local_api_token(&self) -> Result<(), CoreError> {
+        self.store_local_api_scope(&ShareScope {
+            token_sha256: String::new(),
+            ..self.local_api_scope()?
+        })
+    }
+}
+
+impl Vault {
+    fn store_local_api_scope(&self, scope: &ShareScope) -> Result<(), CoreError> {
         let json = serde_json::to_string(scope).map_err(|e| CoreError::InvalidInput {
             message: e.to_string(),
         })?;
@@ -293,18 +342,17 @@ impl Vault {
 
     /// Answers one JSON request (`{"v":1,"method":"…","params":{…}}`) with
     /// `{"v":1,"result":…}` or `{"v":1,"error":{"code":"…","message":"…"}}`.
+    /// In process, without a token (tests, the app itself).
     pub fn local_api_request(&self, request: &str) -> String {
-        let response = match self.local_api_dispatch(request) {
-            Ok(result) => json!({ "v": API_VERSION, "result": result }),
-            Err(e) => json!({
-                "v": API_VERSION,
-                "error": { "code": e.code.as_str(), "message": e.message },
-            }),
-        };
-        response.to_string()
+        response(self.local_api_dispatch(request, false))
     }
 
-    fn local_api_dispatch(&self, request: &str) -> ApiResult<Value> {
+    /// The same for a request from the socket: it must carry the current token.
+    pub(crate) fn local_api_socket_request(&self, request: &str) -> String {
+        response(self.local_api_dispatch(request, true))
+    }
+
+    fn local_api_dispatch(&self, request: &str, require_token: bool) -> ApiResult<Value> {
         let req: Request = serde_json::from_str(request)
             .map_err(|e| ApiError::invalid(format!("malformed request: {e}")))?;
         if req.v.is_some_and(|v| v != API_VERSION) {
@@ -319,6 +367,15 @@ impl Vault {
                 ApiErrorCode::Disabled,
                 "external access is turned off in GiroCrab",
             ));
+        }
+        if require_token {
+            let given = req.token.as_deref().map(token_hash).unwrap_or_default();
+            if scope.token_sha256.is_empty() || !same_bytes(&given, &scope.token_sha256) {
+                return Err(ApiError::new(
+                    ApiErrorCode::Unauthorized,
+                    "missing or wrong access token",
+                ));
+            }
         }
         fn params<T: for<'de> Deserialize<'de> + Default>(v: Value) -> ApiResult<T> {
             if v.is_null() {
@@ -645,6 +702,32 @@ fn requested_accounts(shared: &[i64], requested: &[i64]) -> ApiResult<Vec<i64>> 
     Ok(requested.to_vec())
 }
 
+/// The response envelope of a dispatch result.
+pub(crate) fn response(result: ApiResult<Value>) -> String {
+    match result {
+        Ok(result) => json!({ "v": API_VERSION, "result": result }),
+        Err(e) => json!({
+            "v": API_VERSION,
+            "error": { "code": e.code.as_str(), "message": e.message },
+        }),
+    }
+    .to_string()
+}
+
+fn token_hash(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(token.as_bytes()))
+}
+
+/// Comparison in constant time for equal lengths (token hashes).
+fn same_bytes(a: &str, b: &str) -> bool {
+    a.len() == b.len()
+        && a.bytes()
+            .zip(b.bytes())
+            .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+            == 0
+}
+
 fn to_value<T: Serialize>(v: T) -> Value {
     serde_json::to_value(v).unwrap_or(Value::Null)
 }
@@ -768,6 +851,9 @@ fn api_transaction(scope: &ShareScope, t: &Booking) -> ApiTransaction {
         note: shared_text(scope, scope.share_notes, &t.note).filter(|n| !n.is_empty()),
     }
 }
+
+#[cfg(unix)]
+pub mod server;
 
 #[cfg(test)]
 mod tests;

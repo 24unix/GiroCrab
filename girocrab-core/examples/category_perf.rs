@@ -167,7 +167,7 @@ fn main() {
         .map(|a| a.id)
         .collect();
     vault
-        .set_local_api_scope(&girocrab_core::local_api::ShareScope {
+        .set_local_api_scope(girocrab_core::local_api::ShareScope {
             enabled: true,
             account_ids: accounts,
             ..Default::default()
