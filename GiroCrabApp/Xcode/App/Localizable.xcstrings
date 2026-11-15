@@ -1,6 +1,34 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    " " : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " "
+          }
+        }
+      }
+    },
+    "%@ (%@)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (%2$@)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (%@)"
+          }
+        }
+      }
+    },
     "%@ (Sicherheitssperre)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -278,6 +306,17 @@
         }
       }
     },
+    "%@ – Amazon-Konto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ – Amazon account"
+          }
+        }
+      }
+    },
     "%@ – Direkt-Login" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -296,6 +335,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ – FNZ Bank"
+          }
+        }
+      }
+    },
+    "%@ – quirion" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ – quirion"
           }
         }
       }
@@ -785,6 +835,28 @@
         }
       }
     },
+    "%lld Umsätze übernommen – weitere werden geladen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld transactions imported – loading more …"
+          }
+        }
+      }
+    },
+    "%lld Umsätze übernommen. Für ältere Umsätze im Portal „Umsätze anzeigen“ wählen und den SMS-Code bestätigen – die Übernahme läuft danach automatisch weiter." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld transactions imported. For older transactions, choose “Umsätze anzeigen” in the portal and confirm the SMS code – the import then continues automatically."
+          }
+        }
+      }
+    },
     "%lld aktive Sparpläne" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -960,6 +1032,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%u"
+          }
+        }
+      }
+    },
+    "%u / %u" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$u / %2$u"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%u / %u"
           }
         }
       }
@@ -1547,6 +1636,17 @@
         }
       }
     },
+    "+%lld weitere" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+%lld more"
+          }
+        }
+      }
+    },
     ", %u bereits vorhanden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1576,6 +1676,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Drop an .xml or .csv file here"
+          }
+        }
+      }
+    },
+    "1" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1"
           }
         }
       }
@@ -1642,6 +1753,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "12 Months"
+          }
+        }
+      }
+    },
+    "15.03., 15.08." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "15.03., 15.08."
           }
         }
       }
@@ -1796,6 +1918,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Filing"
+          }
+        }
+      }
+    },
+    "Abo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Subscription"
+          }
+        }
+      }
+    },
+    "Abonnement (Spar-Abo) – wiederkehrende Abbuchung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Subscription (Subscribe & Save) – recurring charge"
           }
         }
       }
@@ -2027,6 +2171,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "All (%lld)"
+          }
+        }
+      }
+    },
+    "Alle Artikel anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show all items"
           }
         }
       }
@@ -2394,6 +2549,17 @@
         }
       }
     },
+    "Alltag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Everyday"
+          }
+        }
+      }
+    },
     "Alltag & Konsum" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2544,6 +2710,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "On %@ (scheduled transfer)"
+          }
+        }
+      }
+    },
+    "Amazon hat eine unerwartete Antwort geliefert." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amazon returned an unexpected response."
           }
         }
       }
@@ -2753,6 +2930,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Signed in – open the transaction overview so the portal loads the transactions."
+          }
+        }
+      }
+    },
+    "Angemeldet – „Bestellungen abrufen“ liest Ihre Bestellhistorie." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signed in – “Fetch orders” reads your order history."
           }
         }
       }
@@ -3149,6 +3337,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Type"
+          }
+        }
+      }
+    },
+    "Artikel einklappen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse items"
           }
         }
       }
@@ -3594,6 +3793,23 @@
         }
       }
     },
+    "Automatisch erkannt aus %u Buchungen · ca. %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Automatisch erkannt aus %1$u Buchungen · ca. %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detected automatically from %u transactions · approx. %@"
+          }
+        }
+      }
+    },
     "Automatisch erkennen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3814,6 +4030,17 @@
         }
       }
     },
+    "Bank hinzufügen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Bank…"
+          }
+        }
+      }
+    },
     "Bank suchen und hinzufügen …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3843,6 +4070,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Choose your bank and enter your login name"
+          }
+        }
+      }
+    },
+    "Bank · %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bank · %@"
           }
         }
       }
@@ -4085,6 +4323,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bars with 999.9 ‰ fineness. For other fineness values, use “Custom”."
+          }
+        }
+      }
+    },
+    "Basis" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Base"
           }
         }
       }
@@ -4547,6 +4796,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Held on this day: %@. Sold assets then appear under “Former positions”; their value until the sale stays in the history."
+          }
+        }
+      }
+    },
+    "Bestellliste %@ …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order list %@ …"
+          }
+        }
+      }
+    },
+    "Bestellnummer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order number"
+          }
+        }
+      }
+    },
+    "Bestelltyp" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order type"
+          }
+        }
+      }
+    },
+    "Bestellung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order"
+          }
+        }
+      }
+    },
+    "Bestellung %lld von %lld …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Bestellung %1$lld von %2$lld …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Order %lld of %lld …"
+          }
+        }
+      }
+    },
+    "Bestellung auf %@ öffnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open order on %@"
+          }
+        }
+      }
+    },
+    "Bestellungen abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch orders"
           }
         }
       }
@@ -5387,6 +5719,17 @@
         }
       }
     },
+    "Cashflow-Analyse" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cash flow analysis"
+          }
+        }
+      }
+    },
     "Cloud" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5904,6 +6247,17 @@
         }
       }
     },
+    "Demo-Daten-Vorschau starten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start Demo Data Preview"
+          }
+        }
+      }
+    },
     "Demo-Modus: Bankzugänge werden hier nur simuliert. Für echte Konten zuerst den eigenen Tresor öffnen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6318,6 +6672,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sanitizing diagnostics …"
+          }
+        }
+      }
+    },
+    "Die Amazon-Sitzung ist abgelaufen. Bitte erneut anmelden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Amazon session has expired. Please sign in again."
           }
         }
       }
@@ -7396,6 +7761,17 @@
         }
       }
     },
+    "Eigenes Konto anlegen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create Your Own Account"
+          }
+        }
+      }
+    },
     "Ein Depot zeigt seine Positionen oben. Käufe, Verkäufe und Sparpläne stehen als Buchungen im Verrechnungskonto." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7601,6 +7977,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Income"
+          }
+        }
+      }
+    },
+    "Einnahmen %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Income %@"
           }
         }
       }
@@ -7902,6 +8289,17 @@
         }
       }
     },
+    "Erfundene Buchungen aller 7 Banken – keine echte Bank verbunden. Sobald echte Daten da sind, schützt Face ID bzw. Ihr Gerätecode den Tresor automatisch; hier können Sie den Sperrbildschirm testen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Made-up transactions for all 7 banks – no real bank connected. As soon as real data exists, Face ID or your device passcode protects the vault automatically; you can try the lock screen here."
+          }
+        }
+      }
+    },
     "Ergebnis" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7997,6 +8395,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Just want to look around first?"
+          }
+        }
+      }
+    },
+    "Erstattung zu:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refund for:"
+          }
+        }
+      }
+    },
+    "Erstattung zu: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refund for: %@"
           }
         }
       }
@@ -10014,6 +10434,23 @@
         }
       }
     },
+    "GuV (berechnet): %@ (%@ %%)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "GuV (berechnet): %1$@ (%2$@ %%)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "P&L (calculated): %@ (%@ %%)"
+          }
+        }
+      }
+    },
     "GuV (berechnet): %@ (%@ %)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10032,6 +10469,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Voucher"
+          }
+        }
+      }
+    },
+    "Gutschrift (Erstattung)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Credit (refund)"
           }
         }
       }
@@ -10461,6 +10909,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Your transactions are kept in an encrypted SQLCipher vault.\nThe key never leaves this device’s keychain."
+          }
+        }
+      }
+    },
+    "Ihre Buchungen liegen in einem verschlüsselten Tresor.\nDer Schlüssel verlässt nie den Schlüsselbund dieses Geräts." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your transactions are kept in an encrypted vault.\nThe key never leaves this device's keychain."
           }
         }
       }
@@ -11704,6 +12163,17 @@
         }
       }
     },
+    "Keine Bestellungen im gewählten Zeitraum gefunden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No orders found in the selected period."
+          }
+        }
+      }
+    },
     "Keine Buchung ausgewählt" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12012,6 +12482,17 @@
         }
       }
     },
+    "Keyboard shortcuts (macOS)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keyboard shortcuts (macOS)"
+          }
+        }
+      }
+    },
     "Kinder" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12107,6 +12588,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Spending"
+          }
+        }
+      }
+    },
+    "Konsum %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spending %@"
           }
         }
       }
@@ -12964,6 +13456,17 @@
         }
       }
     },
+    "Letzte 2 Jahre" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last 2 years"
+          }
+        }
+      }
+    },
     "Letzte 3 Monate" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12971,6 +13474,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Last 3 Months"
+          }
+        }
+      }
+    },
+    "Letzte 5 Jahre" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last 5 years"
           }
         }
       }
@@ -13283,6 +13797,17 @@
         }
       }
     },
+    "Mehr" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More"
+          }
+        }
+      }
+    },
     "Mehr erfahren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13312,6 +13837,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keep my own"
+          }
+        }
+      }
+    },
+    "Melden Sie sich bei Amazon an (Passwort, Captcha, 2FA wie gewohnt)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sign in to Amazon (password, captcha, 2FA as usual)."
           }
         }
       }
@@ -14698,6 +15234,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nightly builds are untested development snapshots. You still get newer beta and stable versions. Switching back does not install an older version."
+          }
+        }
+      }
+    },
+    "Noch kein Verlauf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No history yet"
           }
         }
       }
@@ -17399,6 +17946,17 @@
         }
       }
     },
+    "Sitzung abgelaufen – bitte neu anmelden (Haken bei „Angemeldet bleiben“ setzen)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Session expired – please sign in again (tick “Keep me signed in”)."
+          }
+        }
+      }
+    },
     "Sitzung gefunden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17520,6 +18078,23 @@
         }
       }
     },
+    "Sollzins %@ %% · Zinsen seit Stichtag %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sollzins %1$@ %% · Zinsen seit Stichtag %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interest rate %@ %% · interest since reference date %@"
+          }
+        }
+      }
+    },
     "Sollzins p. a. in %" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17560,6 +18135,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Savings plan"
+          }
+        }
+      }
+    },
+    "Sparpläne" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Savings plans"
           }
         }
       }
@@ -17626,6 +18212,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Donation"
+          }
+        }
+      }
+    },
+    "Sperrbildschirm testen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try Lock Screen"
           }
         }
       }
@@ -17802,6 +18399,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Set New Balance of “%@”"
+          }
+        }
+      }
+    },
+    "Stand: %@ – Verlauf entsteht mit weiteren Abrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As of %@ – history builds up with further updates"
           }
         }
       }
@@ -18609,6 +19217,17 @@
         }
       }
     },
+    "Tastaturkürzel (macOS)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keyboard shortcuts (macOS)"
+          }
+        }
+      }
+    },
     "Technik" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18814,6 +19433,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lock Vault"
+          }
+        }
+      }
+    },
+    "Tresor sperren (⌃⌘L)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lock Vault (⌃⌘L)"
           }
         }
       }
@@ -19612,6 +20242,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Insurance"
+          }
+        }
+      }
+    },
+    "Version" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version"
           }
         }
       }
@@ -20947,6 +21588,17 @@
         }
       }
     },
+    "Zur erstatteten Bestellung springen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Go to the refunded order"
+          }
+        }
+      }
+    },
     "Zurück" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20954,6 +21606,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Back"
+          }
+        }
+      }
+    },
+    "Zurück zum eigenen Tresor" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back to Your Own Vault"
+          }
+        }
+      }
+    },
+    "Zurück zur Demo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back to Demo"
           }
         }
       }
@@ -21476,6 +22150,17 @@
         }
       }
     },
+    "vorhanden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "existing"
+          }
+        }
+      }
+    },
     "wird angelegt" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21659,6 +22344,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "e.g. enbw.com"
+          }
+        }
+      }
+    },
+    "·" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "·"
+          }
+        }
+      }
+    },
+    "· #%@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "· #%@"
           }
         }
       }
@@ -22241,6 +22948,17 @@
         }
       }
     },
+    "›" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "›"
+          }
+        }
+      }
+    },
     "€" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22292,6 +23010,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⌘A (select all transactions)"
+          }
+        }
+      }
+    },
+    "✓" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "✓"
           }
         }
       }
