@@ -232,6 +232,19 @@ public final class AppModel {
     var plannedHorizon: PlannedHorizon = .days90
     var plannedVersion = 0
     var selectedPlannedID: String?
+    /// „Lastschriften“ (#143): mandates of the creditor account shown.
+    var mandates: [Mandate] = []
+    var mandateAccountID: Int64?
+    var selectedMandateID: Int64?
+    var mandateDraft: MandateDraft?
+    var mandateError: String?
+    var mandateNote: String?
+    var mandatesVersion = 0
+    var creditorID = ""
+    var suggestedCreditorID = ""
+    var collectionLines: [CollectionLine] = []
+    var showCollectionSheet = false
+    var collectionFiles: [DebitFile] = []
     var expandedCategories: Set<Int64> = []
     var showRuleEditor = false {
         didSet { if showRuleEditor, rulesStale { reloadRules() } }
@@ -475,6 +488,7 @@ public final class AppModel {
             case "sparplaene", "sparpläne", "investments": scope = .investments
             case "belege", "documents": sidebarSelection = .documents
             case "geplant", "planned": sidebarSelection = .planned
+            case "lastschriften", "debits": sidebarSelection = .directDebits
             default: break
             }
             if let q = options.selectAccount, let a = allAccounts.first(where: { $0.name.lowercased().contains(q) }) {
@@ -523,6 +537,16 @@ public final class AppModel {
     /// Screenshot helper: open a sheet pre-filled with fictional data.
     private func presentDemoSheet(_ name: String) {
         switch name {
+        case "mandate", "collection":
+            // Lastschriften (#143): the mandate form / the collection sheet
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.reloadMandates()
+                if name == "mandate" { self.newMandate(); self.mandateDraft?.name = "Mia Beispiel"; self.mandateDraft?.iban = "DE89 3704 0044 0532 0130 00"
+                    self.mandateDraft?.reference = "M-2026-001"; self.mandateDraft?.amountText = "12,50"
+                    self.mandateDraft?.purpose = "Mitgliedsbeitrag" }
+                else { self.openCollection() }
+            }
         case "account-selection":
             // choice of accounts another login already delivers (#346)
             accountSelectionConnection = connections.last

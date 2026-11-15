@@ -19,6 +19,8 @@ enum SidebarItem: Hashable {
     case newBookings
     /// „Geplant“ (GitHub #240): future payments with an order at the bank.
     case planned
+    /// „Lastschriften“ (GitHub #143): mandates and collections.
+    case directDebits
 }
 
 /// Period of the booking list and its sums. The menu follows MoneyMoney
@@ -419,4 +421,47 @@ extension Result where Failure == Error {
     init(catchingAsync body: () async throws -> Success) async {
         do { self = .success(try await body()) } catch { self = .failure(error) }
     }
+}
+
+/// Form state of the mandate sheet (`id` nil = new mandate).
+struct MandateDraft: Identifiable {
+    let uid = UUID()
+    var id: Int64?
+    var accountID: Int64
+    var name = ""
+    var iban = ""
+    var bic = ""
+    var reference = ""
+    var signed = Date()
+    var scheme: MandateScheme = .core
+    var oneOff = false
+    var amountText = ""
+    var purpose = ""
+    var note = ""
+    var active = true
+
+    init(accountID: Int64) { self.accountID = accountID }
+
+    init(_ m: Mandate) {
+        id = m.id; accountID = m.accountId; name = m.debtorName; iban = m.debtorIban; bic = m.debtorBic
+        reference = m.reference; signed = DateText.date(m.signedDate) ?? Date(); scheme = m.scheme
+        oneOff = m.oneOff; amountText = m.defaultAmountCents > 0 ? Money.plain(m.defaultAmountCents) : ""
+        purpose = m.defaultPurpose; note = m.note; active = m.active
+    }
+
+    var input: MandateInput {
+        MandateInput(accountId: accountID, debtorName: name, debtorIban: iban, debtorBic: bic, reference: reference,
+                     signedDate: DateText.iso(signed), scheme: scheme, oneOff: oneOff,
+                     defaultAmountCents: Money.parseCents(amountText) ?? 0, defaultPurpose: purpose, note: note, active: active)
+    }
+}
+
+/// One line of the collection sheet.
+struct CollectionLine: Identifiable {
+    let mandate: Mandate
+    var included: Bool
+    var amountText: String
+    var purpose: String
+    var id: Int64 { mandate.id }
+    var cents: Int64? { Money.parseCents(amountText).flatMap { $0 > 0 ? $0 : nil } }
 }

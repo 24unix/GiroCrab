@@ -228,6 +228,16 @@
         }
       }
     },
+    "%@ · %@ · %lld Lastschriften · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · %@ · %lld direct debits · %@"
+          }
+        }
+      }
+    },
     "%@ · nächste am %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -620,6 +630,16 @@
         }
       }
     },
+    "%lld Lastschriften · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld direct debits · %@"
+          }
+        }
+      }
+    },
     "%lld Monatsraten" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -767,6 +787,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld payments imported from “%@”, %lld faulty"
+          }
+        }
+      }
+    },
+    "%lld aktiv, %lld inaktiv" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld active, %lld inactive"
           }
         }
       }
@@ -1522,6 +1552,16 @@
         }
       }
     },
+    ", %lld nicht übernommen (Zeile %@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ", %lld not imported (line %@)"
+          }
+        }
+      }
+    },
     ", %u bereits vorhanden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1881,6 +1921,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Active"
+          }
+        }
+      }
+    },
+    "Aktivieren" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activate"
           }
         }
       }
@@ -2365,6 +2415,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "As Watermark"
+          }
+        }
+      }
+    },
+    "Als eingezogen markieren" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark as Collected"
           }
         }
       }
@@ -3932,6 +3992,16 @@
         }
       }
     },
+    "Basislastschrift" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Core Direct Debit"
+          }
+        }
+      }
+    },
     "Bearbeiten / Details" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4467,6 +4537,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Amount"
+          }
+        }
+      }
+    },
+    "Betrag (optional)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amount (optional)"
           }
         }
       }
@@ -5021,6 +5101,16 @@
         }
       }
     },
+    "COR1" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "COR1"
+          }
+        }
+      }
+    },
     "CSV exportieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5362,6 +5452,16 @@
         }
       }
     },
+    "Das Mandat „%@“ wird entfernt. Bereits eingereichte Einzüge bleiben unverändert." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The mandate “%@” will be removed. Collections already submitted stay unchanged."
+          }
+        }
+      }
+    },
     "Das Passwort der Datenbank wurde nicht in GiroCrab festgelegt. Tragen Sie es hier im Feld oben ein." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5413,6 +5513,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Choose File…"
+          }
+        }
+      }
+    },
+    "Dateien" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Files"
+          }
+        }
+      }
+    },
+    "Dateien erzeugen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create Files"
           }
         }
       }
@@ -5534,6 +5654,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Standing order"
+          }
+        }
+      }
+    },
+    "Deaktivieren" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deactivate"
           }
         }
       }
@@ -7277,6 +7407,26 @@
         }
       }
     },
+    "Einmalig" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One-off"
+          }
+        }
+      }
+    },
+    "Einmaliges Mandat" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One-off Mandate"
+          }
+        }
+      }
+    },
     "Einnahme" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7405,6 +7555,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Single"
+          }
+        }
+      }
+    },
+    "Einzug vorbereiten" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prepare Collection"
+          }
+        }
+      }
+    },
+    "Einzug vorbereiten …" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prepare Collection …"
           }
         }
       }
@@ -7702,6 +7872,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Created on %1$@ at %2$@"
+          }
+        }
+      }
+    },
+    "Erster Einzug" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "First Collection"
           }
         }
       }
@@ -8278,6 +8458,16 @@
         }
       }
     },
+    "Firmenlastschrift" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Business Direct Debit"
+          }
+        }
+      }
+    },
     "Firmenname" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8362,6 +8552,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aircraft"
+          }
+        }
+      }
+    },
+    "Folgeeinzug" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recurring Collection"
           }
         }
       }
@@ -8516,6 +8716,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Due on %@"
+          }
+        }
+      }
+    },
+    "Fälligkeit" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Due Date"
           }
         }
       }
@@ -9308,6 +9518,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Creditor ID"
+          }
+        }
+      }
+    },
+    "Gläubigerkonto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Creditor Account"
           }
         }
       }
@@ -10342,6 +10562,16 @@
         }
       }
     },
+    "Inaktiv" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inactive"
+          }
+        }
+      }
+    },
     "Indigo" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11079,6 +11309,16 @@
         }
       }
     },
+    "Kein Konto zum Einziehen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Account to Collect From"
+          }
+        }
+      }
+    },
     "Kein Logo" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11086,6 +11326,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No Logo"
+          }
+        }
+      }
+    },
+    "Kein Mandat ausgewählt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Mandate Selected"
           }
         }
       }
@@ -11328,6 +11578,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No accounts – long-press an account to add it"
+          }
+        }
+      }
+    },
+    "Keine Mandate" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Mandates"
           }
         }
       }
@@ -12403,6 +12663,26 @@
         }
       }
     },
+    "Lastschriften" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Direct Debits"
+          }
+        }
+      }
+    },
+    "Lastschriften ziehst du von einem Girokonto mit IBAN ein." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You collect direct debits to a current account with an IBAN."
+          }
+        }
+      }
+    },
     "Laufen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12410,6 +12690,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Running"
+          }
+        }
+      }
+    },
+    "Lege ein Mandat an oder importiere eine Mitgliederliste (CSV)." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add a mandate or import a member list (CSV)."
           }
         }
       }
@@ -12663,6 +12953,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "MREF (mandate reference)"
+          }
+        }
+      }
+    },
+    "Mandat" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mandate"
+          }
+        }
+      }
+    },
+    "Mandat hinzufügen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Mandate"
+          }
+        }
+      }
+    },
+    "Mandat löschen?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Mandate?"
+          }
+        }
+      }
+    },
+    "Mandate" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mandates"
+          }
+        }
+      }
+    },
+    "Mandate verwalten und Einzüge als SEPA-Lastschrift-Datei (pain.008) vorbereiten." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage mandates and prepare collections as SEPA direct debit files (pain.008)."
+          }
+        }
+      }
+    },
+    "Mandatsreferenz" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mandate Reference"
           }
         }
       }
@@ -14372,6 +14722,16 @@
         }
       }
     },
+    "Notiz (optional)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Note (optional)"
+          }
+        }
+      }
+    },
     "Notiz bearbeiten" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -15821,6 +16181,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Regular Expression"
+          }
+        }
+      }
+    },
+    "Reiche die Dateien bei deiner Bank ein (Banking-Portal, Datei-Upload). Danach markierst du die Mandate als eingezogen, damit der nächste Einzug als Folgeeinzug läuft." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Submit the files to your bank (banking portal, file upload). Then mark the mandates as collected so the next collection runs as a recurring one."
           }
         }
       }
@@ -18345,6 +18715,16 @@
         }
       }
     },
+    "Unterschrieben am" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signed On"
+          }
+        }
+      }
+    },
     "Unterschrift" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18758,6 +19138,16 @@
         }
       }
     },
+    "Verwendungszweck (optional)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Purpose (optional)"
+          }
+        }
+      }
+    },
     "Verwendungszweck (roh)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18886,6 +19276,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prefilled with the gold value on the purchase date. Unless you enter your own price, this value applies."
+          }
+        }
+      }
+    },
+    "Vorgaben für den Einzug" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collection Defaults"
           }
         }
       }
@@ -19682,6 +20082,16 @@
         }
       }
     },
+    "Wähle ein Mandat, um Details zu sehen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select a mandate to see its details."
+          }
+        }
+      }
+    },
     "Wählen Sie den Ordner mit Datenbank und Kontoauszügen, damit auch die Kontoauszüge übernommen werden. Eine einzelne Datenbankdatei (.sqlite), etwa aus einem Backup, geht auch." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19776,6 +20186,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Payment service"
+          }
+        }
+      }
+    },
+    "Zahlungspflichtiger" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Debtor"
           }
         }
       }
@@ -19967,6 +20387,16 @@
         }
       }
     },
+    "Zuerst die Gläubiger-ID eintragen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter the creditor ID first."
+          }
+        }
+      }
+    },
     "Zug" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20007,6 +20437,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Last on %@"
+          }
+        }
+      }
+    },
+    "Zuletzt eingezogen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last Collected"
           }
         }
       }
@@ -20518,6 +20958,16 @@
         }
       }
     },
+    "noch nie eingezogen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "never collected"
+          }
+        }
+      }
+    },
     "optional" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20749,6 +21199,16 @@
         }
       }
     },
+    "z. B. DE98ZZZ09999999999" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "e.g. DE98ZZZ09999999999"
+          }
+        }
+      }
+    },
     "z. B. GENODEF1KS2" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20822,6 +21282,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "e.g. enbw.com"
+          }
+        }
+      }
+    },
+    "zuletzt %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "last on %@"
           }
         }
       }
@@ -21356,6 +21826,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "“%@” will be deleted permanently."
+          }
+        }
+      }
+    },
+    "„%@“ übernehmen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use “%@”"
+          }
+        }
+      }
+    },
+    "„%@“: %lld neu, %lld aktualisiert" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”: %lld new, %lld updated"
           }
         }
       }

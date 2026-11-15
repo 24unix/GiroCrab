@@ -9,6 +9,13 @@ fn vault() -> (std::sync::Arc<Vault>, TempDir) {
     )
     .unwrap();
     v.seed_demo_data().unwrap();
+    // the demo has mandates of its own; the tests start from nothing
+    for m in v.list_mandates(None).unwrap() {
+        v.delete_mandate(m.id).unwrap();
+    }
+    for a in v.list_accounts().unwrap() {
+        v.set_creditor_id(a.id, String::new()).unwrap();
+    }
     (v, dir)
 }
 
