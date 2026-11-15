@@ -8,7 +8,7 @@ import QtQuick.Layouts
 Item {
     id: header
     width: parent ? parent.width : 200
-    implicitHeight: AppModel.allAccounts.length ? col.implicitHeight + 14 : 0
+    implicitHeight: AppModel.allAccounts.length ? col.implicitHeight + 22 : 0
     height: implicitHeight
     visible: AppModel.allAccounts.length > 0
     ColumnLayout {
