@@ -76,6 +76,8 @@ jobs:
         run: scripts/lint-appmodel-internals.sh
       - name: Text styles via .appFont (scale with the text size)
         run: scripts/lint-fonts.sh
+      - name: No macOS-only APIs outside #if os(macOS) (iOS build)
+        run: scripts/lint-ios-compat.sh
       - name: No third-party software brands in user-visible texts
         run: scripts/lint-brand-names.sh
       - name: String catalogs sorted (scripts/xcstrings.py format)

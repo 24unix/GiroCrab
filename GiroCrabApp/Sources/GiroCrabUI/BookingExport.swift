@@ -362,7 +362,7 @@ enum ExportDirectory {
             }
         }
         return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser
+            ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
     }
 
     /// `filename` in `directory`, or the first free `Name-2.ext`, `Name-3.ext`, … so an

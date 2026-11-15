@@ -146,6 +146,9 @@ The PR card (`tools/export-ai-provenance.py`, `docs/ai-transparency.md`) reads o
   After the PR is open do NOT sit in the session for 10–15 min with `gh pr checks --watch` (and never pipe a `--watch` to `tail`).
   Either enable auto-merge: `gh pr merge <N> --auto --squash --delete-branch` (enabled on the repo), or merge once the fast required check
   (lint/`card`) is green when local verification already covered the full test suite. Look at `gh pr checks <N>` (no `--watch`) only on demand.
+- **Merge without waiting for the slow runners:** when the relevant local checks (`cargo test`, `swift test`, `scripts/lint-*.sh`)
+  already passed on this Mac and `card` is green, do NOT wait for the cloud `CI / swift` / `CI / rust` runs: merge immediately with
+  `gh pr merge <N> --squash --delete-branch --admin`.
 - CI is path-aware: `linux.yml`/`flatpak.yml` run only for `girocrab-core/**`, `GiroCrabLinux/**`, `**/Localizable.xcstrings` or their own
   workflow; in `ci.yml` the `changes` job skips the heavy Rust steps (clippy, tests) and the whole Swift build/test when a PR cannot touch them
   (the cheap lint steps always run, required check names stay unchanged).
