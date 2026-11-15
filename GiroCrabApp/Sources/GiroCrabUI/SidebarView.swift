@@ -459,6 +459,7 @@ struct SidebarView: View {
                 }
             }
         }
+        Button("Duplizieren", systemImage: "plus.square.on.square") { model.duplicateCategory(category.id) }
         Divider()
         Button("Neue Unterkategorie …", systemImage: "plus") { model.newCategoryRequest = NewCategoryRequest(parent: category.id) }
         if showBudgets {

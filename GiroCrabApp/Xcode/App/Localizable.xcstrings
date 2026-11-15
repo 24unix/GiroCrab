@@ -8255,6 +8255,16 @@
         }
       }
     },
+    "Duplizieren" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duplicate"
+          }
+        }
+      }
+    },
     "EREF (Ende-zu-Ende-Referenz)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14535,6 +14545,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Minimize Header"
+          }
+        }
+      }
+    },
+    "Kopie" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy"
           }
         }
       }
