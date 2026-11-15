@@ -71,11 +71,11 @@ ORCH_PHRASE_RE = re.compile(
 # Provenance trailers defined in docs/ai-transparency.md (+ common conventions).
 TRAILER_RE = re.compile(
     r"^(Co-Authored-By|AI-Orchestrator|AI-Agent|AI-Model|AI-Assisted|Assisted-By|Generated-By|"
-    r"Human-Steering|AI-Agency|Review-Focus|Verification|AI-Data-Policy)\s*:\s*(.+?)\s*$", re.I | re.M)
+    r"Human-Steering|AI-Agency|Review-Focus|Security-Check|Perf-Check|Verification|AI-Data-Policy)\s*:\s*(.+?)\s*$", re.I | re.M)
 FOOTER_RE = re.compile(r"Generated with \[?(Claude Code|[\w .-]+?)\]?\(", re.I)
 REFLECTION_HEAD_RE = re.compile(r"^#{1,6}\s*(?:🤖\s*)?AI Process Reflection\b.*$", re.I | re.M)
 REFLECTION_ITEM_RE = re.compile(
-    r"^\s*(?:[-*]\s*)?\**(Human-Steering|AI-Agency|Review-Focus)\s*:\**\s*(.+?)\s*$", re.I | re.M)
+    r"^\s*(?:[-*]\s*)?\**(Human-Steering|AI-Agency|Review-Focus|Security-Check|Perf-Check)\s*:\**\s*(.+?)\s*$", re.I | re.M)
 
 LAYERS = [  # first match wins
     ("legacy", r"^(cashcrab-core|CashCrabApp)/"),
@@ -158,9 +158,10 @@ def detect_tools(coauthors, trailers, body, branch, author_login, roles=None):
 
 def parse_reflection(body, trailers):
     """Layer 2: the AI's self-report. -> {"present": bool, "human_steering": [...],
-    "ai_agency": [...], "review_focus": [...]}. Sources: the `### 🤖 AI Process Reflection`
+    "ai_agency": [...], "review_focus": [...], "security_check": [...], "perf_check": [...]}.
+    Sources: the `### 🤖 AI Process Reflection`
     section of the PR body and the trailers of the commits/PR body. Self-reported, unverified."""
-    out = {"human_steering": [], "ai_agency": [], "review_focus": []}
+    out = {"human_steering": [], "ai_agency": [], "review_focus": [], "security_check": [], "perf_check": []}
     section = False
     m = REFLECTION_HEAD_RE.search(body or "")
     if m:
@@ -469,12 +470,16 @@ def render_card(f, repo="GiroCrab/GiroCrab", audit=None):
     if refl.get("present"):
         lines += ["", "### 🤖 AI Process Reflection <sub>(Selbstauskunft der KI/des Autors, ungeprüft)</sub>"]
         for label, key in (("Human-Steering", "human_steering"), ("AI-Agency", "ai_agency"),
-                           ("Review-Focus", "review_focus")):
+                           ("Review-Focus", "review_focus"), ("Security-Check", "security_check"),
+                           ("Perf-Check", "perf_check")):
             if refl.get(key):
                 lines.append(f"- **{label}:** " + evidence_cell(refl[key]))
+            elif key in ("security_check", "perf_check") and f["ai"]["involved"]:
+                # Pflichtangabe (CONTRIBUTING.md): a gap stays visible, the card never blocks a merge.
+                lines.append(f"- **{label}:** ⚠️ fehlt (Pflichtangabe, siehe `CONTRIBUTING.md`)")
     elif f["ai"]["involved"]:
         lines += ["", "_🤖 KI beteiligt, aber keine `AI Process Reflection` im PR-Body "
-                      "(`Human-Steering:` / `AI-Agency:` / `Review-Focus:`)._"]
+                      "(`Human-Steering:` / `AI-Agency:` / `Review-Focus:` / `Security-Check:` / `Perf-Check:`)._"]
     if audit:
         lines += ["", "### 🔍 KI-Prozess-Analyse (Meta-Audit)", md_cell(audit["text"]), "",
                   f"<sub>Unabhängige KI-Einschätzung ({md_cell(audit['provider'])}, {md_cell(audit['model'])}); "

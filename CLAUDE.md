@@ -122,12 +122,14 @@ The PR card (`tools/export-ai-provenance.py`, `docs/ai-transparency.md`) reads o
   (the default for the maintainer's sessions), otherwise the model the contributor names (`ChatGPT`, `Claude`,
   `Cursor`, `GitHub Copilot`, …). A coding agent that writes code adds `AI-Agent: <tool>` or `AI-Model: <model>`.
   Stage 1+2 (framing/orchestration) = `AI-Orchestrator`; stage 3 (code generation) = `Co-authored-by`, `AI-Agent`, `AI-Model`.
-- Every AI-authored PR body ends with this section (German is fine; the three labels stay as written):
+- Every AI-authored PR body ends with this section (German is fine; the five labels stay as written):
   ```
   ### 🤖 AI Process Reflection
   - **Human-Steering:** what the human specified or decided (architecture, security, scope)
   - **AI-Agency:** what the AI decided on its own (names, structure, edge cases)
   - **Review-Focus:** where a human reviewer should look first
+  - **Security-Check:** what was checked for secrets/personal data (logs, `.sensitive()` redaction, new network/process/file access, dependencies + `THIRD_PARTY_NOTICES.md`); "Nothing relevant: <why>" is valid
+  - **Perf-Check:** what was measured or ruled out (`offMain` for calls over ~16 ms, no `list_transactions` for counts/sums, `category_perf` numbers); "No hot path touched: <why>" is valid
   ```
 - This is a self-report, shown on the card as unverified. Never put real financial data, IBANs or secrets in it.
 

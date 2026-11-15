@@ -116,4 +116,14 @@ To avoid two people building the same thing (it has happened, e.g. account group
 
 * Keep PRs focused; describe what and why.
 * CI runs `cargo fmt --check`, `cargo clippy`, `cargo test -p girocrab-core` and a Swift build.
+* PRs written with AI help end with a `### 🤖 AI Process Reflection` section (see
+  [AI transparency](docs/ai-transparency.md)) containing five bullets: `Human-Steering`, `AI-Agency`,
+  `Review-Focus` and the mandatory **`Security-Check`** and **`Perf-Check`**:
+  * **Security-Check:** what you checked for secrets and personal data (logs, bug-report redaction with
+    `.sensitive()`, new HTTP/process/file access, new or upgraded dependencies, `THIRD_PARTY_NOTICES.md`).
+    "Nothing relevant: <why>" is a valid answer; an empty one is not.
+  * **Perf-Check:** what you measured or ruled out (core calls over ~16 ms go through `offMain`, no
+    `list_transactions` for counts or sums, `category_perf` numbers for changes on the category path).
+    "No hot path touched: <why>" is a valid answer.
+  The card shows both and marks a missing one with ⚠️. It is self-reported and never blocks a merge.
 * By contributing you agree to license your work under GPL-3.0-or-later.

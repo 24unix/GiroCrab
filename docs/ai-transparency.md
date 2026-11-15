@@ -78,6 +78,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 | `AI-Orchestrator:` | 1+2 | orchestrierende KI (Planung, Prompts, Spezifikation), z. B. `AI-Orchestrator: Google Gemini` |
 | `AI-Agency:` / `Review-Focus:` | Reflexion | Selbstauskunft der KI: was sie selbst entschieden hat, was ein Reviewer zuerst prüfen sollte |
 | `Human-Steering:` | 2 | menschliche Vorgaben zu Architektur und Security |
+| `Security-Check:` / `Perf-Check:` | Reflexion | Pflichtangaben: was auf Geheimnisse/personenbezogene Daten (Logs, `.sensitive()`, Netz/Prozess/Dateien, Abhängigkeiten) und was auf Laufzeit (`offMain`, SQL-Aggregate, `category_perf`) geprüft wurde |
 | `Verification:` | 4 | wie geprüft wurde, z. B. Tests oder manueller Test gegen ein echtes Bankportal |
 | `AI-Data-Policy:` | – | Bestätigung der Datenschutz-Garantie (siehe Abschnitt 4) |
 
@@ -100,7 +101,7 @@ Die GitHub Action [`ai-transparency.yml`](../.github/workflows/ai-transparency.y
 | Ebene | Inhalt | Quelle |
 |---|---|---|
 | **1 · Deterministische Telemetrie** | Trailer, KI-Werkzeuge mit Rolle, berührte Schichten, Security-Oberfläche, Test-Delta | Skript, ohne KI |
-| **2 · KI-Selbstreflexion** | `### 🤖 AI Process Reflection` mit `- **Human-Steering:**`, `- **AI-Agency:**`, `- **Review-Focus:**` (oder gleichnamige Trailer) | PR-Body / Commits; **Selbstauskunft, ungeprüft** |
+| **2 · KI-Selbstreflexion** | `### 🤖 AI Process Reflection` mit `- **Human-Steering:**`, `- **AI-Agency:**`, `- **Review-Focus:**` sowie den Pflichtangaben `- **Security-Check:**` und `- **Perf-Check:**` (oder gleichnamige Trailer); fehlt eine Pflichtangabe, markiert die Card sie mit ⚠️ (blockiert nichts) | PR-Body / Commits; **Selbstauskunft, ungeprüft** |
 | **3 · Unabhängiger Prozess-Auditor (Meta-KI)** | 2–3 Sätze „🔍 KI-Prozess-Analyse (Meta-Audit)“: wie Mensch und Modelle zusammenwirkten, was die KI selbst entschied, was ein Reviewer prüfen sollte | LLM, optional |
 
 **Ebene 3 (Provider, in dieser Reihenfolge):** `GEMINI_API_KEY` → Google Gemini (`gemini-2.5-flash`); sonst `GITHUB_TOKEN` → GitHub Models (`openai/gpt-4o-mini`, Workflow-Recht `models: read`); sonst `OPENAI_API_KEY` oder `ANTHROPIC_API_KEY`. Timeout 8 s. Ohne Schlüssel, offline, bei Fehlern oder mit `card --no-llm` entfällt der Abschnitt, und die Card erscheint wie sonst.

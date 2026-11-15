@@ -288,6 +288,7 @@ struct WealthView: View {
         return VStack(alignment: .leading, spacing: 14) {
             Text("Nettovermögen").appFont(.caption).foregroundStyle(Theme.secondary)
             Text(Money.format(s.netCents(includingLiabilities: includeLiabilities)))
+                .sensitive()
                 .font(.system(size: 36, weight: .semibold)).monospacedDigit()
                 .minimumScaleFactor(0.6).lineLimit(1)
             bar("Vermögenswerte", assets, Double(assets) / scale, Theme.accent)
@@ -312,7 +313,7 @@ struct WealthView: View {
             HStack {
                 Text(title).appFont(.subheadline, weight: .medium)
                 Spacer()
-                Text(Money.format(cents)).appFont(.subheadline).monospacedDigit()
+                Text(Money.format(cents)).sensitive().appFont(.subheadline).monospacedDigit()
             }
             GeometryReader { g in
                 ZStack(alignment: .leading) {
@@ -401,7 +402,7 @@ struct WealthView: View {
         .frame(width: 190, height: 190)
         .overlay {
             VStack(spacing: 0) {
-                Text(Money.format(total)).appFont(.callout, weight: .semibold).monospacedDigit()
+                Text(Money.format(total)).sensitive().appFont(.callout, weight: .semibold).monospacedDigit()
                     .minimumScaleFactor(0.6).lineLimit(1)
                 Text("Summe").appFont(.caption2).foregroundStyle(Theme.secondary)
             }
@@ -412,8 +413,9 @@ struct WealthView: View {
                 HStack(spacing: 8) {
                     Circle().fill(p.color).frame(width: 9, height: 9)
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(p.label).appFont(.callout).lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                        Text(p.label).sensitive().appFont(.callout).lineLimit(1).fixedSize(horizontal: true, vertical: false)
                         Text("\(Money.format(p.cents)) (\((Double(p.cents) / Double(max(total, 1))).formatted(.percent.precision(.fractionLength(1)))))")
+                            .sensitive()
                             .appFont(.caption).foregroundStyle(Theme.secondary).monospacedDigit()
                             .fixedSize(horizontal: true, vertical: false)
                     }
@@ -438,7 +440,7 @@ struct WealthView: View {
                 HStack {
                     Text(title).appFont(.headline)
                     Spacer()
-                    Text(Money.format(total)).appFont(.headline).monospacedDigit()
+                    Text(Money.format(total)).sensitive().appFont(.headline).monospacedDigit()
                 }
                 Divider()
                 ForEach(accounts.sorted { abs($0.balanceCents) > abs($1.balanceCents) }, id: \.id) { a in
@@ -446,13 +448,13 @@ struct WealthView: View {
                         HStack {
                             Image(systemName: a.sfSymbol).foregroundStyle(tint).frame(width: 20)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(a.name).lineLimit(1)
+                                Text(a.name).sensitive().lineLimit(1)
                                 if !a.bankName.isEmpty {
                                     Text(a.bankName).appFont(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
                                 }
                             }
                             Spacer()
-                            Text(Money.format(a.balanceCents)).monospacedDigit()
+                            Text(Money.format(a.balanceCents)).sensitive().monospacedDigit()
                         }
                         .contentShape(Rectangle())
                     }
@@ -487,18 +489,20 @@ struct WealthView: View {
                 ForEach(shown) { p in
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(p.name).lineLimit(1)
+                            Text(p.name).sensitive(.labels).lineLimit(1)
                             Text("\(p.quantity.formatted(.number.precision(.fractionLength(0...4)))) · \(p.isin)")
+                                .sensitive()
                                 .appFont(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 1) {
-                            Text(Money.format(p.valueCents)).monospacedDigit()
+                            Text(Money.format(p.valueCents)).sensitive().monospacedDigit()
                             if let d = p.dayChangeCents {
-                                Text(signed(d)).appFont(.caption2).foregroundStyle(tone(d)).monospacedDigit()
+                                Text(signed(d)).sensitive().appFont(.caption2).foregroundStyle(tone(d)).monospacedDigit()
                             }
                             if total > 0 {
                                 Text((Double(p.valueCents) / Double(total)).formatted(.percent.precision(.fractionLength(1))))
+                                    .sensitive()
                                     .appFont(.caption2).foregroundStyle(Theme.secondary).monospacedDigit()
                             }
                         }
@@ -547,16 +551,17 @@ struct WealthView: View {
                 ForEach(rows) { r in
                     HStack {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(r.name).lineLimit(1)
+                            Text(r.name).sensitive().lineLimit(1)
                             if !r.subtitle.isEmpty {
-                                Text(r.subtitle).appFont(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
+                                Text(r.subtitle).sensitive().appFont(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
                             }
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 1) {
-                            Text(Money.format(r.valueCents)).monospacedDigit()
+                            Text(Money.format(r.valueCents)).sensitive().monospacedDigit()
                             if total > 0 {
                                 Text((Double(r.valueCents) / Double(total)).formatted(.percent.precision(.fractionLength(1))))
+                                    .sensitive()
                                     .appFont(.caption2).foregroundStyle(Theme.secondary).monospacedDigit()
                             }
                         }
@@ -573,7 +578,7 @@ struct WealthView: View {
     private func change(_ title: LocalizedStringKey, _ cents: Int64) -> some View {
         HStack(spacing: 6) {
             Text(title).appFont(.caption).foregroundStyle(Theme.secondary)
-            Text(signed(cents)).appFont(.callout, weight: .medium).foregroundStyle(tone(cents)).monospacedDigit()
+            Text(signed(cents)).sensitive().appFont(.callout, weight: .medium).foregroundStyle(tone(cents)).monospacedDigit()
         }
     }
 
@@ -600,7 +605,7 @@ struct WealthView: View {
             HStack {
                 Text(title)
                 Spacer()
-                Text(Money.format(cents)).monospacedDigit().foregroundStyle(tint)
+                Text(Money.format(cents)).sensitive().monospacedDigit().foregroundStyle(tint)
             }
         }
     }
@@ -643,7 +648,7 @@ struct WealthView: View {
                 .chartYAxis {
                     AxisMarks(position: .trailing) { v in
                         AxisGridLine()
-                        AxisValueLabel { if let d = v.as(Double.self) { Text(Money.format(Int64(d * 100))).appFont(.caption2) } }
+                        AxisValueLabel { if let d = v.as(Double.self) { Text(Money.format(Int64(d * 100))).sensitive().appFont(.caption2) } }
                     }
                 }
                 .frame(height: 190)

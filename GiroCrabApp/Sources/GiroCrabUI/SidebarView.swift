@@ -50,7 +50,7 @@ struct SidebarView: View {
             }
             HStack(spacing: 8) {
                 Image(systemName: "chart.pie").foregroundStyle(Theme.secondary).frame(width: 20)
-                Text("Vermögen").fontWeight(.medium)
+                Text("Vermögen").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
             .tag(SidebarItem.wealth)
