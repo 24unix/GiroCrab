@@ -202,6 +202,8 @@ Sheet {
         }
 
         ScrollView {
+
+            ScrollBar.vertical: ScrollViewBar {}
             id: scroll
             Layout.fillWidth: true
             readonly property real chrome: head.implicitHeight + 20 + footer.implicitHeight + 33

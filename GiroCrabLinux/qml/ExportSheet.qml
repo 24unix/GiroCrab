@@ -355,6 +355,8 @@ Sheet {
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
 
         ScrollView {
+
+            ScrollBar.vertical: ScrollViewBar {}
             id: scroll
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(form.implicitHeight + 32, sheet.maxBodyHeight - 60, sheet.isSelectionExport ? 520 : 720)
@@ -426,6 +428,7 @@ Sheet {
                         Item { Layout.fillWidth: true }
                     }
                     ScrollView {
+                        ScrollBar.vertical: ScrollViewBar {}
                         id: accountScroll
                         Layout.fillWidth: true
                         Layout.preferredHeight: {

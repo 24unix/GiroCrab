@@ -190,6 +190,7 @@ Sheet {
 
             // accessStep
             ScrollView {
+                ScrollBar.vertical: ScrollViewBar {}
                 contentWidth: availableWidth
                 ColumnLayout {
                     width: parent.width
@@ -225,6 +226,7 @@ Sheet {
 
             // setupStep
             ScrollView {
+                ScrollBar.vertical: ScrollViewBar {}
                 contentWidth: availableWidth
                 ColumnLayout {
                     width: parent.width

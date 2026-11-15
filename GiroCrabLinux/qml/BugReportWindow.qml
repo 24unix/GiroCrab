@@ -192,6 +192,7 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
         ScrollView {
+            ScrollBar.vertical: ScrollViewBar {}
             id: scroll
             Layout.fillWidth: true; Layout.fillHeight: true
             contentWidth: availableWidth

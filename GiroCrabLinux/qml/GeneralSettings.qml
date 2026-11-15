@@ -5,6 +5,7 @@ import QtQuick.Layouts
 // SettingsView.swift › GeneralSettings. Mitteilungen, Saldoverlauf (bars) and Händler-Logos
 // are not on Linux yet (no announcement feed, line chart only, no online logos).
 ScrollView {
+    ScrollBar.vertical: ScrollViewBar {}
     id: pane
     contentWidth: availableWidth
     /// LanguagePreference: { choice: "system" | "de" | "en", system, running }.

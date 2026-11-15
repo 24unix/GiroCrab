@@ -28,6 +28,7 @@ ColumnLayout {
     }
     Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
     ScrollView {
+        ScrollBar.vertical: ScrollViewBar {}
         id: scroll
         Layout.fillWidth: true
         Layout.fillHeight: true

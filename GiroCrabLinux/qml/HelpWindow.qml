@@ -83,6 +83,8 @@ ApplicationWindow {
     }
 
     ScrollView {
+
+        ScrollBar.vertical: ScrollViewBar {}
         id: scroll
         anchors.fill: parent
         contentWidth: availableWidth

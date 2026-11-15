@@ -11,6 +11,8 @@ Rectangle {
     readonly property var b: AppModel.selectedBooking
 
     ScrollView {
+
+        ScrollBar.vertical: ScrollViewBar {}
         anchors.fill: parent
         contentWidth: availableWidth
         ColumnLayout {
