@@ -110,6 +110,10 @@ nur um Kategorie und Notiz ergänzt.
 - 🗄️ **Datenbank-Import:** lesender Import einer verschlüsselten `.sqlite`-Datei inkl. Konten, Kategorien, Hierarchie und Buchungshistorie (siehe „Vorhandene Daten übernehmen“).
 - 🏦 **FinTS 3.0 / HBCI-Client & PSD2 für macOS und iOS:** FinTS 3.0 / HBCI (CAMT.052 & MT940 mit intelligenter Latin-1/UTF-8-Erkennung), **bunq** (persönlicher API-Schlüssel), PayPal, Trade-Republic-WebSocket, comdirect-REST sowie eingebettete Web-Session-/CSV-Importe für Amex & Amazon Visa.
 - 💸 **SEPA-Überweisung & Echtzeitüberweisung via FinTS 3.0 / HKCCS** inkl. Verification of Payee (VoP), inkl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN-Prüfung (Mod-97), SEPA-konformer Zeichensatz, Empfängervorschläge aus bisherigen Buchungen und sofort vorgemerkte Buchung.
+- 📑 **Sammelüberweisung via FinTS 3.0 / HKCCM:** mehrere Zahlungen von einem Konto in einem Auftrag mit einer TAN, inkl. CSV-Import; wahlweise als Sammelbuchung oder Einzelbuchungen. Verfügbar, wenn die Bank Sammelaufträge per FinTS anbietet; nicht als Echtzeitüberweisung.
+- 🗓️ **Seite „Geplant“ mit Daueraufträgen:** Terminüberweisungen und die per FinTS (HKCDB) abgerufenen Daueraufträge der Bank erscheinen mit ihren nächsten Ausführungsterminen. Daueraufträge werden derzeit nur gelesen; Anlegen, Ändern und Löschen sind noch nicht umgesetzt (#496).
+- 🧾 **SEPA-Lastschriften & Mandate:** Mandate und Gläubiger-ID verwalten, Einzüge als pain.008-Datei erzeugen (Basis, COR1, Firmen) und – sofern die Bank es per FinTS anbietet – mit TAN einreichen; Rücklastschriften werden erkannt und das Mandat zum Prüfen markiert.
+- 📤 **Export:** Buchungen u. a. als CAMT.053-Kontoauszug (jeweils ein Konto und ein Zeitraum, mit Anfangs- und Endsaldo).
 - 🏠 **Intelligente Darlehens-Verfolgung:** Tilgungsfortschritt in Prozent und automatische Verknüpfung der monatlichen „Zins & Tilgung“-Raten vom Girokonto.
 - 🏷️ **Händler-Erkennung & Logos (Opt-in):** Händler und ETFs (REWE, EnBW, DB, iShares) werden lokal erkannt; Privatpersonen (z. B. „Max Mustermann“) erhalten bewusst nur neutrale Initialen. Händler-Logos werden **standardmäßig nicht** aus dem Netz geladen – das passiert erst nach Ihrer Zustimmung in den Einstellungen.
 - ✏️ **Notizen schnell bearbeiten:** Doppelklick oder Return auf die Notiz in der Buchungsdetail-Ansicht.
@@ -162,7 +166,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 <!-- sync:connectors:start -->
 | Bank | Schnittstelle | Umsätze | Salden | Depot | Überweisung | Dauerauftrag | PDF/Postfach | Status |
 |---|---|---|---|---|---|---|---|---|
-| 1822direkt | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verifiziert |
+| 1822direkt | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | ✅ Verifiziert |
 | FinTS-Bank (BLZ + URL) | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verifiziert |
 | ING | FinTS 3.0 | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#313](https://github.com/GiroCrab/GiroCrab/issues/313) |
@@ -312,6 +316,10 @@ fetched later via FinTS are recognised as duplicates and not created twice – e
 - 🗄️ **Database import:** read-only import of an encrypted `.sqlite` file incl. accounts, categories, hierarchy and booking history (see “Importing existing data”).
 - 🏦 **FinTS 3.0 / HBCI client & PSD2 for macOS and iOS:** FinTS 3.0 / HBCI (CAMT.052 & MT940 with smart Latin-1/UTF-8 decoding), **bunq** (personal API key), PayPal, Trade Republic WebSocket, comdirect REST, and embedded web-session/CSV import for Amex & Amazon Visa.
 - 💸 **Native SEPA credit transfers via FinTS 3.0 / HKCCS** incl. PushTAN, SecureGo plus & ChipTAN/photoTAN: IBAN checksum validation (Mod-97), SEPA-compliant character set, recipient suggestions from past bookings and an instant pending booking.
+- 📑 **Batch transfers via FinTS 3.0 / HKCCM:** several payments from one account in a single order with one TAN, incl. CSV import; booked as one batch entry or as individual entries. Available where the bank offers batch orders via FinTS; not as instant transfers.
+- 🗓️ **"Planned" page with standing orders:** scheduled transfers and the bank's standing orders fetched via FinTS (HKCDB) are shown with their next execution dates. Standing orders are read-only for now; creating, changing and deleting them is not implemented yet (#496).
+- 🧾 **SEPA direct debits & mandates:** manage mandates and the creditor ID, create collections as pain.008 files (Core, COR1, B2B) and – where the bank offers it via FinTS – submit them with a TAN; returned debits are detected and the mandate is flagged for review.
+- 📤 **Export:** bookings among others as a CAMT.053 statement (one account and one period at a time, with opening and closing balance).
 - 🏠 **Smart loan tracking:** automatic repayment progress (%) and cross-account linking of the monthly "Zins & Tilgung" instalments from your checking account.
 - 🏷️ **Merchant recognition & logos (opt-in):** German merchants & ETFs (REWE, EnBW, DB, iShares) are recognized locally, while private individuals (e.g. "Max Mustermann") get plain monogram initials by design. Merchant logos are **not** fetched online by default – only after you opt in under Settings.
 - ✏️ **Quick note editing:** double-click or press Return on the note in the booking detail view.
@@ -355,7 +363,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 <!-- sync:connectors:start -->
 | Bank | Interface | Transactions | Balances | Securities | Transfers | Standing orders | PDF/post box | Status |
 |---|---|---|---|---|---|---|---|---|
-| 1822direkt | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verified |
+| 1822direkt | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | Consorsbank | FinTS 3.0 | ✓ | ✓ | ✓ | – | – | – | ✅ Verified |
 | FinTS bank (bank code + URL) | FinTS 3.0 | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✅ Verified |
 | ING | FinTS 3.0 | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#313](https://github.com/GiroCrab/GiroCrab/issues/313) |
