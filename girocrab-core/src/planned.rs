@@ -219,11 +219,26 @@ impl Vault {
         let (count, sum): (i64, i64) =
             db.query_row(&sql, params![from, to], |r| Ok((r.get(0)?, r.get(1)?)))?;
         // Scheduled transfers are stored as positive amounts and listed as outgoing.
-        Ok(PlannedTotals {
+        let mut t = PlannedTotals {
             count: u32::try_from(count).unwrap_or(u32::MAX),
             outgoing_cents: -sum,
             incoming_cents: 0,
-        })
+        };
+        // Standing orders only exist as computed executions (few orders, no row load of
+        // the transfers needed).
+        let parse = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
+        if let Some(f) = parse(&from) {
+            let end = to.as_deref().and_then(parse);
+            for p in crate::standing_orders::planned_executions(&db, f, end, &account_ids)? {
+                t.count += 1;
+                if p.amount_cents < 0 {
+                    t.outgoing_cents += p.amount_cents;
+                } else {
+                    t.incoming_cents += p.amount_cents;
+                }
+            }
+        }
+        Ok(t)
     }
 }
 
