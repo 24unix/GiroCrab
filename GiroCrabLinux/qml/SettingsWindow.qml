@@ -13,12 +13,14 @@ ApplicationWindow {
     title: qsTr("Einstellungen")
     // HIG: each tab has its own height and the window follows it.
     readonly property var tabs: [
-        { id: "general", title: qsTr("Allgemein"), symbol: "gearshape", height: 420 },
+        // SettingsView.swift › settingsPane(height:): "Allgemein" 600 since #343/#388 (it scrolls)
+        { id: "general", title: qsTr("Allgemein"), symbol: "gearshape", height: 600 },
         { id: "banks", title: qsTr("Banken"), symbol: "building.columns", height: 600 },
         { id: "security", title: qsTr("Sicherheit"), symbol: "lock.shield", height: 780 }]
     readonly property int tabIndex: Math.max(0, tabs.findIndex(t => t.id === AppModel.settingsTab))
     width: 680 * Theme.textScale   // SettingsPaneFrame: 680 × textScale
-    height: tabs[tabIndex].height
+    // never taller than the screen (small laptop displays)
+    height: Math.min(tabs[tabIndex].height, Screen.desktopAvailableHeight - 60)
     minimumWidth: 560; minimumHeight: 360
     color: Theme.canvas
     visible: AppModel.showSettings
