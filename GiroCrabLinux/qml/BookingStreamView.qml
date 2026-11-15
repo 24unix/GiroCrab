@@ -15,6 +15,7 @@ Rectangle {
                                            && (isOverview || showAnalytics) && AppModel.scope !== "Investments"
     readonly property bool isDepot: AppModel.selectedAccount !== null
         && (AppModel.selectedAccount.kind === "Brokerage" || AppModel.selectedAccount.name.toLowerCase().indexOf("depot") >= 0)
+    readonly property bool isTangible: AppModel.selectedAccount !== null && AppModel.isTangible(AppModel.selectedAccount.id)
     /// @AppStorage("showAccountAnalytics")
     readonly property bool showAnalytics: AppModel.uiDefaults.showAccountAnalytics
     /// No accounts in the personal vault: the welcome card replaces header and placeholder.
@@ -126,9 +127,16 @@ Rectangle {
                     visible: stream.showsAnalytics && AppModel.showBudgets
                     Layout.fillWidth: true; Layout.leftMargin: 20; Layout.rightMargin: 20
                 }
+                // DepotPositionsView (Sachwerte, #87): held and sold items instead of bookings
+                Loader {
+                    active: stream.isTangible
+                    visible: active
+                    Layout.fillWidth: true; Layout.leftMargin: 20; Layout.rightMargin: 20
+                    sourceComponent: Component { AssetPositionsView { account: AppModel.selectedAccount } }
+                }
                 // ContentUnavailableView "Keine Buchungen im Depot", in the middle of the visible area
                 ColumnLayout {
-                    visible: AppModel.dayGroups.length === 0 && stream.isDepot && AppModel.searchText === ""
+                    visible: AppModel.dayGroups.length === 0 && stream.isDepot && !stream.isTangible && AppModel.searchText === ""
                     Layout.alignment: Qt.AlignHCenter // the column is only as wide as its texts
                     Layout.topMargin: Math.max(40, (list.height - implicitHeight) / 2 - 20)
                     spacing: 6

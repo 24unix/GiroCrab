@@ -71,7 +71,7 @@ QtObject {
         "keyboard": "help-keybord-shortcuts", "network": "network-wired", "flag.checkered": "flag",
         "ladybug": "tools-report-bug", "bubble.left.and.bubble.right": "dialog-messages", "hand.point.up.left": "transform-browse",
         "list.bullet.clipboard": "view-list-text", "checkmark.shield": "security-high", "circle": "draw-circle",
-        "minus.circle": "list-remove", "creditcard.fill": "view-financial-account-credit-card",
+        "minus.circle": "list-remove", "arrow.clockwise": "view-refresh", "diamond": "view-financial-account-asset", "creditcard.fill": "view-financial-account-credit-card",
         // filled variants (SyncLog outcome, RecurringSheet): Breeze has no filled circles, same icon as the outline
         "checkmark.circle.fill": "dialog-ok-apply", "exclamationmark.triangle.fill": "dialog-warning", "minus.circle.fill": "list-remove"
     })

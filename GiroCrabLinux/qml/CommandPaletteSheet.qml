@@ -42,8 +42,10 @@ Sheet {
         add(qsTr("Kontogruppen bearbeiten"), action, "slider.horizontal.3", () => m.openGroupManager())
         add(qsTr("Neue Hauptkategorie"), action, "plus.square", () => m.newCategoryRequest = { parent: null })
         add(qsTr("Neues Darlehen"), action, "car", () => m.openLoanEditor("create"))
+        add(qsTr("Neues Sachwerte-Konto"), action, "diamond", () => m.createTangibleAccount())
         if (m.sidebarSelection.startsWith("account:")) {
             const accId = parseInt(m.sidebarSelection.slice(8))
+            if (m.isTangible(accId)) add(qsTr("Sachwert hinzufügen"), action, "plus", () => m.openAssetEditor(accId))
             const loan = m.manualLoan(accId)
             if (loan) add(qsTr("Stand von „%1“ neu setzen").arg(loan.setup.name), action, "calendar.badge.clock", () => m.openLoanEditor("anchor", accId))
         }

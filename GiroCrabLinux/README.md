@@ -123,6 +123,7 @@ von der nativen Installation wechselt, kopiert `tresor.girocrab` in den neuen Or
 | DocumentsUI, AccountDocumentsUI | DocumentsView.qml, DocumentPreview.qml (QtPdf), AccountDocumentsSheet.qml | Belege, Vorschau, Zuordnen, Kontoauszüge, Sichern. Texterkennung für Fotos mit dem optionalen `tesseract` statt Vision (src/ocr.rs, Bild per stdin, ohne HEIC) |
 | InvestmentDashboardView, LoanProgressCard | InvestmentDashboardView.qml, HoldingsCard.qml, LoanProgressCard.qml | Depot-Übersicht, Sparpläne, Perks, „Konsum vs. Investition“ mit Werteachse, Kredit-Fortschritt |
 | WealthView | WealthView.qml, Main.qml (Ansicht in der Toolbar), SidebarView.qml, AppModel.qml | „Vermögen“: Nettovermögen mit Balken, Zusammensetzung (Ring), Cash-Verlauf, Kontolisten, Positionen aller Depots, Erträge und Kosten, Positionen der Sachwerte; Ansicht Alles/Cash/Wertpapiere/Sachwerte (QSettings `wealth/includeLiabilities`) |
+| TangibleAssetsUI, AppModel+Assets, DepotPositionsView (Sachwerte) | AssetPositionsView.qml, AssetEditorSheet.qml, AssetActionSheet.qml, AssetSymbols.qml, AssetSymbolPicker.qml, AssetSymbolTile.qml, AssetSymbolImage.qml, NumberText.qml, StreamHeaderCard.qml, AppModel.qml | Sachwerte-Konto (Ablage, Befehlspalette), Positionen und „Ehemalige Positionen“, Auswahl mit eigenem Wertverlauf im Kopf („Wert heute“/„Verkauft“), Sachwert anlegen/bearbeiten (Gold mit Stückelung oder eigenen Angaben, Kaufpreis gesamt/je Stück, fehlender Kurs), Bewertungen, Anzahl, Verkaufen, Löschen, „Kurse aktualisieren“ (Goldpreis per `refresh_asset_prices` im Worker-Thread). Symbole: nächstes Breeze-Icon, Edelstein und Kette selbst gezeichnet. Eingabezeilen für neue Bewertung und Anzahl zweizeilig (das Datumsfeld ist breiter als am Mac) |
 | MoneyMoneyImportSheet, MoneyMoneyDatabaseImportView | MoneyMoneyImportSheet.qml, MoneyMoneyExportImportView.qml, MoneyMoneyDatabaseImportView.qml, ImportAssistantHeader.qml, AssistantFooter.qml, ImportSourceSection.qml, ImportFileRow.qml, FormSection.qml, FormRow.qml | Exportdatei (CSV/XML/CAMT/MT940) und Datenbank (SQLCipher, Fortschritt, Abbrechen, Abgleich). Datenbank bzw. MoneyMoney-Ordner vom Mac kopieren. Enable-Banking-Schritt ohne Live-Bankliste |
 | PrintSheet, PrintReport | PrintSheet.qml, PrintReport.qml, cpp/printing.cpp | QTextDocument + QPrinter/QPrintDialog (auch PDF), Fußzeile, Logo, Wasserzeichen |
 | AppModel.exportFilteredBookingsCSV | Main.qml (FileDialog), AppModel.qml | „GiroCrab-Buchungen.csv“ |
@@ -192,7 +193,7 @@ cargo run -- --screenshot /tmp/a.png         # Fenster rendern, als PNG speicher
 `--demo-sheet`: `transfer`, `moneymoney`, `moneymoney-db`, `recurring`, `print`, `rules`, `palette` (Befehlspalette),
 `categorizer`, `payee-match`, `payee-close`, `payee-nomatch`, `error` (Abruf-Fehler mit Alternativen zur
 FinTS-Registrierung), `rule-edit`, `icon-color` (Symbol & Farbe des ersten Kontos), `category` (neue Unterkategorie),
-`icon-color-category`.
+`icon-color-category`, `asset` (neuer Sachwert), `asset-edit`, `asset-values`, `asset-quantities` (das Auto der Demo).
 
 `--screenshot` zusammen mit `--demo-settings` speichert das Einstellungen-Fenster (außer bei `groups`).
 `--demo-settings documents` der Mac-App entfällt: Linux hat keinen Reiter „Dokumente“.

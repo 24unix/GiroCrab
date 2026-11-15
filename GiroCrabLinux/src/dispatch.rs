@@ -433,6 +433,15 @@ fn call(method: &str, a: &Value) -> R {
         "validate_iban" => ok(girocrab_core::connectors::validate_iban(arg(a, "iban")?)),
         "girocode_matrix" => girocode_matrix(a),
         "read_invoice" => read_invoice(a),
+        // --- Sachwerte --- (gold prices over the network: called with Core.callAsync)
+        "asset_weight_presets" => ok(girocrab_core::assets::asset_weight_presets()),
+        "refresh_asset_prices" => {
+            let v = vault()?;
+            let force: bool = arg(a, "force")?;
+            ok(crate::sessions::RUNTIME
+                .block_on(v.refresh_asset_prices(force))
+                .map_err(|e| e.to_string())?)
+        }
         // --- portal logins --- (src/web_login.rs: browser cookies, Amex/Amazon/FNZ/quirion imports)
         m if crate::web_login::handles(m) => crate::web_login::call(m, a, vault),
         _ => {
@@ -844,6 +853,13 @@ vault_methods! {
     // --- Vermögen (WealthView) ---
     list_security_transactions(account_id)
     list_tangible_account_ids() list_all_asset_items()
+    // --- Sachwerte (TangibleAssetsUI) ---
+    create_tangible_account(name) list_asset_items(account_id)
+    save_asset_item(account_id, item_id, setup) delete_asset_item(item_id)
+    set_asset_quantity(item_id, date, quantity) delete_asset_quantity(item_id, date)
+    set_asset_value(item_id, date, value_cents) delete_asset_value(item_id, date)
+    sell_asset(item_id, date, count, price_cents) set_asset_price(symbol, date, price_cents)
+    asset_price_on(symbol, date) asset_unit_value_on(item_id, date) asset_item_history(item_id)
     // --- loans / opening balance ---
     list_manual_loans() list_loan_links() create_manual_loan(setup)
     update_manual_loan(account_id, setup) preview_manual_loan(account_id, setup, limit)
@@ -1286,6 +1302,82 @@ mod tests {
             assert!(t["direction"].is_string() && t["booking_date"].is_string());
             assert!(t["fees_cents"].is_i64() && t["taxes_cents"].is_i64());
         }
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Sachwerte (AssetEditorSheet.qml, AssetActionSheet.qml): the JSON the sheets send.
+    #[test]
+    fn tangible_asset_calls() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-assets-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![6; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        let presets = call_ok("asset_weight_presets", json!({}));
+        assert!(presets[0]["label"].is_string() && presets[0]["grams"].is_f64());
+        let account = call("create_tangible_account", json!({ "name": "" }));
+        assert!(call("list_tangible_account_ids", json!({}))
+            .as_array()
+            .unwrap()
+            .contains(&account));
+        let setup = json!({ "name": "Bild", "price_source": "manual", "weight_grams": 0.0,
+            "purity_permille": 1000.0, "interpolation": "Linear", "purchase_date": "2024-01-10",
+            "quantity": 2.0, "purchase_price_cents": 200000, "start_value_cents": 100000,
+            "note": "Atelier", "symbol": "photo.artframe" });
+        let item = call(
+            "save_asset_item",
+            json!({ "account_id": account, "item_id": null, "setup": setup }),
+        );
+        call(
+            "set_asset_value",
+            json!({ "item_id": item, "date": "2025-01-10", "value_cents": 150000 }),
+        );
+        call(
+            "set_asset_quantity",
+            json!({ "item_id": item, "date": "2025-06-01", "quantity": 3.0 }),
+        );
+        assert_eq!(
+            call(
+                "asset_unit_value_on",
+                json!({ "item_id": item, "date": "2025-01-10" })
+            ),
+            json!(150000)
+        );
+        assert!(
+            call("asset_item_history", json!({ "item_id": item }))[0]["balance_cents"].is_i64()
+        );
+        let price = call(
+            "asset_price_on",
+            json!({ "symbol": "XAU", "date": "2025-01-10" }),
+        );
+        assert!(price.is_null() || price["value_cents"].is_i64());
+        call(
+            "sell_asset",
+            json!({ "item_id": item, "date": "2025-07-01", "count": 3.0, "price_cents": 160000 }),
+        );
+        let items = call("list_asset_items", json!({ "account_id": account }));
+        let it = &items[0];
+        assert_eq!(it["setup"]["interpolation"], "Linear");
+        assert_eq!(it["sold"], json!(true));
+        assert!(it["values"].as_array().unwrap().len() >= 2);
+        assert!(it["quantities"].as_array().unwrap().len() >= 3);
+        call(
+            "delete_asset_quantity",
+            json!({ "item_id": item, "date": "2025-07-01" }),
+        );
+        call(
+            "delete_asset_value",
+            json!({ "item_id": item, "date": "2025-07-01" }),
+        );
+        call("delete_asset_item", json!({ "item_id": item }));
+        assert!(call("list_asset_items", json!({ "account_id": account }))
+            .as_array()
+            .unwrap()
+            .is_empty());
         let _ = std::fs::remove_file(path);
     }
 

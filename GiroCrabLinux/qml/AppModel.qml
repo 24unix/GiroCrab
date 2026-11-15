@@ -237,6 +237,8 @@ QtObject {
             selectedBookingID = null
             sidebarSelection = "all"
             reloadAll()
+            // Sachwerte: the demo's gold items load real prices from the API
+            refreshAssetPrices(false)
             // macOS: preselect a consumption booking with a document, else the first one.
             let pick = bookings.find(b => b.flow === "Consumption" && b.document_count > 0)
                     || bookings.find(b => b.flow === "Consumption")
@@ -299,6 +301,7 @@ QtObject {
         selectedBookingID = null
         sidebarSelection = "all"
         reloadAll()
+        refreshAssetPrices(false)
         selectedBookingID = bookings.length ? bookings[0].id : null
     }
     /// Switch to the demo data (own vault stays unlocked in the background).
@@ -331,7 +334,8 @@ QtObject {
         rules = []; settings = []; dashboard = null; budgets = []; recurring = []; recurringMonth = null; recurringHidden = []
         selectedBookingID = null; stickyBooking = null; salaryCycle = null
         ++loanGeneration; loans = []; loanLinks = ({}); loanEditor = null; openingBalanceRequest = null
-        tangibleAccountIDs = ({}); assetItemsByAccount = ({})
+        tangibleAccountIDs = ({}); assetItemsByAccount = ({}); selectedAssetItemID = null; selectedAssetHistory = []
+        assetEditor = null; assetAction = null
         vaultState = "locked"
     }
 
@@ -877,7 +881,7 @@ QtObject {
     readonly property var headerBalance: {
         const sel = sidebarSelection
         if (sel === "all") return { label: qsTr("Verfügbar (Giro, Tagesgeld, Karten)"), cents: liquidBalance }
-        if (sel.startsWith("account:")) { const a = accountsByID[Number(sel.slice(8))]; return a ? { label: qsTr("Kontostand"), cents: a.balance_cents } : null }
+        if (sel.startsWith("account:")) { const a = accountsByID[Number(sel.slice(8))]; return a ? { label: isTangible(a.id) ? qsTr("Wert heute") : qsTr("Kontostand"), cents: a.balance_cents } : null }
         if (sel.startsWith("group:")) { const g = groups.find(g => "group:" + g.id === sel); return g ? { label: qsTr("Summe"), cents: g.balance_cents } : null }
         if (sel.startsWith("bank:")) { const g = bankGroup(sel.slice(5)); return g ? { label: qsTr("Summe"), cents: g.balance_cents } : null }
         if (sel.startsWith("userGroup:")) { const g = userGroups.find(g => "userGroup:" + g.uuid === sel); return g ? { label: qsTr("Summe"), cents: g.balance_cents } : null }
@@ -1203,6 +1207,7 @@ QtObject {
     }
     function requestSyncBatch(batch) {
         if (syncingConnectionID !== null || !batch.length) return
+        refreshAssetPrices(false)
         withFreshBankingPolicy(() => {
             // a sync may have started while the policy was checked
             if (syncingConnectionID !== null) return
@@ -1477,9 +1482,91 @@ QtObject {
             tangibleAccountIDs = ids
             assetItemsByAccount = items
         })
+        reloadSelectedAssetHistory()
     }
     function isTangible(accountID) { return !!tangibleAccountIDs[accountID] }
     function assetItems(accountID) { return assetItemsByAccount[accountID] || [] }
+    function assetItem(itemID) {
+        for (const id in assetItemsByAccount) { const it = assetItemsByAccount[id].find(x => x.id === itemID); if (it) return it }
+        return null
+    }
+    /// AssetEditorRequest { accountId, itemId (null = new item) } on screen, or null.
+    property var assetEditor: null
+    /// AssetActionRequest { itemId, kind: "values" | "quantities" | "sell" } on screen, or null.
+    property var assetAction: null
+    property bool assetRefreshing: false
+    /// The item whose own value chart the header shows, and that chart.
+    property var selectedAssetItemID: null
+    property var selectedAssetHistory: []
+    /// Click on an item: its own value chart in the header; again = back to the account.
+    function selectAssetItem(id) {
+        selectedAssetItemID = selectedAssetItemID === id ? null : id
+        reloadSelectedAssetHistory()
+    }
+    /// Back to the whole account (no-op without a selection).
+    function deselectAssetItem() {
+        if (selectedAssetItemID === null) return
+        selectedAssetItemID = null
+        reloadSelectedAssetHistory()
+    }
+    /// The selected item, if it belongs to `accountID`.
+    function selectedAssetItem(accountID) {
+        const it = selectedAssetItemID !== null ? assetItem(selectedAssetItemID) : null
+        return it && it.account_id === accountID ? it : null
+    }
+    function reloadSelectedAssetHistory() {
+        if (selectedAssetItemID === null || !isUnlocked || assetItem(selectedAssetItemID) === null) {
+            selectedAssetItemID = null
+            selectedAssetHistory = []
+            return
+        }
+        const id = selectedAssetItemID
+        run(() => { selectedAssetHistory = core("asset_item_history", { item_id: id }) })
+    }
+    /// DepotPositionsView: another account ends the item selection.
+    property Connections assetSelectionReset: Connections {
+        target: model
+        function onSidebarSelectionChanged() { if (model.selectedAssetItemID !== null) model.selectAssetItem(null) }
+    }
+    function openAssetAction(kind, itemID) { assetAction = { itemId: itemID, kind: kind } }
+    function openAssetEditor(accountID, itemID) { assetEditor = { accountId: accountID, itemId: itemID === undefined ? null : itemID } }
+    /// „Neues Sachwerte-Konto …“: creates the account and selects it; its empty view
+    /// offers „Sachwert hinzufügen …“.
+    function createTangibleAccount() {
+        const id = run(() => core("create_tangible_account", { name: "" }))
+        if (id === undefined) return
+        reloadAccounts()
+        sidebarSelection = "account:" + id
+    }
+    /// Runs a Sachwerte change (throws on a core error) and refreshes everything that shows its value.
+    function changeAssets(method, args) {
+        core(method, args)
+        reloadAccounts(); reloadHistory()
+    }
+    /// Price (EUR per troy ounce) of `symbol` on `date` or the last day before.
+    function assetPrice(symbol, date) {
+        try { const p = core("asset_price_on", { symbol: symbol, date: date }); return p ? p.value_cents : null } catch (e) { return null }
+    }
+    /// Value of one piece of an item on `date` (gold: price × fine weight).
+    function assetUnitValue(itemID, date) {
+        try { const v = core("asset_unit_value_on", { item_id: itemID, date: date }); return v === undefined ? null : v } catch (e) { return null }
+    }
+    /// Fetches missing gold prices (no request without automatic items), off the GUI thread.
+    /// `userInitiated` shows the outcome; the automatic runs stay quiet.
+    function refreshAssetPrices(userInitiated) {
+        if (!isUnlocked || assetRefreshing) return
+        assetRefreshing = true
+        coreAsync("refresh_asset_prices", { force: !!userInitiated }, r => {
+            assetRefreshing = false
+            if (r.requested) { reloadAccounts(); reloadHistory() }
+            if (!userInitiated) return
+            if (r.error !== null) toast = qsTr("Kurse konnten nicht geladen werden: %1").arg(r.error)
+            else if (r.requested) toast = qsTr("Kurse aktualisiert")
+        }, err => {
+            assetRefreshing = false
+            if (userInitiated) toast = parseCoreError(err).message
+        })
+    }
 
     // MARK: - Manual loans (ManualLoansUI.swift) and Startsaldo (OpeningBalanceUI.swift)
     // A manual loan has no account at the bank: the core keeps a Stand (balance at the
@@ -2939,6 +3026,9 @@ QtObject {
         const p = launchValue("--pick")
         const pick = p ? bookings.find(b => (b.merchant_name || "").toLowerCase().includes(p) || (b.counterparty || "").toLowerCase().includes(p)) : null
         if (pick) selectedBookingID = pick.id
+        // Sachwerte (#87): --pick also selects an item by name
+        const item = p && account && isTangible(account.id) ? assetItems(account.id).find(i => i.setup.name.toLowerCase().includes(p)) : null
+        if (item) selectAssetItem(item.id)
         if (optionDemoSync) Qt.callLater(requestSyncAll)
     }
     /// `--demo-sheet` / `--demo-settings`: presented once, shortly after the vault is open.
@@ -2977,6 +3067,15 @@ QtObject {
             break
         }
         case "icon-color-category": if (top) iconColorCategoryID = top.id; break
+        // Sachwerte: asset (new item) | asset-edit | asset-values | asset-quantities (the car)
+        case "asset": case "asset-edit": case "asset-values": case "asset-quantities": {
+            const account = Object.keys(tangibleAccountIDs).map(Number)[0]
+            if (account === undefined) break
+            const car = assetItems(account).find(i => i.setup.symbol === "car.side.fill")
+            if ((name === "asset-values" || name === "asset-quantities") && car) openAssetAction(name === "asset-values" ? "values" : "quantities", car.id)
+            else openAssetEditor(account, name === "asset-edit" && car ? car.id : null)
+            break
+        }
         case "category": if (top) newCategoryRequest = { parent: top.id }; break
         case "print":
             // Print dialog (GitHub #53) on last month's demo bookings.

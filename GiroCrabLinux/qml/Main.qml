@@ -55,6 +55,7 @@ ApplicationWindow {
                      onTriggered: AppModel.groupDialog = { kind: "create", movingAccount: null, parent: null } }
             Action { text: qsTr("Bank hinzufügen …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.showAddBank = true }
             Action { text: qsTr("Neues Darlehen …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.openLoanEditor("create") }
+            Action { text: qsTr("Neues Sachwerte-Konto …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.createTangibleAccount() }
             Action { text: qsTr("Neue Hauptkategorie …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.newCategoryRequest = { parent: null } }
             AppMenuSeparator {}
             Action { text: qsTr("Vorhandene Daten importieren …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.openMoneyMoneyImport() }
@@ -460,6 +461,9 @@ ApplicationWindow {
     PayeeCheckSheet {}
     // MARK: manual loans / Startsaldo: .manualLoanSheets(model), .openingBalanceSheet(model)
     LoanEditorSheet {}
+    // Sachwerte (TangibleAssetsUI.swift › tangibleAssetSheets)
+    AssetEditorSheet {}
+    AssetActionSheet {}
     OpeningBalanceSheet {}
 
     // MARK: account groups & command palette (AccountGroupsUI.swift, CommandPalette.swift)

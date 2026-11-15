@@ -7,6 +7,21 @@ Card {
     id: card
     readonly property var account: AppModel.selectedAccount
     readonly property bool isDepot: account !== null && (account.kind === "Brokerage" || account.name.toLowerCase().indexOf("depot") >= 0)
+    /// Sachwerte (#87): items instead of securities, a value chart, „Sachwert hinzufügen“.
+    readonly property bool isTangible: account !== null && AppModel.isTangible(account.id)
+    readonly property var selectedItem: account !== null ? AppModel.selectedAssetItem(account.id) : null
+    /// The selected item's value instead of the account's.
+    readonly property var balance: selectedItem
+        ? { label: selectedItem.sold ? qsTr("Verkauft") : qsTr("Wert heute"), cents: selectedItem.holding.value_cents }
+        : AppModel.headerBalance
+    /// Sachwerte: "Sachwerte · Auto (Kombi)" while an item is selected, else "Sachwerte · Gesamt".
+    readonly property string headerTitle: isTangible ? AppModel.title + " · " + (selectedItem ? selectedItem.setup.name : qsTr("Gesamt")) : AppModel.title
+    /// The item's history follows the selected period like the account chart.
+    readonly property var chartPoints: {
+        if (!selectedItem) return AppModel.history
+        const r = AppModel.periodRange()
+        return AppModel.selectedAssetHistory.filter(p => (!r[0] || p.date >= r[0]) && (!r[1] || p.date <= r[1]))
+    }
     /// AccountCopyMenu.bankDetails: name, IBAN and bank as a block for an e-mail.
     function bankDetails(bic) {
         const a = account
@@ -24,7 +39,7 @@ Card {
                 spacing: 3
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignTop
-                Text { text: AppModel.title; font.pixelSize: Theme.title2 + 3; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { text: card.headerTitle; font.pixelSize: Theme.title2 + 3; font.weight: Font.DemiBold; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
                 Text {
                     text: card.account ? [card.account.bank_name, Fmt.iban(card.account.iban)].filter(s => s).join(" · ") : AppModel.lastSyncText
                     font.pixelSize: Theme.caption; color: Theme.secondary
@@ -49,7 +64,7 @@ Card {
                 }
             }
             ColumnLayout {
-                visible: AppModel.headerBalance !== null
+                visible: card.balance !== null
                 spacing: 2
                 Layout.alignment: Qt.AlignTop
                 // "<Label> kopieren" on the balance
@@ -59,16 +74,16 @@ Card {
                 }
                 AppMenu {
                     id: balanceCopyMenu
-                    AppMenuItem { text: AppModel.headerBalance ? qsTr("%1 kopieren").arg(AppModel.headerBalance.label) : ""; icon.name: SF.icon("doc.on.doc")
-                               onTriggered: AppModel.copyToClipboard(Fmt.clipboard(AppModel.headerBalance.cents)) }
+                    AppMenuItem { text: card.balance ? qsTr("%1 kopieren").arg(card.balance.label) : ""; icon.name: SF.icon("doc.on.doc")
+                               onTriggered: AppModel.copyToClipboard(Fmt.clipboard(card.balance.cents)) }
                 }
                 Text {
                     Layout.alignment: Qt.AlignRight
-                    text: AppModel.headerBalance ? Fmt.money(AppModel.headerBalance.cents) : ""
+                    text: card.balance ? Fmt.money(card.balance.cents) : ""
                     font.pixelSize: Theme.largeTitle + 4; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                     color: card.account && card.account.kind === "Loan" ? Theme.loan : Theme.text
                 }
-                Text { Layout.alignment: Qt.AlignRight; text: AppModel.headerBalance ? AppModel.headerBalance.label : ""; font.pixelSize: Theme.caption; color: Theme.secondary }
+                Text { Layout.alignment: Qt.AlignRight; text: card.balance ? card.balance.label : ""; font.pixelSize: Theme.caption; color: Theme.secondary }
             }
         }
 
@@ -79,16 +94,16 @@ Card {
             compact: true
         }
         HoldingsCard {
-            visible: card.isDepot
+            visible: card.isDepot && !card.isTangible
             Layout.fillWidth: true
             account: card.isDepot ? card.account : null
         }
 
         BalanceChart {
-            visible: !card.isDepot && AppModel.showStatistics && AppModel.scope !== "Investments"
+            visible: (!card.isDepot || card.isTangible) && AppModel.showStatistics && AppModel.scope !== "Investments"
             Layout.fillWidth: true
             Layout.preferredHeight: 72
-            points: AppModel.history
+            points: card.chartPoints
             onSelectDay: day => AppModel.jumpToDay(day)
         }
 
@@ -169,7 +184,20 @@ Card {
             IconButton { text: qsTr("Dokumente"); symbol: "doc.text"; symbolSize: 12; font.pixelSize: Theme.caption
                          onClicked: AppModel.openAccountDocuments(card.account) }
             Item { Layout.fillWidth: true }
-            Text { text: qsTr("Depot: Positionen statt Buchungen"); font.pixelSize: Theme.caption; color: Theme.secondary }
+            Text { visible: !card.isTangible; text: qsTr("Depot: Positionen statt Buchungen"); font.pixelSize: Theme.caption; color: Theme.secondary }
+            BusyIndicator { visible: card.isTangible && AppModel.assetRefreshing; running: visible; implicitWidth: 18; implicitHeight: 18 }
+            IconButton {
+                visible: card.isTangible && !AppModel.assetRefreshing && card.account !== null
+                         && AppModel.assetItems(card.account.id).some(i => i.setup.price_source !== "manual")
+                text: qsTr("Kurse aktualisieren"); symbol: "arrow.clockwise"; symbolSize: 12; font.pixelSize: Theme.caption
+                ToolTip.text: qsTr("Goldpreis jetzt abrufen")
+                onClicked: AppModel.refreshAssetPrices(true)
+            }
+            IconButton {
+                visible: card.isTangible
+                text: qsTr("Sachwert hinzufügen"); symbol: "plus"; symbolSize: 12; font.pixelSize: Theme.caption
+                onClicked: AppModel.openAssetEditor(card.account.id)
+            }
         }
     }
 
