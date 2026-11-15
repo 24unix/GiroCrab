@@ -33,6 +33,7 @@ struct BookingStreamView: View {
         let isOverview: Bool = { if case .allAccounts? = model.sidebarSelection { return true }; return false }()
         // „Neue Umsätze“: account cards instead of day cards, no charts
         let isNewBookings = model.sidebarSelection == .newBookings
+        let cards = ViewLayout.cards(statistics: showStatistics, budgets: showBudgets)
         let emptyVault = !model.demoActive && model.allAccounts.isEmpty
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
@@ -72,23 +73,29 @@ struct BookingStreamView: View {
                         }
                         if model.scope == .investments {
                             InvestmentDashboardView()
-                        } else if showStatistics, !isNewBookings, !model.allAccounts.isEmpty, isOverview || showAnalytics {
+                        } else if cards.any, !isNewBookings, !model.allAccounts.isEmpty, isOverview || showAnalytics {
                             // Overview: always; single account: only when toggled on.
                             #if os(iOS)
-                            DisclosureGroup("Cashflow-Analyse", isExpanded: $showCashflowIOS) {
-                                VStack(spacing: 14) {
-                                    CashflowCard()
-                                    if showBudgets { BudgetProgressCard() }
+                            if cards.cashflow {
+                                DisclosureGroup("Cashflow-Analyse", isExpanded: $showCashflowIOS) {
+                                    VStack(spacing: 14) {
+                                        CashflowCard()
+                                        if cards.budgets { BudgetProgressCard() }
+                                    }
+                                    .padding(.top, 8)
                                 }
-                                .padding(.top, 8)
+                                .appFont(.subheadline, weight: .medium)
+                                .padding(.horizontal, 14).padding(.vertical, 10)
+                                .frame(maxWidth: .infinity)
+                                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
+                            } else {
+                                BudgetProgressCard()
                             }
-                            .appFont(.subheadline, weight: .medium)
-                            .padding(.horizontal, 14).padding(.vertical, 10)
-                            .frame(maxWidth: .infinity)
-                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
                             #else
-                            CashflowCard().transition(Motion.slide(.top))
-                            if showBudgets {
+                            if cards.cashflow {
+                                CashflowCard().transition(Motion.slide(.top))
+                            }
+                            if cards.budgets {
                                 BudgetProgressCard().transition(Motion.slide(.top))
                             }
                             #endif
