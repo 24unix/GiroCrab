@@ -26,7 +26,10 @@ extension AppModel {
     /// possibly security-scoped file) and shows it. False (with a toast) when
     /// the password is wrong or the file is no backup; then nothing changed.
     func restoreBackup(from url: URL, password: String) async -> Bool {
-        guard let v = ownVault else { return false }
+        guard let v = ownVault else {
+            toast = String(localized: "Bitte zuerst Ihren eigenen Tresor öffnen, dann die Sicherung wiederherstellen.")
+            return false
+        }
         let copy = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Wiederherstellung-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: copy) }
         do {

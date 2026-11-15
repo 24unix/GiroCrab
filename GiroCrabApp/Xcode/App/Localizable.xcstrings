@@ -5745,6 +5745,17 @@
         }
       }
     },
+    "Bitte zuerst Ihren eigenen Tresor öffnen, dann die Sicherung wiederherstellen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please open your own vault first, then restore the backup."
+          }
+        }
+      }
+    },
     "Blau" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7177,6 +7188,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The name you entered differs from the account holder's name. Use the holder's name if this is the right recipient."
+          }
+        }
+      }
+    },
+    "Der ganze Datenbestand auf einmal: eine Sicherung aus GiroCrab oder die Datenbank einer anderen App." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All your data at once: a GiroCrab backup or another app's database."
           }
         }
       }
@@ -8639,6 +8661,17 @@
         }
       }
     },
+    "Eine Sicherung aus „Tresor sichern …“, geöffnet mit ihrem Passwort. Ersetzt den Tresor." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A backup from “Back Up Vault…”, opened with its password. Replaces the vault."
+          }
+        }
+      }
+    },
     "Eine Umsatzliste mit den gewählten Konten" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9240,6 +9273,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Appearance"
+          }
+        }
+      }
+    },
+    "Ersetzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Replace"
           }
         }
       }
@@ -11925,6 +11969,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Your Mac now uses %1$@, but GiroCrab is set to %2$@. GiroCrab restarts to switch."
+          }
+        }
+      }
+    },
+    "Ihr Tresor enthält bereits Konten. Sie werden durch den Inhalt der Sicherung ersetzt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your vault already contains accounts. They will be replaced by the contents of the backup."
           }
         }
       }
@@ -21384,6 +21439,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vault restored from the backup"
+          }
+        }
+      }
+    },
+    "Tresor ersetzen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Replace Vault?"
           }
         }
       }
