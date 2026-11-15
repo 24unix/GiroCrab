@@ -23811,6 +23811,17 @@
         }
       }
     },
+    "Zahlungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Payments"
+          }
+        }
+      }
+    },
     "Zahlungen, die bei der Bank bereits beauftragt, aber noch nicht gebucht sind." : {
       "extractionState" : "manual",
       "localizations" : {
