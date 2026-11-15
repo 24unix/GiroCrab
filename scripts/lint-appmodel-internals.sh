@@ -30,6 +30,7 @@ scheduleSearch scopeLoadTask searchTask selectionAccountIDs selectionLoadTask
 selectionPlaceholderTask settingsWriteTask settlePendingSelectionLoad startSelectionLoad
 statementsCountBefore stickyBooking syncBatchSkipped syncBatchTotal syncGeneration
 syncingConnectionIDBeforeError syncQueue trimmedHistory useVault
+activeTransferIsDebit debitRun failDebitRun debitOutcomeUnknown finishDebitGroup
 "
 READ_ONLY="
 accountMarkers accountsByID autoReviewTask customPeriodFrom customPeriodTo dayGroups

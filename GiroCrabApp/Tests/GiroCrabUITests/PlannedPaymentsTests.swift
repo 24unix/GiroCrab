@@ -41,7 +41,10 @@ final class PlannedPaymentsTests: XCTestCase {
         let expected: Int64 = -170_500
         XCTAssertEqual(sum, expected)
         XCTAssertEqual(model.plannedTotals.count, UInt32(model.plannedPayments.count))
-        XCTAssertEqual(model.plannedTotals.incomingCents, 0)
+        // the two demo direct debits are the only incoming payments
+        let debits = model.plannedPayments.filter { $0.kind == .directDebit }
+        XCTAssertEqual(debits.count, 2)
+        XCTAssertEqual(model.plannedTotals.incomingCents, debits.map(\.amountCents).reduce(0, +))
         XCTAssertEqual(model.plannedPayments.map(\.date), model.plannedPayments.map(\.date).sorted())
         XCTAssertEqual(model.title, String(localized: "Geplant"))
     }

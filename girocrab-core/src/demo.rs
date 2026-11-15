@@ -1348,6 +1348,28 @@ impl Vault {
                 ],
             )?;
         }
+        // A submitted direct debit collection (#143): two member fees due soon.
+        for (n, (name, iban, purpose)) in [
+            ("Mia Beispiel", "DE89370400440532013000", "Mitgliedsbeitrag"),
+            ("Jan Muster", "DE02120300000000202051", "Mitgliedsbeitrag"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            tx.execute(
+                "INSERT INTO planned_transfers(account_id, end_to_end_id, execution_date, recipient_name,
+                        recipient_iban, amount_cents, purpose, created_ms, kind)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1250, ?6, 0, 'debit')",
+                params![
+                    acc_ids["demo-giro"],
+                    format!("DEMODEBIT{n}"),
+                    (today + chrono::Duration::days(9)).format("%Y-%m-%d").to_string(),
+                    name,
+                    iban,
+                    purpose
+                ],
+            )?;
+        }
         // Standing orders as the bank reports them (#239): rent monthly, a savings
         // transfer quarterly and a weekly payment.
         for (name, iban, cents, purpose, unit, interval, day, last) in [

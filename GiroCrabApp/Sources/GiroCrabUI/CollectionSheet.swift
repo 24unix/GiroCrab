@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import GiroCrabCore
 
-// Preparing a collection (GitHub #143).
+// Preparing and submitting a collection (GitHub #143).
 
 /// A `pain.008` file handed to `.fileExporter`.
 struct XMLFileDocument: FileDocument {
@@ -19,6 +19,8 @@ struct CollectionSheet: View {
     @Environment(\.textScale) private var textScale
     @State private var due = Calendar.current.date(byAdding: .day, value: 5, to: Date()) ?? Date()
     @State private var exporting: DebitFile?
+    @State private var b2bConfirmed = false
+    @State private var pin = ""
 
     private var included: [CollectionLine] { model.collectionLines.filter(\.included) }
     private var invalid: Int { included.filter { $0.cents == nil }.count }
@@ -94,8 +96,21 @@ struct CollectionSheet: View {
                     }
                 }
             } header: { Text("Dateien").appSectionHeader() }
+            if model.canSubmitDebits {
+                Section {
+                    if model.collectionFiles.contains(where: { $0.scheme == .b2b }) {
+                        Toggle("Die B2B-Mandate sind bei den Banken der Zahlungspflichtigen hinterlegt", isOn: $b2bConfirmed)
+                            .toggleStyle(.checkbox)
+                    }
+                    if !model.debitPinStored {
+                        SecureField("Banking-PIN", text: $pin, prompt: Text("wird nicht gespeichert"))
+                    }
+                    Text("GiroCrab reicht jede Datei bei der Bank ein; du bestätigst jede mit einer TAN. Danach stehen die Einzüge unter „Geplant“ und die Mandate laufen als Folgeeinzug weiter. Die Bank prüft Mandate und Gläubiger-ID selbst.")
+                        .appFont(.callout).foregroundStyle(Theme.secondary)
+                } header: { Text("Bei der Bank einreichen").appSectionHeader() }
+            }
             Section {
-                Text("Reiche die Dateien bei deiner Bank ein (Banking-Portal, Datei-Upload). Danach markierst du die Mandate als eingezogen, damit der nächste Einzug als Folgeeinzug läuft.")
+                Text("Alternativ reichst du die Dateien selbst bei deiner Bank ein (Banking-Portal, Datei-Upload) und markierst die Mandate danach als eingezogen, damit der nächste Einzug als Folgeeinzug läuft.")
                     .appFont(.callout).foregroundStyle(Theme.secondary)
             }
         }
@@ -115,7 +130,14 @@ struct CollectionSheet: View {
                     .disabled(included.isEmpty || invalid > 0)
             } else {
                 Button("Als eingezogen markieren") { model.markCollected(model.collectionFiles, dueDate: due) }
-                    .buttonStyle(.borderedProminent)
+                if model.canSubmitDebits {
+                    Button("Bei der Bank einreichen") {
+                        model.submitCollection(dueDate: due, b2bConfirmed: b2bConfirmed, pin: pin)
+                        pin = ""
+                    }
+                    .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                    .disabled(model.collectionFiles.contains(where: { $0.scheme == .b2b }) && !b2bConfirmed)
+                }
             }
         }
         .padding(14)

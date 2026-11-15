@@ -2953,6 +2953,16 @@
         }
       }
     },
+    "Alternativ reichst du die Dateien selbst bei deiner Bank ein (Banking-Portal, Datei-Upload) und markierst die Mandate danach als eingezogen, damit der nächste Einzug als Folgeeinzug läuft." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alternatively, submit the files to your bank yourself (banking portal, file upload) and mark the mandates as collected afterwards so the next collection runs as a recurring one."
+          }
+        }
+      }
+    },
     "Am" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4837,6 +4847,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sign in at your bank and allow access – this window then closes by itself."
+          }
+        }
+      }
+    },
+    "Bei der Bank einreichen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Submit to Bank"
           }
         }
       }
@@ -7245,6 +7265,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The quantity must be greater than 0."
+          }
+        }
+      }
+    },
+    "Die B2B-Mandate sind bei den Banken der Zahlungspflichtigen hinterlegt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The B2B mandates are on file at the debtors' banks"
           }
         }
       }
@@ -10803,6 +10833,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GiroCrab regularly checks whether this version may still communicate with banks safely. If it contains a security vulnerability or a serious bug in bank access, syncs and transfers are locked until you update. Your data stays readable and exportable. For this, GiroCrab downloads a signed file from GitHub at most every 15 minutes; no personal data is sent."
+          }
+        }
+      }
+    },
+    "GiroCrab reicht jede Datei bei der Bank ein; du bestätigst jede mit einer TAN. Danach stehen die Einzüge unter „Geplant“ und die Mandate laufen als Folgeeinzug weiter. Die Bank prüft Mandate und Gläubiger-ID selbst." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GiroCrab submits each file to the bank; you confirm each with a TAN. The collections then appear under “Planned” and the mandates continue as recurring collections. The bank checks mandates and creditor ID itself."
           }
         }
       }
@@ -14514,12 +14554,32 @@
         }
       }
     },
+    "Lastschrift" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Direct Debit"
+          }
+        }
+      }
+    },
     "Lastschriften" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Direct Debits"
+          }
+        }
+      }
+    },
+    "Lastschriften eingereicht und unter „Geplant“ vorgemerkt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collections submitted and noted under “Planned”"
           }
         }
       }
@@ -17117,6 +17177,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Whether GiroCrab fetches the PDF statements of a FinTS account on every sync is set per account under “Documents / Statements”."
+          }
+        }
+      }
+    },
+    "Ob die Bank den Einzug angenommen hat, ist unklar. Bitte erst im Online-Banking prüfen und die Einzüge nicht erneut einreichen, bevor das geklärt ist." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "It is unclear whether the bank accepted the collection. Please check in online banking first and do not submit again until this is clear."
           }
         }
       }
