@@ -88,6 +88,28 @@ automatically get a monogram, never a logo.
 (`girocrab-core/src/demo.rs`). Change the data
 there only with invented names and amounts.
 
+## Mit KI-Unterstützung beitragen (In 4 Schritten zum PR) / Contributing with AI Agents
+
+Du kannst ein Issue auch mit Claude Code, Cursor oder Codex umsetzen; `CLAUDE.md` erklärt der KI die Architektur-, Privacy- und Performance-Regeln.
+You can also tackle an issue with an AI coding tool; `CLAUDE.md` tells it our architecture, privacy and performance rules.
+
+* 👉 [Interaktive Mitbau-Anleitung (In 4 Schritten mit KI zum eigenen PR)](https://girocrab.de/girocrab_mitbau_anleitung.html)
+* 🎬 [10s Promo-Animation mit Sound](https://girocrab.de/girocrab_10s_promo_video.html)
+
+Zuerst im Issue Bescheid geben (siehe unten), dann Fork klonen und diesen Prompt in die KI kopieren (`#123` durch deine Issue-Nummer ersetzen):
+
+```text
+Lies CLAUDE.md und CONTRIBUTING.md und setze Issue #123 um: Prüfe zuerst die Architektur-, Privacy- (.sensitive()) und Performance-Regeln, schlage einen sauberen Plan vor und implementiere ihn danach inkl. Tests. Führe anschließend cargo test / swift test sowie alle Linter (scripts/lint-*.sh, scripts/xcstrings.py check) aus und starte die App zur Kontrolle im Demo-Modus mit GIROCRAB_DEMO_SEED=1.
+```
+
+Sieht es in der Demo-Vorschau gut aus:
+
+```text
+Erstelle einen neuen Branch, committe die Änderungen mit den AI-Attribution-Trailern und öffne einen Pull Request für #123 inklusive des "### 🤖 AI Process Reflection"-Blocks (mit Security-Check und Perf-Check).
+```
+
+New issue authors get this hint once as a comment (`.github/workflows/issue-ai-invite.yml`).
+
 ## Picking up an issue
 
 To avoid two people building the same thing (it has happened, e.g. account groups in #31):
