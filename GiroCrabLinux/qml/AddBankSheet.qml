@@ -12,6 +12,8 @@ Sheet {
     property var selected: null           // BankSearchResult
     property var ways: []
     property var setupValues: ({})
+    /// BankSetupSheet.enableBankingKeys: shown together in EnableBankingSetupSection
+    readonly property var ebKeys: ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
     property var popular: []
     readonly property var manualFinTs: ({ id: "fints:custom", name: "", mode: "FinTs", country: "DE", blz: "", url: "", connector: null, aspsp: "", tested: "" })
     readonly property var popularNames: ["ING", "DKB", "comdirect", "Postbank", "Consorsbank", "N26", "C24", "Revolut", "bunq", "Trade Republic", "Scalable Capital", "PayPal"]
@@ -227,8 +229,15 @@ Sheet {
                 ColumnLayout {
                     width: parent.width
                     spacing: 14
+                    // the Enable Banking keys: guide, key file (.pem) and check, like BankSetupSheet
+                    EnableBankingSetupSection {
+                        visible: sheet.step === "setup" && sheet.missingSettings.some(k => sheet.ebKeys.indexOf(k) >= 0)
+                        Layout.fillWidth: true
+                        values: sheet.setupValues
+                        onEdited: (key, value) => { const x = Object.assign({}, sheet.setupValues); x[key] = value; sheet.setupValues = x }
+                    }
                     Repeater {
-                        model: sheet.step === "setup" ? sheet.missingSettings : []
+                        model: sheet.step === "setup" ? sheet.missingSettings.filter(k => sheet.ebKeys.indexOf(k) < 0) : []
                         SettingField { required property string modelData; key: modelData; Layout.fillWidth: true
                                        onEdited: v => { const x = Object.assign({}, sheet.setupValues); x[key] = v; sheet.setupValues = x } }
                     }
