@@ -101,6 +101,7 @@ extension AppModel {
         page = nil
         bookings = []
         history = []
+        categoryHistory = []
     }
 
     /// Everything a selection change needs, loaded off the main thread and
@@ -137,6 +138,7 @@ extension AppModel {
                 let filter = self.currentFilter
                 let (from, to) = self.periodRange
                 let chart = self.historyRequest
+                let categoryChart = self.categoryHistoryRequest
                 let listHasFlow = filter.listHasFlow
                 let loaded = try await Self.offMain {
                     let page = try Perf.interval("listTransactions") { try vault.listTransactions(filter: filter) }
@@ -147,7 +149,10 @@ extension AppModel {
                     let categories = try vault.listCategories(dateFrom: from, dateTo: to)
                     try Task.checkCancellation()
                     let history = try vault.balanceHistory(accountIds: chart.ids, days: chart.days)
-                    return (page: page, flow: flow, recurring: recurring, categories: categories, history: history)
+                    let categoryHistory = try categoryChart.map {
+                        try vault.categoryHistory(categoryId: $0.id, accountIds: $0.accounts, dateFrom: $0.from, dateTo: $0.to)
+                    } ?? []
+                    return (page: page, flow: flow, recurring: recurring, categories: categories, history: history, categoryHistory: categoryHistory)
                 }
                 // A newer selection or a synchronous reload cancelled this request.
                 guard !Task.isCancelled else { return }
@@ -162,6 +167,7 @@ extension AppModel {
                 self.categories = loaded.categories
                 self.categoryTree = Self.buildTree(loaded.categories)
                 self.history = Self.trimmedHistory(loaded.history, from: from, to: to)
+                self.categoryHistory = loaded.categoryHistory
                 Perf.signposter.endInterval("publishSelection", publish)
             } catch {
                 guard !Task.isCancelled, let self else { return }

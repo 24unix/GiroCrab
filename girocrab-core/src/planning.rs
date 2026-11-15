@@ -526,6 +526,30 @@ mod tests {
     }
 
     #[test]
+    fn category_history_sums_per_month_with_subcategories() {
+        let (v, dir) = vault();
+        let ins = cat(&v, "Test-Versicherung", None);
+        let sub = cat(&v, "Test-BU", Some(ins));
+        let other = cat(&v, "Test-Anderes", None);
+        tx(&v, "1", "2025-01-05", -1_000, Some(ins));
+        tx(&v, "2", "2025-01-20", -500, Some(sub));
+        tx(&v, "3", "2025-03-01", -2_000, Some(sub));
+        tx(&v, "4", "2025-03-02", -9_999, Some(other));
+        let h = v.category_history(ins, vec![], None, None).unwrap();
+        let got: Vec<(&str, i64)> = h.iter().map(|p| (p.period.as_str(), p.cents)).collect();
+        assert_eq!(got, vec![("2025-01", -1_500), ("2025-03", -2_000)]);
+        let h = v
+            .category_history(ins, vec![], Some("2025-02-01".into()), None)
+            .unwrap();
+        assert_eq!(h.len(), 1);
+        assert!(v
+            .category_history(ins, vec![-1], None, None)
+            .unwrap()
+            .is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn splits_validate_and_drive_category_totals() {
         let (v, dir) = vault();
         let a = cat(&v, "Test-A", None);

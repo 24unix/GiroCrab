@@ -15736,6 +15736,16 @@
         }
       }
     },
+    "Monatssummen der Kategorie" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monthly totals of the category"
+          }
+        }
+      }
+    },
     "Motorrad" : {
       "extractionState" : "manual",
       "localizations" : {

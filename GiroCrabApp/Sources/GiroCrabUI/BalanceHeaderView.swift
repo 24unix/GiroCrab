@@ -158,6 +158,13 @@ struct StreamHeaderCard: View {
                 if !compactHeader && showStatistics && model.scope != .investments {
                     // iOS: 44 pt = HIG minimum hit region (the chart is tappable);
                     // macOS: room for the min/max/0 axis labels (GitHub #203).
+                    if case .category = model.sidebarSelection {
+                        #if os(iOS)
+                        CategorySumChart(sums: model.categoryHistory).frame(height: 44)
+                        #else
+                        CategorySumChart(sums: model.categoryHistory).frame(height: 72)
+                        #endif
+                    } else {
                     #if os(iOS)
                     BalanceChart(points: model.history) { model.jumpToDay($0) }
                         .frame(height: 44)
@@ -165,6 +172,7 @@ struct StreamHeaderCard: View {
                     BalanceChart(points: model.history) { model.jumpToDay($0) }
                         .frame(height: 72)
                     #endif
+                    }
                 }
 
                 if !compactHeader {

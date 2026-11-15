@@ -319,6 +319,7 @@ extension AppModel {
             Perf.interval("publishBookings") { publish(p) }
         }
         reloadSelectionKPIs()
+        reloadCategoryHistory()
         // Every edit, sync and import ends up here: cached merchant histories may be
         // stale, and so may a scan still running from before the change. Restart it,
         // also when a history is on screen (it would otherwise keep the old numbers).
@@ -412,7 +413,24 @@ extension AppModel {
         }
     }
 
+    /// Request for the category chart: nil unless a category is selected.
+    var categoryHistoryRequest: (id: Int64, accounts: [Int64], from: String?, to: String?)? {
+        guard case .category(let id) = sidebarSelection else { return nil }
+        let (from, to) = periodRange
+        return (id, categoryAccountIDs, from, to)
+    }
+
+    /// Reloads the monthly sums of the selected category (cheap SQL aggregate).
+    func reloadCategoryHistory() {
+        guard let vault, let r = categoryHistoryRequest else {
+            if !categoryHistory.isEmpty { categoryHistory = [] }
+            return
+        }
+        runCore { categoryHistory = try vault.categoryHistory(categoryId: r.id, accountIds: r.accounts, dateFrom: r.from, dateTo: r.to) }
+    }
+
     func reloadHistory() {
+        reloadCategoryHistory()
         settlePendingSelectionLoad()
         guard let vault else { return }
         let (ids, days) = historyRequest

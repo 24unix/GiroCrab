@@ -58,6 +58,8 @@ public final class AppModel {
     var merchantAccountStats: (accountId: Int64, stats: MerchantStats)?
     var rules: [Rule] = []
     var history: [DailyBalance] = []
+    /// Monthly sums of the selected category incl. subcategories (chart above its bookings, #502).
+    var categoryHistory: [CategoryPeriodSum] = []
     var connections: [BankConnection] = []
     /// Login with accounts that another login already delivers: asks which to fetch (#346).
     var accountSelectionConnection: BankConnection?
