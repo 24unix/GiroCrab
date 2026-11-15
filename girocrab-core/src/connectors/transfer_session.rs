@@ -65,14 +65,26 @@ impl TransferSession {
         job: TransferJob,
         account_id: i64,
     ) -> Self {
+        Self::with_parts(vault, connector, ctx, job, None, None, account_id)
+    }
+
+    fn with_parts(
+        vault: Arc<Vault>,
+        connector: Box<dyn BankConnector>,
+        ctx: ConnectContext,
+        job: TransferJob,
+        batch: Option<BatchTransferJob>,
+        debit: Option<DebitSubmission>,
+        account_id: i64,
+    ) -> Self {
         Self {
             vault,
             state: AsyncMutex::new(TransferState {
                 connector,
                 ctx,
                 job,
-                batch: None,
-                debit: None,
+                batch,
+                debit,
                 account_id,
                 submitted: false,
                 done: false,
@@ -90,11 +102,15 @@ impl TransferSession {
         summary: TransferJob,
         account_id: i64,
     ) -> Self {
-        let s = Self::new(vault, connector, ctx, summary, account_id);
-        if let Ok(mut st) = s.state.try_lock() {
-            st.batch = Some(batch);
-        }
-        s
+        Self::with_parts(
+            vault,
+            connector,
+            ctx,
+            summary,
+            Some(batch),
+            None,
+            account_id,
+        )
     }
 
     pub(crate) fn new_debit(
@@ -105,11 +121,15 @@ impl TransferSession {
         summary: TransferJob,
         account_id: i64,
     ) -> Self {
-        let s = Self::new(vault, connector, ctx, summary, account_id);
-        if let Ok(mut st) = s.state.try_lock() {
-            st.debit = Some(debit);
-        }
-        s
+        Self::with_parts(
+            vault,
+            connector,
+            ctx,
+            summary,
+            None,
+            Some(debit),
+            account_id,
+        )
     }
 
     async fn advance(
