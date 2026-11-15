@@ -5527,6 +5527,17 @@
         }
       }
     },
+    "Dauerauftrag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standing order"
+          }
+        }
+      }
+    },
     "Debug-Build: Adresse, Schlüssel, Version oder Build-Datum sind per Umgebungsvariable überschrieben." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17874,6 +17885,17 @@
         }
       }
     },
+    "Terminüberweisungen und Daueraufträge deiner Bank erscheinen hier bis zur Ausführung." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scheduled transfers and standing orders at your bank appear here until they are executed."
+          }
+        }
+      }
+    },
     "Terminüberweisungen, die du in GiroCrab beauftragst, erscheinen hier bis zur Ausführung." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20113,6 +20135,28 @@
         }
       }
     },
+    "alle %lld Monate" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "every %lld months"
+          }
+        }
+      }
+    },
+    "alle %lld Wochen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "every %lld weeks"
+          }
+        }
+      }
+    },
     "am %u." : {
       "comment" : "Savings plan execution day of month",
       "extractionState" : "manual",
@@ -20257,6 +20301,17 @@
         }
       }
     },
+    "halbjährlich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "every six months"
+          }
+        }
+      }
+    },
     "https://…" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20286,6 +20341,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "yes"
+          }
+        }
+      }
+    },
+    "jährlich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "yearly"
           }
         }
       }
@@ -20330,6 +20396,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "manual"
+          }
+        }
+      }
+    },
+    "monatlich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "monthly"
           }
         }
       }
@@ -20499,6 +20576,17 @@
         }
       }
     },
+    "vierteljährlich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "quarterly"
+          }
+        }
+      }
+    },
     "wird angelegt" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20550,6 +20638,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "not stored"
+          }
+        }
+      }
+    },
+    "wöchentlich" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "weekly"
           }
         }
       }

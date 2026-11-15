@@ -57,7 +57,7 @@ struct PlannedPaymentsView: View {
                 ContentUnavailableView(
                     "Keine geplanten Zahlungen",
                     systemImage: "calendar.badge.clock",
-                    description: Text("Terminüberweisungen, die du in GiroCrab beauftragst, erscheinen hier bis zur Ausführung."))
+                    description: Text("Terminüberweisungen und Daueraufträge deiner Bank erscheinen hier bis zur Ausführung."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
@@ -97,12 +97,13 @@ struct PlannedPaymentsView: View {
 
     private func row(_ p: PlannedPayment) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "calendar.badge.clock").foregroundStyle(Theme.accent).frame(width: 22)
+            Image(systemName: p.kind == .standingOrder ? "repeat" : "calendar.badge.clock")
+                .foregroundStyle(Theme.accent).frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text(p.counterparty).fontWeight(.medium).lineLimit(1).sensitive()
                 Text(p.purpose.isEmpty ? p.accountName : "\(p.purpose) · \(p.accountName)")
                     .appFont(.caption).foregroundStyle(Theme.secondary).lineLimit(1).sensitive()
-                Text("Terminüberweisung").appFont(.caption2).foregroundStyle(Theme.secondary)
+                Text(p.kindText).appFont(.caption2).foregroundStyle(Theme.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
@@ -114,5 +115,28 @@ struct PlannedPaymentsView: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+extension PlannedPayment {
+    /// "Terminüberweisung" or "Dauerauftrag · monatlich".
+    var kindText: String {
+        guard kind == .standingOrder else { return String(localized: "Terminüberweisung") }
+        return String(localized: "Dauerauftrag") + " · " + rhythmText
+    }
+
+    /// How often a standing order runs, in words.
+    var rhythmText: String {
+        let n = Int(rhythmInterval)
+        if rhythmUnit == "W" {
+            return n <= 1 ? String(localized: "wöchentlich") : String(localized: "alle \(n) Wochen")
+        }
+        switch n {
+        case ...1: return String(localized: "monatlich")
+        case 3: return String(localized: "vierteljährlich")
+        case 6: return String(localized: "halbjährlich")
+        case 12: return String(localized: "jährlich")
+        default: return String(localized: "alle \(n) Monate")
+        }
     }
 }

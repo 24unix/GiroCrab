@@ -1319,6 +1319,59 @@ impl Vault {
                 ],
             )?;
         }
+        // Standing orders as the bank reports them (#239): rent monthly, a savings
+        // transfer quarterly and a weekly payment.
+        for (name, iban, cents, purpose, unit, interval, day, last) in [
+            (
+                "Hausverwaltung Nord",
+                "DE02120300000000202051",
+                85_000,
+                "Miete",
+                "M",
+                1,
+                1,
+                None,
+            ),
+            (
+                "Sparverein Nord",
+                "DE89370400440532013000",
+                30_000,
+                "Quartalssparen",
+                "M",
+                3,
+                15,
+                None,
+            ),
+            (
+                "Fitnessstudio Mitte",
+                "DE44500105175407324931",
+                1_250,
+                "Beitrag Kursgebühr",
+                "W",
+                1,
+                5,
+                Some("2027-06-30"),
+            ),
+        ] {
+            tx.execute(
+                "INSERT INTO standing_orders(account_id, key, order_id, recipient_name, recipient_iban,
+                        amount_cents, purpose, first_date, last_date, time_unit, interval, exec_day,
+                        can_change, can_delete, fetched_ms)
+                 VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, '2025-01-01', ?7, ?8, ?9, ?10, 0, 0, 0)",
+                params![
+                    acc_ids["demo-giro"],
+                    format!("DEMO-{purpose}"),
+                    name,
+                    iban,
+                    cents,
+                    purpose,
+                    last,
+                    unit,
+                    interval,
+                    day
+                ],
+            )?;
+        }
         // Depot positions: the two savings plans, summing to the depot balance
         // (28.450,00 EUR), so the "Positionen" card is not empty in the demo.
         for (isin, wkn, name, quantity, current, purchase) in [

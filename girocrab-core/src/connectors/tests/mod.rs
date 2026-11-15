@@ -414,6 +414,70 @@ fn pending_batch_booking_is_replaced_by_the_banks_booking_whatever_its_iban() {
 }
 
 #[test]
+fn standing_orders_are_replaced_only_for_completely_fetched_accounts() {
+    let (v, path) = demo_vault();
+    let conn = v
+        .add_bank_connection(ConnectorKind::FinTsGeneric, String::new(), "u".into())
+        .unwrap();
+    let acc = RemoteAccount {
+        external_ref: "f:1".into(),
+        name: "Giro".into(),
+        owner: String::new(),
+        iban: "DE02120300000000202051".into(),
+        account_number: String::new(),
+        currency: "EUR".into(),
+        kind: AccountKind::Checking,
+        balance_cents: 0,
+        balance_date: "2026-11-10".into(),
+    };
+    let order = RemoteStandingOrder {
+        account_ref: "f:1".into(),
+        order_id: "O1".into(),
+        recipient_name: "Vermieter".into(),
+        recipient_iban: "DE89370400440532013000".into(),
+        amount_cents: 85_000,
+        purpose: "Miete".into(),
+        first_date: "2026-01-01".into(),
+        last_date: None,
+        time_unit: "M".into(),
+        interval: 1,
+        exec_day: 1,
+        ..Default::default()
+    };
+    let count = || -> i64 {
+        v.db()
+            .unwrap()
+            .query_row(
+                "SELECT count(*) FROM standing_orders WHERE key = 'O1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap()
+    };
+    let fetch = |orders: Vec<RemoteStandingOrder>, complete: bool| FetchResult {
+        accounts: vec![acc.clone()],
+        standing_orders: orders,
+        standing_orders_fetched: if complete { vec!["f:1".into()] } else { vec![] },
+        ..Default::default()
+    };
+    store_fetch(
+        &v,
+        ConnectorKind::FinTsGeneric,
+        conn,
+        fetch(vec![order], true),
+    )
+    .unwrap();
+    assert_eq!(count(), 1);
+    // A sync without the standing-order request (bank lacks it, or it failed) keeps them.
+    store_fetch(&v, ConnectorKind::FinTsGeneric, conn, fetch(vec![], false)).unwrap();
+    assert_eq!(count(), 1);
+    // A complete answer without orders means: the user deleted them at the bank.
+    store_fetch(&v, ConnectorKind::FinTsGeneric, conn, fetch(vec![], true)).unwrap();
+    assert_eq!(count(), 0);
+    std::fs::remove_file(path).ok();
+}
+
+#[test]
 fn revoked_accounts_are_marked_and_new_ones_named() {
     let (v, path) = demo_vault();
     let conn = v

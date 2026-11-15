@@ -441,6 +441,12 @@ pub struct FetchResult {
     /// Securities transactions (buy, sell, dividend …) of depots; added or
     /// refreshed by `(account, external_id)`, never removed.
     pub security_transactions: Vec<RemoteSecurityTransaction>,
+    /// Standing orders (Daueraufträge, #239) the bank reported; they replace the
+    /// stored ones of each account in `standing_orders_fetched`.
+    pub standing_orders: Vec<RemoteStandingOrder>,
+    /// Accounts (external refs) whose standing orders were fetched completely,
+    /// including the ones that have none.
+    pub standing_orders_fetched: Vec<String>,
     /// Updated connector state to persist.
     pub state: Option<serde_json::Value>,
     /// Keep stored balances and add newly imported bookings to them
@@ -545,6 +551,30 @@ pub struct BatchTransferJob {
     /// (only if the bank allows it, see `BatchParams`).
     pub batch_booking: bool,
     pub execution_date: Option<String>,
+}
+
+/// A standing order (Dauerauftrag) held by the bank, read-only (#239).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RemoteStandingOrder {
+    pub account_ref: String,
+    /// The bank's order id; may be empty (then the content identifies it).
+    pub order_id: String,
+    pub recipient_name: String,
+    pub recipient_iban: String,
+    /// Positive = outgoing amount.
+    pub amount_cents: i64,
+    pub purpose: String,
+    /// `YYYY-MM-DD`.
+    pub first_date: String,
+    pub last_date: Option<String>,
+    /// `M` (months) or `W` (weeks).
+    pub time_unit: String,
+    /// Every n-th month / week.
+    pub interval: u32,
+    /// Day of the month (1–31, 31 = last day) or weekday (1 = Monday … 7).
+    pub exec_day: u32,
+    pub can_change: bool,
+    pub can_delete: bool,
 }
 
 /// Transfer request plus the source account data resolved from the vault.

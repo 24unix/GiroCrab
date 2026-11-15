@@ -41,6 +41,7 @@ pub mod mt535;
 pub mod mt940;
 pub mod product_id;
 pub mod sepa;
+mod standing;
 pub mod syntax;
 
 use std::collections::{HashMap, HashSet};
@@ -103,6 +104,7 @@ const IMPLEMENTED: &[(&str, &[u32])] = &[
     ("HKIPZ", &[1]),
     ("HKCSE", &[1]),
     ("HKCCM", &[1]),
+    ("HKCDB", &[1, 2]),
     ("HKVPP", &[1]),
     ("HKKAZ", &[5, 6, 7]),
     ("HKTAN", &[6, 7]),
@@ -747,6 +749,7 @@ impl FinTsConnector {
             ("HIIPZS", "HKIPZ"),
             ("HICSES", "HKCSE"),
             ("HICCMS", "HKCCM"),
+            ("HICDBS", "HKCDB"),
         ] {
             // Merge across BPD messages (anonymous and authenticated dialog).
             for f in pain_formats(reply, seg) {
@@ -1140,6 +1143,43 @@ impl FinTsConnector {
             let date = fints_date(d).unwrap_or_else(super::today);
             Some((sign * c, cur, date))
         }))
+    }
+
+    /// HKCDB: the standing orders of an account (all pages). Orders the client
+    /// cannot read (no payment in the pain.001) are left out.
+    async fn standing_orders(
+        &mut self,
+        ctx: &ConnectContext,
+        acc: &SepaAccount,
+        label: &str,
+    ) -> CoreResult<Vec<super::RemoteStandingOrder>> {
+        let v = self.version("HKCDB");
+        let descriptor = self
+            .pain_version("HKCDB")
+            .unwrap_or(sepa::PainVersion::V03)
+            .descriptor();
+        let mut out = Vec::new();
+        let mut touchdown: Option<String> = None;
+        for _ in 0..20 {
+            let mut seg = SegmentBuilder::new("HKCDB", 3, v)
+                .raw(&Self::kti(acc))
+                .de(&[descriptor]);
+            if let Some(t) = &touchdown {
+                // order id and max. entries empty, then the touchdown
+                seg = seg.raw("").raw("").de(&[t]);
+            }
+            let r = self.request(ctx, "HKCDB", seg.build()).await?;
+            for s in r.all("HICDB") {
+                if let Some(o) = standing::parse_hicdb(s, label) {
+                    out.push(o);
+                }
+            }
+            touchdown = r.code("3040").and_then(|c| c.3.first().cloned());
+            if touchdown.is_none() {
+                break;
+            }
+        }
+        Ok(out)
     }
 
     /// HKWPD: holdings statement of a depot (MT535), all pages.
@@ -2442,6 +2482,22 @@ impl BankConnector for FinTsConnector {
                     }
                     Ok(None) => {}
                     Err(e) => errors.push(trf("{0}: Saldo – {1}", &[&label, &e])),
+                }
+            }
+
+            // --- Standing orders (HKCDB), read-only; a bank that wants a TAN for it
+            // is skipped: a sync never asks for one the user did not start.
+            if kind == AccountKind::Checking
+                && self.bank_supports("HKCDB")
+                && allowed("HKCDB")
+                && !self.needs_hktan("HKCDB")
+            {
+                match self.standing_orders(ctx, acc, &label).await {
+                    Ok(orders) => {
+                        result.standing_orders.extend(orders);
+                        result.standing_orders_fetched.push(label.clone());
+                    }
+                    Err(e) => errors.push(trf("{0}: Daueraufträge – {1}", &[&label, &e])),
                 }
             }
 

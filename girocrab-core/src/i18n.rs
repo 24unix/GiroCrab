@@ -316,6 +316,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Die BIC ist ungültig." => "The BIC is invalid.",
         "Der Empfängername fehlt." => "The recipient name is missing.",
         "Zahlung {0}: {1}" => "Payment {0}: {1}",
+        "{0}: Daueraufträge – {1}" => "{0}: standing orders – {1}",
         "Sammelüberweisungen sind nur für FinTS-Konten möglich." => "Batch transfers are only possible for FinTS accounts.",
         "Sammelüberweisung ({0} Zahlungen)" => "Batch transfer ({0} payments)",
         "Für diese Bank werden Sammelüberweisungen nicht unterstützt." => "Batch transfers are not supported for this bank.",

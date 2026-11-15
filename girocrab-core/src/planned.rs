@@ -38,6 +38,8 @@ pub(crate) fn planned_transfers(conn: &Connection) -> CoreResult<()> {
 pub enum PlannedKind {
     /// Scheduled transfer (Terminüberweisung, HKCSE).
     ScheduledTransfer,
+    /// Standing order (Dauerauftrag, #239), read from the bank.
+    StandingOrder,
 }
 
 /// One future payment with an order at the bank.
@@ -56,6 +58,10 @@ pub struct PlannedPayment {
     /// Negative = outgoing, like bookings.
     pub amount_cents: i64,
     pub purpose: String,
+    /// Standing orders: `M` (months) or `W` (weeks), else "".
+    pub rhythm_unit: String,
+    /// Standing orders: every n-th month/week, else 0.
+    pub rhythm_interval: u32,
 }
 
 /// Sums of the planned payments in a period (SQL aggregate, no row loading).
@@ -146,6 +152,8 @@ impl Vault {
                 counterparty_iban: r.get(5)?,
                 amount_cents: -r.get::<_, i64>(6)?,
                 purpose: r.get(7)?,
+                rhythm_unit: String::new(),
+                rhythm_interval: 0,
             })
         })?;
         let mut out = Vec::new();
@@ -155,6 +163,18 @@ impl Vault {
                 out.push(p);
             }
         }
+        // Standing orders: the executions in the same period.
+        let parse = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
+        if let Some(f) = parse(&from) {
+            let t = to.as_deref().and_then(parse);
+            out.extend(crate::standing_orders::planned_executions(
+                &db,
+                f,
+                t,
+                &account_ids,
+            )?);
+        }
+        out.sort_by(|a, b| (&a.date, &a.id).cmp(&(&b.date, &b.id)));
         Ok(out)
     }
 

@@ -19,9 +19,12 @@ final class PlannedPaymentsTests: XCTestCase {
         model.sidebarSelection = .planned
         model.plannedHorizon = .all
         await model.reloadPlanned()
-        XCTAssertEqual(model.plannedPayments.count, 4)
-        XCTAssertEqual(model.plannedTotals.count, 4)
-        XCTAssertEqual(model.plannedTotals.outgoingCents, -(85_000 + 8_500 + 62_000 + 15_000))
+        let transfers = model.plannedPayments.filter { $0.kind == .scheduledTransfer }
+        XCTAssertEqual(transfers.count, 4)
+        let sum: Int64 = transfers.map(\.amountCents).reduce(0, +)
+        let expected: Int64 = -170_500
+        XCTAssertEqual(sum, expected)
+        XCTAssertEqual(model.plannedTotals.count, UInt32(model.plannedPayments.count))
         XCTAssertEqual(model.plannedTotals.incomingCents, 0)
         XCTAssertEqual(model.plannedPayments.map(\.date), model.plannedPayments.map(\.date).sorted())
         XCTAssertEqual(model.title, String(localized: "Geplant"))
@@ -39,7 +42,33 @@ final class PlannedPaymentsTests: XCTestCase {
         model.plannedAccountFilter = nil
         model.plannedHorizon = .days30 // the transfers in 41 days fall out
         await model.reloadPlanned()
-        XCTAssertEqual(model.plannedPayments.count, 3)
+        XCTAssertEqual(model.plannedPayments.filter { $0.kind == .scheduledTransfer }.count, 3)
+    }
+
+    /// The demo bank reports three standing orders: a rent, a quarterly one and a weekly one.
+    func testStandingOrdersAreListedWithTheirRhythm() async throws {
+        model.plannedHorizon = .all
+        await model.reloadPlanned()
+        let standing = model.plannedPayments.filter { $0.kind == .standingOrder }
+        XCTAssertEqual(Set(standing.map(\.counterparty)), ["Hausverwaltung Nord", "Sparverein Nord", "Fitnessstudio Mitte"])
+        // 12 per order at most in an open period.
+        XCTAssertEqual(standing.filter { $0.counterparty == "Fitnessstudio Mitte" }.count, 12)
+        let rent = try XCTUnwrap(standing.first { $0.counterparty == "Hausverwaltung Nord" })
+        XCTAssertEqual(rent.rhythmText, String(localized: "monatlich"))
+        XCTAssertEqual(rent.kindText, String(localized: "Dauerauftrag") + " · " + String(localized: "monatlich"))
+        XCTAssertEqual(rent.amountCents, -85_000)
+    }
+
+    func testRhythmWording() {
+        func text(_ unit: String, _ n: UInt32) -> String {
+            PlannedPayment(id: "x", kind: .standingOrder, accountId: 1, accountName: "", date: "2026-12-01",
+                           counterparty: "", counterpartyIban: "", amountCents: -1, purpose: "",
+                           rhythmUnit: unit, rhythmInterval: n).rhythmText
+        }
+        XCTAssertEqual(text("M", 3), String(localized: "vierteljährlich"))
+        XCTAssertEqual(text("M", 12), String(localized: "jährlich"))
+        XCTAssertEqual(text("W", 1), String(localized: "wöchentlich"))
+        XCTAssertNotEqual(text("W", 2), text("W", 1))
     }
 
     func testHorizonEndDates() {
