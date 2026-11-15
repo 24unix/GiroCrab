@@ -94,6 +94,8 @@ QtObject {
     property var recurring: []
     property var recurringMonth: null
     property var merchantStats: null
+    /// The same history restricted to the booking's own account (#299): { account_id, stats }.
+    property var merchantAccountStats: null
     property var budgets: []
     property var cashflow: []
 
@@ -363,7 +365,7 @@ QtObject {
         hasOwnVault = false
         demoActive = false
         groups = []; userGroups = []; accountsByID = ({}); accountMarkers = ({}); bookings = []; categories = []; categoryTree = []
-        connections = []; page = null; merchantStats = null; streamItems = []; streamModel.clear(); dayGroups = []; history = []
+        connections = []; page = null; merchantStats = null; merchantAccountStats = null; streamItems = []; streamModel.clear(); dayGroups = []; history = []
         rules = []; settings = []; dashboard = null; budgets = []; recurring = []; recurringMonth = null; recurringHidden = []
         selectedBookingID = null; stickyBooking = null; salaryCycle = null
         ++loanGeneration; loans = []; loanLinks = ({}); loanEditor = null; openingBalanceRequest = null
@@ -655,8 +657,12 @@ QtObject {
         // Not `selectedBooking`: inside onSelectedBookingIDChanged that binding may
         // not be re-evaluated yet and still answer the previous (or no) booking.
         const b = bookingByID(selectedBookingID)
-        if (!b || !b.merchant.key) { merchantStats = null; return }
-        run(() => { merchantStats = core("merchant_stats", { merchant_key: b.merchant.key }) })
+        if (!b || !b.merchant.key) { merchantStats = null; merchantAccountStats = null; return }
+        run(() => {
+            merchantStats = core("merchant_stats", { merchant_key: b.merchant.key })
+            merchantAccountStats = { account_id: b.account_id,
+                                     stats: core("merchant_stats_in_account", { merchant_key: b.merchant.key, account_id: b.account_id }) }
+        })
     }
     function reloadSelection(periodChanged) {
         if (!isUnlocked) return

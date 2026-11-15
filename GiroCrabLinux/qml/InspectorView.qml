@@ -319,27 +319,45 @@ Rectangle {
         }
     }
 
+    // MerchantHistoryCard.statsRow
+    component StatsRow: ColumnLayout {
+        id: sr
+        property var stats: null
+        property string label: ""
+        property string accountName: ""
+        spacing: 4; Layout.fillWidth: true
+        Text { visible: sr.label !== ""; text: sr.accountName ? sr.label + " · " + sr.accountName : sr.label
+               font.pixelSize: Theme.caption; font.weight: Font.Medium; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
+        RowLayout {
+            spacing: 10; Layout.fillWidth: true
+            Repeater {
+                model: sr.stats ? [[qsTr("Buchungen"), sr.stats.count + "×"], [qsTr("Summe"), Fmt.money(sr.stats.total_cents)], [qsTr("Ø Betrag"), Fmt.money(sr.stats.average_cents)]] : []
+                ColumnLayout { required property var modelData; spacing: 2; Layout.fillWidth: true; Layout.preferredWidth: 1
+                    Text { text: modelData[0]; font.pixelSize: Theme.caption2; color: Theme.secondary }
+                    Text { text: modelData[1]; font.pixelSize: Theme.callout + 1; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true } }
+            }
+        }
+        Text { visible: sr.stats !== null && sr.stats.first_date !== ""
+               text: sr.stats ? qsTr("Seit %1 · zuletzt %2").arg(Fmt.medium(sr.stats.first_date)).arg(Fmt.medium(sr.stats.last_date)) : ""
+               font.pixelSize: Theme.caption2; color: Theme.tertiary }
+    }
+
     // MerchantHistoryCard
     component MerchantHistoryCard: Card {
         id: mh
         property var booking
         readonly property var s: AppModel.merchantStats && AppModel.merchantStats.key === booking.merchant.key ? AppModel.merchantStats : null
+        /// The merchant also occurs on other accounts (#299): the booking's own account's stats.
+        readonly property var own: {
+            const o = AppModel.merchantAccountStats
+            return s && o && o.account_id === booking.account_id && o.stats.key === s.key && o.stats.count < s.count ? o.stats : null
+        }
         ColumnLayout {
             width: parent.width; spacing: 10
             CardTitle { text: qsTr("Händler-Historie") }
-            RowLayout {
-                visible: mh.s !== null
-                spacing: 10; Layout.fillWidth: true
-                Repeater {
-                    model: mh.s ? [[qsTr("Buchungen"), mh.s.count + "×"], [qsTr("Summe"), Fmt.money(mh.s.total_cents)], [qsTr("Ø Betrag"), Fmt.money(mh.s.average_cents)]] : []
-                    ColumnLayout { required property var modelData; spacing: 2; Layout.fillWidth: true; Layout.preferredWidth: 1
-                        Text { text: modelData[0]; font.pixelSize: Theme.caption2; color: Theme.secondary }
-                        Text { text: modelData[1]; font.pixelSize: Theme.callout + 1; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true } }
-                }
-            }
-            Text { visible: mh.s !== null && mh.s.first_date !== ""
-                   text: mh.s ? qsTr("Seit %1 · zuletzt %2").arg(Fmt.medium(mh.s.first_date)).arg(Fmt.medium(mh.s.last_date)) : ""
-                   font.pixelSize: Theme.caption2; color: Theme.tertiary }
+            // total and the booking's own account side by side, else one unlabelled row
+            StatsRow { visible: mh.s !== null; stats: mh.s; label: mh.own ? qsTr("Alle Konten") : "" }
+            StatsRow { visible: mh.own !== null; stats: mh.own; label: qsTr("Dieses Konto"); accountName: mh.booking.account_name }
             Rectangle { visible: mh.booking.merchant.isin !== "" || mh.booking.merchant.asset_class !== ""; Layout.fillWidth: true; height: 1; color: Theme.border }
             RowLayout {
                 visible: mh.booking.merchant.isin !== "" || mh.booking.merchant.asset_class !== ""

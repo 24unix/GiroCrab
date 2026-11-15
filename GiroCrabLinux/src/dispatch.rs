@@ -897,7 +897,8 @@ vault_methods! {
     ignore_recurring(series_key) reset_recurring(series_key)
     booking_date(booking_id)
     // insights / planning / recurring
-    merchant_stats(merchant_key) selection_flow(account_ids, date_from, date_to)
+    merchant_stats(merchant_key) merchant_stats_in_account(merchant_key, account_id)
+    selection_flow(account_ids, date_from, date_to)
     cashflow_by_period(granularity, count)
     list_category_budget_progress(year, month)
     list_recurring(account_ids) recurring_month(account_ids, year, month)
@@ -1061,6 +1062,38 @@ mod tests {
             call_json("parse_amount_to_cents", r#"{"text":"1.234,56"}"#),
             r#"{"ok":123456}"#
         );
+        drop(v);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    /// Händler-Historie (#299): the merchant's stats over all accounts and in one account.
+    #[test]
+    fn merchant_stats_in_account() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-merchant-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![7; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        let filter = json!({ "account_ids": [], "category_id": null, "include_subcategories": true,
+            "uncategorized_only": false, "search": null, "date_from": null, "date_to": null,
+            "limit": 1, "offset": 0, "scope": "All", "merchant_key": null, "direction": "All",
+            "checked": null, "whole_days": true });
+        let b = call("list_transactions", json!({ "filter": filter }))["transactions"][0].clone();
+        let key = b["merchant"]["key"].clone();
+        let all = call("merchant_stats", json!({ "merchant_key": key }));
+        let own = call(
+            "merchant_stats_in_account",
+            json!({ "merchant_key": key, "account_id": b["account_id"] }),
+        );
+        assert_eq!(own["key"], all["key"]);
+        assert!(own["count"].as_u64().unwrap() >= 1);
+        assert!(own["count"].as_u64().unwrap() <= all["count"].as_u64().unwrap());
         drop(v);
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
