@@ -1,7 +1,7 @@
 //! Standing orders (Dauerauftrag Bestand): reads HICDB (v1/v2) and the pain.001
 //! it carries. Field layout after the public DK specification (as mirrored in
 //! hbci4java): header, KTI, SEPA descriptor, pain.001 (binary), order id,
-//! schedule (first date, M/W, interval, execution day, [time,] last date),
+//! schedule (first date, M/W, interval, execution day, [v2: time,] last date),
 //! suspension, "may change", "may skip", "may delete".
 
 use super::syntax::Segment;
@@ -16,11 +16,15 @@ pub(super) fn parse_hicdb(seg: &Segment, account_ref: &str) -> Option<RemoteStan
     }
     let interval: u32 = seg.get(5, 2).parse().ok().filter(|n| *n > 0)?;
     let exec_day: u32 = seg.get(5, 3).parse().ok()?;
-    // v1: [.., last date]; v2 inserts a time (HHMMSS) before the last date.
-    let last = (4..=5)
-        .map(|c| seg.get(5, c))
-        .find(|d| d.len() == 8)
-        .and_then(super::fints_date);
+    // DauerDetails: v1 ends with the last date (component 4); v2 puts the time of
+    // day (HHMMSS) in between, so the last date is component 5. An entered but
+    // unreadable last date would make the order look endless: skip it then.
+    let last_cell = seg.get(5, if seg.version() >= 2 { 5 } else { 4 });
+    let last = if last_cell.is_empty() {
+        None
+    } else {
+        Some(super::fints_date(last_cell)?)
+    };
     let xml = String::from_utf8_lossy(seg.binary(3)?).into_owned();
     let pay = pain_payment(&xml)?;
     let flag = |e: usize| seg.get(e, 0) == "J";
@@ -117,15 +121,19 @@ mod tests {
         assert!(pain_payment("<Document/>").is_none());
     }
 
-    fn hicdb(details: &str) -> Segment {
+    fn hicdb_v(version: u32, details: &str) -> Segment {
         let mut raw = format!(
-            "HICDB:5:1:3+DE02120300000000202051:BYLADEM1001:::280:12030000+urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.001.001.03+@{}@",
+            "HICDB:5:{version}:3+DE02120300000000202051:BYLADEM1001:::280:12030000+urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.001.001.03+@{}@",
             PAIN.len()
         )
         .into_bytes();
         raw.extend_from_slice(PAIN.as_bytes());
         raw.extend_from_slice(format!("+AB12CD+{details}++J+N+J'").as_bytes());
         parse_response(&raw).unwrap().remove(0)
+    }
+
+    fn hicdb(details: &str) -> Segment {
+        hicdb_v(1, details)
     }
 
     #[test]
@@ -151,8 +159,16 @@ mod tests {
             (o.time_unit.as_str(), o.interval, o.exec_day, o.last_date),
             ("W", 2, 3, None)
         );
-        let o = parse_hicdb(&hicdb("20260105:M:3:31:120000:20270101"), "acc").unwrap();
+        let o = parse_hicdb(&hicdb_v(2, "20260105:M:3:31:120000:20270101"), "acc").unwrap();
         assert_eq!(o.last_date.as_deref(), Some("2027-01-01"));
+        // v2 without a last date but with a time: open-ended, the time is no end date.
+        let o = parse_hicdb(&hicdb_v(2, "20260105:M:3:31:120000"), "acc").unwrap();
+        assert_eq!(o.last_date, None);
+    }
+
+    #[test]
+    fn unreadable_last_date_is_skipped_not_endless() {
+        assert!(parse_hicdb(&hicdb("20260101:M:1:1:2026-12"), "acc").is_none());
     }
 
     #[test]
