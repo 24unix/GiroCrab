@@ -845,7 +845,11 @@ public final class AppModel {
     /// Merges the snapshot with it, then switches this device's vault and
     /// keychain to that key so both devices share one key from now on.
     func adoptSyncKey(_ text: String) {
-        guard let v = ownVault else { return }
+        guard let v = ownVault else {
+            // Locked or still in the demo: nothing to rekey. Say so instead of silently doing nothing.
+            toast = String(localized: "Bitte zuerst Ihren eigenen Tresor öffnen („Eigenen Tresor anzeigen“), dann den Schlüssel einfügen.")
+            return
+        }
         Task {
             do {
                 let pasted = try VaultKeyManager.parseKey(text)
@@ -865,11 +869,24 @@ public final class AppModel {
                     }
                 }
                 await cloud.sync(vault: v)
-                self.reloadAll()
+                self.finishKeyAdoption(vault: v)
                 self.toast = String(localized: "Tresor-Schlüssel übernommen – iCloud Sync aktiv")
             } catch {
                 self.toast = describe(error)
             }
+        }
+    }
+
+    /// After a pasted key opened the synced vault: switch from the demo to it and
+    /// remember that real data exists, so the next start asks for unlock instead of
+    /// showing the welcome/demo screen again (#308).
+    func finishKeyAdoption(vault v: Vault) {
+        let hasData = ((try? v.accountCount()) ?? 0) > 0 || connectionsExist(v)
+        if hasData || !demoActive {
+            useVault(v, demo: false)
+            CloudSyncManager.shared.startAutoSync(vault: v) { [weak self] in self?.reloadAll() }
+        } else {
+            reloadAll()
         }
     }
 
@@ -890,7 +907,7 @@ public final class AppModel {
         }
     }
 
-    private func connectionsExist(_ v: Vault) -> Bool {
+    func connectionsExist(_ v: Vault) -> Bool {
         ((try? v.listBankConnections()) ?? []).isEmpty == false
     }
 

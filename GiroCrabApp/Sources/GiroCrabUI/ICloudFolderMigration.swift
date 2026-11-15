@@ -65,6 +65,29 @@ enum ICloudFolderMigration {
     /// iOS: a picked folder without a vault would get a NEW vault; the user confirms first.
     static func needsNewVaultConfirmation(_ dir: URL) -> Bool { !SyncFolder.containsVault(dir) }
 
+    /// Name of a direct subfolder ("GiroCrab", else the former one) that holds a vault, or nil.
+    /// iOS: the user picked "iCloud Drive" itself or a parent instead of the sync folder (#456).
+    /// An undownloaded folder shows up as a `.<name>.icloud` placeholder and counts too.
+    static func vaultSubfolder(in dir: URL, fm: FileManager = .default) -> String? {
+        for name in [folderName, legacyFolderName] {
+            let sub = dir.appendingPathComponent(name, isDirectory: true)
+            if SyncFolder.containsVault(sub) { return name }
+        }
+        return nil
+    }
+
+    /// Whether the picked folder holds a vault. A folder iCloud is still listing looks empty at
+    /// first: it is asked to download, and checked again for up to `wait` seconds.
+    static func waitForVault(in dir: URL, wait: TimeInterval, fm: FileManager = .default) async -> Bool {
+        let deadline = Date().addingTimeInterval(wait)
+        while true {
+            if SyncFolder.containsVault(dir) { return true }
+            if Date() >= deadline { return false }
+            try? fm.startDownloadingUbiquitousItem(at: dir)
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+    }
+
     /// Whether `url` is the former folder (iOS: the picked folder).
     static func isLegacyFolder(_ url: URL) -> Bool { url.lastPathComponent == legacyFolderName }
 

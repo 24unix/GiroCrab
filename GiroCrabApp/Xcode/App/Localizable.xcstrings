@@ -4936,6 +4936,17 @@
         }
       }
     },
+    "Bitte zuerst Ihren eigenen Tresor öffnen („Eigenen Tresor anzeigen“), dann den Schlüssel einfügen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please open your own vault first (“Show Own Vault”), then paste the key."
+          }
+        }
+      }
+    },
     "Blau" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6208,6 +6219,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The name you entered differs from the account holder's name. Use the holder's name if this is the right recipient."
+          }
+        }
+      }
+    },
+    "Der gewählte Ordner enthält einen Unterordner „%@“ mit Ihrem Tresor. Wählen Sie bitte genau diesen Unterordner aus, damit kein neuer Tresor angelegt wird." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The folder you chose contains a subfolder “%@” with your vault. Please pick exactly that subfolder so that no new vault is created."
           }
         }
       }
@@ -18654,6 +18676,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vault updated in iCloud Drive"
+          }
+        }
+      }
+    },
+    "Tresor liegt in einem Unterordner" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vault is in a subfolder"
           }
         }
       }
