@@ -12,6 +12,9 @@
         }
       }
     },
+    " · " : {
+      "extractionState" : "manual"
+    },
     "%@ (%@)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -274,6 +277,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ · %@ · %lld direct debits · %@"
+          }
+        }
+      }
+    },
+    "%@ · %@ · %u Lastschriften · %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@ · %3$u Lastschriften · %4$@"
           }
         }
       }
@@ -990,6 +1004,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld payments imported from “%@”, %lld faulty"
+          }
+        }
+      }
+    },
+    "%lld Zahlungen · %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld Zahlungen · %2$@"
           }
         }
       }
@@ -1867,6 +1892,9 @@
         }
       }
     },
+    "0,00" : {
+      "extractionState" : "manual"
+    },
     "1" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2306,6 +2334,9 @@
           }
         }
       }
+    },
+    "Aktien" : {
+      "extractionState" : "manual"
     },
     "Aktion" : {
       "extractionState" : "manual",
@@ -3445,6 +3476,9 @@
           }
         }
       }
+    },
+    "Anleihen" : {
+      "extractionState" : "manual"
     },
     "Anmelden & Abrufen" : {
       "extractionState" : "manual",
@@ -6331,6 +6365,9 @@
         }
       }
     },
+    "CSV importieren …" : {
+      "extractionState" : "manual"
+    },
     "CSV speichern%@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6550,6 +6587,9 @@
           }
         }
       }
+    },
+    "DE00 …" : {
+      "extractionState" : "manual"
     },
     "Darlehen" : {
       "extractionState" : "manual",
@@ -9242,6 +9282,17 @@
         }
       }
     },
+    "Einzug abgebrochen – die TAN wurde nicht bestätigt. Bereits freigegebene Dateien bitte unter „Geplant“ prüfen, bevor Sie erneut einreichen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collection cancelled – the TAN was not confirmed. Please check files that were already approved under “Planned” before you submit again."
+          }
+        }
+      }
+    },
     "Einzug vorbereiten" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10391,6 +10442,9 @@
           }
         }
       }
+    },
+    "Fonds" : {
+      "extractionState" : "manual"
     },
     "Fordert die Bank ein TAN-Medium (Fehler 9210), tragen Sie den Gerätenamen aus der BestSign- oder App-Verwaltung ein." : {
       "extractionState" : "manual",
@@ -19786,6 +19840,17 @@
         }
       }
     },
+    "Sammelüberweisung abgebrochen – es wurde nichts gesendet, solange die TAN nicht bestätigt wurde." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Batch transfer cancelled – nothing was sent as long as the TAN was not confirmed."
+          }
+        }
+      }
+    },
     "Sammelüberweisung prüfen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25808,6 +25873,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "“%@”: %lld new, %lld updated"
+          }
+        }
+      }
+    },
+    "„%@“: %u neu, %u aktualisiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "„%1$@“: %2$u neu, %3$u aktualisiert"
           }
         }
       }

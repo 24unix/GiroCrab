@@ -447,6 +447,26 @@ extension AppModel {
             activeChallenge = nil
             transferBusy = false
             transferError = nil
+            // A collection run or a batch: its own sheet comes back (lines and rows are still there),
+            // and the flag must not make the next single transfer end as a batch or a collection.
+            if activeTransferIsDebit {
+                activeTransferIsDebit = false
+                debitRun?.pin = ""
+                debitRun = nil
+                mandateError = String(localized: "Einzug abgebrochen – die TAN wurde nicht bestätigt. Bereits freigegebene Dateien bitte unter „Geplant“ prüfen, bevor Sie erneut einreichen.")
+                showCollectionSheet = true
+                mandatesVersion += 1
+                cancelTransferSession(t, confirmedMessage: nil)
+                return
+            }
+            if activeTransferIsBatch {
+                activeTransferIsBatch = false
+                batchDraft.pin = ""
+                transferError = String(localized: "Sammelüberweisung abgebrochen – es wurde nichts gesendet, solange die TAN nicht bestätigt wurde.")
+                showBatchSheet = true
+                cancelTransferSession(t, confirmedMessage: nil)
+                return
+            }
             // The bank has to confirm: a bunq draft stays approvable until it is rejected.
             cancelTransferSession(t, confirmedMessage: String(localized: "Überweisung abgebrochen – es wurde nichts gesendet, solange die TAN nicht bestätigt wurde."))
             return
