@@ -34,8 +34,7 @@ ApplicationWindow {
     /// item that had it before), so the search field keeps it.
     function focusSearch() {
         window.requestActivate()
-        search.forceActiveFocus(Qt.ShortcutFocusReason)
-        search.selectAll()
+        mainToolbar.focusSearch()
     }
 
     menuBar: MenuBar {
@@ -214,7 +213,7 @@ ApplicationWindow {
     id: rootLayout
     anchors.fill: parent
     spacing: 0
-    MainToolbar { Layout.fillWidth: true }
+    MainToolbar { id: mainToolbar; Layout.fillWidth: true }
     // GiroCrabRootView: vault state
     StackLayout {
         Layout.fillWidth: true
@@ -271,6 +270,8 @@ ApplicationWindow {
     // MainToolbar (macOS): scope picker in the centre, then transfer, sync, inspector, search.
     component MainToolbar: ToolBar {
         visible: AppModel.isUnlocked
+        // the search field is an id inside this component: Main.focusSearch() reaches it here
+        function focusSearch() { search.forceActiveFocus(Qt.ShortcutFocusReason); search.selectAll() }
         background: Rectangle { color: Theme.canvas; Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border } }
         RowLayout {
             anchors.fill: parent
