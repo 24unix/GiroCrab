@@ -23,6 +23,7 @@ use zeroize::Zeroizing;
 use crate::error::{CoreError, CoreResult};
 
 mod accounts;
+mod backup;
 mod bookings;
 mod categories;
 mod merge;
@@ -314,6 +315,22 @@ impl Vault {
             .unwrap_or(false)
     }
 
+    /// Best-effort repairs after opening (or restoring) a vault.
+    fn repair(conn: &Connection) {
+        // categories/rules without a sync key (rows written outside the app's own
+        // paths); used to happen as part of the per-open schema probes
+        let _ = crate::sync_merge::fill_missing_uuids(conn);
+        // merge duplicate bank logins left by older versions (keeps bookings)
+        let _ = crate::connections::deduplicate(conn);
+        // fold MoneyMoney accounts a merge added next to the bank account
+        // that took them over (keeps bookings)
+        let _ = crate::sync_merge::twins::fold_twins(conn);
+        // repair "MÃ¼ller" -> "Müller" stored by older versions
+        let _ = crate::text::repair_stored_text(conn);
+        // one-time purge of favicons that don't belong to a known brand
+        let _ = crate::insights::purge_untrusted_logos(conn);
+    }
+
     fn migrate(conn: &mut Connection) -> CoreResult<()> {
         // Fails with NotADatabase if the key is wrong.
         conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
@@ -326,6 +343,30 @@ impl Vault {
         // All pending steps in one transaction (SQLite DDL is transactional): an
         // aborted run leaves the old schema and `user_version`, never half of it.
         crate::schema::migrate(conn)
+    }
+
+    /// Writes a consistent copy of this vault to `dest_path` (replacing it),
+    /// encrypted with `key` (`x'…'` raw key or a password). Runs under the
+    /// connection lock, so concurrent writes never end up half in the copy.
+    fn export_to(&self, dest_path: &str, key: &str) -> Result<(), CoreError> {
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            let p = format!("{dest_path}{suffix}");
+            if std::path::Path::new(&p).exists() {
+                std::fs::remove_file(&p).map_err(|e| CoreError::Database {
+                    message: format!("{p}: {e}"),
+                })?;
+            }
+        }
+        let conn = self.db()?;
+        conn.execute("ATTACH DATABASE ?1 AS snap KEY ?2", params![dest_path, key])?;
+        let res = conn
+            .query_row("SELECT sqlcipher_export('snap')", [], |_| Ok(()))
+            .and_then(|_| {
+                conn.execute_batch(&format!("PRAGMA snap.user_version = {SCHEMA_VERSION}"))
+            });
+        let _ = conn.execute_batch("DETACH DATABASE snap");
+        res?;
+        Ok(())
     }
 
     pub fn path(&self) -> &str {
@@ -396,18 +437,7 @@ impl Vault {
             ));
             return Err(first_err.unwrap_or(CoreError::WrongKey));
         };
-        // categories/rules without a sync key (rows written outside the app's own
-        // paths); used to happen as part of the per-open schema probes
-        let _ = crate::sync_merge::fill_missing_uuids(&conn);
-        // merge duplicate bank logins left by older versions (keeps bookings)
-        let _ = crate::connections::deduplicate(&conn);
-        // fold MoneyMoney accounts a merge added next to the bank account
-        // that took them over (keeps bookings)
-        let _ = crate::sync_merge::twins::fold_twins(&conn);
-        // repair "MÃ¼ller" -> "Müller" stored by older versions
-        let _ = crate::text::repair_stored_text(&conn);
-        // one-time purge of favicons that don't belong to a known brand
-        let _ = crate::insights::purge_untrusted_logos(&conn);
+        Self::repair(&conn);
         Ok(Arc::new(Vault {
             conn: Mutex::new(conn),
             pending_account_fetches: Mutex::new(std::collections::HashMap::new()),
@@ -436,27 +466,7 @@ impl Vault {
     /// so concurrent writes never end up half in the copy.
     pub fn write_snapshot(&self, dest_path: String) -> Result<(), CoreError> {
         let raw_key = Zeroizing::new(format!("x'{}'", hex::encode(&**self.kept_key()?)));
-        for suffix in ["", "-wal", "-shm", "-journal"] {
-            let p = format!("{dest_path}{suffix}");
-            if std::path::Path::new(&p).exists() {
-                std::fs::remove_file(&p).map_err(|e| CoreError::Database {
-                    message: format!("{p}: {e}"),
-                })?;
-            }
-        }
-        let conn = self.db()?;
-        conn.execute(
-            "ATTACH DATABASE ?1 AS snap KEY ?2",
-            params![dest_path, &*raw_key],
-        )?;
-        let res = conn
-            .query_row("SELECT sqlcipher_export('snap')", [], |_| Ok(()))
-            .and_then(|_| {
-                conn.execute_batch(&format!("PRAGMA snap.user_version = {SCHEMA_VERSION}"))
-            });
-        let _ = conn.execute_batch("DETACH DATABASE snap");
-        res?;
-        Ok(())
+        self.export_to(&dest_path, &raw_key)
     }
 
     /// Number of rows changed through this vault since it was opened; the

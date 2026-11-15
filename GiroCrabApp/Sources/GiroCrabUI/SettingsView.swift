@@ -421,6 +421,7 @@ struct SecuritySettings: View {
                 LabeledContent("Version", value: AppVersionDisplay.current(core: coreVersion()))
                     .textSelection(.enabled)
             } header: { Text("Tresor").appSectionHeader() }
+            if model.hasOwnVault { VaultBackupSection() }
             ICloudSyncSection()
             BankingPolicySection()
             Section {

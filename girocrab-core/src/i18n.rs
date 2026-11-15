@@ -492,6 +492,9 @@ fn english(de: &str) -> Option<&'static str> {
         "Demo: {0} an {1} wird nach wenigen Sekunden „freigegeben“." => "Demo: {0} to {1} will be “approved” in a few seconds.",
         // ------------------------------------------------------------ importers/portal_import.rs
         "Keine Umsätze erkannt." => "No transactions found.",
+        // ------------------------------------------------------------ vault/backup.rs
+        "Falsches Passwort oder keine GiroCrab-Sicherung." => "Wrong password or not a GiroCrab backup.",
+        "Bitte ein Passwort für die Sicherung angeben." => "Please enter a password for the backup.",
         // ------------------------------------------------------------ importers/moneymoney_import.rs
         "Keine Kopfzeile (Datum/Buchungstag und Betrag) gefunden." => "No header row (date/booking date and amount) found.",
         // ------------------------------------------------------------ importers/moneymoney_db.rs

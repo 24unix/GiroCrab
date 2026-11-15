@@ -7005,6 +7005,17 @@
         }
       }
     },
+    "Die Sicherung enthält alle Konten, Buchungen, Kategorien, Regeln und Einstellungen des Tresors, verschlüsselt mit einem Passwort Ihrer Wahl. Sie lässt sich auf jedem Gerät wiederherstellen, auch ohne diesen Schlüsselbund – aber nicht ohne das Passwort." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The backup contains all accounts, transactions, categories, rules and settings of the vault, encrypted with a password of your choice. It can be restored on any device, even without this keychain – but not without the password."
+          }
+        }
+      }
+    },
     "Die Stornierung wurde von der Bank angenommen, aber noch nicht bestätigt." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8443,6 +8454,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Appearance"
+          }
+        }
+      }
+    },
+    "Ersetzt alle Daten dieses Tresors durch die Sicherung. Ist iCloud Sync aktiv, kommen Änderungen Ihrer anderen Geräte beim nächsten Abgleich wieder hinzu." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Replaces all data in this vault with the backup. If iCloud Sync is on, changes from your other devices come back with the next sync."
           }
         }
       }
@@ -14092,6 +14114,17 @@
         }
       }
     },
+    "Mindestens %lld Zeichen. Ohne dieses Passwort lässt sich die Sicherung nicht öffnen – auch nicht von GiroCrab." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "At least %lld characters. Without this password the backup cannot be opened – not even by GiroCrab."
+          }
+        }
+      }
+    },
     "Mit %@ entsperren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -16434,6 +16467,17 @@
         }
       }
     },
+    "Passwort wiederholen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repeat password"
+          }
+        }
+      }
+    },
     "PayPal Client-ID" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18074,6 +18118,28 @@
         }
       }
     },
+    "Sicherung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Backup"
+          }
+        }
+      }
+    },
+    "Sicherung gespeichert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Backup saved"
+          }
+        }
+      }
+    },
     "Sie kann möglicherweise noch in der bunq-App freigegeben werden. Prüfen Sie den Status erneut oder lehnen Sie sie dort ab." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19609,6 +19675,17 @@
         }
       }
     },
+    "Tresor aus der Sicherung wiederhergestellt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vault restored from the backup"
+          }
+        }
+      }
+    },
     "Tresor in iCloud Drive aktualisiert" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19631,6 +19708,28 @@
         }
       }
     },
+    "Tresor sichern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back Up Vault"
+          }
+        }
+      }
+    },
+    "Tresor sichern …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back Up Vault…"
+          }
+        }
+      }
+    },
     "Tresor sperren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19649,6 +19748,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lock Vault (⌃⌘L)"
+          }
+        }
+      }
+    },
+    "Tresor wiederherstellen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore Vault"
+          }
+        }
+      }
+    },
+    "Tresor wiederherstellen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore Vault…"
           }
         }
       }
@@ -21316,6 +21437,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Show Again"
+          }
+        }
+      }
+    },
+    "Wiederherstellen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore"
           }
         }
       }
