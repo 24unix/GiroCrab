@@ -557,10 +557,8 @@ struct ICloudSyncSection: View {
     @Environment(AppModel.self) private var model
     @State private var sync = CloudSyncManager.shared
     @State private var picking = false
-    #if os(iOS)
     @State private var pendingFolder: URL?
     @State private var wrongFolderHint: String?
-    #endif
     @State private var keychainSync = VaultKeyManager.shared.syncViaICloudKeychain
     @State private var showKeySheet = false
     @State private var keyCopied = false
@@ -599,11 +597,12 @@ struct ICloudSyncSection: View {
                 // The app's own iCloud container is neither visible in Finder nor
                 // chosen by the user: only a plain folder gets these buttons.
                 if sync.location == .folder {
-                    #if os(macOS)
-                    Button("Im Finder zeigen", systemImage: "folder") { revealFolder() }
-                    #else
-                    Button("Ordner wählen …", systemImage: "folder") { picking = true }
-                    #endif
+                    HStack {
+                        Button("Ordner wählen …", systemImage: "folder.badge.gearshape") { picking = true }
+                        #if os(macOS)
+                        Button("Im Finder zeigen", systemImage: "folder") { revealFolder() }
+                        #endif
+                    }
                 }
                 Button(sync.isSyncing ? LocalizedStringKey("Synchronisiere …") : LocalizedStringKey("Jetzt synchronisieren"), systemImage: "arrow.triangle.2.circlepath") {
                     model.syncNow()
@@ -615,6 +614,12 @@ struct ICloudSyncSection: View {
                 }
                 if let s = sync.lastStats { Text(s).appFont(.caption).foregroundStyle(.secondary) }
                 if let e = sync.lastError { Text(e).appFont(.caption).foregroundStyle(.red) }
+                #if os(macOS)
+                // „Ordner wählen …“ above grants access as well, without the system settings.
+                if sync.folderAccessDenied {
+                    Button("Systemeinstellungen öffnen", systemImage: "gearshape") { openFilesAndFoldersSettings() }
+                }
+                #endif
                 Toggle("Tresor-Schlüssel über iCloud-Schlüsselbund teilen", isOn: $keychainSync)
                     .onChange(of: keychainSync) { _, on in
                         guard on != VaultKeyManager.shared.syncViaICloudKeychain else { return }
@@ -648,7 +653,6 @@ struct ICloudSyncSection: View {
         .sheet(isPresented: $showKeySheet) {
             KeyPasteSheet().environment(model)
         }
-        #if os(iOS)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { r in
             if case .success(let url) = r {
                 Task {
@@ -681,18 +685,38 @@ struct ICloudSyncSection: View {
         } message: {
             Text("Der gewählte Ordner enthält noch keinen GiroCrab-Tresor. Dort wird ein neuer Tresor angelegt. Erwarten Sie Ihre Daten in einem anderen Ordner, brechen Sie ab und wählen Sie diesen.")
         }
+        #if os(macOS)
+        .fileDialogDefaultDirectory(Self.syncFolderOrCloudDocs)
         #endif
     }
 
     #if os(macOS)
-    private func revealFolder() {
-        let cloudDocs = FileManager.default.homeDirectoryForCurrentUser
+    private static var cloudDocs: URL {
+        FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+    }
+
+    /// The sync folder in iCloud Drive ("GiroCrab"), or nil before it exists.
+    private static var syncFolder: URL? {
         let url = ICloudFolderMigration.resolve(cloudDocs: cloudDocs, create: false, migratedByThisApp: CloudSyncManager.migratedByThisApp).url
-        if FileManager.default.fileExists(atPath: url.path) {
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// „Ordner wählen …“ opens inside the sync folder: „Öffnen“ alone picks it.
+    private static var syncFolderOrCloudDocs: URL { syncFolder ?? cloudDocs }
+
+    private func revealFolder() {
+        if let url = Self.syncFolder {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } else {
-            NSWorkspace.shared.open(cloudDocs)
+            NSWorkspace.shared.open(Self.cloudDocs)
+        }
+    }
+
+    /// Datenschutz & Sicherheit › Dateien und Ordner.
+    private func openFilesAndFoldersSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders") {
+            NSWorkspace.shared.open(url)
         }
     }
     #endif
