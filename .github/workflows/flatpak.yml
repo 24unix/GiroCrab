@@ -6,9 +6,9 @@ name: Flatpak
 on:
   push:
     branches: [main]
-    paths: ['GiroCrabLinux/**', 'girocrab-core/**', '.github/workflows/flatpak.yml']
+    paths: ['GiroCrabLinux/**', 'girocrab-core/**', '**/Localizable.xcstrings', '.github/workflows/flatpak.yml']
   pull_request:
-    paths: ['GiroCrabLinux/**', 'girocrab-core/**', '.github/workflows/flatpak.yml']
+    paths: ['GiroCrabLinux/**', 'girocrab-core/**', '**/Localizable.xcstrings', '.github/workflows/flatpak.yml']
   workflow_dispatch:
 
 # Read-only token: CI never needs to write to the repository.

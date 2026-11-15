@@ -2229,9 +2229,7 @@ impl BankConnector for FinTsConnector {
             }
             result.documents = match self.statements_pdf(ctx, acc, &wanted).await {
                 Ok(d) => d,
-                Err(CoreError::Bank { code, .. })
-                    if matches!(code.as_str(), "9010" | "9050" | "9130" | "9140") =>
-                {
+                Err(CoreError::Bank { code, .. }) if matches!(code.as_str(), "9130" | "9140") => {
                     crate::depot_debug::log(&format!("statements: HKEKA unsupported ({code})"));
                     return Ok(result);
                 }

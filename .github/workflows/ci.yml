@@ -19,10 +19,39 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Which parts changed (PRs only; pushes to main always run everything). The jobs below keep
+  # their names and always report, so required checks never hang on "pending"; only the
+  # expensive steps are skipped when the PR cannot affect them. The cheap lint steps of
+  # `rust` (fonts, brand names, catalogs, ...) also guard Swift and docs, so they always run.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.f.outputs.rust }}
+      swift: ${{ steps.f.outputs.swift }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: f
+        run: |
+          rust=true; swift=true
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+            # Rust core, workspace manifests, Linux front end, CI itself
+            echo "$files" | grep -qE '^(girocrab-core/|GiroCrabLinux/|Cargo\.(toml|lock)$|\.github/|build-xcframework\.sh$)' || rust=false
+            # Swift app, the core behind it (bindings), CI itself
+            echo "$files" | grep -qE '^(GiroCrabApp/|girocrab-core/|Cargo\.(toml|lock)$|\.github/|build-xcframework\.sh$)' || swift=false
+          fi
+          echo "rust=$rust" >> "$GITHUB_OUTPUT"
+          echo "swift=$swift" >> "$GITHUB_OUTPUT"
+
   # `rust` and `swift` deliberately run in parallel and independently: a red
   # fmt/Clippy/Rust test run must not hide the Swift build, and vice versa.
   # The job names stay unchanged so existing required checks keep matching.
   rust:
+    needs: changes
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -59,23 +88,31 @@ jobs:
         run: node --test scripts/test-fnz-portal.cjs scripts/test-quirion-portal.cjs
       - name: FFI types carry the optional serde derive (front ends without UniFFI)
         run: scripts/lint-serde-feature.sh
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - if: needs.changes.outputs.rust == 'true'
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: girocrab-core builds with the optional serde feature
+        if: needs.changes.outputs.rust == 'true'
         run: cargo check -p girocrab-core --features serde
-      - run: cargo test --workspace
+      - if: needs.changes.outputs.rust == 'true'
+        run: cargo test --workspace
 
   swift:
+    needs: changes
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - if: needs.changes.outputs.swift == 'true'
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - if: needs.changes.outputs.swift == 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Build Rust core + UniFFI bindings (macOS only)
+        if: needs.changes.outputs.swift == 'true'
         run: ./build-xcframework.sh --macos-only
       - name: Stale-bindings check (build-xcframework.sh --check)
+        if: needs.changes.outputs.swift == 'true'
         run: |
           ./build-xcframework.sh --check
           echo '// stale' >> girocrab-core/src/text.rs
@@ -83,6 +120,8 @@ jobs:
           git checkout -- girocrab-core/src/text.rs
           ./build-xcframework.sh --check
       - name: Build SwiftUI app
+        if: needs.changes.outputs.swift == 'true'
         run: cd GiroCrabApp && swift build
       - name: Test SwiftUI app
+        if: needs.changes.outputs.swift == 'true'
         run: cd GiroCrabApp && swift test

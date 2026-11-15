@@ -141,6 +141,14 @@ The PR card (`tools/export-ai-provenance.py`, `docs/ai-transparency.md`) reads o
     commit in their contributor graph.
 
 ## Workflow
+- **Verify locally first, never block on CI.** Targeted `cargo test`, `swift test`, `clippy`, `cargo fmt --all -- --check`
+  and the `scripts/lint-*.sh` checks run locally before the push (together well under a minute for a focused change).
+  After the PR is open do NOT sit in the session for 10–15 min with `gh pr checks --watch` (and never pipe a `--watch` to `tail`).
+  Either enable auto-merge: `gh pr merge <N> --auto --squash --delete-branch` (needs "Allow auto-merge" in the repo settings; currently off), or merge once the fast required check
+  (lint/`card`) is green when local verification already covered the full test suite. Look at `gh pr checks <N>` (no `--watch`) only on demand.
+- CI is path-aware: `linux.yml`/`flatpak.yml` run only for `girocrab-core/**`, `GiroCrabLinux/**`, `**/Localizable.xcstrings` or their own
+  workflow; in `ci.yml` the `changes` job skips the heavy Rust steps (clippy, tests) and the whole Swift build/test when a PR cannot touch them
+  (the cheap lint steps always run, required check names stay unchanged).
 - Branch from `upstream/main`, push to `origin` (fork), PR against `GiroCrab/GiroCrab`. PR title
   and description in German, conventional-commit prefix (`feat:`, `fix:`, `perf:`, `ci:`, `docs:`).
 - The local xcframework is whatever branch last ran `./build-xcframework.sh`. Before trusting

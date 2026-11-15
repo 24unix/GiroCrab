@@ -6537,6 +6537,17 @@
         }
       }
     },
+    "Die Teilbeträge müssen zusammen %@ ergeben (Restbetrag: %@), erst dann lässt sich speichern." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The parts must add up to %@ (remaining: %@) before you can save."
+          }
+        }
+      }
+    },
     "Die Teilbeträge müssen zusammen %@ ergeben, erst dann lässt sich speichern." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10917,6 +10928,17 @@
         }
       }
     },
+    "Jeder Teil braucht einen Betrag ungleich 0." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every part needs a non-zero amount."
+          }
+        }
+      }
+    },
     "Jedes Jahr am %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11782,6 +11804,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No Preview"
+          }
+        }
+      }
+    },
+    "Keine manuellen Darlehen angelegt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No manual loans created"
           }
         }
       }
@@ -16369,7 +16402,29 @@
         }
       }
     },
+    "Rest zuweisen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assign remainder"
+          }
+        }
+      }
+    },
     "Rest: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remaining: %@"
+          }
+        }
+      }
+    },
+    "Restbetrag: %@" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -18643,6 +18698,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Send anyway"
+          }
+        }
+      }
+    },
+    "Trägt den Restbetrag im letzten Teil ein" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Puts the remaining amount into the last part"
           }
         }
       }
