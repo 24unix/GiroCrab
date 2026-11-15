@@ -66,6 +66,8 @@ public struct LaunchOptions: Sendable {
     public var selectAccount: String?
     /// (demo) preselect the booking whose merchant/counterparty contains this text
     public var pickBooking: String?
+    /// (demo) with `--pick`: open the list of that booking's merchant (#495)
+    public var merchantList = false
     /// (demo) "transfer", "moneymoney", "moneymoney-db" or "print": open that sheet with fictional data
     public var demoSheet: String?
     /// (demo) "income" or "expense": start with that booking list filter
@@ -100,6 +102,7 @@ public struct LaunchOptions: Sendable {
         } else {
             pickBooking = nil
         }
+        merchantList = arguments.contains("--merchant-list")
         if let i = arguments.firstIndex(of: "--demo-sheet"), i + 1 < arguments.count {
             demoSheet = arguments[i + 1].lowercased()
         } else {

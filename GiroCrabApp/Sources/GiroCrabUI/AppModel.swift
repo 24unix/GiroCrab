@@ -71,7 +71,22 @@ public final class AppModel {
     @ObservationIgnored var logoCache: [String: (image: Image, pixels: Int)] = [:]
 
     // UI state
-    var sidebarSelection: SidebarItem? = .allAccounts { didSet { listLimit = Self.defaultListLimit; reloadSelection(periodChanged: false) } }
+    var sidebarSelection: SidebarItem? = .allAccounts {
+        didSet {
+            // Any other choice in the sidebar ends the merchant list (#495).
+            if !appliesMerchantFocus { merchantFocus = nil; merchantFocusReturn = nil }
+            listLimit = Self.defaultListLimit
+            reloadSelection(periodChanged: false)
+        }
+    }
+    /// Merchant whose bookings the list shows across all accounts and categories (#495);
+    /// only the period still applies. Set by `focusMerchant(of:)`, ended by
+    /// `leaveMerchantFocus()` or any sidebar selection.
+    var merchantFocus: MerchantFocus?
+    /// Sidebar selection and list filters to return to when the merchant list is left.
+    @ObservationIgnored var merchantFocusReturn: MerchantFocusReturn?
+    /// True while `focusMerchant` / `leaveMerchantFocus` set the sidebar selection themselves.
+    @ObservationIgnored var appliesMerchantFocus = false
     /// Segmented control of the wealth view (shown in the toolbar instead of the booking scope).
     var assetClassificationVersion = 0
     var wealthScope: WealthScope = .all
@@ -536,6 +551,7 @@ public final class AppModel {
             reloadBookings()
             if let q = options.pickBooking, let b = bookings.first(where: { $0.merchantName.lowercased().contains(q) || $0.counterparty.lowercased().contains(q) }) {
                 selectedBookingID = b.id
+                if options.merchantList { focusMerchant(of: b) }
             }
             // Sachwerte (#87): --pick also selects an item by name
             if let q = options.pickBooking, case .account(let id) = sidebarSelection, isTangible(id),

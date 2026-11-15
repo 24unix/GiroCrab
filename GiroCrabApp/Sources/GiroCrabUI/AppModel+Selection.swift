@@ -173,6 +173,52 @@ extension AppModel {
         selectionLoadTask = task
     }
 
+    // MARK: - Merchant list (GitHub #495)
+
+    /// Shows every booking of the booking's merchant in the current period: all
+    /// accounts, no category, status, direction, scope or search filter. The
+    /// merchant key covers differing counterparty spellings of one merchant.
+    func focusMerchant(of booking: Booking) {
+        let key = booking.merchant.key
+        guard !key.isEmpty else { return }
+        // A second merchant from within a merchant list still returns to the original view.
+        let back = merchantFocusReturn ?? MerchantFocusReturn(
+            selection: sidebarSelection, scope: scope, status: statusFilter,
+            direction: directionFilter, search: searchText)
+        // Filters first: their reloads still run on the old, cheaper selection.
+        scope = .all
+        statusFilter = .all
+        directionFilter = .all
+        if !searchText.isEmpty { searchText = "" }
+        searchTask?.cancel()
+        merchantFocus = MerchantFocus(key: key, name: booking.merchantName)
+        merchantFocusReturn = back
+        applyMerchantFocusSelection(.allAccounts)
+        #if os(iOS)
+        showBookingSheet = false
+        #endif
+    }
+
+    /// Back to the sidebar selection and filters from before `focusMerchant`.
+    func leaveMerchantFocus() {
+        guard merchantFocus != nil else { return }
+        let back = merchantFocusReturn
+        merchantFocus = nil
+        merchantFocusReturn = nil
+        guard let back else { reloadBookings(); return }
+        applyMerchantFocusSelection(back.selection)
+        scope = back.scope
+        statusFilter = back.status
+        directionFilter = back.direction
+        if searchText != back.search { searchText = back.search }
+    }
+
+    private func applyMerchantFocusSelection(_ selection: SidebarItem?) {
+        appliesMerchantFocus = true
+        defer { appliesMerchantFocus = false }
+        interactiveSidebarSelection = selection
+    }
+
     func scheduleSearch() {
         searchTask?.cancel()
         searchTask = Task { [weak self] in

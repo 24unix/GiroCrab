@@ -238,7 +238,7 @@ extension AppModel {
             limit: listLimit,
             offset: 0,
             scope: scope,
-            merchantKey: nil,
+            merchantKey: merchantFocus?.key,
             direction: directionFilter,
             checked: statusFilter == .all ? nil : statusFilter == .checked,
             wholeDays: true

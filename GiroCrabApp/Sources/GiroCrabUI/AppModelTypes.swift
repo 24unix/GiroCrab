@@ -163,6 +163,21 @@ extension BookingScope {
     static let ordered: [BookingScope] = [.all, .everyday, .investments]
 }
 
+/// The merchant a merchant-centred booking list is narrowed to (#495).
+struct MerchantFocus: Equatable {
+    let key: String
+    let name: String
+}
+
+/// What `leaveMerchantFocus()` restores.
+struct MerchantFocusReturn {
+    let selection: SidebarItem?
+    let scope: BookingScope
+    let status: StatusFilter
+    let direction: BookingDirection
+    let search: String
+}
+
 struct DayJump: Equatable {
     let day: String
     let token = UUID()

@@ -30,11 +30,12 @@ scheduleSearch scopeLoadTask searchTask selectionAccountIDs selectionLoadTask
 selectionPlaceholderTask settingsWriteTask settlePendingSelectionLoad startSelectionLoad
 statementsCountBefore stickyBooking syncBatchSkipped syncBatchTotal syncGeneration
 syncingConnectionIDBeforeError syncQueue trimmedHistory useVault
+merchantFocusReturn appliesMerchantFocus
 activeTransferIsDebit debitRun failDebitRun debitOutcomeUnknown finishDebitGroup
 "
 READ_ONLY="
 accountMarkers accountsByID autoReviewTask customPeriodFrom customPeriodTo dayGroups
-isLoadingMoreBookings isLoadingSelection
+isLoadingMoreBookings isLoadingSelection merchantFocus
 "
 
 UI=GiroCrabApp/Sources/GiroCrabUI

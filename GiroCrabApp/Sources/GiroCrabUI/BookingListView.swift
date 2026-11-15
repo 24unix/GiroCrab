@@ -39,6 +39,9 @@ struct BookingStreamView: View {
                 // Security lock: first, above everything else (stays visible).
                 BankingPolicyBanner()
                 AnnouncementBanner()
+                if let focus = model.merchantFocus {
+                    MerchantFocusBar(focus: focus)
+                }
                 #if !os(iOS)
                 header(isOverview: isOverview, emptyVault: emptyVault, scope: $model.scope)
                 #endif
@@ -349,6 +352,32 @@ private struct BookingScopePicker: View {
 /// stacked slices (header, rows) so each slice can be a lazy element of its own:
 /// rounded corners only at the card's top and bottom, the border only on the
 /// sides in between.
+/// Shown above a merchant-centred list (#495): names the merchant and leads back
+/// to the view the list was opened from.
+struct MerchantFocusBar: View {
+    @Environment(AppModel.self) private var model
+    let focus: MerchantFocus
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "storefront").foregroundStyle(Theme.secondary)
+            Text("Alle Buchungen von").foregroundStyle(Theme.secondary)
+            Text(focus.name).fontWeight(.semibold).lineLimit(1).sensitive(.personal)
+            Text(verbatim: "· \(model.periodTitle)").foregroundStyle(Theme.secondary).lineLimit(1)
+            Spacer(minLength: 8)
+            Button("Zurück", systemImage: "xmark.circle.fill") { model.leaveMerchantFocus() }
+                .buttonStyle(.borderless)
+                .fixedSize()
+                .help("Händler-Filter aufheben und zur vorherigen Ansicht zurückkehren")
+        }
+        .appFont(.callout)
+        .padding(.horizontal, 20).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+}
+
 struct DayCardSegment: ViewModifier {
     let isTop: Bool
     let isBottom: Bool

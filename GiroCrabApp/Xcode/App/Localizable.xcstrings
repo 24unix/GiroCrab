@@ -2459,6 +2459,17 @@
         }
       }
     },
+    "Alle Buchungen dieses Händlers im gewählten Zeitraum anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show all bookings of this merchant in the selected period"
+          }
+        }
+      }
+    },
     "Alle Buchungen laden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2477,6 +2488,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "All transactions are reviewed."
+          }
+        }
+      }
+    },
+    "Alle Buchungen von" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All bookings of"
           }
         }
       }
@@ -11687,6 +11709,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Merchant, purpose, IBAN, amount"
+          }
+        }
+      }
+    },
+    "Händler-Filter aufheben und zur vorherigen Ansicht zurückkehren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear the merchant filter and return to the previous view"
           }
         }
       }

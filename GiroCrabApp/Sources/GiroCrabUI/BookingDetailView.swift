@@ -358,7 +358,20 @@ struct MerchantHistoryCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Händler-Historie").appFont(.subheadline, weight: .semibold)
+            // The heading opens the list of this merchant's bookings (#495).
+            Button { model.focusMerchant(of: booking) } label: {
+                HStack(spacing: 4) {
+                    Text("Händler-Historie").appFont(.subheadline, weight: .semibold)
+                    Image(systemName: "chevron.right")
+                        .appFont(.caption, weight: .semibold)
+                        .foregroundStyle(Theme.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(booking.merchant.key.isEmpty)
+            .help("Alle Buchungen dieses Händlers im gewählten Zeitraum anzeigen")
+            .accessibilityHint("Alle Buchungen dieses Händlers im gewählten Zeitraum anzeigen")
             if let s = model.merchantStats, s.key == booking.merchant.key {
                 // The merchant also occurs on other accounts (#299): show the
                 // total and the booking's own account side by side.
