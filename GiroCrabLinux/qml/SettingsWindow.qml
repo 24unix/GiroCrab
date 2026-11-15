@@ -4,10 +4,12 @@ import QtQuick.Layouts
 
 // SettingsView.swift: the macOS Settings window with its tabs Allgemein, Banken, Sicherheit.
 // Dropped on Linux: Dokumente (document folder), Updates (Sparkle).
-Window {
+ApplicationWindow {
     id: win
     // `--dark` / `--light`: the controls follow the forced appearance (Theme.forcedPalette)
     Binding on palette { when: Theme.forced !== ""; value: Theme.forcedPalette }
+    // appTextSize (#343): an ApplicationWindow so the controls inherit the scaled font
+    font.pointSize: Theme.controlPointSize
     title: qsTr("Einstellungen")
     // HIG: each tab has its own height and the window follows it.
     readonly property var tabs: [
@@ -15,7 +17,7 @@ Window {
         { id: "banks", title: qsTr("Banken"), symbol: "building.columns", height: 600 },
         { id: "security", title: qsTr("Sicherheit"), symbol: "lock.shield", height: 780 }]
     readonly property int tabIndex: Math.max(0, tabs.findIndex(t => t.id === AppModel.settingsTab))
-    width: 680
+    width: 680 * Theme.textScale   // SettingsPaneFrame: 680 × textScale
     height: tabs[tabIndex].height
     minimumWidth: 560; minimumHeight: 360
     color: Theme.canvas

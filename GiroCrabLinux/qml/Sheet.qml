@@ -16,7 +16,8 @@ Dialog {
     anchors.centerIn: Overlay.overlay
     closePolicy: Popup.CloseOnEscape
     padding: 24
-    width: Math.min(sheetWidth, parent ? parent.width - 40 : sheetWidth)
+    // macFrame: fixed sheet widths grow with the text size (#343), like the text in them
+    width: Math.min(sheetWidth * Theme.textScale, parent ? parent.width - 40 : sheetWidth * Theme.textScale)
     height: Math.min(implicitHeight, parent ? parent.height - 40 : implicitHeight)
     background: Rectangle { color: Theme.card; radius: 12; border.color: Theme.border }
     header: null

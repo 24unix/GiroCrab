@@ -104,6 +104,7 @@ von der nativen Installation wechselt, kopiert `tresor.girocrab` in den neuen Or
 | RootView | Main.qml | Fenster, Menüs, Toolbar, Dreispalten-Layout, alle Sheets, Fehler-Alert |
 | AppModel, AccountGroupsModel | AppModel.qml | Auswahl, Zeitraum, Filter, Laden, Tagesgruppen, Marker, KPIs, Bearbeiten, Abruf, Überweisung, Import |
 | Formatting | Theme.qml, Fmt.qml | Tokens, Money, DateText, IBAN |
+| TextSize | Theme.qml, GeneralSettings.qml, Main.qml | Schriftgröße ×1 / ×1,15 / ×1,3 (Einstellungen › Allgemein, Darstellung › Größer Strg++ / Kleiner Strg+- / Originalgröße Strg+0; QSettings `textSize`). Skaliert die Textstile, die Standardschrift der Steuerelemente, Seitenleisten-, Sheet- und Einstellungsbreite sowie die Signets wie auf dem Mac; Menüs bleiben in Systemgröße |
 | SidebarView, AllAccountsRoot, AccountGroupsUI | SidebarView.qml, SidebarRow.qml, AccountRow.qml, NewCountBadge.qml, AccountsSectionHeader.qml, DropSlot.qml | „Alle Konten“ mit Summe je Währung, Gruppen/Banken/Kontoart, Kontosuche, Konten mit Inhaber-Kürzel und Zähler-Blasen, „Neue Umsätze“, Belege, einklappbarer Kategorienbaum, Fußzeile, Drag & Drop, Kontextmenüs (Kontoart, Kontoinhaber) |
 | NewBookingsView, NewBookings | BookingStreamView.qml (NewBookingsCardHeader), AppModel.qml (newBookingSections) | „Neue Umsätze“: eine Karte je Konto mit den ungeprüften Buchungen |
 | BookingListView | BookingStreamView.qml | Tageskarten, Zeilen, Chips, Mehrfachauswahl, Kontextmenü, Tastatur (Pfeile, C, R), „Weitere Buchungen laden“. Nur unter Linux: Beim Scrollen zeigt eine Blase am Griff den Tag der obersten Buchung, im noch nicht geladenen Bereich geschätzt („ca. März 2021“) |
@@ -188,6 +189,7 @@ cargo run -- --demo-settings general|banks|groups|security[:edit|:add|:remove]
 cargo run -- --demo-filter income|expense    # (Demo) Buchungsliste nur mit Einnahmen bzw. Ausgaben
 cargo run -- --demo-menu Buchung             # Menü der Menüleiste mit diesem Titel aufklappen (für Screenshots)
 cargo run -- --dark | --light                # Erscheinungsbild erzwingen (Screenshots)
+cargo run -- --text-size larger              # Schriftgröße erzwingen: standard | large | larger (--screenshot allein: standard)
 cargo run -- --screenshot /tmp/a.png         # Fenster rendern, als PNG speichern, beenden (impliziert --demo-seed)
 ```
 

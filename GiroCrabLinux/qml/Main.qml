@@ -10,12 +10,14 @@ ApplicationWindow {
     id: window
     // `--dark` / `--light`: the controls follow the forced appearance (Theme.forcedPalette)
     Binding on palette { when: Theme.forced !== ""; value: Theme.forcedPalette }
+    // appTextSize: controls without their own size follow the text size (#343)
+    font.pointSize: Theme.controlPointSize
     visible: true
     // Fits a 13" MacBook Air with room for the Dock – same default here.
     width: 1280; height: 820
     // The booking list gives up width first (560 → 360) so the inspector never leaves the
     // window on small screens (e.g. 1920 px at 200 % scaling).
-    minimumWidth: 240 + 360 + 280; minimumHeight: 480
+    minimumWidth: 240 * Theme.textScale + 360 + 280; minimumHeight: 480
     title: AppModel.isUnlocked ? AppModel.title + " – GiroCrab" : "GiroCrab"
     color: Theme.canvas
 
@@ -37,6 +39,7 @@ ApplicationWindow {
     }
 
     menuBar: MenuBar {
+        font: Qt.application.font   // menus keep the system size (#343)
         // Same look as the menus (AppMenu): calm bar, rounded highlight for the open menu.
         background: Rectangle { color: Theme.canvas; Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border } }
         delegate: MenuBarItem {
@@ -81,6 +84,14 @@ ApplicationWindow {
                      shortcut: "Ctrl+Alt+I"; enabled: AppModel.isUnlocked; onTriggered: AppModel.showInspector = !AppModel.showInspector }
             Action { text: qsTr("Auswertungen anzeigen"); checkable: true; checked: AppModel.showStatistics; onToggled: AppModel.showStatistics = checked }
             Action { text: qsTr("Budgets anzeigen"); checkable: true; checked: AppModel.showBudgets; enabled: AppModel.isUnlocked; onToggled: AppModel.showBudgets = checked }
+            AppMenuSeparator {}
+            // Like Mail/Notes: text size of the whole app (#343).
+            Action { text: qsTr("Größer"); shortcut: "Ctrl++"; enabled: Theme.steppedTextSize(1) !== ""
+                     onTriggered: Theme.setTextSize(Theme.steppedTextSize(1)) }
+            Action { text: qsTr("Kleiner"); shortcut: "Ctrl+-"; enabled: Theme.steppedTextSize(-1) !== ""
+                     onTriggered: Theme.setTextSize(Theme.steppedTextSize(-1)) }
+            Action { text: qsTr("Originalgröße"); shortcut: "Ctrl+0"; enabled: Theme.textSize !== "standard"
+                     onTriggered: Theme.setTextSize("standard") }
             AppMenuSeparator {}
             Action { text: qsTr("Befehlspalette …"); shortcut: "Ctrl+K"; enabled: AppModel.isUnlocked; onTriggered: AppModel.showCommandPalette = true }
             AppMenuSeparator {}
@@ -230,7 +241,7 @@ ApplicationWindow {
             }
             SidebarView {
                 id: sidebarPane
-                SplitView.minimumWidth: 240; SplitView.preferredWidth: 260; SplitView.maximumWidth: 480
+                SplitView.minimumWidth: 240 * Theme.textScale; SplitView.preferredWidth: 260 * Theme.textScale; SplitView.maximumWidth: 480 * Theme.textScale
                 onWidthChanged: window.sidebarWidth = width
             }
             // bookingColumn: Belege or Vermögen replace the booking list

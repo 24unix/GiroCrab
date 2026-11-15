@@ -135,6 +135,7 @@ Rectangle {
                 ColumnLayout {
                     id: titleBlock
                     spacing: 2; Layout.fillWidth: true
+                    Layout.minimumWidth: 0   // the name and account line elide (larger text size, #343)
                     Layout.preferredHeight: Math.max(implicitHeight, implicitHeight - merchantName.implicitHeight
                                                      + Math.ceil(nameMetrics.lineSpacing * 2))
                     Item { Layout.fillHeight: true }
@@ -162,7 +163,7 @@ Rectangle {
             RowLayout {
                 spacing: 6
                 SFIcon { symbol: "calendar"; size: 12; color: Theme.tertiary }
-                Text { text: Fmt.longDate(rc.booking.booking_date); font.pixelSize: Theme.caption; color: Theme.secondary; Layout.fillWidth: true }
+                Text { text: Fmt.longDate(rc.booking.booking_date); font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
                 FlowBadge { flow: rc.booking.flow }
             }
             TextEdit {

@@ -9,6 +9,7 @@ ApplicationWindow {
     id: win
     // `--dark` / `--light`: the controls follow the forced appearance (Theme.forcedPalette)
     Binding on palette { when: Theme.forced !== ""; value: Theme.forcedPalette }
+    font.pointSize: Theme.controlPointSize   // appTextSize (#343)
     title: qsTr("GiroCrab-Hilfe")
     width: 640; height: 720
     minimumWidth: 480; minimumHeight: 420

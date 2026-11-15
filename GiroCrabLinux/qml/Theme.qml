@@ -39,16 +39,50 @@ QtObject {
     readonly property color personText: c("#475569", "#CBD5E1")
     readonly property color neutralTile: c("#F1F3F5", "#273449")
 
-    // SwiftUI text styles (macOS point sizes).
-    readonly property int largeTitle: 26
-    readonly property int title: 22
-    readonly property int title2: 17
-    readonly property int title3: 15
-    readonly property int body: 13
-    readonly property int callout: 12
-    readonly property int subheadline: 11
-    readonly property int caption: 10
-    readonly property int caption2: 10
+    // TextSize.swift › AppTextSize (#343): text size of the whole app, Einstellungen › Allgemein ›
+    // Schriftgröße and Darstellung › Größer / Kleiner / Originalgröße.
+    readonly property var textSizes: [
+        { id: "standard", title: qsTr("Standard"), scale: 1 },
+        { id: "large", title: qsTr("Groß"), scale: 1.15 },
+        { id: "larger", title: qsTr("Sehr groß"), scale: 1.3 }]
+    /// `@AppStorage("textSize")`: key `textSize` in GiroCrab.conf.
+    property Settings textSizeDefaults: Settings { property string textSize: "standard" }
+    /// The stored choice (unknown values count as "standard", like a failed raw value).
+    readonly property string textSize: textSizes.some(s => s.id === textSizeDefaults.textSize) ? textSizeDefaults.textSize : "standard"
+    function setTextSize(id) { textSizeDefaults.textSize = id }
+    /// AppTextSize.larger / .smaller: the next size, "" at the end of the range.
+    function steppedTextSize(delta) {
+        const i = textSizes.findIndex(s => s.id === textSize) + delta
+        return i >= 0 && i < textSizes.length ? textSizes[i].id : ""
+    }
+    /// AppTextSize.effective: `--text-size <standard|large|larger>` wins; screenshot
+    /// launches otherwise stay at "standard" (reproducible pictures).
+    readonly property string effectiveTextSize: {
+        const args = Qt.application.arguments
+        const i = args.indexOf("--text-size")
+        const forced = i >= 0 && i + 1 < args.length ? args[i + 1].toLowerCase() : ""
+        if (textSizes.some(s => s.id === forced)) return forced
+        return args.indexOf("--screenshot") >= 0 ? "standard" : textSize
+    }
+    /// `@Environment(\.textScale)`: factor for text and for fixed sizes that hold text.
+    readonly property real textScale: textSizes.find(s => s.id === effectiveTextSize).scale
+    /// macSize(scale:): whole pixels stay crisp (caption 10 → 12 → 13, body 13 → 15 → 17).
+    function scaled(size) { return Math.round(size * textScale) }
+    /// Default font of the controls (labels, check boxes, pickers) at the current scale:
+    /// bound to `font.pointSize` of every window (appTextSize on the Mac). Menus keep the
+    /// system size (AppMenu, MenuBar), as on the Mac.
+    readonly property real controlPointSize: (Qt.application.font.pointSize > 0 ? Qt.application.font.pointSize : 10) * textScale
+
+    // SwiftUI text styles (macOS point sizes), scaled by the text size.
+    readonly property int largeTitle: scaled(26)
+    readonly property int title: scaled(22)
+    readonly property int title2: scaled(17)
+    readonly property int title3: scaled(15)
+    readonly property int body: scaled(13)
+    readonly property int callout: scaled(12)
+    readonly property int subheadline: scaled(11)
+    readonly property int caption: scaled(10)
+    readonly property int caption2: scaled(10)
 
     // Color.readable(hex:): brand/category colours, lightened in dark mode.
     function readable(hex) {

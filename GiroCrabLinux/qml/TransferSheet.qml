@@ -561,7 +561,7 @@ Sheet {
         default property alias content: holder.data
         Layout.fillWidth: true
         spacing: 12
-        Text { Layout.preferredWidth: 140; Layout.alignment: Qt.AlignTop; Layout.topMargin: 6; horizontalAlignment: Text.AlignRight
+        Text { Layout.preferredWidth: 140 * Theme.textScale; Layout.alignment: Qt.AlignTop; Layout.topMargin: 6; horizontalAlignment: Text.AlignRight
                text: parent.label; color: Theme.secondary; font.pixelSize: Theme.body; wrapMode: Text.WordWrap }
         ColumnLayout { id: holder; Layout.fillWidth: true; spacing: 6 }
     }
@@ -581,7 +581,7 @@ Sheet {
         property string value
         Layout.fillWidth: true
         spacing: 8
-        Text { Layout.preferredWidth: 90; Layout.alignment: Qt.AlignTop; text: parent.key; color: Theme.secondary; font.pixelSize: Theme.body }
+        Text { Layout.preferredWidth: 90 * Theme.textScale; Layout.alignment: Qt.AlignTop; text: parent.key; color: Theme.secondary; font.pixelSize: Theme.body }
         TextEdit { Layout.fillWidth: true; readOnly: true; selectByMouse: true; wrapMode: Text.WordWrap; text: parent.value; color: Theme.text; font.pixelSize: Theme.body }
     }
     component BigAmount: Text {

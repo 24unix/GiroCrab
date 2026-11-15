@@ -23,7 +23,7 @@ ScrollView {
             SettingsFormRow {
                 label: qsTr("Sprache")
                 AppComboBox {
-                    Layout.preferredWidth: 200
+                    Layout.preferredWidth: 200 * Theme.textScale
                     model: [{ id: "system", title: qsTr("Systemsprache (%1)").arg(pane.nativeName(pane.language.system)) },
                             { id: "de", title: pane.nativeName("de") }, { id: "en", title: pane.nativeName("en") }]
                     textRole: "title"; valueRole: "id"
@@ -49,7 +49,7 @@ ScrollView {
             SettingsFormRow {
                 label: qsTr("Erscheinungsbild")
                 AppComboBox {
-                    Layout.preferredWidth: 200
+                    Layout.preferredWidth: 200 * Theme.textScale
                     model: [{ id: "system", title: qsTr("System") }, { id: "light", title: qsTr("Hell") }, { id: "dark", title: qsTr("Dunkel") }]
                     textRole: "title"; valueRole: "id"
                     currentIndex: Math.max(0, ["system", "light", "dark"].indexOf(Theme.appearanceSettings.appearance))
@@ -58,6 +58,20 @@ ScrollView {
             }
             Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
                    text: qsTr("Hell oder Dunkel gilt nur für GiroCrab; „System“ folgt der Einstellung des Systems.") }
+            // TextSize.swift (#343): Schriftgröße
+            SettingsFormRow {
+                label: qsTr("Schriftgröße")
+                AppComboBox {
+                    Layout.preferredWidth: 200 * Theme.textScale
+                    model: Theme.textSizes
+                    textRole: "title"; valueRole: "id"
+                    currentIndex: Theme.textSizes.findIndex(s => s.id === Theme.textSize)
+                    onActivated: Theme.setTextSize(currentValue)
+                }
+            }
+            Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
+                   text: qsTr("Vergrößert die Schrift in der ganzen App. Auch im Menü Darstellung mit %1 / %2 / %3.")
+                             .arg(Fmt.keys("Strg++")).arg(Fmt.keys("Strg+-")).arg(Fmt.keys("Strg+0")) }
             CheckBox {
                 text: qsTr("Auswertungen in der Übersicht anzeigen")
                 checked: AppModel.showStatistics
@@ -78,7 +92,7 @@ ScrollView {
             SettingsFormRow {
                 label: qsTr("Als geprüft markieren")
                 AppComboBox {
-                    Layout.preferredWidth: 200
+                    Layout.preferredWidth: 200 * Theme.textScale
                     model: AppModel.autoReviewDelays
                     textRole: "title"; valueRole: "id"
                     currentIndex: AppModel.autoReviewDelays.findIndex(d => d.id === AppModel.autoReviewDelay)
