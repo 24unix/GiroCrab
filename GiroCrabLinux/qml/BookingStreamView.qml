@@ -470,9 +470,9 @@ Rectangle {
         AppMenuItem { text: qsTr("Regel für diesen Händler erstellen …"); icon.name: SF.icon("wand.and.stars"); onTriggered: AppModel.openRuleEditor(stream.menuBooking) }
         AppMenuItem { text: qsTr("Notiz bearbeiten …"); icon.name: SF.icon("note.text"); onTriggered: AppModel.editNote(stream.menuBooking) }
         AppMenuItem { text: qsTr("Umsatz aufteilen (Splitbuchung) …"); icon.name: SF.icon("arrow.triangle.branch"); onTriggered: AppModel.splitBooking = stream.menuBooking }
-        // LoanAssignMenu(hidesWhenUnavailable: true): left out for loan bookings
+        // LoanAssignMenu(hidesWhenUnavailable: true): left out for loan bookings and unlinked inflows
         Instantiator {
-            model: stream.menuBooking !== null && stream.menuBooking.account_kind !== "Loan" ? 1 : 0
+            model: AppModel.loanAssignable(stream.menuBooking) ? 1 : 0
             delegate: LoanAssignMenu { booking: stream.menuBooking }
             onObjectAdded: (index, menu) => {
                 let at = 0

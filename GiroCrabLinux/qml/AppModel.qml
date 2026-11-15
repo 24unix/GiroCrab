@@ -1636,6 +1636,8 @@ QtObject {
     /// Manual loans that bookings can be assigned to (not archived).
     readonly property var assignableLoans: loans.filter(l => { const a = accountsByID[l.account_id]; return a ? a.archived_unix === null : false })
     function loanLink(b) { return b ? (loanLinks[b.id] || null) : null }
+    /// "Darlehen zuordnen" applies: no loan booking, and an outflow or already linked (#429).
+    function loanAssignable(b) { return !!b && b.account_kind !== "Loan" && (b.amount_cents < 0 || loanLink(b) !== null) }
     /// Links (or with `null` unlinks) a booking.
     function assignLoan(loanId, b) {
         const link = loanLink(b)
