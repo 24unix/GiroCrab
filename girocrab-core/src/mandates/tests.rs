@@ -1,0 +1,106 @@
+use super::*;
+use crate::test_support::TempDir;
+
+fn vault() -> (std::sync::Arc<Vault>, TempDir) {
+    let dir = TempDir::new("girocrab-mandates");
+    let v = Vault::open(
+        dir.join("v.db").to_string_lossy().to_string(),
+        vec![5u8; 32],
+    )
+    .unwrap();
+    v.seed_demo_data().unwrap();
+    (v, dir)
+}
+
+fn input(account_id: i64, reference: &str) -> MandateInput {
+    MandateInput {
+        account_id,
+        debtor_name: "Mia Beispiel".into(),
+        debtor_iban: "DE89 3704 0044 0532 0130 00".into(),
+        debtor_bic: "".into(),
+        reference: reference.into(),
+        signed_date: "2025-01-15".into(),
+        scheme: MandateScheme::Core,
+        one_off: false,
+        default_amount_cents: 1500,
+        default_purpose: "Beitrag".into(),
+        note: String::new(),
+        active: true,
+    }
+}
+
+#[test]
+fn sequence_follows_the_mandate() {
+    assert_eq!(next_sequence(false, None), SequenceType::First);
+    assert_eq!(next_sequence(false, Some("")), SequenceType::First);
+    assert_eq!(
+        next_sequence(false, Some("2026-10-01")),
+        SequenceType::Recurring
+    );
+    assert_eq!(next_sequence(true, None), SequenceType::OneOff);
+    assert_eq!(
+        next_sequence(true, Some("2026-10-01")),
+        SequenceType::OneOff
+    );
+}
+
+#[test]
+fn mandates_are_saved_listed_changed_and_deleted() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    let m = v.save_mandate(None, input(acc, "M-1")).unwrap();
+    assert_eq!(m.debtor_iban, "DE89370400440532013000"); // normalised
+    assert_eq!(m.next_sequence, "FRST");
+    assert_eq!(v.list_mandates(Some(acc)).unwrap().len(), 1);
+    assert!(v.list_mandates(Some(acc + 9999)).unwrap().is_empty());
+
+    let mut changed = input(acc, "M-1");
+    changed.scheme = MandateScheme::B2b;
+    changed.active = false;
+    let m2 = v.save_mandate(Some(m.id), changed).unwrap();
+    assert_eq!(m2.scheme, MandateScheme::B2b);
+    assert!(!m2.active);
+
+    v.delete_mandate(m.id).unwrap();
+    assert!(v.list_mandates(None).unwrap().is_empty());
+}
+
+#[test]
+fn reference_is_unique_per_account_and_input_is_checked() {
+    let (v, _dir) = vault();
+    let accounts = v.list_accounts().unwrap();
+    let (a, b) = (accounts[0].id, accounts[1].id);
+    let first = v.save_mandate(None, input(a, "M-1")).unwrap();
+    assert!(v.save_mandate(None, input(a, "M-1")).is_err());
+    assert!(v.save_mandate(None, input(b, "M-1")).is_ok()); // other creditor account
+    assert!(v.save_mandate(Some(first.id), input(a, "M-1")).is_ok()); // itself
+
+    let mut bad = input(a, "M-2");
+    bad.debtor_iban = "DE00".into();
+    assert!(v.save_mandate(None, bad).is_err());
+    let mut bad = input(a, "M-2");
+    bad.signed_date = "15.01.2025".into();
+    assert!(v.save_mandate(None, bad).is_err());
+    let mut bad = input(a, "");
+    bad.reference = "  ".into();
+    assert!(v.save_mandate(None, bad).is_err());
+    let mut bad = input(a, "M-2");
+    bad.debtor_bic = "XX".into();
+    assert!(v.save_mandate(None, bad).is_err());
+}
+
+#[test]
+fn creditor_id_is_per_account_with_a_suggestion() {
+    let (v, _dir) = vault();
+    let accounts = v.list_accounts().unwrap();
+    let (a, b) = (accounts[0].id, accounts[1].id);
+    assert_eq!(v.creditor_id(a).unwrap(), "");
+    assert_eq!(v.suggested_creditor_id().unwrap(), "");
+    v.set_creditor_id(a, " de98zzz09999999999 ".into()).unwrap();
+    assert_eq!(v.creditor_id(a).unwrap(), "DE98ZZZ09999999999");
+    assert_eq!(v.creditor_id(b).unwrap(), "");
+    assert_eq!(v.suggested_creditor_id().unwrap(), "DE98ZZZ09999999999");
+    assert!(v.set_creditor_id(b, "DE00ZZZ00000000000".into()).is_err());
+    v.set_creditor_id(a, "".into()).unwrap();
+    assert_eq!(v.creditor_id(a).unwrap(), "");
+}

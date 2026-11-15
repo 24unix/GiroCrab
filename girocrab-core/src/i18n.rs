@@ -327,6 +327,8 @@ fn english(de: &str) -> Option<&'static str> {
         "Die Gläubiger-ID ist ungültig." => "The creditor ID is invalid.",
         "Die IBAN des Gläubigers ist ungültig." => "The creditor's IBAN is invalid.",
         "Die Summe des Einzugs ist zu groß." => "The total of the collection is too large.",
+        "Diese Mandatsreferenz gibt es für dieses Konto schon." => "This mandate reference already exists for this account.",
+        "Das Mandat gibt es nicht mehr." => "The mandate no longer exists.",
         "{0}: Daueraufträge – {1}" => "{0}: standing orders – {1}",
         "Sammelüberweisungen sind nur für FinTS-Konten möglich." => "Batch transfers are only possible for FinTS accounts.",
         "Sammelüberweisung ({0} Zahlungen)" => "Batch transfer ({0} payments)",

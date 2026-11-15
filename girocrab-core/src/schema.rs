@@ -23,6 +23,7 @@
 //! - 17: standing orders (#239): table `standing_orders`, replaced per fetch.
 //! - 18: repair: vaults that an early draft of 16 had migrated as "15" skipped
 //!   step 15 and lack `transactions.item_refs`; adds it when missing.
+//! - 19: direct debit mandates and creditor IDs (#143): tables `mandates`, `creditor_ids`.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -57,6 +58,7 @@ const STEPS: &[Step] = &[
     Step::Hook(crate::planned::planned_transfers),             // 16
     Step::Hook(crate::standing_orders::standing_orders_table), // 17
     Step::Hook(item_refs),                                     // 18 (repair, see above)
+    Step::Hook(crate::mandates::mandates_tables),              // 19
 ];
 
 /// Step 14 (#314): securities transactions (buy, sell, dividend, fee, tax …)
@@ -580,7 +582,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 18);
+        assert_eq!(SCHEMA_VERSION, 19);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers
