@@ -11,12 +11,12 @@
 <p align="center">FinTS 3.0 · PSD2 · SEPA · Datenimport — 100&nbsp;% lokal verschlüsselt, kostenlos, Daten bleiben auf deinem Gerät.</p>
 
 <p align="center">
-  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg"><img src="docs/assets/download-macos.svg" alt="Für macOS laden – v0.7.0 · Apple Silicon (.dmg)" width="260" height="56"></a>
+  <a href="https://github.com/GiroCrab/GiroCrab/releases/latest/download/GiroCrab-macOS-arm64.dmg"><img src="docs/assets/download-macos.svg" alt="Für macOS laden – v0.7.5 · Apple Silicon (.dmg)" width="260" height="56"></a>
   &nbsp;
   <a href="https://testflight.apple.com/join/KBmvKVpT"><img src="docs/assets/download-ios.svg" alt="iOS &amp; iPadOS App – kostenlos via Apple TestFlight" width="260" height="56"></a>
 </p>
 
-<p align="center"><sub>✓ Offiziell von Apple notarisiert · ✓ Automatische Updates · ✓ Version v0.7.0</sub></p>
+<p align="center"><sub>✓ Offiziell von Apple notarisiert · ✓ Automatische Updates · ✓ Version v0.7.5</sub></p>
 
 <p align="center">
   <a href="https://github.com/GiroCrab/GiroCrab/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/GiroCrab/GiroCrab?label=release&color=2ea44f"></a>
