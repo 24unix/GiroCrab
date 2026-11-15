@@ -600,7 +600,8 @@ struct BookingRow: View {
             }
             .layoutPriority(0)
             Spacer(minLength: 8)
-            if booking.checked {
+            // the row just checked in a list of new bookings stays without a mark until it leaves
+            if booking.checked, model.lingeringBookingID != booking.id {
                 Image(systemName: "checkmark")
                     .appFont(.caption, weight: .semibold)
                     .foregroundStyle(Theme.tertiary)

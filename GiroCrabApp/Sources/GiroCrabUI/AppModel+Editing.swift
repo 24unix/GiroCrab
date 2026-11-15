@@ -129,7 +129,10 @@ extension AppModel {
         guard let vault else { return }
         runCore { try vault.setTransactionChecked(transactionId: booking.id, checked: checked) }
         // With "Neu" / "Geprüft" active the booking leaves the list: keep it in the inspector.
-        if leavesListWhenChecked, selectedBookingID == booking.id { stickyBooking = freshBooking(booking) }
+        if leavesListWhenChecked, selectedBookingID == booking.id {
+            stickyBooking = freshBooking(booking)
+            lingeringBookingID = checked ? booking.id : nil
+        }
         reloadBookings(); reloadAccounts()
     }
 

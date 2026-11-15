@@ -310,12 +310,25 @@ extension AppModel {
     /// inspector after an edit moved it out of the filter).
     func publish(_ p: BookingPage) {
         page = p
-        bookings = p.transactions
+        bookings = keepingLingeringRow(p.transactions)
         if let id = selectedBookingID, booking(withID: id) == nil, stickyBooking?.id != id {
             // „Neue Umsätze“: no booking selected unasked, auto review would check it
             selectedBookingID = sidebarSelection == .newBookings ? nil : p.transactions.first?.id
         }
         pruneMultiSelection()
+    }
+
+    /// The lingering booking (checked while selected) at its old place in a
+    /// new page that no longer contains it: before the row that followed it.
+    private func keepingLingeringRow(_ rows: [Booking]) -> [Booking] {
+        guard let id = lingeringBookingID, let kept = stickyBooking, kept.id == id,
+              !rows.contains(where: { $0.id == id }),
+              let old = bookings.firstIndex(where: { $0.id == id }) else { return rows }
+        let ids = Set(rows.map(\.id))
+        let next = bookings[(old + 1)...].first { ids.contains($0.id) }
+        var out = rows
+        out.insert(kept, at: next.flatMap { n in out.firstIndex { $0.id == n.id } } ?? out.endIndex)
+        return out
     }
 
     /// Let the segmented control finish updating immediately. Database work
@@ -435,7 +448,7 @@ extension AppModel {
     }
 
     /// „Neue Umsätze“: the loaded bookings as one card per account.
-    var newBookingSections: [NewBookingsSection] { NewBookings.sections(bookings: bookings, accounts: allAccounts) }
+    var newBookingSections: [NewBookingsSection] { NewBookings.sections(bookings: bookings, accounts: allAccounts, keeping: lingeringBookingID) }
 
     /// Jump to `date` in the booking stream: that day, or the nearest earlier
     /// day with bookings (the balance of a quiet day comes from there).

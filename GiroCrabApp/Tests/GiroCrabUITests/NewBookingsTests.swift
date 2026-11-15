@@ -96,8 +96,28 @@ final class NewBookingsTests: XCTestCase {
         model.selectedBookingID = target.id
         let shown = try XCTUnwrap(model.bookings.first { $0.id == target.id })
         model.setChecked(true, for: shown)
-        XCTAssertFalse(model.newBookingSections.flatMap(\.bookings).contains { $0.id == target.id })
         XCTAssertEqual(model.selectedBooking?.id, target.id)
+    }
+
+    /// Checked while selected (by hand or „Sofort“): the row stays where it
+    /// was until the user selects something else, then it leaves the list.
+    func testCheckedRowStaysUntilSelectionMoves() throws {
+        let pair = Array(model.bookings.prefix(2))
+        XCTAssertEqual(pair.count, 2)
+        for b in pair { model.setChecked(false, for: b) }
+        model.sidebarSelection = .newBookings
+        let target = try XCTUnwrap(model.visibleBookings.first { $0.id == pair[0].id })
+        let other = try XCTUnwrap(model.visibleBookings.first { $0.id == pair[1].id })
+        let order = model.visibleBookings.map(\.id)
+        model.selectedBookingID = target.id
+        model.setChecked(true, for: target)
+        XCTAssertEqual(model.visibleBookings.map(\.id), order, "the row keeps its place")
+        XCTAssertEqual(model.visibleBookings.first { $0.id == target.id }?.checked, true)
+        model.reloadBookings()
+        XCTAssertTrue(model.visibleBookings.contains { $0.id == target.id }, "also across a reload")
+        model.selectedBookingID = other.id
+        XCTAssertFalse(model.visibleBookings.contains { $0.id == target.id })
+        XCTAssertTrue(model.visibleBookings.contains { $0.id == other.id })
     }
 
     func testTitleIsNeueUmsaetze() {
@@ -114,6 +134,16 @@ final class NewBookingsTests: XCTestCase {
         open.checked = false
         let sections = NewBookings.sections(bookings: [done, open], accounts: accounts)
         XCTAssertEqual(sections.flatMap(\.bookings).map(\.id), [1])
+    }
+
+    func testSectionsKeepTheLingeringBooking() throws {
+        let (accounts, base) = try samples()
+        var done = booking(base, id: 2, account: accounts[0].id)
+        done.checked = true
+        var open = booking(base, id: 1, account: accounts[0].id)
+        open.checked = false
+        let sections = NewBookings.sections(bookings: [done, open], accounts: accounts, keeping: 2)
+        XCTAssertEqual(sections.flatMap(\.bookings).map(\.id), [2, 1])
     }
 
     /// Entering the page must not select (and so auto-review) a booking nobody clicked.

@@ -155,6 +155,10 @@ public final class AppModel {
     var selectedBookingID: Booking.ID? {
         didSet {
             if stickyBooking?.id != selectedBookingID { stickyBooking = nil }
+            if let id = lingeringBookingID, id != selectedBookingID {
+                lingeringBookingID = nil
+                bookings.removeAll { $0.id == id }
+            }
             Perf.signposter.emitEvent("selectBooking")
             // A plain selection (click, arrow keys, jumps) replaces a multiple one.
             if let id = selectedBookingID {
@@ -180,6 +184,10 @@ public final class AppModel {
     /// (e.g. "kein Gehalt" in the salary period). It stays selected and visible
     /// in the inspector until the user selects something else, like in Mail.
     var stickyBooking: Booking?
+    /// The sticky booking was checked while selected in a list of new
+    /// bookings: its row stays in place (shown as checked) until the user
+    /// selects something else, instead of vanishing under the cursor.
+    var lingeringBookingID: Booking.ID?
     /// iPhone: set by a tap on a booking row, presents the detail sheet.
     var showBookingSheet = false
     var collapsedGroups: Set<Int64> = Set(UserDefaults.standard.array(forKey: "sidebar.collapsedKindGroups") as? [Int64] ?? []) {
