@@ -1020,22 +1020,6 @@ final class ImportProgressRelay: MoneyMoneyImportObserver, @unchecked Sendable {
     }
 }
 
-extension AccountKind {
-    static let importChoices: [AccountKind] = [.checking, .savings, .creditCard, .paymentService, .brokerage, .cash, .loan]
-
-    var label: String {
-        switch self {
-        case .checking: return String(localized: "Girokonto")
-        case .savings: return String(localized: "Tagesgeld / Sparen")
-        case .creditCard: return String(localized: "Kreditkarte")
-        case .paymentService: return String(localized: "Zahlungsdienst")
-        case .brokerage: return String(localized: "Depot")
-        case .cash: return String(localized: "Bargeld")
-        case .loan: return String(localized: "Darlehen")
-        }
-    }
-}
-
 /// Opens the security scope of the picked database and statements folder around `body`.
 private func withSecurityScope<T>(_ url: URL, _ statements: URL?, _ body: () throws -> T) rethrows -> T {
     let ok = url.startAccessingSecurityScopedResource()

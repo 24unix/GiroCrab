@@ -49,7 +49,10 @@ struct CollectionSheet: View {
                             }
                             Spacer()
                             if line.mandate.nextSequence == "RCUR" {
-                                Toggle("Letzter Einzug", isOn: $line.lastCollection).toggleStyle(.checkbox)
+                                Toggle("Letzter Einzug", isOn: $line.lastCollection)
+                                    #if os(macOS)
+                                    .toggleStyle(.checkbox)
+                                    #endif
                                     .help("Setzt den Folgetyp FNAL; danach wird das Mandat deaktiviert.")
                             }
                             TextField("Zweck", text: $line.purpose)
@@ -100,7 +103,9 @@ struct CollectionSheet: View {
                 Section {
                     if model.collectionFiles.contains(where: { $0.scheme == .b2b }) {
                         Toggle("Die B2B-Mandate sind bei den Banken der Zahlungspflichtigen hinterlegt", isOn: $b2bConfirmed)
+                            #if os(macOS)
                             .toggleStyle(.checkbox)
+                            #endif
                     }
                     if !model.debitPinStored {
                         SecureField("Banking-PIN", text: $pin, prompt: Text("wird nicht gespeichert"))

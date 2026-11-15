@@ -439,3 +439,20 @@ extension Result where Failure == Error {
         do { self = .success(try await body()) } catch { self = .failure(error) }
     }
 }
+
+/// Account kinds the user can pick (import, „Kontoart ändern …“), on Mac and iPhone.
+extension AccountKind {
+    static let importChoices: [AccountKind] = [.checking, .savings, .creditCard, .paymentService, .brokerage, .cash, .loan]
+
+    var label: String {
+        switch self {
+        case .checking: return String(localized: "Girokonto")
+        case .savings: return String(localized: "Tagesgeld / Sparen")
+        case .creditCard: return String(localized: "Kreditkarte")
+        case .paymentService: return String(localized: "Zahlungsdienst")
+        case .brokerage: return String(localized: "Depot")
+        case .cash: return String(localized: "Bargeld")
+        case .loan: return String(localized: "Darlehen")
+        }
+    }
+}
