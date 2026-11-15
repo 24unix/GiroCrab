@@ -972,6 +972,8 @@ QtObject {
         forgetWebCookies(id)
         run(() => core("delete_bank_connection", { connection_id: id })); reloadAll()
     }
+    /// comdirect: switch the login between FinTS and comdirect's own API (keeps accounts, categories, notes).
+    function switchComdirectAccess(id) { run(() => core("switch_comdirect_access", { connection_id: id })); reloadAll() }
     function updateConnection(id, name, login) { run(() => core("update_bank_connection", { connection_id: id, display_name: name, login_name: login })); reloadAccounts() }
     function setConnectionPin(id, pin) { run(() => core("set_connection_pin", { connection_id: id, pin: pin })) }
 

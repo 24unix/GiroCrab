@@ -11,6 +11,8 @@
 //!   list_rules                      0.6 ms (84 ms before the covering indexes)
 //!   investment_dashboard           150 ms
 //!   merchant_stats / selection_flow ~150 ms each (a full pass over all bookings)
+//!   local_api transactions(limit 100)  ~1.2 ms (first page, cursor page, single account; 2026-11-15)
+//!   local_api summary                  ~1.2 ms per year, 2.4 ms for the three-year maximum
 //! RULE_INDEX=1 creates the covering indexes by hand on a vault that lacks them.
 use girocrab_core::models::{BookingFilter, BookingScope};
 use girocrab_core::vault::Vault;
@@ -157,5 +159,62 @@ fn main() {
         "'Ohne Kategorie': + selection_flow (reloadSelectionKPIs)",
         || vault.selection_flow(vec![], None, None),
     );
+    // Local read-only interface (#136): keyset pages enrich only their rows.
+    let accounts: Vec<i64> = vault
+        .list_accounts()
+        .unwrap()
+        .iter()
+        .map(|a| a.id)
+        .collect();
+    vault
+        .set_local_api_scope(&girocrab_core::local_api::ShareScope {
+            enabled: true,
+            account_ids: accounts,
+            ..Default::default()
+        })
+        .unwrap();
+    let first = vault.local_api_request(r#"{"method":"transactions","params":{"limit":100}}"#);
+    let cursor: serde_json::Value = serde_json::from_str(&first).unwrap();
+    let deep = format!(
+        r#"{{"method":"transactions","params":{{"limit":100,"cursor":{}}}}}"#,
+        cursor["result"]["next_cursor"]
+    );
+    time("local_api transactions(limit 100), first page", || {
+        vault.local_api_request(r#"{"method":"transactions","params":{"limit":100}}"#)
+    });
+    time("local_api transactions(limit 100), with cursor", || {
+        vault.local_api_request(&deep)
+    });
+    let card = vault
+        .list_accounts()
+        .unwrap()
+        .into_iter()
+        .filter(|a| a.transaction_count > 0)
+        .min_by_key(|a| a.transaction_count)
+        .unwrap();
+    let one = format!(
+        r#"{{"method":"transactions","params":{{"limit":100,"account_ids":[{}]}}}}"#,
+        card.id
+    );
+    time(
+        &format!(
+            "local_api transactions(limit 100), {} bookings acct",
+            card.transaction_count
+        ),
+        || vault.local_api_request(&one),
+    );
+    time("local_api summary (one year)", || {
+        vault.local_api_request(
+            r#"{"method":"summary","params":{"date_from":"2025-01-01","date_to":"2025-12-31"}}"#,
+        )
+    });
+    let to = chrono::Local::now().date_naive();
+    let three = format!(
+        r#"{{"method":"summary","params":{{"date_from":"{}","date_to":"{to}"}}}}"#,
+        to - chrono::Duration::days(3 * 366)
+    );
+    time("local_api summary (three years, the maximum)", || {
+        vault.local_api_request(&three)
+    });
     let _ = std::fs::remove_dir_all(&tmp);
 }

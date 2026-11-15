@@ -264,6 +264,7 @@ fn english(de: &str) -> Option<&'static str> {
         "Bitte bei FNZ anmelden und in FNZsecure freigeben." => "Please sign in to FNZ and approve with FNZsecure.",
         "Bitte im FNZ-Browserfenster abrufen." => "Please fetch data in the FNZ browser window.",
         "FNZ: Unvollständige Konten-, Bestands- oder Umsatzdaten. Es wurden keine Daten übernommen." => "FNZ: Incomplete account, position or transaction data. No data has been imported.",
+        "Ungültiger Klassifizierungsschlüssel." => "Invalid classification key.",
         "FNZ: Unvollständige Portalantwort. Bitte erneut anmelden." => "FNZ: Incomplete portal response. Please sign in again.",
         "FNZ: Ungültige Kontoübersicht." => "FNZ: Invalid account overview.",
         "FNZ: Keine Kontoübersicht erkannt. Bitte erneut anmelden." => "FNZ: No account overview found. Please sign in again.",
@@ -546,6 +547,9 @@ fn english(de: &str) -> Option<&'static str> {
         "Demo: {0} an {1} wird nach wenigen Sekunden „freigegeben“." => "Demo: {0} to {1} will be “approved” in a few seconds.",
         // ------------------------------------------------------------ importers/portal_import.rs
         "Keine Umsätze erkannt." => "No transactions found.",
+        // ------------------------------------------------------------ vault/backup.rs
+        "Falsches Passwort oder keine GiroCrab-Sicherung." => "Wrong password or not a GiroCrab backup.",
+        "Bitte ein Passwort für die Sicherung angeben." => "Please enter a password for the backup.",
         // ------------------------------------------------------------ importers/moneymoney_import.rs
         "Keine Kopfzeile (Datum/Buchungstag und Betrag) gefunden." => "No header row (date/booking date and amount) found.",
         // ------------------------------------------------------------ importers/moneymoney_db.rs
@@ -566,6 +570,9 @@ fn english(de: &str) -> Option<&'static str> {
         }
         // ------------------------------------------------------------ connections.rs
         "Bankzugang {0}" => "bank connection {0}",
+        "Nur comdirect-Zugänge lassen sich zwischen FinTS und der comdirect-Schnittstelle umstellen." => "Only comdirect logins can be switched between FinTS and comdirect's own interface.",
+        "Keine comdirect-IBAN gefunden: Die Bankleitzahl für FinTS lässt sich nicht bestimmen." => "No comdirect IBAN found: the bank code for FinTS cannot be determined.",
+        "Für diesen Anmeldenamen gibt es den Zugang auf diesem Weg schon." => "A login with this name already exists for this access method.",
         "Keine Sitzungs-Cookies übergeben" => "No session cookies were passed",
         // ------------------------------------------------------------ loans.rs (#36)
         "Bitte einen Namen für das Darlehen angeben." => "Please enter a name for the loan.",

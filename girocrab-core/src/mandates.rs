@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS creditor_ids (
 );
 ";
 
-/// Step 19: mandates and creditor IDs (guarded like steps 16/17).
+/// Step 20: mandates and creditor IDs (guarded like steps 17/18).
 pub(crate) fn mandates_tables(conn: &Connection) -> CoreResult<()> {
     conn.execute_batch(MANDATES)?;
     Ok(())

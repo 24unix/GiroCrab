@@ -490,7 +490,8 @@ struct AddBankSheet: View {
 
     static func detailLine(_ r: BankSearchResult) -> String? {
         switch r.mode {
-        case .finTs: return String(localized: "BLZ \(r.blz)")
+        // found by name with a bank code that depends on the account (comdirect)
+        case .finTs: return r.blz.isEmpty ? nil : String(localized: "BLZ \(r.blz)")
         case .psd2: return r.country.isEmpty ? nil : (Locale.current.localizedString(forRegionCode: r.country) ?? r.country)
         case .ownApi: return nil
         }

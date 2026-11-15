@@ -165,8 +165,21 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
     ]
 }
 
-/// BLZs served by comdirect's own API.
-const COMDIRECT_BLZ: &[&str] = &["20041111", "20041133", "20041144", "20041155"];
+/// comdirect via FinTS for a name search: the bank code depends on the
+/// account, so the row has none and the form asks for BLZ or IBAN.
+fn comdirect_fints_result() -> BankSearchResult {
+    BankSearchResult {
+        id: "fints:comdirect".into(),
+        name: "comdirect".into(),
+        mode: BankAccessMode::FinTs,
+        country: "DE".into(),
+        blz: String::new(),
+        url: fints_directory::COMDIRECT_FINTS_URL.into(),
+        connector: None,
+        aspsp: String::new(),
+        tested: String::new(),
+    }
+}
 
 fn matches_all(haystack: &str, words: &[&str]) -> bool {
     words.iter().all(|w| haystack.contains(w))
@@ -263,7 +276,9 @@ pub fn search(
 
     // BLZ / IBAN: route directly to the appropriate access mode.
     if let Some(blz) = fints_directory::blz_from_input(query) {
-        if COMDIRECT_BLZ.contains(&blz.as_str()) {
+        if fints_directory::COMDIRECT_BLZ.contains(&blz.as_str()) {
+            // two ways: FinTS (PIN/TAN only) and comdirect's own API
+            out.extend(fints_directory::lookup(&blz).map(fints_result));
             out.push(own_result(ConnectorKind::Comdirect, "comdirect"));
         } else if blz == "10110600" {
             out.push(own_result(ConnectorKind::Quirion, "quirion"));
@@ -288,6 +303,11 @@ pub fn search(
                 out.push(fints_result(b));
             }
         }
+    }
+    // comdirect by name: FinTS next to its own API (the FinTS directory
+    // search above leaves it out, see `fints_directory::COMDIRECT_BLZ`)
+    if matches_all("comdirect", &words) {
+        out.push(comdirect_fints_result());
     }
     for (kind, name, extra) in own_api() {
         if matches_all(&format!("{} {}", fold(name), extra), &words) {
@@ -615,10 +635,36 @@ mod tests {
     }
 
     #[test]
-    fn comdirect_blz_routes_to_its_own_api() {
-        let r = search("20041111", vec![], 10);
-        assert_eq!(ids(&r), vec!["api:comdirect"]);
-        assert_eq!(r[0].mode, BankAccessMode::OwnApi);
+    fn comdirect_blz_offers_fints_and_its_own_api() {
+        for (q, blz) in [
+            ("20041111", "20041111"),
+            ("DE10 2004 1155 0123 4567 89", "20041155"),
+        ] {
+            let r = search(q, vec![], 10);
+            assert_eq!(
+                ids(&r),
+                vec![format!("fints:{blz}"), "api:comdirect".to_string()],
+                "{q}"
+            );
+            assert_eq!(r[0].mode, BankAccessMode::FinTs);
+            assert_eq!((r[0].name.as_str(), r[0].blz.as_str()), ("comdirect", blz));
+            assert_eq!(r[0].url, fints_directory::COMDIRECT_FINTS_URL);
+            assert_eq!(r[1].mode, BankAccessMode::OwnApi);
+        }
+    }
+
+    #[test]
+    fn comdirect_by_name_lists_fints_once_without_a_bank_code() {
+        let r = search("comdirect", vec![], 10);
+        assert_eq!(ids(&r), vec!["fints:comdirect", "api:comdirect"]);
+        // the bank code depends on the account: the form asks for BLZ or IBAN
+        assert!(r[0].blz.is_empty());
+        assert_eq!(r[0].url, fints_directory::COMDIRECT_FINTS_URL);
+        assert_eq!(r[0].name, r[1].name);
+        // unrelated searches are unaffected
+        assert!(search("paypal", vec![], 10)
+            .iter()
+            .all(|b| b.id != "fints:comdirect"));
     }
 
     #[test]
