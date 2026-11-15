@@ -590,6 +590,17 @@ pub(crate) fn store_fetch(
             }
         }
         // Securities transactions (#314): beside the cash bookings, then matched to them.
+        // Standing orders: complete per account, so the stored ones are replaced.
+        for r in &data.standing_orders_fetched {
+            if let Some(id) = resolve(r) {
+                let orders: Vec<&RemoteStandingOrder> = data
+                    .standing_orders
+                    .iter()
+                    .filter(|o| &o.account_ref == r)
+                    .collect();
+                crate::standing_orders::replace_for_account(&tx, id, &orders)?;
+            }
+        }
         for st in &data.security_transactions {
             if let Some(id) = resolve(&st.account_ref) {
                 let mut t = st.transaction.clone();

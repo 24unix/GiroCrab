@@ -237,10 +237,13 @@ public final class AppModel {
     /// „Geplant“ (#240): payments with a bank order, the filters and a reload
     /// marker (set by everything that can change them: transfers, syncs).
     var plannedPayments: [PlannedPayment] = []
+    /// `plannedPayments` grouped by month, computed once per reload (not per redraw).
+    var plannedMonths: [PlannedMonth] = []
     var plannedTotals = PlannedTotals(count: 0, outgoingCents: 0, incomingCents: 0)
     var plannedAccountFilter: Int64?
     var plannedHorizon: PlannedHorizon = .days90
     var plannedVersion = 0
+    var selectedPlannedID: String?
     var expandedCategories: Set<Int64> = []
     var showRuleEditor = false {
         didSet { if showRuleEditor, rulesStale { reloadRules() } }

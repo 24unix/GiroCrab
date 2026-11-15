@@ -12,6 +12,9 @@ struct InspectorView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                if model.sidebarSelection == .planned {
+                    PlannedInspector()
+                } else {
                 if case .account(let id) = model.sidebarSelection, let a = model.account(for: id), a.kind == .loan {
                     LoanProgressCard(account: a)
                 }
@@ -37,6 +40,7 @@ struct InspectorView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .card()
+                }
                 }
             }
             .padding(16)

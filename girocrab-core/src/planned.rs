@@ -38,6 +38,8 @@ pub(crate) fn planned_transfers(conn: &Connection) -> CoreResult<()> {
 pub enum PlannedKind {
     /// Scheduled transfer (Terminüberweisung, HKCSE).
     ScheduledTransfer,
+    /// Standing order (Dauerauftrag, #239), read from the bank.
+    StandingOrder,
 }
 
 /// One future payment with an order at the bank.
@@ -56,6 +58,10 @@ pub struct PlannedPayment {
     /// Negative = outgoing, like bookings.
     pub amount_cents: i64,
     pub purpose: String,
+    /// Standing orders: `M` (months) or `W` (weeks), else "".
+    pub rhythm_unit: String,
+    /// Standing orders: every n-th month/week, else 0.
+    pub rhythm_interval: u32,
 }
 
 /// Sums of the planned payments in a period (SQL aggregate, no row loading).
@@ -67,6 +73,16 @@ pub struct PlannedTotals {
     pub outgoing_cents: i64,
     /// Sum of the incoming payments (positive or 0).
     pub incoming_cents: i64,
+}
+
+/// Rows whose date is long past never show again (the list starts at today);
+/// dropped on every insert so the table cannot grow without bound.
+fn prune_old(db: &Connection) -> CoreResult<()> {
+    db.execute(
+        "DELETE FROM planned_transfers WHERE execution_date < date('now', '-400 days')",
+        [],
+    )?;
+    Ok(())
 }
 
 fn today() -> String {
@@ -84,6 +100,7 @@ impl Vault {
             return Ok(());
         };
         let db = self.db()?;
+        prune_old(&db)?;
         db.execute(
             "INSERT OR IGNORE INTO planned_transfers(account_id, end_to_end_id, execution_date,
                     recipient_name, recipient_iban, amount_cents, purpose, created_ms)
@@ -146,6 +163,8 @@ impl Vault {
                 counterparty_iban: r.get(5)?,
                 amount_cents: -r.get::<_, i64>(6)?,
                 purpose: r.get(7)?,
+                rhythm_unit: String::new(),
+                rhythm_interval: 0,
             })
         })?;
         let mut out = Vec::new();
@@ -155,6 +174,18 @@ impl Vault {
                 out.push(p);
             }
         }
+        // Standing orders: the executions in the same period.
+        let parse = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
+        if let Some(f) = parse(&from) {
+            let t = to.as_deref().and_then(parse);
+            out.extend(crate::standing_orders::planned_executions(
+                &db,
+                f,
+                t,
+                &account_ids,
+            )?);
+        }
+        out.sort_by(|a, b| (&a.date, &a.id).cmp(&(&b.date, &b.id)));
         Ok(out)
     }
 
@@ -188,11 +219,26 @@ impl Vault {
         let (count, sum): (i64, i64) =
             db.query_row(&sql, params![from, to], |r| Ok((r.get(0)?, r.get(1)?)))?;
         // Scheduled transfers are stored as positive amounts and listed as outgoing.
-        Ok(PlannedTotals {
+        let mut t = PlannedTotals {
             count: u32::try_from(count).unwrap_or(u32::MAX),
             outgoing_cents: -sum,
             incoming_cents: 0,
-        })
+        };
+        // Standing orders only exist as computed executions (few orders, no row load of
+        // the transfers needed).
+        let parse = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
+        if let Some(f) = parse(&from) {
+            let end = to.as_deref().and_then(parse);
+            for p in crate::standing_orders::planned_executions(&db, f, end, &account_ids)? {
+                t.count += 1;
+                if p.amount_cents < 0 {
+                    t.outgoing_cents += p.amount_cents;
+                } else {
+                    t.incoming_cents += p.amount_cents;
+                }
+            }
+        }
+        Ok(t)
     }
 }
 

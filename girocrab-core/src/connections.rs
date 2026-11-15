@@ -169,6 +169,14 @@ fn merge_duplicate_account(conn: &Connection, keep: i64, dup: i64) -> CoreResult
         "UPDATE OR IGNORE security_transactions SET account_id = ?1 WHERE account_id = ?2",
         params![keep, dup],
     )?;
+    // order data (#239, #240): the caller deletes `dup`, and these tables
+    // reference it (standing_orders without a cascade: a leftover row would fail the delete)
+    conn.execute(
+        "UPDATE OR IGNORE planned_transfers SET account_id = ?1 WHERE account_id = ?2",
+        params![keep, dup],
+    )?;
+    // standing orders are replaced on every fetch
+    conn.execute("DELETE FROM standing_orders WHERE account_id = ?1", [dup])?;
     Ok(())
 }
 
@@ -614,6 +622,74 @@ impl Vault {
 mod tests {
     use super::*;
     use crate::models::BookingFilter;
+
+    /// Standing order and planned data hang on the duplicate
+    /// account: merging must neither fail on the foreign keys nor lose them.
+    #[test]
+    fn dedup_moves_planned_data_to_the_kept_account() {
+        let dir = crate::test_support::TempDir::new("girocrab-dedup-debit");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![4u8; 32],
+        )
+        .unwrap();
+        let (keep_acc, dup_acc) = {
+            let db = v.db().unwrap();
+            db.execute("INSERT INTO account_groups(name) VALUES ('G')", [])
+                .unwrap();
+            let g = db.last_insert_rowid();
+            let mut ids = Vec::new();
+            for (n, id) in [(1, "a"), (2, "b")] {
+                db.execute(
+                    "INSERT INTO bank_connections(connector, display_name, login_name)
+                     VALUES ('fints:52090000', 'VB', '1234567890')",
+                    [],
+                )
+                .unwrap();
+                let c = db.last_insert_rowid();
+                db.execute(
+                    "INSERT INTO accounts(connection_id, group_id, external_ref, name) VALUES (?1, ?2, 'DE1', ?3)",
+                    params![c, g, format!("Giro {n}")],
+                )
+                .unwrap();
+                ids.push((db.last_insert_rowid(), id));
+            }
+            (ids[0].0, ids[1].0)
+        };
+        {
+            let db = v.db().unwrap();
+            db.execute(
+                "INSERT INTO standing_orders(account_id, key, amount_cents, first_date, time_unit, interval, exec_day, fetched_ms)
+                 VALUES (?1, 'k', 100, '2026-01-01', 'M', 1, 1, 0)",
+                [dup_acc],
+            )
+            .unwrap();
+            db.execute(
+                "INSERT INTO planned_transfers(account_id, end_to_end_id, execution_date, amount_cents)
+                 VALUES (?1, 'E1', '2026-12-01', 100)",
+                [dup_acc],
+            )
+            .unwrap();
+        }
+        assert_eq!(v.deduplicate_bank_connections().unwrap(), 1);
+        let db = v.db().unwrap();
+        let one = |sql: &str, acc: i64| db.query_row(sql, [acc], |r| r.get::<_, i64>(0)).unwrap();
+        let left: i64 = db
+            .query_row(
+                "SELECT id FROM accounts WHERE deleted_ms IS NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(left, keep_acc);
+        assert_eq!(
+            one(
+                "SELECT count(*) FROM planned_transfers WHERE account_id = ?1",
+                left
+            ),
+            1
+        );
+    }
 
     #[test]
     fn comdirect_switches_between_api_and_fints_keeping_accounts_and_bookings() {
