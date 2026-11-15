@@ -31,6 +31,7 @@ pub mod quirion;
 pub mod scalable;
 pub mod template;
 pub mod trade_republic;
+pub mod uberspace;
 pub mod volkswagen_bank;
 
 pub(crate) mod account_selection;

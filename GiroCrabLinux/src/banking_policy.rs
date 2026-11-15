@@ -390,6 +390,7 @@ pub fn display_name(id: &str) -> String {
         "fnz" => "FNZ Bank",
         "ibkr" => "Interactive Brokers",
         "quirion" => "quirion",
+        "uberspace" => "Uberspace",
         other => other,
     };
     match tail {

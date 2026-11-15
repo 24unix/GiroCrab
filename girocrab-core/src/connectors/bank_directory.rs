@@ -153,6 +153,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
         ),
         (ConnectorKind::Fnz, "FNZ Bank", "fnz bank ebase finvesto"),
         (
+            ConnectorKind::Uberspace,
+            "Uberspace",
+            "uberspace hosting asteroid webhosting",
+        ),
+        (
             ConnectorKind::Quirion,
             "quirion",
             "quirion quirin privatbank depot",

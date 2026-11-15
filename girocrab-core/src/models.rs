@@ -44,6 +44,8 @@ pub enum ConnectorKind {
     Easybank,
     /// Volkswagen Bank online banking (photoTAN / pushTAN) via the web portal.
     VolkswagenBank,
+    /// Uberspace hosting accounts (credit balance per Asteroid) via the web dashboard.
+    Uberspace,
 }
 
 impl ConnectorKind {
@@ -66,6 +68,7 @@ impl ConnectorKind {
             ConnectorKind::Quirion => "quirion",
             ConnectorKind::Easybank => "easybank",
             ConnectorKind::VolkswagenBank => "volkswagenbank",
+            ConnectorKind::Uberspace => "uberspace",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -117,6 +120,7 @@ impl ConnectorKind {
             ConnectorKind::Quirion,
             ConnectorKind::Easybank,
             ConnectorKind::VolkswagenBank,
+            ConnectorKind::Uberspace,
         ]
     }
 }

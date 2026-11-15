@@ -102,6 +102,7 @@ CONNECTOR_DOCS = {
     "quirion": ("quirion", "quirion"),
     "scalable-capital": ("Scalable Capital", "Scalable Capital"),
     "volkswagen-bank": ("Volkswagen Bank", "Volkswagen Bank"),
+    "uberspace": ("Uberspace", "Uberspace"),
 }
 
 
