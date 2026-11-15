@@ -4,8 +4,27 @@ import GiroCrabCore
 /// Column 3: permanent context & receipt inspector.
 struct InspectorView: View {
     @Environment(AppModel.self) private var model
+    /// Order and hidden cards (#448), see `InspectorLayout`.
+    @AppStorage(InspectorLayout.defaultsKey) private var layoutValue = ""
+    @State private var editingLayout = LaunchOptions.current.inspectorEdit
+
+    private var layout: InspectorLayout { InspectorLayout(storageValue: layoutValue) }
+
+    private func updateLayout(_ change: (inout InspectorLayout) -> Void) {
+        var next = layout
+        change(&next)
+        withAnimation(.snappy(duration: 0.2)) { layoutValue = next.storageValue }
+    }
 
     var body: some View {
+        // The bar sits above the scroll view instead of in a `safeAreaInset` or as its first row:
+        // there it got no clicks, and clicks below it landed a row too low (macOS 27, #448, #492).
+        VStack(spacing: 0) {
+            if showsBookingCards {
+                InspectorLayoutBar(editing: $editingLayout, canReset: !layout.isStandard) {
+                    updateLayout { $0 = .standard }
+                }
+            }
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 if model.sidebarSelection == .planned {
@@ -19,17 +38,13 @@ struct InspectorView: View {
                 if model.isMultiSelection {
                     MultiSelectionCard()
                 } else if let b = model.selectedBooking {
-                    ReceiptCard(booking: b)
-                    NoteCard(booking: b).id(b.id)
-                    if b.amountCents > 0 { SalaryCard(booking: b) }
-                    RecurringCard(booking: b)
-                    // The merchant-history stats load asynchronously and grow the history card.
-                    // It sits below the interactive cards (category, documents) so that growth
-                    // never shifts them and leaves their hit-test geometry stale (#454, #492).
-                    CategoryGridCard(booking: b)
-                    DocumentsCard(booking: b)
-                    MerchantHistoryCard(booking: b)
-                    RawDataCard(booking: b)
+                    if editingLayout {
+                        InspectorLayoutEditor(booking: b, layout: layout, update: updateLayout)
+                    } else {
+                        ForEach(layout.visible) { section in
+                            InspectorSectionCard(section: section, booking: b)
+                        }
+                    }
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
                         Label("Keine Buchung ausgewählt", systemImage: "doc.text.magnifyingglass")
@@ -44,7 +59,14 @@ struct InspectorView: View {
             }
             .padding(16)
         }
+        }
         .background(Theme.canvas)
+    }
+
+    /// The single-booking cards are shown, so their layout can be edited.
+    private var showsBookingCards: Bool {
+        model.sidebarSelection != .planned && model.sidebarSelection != .directDebits
+            && !model.isMultiSelection && model.selectedBooking != nil
     }
 }
 

@@ -3545,6 +3545,17 @@
         }
       }
     },
+    "Anpassen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Customize"
+          }
+        }
+      }
+    },
     "Ans Ende" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4087,6 +4098,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Spending in sub-categories counts too."
+          }
+        }
+      }
+    },
+    "Ausgeblendet" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hidden"
           }
         }
       }
@@ -4889,6 +4911,17 @@
         }
       }
     },
+    "Bearbeitung der Seitenleiste beenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finish customizing the sidebar"
+          }
+        }
+      }
+    },
     "Befehl, Konto, Kategorie oder Händler …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5281,6 +5314,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Needs a free Enable Banking application of your own"
+          }
+        }
+      }
+    },
+    "Bereiche hierher ziehen oder mit ⊖ ausblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag sections here or hide them with ⊖"
+          }
+        }
+      }
+    },
+    "Bereiche hierher ziehen, um sie einzublenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag sections here to show them"
           }
         }
       }
@@ -8462,6 +8517,7 @@
       }
     },
     "Duplizieren" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -14844,6 +14900,7 @@
       }
     },
     "Kopie" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -16042,6 +16099,7 @@
       }
     },
     "Monatssummen der Kategorie" : {
+      "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -17577,6 +17635,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Errors Only"
+          }
+        }
+      }
+    },
+    "Nur bei Einnahmen sichtbar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only shown for income"
           }
         }
       }
@@ -19244,6 +19313,17 @@
         }
       }
     },
+    "Reihenfolge der Bereiche ändern und Bereiche ausblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reorder or hide sections"
+          }
+        }
+      }
+    },
     "Reihenfolge per Ziehen ändern, Untergruppen über „Übergeordnete Gruppe“. Konten ohne Gruppe erscheinen unter „Ohne Gruppe“." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20732,6 +20812,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Standard"
+          }
+        }
+      }
+    },
+    "Standard-Reihenfolge wiederherstellen und alle Bereiche einblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore the default order and show all sections"
           }
         }
       }
@@ -24064,6 +24155,17 @@
         }
       }
     },
+    "Ziehen zum Verschieben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag to reorder"
+          }
+        }
+      }
+    },
     "Ziel" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25473,6 +25575,17 @@
         }
       }
     },
+    "„%@“ ausblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide “%@”"
+          }
+        }
+      }
+    },
     "„%@“ ausklappen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25491,6 +25604,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Assigned “%1$@” to the loan “%2$@”"
+          }
+        }
+      }
+    },
+    "„%@“ einblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show “%@”"
           }
         }
       }
