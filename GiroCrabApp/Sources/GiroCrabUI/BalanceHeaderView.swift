@@ -75,6 +75,15 @@ struct StreamHeaderCard: View {
                         if let a = account {
                             Text([a.bankName, a.iban.isEmpty ? "" : formatIBAN(a.iban)].filter { !$0.isEmpty }.joined(separator: " · "))
                                 .sensitive()
+                            let note = model.accountNote(for: a.id)
+                            if !note.isEmpty {
+                                Text(note)
+                                    .sensitive()
+                                    .appFont(.caption)
+                                    .foregroundStyle(Theme.secondary)
+                                    .lineLimit(2)
+                                    .help(note)
+                            }
                         } else {
                             Text(model.lastSyncText)
                         }

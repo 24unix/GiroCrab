@@ -1262,3 +1262,26 @@ struct VaultPin: Sendable {
         await Task.detached(priority: .userInitiated) { try? vault.checkpoint() }.value
     }
 }
+
+
+@MainActor
+extension AppModel {
+    /// Own account/pocket matching `booking.counterpartyIban`, if any (GitHub #523).
+    func counterAccount(for booking: Booking) -> Account? {
+        let raw = booking.counterpartyIban.filter { !$0.isWhitespace }.uppercased()
+        guard !raw.isEmpty else { return nil }
+        return allAccounts.first {
+            $0.id != booking.accountId &&
+            $0.iban.filter({ !$0.isWhitespace }).uppercased() == raw
+        }
+    }
+
+    /// Free-text note for an account stored in vault settings (GitHub #512).
+    func accountNote(for accountID: Int64) -> String {
+        settingEntry("account.note.\(accountID)")?.value.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    func setAccountNote(_ note: String, for accountID: Int64) {
+        saveSetting("account.note.\(accountID)", note.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+}

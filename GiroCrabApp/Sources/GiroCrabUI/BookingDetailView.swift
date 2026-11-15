@@ -120,6 +120,17 @@ struct ReceiptCard: View {
                     Text("\(booking.accountName) · \(booking.paymentMethod)")
                         .sensitive()
                         .appFont(.caption).foregroundStyle(Theme.secondary)
+                    if let counter = model.counterAccount(for: booking) {
+                        Text("⇄ \(counter.name) (\(formatIBAN(booking.counterpartyIban)))")
+                            .sensitive()
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
+                            .textSelection(.enabled)
+                    } else if !booking.counterpartyIban.isEmpty {
+                        Text(formatIBAN(booking.counterpartyIban))
+                            .sensitive()
+                            .appFont(.caption, design: .monospaced).foregroundStyle(Theme.secondary)
+                            .textSelection(.enabled)
+                    }
                     MerchantDomainRow(merchant: booking.merchant)
                 }
                 Spacer()

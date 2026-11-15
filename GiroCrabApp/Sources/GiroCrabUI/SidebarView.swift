@@ -385,6 +385,12 @@ struct SidebarView: View {
         // accounts have – then archive / delete
         Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .renameAccount(account) }
         Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .account(account.id) }
+        Toggle(isOn: Binding(
+            get: { ViewLayout.showsCategoryChip(for: account.id) },
+            set: { ViewLayout.setShowsCategoryChip($0, for: account.id) }
+        )) {
+            Label("Kategorie in der Buchungszeile anzeigen", systemImage: "tag")
+        }
         Menu("Kontoart ändern …", systemImage: "list.bullet.rectangle") {
             ForEach(AccountKind.importChoices, id: \.self) { k in
                 Button { model.setAccountKind(account.id, to: k) } label: {

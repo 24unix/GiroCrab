@@ -155,6 +155,7 @@ struct BookingStreamView: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
                 }
                 .frame(minHeight: 0, maxHeight: .infinity)
+                .scrollBounceBehavior(.basedOnSize)
                 #if os(iOS)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     // keeps the last booking clear of the floating search bar
@@ -553,6 +554,7 @@ struct BookingRow: View {
     /// Amazon orders: drill-down of all items (and the refunded order's items)
     /// below the row; collapsed rows keep the uniform list height.
     @State private var amazonExpanded = false
+    @AppStorage(ViewLayout.hiddenCategoryChipAccountsKey) private var hiddenCategoryChipAccountsRaw = ""
 
     private var amazonRef: AmazonOrderRef? {
         AmazonOrderRef.parse(purpose: booking.purpose, merchantDomain: booking.merchantDomain,
@@ -619,9 +621,11 @@ struct BookingRow: View {
                                     symbol: model.accountSymbol(booking.accountId), compact: compactChip)
                     }
                     #endif
-                    // category with the sidebar's icon and colour, then the payment method
-                    BookingCategoryLabel(booking: booking)
-                        .layoutPriority(1)
+                    // category with the sidebar's icon and colour (unless hidden for this account, #336)
+                    if !hiddenCategoryChipAccountsRaw.split(separator: ",").compactMap({ Int64($0) }).contains(booking.accountId) {
+                        BookingCategoryLabel(booking: booking)
+                            .layoutPriority(1)
+                    }
                     if let ref = amazonRef {
                         // Amazon order: what was ordered beats the "Bestellung" kind label.
                         // Refunds show the refunded order's items (joined via the order code).
@@ -674,6 +678,13 @@ struct BookingRow: View {
                             .buttonStyle(.borderless)
                             .help(amazonExpanded ? "Artikel einklappen" : "Alle Artikel anzeigen")
                         }
+                    } else if let counter = model.counterAccount(for: booking) {
+                        Text("· ⇄ \(counter.name)")
+                            .sensitive()
+                            .appFont(.callout)
+                            .foregroundStyle(Theme.secondary)
+                            .lineLimit(1)
+                            .layoutPriority(-1)
                     } else if !booking.paymentMethod.isEmpty {
                         Text("· \(booking.paymentMethod)")
                             .appFont(.callout)

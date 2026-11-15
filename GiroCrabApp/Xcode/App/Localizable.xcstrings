@@ -13301,6 +13301,17 @@
         }
       }
     },
+    "Kategorie in der Buchungszeile anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show category in booking row"
+          }
+        }
+      }
+    },
     "Kategorie löschen …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25336,6 +25347,9 @@
         }
       }
     },
+    "· ⇄ %@" : {
+      "shouldTranslate" : false
+    },
     "Ältere Buchungen (nicht gezählt)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25996,6 +26010,9 @@
           }
         }
       }
+    },
+    "⇄ %@ (%@)" : {
+      "shouldTranslate" : false
     },
     "⌘-Klick fügt eine Buchung hinzu oder entfernt sie, ⇧-Klick wählt einen Bereich, ⌘A alle." : {
       "extractionState" : "manual",
