@@ -244,6 +244,9 @@ public final class AppModel {
     var suggestedCreditorID = ""
     var collectionLines: [CollectionLine] = []
     var showCollectionSheet = false
+    /// Returned collections (Rücklastschriften) not yet marked as seen, and the bookings of the selected mandate (#143).
+    var openMandateReturns: [MandateBooking] = []
+    var mandateBookings: [MandateBooking] = []
     /// Direct debit submission via FinTS (#143): the running job and whether the active session is one.
     var debitRun: DebitRun?
     var activeTransferIsDebit = false
@@ -542,7 +545,7 @@ public final class AppModel {
     /// Screenshot helper: open a sheet pre-filled with fictional data.
     private func presentDemoSheet(_ name: String) {
         switch name {
-        case "mandate", "collection", "collection-files":
+        case "mandate", "collection", "collection-files", "mandate-select":
             // Lastschriften (#143): the mandate form / the collection sheet
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -550,7 +553,10 @@ public final class AppModel {
                 if name == "mandate" { self.newMandate(); self.mandateDraft?.name = "Mia Beispiel"; self.mandateDraft?.iban = "DE89 3704 0044 0532 0130 00"
                     self.mandateDraft?.reference = "M-2026-001"; self.mandateDraft?.amountText = "12,50"
                     self.mandateDraft?.purpose = "Mitgliedsbeitrag" }
-                else {
+                else if name == "mandate-select" {
+                    // the mandate with the returned collection, selected for the inspector
+                    self.selectedMandateID = self.mandates.first { $0.reference == "M-2025-014" }?.id
+                } else {
                     self.openCollection()
                     // `collection-files`: the step after "Dateien erzeugen", with the submit area
                     if name == "collection-files" { self.buildCollection(dueDate: Date().addingTimeInterval(5 * 86_400)) }

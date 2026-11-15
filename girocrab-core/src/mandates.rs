@@ -19,9 +19,12 @@ mod collect;
 mod csv;
 mod merge;
 mod pain;
+mod returns;
 pub use collect::{CollectionItem, DebitFile, DirectDebitRequest};
 pub use csv::{parse_mandate_csv, MandateCsvImport, MandateCsvRow, MandateImportResult};
 pub(crate) use merge::merge_attached;
+pub(crate) use returns::{mandate_return_ack, merge_ack};
+pub use returns::{return_reason, MandateBooking};
 
 const MANDATES: &str = "
 CREATE TABLE IF NOT EXISTS mandates (

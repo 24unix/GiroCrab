@@ -28,6 +28,8 @@ struct MandateInspector: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .card()
+                returnsCard(m)
+                bookingsCard
                 HStack {
                     Button("Bearbeiten …", systemImage: "pencil") { model.editMandate(m) }
                     Button(m.active ? "Deaktivieren" : "Aktivieren", systemImage: m.active ? "pause.circle" : "play.circle") {
@@ -36,6 +38,7 @@ struct MandateInspector: View {
                 }
                 .buttonStyle(.bordered)
             }
+            .task(id: "\(m.id)-\(model.mandatesVersion)") { await model.loadMandateBookings(m) }
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Kein Mandat ausgewählt", systemImage: "doc.text")
@@ -49,6 +52,61 @@ struct MandateInspector: View {
     }
 
     @ViewBuilder
+    private func returnsCard(_ m: Mandate) -> some View {
+        let open = model.openReturns(of: m)
+        if let last = open.first {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Rücklastschrift – bitte prüfen", systemImage: "exclamationmark.triangle.fill")
+                    .appFont(.headline).foregroundStyle(Theme.negative)
+                Text("\(DateText.medium(last.date)) · \(Money.format(abs(last.amountCents)))" + (last.reason.isEmpty ? "" : " · \(last.reason)"))
+                    .appFont(.callout).sensitive()
+                Text("Die Bank hat einen Einzug zurückgegeben. Prüfe die Angaben des Mandats, bevor du erneut einziehst.")
+                    .appFont(.callout).foregroundStyle(Theme.secondary)
+                // side by side when they fit, else stacked: the inspector is narrow
+                // and larger text sizes must not cut the labels
+                ViewThatFits(in: .horizontal) {
+                    HStack { returnButtons(m) }
+                    VStack(alignment: .leading) { returnButtons(m) }
+                }
+                .buttonStyle(.bordered)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card()
+        }
+    }
+
+    @ViewBuilder
+    private var bookingsCard: some View {
+        if !model.mandateBookings.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Buchungen zu diesem Mandat").appFont(.caption).foregroundStyle(Theme.secondary)
+                ForEach(model.mandateBookings.prefix(6), id: \.bookingId) { b in
+                    HStack {
+                        Text(DateText.medium(b.date)).appFont(.callout)
+                        if b.isReturn {
+                            Text(b.reason.isEmpty ? String(localized: "Rücklastschrift") : b.reason)
+                                .appFont(.caption).foregroundStyle(Theme.negative)
+                        }
+                        Spacer()
+                        Text(Money.format(b.amountCents)).appFont(.callout, monospacedDigit: true).sensitive()
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .card()
+        }
+    }
+
+    @ViewBuilder
+    private func returnButtons(_ m: Mandate) -> some View {
+        Button("Als geprüft markieren", systemImage: "checkmark.circle") { model.acknowledgeReturns(m) }
+            .fixedSize()
+        if m.active {
+            Button("Deaktivieren", systemImage: "pause.circle") { model.setMandateActive(m, false) }
+                .fixedSize()
+        }
+    }
+
     private func field(_ label: LocalizedStringKey, _ value: String, mono: Bool = false, sensitive: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).appFont(.caption).foregroundStyle(Theme.secondary)

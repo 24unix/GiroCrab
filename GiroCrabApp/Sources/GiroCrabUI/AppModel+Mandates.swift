@@ -23,13 +23,35 @@ extension AppModel {
         }
         let version = mandatesVersion
         guard let r = try? await vaultOffMain({ v in
-            (try v.listMandates(accountId: acc), try v.creditorId(accountId: acc), try v.suggestedCreditorId())
+            (try v.listMandates(accountId: acc), try v.creditorId(accountId: acc), try v.suggestedCreditorId(),
+             try v.openMandateReturns(accountId: acc))
         }) else { return }
         guard acc == effectiveMandateAccount?.id, version == mandatesVersion else { return }
         mandates = r.0
         creditorID = r.1
         suggestedCreditorID = r.2
+        openMandateReturns = r.3
         if let s = selectedMandateID, !mandates.contains(where: { $0.id == s }) { selectedMandateID = nil }
+    }
+
+    /// Open returns of one mandate, newest first.
+    func openReturns(of m: Mandate) -> [MandateBooking] {
+        openMandateReturns.filter { $0.mandateId == m.id }
+    }
+
+    func loadMandateBookings(_ m: Mandate?) async {
+        guard let m else { mandateBookings = []; return }
+        let r = try? await vaultOffMain { try $0.mandateBookings(mandateId: m.id) }
+        guard selectedMandateID == m.id else { return }
+        mandateBookings = r ?? []
+    }
+
+    /// The user looked at the returns of this mandate.
+    func acknowledgeReturns(_ m: Mandate) {
+        Task { @MainActor in
+            _ = try? await vaultOffMain { try $0.acknowledgeMandateReturns(mandateId: m.id) }
+            mandatesVersion += 1
+        }
     }
 
     /// ↑/↓ in the mandate list; stops at both ends like the booking list.

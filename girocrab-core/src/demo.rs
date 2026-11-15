@@ -1557,6 +1557,19 @@ impl Vault {
                 ])?;
                 n += 1;
             }
+            // A returned direct debit (#143): Jan Muster's account was closed. Matches
+            // his mandate, so the mandate list and inspector show the return hint.
+            tx.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency, counterparty,
+                                          counterparty_iban, purpose, booking_text, checked, mandate_id, end_to_end_id)
+                 VALUES (?1, 'demo-return', ?2, ?2, -1250, 'EUR', 'Jan Muster', 'DE02120300000000202051',
+                         'Rücklastschrift AC04 Mitgliedsbeitrag', 'RÜCKLASTSCHRIFT', 0, 'M-2025-014', 'M-2025-014-20261001')",
+                params![
+                    acc_ids["demo-giro"],
+                    (today - Duration::days(5)).format("%Y-%m-%d").to_string()
+                ],
+            )?;
+            n += 1;
         }
         // Startsaldo (#212): the card reports no balance; it is computed from the
         // bookings, starting with the statement balance at the start of the
@@ -1652,11 +1665,11 @@ mod tests {
     }
 
     #[test]
-    fn demo_seed_has_seven_accounts_and_exactly_fifty_two_bookings() {
+    fn demo_seed_has_seven_accounts_and_exactly_fifty_three_bookings() {
         let dir_dir = crate::test_support::TempDir::new("girocrab-test");
         let dir = dir_dir.join("v.db");
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
-        assert_eq!(v.seed_demo_data().unwrap(), 52);
+        assert_eq!(v.seed_demo_data().unwrap(), 53);
         assert_eq!(v.account_count().unwrap(), 7);
         let car = v.list_manual_loans().unwrap();
         assert_eq!(car.len(), 1);

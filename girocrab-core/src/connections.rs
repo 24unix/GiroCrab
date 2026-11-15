@@ -169,13 +169,8 @@ fn merge_duplicate_account(conn: &Connection, keep: i64, dup: i64) -> CoreResult
         "UPDATE OR IGNORE security_transactions SET account_id = ?1 WHERE account_id = ?2",
         params![keep, dup],
     )?;
-    // order data (#239, #240): the caller deletes `dup`, and these tables
-    // reference it (standing_orders without a cascade: a leftover row would fail the delete)
-    conn.execute(
-        "UPDATE OR IGNORE planned_transfers SET account_id = ?1 WHERE account_id = ?2",
-        params![keep, dup],
-    )?;
-    // direct debit data (#143): same reason, no cascade on these tables
+    // direct debit and order data (#143, #239, #240): the caller deletes `dup`, and
+    // these tables reference it without a cascade (a leftover row would fail the delete)
     conn.execute(
         "UPDATE OR IGNORE mandates SET account_id = ?1 WHERE account_id = ?2",
         params![keep, dup],
@@ -191,6 +186,10 @@ fn merge_duplicate_account(conn: &Connection, keep: i64, dup: i64) -> CoreResult
         params![keep, dup],
     )?;
     conn.execute("DELETE FROM creditor_ids WHERE account_id = ?1", [dup])?;
+    conn.execute(
+        "UPDATE OR IGNORE planned_transfers SET account_id = ?1 WHERE account_id = ?2",
+        params![keep, dup],
+    )?;
     // standing orders are replaced on every fetch
     conn.execute("DELETE FROM standing_orders WHERE account_id = ?1", [dup])?;
     Ok(())

@@ -26,6 +26,7 @@
 //! - 19: direct debit mandates and creditor IDs (#143): tables `mandates`, `creditor_ids`,
 //!   `mandate_deletions` (marks for the vault merge).
 //! - 20: `planned_transfers.kind` (#143): `transfer` or `debit` (submitted collection, incoming).
+//! - 21: `mandates.returns_ack` (#143): returns acknowledged up to this date.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -62,6 +63,7 @@ const STEPS: &[Step] = &[
     Step::Hook(item_refs),                                     // 18 (repair, see above)
     Step::Hook(crate::mandates::mandates_tables),              // 19
     Step::Hook(crate::planned::planned_kind),                  // 20
+    Step::Hook(crate::mandates::mandate_return_ack),           // 21
 ];
 
 /// Step 14 (#314): securities transactions (buy, sell, dividend, fee, tax …)
@@ -585,7 +587,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 20);
+        assert_eq!(SCHEMA_VERSION, 21);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers
