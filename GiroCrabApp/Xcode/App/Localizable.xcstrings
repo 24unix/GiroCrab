@@ -7126,6 +7126,17 @@
         }
       }
     },
+    "Dunkel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dark"
+          }
+        }
+      }
+    },
     "EREF (Ende-zu-Ende-Referenz)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7925,6 +7936,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Try Again"
+          }
+        }
+      }
+    },
+    "Erscheinungsbild" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appearance"
           }
         }
       }
@@ -10070,6 +10092,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Heating"
+          }
+        }
+      }
+    },
+    "Hell" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Light"
+          }
+        }
+      }
+    },
+    "Hell oder Dunkel gilt nur für GiroCrab; „System“ folgt der Einstellung des Systems." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Light or Dark applies to GiroCrab only; “System” follows the system setting."
           }
         }
       }
@@ -18368,6 +18412,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Syncs your encrypted vault via iCloud. The key is never stored in iCloud Drive: it is shared via iCloud Keychain or pasted once on the second device."
+          }
+        }
+      }
+    },
+    "System" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System"
           }
         }
       }

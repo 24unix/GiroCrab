@@ -58,6 +58,7 @@ struct GeneralSettings: View {
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
+    @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
 
     var body: some View {
         @Bindable var model = model
@@ -74,6 +75,11 @@ struct GeneralSettings: View {
             LanguageSettingsSection()
             AnnouncementsSettingsSection()
             Section {
+                Picker("Erscheinungsbild", selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
+                }
+                Text("Hell oder Dunkel gilt nur für GiroCrab; „System“ folgt der Einstellung des Systems.")
+                    .appFont(.caption).foregroundStyle(.secondary)
                 #if os(macOS)
                 // iOS: the system's Dynamic Type setting (Einstellungen › Anzeige & Helligkeit).
                 Picker("Schriftgröße", selection: $textSize) {
