@@ -188,6 +188,7 @@ Rectangle {
                         TapHandler { enabled: amazonItem.url !== ""; onTapped: Qt.openUrlExternally(amazonItem.url) }
                         ToolTip.visible: itemHover.hovered; ToolTip.delay: 500
                         ToolTip.text: qsTr("Produkt auf %1 öffnen").arg(rc.amazonRef.domain)
+                        Sensitive {}
                     }
                 }
             }
@@ -207,6 +208,7 @@ Rectangle {
                 Text {
                     text: refundJump.source ? qsTr("Erstattung zu: %1").arg(refundJump.source.items) : ""
                     font.pixelSize: Theme.caption; color: Theme.accent; wrapMode: Text.Wrap; Layout.fillWidth: true
+                    Sensitive {}
                 }
                 HoverHandler { id: refundHover; cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: AppModel.selectedBookingID = refundJump.source.id }

@@ -590,6 +590,7 @@ Rectangle {
                         ToolTip.visible: itemsHover.hovered; ToolTip.delay: 600
                         ToolTip.text: br.amazonRef === null ? "" : br.amazonRef.isRefund
                             ? qsTr("Erstattung für Bestellung #%1").arg(br.amazonRef.code) : br.amazonRef.itemList.join("\n")
+                        Sensitive {}
                     }
                     // items beyond the two shown; the drill-down lists everything
                     Text {
@@ -614,6 +615,7 @@ Rectangle {
                         visible: br.amazonRef !== null
                         text: visible ? "· #" + br.amazonRef.code : ""
                         font.pixelSize: Theme.callout + 1; font.features: { "tnum": 1 }; color: Theme.tertiary
+                        Sensitive {}
                     }
                     // drill-down when there is more than the head can show (clicks: DayCardRow)
                     SFIcon {
@@ -644,6 +646,7 @@ Rectangle {
                     text: br.amazonRef === null ? "" : Fmt.money(br.amazonRef.isRefund ? br.booking.amount_cents : Math.abs(br.booking.amount_cents))
                     font.pixelSize: Theme.body; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                     color: br.amazonRef !== null && br.amazonRef.isRefund ? Theme.inflow : Theme.charge
+                    Sensitive {}
                 }
                 HoverHandler { id: orderAmountHover }
                 ToolTip.visible: orderAmountHover.hovered; ToolTip.delay: 600
@@ -660,7 +663,7 @@ Rectangle {
             Repeater {
                 model: !br.expanded ? [] : br.refundSource !== null ? br.refundSource.list : br.amazonRef.itemList
                 Text { required property string modelData; text: modelData; font.pixelSize: Theme.callout + 1; color: Theme.secondary
-                       elide: Text.ElideRight; Layout.fillWidth: true }
+                       elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
             }
         }
     }
