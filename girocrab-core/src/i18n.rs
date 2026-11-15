@@ -714,7 +714,7 @@ fn english(de: &str) -> Option<&'static str> {
         "REST-App auf developer.paypal.com mit aktivierter „Transaction Search“ anlegen." => "Create a REST app on developer.paypal.com with “Transaction Search” enabled.",
         "Secret derselben REST-App." => "Secret of the same REST app.",
         "PayPal-Umgebung" => "PayPal environment",
-        "live oder sandbox" => "live or sandbox",
+        "live (echte Daten) oder sandbox (nur Testdaten, z. B. „Initial Balance“)" => "live (real data) or sandbox (test data only, e.g. “Initial Balance”)",
         "Enable Banking Application-ID" => "Enable Banking application ID",
         "Bank oder Ländercode ungültig." => "Invalid bank or country code.",
         "Bank per PSD2 (Enable Banking)" => "Bank via PSD2 (Enable Banking)",
