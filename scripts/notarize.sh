@@ -1,3 +1,50 @@
+
+# Keep README.md download badges/links and sibling website (../girocrab.de) in sync with release version
+sync_release_docs() {
+  local ver="$1" # e.g. 0.7.5
+  [[ -z "$ver" ]] && return 0
+
+  python3 - "$ver" << 'PY'
+import pathlib, re, sys
+
+ver = sys.argv[1]
+
+# 1. README.md: DMG download URLs + versioned SVG badges
+readme = pathlib.Path("README.md")
+if readme.exists():
+    r = readme.read_text()
+    r2 = re.sub(r'releases/download/v[0-9]+\.[0-9]+\.[0-9]+/GiroCrab-[0-9]+\.[0-9]+\.[0-9]+\.dmg',
+                f'releases/download/v{ver}/GiroCrab-{ver}.dmg', r)
+    r2 = re.sub(r'(download-mac-v)[0-9]+\.[0-9]+\.[0-9]+(\.svg)', rf'\g<1>{ver}\2', r2)
+    r2 = re.sub(r'(alt="[^"]*v)[0-9]+\.[0-9]+\.[0-9]+(")', rf'\g<1>{ver}\2', r2)
+    if r2 != r:
+        readme.write_text(r2)
+        print(f"==> Updated README.md download badges/links to v{ver}")
+
+for svg in pathlib.Path(".").glob("docs/**/*0.*.svg"):
+    new_name = re.sub(r'[0-9]+\.[0-9]+\.[0-9]+', ver, svg.name)
+    s_txt = re.sub(r'v?[0-9]+\.[0-9]+\.[0-9]+', lambda m: ('v' if m.group(0).startswith('v') else '') + ver, svg.read_text())
+    target = svg.with_name(new_name)
+    target.write_text(s_txt)
+    if target != svg:
+        svg.unlink()
+
+# 2. Sibling website ../girocrab.de: DMG links & "Neu in v..." / "What's new in v..." headings
+site = pathlib.Path("../girocrab.de")
+if site.exists():
+    for html in site.glob("*.html"):
+        h = html.read_text()
+        h2 = re.sub(r'releases/download/v[0-9]+\.[0-9]+\.[0-9]+/GiroCrab-[0-9]+\.[0-9]+\.[0-9]+\.dmg',
+                    f'releases/download/v{ver}/GiroCrab-{ver}.dmg', h)
+        h2 = re.sub(r'(Neu in v)[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>{ver}', h2)
+        h2 = re.sub(r"(What['’]s new in v)[0-9]+\.[0-9]+\.[0-9]+", rf'\g<1>{ver}', h2)
+        h2 = re.sub(r'(Version\s+)[0-9]+\.[0-9]+\.[0-9]+', rf'\g<1>{ver}', h2)
+        if h2 != h:
+            html.write_text(h2)
+            print(f"==> Updated {html} to v{ver}")
+PY
+}
+
 #!/usr/bin/env bash
 # Build, Developer-ID sign, notarize, staple and verify GiroCrab.app (macOS),
 # and optionally archive & upload the iOS build to TestFlight / App Store Connect.
