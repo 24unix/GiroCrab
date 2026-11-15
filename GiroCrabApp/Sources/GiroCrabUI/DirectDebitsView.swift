@@ -225,8 +225,13 @@ private struct MandateRow: View {
                     Text(m.debtorName).appFont(.body, weight: .medium).lineLimit(1).sensitive()
                     Text("\(m.reference) · \(m.scheme.title)")
                         .appFont(.callout).foregroundStyle(Theme.secondary).lineLimit(1).sensitive()
-                    Text(m.active ? m.sequenceText : String(localized: "Inaktiv"))
-                        .appFont(.caption).foregroundStyle(Theme.tertiary)
+                    if !model.openReturns(of: m).isEmpty {
+                        Label("Rücklastschrift – bitte prüfen", systemImage: "exclamationmark.triangle.fill")
+                            .appFont(.caption, weight: .semibold).foregroundStyle(Theme.negative)
+                    } else {
+                        Text(m.active ? m.sequenceText : String(localized: "Inaktiv"))
+                            .appFont(.caption).foregroundStyle(Theme.tertiary)
+                    }
                 }
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 2) {

@@ -18,7 +18,7 @@ import Foundation
 ///  --select <text>        (demo) preselect the account whose name contains <text>
 ///  --demo-sheet account-selection|transfer|moneymoney|moneymoney-db|recurring|print|rules|palette|
 ///               categorizer|payee-match|payee-close|payee-nomatch|error|rule-edit|icon-color|category|icon-color-category|
-///               asset|asset-edit|asset-values|asset-quantities|mandate|collection|collection-files
+///               asset|asset-edit|asset-values|asset-quantities|mandate|collection|collection-files|mandate-select
 ///                         (demo) open that sheet pre-filled with fictional data,
 ///                         for README / PR screenshots
 ///  --demo-settings general|banks|groups|documents|security[:edit|:add|:remove|:select]

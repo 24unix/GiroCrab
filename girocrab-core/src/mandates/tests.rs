@@ -337,6 +337,150 @@ fn the_last_collection_is_final() {
     );
 }
 
+fn book(
+    v: &Vault,
+    account_id: i64,
+    ext: &str,
+    date: &str,
+    cents: i64,
+    purpose: &str,
+    mandate: &str,
+    e2e: &str,
+) {
+    let db = v.db().unwrap();
+    db.execute(
+        "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency,
+                counterparty, counterparty_iban, purpose, booking_text, mandate_id, end_to_end_id)
+         VALUES (?1, ?2, ?3, ?3, ?4, 'EUR', 'Mia Beispiel', 'DE89370400440532013000', ?5, 'Lastschrift', ?6, ?7)",
+        rusqlite::params![account_id, ext, date, cents, purpose, mandate, e2e],
+    )
+    .unwrap();
+}
+
+#[test]
+fn returns_flag_the_mandate_until_acknowledged() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    let m = v.save_mandate(None, input(acc, "M-RET")).unwrap();
+    let other = v.save_mandate(None, input(acc, "M-OTHER")).unwrap();
+    // collected via the EndToEndId, returned via the mandate reference
+    book(
+        &v,
+        acc,
+        "c1",
+        "2026-10-05",
+        1500,
+        "Beitrag",
+        "",
+        "M-RET-20261005",
+    );
+    book(
+        &v,
+        acc,
+        "r1",
+        "2026-10-09",
+        -1500,
+        "Rückgabe Lastschrift MS03 Beitrag",
+        "M-RET",
+        "",
+    );
+    // unrelated booking and a different mandate
+    book(&v, acc, "x1", "2026-10-09", -999, "Miete", "", "");
+    book(&v, acc, "o1", "2026-10-06", 1500, "Beitrag", "M-OTHER", "");
+
+    let all = v.mandate_bookings(m.id).unwrap();
+    assert_eq!(all.len(), 2);
+    assert!(all[0].is_return && !all[0].acknowledged);
+    assert_eq!(all[0].reason_code, "MS03");
+    assert!(!all[1].is_return);
+    assert!(v
+        .mandate_bookings(other.id)
+        .unwrap()
+        .iter()
+        .all(|b| !b.is_return));
+
+    let open = v.open_mandate_returns(Some(acc)).unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].mandate_id, m.id);
+
+    v.acknowledge_mandate_returns(m.id).unwrap();
+    assert!(v.open_mandate_returns(Some(acc)).unwrap().is_empty());
+    // a later return flags it again
+    book(
+        &v,
+        acc,
+        "r2",
+        "2026-11-09",
+        -1500,
+        "Rücklastschrift AC04",
+        "M-RET",
+        "",
+    );
+    let open = v.open_mandate_returns(None).unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].reason_code, "AC04");
+}
+
+#[test]
+fn iban_match_needs_the_reference_in_the_purpose() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    let m = v.save_mandate(None, input(acc, "M-IBAN")).unwrap();
+    book(
+        &v,
+        acc,
+        "a",
+        "2026-10-09",
+        -1500,
+        "Rücklastschrift zu M-IBAN",
+        "",
+        "",
+    );
+    book(
+        &v,
+        acc,
+        "b",
+        "2026-10-10",
+        -1500,
+        "Rücklastschrift ohne Bezug",
+        "",
+        "",
+    );
+    assert_eq!(v.mandate_bookings(m.id).unwrap().len(), 1);
+}
+
+#[test]
+fn long_references_still_match_their_collections() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    let long = "MITGLIED-2025-ABTEILUNG-JUGEND-0042";
+    let m = v.save_mandate(None, input(acc, long)).unwrap();
+    // the EndToEndId keeps only the first 26 characters of the reference
+    book(
+        &v,
+        acc,
+        "c",
+        "2026-10-05",
+        1500,
+        "Beitrag",
+        "",
+        "MITGLIED-2025-ABTEILUNG-JU-20261005",
+    );
+    book(
+        &v,
+        acc,
+        "r",
+        "2026-10-09",
+        -1500,
+        "Rücklastschrift MS02",
+        "",
+        "MITGLIED-2025-ABTEILUNG-JU-20261005",
+    );
+    let b = v.mandate_bookings(m.id).unwrap();
+    assert_eq!(b.len(), 2);
+    assert_eq!(v.open_mandate_returns(None).unwrap().len(), 1);
+}
+
 #[test]
 fn a_run_rejects_duplicates_and_collected_one_off_mandates() {
     let (v, _dir) = vault();
@@ -539,4 +683,32 @@ fn merge_creditor_id_newest_wins_and_a_removal_travels() {
     merge(&b, &a);
     assert_eq!(b.creditor_id(acc_b).unwrap(), "");
     assert_eq!(b.suggested_creditor_id().unwrap(), "");
+}
+
+#[test]
+fn merge_keeps_the_later_acknowledgement_of_returns() {
+    let (a, _da) = vault();
+    let (b, _db) = vault();
+    let acc_a = first_account(&a);
+    let m = a.save_mandate(None, input(acc_a, "M-1")).unwrap();
+    merge(&b, &a);
+    a.db()
+        .unwrap()
+        .execute(
+            "UPDATE mandates SET returns_ack = '2026-10-05' WHERE id = ?1",
+            [m.id],
+        )
+        .unwrap();
+    merge(&b, &a);
+    let on_b = by_ref(&b, "M-1").unwrap();
+    let ack: String = b
+        .db()
+        .unwrap()
+        .query_row(
+            "SELECT returns_ack FROM mandates WHERE id = ?1",
+            [on_b.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(ack, "2026-10-05");
 }

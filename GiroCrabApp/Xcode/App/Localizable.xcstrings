@@ -2904,7 +2904,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mark as Reviewed"
+            "value" : "Mark as Checked"
           }
         }
       }
@@ -5867,6 +5867,16 @@
         }
       }
     },
+    "Buchungen zu diesem Mandat" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bookings for this mandate"
+          }
+        }
+      }
+    },
     "Buchungen, die diese Regel kategorisiert hat, sind danach wieder ohne Kategorie. Das lässt sich nicht widerrufen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7292,6 +7302,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The bank declined (%1$@): %2$@"
+          }
+        }
+      }
+    },
+    "Die Bank hat einen Einzug zurückgegeben. Prüfe die Angaben des Mandats, bevor du erneut einziehst." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The bank returned a collection. Check the mandate's details before collecting again."
           }
         }
       }
@@ -18816,6 +18836,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Undo"
+          }
+        }
+      }
+    },
+    "Rücklastschrift" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Returned Collection"
+          }
+        }
+      }
+    },
+    "Rücklastschrift – bitte prüfen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Returned collection – please check"
           }
         }
       }

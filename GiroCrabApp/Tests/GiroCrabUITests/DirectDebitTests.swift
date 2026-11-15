@@ -29,6 +29,15 @@ final class DirectDebitTests: XCTestCase {
         XCTAssertEqual(model.mandates.filter(\.active).count, 3)
     }
 
+    /// The demo vault holds one open return, found at Jan Muster's mandate.
+    func testDemoReturnIsFoundAtItsMandate() async throws {
+        await model.reloadMandates()
+        let jan = try XCTUnwrap(model.mandates.first { $0.reference == "M-2025-014" })
+        XCTAssertEqual(model.openMandateReturns.map(\.mandateId), [jan.id])
+        XCTAssertEqual(model.openMandateReturns.first?.reasonCode, "AC04")
+        XCTAssertEqual(model.openMandateReturns.first?.amountCents, -1_250)
+    }
+
     func testSavingADraftAddsAMandateAndRejectsBadInput() async throws {
         await model.reloadMandates()
         model.newMandate()

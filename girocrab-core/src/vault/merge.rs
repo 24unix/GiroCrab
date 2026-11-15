@@ -61,6 +61,7 @@ impl Vault {
         crate::planned::merge_attached(&tx, &acc_map)?;
         crate::asset_classification::store::merge_attached(&tx)?;
         crate::mandates::merge_attached(&tx, &acc_map)?;
+        crate::mandates::merge_ack(&tx, &acc_map)?;
         tx.commit()?;
         Ok(st)
     }
