@@ -45,6 +45,19 @@ ScrollView {
         }
         SettingsFormSection {
             title: qsTr("Ansicht")
+            // Appearance.swift › AppAppearance (GitHub #388)
+            SettingsFormRow {
+                label: qsTr("Erscheinungsbild")
+                AppComboBox {
+                    Layout.preferredWidth: 200
+                    model: [{ id: "system", title: qsTr("System") }, { id: "light", title: qsTr("Hell") }, { id: "dark", title: qsTr("Dunkel") }]
+                    textRole: "title"; valueRole: "id"
+                    currentIndex: Math.max(0, ["system", "light", "dark"].indexOf(Theme.appearanceSettings.appearance))
+                    onActivated: Theme.appearanceSettings.appearance = currentValue
+                }
+            }
+            Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
+                   text: qsTr("Hell oder Dunkel gilt nur für GiroCrab; „System“ folgt der Einstellung des Systems.") }
             CheckBox {
                 text: qsTr("Auswertungen in der Übersicht anzeigen")
                 checked: AppModel.showStatistics

@@ -1,12 +1,20 @@
 pragma Singleton
 import QtQuick
+import QtCore
 
 // Formatting.swift › enum Theme: "Daylight" / "Nightfall" design tokens.
 QtObject {
     id: theme
-    /// `--dark` / `--light` (LaunchOptions.swift): "dark" / "light" force the appearance, "" = system.
+    /// Einstellungen › Allgemein › Erscheinungsbild (Appearance.swift, GitHub #388): `appearance`
+    /// = "system", "light" or "dark", the Mac's defaults key. Forced through this file alone (no
+    /// QStyleHints::setColorScheme, which Qt 6.6 lacks), like `--dark` / `--light`.
+    readonly property Settings appearanceSettings: Settings { property string appearance: "system" }
+    /// `--dark` / `--light` (LaunchOptions.swift) or the appearance setting: "dark" / "light" force
+    /// the appearance, "" = system. Screenshot launches follow the system unless forced by flag.
     readonly property string forced: Qt.application.arguments.indexOf("--dark") >= 0 ? "dark"
-        : Qt.application.arguments.indexOf("--light") >= 0 ? "light" : ""
+        : Qt.application.arguments.indexOf("--light") >= 0 ? "light"
+        : Qt.application.arguments.indexOf("--screenshot") >= 0 ? ""
+        : ["light", "dark"].indexOf(appearanceSettings.appearance) >= 0 ? appearanceSettings.appearance : ""
     readonly property bool dark: forced !== "" ? forced === "dark" : Application.styleHints.colorScheme === Qt.ColorScheme.Dark
     function c(light, darkHex) { return dark ? darkHex : light }
 
