@@ -1,0 +1,3 @@
+target/
+# written by the build for the QML language server (local paths)
+.qmlls.ini

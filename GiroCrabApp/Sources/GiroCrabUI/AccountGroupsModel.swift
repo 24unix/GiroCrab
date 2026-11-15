@@ -196,6 +196,8 @@ enum GroupDialog {
     case rename(UserGroup)
     /// "Umbenennen …" of an account (same alert as for groups).
     case renameAccount(Account)
+    /// "Kontoinhaber …" of an account (#280); empty text clears it.
+    case editOwner(Account)
     /// "Umbenennen …" of a category (same alert as for groups and accounts).
     case renameCategory(GiroCrabCore.Category)
     case delete(UserGroup)
@@ -207,7 +209,7 @@ enum GroupDialog {
     /// Text-input alert vs. confirmation dialog.
     var needsText: Bool {
         switch self {
-        case .create, .rename, .renameAccount, .renameCategory: true
+        case .create, .rename, .renameAccount, .renameCategory, .editOwner: true
         case .delete, .moveAccount, .merge: false
         }
     }
@@ -219,6 +221,7 @@ enum GroupDialog {
         case .rename: Text("Gruppe umbenennen")
         case .renameAccount: Text("Konto umbenennen")
         case .renameCategory: Text("Kategorie umbenennen")
+        case .editOwner: Text("Kontoinhaber")
         case .delete(let g): Text("Gruppe „\(g.name)“ löschen?")
         case .moveAccount(let a): Text("„\(a.name)“ verschieben nach")
         case .merge(_, let into): Text("Mit „\(into.name)“ zusammenführen?")
@@ -237,6 +240,7 @@ enum GroupDialog {
         switch self {
         case .rename(let g): g.name
         case .renameAccount(let a): a.name
+        case .editOwner(let a): a.owner
         case .renameCategory(let c): c.name
         default: ""
         }
@@ -420,6 +424,27 @@ extension AppModel {
         do {
             try vault.setUserGroupColor(uuid: g.uuid, colorHex: hex)
             afterGroupChange()
+        } catch {
+            errorMessage = describe(error)
+        }
+    }
+
+    func setAccountOwner(_ accountId: Int64, to owner: String) {
+        guard let vault else { return }
+        do {
+            try vault.setAccountOwner(accountId: accountId, owner: owner)
+            reloadAccounts()
+        } catch {
+            errorMessage = describe(error)
+        }
+    }
+
+    func setAccountKind(_ accountId: Int64, to kind: AccountKind) {
+        guard let vault else { return }
+        do {
+            try vault.setAccountKind(accountId: accountId, kind: kind)
+            reloadAccounts()
+            dashboardStale = true
         } catch {
             errorMessage = describe(error)
         }

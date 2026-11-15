@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/qt/qml/GiroCrab">
+        <file>assets/app-icon.png</file>
+        <!-- loaded on demand: needs qml6-module-qtquick-pdf at run time only -->
+        <file alias="PdfPreview.qml">qml-optional/PdfPreview.qml</file>
+    </qresource>
+</RCC>

@@ -229,4 +229,32 @@ extension ICloudFolderMigrationTests {
         try Data("v".utf8).write(to: dir.appendingPathComponent(snapName))
         XCTAssertFalse(ICloudFolderMigration.needsNewVaultConfirmation(dir))
     }
+
+    func test_picked_parent_with_vault_subfolder_is_detected() throws {
+        let root = try makeRoot()
+        XCTAssertNil(ICloudFolderMigration.vaultSubfolder(in: root))
+        let sub = root.appendingPathComponent("GiroCrab")
+        try fm.createDirectory(at: sub, withIntermediateDirectories: true)
+        XCTAssertNil(ICloudFolderMigration.vaultSubfolder(in: root))
+        // only an undownloaded placeholder: still a vault
+        try Data("p".utf8).write(to: sub.appendingPathComponent(".\(snapName).icloud"))
+        XCTAssertEqual(ICloudFolderMigration.vaultSubfolder(in: root), "GiroCrab")
+        XCTAssertFalse(ICloudFolderMigration.needsNewVaultConfirmation(sub))
+    }
+
+    func test_waitForVault_sees_file_that_appears_later() async throws {
+        let root = try makeRoot()
+        let dir = root.appendingPathComponent("moneymoney")
+        let name = snapName
+        Task.detached {
+            try? await Task.sleep(for: .milliseconds(700))
+            try? Data("v".utf8).write(to: dir.appendingPathComponent(name))
+        }
+        let found = await ICloudFolderMigration.waitForVault(in: dir, wait: 5)
+        XCTAssertTrue(found)
+        let empty = root.appendingPathComponent("leer")
+        try fm.createDirectory(at: empty, withIntermediateDirectories: true)
+        let notFound = await ICloudFolderMigration.waitForVault(in: empty, wait: 0.6)
+        XCTAssertFalse(notFound)
+    }
 }

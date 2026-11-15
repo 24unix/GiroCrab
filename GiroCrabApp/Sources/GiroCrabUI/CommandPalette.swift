@@ -33,6 +33,9 @@ struct CommandPaletteView: View {
             out.append(Item(title: String(localized: "Alle Konten abrufen"), subtitle: "\(action) · ⌘R", symbol: "arrow.triangle.2.circlepath") { model.requestSyncAll() })
         }
         out.append(Item(title: String(localized: "Regeln bearbeiten"), subtitle: action, symbol: "wand.and.stars") { model.openRuleEditor() })
+        out.append(Item(title: String(localized: "Umsätze exportieren"), subtitle: action, symbol: "square.and.arrow.up") {
+            model.afterPaletteDismiss = { model.openBookingExport() }
+        })
         out.append(Item(title: String(localized: "Buchungen drucken"), subtitle: "\(action) · ⌘P", symbol: "printer") {
             // once the palette sheet is gone: one sheet at a time
             model.afterPaletteDismiss = { model.showPrintSheet = true }

@@ -112,13 +112,20 @@ struct StreamHeaderCard: View {
             if isDepot {
                 // positions are cards below; the chart shows the value history
                 // (Sachwerte: of the selected item, if one is selected)
-                #if os(iOS)
-                BalanceChart(points: depotChartPoints) { _ in }
-                    .frame(height: 44)
-                #else
-                BalanceChart(points: depotChartPoints) { _ in }
-                    .frame(height: 72)
-                #endif
+                if let hint = depotSinglePointHint {
+                    Text(hint)
+                        .appFont(.caption)
+                        .foregroundStyle(Theme.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    #if os(iOS)
+                    BalanceChart(points: depotChartPoints) { _ in }
+                        .frame(height: 44)
+                    #else
+                    BalanceChart(points: depotChartPoints) { _ in }
+                        .frame(height: 72)
+                    #endif
+                }
                 depotRow
                     .popover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
                         CustomPeriodForm()
@@ -205,12 +212,25 @@ struct StreamHeaderCard: View {
     }
 
     private var depotChartPoints: [DailyBalance] {
-        guard let a = account, model.selectedAssetItem(in: a.id) != nil else { return model.history }
-        // the item's history follows the selected period like the account chart
-        let (from, to) = model.periodRange
-        return model.assetStore.selectedHistory.filter { p in
-            (from.map { p.date >= $0 } ?? true) && (to.map { p.date <= $0 } ?? true)
+        guard let a = account else { return model.history }
+        if model.selectedAssetItem(in: a.id) != nil {
+            // the item's history follows the selected period like the account chart
+            let (from, to) = model.periodRange
+            return model.assetStore.selectedHistory.filter { p in
+                (from.map { p.date >= $0 } ?? true) && (to.map { p.date <= $0 } ?? true)
+            }
         }
+        // securities (#465): no flat line before the first / after the last real value
+        return model.isTangible(a.id) ? model.history : DepotChartSeries.points(model.history, lastDate: a.balanceDate)
+    }
+
+    /// Securities depot with fewer than two real value dates: a hint instead of a fake flat line.
+    private var depotSinglePointHint: String? {
+        guard let a = account, !model.isTangible(a.id), model.selectedAssetItem(in: a.id) == nil,
+              depotChartPoints.count < 2 else { return nil }
+        return a.balanceDate.isEmpty
+            ? String(localized: "Noch kein Verlauf")
+            : String(localized: "Stand: \(DateText.medium(a.balanceDate)) – Verlauf entsteht mit weiteren Abrufen")
     }
 
     /// Sachwerte: "Sachwerte · Auto (Kombi)" while an item is selected, else "Sachwerte · Gesamt".
@@ -857,5 +877,23 @@ private struct BalanceChartDescriptor: AXChartDescriptorRepresentable {
             dataPoints: points.map { AXDataPoint(x: $0.0.timeIntervalSince1970, y: $0.1) }
         )
         return AXChartDescriptor(title: String(localized: "Saldoverlauf"), summary: nil, xAxis: x, yAxis: y, additionalAxes: [], series: [series])
+    }
+}
+
+/// Value series of a securities depot (#465): the daily walk-back carries today's value
+/// flat across the whole period, so the line is cut to the real value dates: nothing
+/// before the first change and nothing after the last snapshot (`lastDate`).
+enum DepotChartSeries {
+    static func points(_ all: [DailyBalance], lastDate: String) -> [DailyBalance] {
+        var pts = lastDate.isEmpty ? all : all.filter { $0.date <= lastDate }
+        guard let firstChange = pts.indices.dropFirst().first(where: { pts[$0].balanceCents != pts[$0 - 1].balanceCents }) else {
+            return []   // never changed: a single value, not a line
+        }
+        pts = Array(pts[(firstChange - 1)...])
+        // drop a flat tail after the last change (not carried forward to today)
+        if let lastChange = pts.indices.dropFirst().last(where: { pts[$0].balanceCents != pts[$0 - 1].balanceCents }) {
+            pts = Array(pts[...lastChange])
+        }
+        return pts
     }
 }
