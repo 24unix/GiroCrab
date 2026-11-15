@@ -150,10 +150,10 @@ extension AppModel {
         return (try? vault?.listDocumentsForBooking(bookingId: booking.id)) ?? []
     }
 
-    func allDocuments(search: String = "", unlinkedOnly: Bool = false, accountId: Int64? = nil) -> [DocumentInfo] {
+    func allDocuments(search: String = "", unlinkedOnly: Bool = false, accountId: Int64? = nil, scope: DocumentsScope = .all) -> [DocumentInfo] {
         _ = documentsVersion
         let f = DocumentFilter(accountId: accountId, docType: nil, search: search.isEmpty ? nil : search, unlinkedOnly: unlinkedOnly)
-        return (try? vault?.listAllDocuments(filter: f)) ?? []
+        return ((try? vault?.listAllDocuments(filter: f)) ?? []).filter(scope.includes)
     }
 
     func documentData(_ doc: DocumentInfo) -> Data? {

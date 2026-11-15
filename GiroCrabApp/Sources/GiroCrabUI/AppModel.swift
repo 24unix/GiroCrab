@@ -268,6 +268,7 @@ public final class AppModel {
     /// The "new category" name prompt on screen (sidebar, menu bar, ⌘K).
     var newCategoryRequest: NewCategoryRequest?
     /// "Belege & PostBox" filtered to one account (#172); nil = all accounts.
+    var documentsScope: DocumentsScope = .all
     var documentsAccountFilter: Int64?
     /// „Geplant“ (#240): payments with a bank order, the filters and a reload
     /// marker (set by everything that can change them: transfers, syncs).

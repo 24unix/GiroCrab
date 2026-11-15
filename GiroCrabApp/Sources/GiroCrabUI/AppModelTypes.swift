@@ -25,6 +25,53 @@ enum SidebarItem: Hashable {
     case wealth
 }
 
+/// Document origin is independent of its booking link. Bank connectors and
+/// statement imports store a source key; user uploads leave it empty.
+enum DocumentsScope: String, CaseIterable, Identifiable {
+    case all, receipts, postbox
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .all: return String(localized: "Alle Dokumente")
+        case .receipts: return String(localized: "Belege")
+        case .postbox: return String(localized: "PostBox")
+        }
+    }
+
+    var heading: String {
+        self == .all ? String(localized: "Belege & PostBox") : title
+    }
+
+    var description: String {
+        switch self {
+        case .all:
+            return String(localized: "Eigene Belege und Bankdokumente – verschlüsselt im Tresor. Die Auswahl eines Kontos grenzt die Sammlung ein.")
+        case .receipts:
+            return String(localized: "Selbst hinzugefügte Rechnungen, Kassenbons und Fotos. PDF oder Foto hierher ziehen: GiroCrab sucht den passenden Umsatz.")
+        case .postbox:
+            return String(localized: "Von der Bank bereitgestellte Kontoauszüge, Wertpapierabrechnungen und Mitteilungen. Sie gehören zum Konto und können einem Umsatz zugeordnet sein.")
+        }
+    }
+
+    func includes(_ document: DocumentInfo) -> Bool {
+        switch self {
+        case .all: return true
+        case .receipts: return !document.isBankDocument
+        case .postbox: return document.isBankDocument
+        }
+    }
+}
+
+extension DocumentInfo {
+    var isBankDocument: Bool {
+        // Old demo vaults used synthetic source keys for their uploaded receipts.
+        !sourceUrl.isEmpty && !sourceUrl.hasPrefix("demo-doc-")
+    }
+    var originTitle: String {
+        isBankDocument ? String(localized: "PostBox") : String(localized: "Beleg")
+    }
+}
+
 /// Period of the booking list and its sums. The menu follows MoneyMoney
 /// (GitHub #382): rolling windows, then the latest months, quarters and years
 /// by name, counted back from today.

@@ -965,13 +965,14 @@ struct MainToolbar: ViewModifier {
         #else
         content.toolbar(id: "girocrab.main") {
             ToolbarItem(id: "scope", placement: .principal) {
-                // Same toolbar item, other content: the booking filter makes no sense in
-                // the wealth view (a customizable toolbar must not lose items).
+                // Keep one customizable toolbar item, with the filter for the current view.
                 if model.sidebarSelection == .wealth {
                     WealthScopePicker()
+                } else if model.sidebarSelection == .documents {
+                    DocumentsScopePicker()
                 } else {
                     BookingScopePicker()
-                        .disabled(model.sidebarSelection == .documents || model.sidebarSelection == .newBookings)
+                        .disabled(model.sidebarSelection == .newBookings)
                 }
             }
             ToolbarItem(id: "transfer", placement: .primaryAction) {

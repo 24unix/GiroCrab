@@ -669,6 +669,47 @@
         }
       }
     },
+    "%lld Dokumente" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Dokument"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Dokumente"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Document"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Documents"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld Kategorien: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2504,6 +2545,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "All bookings of"
+          }
+        }
+      }
+    },
+    "Alle Dokumente" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All Documents"
+          }
+        }
+      }
+    },
+    "Alle Dokumente anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show All Documents"
+          }
+        }
+      }
+    },
+    "Alle Dokumente, eigene Belege oder Bankdokumente anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show all documents, your receipts or bank documents"
           }
         }
       }
@@ -4936,6 +5010,17 @@
         }
       }
     },
+    "Beleg" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receipt"
+          }
+        }
+      }
+    },
     "Beleg auswählen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4947,6 +5032,17 @@
         }
       }
     },
+    "Beleg hinzufügen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Receipt…"
+          }
+        }
+      }
+    },
     "Beleg in Quick Look anzeigen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4954,6 +5050,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Quick Look Document"
+          }
+        }
+      }
+    },
+    "Beleg konnte nicht importiert werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could Not Import Receipt"
           }
         }
       }
@@ -5009,6 +5116,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Document matched: %@"
+          }
+        }
+      }
+    },
+    "Belege" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receipts"
           }
         }
       }
@@ -7781,6 +7899,17 @@
         }
       }
     },
+    "Die gesamte Dokumentensammlung exportieren, unabhängig von den Filtern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export the entire document collection, regardless of the filters"
+          }
+        }
+      }
+    },
     "Die neue Sprache wird nach einem Neustart verwendet." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8067,6 +8196,17 @@
         }
       }
     },
+    "Dokument auswählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select a Document"
+          }
+        }
+      }
+    },
     "Dokument konnte nicht gesichert werden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8118,6 +8258,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Automatically save documents to a folder"
+          }
+        }
+      }
+    },
+    "Dokumente eines Kontos anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show documents for an account"
           }
         }
       }
@@ -8408,6 +8559,17 @@
         }
       }
     },
+    "Eigene Belege und Bankdokumente – verschlüsselt im Tresor. Die Auswahl eines Kontos grenzt die Sammlung ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your receipts and bank documents, encrypted in the vault. Select an account to narrow the collection."
+          }
+        }
+      }
+    },
     "Eigene Domain für das Logo eintragen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8569,6 +8731,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "A depot shows its positions above. Buys, sells and savings plans appear as bookings on the clearing account."
+          }
+        }
+      }
+    },
+    "Ein Dokument aus der Liste auswählen, um die Vorschau zu öffnen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select a document from the list to open its preview."
           }
         }
       }
@@ -10357,6 +10530,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "For your tax return: all documents sorted by year into a folder"
+          }
+        }
+      }
+    },
+    "Für diese Auswahl wurden keine Dokumente gefunden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No documents were found for this selection."
           }
         }
       }
@@ -13714,6 +13898,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No matching transactions."
+          }
+        }
+      }
+    },
+    "Keine passenden Dokumente" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Matching Documents"
           }
         }
       }
@@ -17430,6 +17625,17 @@
         }
       }
     },
+    "Nur ohne zugeordneten Umsatz" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only without a Linked Booking"
+          }
+        }
+      }
+    },
     "Nutzt ein anderes Gerät (etwa die Mac-App) den Ordner „GiroCrab“ in iCloud Drive, wählen Sie diesen Ordner, damit beide denselben Tresor sehen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17606,6 +17812,17 @@
         }
       }
     },
+    "Ohne Konto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Account"
+          }
+        }
+      }
+    },
     "Ohne Positionsdaten" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17646,6 +17863,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No real bank: login “demo”, PIN 12345, any TAN"
+          }
+        }
+      }
+    },
+    "Ohne zugeordneten Umsatz" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Linked Booking"
           }
         }
       }
@@ -17877,6 +18105,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Could not merge PDF pages."
+          }
+        }
+      }
+    },
+    "PDFs oder Fotos auswählen und einem passenden Umsatz zuordnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select PDFs or photos and link them to a matching booking"
           }
         }
       }
@@ -18317,6 +18556,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mail"
+          }
+        }
+      }
+    },
+    "PostBox" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PostBox"
           }
         }
       }
@@ -19750,6 +20000,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Page %lld/%lld"
+          }
+        }
+      }
+    },
+    "Selbst hinzugefügte Rechnungen, Kassenbons und Fotos. PDF oder Foto hierher ziehen: GiroCrab sucht den passenden Umsatz." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invoices, receipts and photos you added yourself. Drop a PDF or photo here: GiroCrab looks for a matching booking."
           }
         }
       }
@@ -22538,6 +22799,17 @@
         }
       }
     },
+    "Von der Bank bereitgestellte Kontoauszüge, Wertpapierabrechnungen und Mitteilungen. Sie gehören zum Konto und können einem Umsatz zugeordnet sein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account statements, securities confirmations and notices provided by your bank. They belong to the account and may be linked to a booking."
+          }
+        }
+      }
+    },
     "Von diesem Konto kann GiroCrab nicht direkt überweisen. Am Ende erhalten Sie einen GiroCode zum Scannen in der App Ihrer Bank." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -23843,6 +24115,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Last checked"
+          }
+        }
+      }
+    },
+    "Zuordnung aufheben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unlink from Booking"
           }
         }
       }
