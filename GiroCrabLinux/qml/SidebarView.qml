@@ -66,6 +66,51 @@ Rectangle {
         return out
     }
 
+    /// The selection key of a row, "" for rows that cannot be selected.
+    function rowKey(r) {
+        switch (r.type) {
+        case "allAccounts": return "all"
+        case "nav": return r.key
+        case "userGroup": return "userGroup:" + r.group.uuid
+        case "kindGroup": return (r.bank ? "bank:" : "group:") + r.group.id
+        case "account": return "account:" + r.account.id
+        case "category": return "category:" + r.category.id
+        default: return ""
+        }
+    }
+    /// ↑/↓: the next selectable row, kept in view.
+    function moveSelection(delta) {
+        const sel = AppModel.sidebarSelection
+        let i = rows.findIndex(r => rowKey(r) === sel)
+        if (i < 0) i = delta > 0 ? -1 : rows.length
+        for (i += delta; i >= 0 && i < rows.length; i += delta) {
+            const key = rowKey(rows[i])
+            if (key === "") continue
+            AppModel.sidebarSelection = key
+            // the first row also brings the accounts header back into view
+            if (i === 0) list.contentY = -list.topMargin
+            else list.positionViewAtIndex(i, ListView.Contain)
+            return
+        }
+    }
+    /// →/←: expand / collapse the selected category; ← on a sub-category selects its parent.
+    function foldSelection(expand) {
+        const sel = AppModel.sidebarSelection
+        const i = rows.findIndex(r => rowKey(r) === sel)
+        if (i < 0 || rows[i].type !== "category") return false
+        const r = rows[i]
+        if (r.hasChildren && r.open !== expand) { AppModel.toggleExpandedCategory(r.category.id); return true }
+        if (expand) return false
+        for (let j = i - 1; j >= 0 && rows[j].type === "category"; j--) {
+            if (rows[j].depth === r.depth - 1) {
+                AppModel.sidebarSelection = rowKey(rows[j])
+                list.positionViewAtIndex(j, ListView.Contain)
+                return true
+            }
+        }
+        return false
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -74,9 +119,21 @@ Rectangle {
         // the ListView: a rebuilt model gives the view's current item the focus, which would take
         // it from the search field after every keystroke.
         Item {
+            id: keyNav
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
+            // List(selection:): ↑/↓ walk the selectable rows, ←/→ fold a category with
+            // sub-categories (its DisclosureGroup); ← on a sub-category goes to its parent.
+            // The focus sits here, not on the ListView (see the comment above).
+            Keys.onPressed: e => {
+                // keys the search field (a child) does not take stay with the field
+                if (!keyNav.activeFocus) return
+                if (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier | Qt.ShiftModifier)) return
+                if (e.key === Qt.Key_Down) { sidebar.moveSelection(1); e.accepted = true }
+                else if (e.key === Qt.Key_Up) { sidebar.moveSelection(-1); e.accepted = true }
+                else if (e.key === Qt.Key_Right || e.key === Qt.Key_Left) e.accepted = sidebar.foldSelection(e.key === Qt.Key_Right)
+            }
             // Mouse drags move accounts and groups (like the Mac sidebar); the wheel scrolls.
             WheelHandler {
                 onWheel: e => {
@@ -93,6 +150,8 @@ Rectangle {
             model: sidebar.rows
             boundsBehavior: Flickable.StopAtBounds
             interactive: false
+            /// A click on a row gives the sidebar the keyboard (SidebarRow).
+            function takeKeyFocus() { keyNav.forceActiveFocus(Qt.MouseFocusReason) }
             ScrollBar.vertical: AppScrollBar {}
             delegate: DelegateChooser {
                 role: "type"
