@@ -69,25 +69,30 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        ListView {
-            id: list
+        // The accounts header (with the search field) scrolls with the list but is not part of
+        // the ListView: a rebuilt model gives the view's current item the focus, which would take
+        // it from the search field after every keystroke.
+        Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            topMargin: 10
-            bottomMargin: 10
-            model: sidebar.rows
-            boundsBehavior: Flickable.StopAtBounds
             // Mouse drags move accounts and groups (like the Mac sidebar); the wheel scrolls.
-            interactive: false
             WheelHandler {
                 onWheel: e => {
                     const max = Math.max(0, list.contentHeight - list.height + list.topMargin + list.bottomMargin)
                     list.contentY = Math.max(-list.topMargin, Math.min(max - list.topMargin, list.contentY - e.angleDelta.y / 120 * 48))
                 }
             }
+        ListView {
+            id: list
+            anchors.fill: parent
+            clip: true
+            topMargin: 10 + accountsHeader.height
+            bottomMargin: 10
+            model: sidebar.rows
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: false
             ScrollBar.vertical: AppScrollBar {}
-            header: AccountsSectionHeader {}
             delegate: DelegateChooser {
                 role: "type"
                 DelegateChoice { roleValue: "nav"; delegate: SidebarRow {
@@ -267,6 +272,13 @@ Rectangle {
                     }
                 } }
             }
+        }
+        AccountsSectionHeader {
+            id: accountsHeader
+            width: list.width
+            // above the first row: content y -height, i.e. 10 px below the top when scrolled up
+            y: -height - list.contentY
+        }
         }
 
         // safeAreaInset(edge: .bottom): lock state + "Bank hinzufügen"
