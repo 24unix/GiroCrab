@@ -9,7 +9,7 @@ import QtQuick.Layouts
 Item {
     id: root
     readonly property string kind: AppModel.groupDialog ? AppModel.groupDialog.kind : ""
-    readonly property bool needsText: ["create", "rename", "renameAccount"].indexOf(kind) >= 0
+    readonly property bool needsText: ["create", "rename", "renameAccount", "editOwner"].indexOf(kind) >= 0
 
     /// GroupDialog.title
     function titleOf(d) {
@@ -17,6 +17,7 @@ Item {
         case "create": return d.parent ? qsTr("Neue Untergruppe in „%1“").arg(d.parent.name) : qsTr("Neue Gruppe")
         case "rename": return qsTr("Gruppe umbenennen")
         case "renameAccount": return qsTr("Konto umbenennen")
+        case "editOwner": return qsTr("Kontoinhaber")
         case "delete": return qsTr("Gruppe „%1“ löschen?").arg(d.group.name)
         case "merge": return qsTr("Mit „%1“ zusammenführen?").arg(d.into.name)
         }
@@ -34,13 +35,16 @@ Item {
         z: 10
         onAboutToShow: {
             current = AppModel.groupDialog
-            field.text = current.kind === "rename" ? current.group.name : current.kind === "renameAccount" ? current.account.name : ""
+            field.text = current.kind === "rename" ? current.group.name : current.kind === "renameAccount" ? current.account.name
+                       : current.kind === "editOwner" ? (current.account.owner || "") : ""
             field.selectAll(); field.forceActiveFocus()
         }
         onClosed: root.dismissed(current)
         function submit() {
             const d = current
             const name = field.text.trim()
+            // "Kontoinhaber …" (#280): empty text clears the owner
+            if (d.kind === "editOwner") { close(); AppModel.setAccountOwner(d.account.id, name); return }
             if (name === "") return
             close()
             switch (d.kind) {
@@ -66,13 +70,15 @@ Item {
                 text: moving ? qsTr("„%1“ wird in die neue Gruppe verschoben.").arg(moving.name) : ""
                 font.pixelSize: Theme.callout; color: Theme.secondary; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; Layout.fillWidth: true
             }
-            TextField { id: field; Layout.fillWidth: true; placeholderText: qsTr("Name, z. B. „Privat“ oder „Geschäft“"); onAccepted: textAlert.submit() }
+            TextField { id: field; Layout.fillWidth: true; onAccepted: textAlert.submit()
+                        placeholderText: textAlert.current && textAlert.current.kind === "editOwner" ? qsTr("Name des Kontoinhabers") : qsTr("Name, z. B. „Privat“ oder „Geschäft“") }
             RowLayout {
                 Layout.fillWidth: true
                 Button { text: qsTr("Abbrechen"); Layout.fillWidth: true; onClicked: textAlert.close() }
                 Button {
-                    text: textAlert.current && textAlert.current.kind !== "create" ? qsTr("Umbenennen") : qsTr("Anlegen")
-                    highlighted: true; Layout.fillWidth: true; enabled: field.text.trim() !== ""; onClicked: textAlert.submit()
+                    readonly property string k: textAlert.current ? textAlert.current.kind : ""
+                    text: k === "editOwner" ? qsTr("Sichern") : k !== "create" ? qsTr("Umbenennen") : qsTr("Anlegen")
+                    highlighted: true; Layout.fillWidth: true; enabled: k === "editOwner" || field.text.trim() !== ""; onClicked: textAlert.submit()
                 }
             }
         }

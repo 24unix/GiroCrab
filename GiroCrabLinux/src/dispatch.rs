@@ -862,6 +862,7 @@ vault_methods! {
     delete_user_group(uuid) merge_user_groups(from_uuid, into_uuid) set_user_group_color(uuid, color_hex)
     set_account_archived(account_id, archived) set_account_color(account_id, color_hex)
     set_account_symbol(account_id, sf_symbol) reset_account_symbol(account_id)
+    set_account_kind(account_id, kind) set_account_owner(account_id, owner)
     // categories
     list_categories(date_from, date_to)
     create_category(name, parent_id, sf_symbol, color_hex)
@@ -1218,6 +1219,25 @@ mod tests {
             json!({ "filter": filter, "checked": true }),
         );
         assert!(again.as_array().unwrap().is_empty());
+        // Sidebar › account menu: Kontoart ändern …, Kontoinhaber …
+        let id = call("list_accounts", json!({}))[0]["id"].clone();
+        call(
+            "set_account_kind",
+            json!({ "account_id": id, "kind": "Savings" }),
+        );
+        call(
+            "set_account_owner",
+            json!({ "account_id": id, "owner": "  Erika Muster " }),
+        );
+        let acc = call("list_accounts", json!({}))
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == id)
+            .cloned()
+            .unwrap();
+        assert_eq!(acc["kind"], "Savings");
+        assert_eq!(acc["owner"], "Erika Muster");
         assert_eq!(
             call_ok("bic_for_iban", json!({ "iban": "DE89370400440532013000" })),
             json!("COBADEFF")

@@ -2,10 +2,15 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// AccountGroupsUI.swift › AccountsSectionHeader: "Konten" + archive toggle, group actions, Gruppen/Kontoart picker.
+// AccountGroupsUI.swift › AccountsSectionHeader: "Konten" + archive toggle, group actions,
+// Gruppen/Banken/Kontoart picker, account search. The ListView header (not a row): the
+// search field keeps its focus while the rows below are rebuilt on every keystroke.
 Item {
-    width: ListView.view.width
-    implicitHeight: col.implicitHeight + 14
+    id: header
+    width: parent ? parent.width : 200
+    implicitHeight: AppModel.allAccounts.length ? col.implicitHeight + 14 : 0
+    height: implicitHeight
+    visible: AppModel.allAccounts.length > 0
     ColumnLayout {
         id: col
         anchors.left: parent.left; anchors.right: parent.right
@@ -33,9 +38,42 @@ Item {
         Segmented {
             Layout.fillWidth: true
             Accessible.name: qsTr("Konten anzeigen nach")
-            options: [{ id: "byGroup", title: qsTr("Gruppen") }, { id: "byKind", title: qsTr("Kontoart") }]
+            options: [{ id: "byGroup", title: qsTr("Gruppen") }, { id: "byBank", title: qsTr("Banken") }, { id: "byKind", title: qsTr("Kontoart") }]
             current: AppModel.accountView
             onActivated: id => AppModel.setAccountView(id)
+        }
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.topMargin: 6
+            implicitHeight: searchRow.implicitHeight + 10
+            radius: 6
+            color: Theme.withAlpha(Theme.tertiary, 0.12)
+            Accessible.name: qsTr("Konten suchen")
+            RowLayout {
+                id: searchRow
+                anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8
+                spacing: 6
+                SFIcon { symbol: "magnifyingglass"; size: Theme.caption; color: Theme.tertiary }
+                TextField {
+                    id: search
+                    Layout.fillWidth: true
+                    padding: 0; leftPadding: 0; rightPadding: 0
+                    background: null
+                    placeholderText: qsTr("Name, Kontoinhaber, IBAN …")
+                    font.pixelSize: Theme.caption
+                    color: Theme.text
+                    text: AppModel.sidebarAccountSearch
+                    onTextEdited: AppModel.sidebarAccountSearch = text
+                    Keys.onEscapePressed: AppModel.sidebarAccountSearch = ""
+                }
+                IconButton {
+                    visible: AppModel.sidebarAccountSearch !== ""
+                    symbol: "xmark.circle.fill"; symbolSize: Theme.caption; tint: Theme.tertiary
+                    implicitWidth: 16; implicitHeight: 16
+                    Accessible.name: qsTr("Suche löschen")
+                    onClicked: AppModel.sidebarAccountSearch = ""
+                }
+            }
         }
     }
 }

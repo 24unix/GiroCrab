@@ -8,47 +8,60 @@ Rectangle {
     id: sidebar
     color: Theme.sidebar
 
-    /// The List of the Swift view, flattened into typed rows.
+    /// The List of the Swift view, flattened into typed rows. The accounts header with
+    /// the search field is the ListView header, so typing does not rebuild it.
     readonly property var rows: {
         const m = AppModel
         const out = []
-        out.push({ type: "nav", key: "all", symbol: "square.grid.2x2", title: qsTr("Übersicht"), badge: m.newCount })
-        out.push({ type: "nav", key: "documents", symbol: "doc.on.doc", title: qsTr("Belege & PostBox"), badge: 0 })
-        if (m.allAccounts.length) out.push({ type: "accountsHeader" })
-        const shown = a => m.showArchivedAccounts || a.archived_unix === null
-        if (m.accountView === "byGroup") {
-            for (const g of m.userGroups) {
-                if (!m.isUserGroupVisible(g)) continue
-                const open = !m.collapsedUserGroups[g.uuid]
-                out.push({ type: "userGroup", group: g, open: open })
-                if (!open) continue
-                if (!g.accounts.length && !g.is_ungrouped && m.userGroupSubtree(g.uuid).length === 1)
-                    out.push({ type: "hint", depth: g.depth, text: qsTr("Konten hierher ziehen"), group: g })
-                g.accounts.forEach((a, i) => { if (shown(a)) out.push({ type: "account", account: a, indent: g.depth * 14 + 14, group: g, row: i }) })
-            }
-        } else {
-            for (const g of m.groups) {
-                const open = !m.collapsedGroups[g.id]
-                out.push({ type: "kindGroup", group: g, open: open })
-                if (open) for (const a of g.accounts) if (shown(a)) out.push({ type: "account", account: a, indent: 0 })
+        // the root of the account tree: „Alle Konten“
+        out.push({ type: "allAccounts" })
+        const shown = a => m.isSidebarAccountListed(a)
+        if (m.showsAccountTree) {
+            // one step right of „Alle Konten“
+            if (m.accountView === "byGroup") {
+                for (const g of m.userGroups) {
+                    if (!m.isUserGroupListed(g)) continue
+                    const open = m.isUserGroupOpen(g)
+                    out.push({ type: "userGroup", group: g, open: open })
+                    if (!open) continue
+                    if (!m.isSidebarAccountSearching && !g.accounts.length && !g.is_ungrouped && m.userGroupSubtree(g.uuid).length === 1)
+                        out.push({ type: "hint", depth: g.depth, text: qsTr("Konten hierher ziehen"), group: g })
+                    g.accounts.forEach((a, i) => { if (shown(a)) out.push({ type: "account", account: a, indent: g.depth * 14 + 28, group: g, row: i }) })
+                }
+            } else {
+                const byBank = m.accountView === "byBank"
+                for (const g of (byBank ? m.bankGroups : m.groups)) {
+                    const listed = g.accounts.filter(shown)
+                    // while searching, hide empty sections so only hits remain
+                    if (m.isSidebarAccountSearching && !listed.length) continue
+                    const open = byBank ? m.isBankGroupOpen(g.id) : m.isKindGroupOpen(g.id)
+                    out.push({ type: "kindGroup", group: g, open: open, bank: byBank })
+                    if (open) for (const a of listed) out.push({ type: "account", account: a, indent: 14 })
+                }
             }
         }
+        // „Neue Umsätze“ (#352): a page across all accounts, like „Belege & PostBox“
+        out.push({ type: "nav", key: "newBookings", symbol: "tray.full", title: qsTr("Neue Umsätze"), badge: m.newCount })
+        out.push({ type: "nav", key: "documents", symbol: "doc.on.doc", title: qsTr("Belege & PostBox"), badge: 0 })
         const pending = m.connections.filter(c => !m.allAccounts.some(a => a.connection_id === c.id))
         if (pending.length) {
             out.push({ type: "section", title: qsTr("Neue Bankzugänge") })
             for (const c of pending) out.push({ type: "connection", connection: c })
         }
         out.push({ type: "categoriesHeader" })
-        out.push({ type: "nav", key: "uncategorized", symbol: "questionmark.folder", title: qsTr("Ohne Kategorie"),
-                   badge: m.uncategorizedCount, tint: Theme.warning, regular: true })
-        function walk(nodes, depth) {
-            for (const n of nodes) {
-                const open = !!m.expandedCategories[n.category.id]
-                out.push({ type: "category", category: n.category, depth: depth, hasChildren: !!n.children, open: open })
-                if (n.children && open) walk(n.children, depth + 1)
+        if (!m.categoriesCollapsed) {
+            // one step right of their header, like the groups under „Alle Konten“
+            out.push({ type: "nav", key: "uncategorized", symbol: "questionmark.folder", title: qsTr("Ohne Kategorie"),
+                       badge: m.uncategorizedCount, tint: Theme.warning, regular: true, indent: 14 })
+            function walk(nodes, depth) {
+                for (const n of nodes) {
+                    const open = !!m.expandedCategories[n.category.id]
+                    out.push({ type: "category", category: n.category, depth: depth + 1, hasChildren: !!n.children, open: open })
+                    if (n.children && open) walk(n.children, depth + 1)
+                }
             }
+            walk(m.categoryTree, 0)
         }
-        walk(m.categoryTree, 0)
         return out
     }
 
@@ -74,21 +87,44 @@ Rectangle {
                 }
             }
             ScrollBar.vertical: AppScrollBar {}
+            header: AccountsSectionHeader {}
             delegate: DelegateChooser {
                 role: "type"
                 DelegateChoice { roleValue: "nav"; delegate: SidebarRow {
                     id: navRow
                     required property var modelData
                     selectionKey: modelData.key
-                    TapHandler { enabled: navRow.modelData.key === "all"; acceptedButtons: Qt.RightButton; onTapped: overviewMenu.popup() }
+                    TapHandler { enabled: navRow.modelData.key === "newBookings"; acceptedButtons: Qt.RightButton; onTapped: allMenu.popup() }
                     RowLayout {
-                        anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10; spacing: 8
+                        anchors.fill: parent; anchors.leftMargin: 10 + (modelData.indent || 0); anchors.rightMargin: 10; spacing: 8
                         SFIcon { symbol: modelData.symbol; size: 16; color: modelData.tint || Theme.secondary; Layout.preferredWidth: 20 }
                         Text { text: modelData.title; font.pixelSize: Theme.body; font.weight: modelData.regular ? Font.Normal : Font.Medium; color: Theme.text; Layout.fillWidth: true; elide: Text.ElideRight }
                         Badge { count: modelData.badge }
                     }
                 } }
-                DelegateChoice { roleValue: "accountsHeader"; delegate: AccountsSectionHeader {} }
+                // AllAccountsRoot.swift › AllAccountsRow: folds the tree, total per currency
+                DelegateChoice { roleValue: "allAccounts"; delegate: SidebarRow {
+                    id: allRow
+                    selectionKey: "all"
+                    TapHandler { acceptedButtons: Qt.RightButton; onTapped: allMenu.popup() }
+                    RowLayout {
+                        anchors.fill: parent; anchors.leftMargin: 6; anchors.rightMargin: 10; spacing: 6
+                        Disclosure { visible: AppModel.allAccounts.length > 0; open: AppModel.showsAccountTree
+                                     onToggled: AppModel.allAccountsCollapsed = !AppModel.allAccountsCollapsed
+                                     accessibleName: open ? qsTr("Alle Konten einklappen") : qsTr("Alle Konten ausklappen") }
+                        SFIcon { symbol: "square.grid.2x2"; size: 16; color: Theme.secondary; Layout.preferredWidth: 20 }
+                        Text { text: qsTr("Alle Konten"); font.pixelSize: Theme.body; font.weight: Font.Medium; color: Theme.text
+                               elide: Text.ElideRight; Layout.fillWidth: true; Layout.minimumWidth: 30 }
+                        Repeater {
+                            model: AppModel.allAccountsTotals
+                            Text { required property var modelData
+                                   text: Fmt.money(modelData.cents, modelData.currency)
+                                   font.pixelSize: Theme.callout; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
+                                   color: allRow.selected ? Theme.text : (modelData.cents < 0 ? Theme.negative : Theme.secondary) }
+                        }
+                        Badge { count: AppModel.newCount }
+                    }
+                } }
                 DelegateChoice { roleValue: "userGroup"; delegate: SidebarRow {
                     id: groupRow
                     required property var modelData
@@ -97,7 +133,7 @@ Rectangle {
                     topGap: g.depth === 0 ? 10 : 4
                     TapHandler { acceptedButtons: Qt.RightButton; onTapped: sidebar.openGroupMenu(groupRow.g, groupRow) }
                     RowLayout {
-                        anchors.fill: parent; anchors.leftMargin: 6 + g.depth * 14; anchors.rightMargin: 10; spacing: 5
+                        anchors.fill: parent; anchors.leftMargin: 20 + g.depth * 14; anchors.rightMargin: 10; spacing: 5
                         Disclosure { open: modelData.open; onToggled: AppModel.toggleCollapsedUserGroup(g.uuid)
                                      accessibleName: open ? qsTr("Gruppe einklappen") : qsTr("Gruppe ausklappen") }
                         SFIcon { symbol: g.sf_symbol; size: 16; Layout.preferredWidth: 20
@@ -115,7 +151,7 @@ Rectangle {
                     // (upper half) or into it as a subgroup (lower half)
                     DropSlot {
                         key: "g:" + g.uuid
-                        freeLeading: 12 + g.depth * 14
+                        freeLeading: 26 + g.depth * 14
                         payload: g.is_ungrouped ? null : { type: "group", uuid: g.uuid, label: g.name }
                         edgeFor: (half, p) => {
                             if (p.type !== "group") return "below"
@@ -132,11 +168,13 @@ Rectangle {
                     required property var modelData
                     readonly property var g: modelData.group
                     readonly property bool isLoanGroup: g.accounts.length > 0 && g.accounts.every(a => a.kind === "Loan")
-                    selectionKey: "group:" + g.id
+                    // "Nach Kontoart" or "Nach Bank": the same SectionHeader
+                    selectionKey: modelData.bank ? "bank:" + g.id : "group:" + g.id
                     topGap: 10
                     RowLayout {
-                        anchors.fill: parent; anchors.leftMargin: 6; anchors.rightMargin: 10; spacing: 5
-                        Disclosure { open: modelData.open; onToggled: AppModel.toggleCollapsedGroup(g.id)
+                        anchors.fill: parent; anchors.leftMargin: 20; anchors.rightMargin: 10; spacing: 5
+                        Disclosure { open: modelData.open
+                                     onToggled: modelData.bank ? AppModel.toggleCollapsedBank(g.id) : AppModel.toggleCollapsedGroup(g.id)
                                      accessibleName: open ? qsTr("„%1“ einklappen").arg(g.name) : qsTr("„%1“ ausklappen").arg(g.name) }
                         SFIcon { symbol: g.sf_symbol; size: 16; Layout.preferredWidth: 20 }
                         Text { text: g.name; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
@@ -147,12 +185,12 @@ Rectangle {
                 DelegateChoice { roleValue: "hint"; delegate: Item {
                     required property var modelData
                     width: ListView.view.width; height: 20
-                    Text { x: 33 + modelData.depth * 14; anchors.verticalCenter: parent.verticalCenter; text: modelData.text; font.pixelSize: Theme.caption; color: Theme.tertiary }
+                    Text { x: 47 + modelData.depth * 14; anchors.verticalCenter: parent.verticalCenter; text: modelData.text; font.pixelSize: Theme.caption; color: Theme.tertiary }
                     // an account goes here; a group into the group (header lights up)
                     DropSlot {
                         key: "e:" + modelData.group.uuid
                         intoKey: "g:" + modelData.group.uuid
-                        inset: 33 + modelData.depth * 14
+                        inset: 47 + modelData.depth * 14
                         edgeFor: (half, p) => p.type === "group" ? (AppModel.canDropGroup(p.uuid, modelData.group, true) ? "into" : null) : "above"
                         onPerform: (p, edge) => {
                             if (p.type === "account") AppModel.moveAccount(p.id, modelData.group.uuid, 0)
@@ -196,12 +234,18 @@ Rectangle {
                         }
                     }
                 } }
+                // CategoriesHeader: a plain row styled like the group headers; a tap anywhere folds the tree
                 DelegateChoice { roleValue: "categoriesHeader"; delegate: Item {
-                    width: ListView.view.width; height: 34
+                    width: ListView.view.width; height: 40
+                    TapHandler { onTapped: AppModel.categoriesCollapsed = !AppModel.categoriesCollapsed }
                     RowLayout {
-                        anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 6; anchors.topMargin: 12
-                        Text { text: qsTr("Kategorien"); font.pixelSize: Theme.caption; font.weight: Font.DemiBold; color: Theme.secondary; Layout.fillWidth: true }
-                        IconButton { symbol: "plus"; symbolSize: 12; implicitWidth: 24; implicitHeight: 20
+                        x: 14; y: 10; width: parent.width - 28; height: 30; spacing: 5
+                        Disclosure { open: !AppModel.categoriesCollapsed; onToggled: AppModel.categoriesCollapsed = !AppModel.categoriesCollapsed
+                                     accessibleName: open ? qsTr("Kategorien einklappen") : qsTr("Kategorien ausklappen") }
+                        SFIcon { symbol: "tag"; size: 16; color: Theme.secondary; Layout.preferredWidth: 20 }
+                        Text { text: qsTr("Kategorien"); font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.secondary
+                               elide: Text.ElideRight; Layout.fillWidth: true }
+                        IconButton { symbol: "plus"; symbolSize: 12; implicitWidth: 24; implicitHeight: 18
                                      ToolTip.text: qsTr("Neue Hauptkategorie …"); ToolTip.visible: hovered; enabled: AppModel.isUnlocked
                                      Accessible.name: qsTr("Neue Hauptkategorie")
                                      onClicked: AppModel.newCategoryRequest = { parent: null } }
@@ -307,7 +351,8 @@ Rectangle {
         }
         AppMenuSeparator {}
         AppMenuItem { text: qsTr("Neue Unterkategorie …"); icon.name: SF.icon("plus"); onTriggered: AppModel.newCategoryRequest = { parent: sidebar.menuCategory.id } }
-        AppMenuItem { text: qsTr("Monatsbudget festlegen …"); icon.name: SF.icon("gauge.with.dots.needle.67percent"); onTriggered: AppModel.budgetCategoryID = sidebar.menuCategory.id }
+        AppMenuItem { visible: AppModel.showBudgets; height: visible ? implicitHeight : 0
+                   text: qsTr("Monatsbudget festlegen …"); icon.name: SF.icon("gauge.with.dots.needle.67percent"); onTriggered: AppModel.budgetCategoryID = sidebar.menuCategory.id }
         AppMenuSeparator {}
         AppMenuItem { text: qsTr("Kategorie löschen …"); icon.name: SF.icon("trash"); onTriggered: AppModel.deleteCategoryTarget = sidebar.menuCategory }
     }
@@ -334,11 +379,11 @@ Rectangle {
     readonly property var menuConnectionOfAccount: menuAccount && menuAccount.archived_unix === null && menuAccount.connection_id !== null
         ? (AppModel.connections.find(c => c.id === menuAccount.connection_id) || null) : null
 
-    // "Übersicht"
+    // „Alle Konten“ and „Neue Umsätze“: every account, whatever the list shows
     AppMenu {
-        id: overviewMenu
+        id: allMenu
         AppMenuItem { text: qsTr("Alle als gelesen markieren"); icon.name: SF.icon("checkmark.circle"); enabled: AppModel.newCount > 0
-                   onTriggered: AppModel.markAllChecked() }
+                   onTriggered: AppModel.markAllChecked(AppModel.allAccounts.map(a => a.id)) }
     }
     // pending bank logins ("Neue Bankzugänge")
     AppMenu {
@@ -354,6 +399,24 @@ Rectangle {
         readonly property bool archived: a !== null && a.archived_unix !== null
         AppMenuItem { text: qsTr("Umbenennen …"); icon.name: SF.icon("pencil"); onTriggered: AppModel.groupDialog = { kind: "renameAccount", account: accountMenu.a } }
         AppMenuItem { text: qsTr("Symbol && Farbe …"); icon.name: SF.icon("paintpalette"); onTriggered: AppModel.iconColorTarget = { type: "account", id: accountMenu.a.id } }
+        AppMenu {
+            id: kindMenu
+            title: qsTr("Kontoart ändern …")
+            icon.name: SF.icon("list.bullet.rectangle")
+            Instantiator {
+                model: AppModel.accountKindChoices
+                delegate: AppMenuItem {
+                    required property var modelData
+                    // the current kind as "✓ Girokonto", like the Mac menu
+                    text: accountMenu.a !== null && accountMenu.a.kind === modelData.id ? "✓ " + modelData.text : modelData.text
+                    onTriggered: AppModel.setAccountKind(accountMenu.a.id, modelData.id)
+                }
+                onObjectAdded: (index, object) => kindMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => kindMenu.removeItem(object)
+            }
+        }
+        AppMenuItem { text: qsTr("Kontoinhaber …"); icon.name: SF.icon("person.crop.circle")
+                   onTriggered: AppModel.groupDialog = { kind: "editOwner", account: accountMenu.a } }
         // AccountGroupMenu: named like the group menu's entry, so both menus read the same
         AppMenu {
             id: accountMoveMenu

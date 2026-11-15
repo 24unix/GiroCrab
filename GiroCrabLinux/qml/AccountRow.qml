@@ -14,6 +14,21 @@ SidebarRow {
     signal contextMenuRequested()
     readonly property var repaid: account.kind === "Loan" && account.initial_balance_cents > 0
         ? Math.max(0, Math.min(1, 1 - (-account.balance_cents) / account.initial_balance_cents)) : null
+    /// First letters of the owner's first two words (owner capsule after the name).
+    readonly property string ownerInitials: (account.owner || "").split(/\s+/).filter(w => w).slice(0, 2).map(w => w[0]).join("").toUpperCase()
+    /// While searching, prefer Kontoinhaber or IBAN so the hit is obvious.
+    readonly property string searchAwareSubtitle: {
+        if (!AppModel.isSidebarAccountSearching) return account.bank_name
+        const q = AppModel.sidebarAccountSearch.trim()
+        const compact = q.replace(/\s/g, "").toLowerCase()
+        const terms = q.split(/\s+/).filter(t => t)
+        if (account.owner && terms.length && terms.every(t => account.owner.toLowerCase().includes(t.toLowerCase())))
+            return account.owner
+        if (compact.length >= 3 && AppModel.compactAccountIds(account).some(x => x.includes(compact)))
+            return account.iban ? Fmt.iban(account.iban) : account.account_number
+        return account.bank_name
+    }
+    readonly property bool ibanSubtitle: AppModel.isSidebarAccountSearching && account.iban !== "" && searchAwareSubtitle === Fmt.iban(account.iban)
     selectionKey: "account:" + account.id
     rowHeight: 40
     opacity: archived ? 0.55 : 1
@@ -31,11 +46,20 @@ SidebarRow {
                 spacing: 4
                 Layout.fillWidth: true
                 Text { text: row.account.name; font.pixelSize: Theme.body; color: Theme.text; elide: Text.ElideRight; Layout.maximumWidth: implicitWidth; Layout.fillWidth: true }
+                Rectangle {
+                    visible: row.ownerInitials !== ""
+                    implicitWidth: initials.implicitWidth + 8; implicitHeight: initials.implicitHeight
+                    radius: height / 2
+                    color: Theme.withAlpha(Theme.secondary, 0.15)
+                    Text { id: initials; anchors.centerIn: parent; text: row.ownerInitials
+                           font.pixelSize: Theme.caption2; font.weight: Font.DemiBold; color: Theme.secondary }
+                }
                 SFIcon { visible: row.account.access_revoked; symbol: "lock.slash"; size: 10; color: "orange"
                          HoverHandler { id: revokedHover }
                          ToolTip.visible: revokedHover.hovered; ToolTip.delay: 600
                          ToolTip.text: qsTr("Zugriff entzogen: Die Bank liefert dieses Konto nicht mehr. Buchungen bleiben erhalten.") }
-                Rectangle { visible: row.account.new_count > 0; width: 6; height: 6; radius: 3; color: Theme.accent }
+                // a count bubble, not just a dot: how many are new
+                NewCountBadge { count: row.account.new_count; onSelection: row.selected }
                 Item { Layout.fillWidth: true; Layout.preferredWidth: 0 }
             }
             ProgressBar {
@@ -47,8 +71,9 @@ SidebarRow {
             }
             Text {
                 visible: row.repaid === null
-                text: row.archived ? qsTr("Archiviert %1").arg(new Date(row.account.archived_unix * 1000).toLocaleDateString(Fmt.locale, Fmt.pattern("dd.MM.yy"))) : row.account.bank_name
-                font.pixelSize: Theme.caption2; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+                text: row.archived ? qsTr("Archiviert %1").arg(new Date(row.account.archived_unix * 1000).toLocaleDateString(Fmt.locale, Fmt.pattern("dd.MM.yy"))) : row.searchAwareSubtitle
+                font.pixelSize: Theme.caption2; font.family: row.ibanSubtitle ? "monospace" : Qt.application.font.family
+                color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
             }
         }
         BusyIndicator { visible: row.syncing; running: row.syncing; implicitWidth: 16; implicitHeight: 16; padding: 0 }

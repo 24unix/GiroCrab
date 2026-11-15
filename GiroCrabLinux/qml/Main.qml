@@ -78,11 +78,18 @@ ApplicationWindow {
             Action { text: AppModel.showInspector ? qsTr("Informationen ausblenden") : qsTr("Informationen einblenden")
                      shortcut: "Ctrl+Alt+I"; enabled: AppModel.isUnlocked; onTriggered: AppModel.showInspector = !AppModel.showInspector }
             Action { text: qsTr("Auswertungen anzeigen"); checkable: true; checked: AppModel.showStatistics; onToggled: AppModel.showStatistics = checked }
+            Action { text: qsTr("Budgets anzeigen"); checkable: true; checked: AppModel.showBudgets; enabled: AppModel.isUnlocked; onToggled: AppModel.showBudgets = checked }
             AppMenuSeparator {}
             Action { text: qsTr("Befehlspalette …"); shortcut: "Ctrl+K"; enabled: AppModel.isUnlocked; onTriggered: AppModel.showCommandPalette = true }
             AppMenuSeparator {}
-            Action { text: qsTr("Nach Gruppe"); checkable: true; checked: AppModel.accountView === "byGroup"; enabled: AppModel.isUnlocked; onTriggered: AppModel.setAccountView("byGroup") }
-            Action { text: qsTr("Nach Kontoart"); checkable: true; checked: AppModel.accountView === "byKind"; enabled: AppModel.isUnlocked; onTriggered: AppModel.setAccountView("byKind") }
+            // Picker("Konten anzeigen"): a submenu with the three AccountSidebarMode titles
+            AppMenu {
+                title: qsTr("Konten anzeigen")
+                enabled: AppModel.isUnlocked
+                Action { text: qsTr("Nach Gruppe"); checkable: true; checked: AppModel.accountView === "byGroup"; onTriggered: AppModel.setAccountView("byGroup") }
+                Action { text: qsTr("Nach Bank"); checkable: true; checked: AppModel.accountView === "byBank"; onTriggered: AppModel.setAccountView("byBank") }
+                Action { text: qsTr("Nach Kontoart"); checkable: true; checked: AppModel.accountView === "byKind"; onTriggered: AppModel.setAccountView("byKind") }
+            }
             Action { text: qsTr("Kontogruppen bearbeiten …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.openGroupManager() }
             AppMenuSeparator {}
             Action { text: AppModel.demoActive ? qsTr("Eigenen Tresor anzeigen") : qsTr("Demo-Daten anzeigen"); shortcut: "Ctrl+Shift+D"
@@ -253,7 +260,7 @@ ApplicationWindow {
             Segmented {
                 options: AppModel.scopes
                 current: AppModel.scope
-                enabled: AppModel.sidebarSelection !== "documents"
+                enabled: AppModel.sidebarSelection !== "documents" && AppModel.sidebarSelection !== "newBookings"
                 onActivated: id => AppModel.scope = id
                 ToolTip.text: qsTr("Ansicht wählen (Strg+1, Strg+2, Strg+3)")
             }

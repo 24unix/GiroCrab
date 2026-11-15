@@ -113,7 +113,7 @@ QtObject {
     property string searchText: ""
     property Timer searchTimer: Timer { interval: 250; onTriggered: model.reloadBookings() }
     onSearchTextChanged: searchTimer.restart()
-    /// AccountSidebarMode (byGroup | byKind): the explicit choice, else "Nach Gruppe" once a group exists.
+    /// AccountSidebarMode (byGroup | byBank | byKind): the explicit choice, else "Nach Gruppe" once a group exists.
     /// Set it with `setAccountView` (AccountGroupsModel.swift › accountView).
     readonly property string accountView: defaults.accountView !== "" ? defaults.accountView : (hasUserGroups ? "byGroup" : "byKind")
     function setAccountView(v) { defaults.accountView = v }
@@ -122,6 +122,19 @@ QtObject {
     onCollapsedGroupsChanged: sidebarDefaults.setValue("collapsedKindGroups", JSON.stringify(Object.keys(collapsedGroups).map(Number)))
     property var collapsedUserGroups: sidebarDefaults.loadSet("collapsedUserGroups")
     onCollapsedUserGroupsChanged: sidebarDefaults.setValue("collapsedUserGroups", JSON.stringify(Object.keys(collapsedUserGroups)))
+    property var collapsedBankGroups: sidebarDefaults.loadSet("collapsedBankGroups")
+    onCollapsedBankGroupsChanged: sidebarDefaults.setValue("collapsedBankGroups", JSON.stringify(Object.keys(collapsedBankGroups)))
+    /// AllAccountsRoot.swift › `sidebar.allAccountsCollapsed`
+    property bool allAccountsCollapsed: String(sidebarDefaults.value("allAccountsCollapsed", false)) === "true"
+    onAllAccountsCollapsedChanged: sidebarDefaults.setValue("allAccountsCollapsed", allAccountsCollapsed)
+    /// SidebarView.swift › CategoriesHeader: `sidebar.categoriesCollapsed`
+    property bool categoriesCollapsed: String(sidebarDefaults.value("categoriesCollapsed", false)) === "true"
+    onCategoriesCollapsedChanged: sidebarDefaults.setValue("categoriesCollapsed", categoriesCollapsed)
+    /// ViewLayout.swift › `@AppStorage("showBudgets")`: Darstellung › Budgets anzeigen
+    property bool showBudgets: uiDefaults.showBudgets
+    onShowBudgetsChanged: uiDefaults.showBudgets = showBudgets
+    /// Sidebar account search (AppModel.swift › sidebarAccountSearch, not persisted).
+    property string sidebarAccountSearch: ""
     property var expandedCategories: ({})
     property bool showArchivedAccounts: String(sidebarDefaults.value("showArchived", true)) !== "false"
     onShowArchivedAccountsChanged: sidebarDefaults.setValue("showArchived", showArchivedAccounts)
@@ -341,6 +354,8 @@ QtObject {
             connections = core("list_bank_connections")
             if (sidebarSelection.startsWith("userGroup:") && !userGroups.some(g => "userGroup:" + g.uuid === sidebarSelection))
                 sidebarSelection = "all"
+            if (sidebarSelection.startsWith("bank:") && !bankGroup(sidebarSelection.slice(5)))
+                sidebarSelection = "all"
             rebuildAccountIndex()
         })
     }
@@ -407,7 +422,8 @@ QtObject {
         bookings = p.transactions
         const sticky = stickyBooking !== null && stickyBooking.id === selectedBookingID
         if (selectedBookingID !== null && !sticky && !bookings.some(b => b.id === selectedBookingID))
-            selectedBookingID = bookings.length ? bookings[0].id : null
+            // „Neue Umsätze“: no booking selected unasked, auto review would check it
+            selectedBookingID = bookings.length && sidebarSelection !== "newBookings" ? bookings[0].id : null
         pruneMultiSelection()
         rebuildStream()
     }
@@ -447,14 +463,44 @@ QtObject {
         }
         dayGroups = days
         const items = []
-        for (const d of days) {
-            items.push({ type: "header", day: d, key: "d" + d.date })
-            d.bookings.forEach((b, i) => items.push({ type: "row", booking: b, isLast: i === d.bookings.length - 1, key: "b" + b.id }))
+        if (sidebarSelection === "newBookings") {
+            // NewBookingsCards: one card per account instead of the day cards
+            for (const sec of newBookingSections()) {
+                items.push({ type: "account", section: sec, key: "a" + sec.accountID })
+                sec.bookings.forEach((b, i) => items.push({ type: "row", booking: b, isLast: i === sec.bookings.length - 1, key: "b" + b.id }))
+            }
+        } else {
+            for (const d of days) {
+                items.push({ type: "header", day: d, key: "d" + d.date })
+                d.bookings.forEach((b, i) => items.push({ type: "row", booking: b, isLast: i === d.bookings.length - 1, key: "b" + b.id }))
+            }
         }
         streamItems = items
         const n = items.length, have = streamModel.count
         if (n < have) streamModel.remove(n, have - n)
         else if (n > have) streamModel.append(Array.from({ length: n - have }, () => ({ s: 0 })))
+    }
+
+    /// NewBookings.sections: the loaded bookings by account, known accounts in sidebar order,
+    /// then unknown ones in order of appearance. Checked bookings are left out, except the
+    /// one the user just checked (it stays as the sticky booking until the selection moves).
+    function newBookingSections() {
+        const keep = stickyBooking !== null ? stickyBooking.id : null
+        const list = bookings.filter(b => !b.checked || b.id === keep)
+        const by = {}
+        for (const b of list) (by[b.account_id] = by[b.account_id] || []).push(b)
+        const out = []
+        for (const a of allAccounts) if (by[a.id]) out.push(newBookingSection(a.id, a, a.name, by[a.id]))
+        const seen = {}
+        for (const b of list) if (!accountsByID[b.account_id] && !seen[b.account_id]) {
+            seen[b.account_id] = true
+            out.push(newBookingSection(b.account_id, null, b.account_name, by[b.account_id]))
+        }
+        return out
+    }
+    function newBookingSection(id, account, title, list) {
+        return { accountID: id, account: account, title: title, bookings: list,
+                 pendingCents: list.filter(b => b.is_pending).reduce((s, b) => s + b.amount_cents, 0) }
     }
 
     // MARK: paging (loadMoreBookings / loadAllBookings)
@@ -517,6 +563,9 @@ QtObject {
         if (sel.startsWith("account:")) ids = [Number(sel.slice(8))]
         else if (sel.startsWith("group:")) {
             const g = groups.find(g => "group:" + g.id === sel)
+            ids = g ? g.accounts.filter(a => a.archived_unix === null).map(a => a.id) : []
+        } else if (sel.startsWith("bank:")) {
+            const g = bankGroup(sel.slice(5))
             ids = g ? g.accounts.filter(a => a.archived_unix === null).map(a => a.id) : []
         } else if (sel.startsWith("userGroup:")) ids = userGroupBalanceAccountIDs(sel.slice(10))
         else ids = liquidAccounts.map(a => a.id)
@@ -613,12 +662,18 @@ QtObject {
         const sel = sidebarSelection
         if (sel.startsWith("account:")) return [Number(sel.slice(8))]
         if (sel.startsWith("group:")) { const g = groups.find(g => "group:" + g.id === sel); return g ? g.accounts.map(a => a.id) : [] }
+        if (sel.startsWith("bank:")) { const g = bankGroup(sel.slice(5)); return g ? g.accounts.map(a => a.id) : [] }
         if (sel.startsWith("userGroup:")) return userGroupAccountIDs(sel.slice(10))
         return []
     }
     function currentFilter() {
         const r = periodRange()
         const sel = sidebarSelection
+        // „Neue Umsätze“: everything new, whatever the list filters say elsewhere.
+        if (sel === "newBookings")
+            return { account_ids: [], category_id: null, include_subcategories: true, uncategorized_only: false,
+                     search: null, date_from: null, date_to: null, limit: listLimit, offset: 0, scope: "All",
+                     merchant_key: null, direction: "All", checked: false, whole_days: true }
         return {
             account_ids: selectionAccountIDs(),
             category_id: sel.startsWith("category:") ? Number(sel.slice(9)) : null,
@@ -668,6 +723,87 @@ QtObject {
         if (c[uuid]) delete c[uuid]; else c[uuid] = true
         collapsedUserGroups = c
     }
+    // MARK: sidebar search and „Nach Bank“ (AccountGroupsModel.swift)
+    readonly property bool isSidebarAccountSearching: sidebarAccountSearch.trim() !== ""
+    /// AllAccountsRoot.swift › showsAccountTree: the root is open, or the search runs.
+    readonly property bool showsAccountTree: !allAccountsCollapsed || isSidebarAccountSearching
+    /// Account.compactAccountIds: IBAN and account number without spaces.
+    function compactAccountIds(a) {
+        return [a.iban || "", a.account_number || ""].map(x => x.replace(/\s/g, "").toLowerCase()).filter(x => x !== "")
+    }
+    /// Account.matchesSidebarSearch: name, Kontoinhaber, bank, IBAN or account number.
+    function matchesSidebarSearch(a, raw) {
+        const q = raw.trim()
+        if (q === "") return true
+        const ids = compactAccountIds(a)
+        const compactQ = q.replace(/\s/g, "").toLowerCase()
+        if (compactQ.length >= 3 && ids.some(x => x.includes(compactQ))) return true
+        const text = [a.name || "", a.owner || "", a.bank_name || ""].map(x => x.toLowerCase())
+        return q.split(/\s+/).map(t => t.toLowerCase()).every(term =>
+            text.some(x => x.includes(term)) || ids.some(x => x.includes(term)))
+    }
+    /// Not archived (unless shown) and matches the sidebar search.
+    function isSidebarAccountListed(a) {
+        return (showArchivedAccounts || a.archived_unix === null) && matchesSidebarSearch(a, sidebarAccountSearch)
+    }
+    /// Group title matches every whitespace-separated term.
+    function sidebarTextMatches(text, query) {
+        const q = query.trim()
+        if (q === "") return true
+        const hay = text.toLowerCase()
+        return q.split(/\s+/).every(t => hay.includes(t.toLowerCase()))
+    }
+    /// Shown while searching: its name matches, or a listed account lives in it or a subgroup.
+    function isUserGroupListed(g) {
+        if (!isSidebarAccountSearching) return isUserGroupVisible(g)
+        return userGroupSubtree(g.uuid).some(n => sidebarTextMatches(n.name, sidebarAccountSearch)
+                                                  || n.accounts.some(a => isSidebarAccountListed(a)))
+    }
+    function isKindGroupOpen(id) { return isSidebarAccountSearching || !collapsedGroups[id] }
+    function isBankGroupOpen(key) { return isSidebarAccountSearching || !collapsedBankGroups[key] }
+    function isUserGroupOpen(g) { return isSidebarAccountSearching || !collapsedUserGroups[g.uuid] }
+    /// Bank key: `bank_name`, else the connection's name.
+    function bankGroupKey(a) {
+        const name = (a.bank_name || "").trim()
+        if (name !== "") return name
+        if (a.connection_id !== null) {
+            const c = connections.find(c => c.id === a.connection_id)
+            if (c) return (c.display_name || "").trim()
+        }
+        return ""
+    }
+    /// Accounts by bank, sorted by name („Ohne Bank“ last).
+    readonly property var bankGroups: {
+        const buckets = {}
+        for (const a of allAccounts) (buckets[bankGroupKey(a)] = buckets[bankGroupKey(a)] || []).push(a)
+        return Object.keys(buckets).sort((a, b) => {
+            if ((a === "") !== (b === "")) return a === "" ? 1 : -1
+            return a.localeCompare(b, undefined, { sensitivity: "accent" })
+        }).map(key => {
+            const accounts = buckets[key]
+            const conn = accounts[0].connection_id !== null ? connections.find(c => c.id === accounts[0].connection_id) : null
+            return { id: key, name: key === "" ? qsTr("Ohne Bank") : key,
+                     sf_symbol: conn ? conn.sf_symbol : (accounts[0].sf_symbol || "building.columns"),
+                     balance_cents: accounts.filter(a => a.currency === "EUR" && a.archived_unix === null).reduce((s, a) => s + a.balance_cents, 0),
+                     accounts: accounts }
+        })
+    }
+    function bankGroup(key) { return bankGroups.find(g => g.id === key) || null }
+    function toggleCollapsedBank(key) {
+        const c = Object.assign({}, collapsedBankGroups)
+        if (c[key]) delete c[key]; else c[key] = true
+        collapsedBankGroups = c
+    }
+    /// AllAccountsTotal.totals: accounts in the total, per currency; other currencies first, euro last.
+    readonly property var allAccountsTotals: {
+        const sums = {}
+        for (const a of allAccounts) if (a.in_total) {
+            const code = a.currency ? a.currency.toUpperCase() : "EUR"
+            sums[code] = (sums[code] || 0) + a.balance_cents
+        }
+        return Object.keys(sums).sort((a, b) => (a === "EUR") !== (b === "EUR") ? (a === "EUR" ? 1 : -1) : (a < b ? -1 : a > b ? 1 : 0))
+            .map(c => ({ currency: c, cents: sums[c] }))
+    }
     function toggleCollapsedGroup(id) {
         const c = Object.assign({}, collapsedGroups)
         if (c[id]) delete c[id]; else c[id] = true
@@ -699,7 +835,9 @@ QtObject {
 
     readonly property string title: {
         const sel = sidebarSelection
-        if (sel === "all") return qsTr("Übersicht")
+        if (sel === "all") return qsTr("Alle Konten")
+        if (sel === "newBookings") return qsTr("Neue Umsätze")
+        if (sel.startsWith("bank:")) { const g = bankGroup(sel.slice(5)); return g ? g.name : qsTr("Bank") }
         if (sel === "uncategorized") return qsTr("Ohne Kategorie")
         if (sel === "documents") return qsTr("Belege & PostBox")
         if (sel.startsWith("group:")) { const g = groups.find(g => "group:" + g.id === sel); return g ? g.name : qsTr("Gruppe") }
@@ -713,6 +851,7 @@ QtObject {
         if (sel === "all") return { label: qsTr("Verfügbar (Giro, Tagesgeld, Karten)"), cents: liquidBalance }
         if (sel.startsWith("account:")) { const a = accountsByID[Number(sel.slice(8))]; return a ? { label: qsTr("Kontostand"), cents: a.balance_cents } : null }
         if (sel.startsWith("group:")) { const g = groups.find(g => "group:" + g.id === sel); return g ? { label: qsTr("Summe"), cents: g.balance_cents } : null }
+        if (sel.startsWith("bank:")) { const g = bankGroup(sel.slice(5)); return g ? { label: qsTr("Summe"), cents: g.balance_cents } : null }
         if (sel.startsWith("userGroup:")) { const g = userGroups.find(g => "userGroup:" + g.uuid === sel); return g ? { label: qsTr("Summe"), cents: g.balance_cents } : null }
         if (sel.startsWith("category:")) { const c = categories.find(c => "category:" + c.id === sel); return c ? { label: qsTr("Summe im Zeitraum"), cents: c.total_cents } : null }
         return null
@@ -735,7 +874,9 @@ QtObject {
         const sel = sidebarSelection
         if (sel.startsWith("account:")) return false
         if (sel.startsWith("group:")) { const g = groups.find(g => "group:" + g.id === sel); return g ? g.accounts.length > 1 : false }
+        if (sel.startsWith("bank:")) { const g = bankGroup(sel.slice(5)); return g ? g.accounts.length > 1 : false }
         if (sel.startsWith("userGroup:")) return userGroupAccountIDs(sel.slice(10)).length > 1
+        if (sel === "newBookings") return false // the card header names the account
         return Object.keys(accountMarkers).length > 1
     }
     function accountColor(id) { const m = accountMarkers[id]; return m ? m.color : Theme.tertiary }
@@ -1550,6 +1691,7 @@ QtObject {
     property Settings uiDefaults: Settings {
         property bool showAccountAnalytics: false
         property string chartColorPalette: "girocrab"
+        property bool showBudgets: true
     }
     readonly property bool hasUserGroups: userGroups.some(g => !g.is_ungrouped)
     readonly property bool hasArchivedAccounts: allAccounts.some(a => a.archived_unix !== null)
@@ -1633,6 +1775,20 @@ QtObject {
     function renameAccount(id, name) {
         if (run(() => { core("rename_account", { account_id: id, name: name }); return true })) { reloadAccounts(); reloadBookings() }
     }
+    /// AccountGroupsModel.swift › setAccountOwner: empty clears it.
+    function setAccountOwner(id, owner) {
+        if (run(() => { core("set_account_owner", { account_id: id, owner: owner }); return true })) reloadAccounts()
+    }
+    /// AccountGroupsModel.swift › setAccountKind ("Kontoart ändern …").
+    function setAccountKind(id, kind) {
+        if (run(() => { core("set_account_kind", { account_id: id, kind: kind }); return true })) { reloadAccounts(); reloadDashboard() }
+    }
+    /// AccountKind.importChoices with their labels.
+    readonly property var accountKindChoices: [
+        { id: "Checking", text: qsTr("Girokonto") }, { id: "Savings", text: qsTr("Tagesgeld / Sparen") },
+        { id: "CreditCard", text: qsTr("Kreditkarte") }, { id: "PaymentService", text: qsTr("Zahlungsdienst") },
+        { id: "Brokerage", text: qsTr("Depot") }, { id: "Cash", text: qsTr("Bargeld") }, { id: "Loan", text: qsTr("Darlehen") }
+    ]
     function setAccountColor(id, hex) {
         if (run(() => { core("set_account_color", { account_id: id, color_hex: hex }); return true })) { reloadAccounts(); reloadBookings() }
     }

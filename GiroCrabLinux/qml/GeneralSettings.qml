@@ -52,6 +52,13 @@ ScrollView {
             }
             Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
                    text: qsTr("Blendet Saldoverlauf, Cashflow und Budgets über der Buchungsliste aus. Auch im Menü Ansicht umschaltbar.") }
+            CheckBox {
+                text: qsTr("Budgets anzeigen")
+                checked: AppModel.showBudgets
+                onToggled: AppModel.showBudgets = checked
+            }
+            Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; color: Theme.secondary
+                   text: qsTr("Wer keine Monatsbudgets nutzt, blendet die Budget-Karte und „Monatsbudget festlegen …“ ganz aus. Auch im Menü Ansicht umschaltbar.") }
         }
         SettingsFormSection {
             title: qsTr("Buchungen")

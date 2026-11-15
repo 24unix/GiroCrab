@@ -9,6 +9,10 @@ Rectangle {
     id: stream
     color: Theme.canvas
     readonly property bool isOverview: AppModel.sidebarSelection === "all"
+    readonly property bool isNewBookings: AppModel.sidebarSelection === "newBookings"
+    /// Cashflow and budget cards: overview always, a single account only when toggled on; never in „Neue Umsätze“.
+    readonly property bool showsAnalytics: AppModel.showStatistics && !isNewBookings && AppModel.allAccounts.length > 0
+                                           && (isOverview || showAnalytics) && AppModel.scope !== "Investments"
     readonly property bool isDepot: AppModel.selectedAccount !== null
         && (AppModel.selectedAccount.kind === "Brokerage" || AppModel.selectedAccount.name.toLowerCase().indexOf("depot") >= 0)
     /// @AppStorage("showAccountAnalytics")
@@ -115,11 +119,11 @@ Rectangle {
                     sourceComponent: Component { InvestmentDashboardView {} }
                 }
                 CashflowCard {
-                    visible: AppModel.showStatistics && AppModel.allAccounts.length > 0 && (stream.isOverview || stream.showAnalytics) && AppModel.scope !== "Investments"
+                    visible: stream.showsAnalytics
                     Layout.fillWidth: true; Layout.leftMargin: 20; Layout.rightMargin: 20
                 }
                 BudgetProgressCard {
-                    visible: AppModel.showStatistics && AppModel.allAccounts.length > 0 && (stream.isOverview || stream.showAnalytics) && AppModel.scope !== "Investments"
+                    visible: stream.showsAnalytics && AppModel.showBudgets
                     Layout.fillWidth: true; Layout.leftMargin: 20; Layout.rightMargin: 20
                 }
                 // ContentUnavailableView "Keine Buchungen im Depot", in the middle of the visible area
@@ -135,13 +139,23 @@ Rectangle {
                            text: qsTr("Ein Depot zeigt seine Positionen oben. Käufe, Verkäufe und Sparpläne stehen als Buchungen im Verrechnungskonto.") }
                 }
                 ColumnLayout {
-                    visible: AppModel.dayGroups.length === 0 && !(stream.isDepot && AppModel.searchText === "") && !stream.emptyVault
+                    visible: AppModel.dayGroups.length === 0 && !(stream.isDepot && AppModel.searchText === "") && !stream.emptyVault && !stream.isNewBookings
                     Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 40
                     spacing: 6
                     SFIcon { Layout.alignment: Qt.AlignHCenter; symbol: AppModel.searchText ? "magnifyingglass" : "tray"; size: 32 }
                     Text { Layout.alignment: Qt.AlignHCenter; text: AppModel.searchText ? qsTr("Keine Treffer") : qsTr("Keine Buchungen"); font.pixelSize: Theme.title2; font.weight: Font.Bold; color: Theme.text }
                     Text { Layout.alignment: Qt.AlignHCenter; color: Theme.secondary; font.pixelSize: Theme.body
                            text: AppModel.searchText ? qsTr("Nichts passt zu „%1“.").arg(AppModel.searchText) : qsTr("Konto abrufen oder anderen Zeitraum wählen.") }
+                }
+                // NewBookingsCards: ContentUnavailableView "Keine neuen Umsätze"
+                ColumnLayout {
+                    visible: stream.isNewBookings && AppModel.streamItems.length === 0 && AppModel.page !== null
+                    Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 40
+                    spacing: 6
+                    SFIcon { Layout.alignment: Qt.AlignHCenter; symbol: "checkmark.circle"; size: 32 }
+                    Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Keine neuen Umsätze"); font.pixelSize: Theme.title2; font.weight: Font.Bold; color: Theme.text }
+                    Text { Layout.alignment: Qt.AlignHCenter; color: Theme.secondary; font.pixelSize: Theme.body
+                           text: qsTr("Alle Buchungen sind geprüft.") }
                 }
             }
 
@@ -219,12 +233,19 @@ Rectangle {
                 required property int index
                 readonly property var modelData: AppModel.streamItems[index] ?? ({ type: "none" })
                 width: list.width
-                height: modelData.type === "header" ? 14 + dayHeader.height : row.height
+                height: modelData.type === "header" ? 14 + dayHeader.height
+                      : modelData.type === "account" ? 14 + accountHeader.height : row.height
 
                 DayHeader {
                     id: dayHeader
                     visible: item.modelData.type === "header"
                     day: item.modelData.type === "header" ? item.modelData.day : null
+                    x: 20; y: 14; width: item.width - 40
+                }
+                NewBookingsCardHeader {
+                    id: accountHeader
+                    visible: item.modelData.type === "account"
+                    section: item.modelData.type === "account" ? item.modelData.section : null
                     x: 20; y: 14; width: item.width - 40
                 }
                 DayCardRow {
@@ -313,6 +334,48 @@ Rectangle {
     }
 
     // DayCardSegment: one card per day, split into header + rows.
+    // NewBookingsView.swift › NewBookingsCardHeader: signet, name, IBAN · bank, balance and pending sum.
+    component NewBookingsCardHeader: Rectangle {
+        id: nh
+        property var section: null
+        readonly property var account: section ? section.account : null
+        readonly property string detail: !account ? ""
+            : [account.iban ? Fmt.iban(account.iban) : account.account_number, account.bank_name].filter(x => x).join(" · ")
+        height: headRow.implicitHeight + 24
+        color: Theme.card
+        radius: 12
+        border.color: Theme.border
+        Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: parent.height / 2; color: Theme.card
+                    Rectangle { anchors.left: parent.left; width: 1; height: parent.height; color: Theme.border }
+                    Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: Theme.border } }
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
+        RowLayout {
+            id: headRow
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            anchors.leftMargin: 16; anchors.rightMargin: 16; anchors.topMargin: 12
+            spacing: 10
+            AccountSignet { visible: nh.account !== null; account: nh.account; size: 28; Layout.alignment: Qt.AlignTop
+                            tintColor: nh.account ? AppModel.accountColor(nh.account.id) : Theme.tertiary }
+            ColumnLayout {
+                spacing: 2; Layout.fillWidth: true; Layout.alignment: Qt.AlignTop
+                Text { text: nh.section ? nh.section.title : ""; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.text
+                       elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { visible: nh.detail !== ""; text: nh.detail; font.pixelSize: Theme.caption; color: Theme.secondary
+                       elide: Text.ElideRight; Layout.fillWidth: true }
+            }
+            ColumnLayout {
+                spacing: 2; Layout.alignment: Qt.AlignTop
+                Text { visible: nh.account !== null; Layout.alignment: Qt.AlignRight
+                       text: nh.account ? Fmt.money(nh.account.balance_cents, nh.account.currency) : ""
+                       font.pixelSize: Theme.body; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
+                       color: nh.account && nh.account.balance_cents < 0 ? Theme.negative : Theme.text }
+                Text { visible: nh.section !== null && nh.section.pendingCents !== 0; Layout.alignment: Qt.AlignRight
+                       text: nh.section ? qsTr("Vorgemerkt: %1").arg(Fmt.money(nh.section.pendingCents, nh.account ? nh.account.currency : "EUR")) : ""
+                       font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary }
+            }
+        }
+    }
+
     component DayHeader: Rectangle {
         property var day
         height: 40

@@ -36,7 +36,8 @@ Sheet {
         add(qsTr("Historie & Kategorien importieren"), action, "square.and.arrow.down.on.square", () => m.openMoneyMoneyImport())
         add(qsTr("Regeln jetzt anwenden"), action, "play", () => m.applyAllRules())
         add(qsTr("Einstellungen"), action + " · " + Fmt.keys("Strg+,"), "gearshape", () => m.openSettings())
-        add(qsTr("Übersicht"), qsTr("Konten"), "square.grid.2x2", () => m.sidebarSelection = "all")
+        add(qsTr("Alle Konten"), qsTr("Konten"), "square.grid.2x2", () => m.sidebarSelection = "all")
+        add(qsTr("Neue Umsätze"), qsTr("Konten"), "tray.full", () => m.sidebarSelection = "newBookings")
         add(qsTr("Neue Kontogruppe"), action + " · " + Fmt.keys("Strg+Umschalt+N"), "folder.badge.plus", () => m.groupDialog = { kind: "create", movingAccount: null, parent: null })
         add(qsTr("Kontogruppen bearbeiten"), action, "slider.horizontal.3", () => m.openGroupManager())
         add(qsTr("Neue Hauptkategorie"), action, "plus.square", () => m.newCategoryRequest = { parent: null })
@@ -47,7 +48,11 @@ Sheet {
             if (loan) add(qsTr("Stand von „%1“ neu setzen").arg(loan.setup.name), action, "calendar.badge.clock", () => m.openLoanEditor("anchor", accId))
         }
         if (m.accountView !== "byGroup") add(qsTr("Konten nach Gruppe anzeigen"), view, "folder", () => m.setAccountView("byGroup"))
+        if (m.accountView !== "byBank") add(qsTr("Konten nach Bank anzeigen"), view, "building.columns", () => m.setAccountView("byBank"))
         if (m.accountView !== "byKind") add(qsTr("Konten nach Kontoart anzeigen"), view, "square.stack.3d.up", () => m.setAccountView("byKind"))
+        for (const b of m.bankGroups)
+            add(b.name, qsTr("Bank · %1").arg(m.accountCountText(b.accounts.length)), b.sf_symbol, () => {
+                m.setAccountView("byBank"); m.sidebarSelection = "bank:" + b.id })
         for (const g of m.namedUserGroups)
             add(g.name, qsTr("Gruppe · %1").arg(m.accountCountText(g.accounts.length)), g.sf_symbol, () => {
                 m.setAccountView("byGroup"); m.sidebarSelection = "userGroup:" + g.uuid })
