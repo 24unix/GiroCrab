@@ -349,6 +349,41 @@ Rectangle {
             Rectangle { visible: !dc.isLast; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right
                         anchors.topMargin: 0; anchors.bottomMargin: 0; anchors.leftMargin: 1; anchors.rightMargin: 1; color: Theme.card }
         }
+        // not booked yet ("vorgemerkt"): light diagonal hatching under the row, as on the Mac
+        Canvas {
+            id: pendingHatch
+            visible: dc.booking !== null && !!dc.booking.is_pending
+            anchors.fill: parent; anchors.margins: 1
+            anchors.bottomMargin: dc.isLast ? 4 : 0
+            readonly property color lineColor: Theme.withAlpha(Theme.secondary, 0.14)
+            onLineColorChanged: requestPaint()
+            onWidthChanged: requestPaint()
+            onHeightChanged: requestPaint()
+            onVisibleChanged: if (visible) requestPaint()
+            onPaint: {
+                const ctx = getContext("2d")
+                ctx.reset()
+                // the day's last row is rounded at the bottom: keep the lines inside
+                const r = dc.isLast ? 10 : 0
+                ctx.beginPath()
+                ctx.moveTo(0, 0)
+                ctx.lineTo(width, 0)
+                ctx.lineTo(width, height - r)
+                ctx.arcTo(width, height, width - r, height, r)
+                ctx.lineTo(r, height)
+                ctx.arcTo(0, height, 0, height - r, r)
+                ctx.closePath()
+                ctx.clip()
+                ctx.strokeStyle = lineColor
+                ctx.lineWidth = 1
+                ctx.beginPath()
+                for (let x = -height; x < width; x += 7) {
+                    ctx.moveTo(x, height)
+                    ctx.lineTo(x + height, 0)
+                }
+                ctx.stroke()
+            }
+        }
         Rectangle {
             anchors.fill: parent; anchors.margins: 1
             anchors.bottomMargin: dc.isLast ? 4 : 0

@@ -748,7 +748,33 @@ struct BookingRow: View {
         .frame(minHeight: 44, alignment: .top)
         .padding(.horizontal, 14)
         .padding(.vertical, 5)
-        .background(RowSelectionBackground(id: booking.id))
+        .background {
+            ZStack {
+                // not booked yet: light diagonal hatching under the whole row
+                if booking.isPending { PendingHatch() }
+                RowSelectionBackground(id: booking.id)
+            }
+        }
+    }
+}
+
+/// Light diagonal hatching that marks a not yet booked ("vorgemerkt") row.
+/// Drawn with the theme's secondary colour, so it reads in light and dark.
+struct PendingHatch: View {
+    var spacing: CGFloat = 7
+    var body: some View {
+        Canvas { ctx, size in
+            var path = Path()
+            var x = -size.height
+            while x < size.width {
+                path.move(to: CGPoint(x: x, y: size.height))
+                path.addLine(to: CGPoint(x: x + size.height, y: 0))
+                x += spacing
+            }
+            ctx.stroke(path, with: .color(Theme.secondary.opacity(0.14)), lineWidth: 1)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

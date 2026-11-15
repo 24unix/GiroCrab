@@ -1397,6 +1397,15 @@ impl FinTsConnector {
         let mut touchdown: Option<String> = None;
         let mut txs = Vec::new();
         let mut closing = None;
+        // Not yet booked entries ("vorgemerkt"); a page may repeat them.
+        let mut pending: Vec<super::RemoteTransaction> = Vec::new();
+        let mut add_pending = |p: Vec<super::RemoteTransaction>| {
+            for t in p {
+                if !pending.iter().any(|q| q.external_id == t.external_id) {
+                    pending.push(t);
+                }
+            }
+        };
         for _page in 0..50 {
             let seg = self.hkcaz(acc, &format, &from, &to, touchdown.as_deref());
             let r = self.request(ctx, "HKCAZ", seg).await?;
@@ -1407,9 +1416,19 @@ impl FinTsConnector {
                         // raw @len@ slice, decoded as the XML's own encoding (UTF-8) – never via the Latin-1 envelope
                         let (t, rep) = camt::parse(&crate::text::decode_xml_bytes(xml), label);
                         txs.extend(t);
+                        add_pending(rep.pending);
                         if rep.closing_balance_cents.is_some() {
                             closing = rep.closing_balance_cents;
                         }
+                    }
+                }
+                // element 4: not yet booked entries (one camt document)
+                for v in s.element(4) {
+                    if let syntax::Value::Binary(xml) = v {
+                        add_pending(camt::parse_notbooked(
+                            &crate::text::decode_xml_bytes(xml),
+                            label,
+                        ));
                     }
                 }
             }
@@ -1418,6 +1437,7 @@ impl FinTsConnector {
                 break;
             }
         }
+        txs.extend(pending);
         Ok((txs, closing))
     }
 
@@ -2672,6 +2692,8 @@ impl BankConnector for FinTsConnector {
         let accounts = self.account_list(ctx, &mut errors).await;
         let mut result = FetchResult::default();
         let mut ok_any = false;
+        // not yet booked entries ("vorgemerkt"), see `camt::HOLD_PREFIX`
+        let (mut holds_listed, mut holds_complete) = (false, true);
         // Explicit statements fetch (Vault::fetch_account_statements): HKEKA of one account only.
         let auto_statements: Vec<String> = ctx
             .settings
@@ -2825,6 +2847,7 @@ impl BankConnector for FinTsConnector {
                 if can_camt {
                     match self.statements_camt(ctx, acc, &label).await {
                         Ok((t, closing)) => {
+                            holds_listed = true;
                             // Loan sub-accounts ("Darlehen") often answer camt with an empty
                             // list; then MT940 is tried before giving up.
                             let empty_loan = kind == AccountKind::Loan && t.is_empty() && can_mt940;
@@ -2836,6 +2859,8 @@ impl BankConnector for FinTsConnector {
                             ok_any = true;
                         }
                         Err(e) => {
+                            // the stored holds of this login stay as they are
+                            holds_complete = false;
                             errors.push(trf("{0}: Umsätze (HKCAZ/camt.052) – {1}", &[&label, &e]))
                         }
                     }
@@ -2927,6 +2952,10 @@ impl BankConnector for FinTsConnector {
                 code: "FinTS".into(),
                 message: errors.join(" / "),
             });
+        }
+        // Claim the hold list as complete only when every camt request worked.
+        if holds_listed && holds_complete {
+            result.hold_prefix = Some(camt::HOLD_PREFIX.into());
         }
         result.state = Some(serde_json::to_value(&self.st)?);
         Ok(result)
