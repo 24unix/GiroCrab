@@ -1592,6 +1592,12 @@ pub(crate) fn seed_demo(conn: &Connection, today: NaiveDate) -> CoreResult<i64> 
             "Kaufvertrag und Gutachten im Ordner „Haus“",
         ),
     )?;
+    // Explicit example choice for this synthetic item, not a name-based rule for real data.
+    conn.execute(
+        "INSERT INTO security_classifications(security_key,asset_class_override,asset_class_ms)
+         SELECT 'asset:' || uuid,'real_estate',1 FROM asset_items WHERE id=?1",
+        [house],
+    )?;
     values(
         house,
         &[

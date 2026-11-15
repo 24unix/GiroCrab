@@ -7,7 +7,10 @@ import GiroCrabCore
 struct DepotPositionsView: View {
     @Environment(AppModel.self) private var model
     let account: Account
-    @State private var holdings: [Holding] = []
+    @State private var classified: [ClassifiedAsset] = []
+    /// Securities only; Sachwerte list their items instead.
+    private var holdings: [Holding] { tangible ? [] : classified.map(\.holding) }
+    @State private var editingClassification: ClassificationEditRequest?
     @AppStorage("showSoldAssets") private var showSold = false
     @State private var deleting: AssetItem?
 
@@ -29,9 +32,13 @@ struct DepotPositionsView: View {
                     .onTapGesture { model.deselectAssetItem() }
             }
         }
-        .task(id: "\(account.id)-\(account.balanceCents)-\(account.balanceDate)") {
-            if !tangible { holdings = model.holdings(for: account.id) }
+        .task(id: "\(account.id)-\(account.balanceCents)-\(account.balanceDate)-\(model.assetClassificationVersion)") {
+            let id = account.id
+            if let assets = try? await model.vaultOffMain({ try $0.classifiedAssets(accountId: id) }), !Task.isCancelled {
+                classified = assets
+            }
         }
+        .sheet(item: $editingClassification) { request in AssetClassificationSheet(request: request).environment(model) }
         .onChange(of: account.id) { model.selectAssetItem(nil) }
         .confirmationDialog("„\(deleting?.setup.name ?? "")“ löschen?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             Button("Löschen", role: .destructive) {
@@ -57,16 +64,24 @@ struct DepotPositionsView: View {
             )
             .padding(.top, 40)
         } else {
-            PositionCard(items: holdings) {
+            // the classification travels with its position: no lookup by name
+            PositionCard(items: classified) {
                 cardHeader("Positionen", total: holdings.reduce(0) { $0 + $1.valueCents })
-            } row: { h in
+            } row: { asset in
+                let h = asset.holding, c = asset.classification
                 PositionRow(symbol: "chart.line.uptrend.xyaxis",
                             name: h.name.isEmpty ? (h.isin.isEmpty ? h.wkn : h.isin) : h.name,
                             detail: "\(NumberText.format(h.quantity)) × \(Money.format(h.currentPriceCents)) · \(h.isin.isEmpty ? h.wkn : h.isin)",
                             valueCents: h.valueCents,
                             nameRedaction: .personal,
-                            gain: Self.calculatedGain(h))
+                            gain: Self.calculatedGain(h),
+                            classification: c)
                     .contextMenu {
+                        if c.securityKey != nil {
+                            Button("Klassifizierung bearbeiten", systemImage: "pencil") {
+                                editingClassification = ClassificationEditRequest(name: h.name, classification: c)
+                            }
+                        }
                         Button("Position kopieren", systemImage: "doc.on.doc") { copyToPasteboard(Self.line(h)) }
                         Button("Alle Positionen kopieren", systemImage: "doc.on.doc.fill") {
                             copyToPasteboard(holdings.map(Self.line).joined(separator: "\n"))
@@ -148,7 +163,8 @@ struct DepotPositionsView: View {
                            warning: item.missingPriceDate != nil,
                            selected: selected,
                            dimmed: item.sold,
-                           nameRedaction: .personal)
+                           nameRedaction: .personal,
+                           classification: classified.first { $0.assetItemId == item.id }?.classification)
             .onTapGesture { model.selectAssetItem(item.id) }
             .simultaneousGesture(TapGesture(count: 2).onEnded {
                 // the second click toggled the selection off again: keep the item selected
@@ -157,6 +173,11 @@ struct DepotPositionsView: View {
             })
             .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
             .contextMenu {
+                if let c = classified.first(where: { $0.assetItemId == item.id })?.classification {
+                    Button("Klassifizierung bearbeiten", systemImage: "pencil") {
+                        editingClassification = ClassificationEditRequest(name: item.setup.name, classification: c)
+                    }
+                }
                 Button("Sachwert bearbeiten …") { model.openAssetEditor(accountId: account.id, itemId: item.id) }
                 // gold follows the price API; only manual items carry own values
                 if item.setup.priceSource == "manual" {
@@ -243,6 +264,7 @@ struct PositionRow: View {
     var nameRedaction: ReportRedaction = .labels
     /// Securities: gain or loss against the cost price, if the bank sent one.
     var gain: (cents: Int64, percent: Double)?
+    var classification: AssetClassification?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -256,6 +278,12 @@ struct PositionRow: View {
                     .lineLimit(1)
                 HStack(spacing: 3) {
                     if warning { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning) }
+                    if let classification {
+                        Text(classification.compactTitle)
+                            .help(classification.sourceDescription)
+                            .layoutPriority(1)
+                        Text("·")
+                    }
                     Text(detail)
                 }
                 .sensitive()

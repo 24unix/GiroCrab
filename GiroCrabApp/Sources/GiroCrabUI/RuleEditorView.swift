@@ -1,6 +1,53 @@
 import SwiftUI
 import GiroCrabCore
 
+/// Wildcard- and token-aware matcher for the rules list filter (#435).
+/// Supports `*` (any sequence of characters) and `?` (single character) as well
+/// as space-separated tokens, matching case-insensitively across rule name,
+/// pattern, and target category path.
+enum RuleSearchMatcher {
+    static func matches(query: String, name: String, pattern: String, categoryPath: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return true }
+        let haystacks = [name, pattern, categoryPath]
+        let combined = haystacks.joined(separator: " ")
+        let tokens = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
+        return tokens.allSatisfy { token in
+            haystacks.contains { wildcardMatch(pattern: token, text: $0) }
+                || wildcardMatch(pattern: token, text: combined)
+        }
+    }
+
+    /// Returns true if `pattern` (with `*` and `?` wildcards) matches any substring of `text` (case-insensitive).
+    static func wildcardMatch(pattern: String, text: String) -> Bool {
+        let p = pattern.lowercased()
+        let t = text.lowercased()
+        if p.isEmpty { return true }
+        if !p.contains("*") && !p.contains("?") {
+            return t.contains(p)
+        }
+        var regex = ""
+        for ch in p {
+            switch ch {
+            case "*": regex += ".*"
+            case "?": regex += "."
+            default: regex += NSRegularExpression.escapedPattern(for: String(ch))
+            }
+        }
+        return t.range(of: regex, options: .regularExpression) != nil
+    }
+
+    /// Computes the reordered array when moving `ruleID` to a new index (#434).
+    static func move(rules: [Rule], id: Int64, to destinationIndex: Int) -> [Rule] {
+        guard let from = rules.firstIndex(where: { $0.id == id }) else { return rules }
+        var copy = rules
+        let item = copy.remove(at: from)
+        let clamped = max(0, min(destinationIndex, copy.count))
+        copy.insert(item, at: clamped)
+        return copy
+    }
+}
+
 /// Keyword / regex auto-categorisation rules with live preview.
 struct RuleEditorView: View {
     @Environment(AppModel.self) private var model
@@ -9,33 +56,113 @@ struct RuleEditorView: View {
 
     @State private var selection: Int64?
     @State private var draft: Rule?
-    /// Rule waiting for the delete confirmation. The dialog lives here, not in
-    /// RuleForm: RuleForm's binding is force-unwrapped from `draft`, so a dialog
-    /// attached to it would still update after `draft` became nil (crash).
+    @State private var searchText: String = ""
     @State private var ruleToDelete: Rule?
+
+    private var isFiltering: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var filteredRules: [Rule] {
+        guard isFiltering else { return model.rules }
+        return model.rules.filter { rule in
+            RuleSearchMatcher.matches(
+                query: searchText,
+                name: rule.name,
+                pattern: rule.pattern,
+                categoryPath: categoryName(rule.categoryId)
+            )
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selection) {
-                ForEach(model.rules) { rule in
-                    HStack {
-                        Image(systemName: rule.enabled ? "wand.and.stars" : "pause.circle")
-                            .foregroundStyle(rule.enabled ? Color.readable(hex: color(of: rule)) : .secondary)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(rule.name).lineLimit(1)
-                            Text("→ " + categoryName(rule.categoryId)).appFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Regeln filtern (z. B. deu*b) …", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .appFont(.callout)
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
                         }
-                        Spacer()
-                        Text("\(rule.matchCount)")
-                            .appFont(.caption, monospacedDigit: true)
-                            .padding(.horizontal, 6).padding(.vertical, 1)
-                            .background(Capsule().fill(.quaternary))
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text("Filter zurücksetzen"))
                     }
-                    .tag(rule.id)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                Divider()
+
+                List(selection: $selection) {
+                    ForEach(Array(filteredRules.enumerated()), id: \.element.id) { idx, rule in
+                        let rank = (model.rules.firstIndex(where: { $0.id == rule.id }) ?? idx) + 1
+                        HStack(spacing: 8) {
+                            Text("\(rank).")
+                                .appFont(.caption, monospacedDigit: true)
+                                .foregroundStyle(.secondary)
+                                .frame(minWidth: 22, alignment: .trailing)
+                            Image(systemName: rule.enabled ? "wand.and.stars" : "pause.circle")
+                                .foregroundStyle(rule.enabled ? Color.readable(hex: color(of: rule)) : .secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(rule.name).lineLimit(1)
+                                Text("→ " + categoryName(rule.categoryId)).appFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            Text("\(rule.matchCount)")
+                                .appFont(.caption, monospacedDigit: true)
+                                .padding(.horizontal, 6).padding(.vertical, 1)
+                                .background(Capsule().fill(.quaternary))
+                        }
+                        .tag(rule.id)
+                        .contextMenu {
+                            let fullIndex = model.rules.firstIndex(where: { $0.id == rule.id }) ?? 0
+                            Button {
+                                moveRule(id: rule.id, to: 0)
+                            } label: {
+                                Label("An den Anfang", systemImage: "arrow.up.to.line")
+                            }
+                            .disabled(fullIndex == 0)
+
+                            Button {
+                                moveRule(id: rule.id, to: fullIndex - 1)
+                            } label: {
+                                Label("Nach oben", systemImage: "arrow.up")
+                            }
+                            .disabled(fullIndex == 0)
+
+                            Button {
+                                moveRule(id: rule.id, to: fullIndex + 1)
+                            } label: {
+                                Label("Nach unten", systemImage: "arrow.down")
+                            }
+                            .disabled(fullIndex >= model.rules.count - 1)
+
+                            Button {
+                                moveRule(id: rule.id, to: model.rules.count - 1)
+                            } label: {
+                                Label("Ans Ende", systemImage: "arrow.down.to.line")
+                            }
+                            .disabled(fullIndex >= model.rules.count - 1)
+
+                            Divider()
+                            Button(role: .destructive) {
+                                ruleToDelete = rule
+                            } label: {
+                                Label("Regel löschen …", systemImage: "trash")
+                            }
+                        }
+                    }
+                    .onMove(perform: isFiltering ? nil : moveRulesFromList)
                 }
             }
             .navigationTitle("Regeln")
-            .navigationSplitViewColumnWidth(min: 220, ideal: 260)
+            .navigationSplitViewColumnWidth(min: 240, ideal: 280)
             .toolbar {
                 ToolbarItem {
                     Button { newRule() } label: { Label("Neue Regel", systemImage: "plus") }
@@ -43,13 +170,10 @@ struct RuleEditorView: View {
             }
         } detail: {
             if let current = draft {
-                // Not Binding($draft): its force-unwrap crashes when the form
-                // updates once more after `draft` became nil (e.g. while the
-                // delete confirmation closes). Fall back to the last value.
                 RuleForm(rule: Binding(get: { draft ?? current }, set: { draft = $0 }),
                          onSave: save, onDelete: { ruleToDelete = $0 })
             } else {
-                ContentUnavailableView("Keine Regel ausgewählt", systemImage: "wand.and.stars", description: Text("Regeln ordnen neue Buchungen automatisch Kategorien zu. Die erste passende Regel (nach Priorität) gewinnt; manuelle Zuordnungen werden nie überschrieben."))
+                ContentUnavailableView("Keine Regel ausgewählt", systemImage: "wand.and.stars", description: Text("Regeln werden von oben nach unten ausgewertet – die erste passende Regel gewinnt. Reihenfolge per Drag & Drop in der Liste ändern."))
             }
         }
         .macFrame(minWidth: 860, minHeight: 600)
@@ -78,6 +202,23 @@ struct RuleEditorView: View {
         }
         .onChange(of: selection) { _, new in
             if let new, let r = model.rules.first(where: { $0.id == new }) { draft = r }
+        }
+    }
+
+    private func moveRulesFromList(from source: IndexSet, to destination: Int) {
+        var reordered = model.rules
+        reordered.move(fromOffsets: source, toOffset: destination)
+        model.reorderRules(reordered)
+        if let sel = selection, let updated = model.rules.first(where: { $0.id == sel }) {
+            draft = updated
+        }
+    }
+
+    private func moveRule(id: Int64, to destinationIndex: Int) {
+        let reordered = RuleSearchMatcher.move(rules: model.rules, id: id, to: destinationIndex)
+        model.reorderRules(reordered)
+        if let sel = selection, let updated = model.rules.first(where: { $0.id == sel }) {
+            draft = updated
         }
     }
 
@@ -112,12 +253,11 @@ struct RuleForm: View {
     @Environment(AppModel.self) private var model
     @Binding var rule: Rule
     let onSave: (Rule) -> Void
-    /// Asks to delete (RuleEditorView confirms first).
     let onDelete: (Rule) -> Void
 
     @State private var minText = ""
     @State private var maxText = ""
-    @State private var direction = 0 // 0 any, 1 expenses, 2 income
+    @State private var direction = 0
 
     var body: some View {
         let preview = model.preview(rule)
@@ -131,10 +271,8 @@ struct RuleForm: View {
                         }
                     }
                     Toggle("Aktiv", isOn: $rule.enabled)
-                    Stepper("Priorität \(rule.priority)", value: $rule.priority, in: 0...10_000, step: 10)
                 } header: { Text("Regel").appSectionHeader() }
                 Section {
-                    // A search expression names its fields itself and ignores case.
                     if rule.matchKind != .expression {
                         Picker("Suchen in", selection: $rule.field) {
                             Text("Name, Verwendungszweck und Buchungstext").tag(RuleField.any)
@@ -154,10 +292,6 @@ struct RuleForm: View {
                         Toggle("Groß-/Kleinschreibung beachten", isOn: $rule.caseSensitive)
                     }
                 } header: { Text("Treffer").appSectionHeader() }
-                // The pattern gets its own full-width, multi-line field so long
-                // patterns wrap instead of scrolling sideways; the example is
-                // the footer, apart from the input (#179). A vertical
-                // TextField, not a TextEditor: no smart-quote substitution.
                 Section {
                     TextField("Muster", text: $rule.pattern, prompt: Text(placeholder), axis: .vertical)
                         .labelsHidden()
@@ -171,7 +305,8 @@ struct RuleForm: View {
                     Text("Muster").appSectionHeader()
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Beispiel: \(Text(verbatim: placeholder).appFont(.caption, design: .monospaced))")
+                        Text("Beispiel: \(placeholder)")
+                            .appFont(.caption, design: .monospaced)
                             .textSelection(.enabled)
                         if rule.matchKind == .expression {
                             Text("Mit AND, OR, NOT, Klammern, „Wortgruppen“, * und ?, /Regex/, Feldern wie name: oder purpose: und Beträgen wie amount<0.")

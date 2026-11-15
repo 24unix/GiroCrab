@@ -330,8 +330,10 @@ pub struct RemoteAccount {
 }
 
 /// Securities position delivered by a connector for a depot account.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RemoteHolding {
+    pub classification: crate::asset_classification::ClassificationValues,
+    pub direct_crypto: bool,
     pub account_ref: String,
     pub holding: crate::models::Holding,
 }

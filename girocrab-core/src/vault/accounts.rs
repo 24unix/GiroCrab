@@ -387,38 +387,7 @@ impl Vault {
     // ---------------------------------------------------------------- holdings
 
     pub fn list_holdings(&self, account_id: i64) -> Result<Vec<Holding>, CoreError> {
-        let db = self.db()?;
-        // Sachwerte (#87): the items, valued today, in the same shape
-        if crate::assets::is_tangible(&db, account_id)? {
-            return crate::assets::holdings(&db, account_id);
-        }
-        let mut q = db.prepare(
-            "SELECT isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents,
-                    prev_day_price_cents, prev_day_value_cents, profit_loss_purchase_cents, profit_loss_purchase_rel,
-                    profit_loss_prev_day_cents, profit_loss_prev_day_rel, custody_type
-             FROM holdings h WHERE account_id = ?1
-               AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = h.account_id AND a.deleted_ms IS NULL)
-             ORDER BY value_cents DESC, name",
-        )?;
-        let rows = q.query_map([account_id], |r| {
-            Ok(Holding {
-                isin: r.get(0)?,
-                wkn: r.get(1)?,
-                name: r.get(2)?,
-                quantity: r.get(3)?,
-                current_price_cents: r.get(4)?,
-                purchase_price_cents: r.get(5)?,
-                value_cents: r.get(6)?,
-                prev_day_price_cents: r.get(7)?,
-                prev_day_value_cents: r.get(8)?,
-                profit_loss_purchase_cents: r.get(9)?,
-                profit_loss_purchase_rel: r.get(10)?,
-                profit_loss_prev_day_cents: r.get(11)?,
-                profit_loss_prev_day_rel: r.get(12)?,
-                custody_type: r.get(13)?,
-            })
-        })?;
-        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        holdings_from_db(&*self.db()?, account_id)
     }
 
     /// Securities transactions of a depot (#314), newest first.
@@ -723,6 +692,51 @@ impl Vault {
         }
         Ok(())
     }
+}
+
+/// Columns of a securities position, in the order [`holding_from_row`] reads them.
+pub(crate) const HOLDING_COLUMNS: &str =
+    "h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents,
+     h.prev_day_price_cents, h.prev_day_value_cents, h.profit_loss_purchase_cents, h.profit_loss_purchase_rel,
+     h.profit_loss_prev_day_cents, h.profit_loss_prev_day_rel, h.custody_type";
+
+/// Restricts `holdings h` to one active account, largest position first.
+pub(crate) const HOLDING_FILTER: &str = "h.account_id = ?1
+     AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = h.account_id AND a.deleted_ms IS NULL)
+     ORDER BY h.value_cents DESC, h.name, h.id";
+
+pub(crate) fn holding_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Holding> {
+    Ok(Holding {
+        isin: r.get(0)?,
+        wkn: r.get(1)?,
+        name: r.get(2)?,
+        quantity: r.get(3)?,
+        current_price_cents: r.get(4)?,
+        purchase_price_cents: r.get(5)?,
+        value_cents: r.get(6)?,
+        prev_day_price_cents: r.get(7)?,
+        prev_day_value_cents: r.get(8)?,
+        profit_loss_purchase_cents: r.get(9)?,
+        profit_loss_purchase_rel: r.get(10)?,
+        profit_loss_prev_day_cents: r.get(11)?,
+        profit_loss_prev_day_rel: r.get(12)?,
+        custody_type: r.get(13)?,
+    })
+}
+
+pub(crate) fn holdings_from_db(
+    db: &rusqlite::Connection,
+    account_id: i64,
+) -> Result<Vec<Holding>, CoreError> {
+    // Sachwerte (#87): the items, valued today, in the same shape
+    if crate::assets::is_tangible(db, account_id)? {
+        return crate::assets::holdings(db, account_id);
+    }
+    let mut q = db.prepare(&format!(
+        "SELECT {HOLDING_COLUMNS} FROM holdings h WHERE {HOLDING_FILTER}"
+    ))?;
+    let rows = q.query_map([account_id], holding_from_row)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
 #[cfg(test)]

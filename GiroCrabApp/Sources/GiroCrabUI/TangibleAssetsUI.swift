@@ -275,7 +275,7 @@ struct AssetEditorSheet: View {
         }
         .buttonStyle(.plain)
         .help("Symbol wählen")
-        .accessibilityLabel(Text("Symbol: \(AssetSymbols.name(of: shown))"))
+        .accessibilityLabel(AssetSymbols.name(of: shown))
         .popover(isPresented: $showSymbols, arrowEdge: .bottom) {
             AssetSymbolPicker(selection: $symbol, current: shown)
         }
