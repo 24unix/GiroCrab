@@ -85,7 +85,7 @@ fn attrs(body: &str) -> Vec<(String, String)> {
                 .get(2)
                 .or(c.get(3))
                 .or(c.get(4))
-                .map(|m| decode_entities(m.as_str()))
+                .map(|m| crate::text::decode_html_entities(m.as_str()))
                 .unwrap_or_default();
             (c[1].to_ascii_lowercase(), v)
         })
@@ -96,54 +96,10 @@ fn attr<'a>(a: &'a [(String, String)], name: &str) -> Option<&'a str> {
     a.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
 }
 
-fn decode_entities(s: &str) -> String {
-    if !s.contains('&') {
-        return s.to_string();
-    }
-    let mut out = String::with_capacity(s.len());
-    let mut rest = s;
-    while let Some(i) = rest.find('&') {
-        out.push_str(&rest[..i]);
-        let after = &rest[i + 1..];
-        let ch = after.find(';').filter(|e| *e <= 8).and_then(|end| {
-            let ent = &after[..end];
-            let c = match ent {
-                "amp" => Some('&'),
-                "lt" => Some('<'),
-                "gt" => Some('>'),
-                "quot" => Some('"'),
-                "apos" => Some('\''),
-                "nbsp" => Some(' '),
-                "euro" => Some('€'),
-                "minus" => Some('-'),
-                _ => ent
-                    .strip_prefix("#x")
-                    .or_else(|| ent.strip_prefix("#X"))
-                    .and_then(|h| u32::from_str_radix(h, 16).ok())
-                    .or_else(|| ent.strip_prefix('#').and_then(|d| d.parse().ok()))
-                    .and_then(char::from_u32),
-            };
-            c.map(|c| (c, end))
-        });
-        match ch {
-            Some((c, end)) => {
-                out.push(c);
-                rest = &after[end + 1..];
-            }
-            None => {
-                out.push('&');
-                rest = after;
-            }
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
 /// Visible text of an HTML fragment, whitespace collapsed.
 fn text(fragment: &str) -> String {
     let plain = ANY_TAG.replace_all(fragment, " ");
-    decode_entities(&plain)
+    crate::text::decode_html_entities(&plain)
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")

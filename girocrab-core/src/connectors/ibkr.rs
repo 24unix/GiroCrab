@@ -261,48 +261,6 @@ struct Tag {
     kind: TagKind,
 }
 
-fn decode_entities(s: &str) -> String {
-    if !s.contains('&') {
-        return s.to_string();
-    }
-    let mut out = String::with_capacity(s.len());
-    let mut rest = s;
-    while let Some(i) = rest.find('&') {
-        out.push_str(&rest[..i]);
-        let after = &rest[i + 1..];
-        let Some(end) = after.find(';').filter(|e| *e <= 8) else {
-            out.push('&');
-            rest = after;
-            continue;
-        };
-        let ent = &after[..end];
-        let ch = match ent {
-            "amp" => Some('&'),
-            "lt" => Some('<'),
-            "gt" => Some('>'),
-            "quot" => Some('"'),
-            "apos" => Some('\''),
-            _ => ent
-                .strip_prefix("#x")
-                .and_then(|h| u32::from_str_radix(h, 16).ok())
-                .or_else(|| ent.strip_prefix('#').and_then(|d| d.parse().ok()))
-                .and_then(char::from_u32),
-        };
-        match ch {
-            Some(c) => {
-                out.push(c);
-                rest = &after[end + 1..];
-            }
-            None => {
-                out.push('&');
-                rest = after;
-            }
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
 fn parse_attrs(s: &str) -> HashMap<String, String> {
     let mut attrs = HashMap::new();
     let b = s.as_bytes();
@@ -338,7 +296,7 @@ fn parse_attrs(s: &str) -> HashMap<String, String> {
         if !name.is_empty() {
             attrs.insert(
                 name.to_string(),
-                decode_entities(&s[vstart..i.min(b.len())]),
+                crate::text::decode_html_entities(&s[vstart..i.min(b.len())]),
             );
         }
         i += 1;
@@ -404,7 +362,7 @@ fn tag_text(xml: &str, name: &str) -> Option<String> {
     let open = format!("<{name}>");
     let start = xml.find(&open)? + open.len();
     let end = xml[start..].find(&format!("</{name}>"))? + start;
-    Some(decode_entities(xml[start..end].trim()))
+    Some(crate::text::decode_html_entities(xml[start..end].trim()))
 }
 
 // ------------------------------------------------------------------ SendRequest / status responses
@@ -1083,7 +1041,7 @@ mod tests {
     #[test]
     fn decodes_entities_and_attributes() {
         assert_eq!(
-            decode_entities("A &amp; B &lt;&#65;&#x42;&gt; &bogus;"),
+            crate::text::decode_html_entities("A &amp; B &lt;&#65;&#x42;&gt; &bogus;"),
             "A & B <AB> &bogus;"
         );
         let tags = scan_tags(r#"<a x="1>2" y='z &amp; w'/><!-- <b/> --><c></c>"#);

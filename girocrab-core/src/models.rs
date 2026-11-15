@@ -44,7 +44,7 @@ pub enum ConnectorKind {
     Easybank,
     /// Volkswagen Bank online banking (photoTAN / pushTAN) via the web portal.
     VolkswagenBank,
-    /// Uberspace hosting accounts (credit balance per Asteroid) via the web dashboard.
+    /// Uberspace hosting accounts (balance and bookings per Asteroid) via the web dashboard.
     Uberspace,
 }
 

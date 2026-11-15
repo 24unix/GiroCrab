@@ -341,9 +341,67 @@ pub(crate) fn repair_stored_text(conn: &Connection) -> rusqlite::Result<u32> {
     Ok(changed)
 }
 
+/// Decodes HTML/XML character references: the five XML entities, `&nbsp;`,
+/// `&euro;`, `&minus;` and numeric ones (`&#65;`, `&#x42;`). Anything else
+/// (`&bogus;`, a bare `&`) stays as it is. Used by the web/XML connectors.
+pub(crate) fn decode_html_entities(s: &str) -> String {
+    if !s.contains('&') {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find('&') {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 1..];
+        let ch = after.find(';').filter(|e| *e <= 8).and_then(|end| {
+            let ent = &after[..end];
+            let c = match ent {
+                "amp" => Some('&'),
+                "lt" => Some('<'),
+                "gt" => Some('>'),
+                "quot" => Some('"'),
+                "apos" => Some('\''),
+                "nbsp" => Some(' '),
+                "euro" => Some('€'),
+                "minus" => Some('-'),
+                _ => ent
+                    .strip_prefix("#x")
+                    .or_else(|| ent.strip_prefix("#X"))
+                    .and_then(|h| u32::from_str_radix(h, 16).ok())
+                    .or_else(|| ent.strip_prefix('#').and_then(|d| d.parse().ok()))
+                    .and_then(char::from_u32),
+            };
+            c.map(|c| (c, end))
+        });
+        match ch {
+            Some((c, end)) => {
+                out.push(c);
+                rest = &after[end + 1..];
+            }
+            None => {
+                out.push('&');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decodes_html_entities() {
+        assert_eq!(
+            decode_html_entities("A &amp; B &lt;&#65;&#x42;&#X43;&gt; &bogus; & x"),
+            "A & B <ABC> &bogus; & x"
+        );
+        assert_eq!(decode_html_entities("1.012,34&nbsp;&euro;"), "1.012,34 €");
+        assert_eq!(decode_html_entities("&minus;5,00"), "-5,00");
+        assert_eq!(decode_html_entities("plain"), "plain");
+    }
 
     #[test]
     fn decodes_latin1_utf8_and_mojibake() {
