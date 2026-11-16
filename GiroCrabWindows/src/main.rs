@@ -2,19 +2,27 @@
 //! Unlock / create vault, demo mode (`GIROCRAB_DEMO_SEED=1`), accounts with balances,
 //! bookings of the selected account and bank sync (FinTS PIN/TAN dialog, PSD2 browser redirect).
 
+mod daily;
 mod policy;
 mod sync_flow;
+mod transfer_flow;
 mod vault_key;
 
+use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use girocrab_core::connectors::bank_directory::{BankAccessMode, BankSearchResult};
-use girocrab_core::{BookingFilter, Challenge, ChallengeKind, ConnectorKind, SyncStep, Vault};
+use girocrab_core::connectors::PayeeCheck;
+use girocrab_core::{
+    BookingFilter, Category, Challenge, ChallengeKind, ConnectorKind, SyncStep, TransferStep, Vault,
+};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use zeroize::Zeroizing;
+
+use daily::{Filter, Row, StatusFilter};
 
 slint::include_modules!();
 
@@ -112,7 +120,7 @@ fn hex_color(hex: &str) -> Option<slint::Color> {
     ))
 }
 
-fn account_rows(vault: &Vault) -> Result<(Vec<AccountRow>, String), String> {
+fn account_rows(vault: &Vault, privacy: bool) -> Result<(Vec<AccountRow>, String), String> {
     let accounts = vault.list_accounts().map_err(|e| e.to_string())?;
     let total: i64 = accounts
         .iter()
@@ -125,48 +133,172 @@ fn account_rows(vault: &Vault) -> Result<(Vec<AccountRow>, String), String> {
             id: a.id as i32,
             name: a.name.clone().into(),
             bank: a.bank_name.clone().into(),
-            iban: mask_iban(&a.iban, &a.account_number).into(),
+            iban: daily::mask(&mask_iban(&a.iban, &a.account_number), privacy).into(),
             dot: dot_color(&a.bank_name),
-            balance: money(a.balance_cents, &a.currency).into(),
+            balance: daily::mask(&money(a.balance_cents, &a.currency), privacy).into(),
             currency: a.currency.clone().into(),
-            negative: a.balance_cents < 0,
+            negative: a.balance_cents < 0 && !privacy,
         })
         .collect();
-    Ok((rows, money(total, "EUR")))
+    Ok((rows, daily::mask(&money(total, "EUR"), privacy)))
 }
 
-fn booking_rows(vault: &Vault, account_id: i64, search: &str) -> Result<Vec<BookingRow>, String> {
+/// Most bookings the list keeps in memory per account scope; filters run on these without the vault.
+const ROW_LIMIT: u32 = 2000;
+
+/// `scope` > 0 = one account, otherwise all accounts.
+fn load_rows(vault: &Vault, scope: i64) -> Result<Vec<Row>, String> {
     let page = vault
         .list_transactions(BookingFilter {
-            account_ids: vec![account_id],
-            search: Some(search.trim().to_string()).filter(|q| !q.is_empty()),
-            limit: 200,
+            account_ids: if scope > 0 { vec![scope] } else { vec![] },
+            limit: ROW_LIMIT,
             ..Default::default()
         })
         .map_err(|e| e.to_string())?;
-    Ok(page
-        .transactions
-        .iter()
-        .map(|b| BookingRow {
-            date: b.booking_date.clone().into(),
-            counterparty: if b.merchant_name.is_empty() {
-                b.counterparty.clone()
-            } else {
-                b.merchant_name.clone()
+    Ok(page.transactions.iter().map(Row::from).collect())
+}
+
+/// UI-thread state behind the booking list, filter bar and inspector.
+#[derive(Default)]
+struct State {
+    rows: Vec<Row>,
+    shown: Vec<usize>,
+    categories: Vec<Category>,
+    filter: Filter,
+    selected_booking: Option<i64>,
+    /// Drops the result of a superseded background load.
+    generation: u64,
+    /// (account id, label, bank name) of the accounts a transfer can start from.
+    transfer_sources: Vec<(i64, String, String)>,
+}
+
+/// One-booking edit run against the vault for the selected booking id.
+type EditFn = Box<dyn Fn(&Vault, i64) -> Result<(), String>>;
+
+thread_local! {
+    static STATE: RefCell<State> = RefCell::new(State::default());
+}
+
+fn with_state<R>(f: impl FnOnce(&mut State) -> R) -> R {
+    STATE.with(|s| f(&mut s.borrow_mut()))
+}
+
+fn privacy_on(win: &MainWindow) -> bool {
+    daily::effective_privacy(win.get_privacy(), win.get_unlocked())
+}
+
+/// Builds the visible rows and the inspector from the cached rows; never touches the vault.
+fn render_bookings(win: &MainWindow) {
+    let privacy = privacy_on(win);
+    let (rows, inspector, cat_index) = with_state(|st| {
+        let rows: Vec<BookingRow> = st
+            .shown
+            .iter()
+            .map(|&i| {
+                let b = &st.rows[i];
+                BookingRow {
+                    id: b.id as i32,
+                    date: b.booking_date.clone().into(),
+                    counterparty: daily::mask(&b.counterparty, privacy).into(),
+                    category: if b.category_name.is_empty() {
+                        "Ohne Kategorie".into()
+                    } else {
+                        b.category_name.clone().into()
+                    },
+                    category_color: hex_color(&b.category_color_hex)
+                        .unwrap_or_else(|| slint::Color::from_rgb_u8(0x8e, 0x8e, 0x93)),
+                    purpose: daily::mask(&b.purpose, privacy).into(),
+                    amount: daily::mask(&money(b.amount_cents, &b.currency), privacy).into(),
+                    negative: b.amount_cents < 0 && !privacy,
+                    checked: b.checked,
+                }
+            })
+            .collect();
+        let insp = st
+            .selected_booking
+            .and_then(|id| st.rows.iter().find(|r| r.id == id))
+            .map(|r| daily::inspect(r, privacy, money));
+        let idx = insp
+            .as_ref()
+            .and_then(|i| i.category_id)
+            .and_then(|cid| st.categories.iter().position(|c| c.id == cid))
+            .map_or(0, |p| p as i32 + 1);
+        (rows, insp, idx)
+    });
+    win.set_bookings(ModelRc::new(VecModel::from(rows)));
+    match inspector {
+        Some(i) => {
+            // The note box keeps unsaved typing while the same booking stays selected.
+            if win.get_selected_booking() != i.id as i32 {
+                win.set_note_text(i.note.clone().into());
             }
-            .into(),
-            category: if b.category_name.is_empty() {
-                "Ohne Kategorie".into()
-            } else {
-                b.category_name.clone().into()
-            },
-            category_color: hex_color(&b.category_color_hex)
-                .unwrap_or_else(|| slint::Color::from_rgb_u8(0x8e, 0x8e, 0x93)),
-            purpose: b.purpose.clone().into(),
-            amount: money(b.amount_cents, &b.currency).into(),
-            negative: b.amount_cents < 0,
-        })
-        .collect())
+            win.set_selected_booking(i.id as i32);
+            win.set_inspector_checked(i.checked);
+            win.set_inspector(InspectorData {
+                counterparty: i.counterparty.into(),
+                iban: i.iban.into(),
+                purpose: i.purpose.into(),
+                booking_date: i.booking_date.into(),
+                value_date: i.value_date.into(),
+                account: i.account.into(),
+                amount: i.amount.into(),
+                note: i.note.into(),
+                read_only: i.read_only,
+            });
+            win.set_inspector_category(cat_index);
+            win.set_has_inspector(true);
+        }
+        None => {
+            win.set_selected_booking(-1);
+            win.set_has_inspector(false);
+        }
+    }
+}
+
+/// Re-applies the filter bar to the cached rows (no vault access) and redraws.
+fn apply_filter(win: &MainWindow) {
+    with_state(|st| {
+        st.filter = Filter {
+            search: win.get_search_text().to_string(),
+            uncategorized_only: win.get_uncategorized_only(),
+            status: StatusFilter::from_index(win.get_status_index()),
+        };
+        st.shown = daily::visible(&st.rows, &st.filter);
+        st.selected_booking = daily::keep_selection(&st.rows, &st.shown, st.selected_booking);
+    });
+    render_bookings(win);
+}
+
+/// Loads the bookings of the current account scope on a worker thread, then redraws.
+fn reload(win: &MainWindow, vault: Arc<Vault>) {
+    let scope = win.get_selected().max(0) as i64;
+    let generation = with_state(|st| {
+        st.generation += 1;
+        st.generation
+    });
+    let weak = win.as_weak();
+    std::thread::spawn(move || {
+        let rows = load_rows(&vault, scope);
+        let cats = vault.list_categories(None, None).map_err(|e| e.to_string());
+        let _ = weak.upgrade_in_event_loop(move |win| {
+            if with_state(|st| st.generation) != generation {
+                return;
+            }
+            match (rows, cats) {
+                (Ok(rows), Ok(cats)) => {
+                    let mut names = vec![SharedString::from("Ohne Kategorie")];
+                    names.extend(cats.iter().map(|c| SharedString::from(c.path.as_str())));
+                    win.set_category_names(ModelRc::new(VecModel::from(names)));
+                    with_state(|st| {
+                        st.rows = rows;
+                        st.categories = cats;
+                    });
+                    apply_filter(&win);
+                }
+                (Err(e), _) | (_, Err(e)) => win.set_sync_status(e.into()),
+            }
+        });
+    });
 }
 
 /// Bridges the sync worker thread to the Slint dialog. The worker blocks on `replies` until the
@@ -195,6 +327,24 @@ impl DialogBridge {
             w.set_tan_image(Default::default());
             w.set_tan_has_image(false);
         });
+    }
+
+    fn ask_import_password(&self) -> Option<Zeroizing<String>> {
+        self.drain();
+        self.show(
+            "pin",
+            "Passwort der MoneyMoney-Datenbank".into(),
+            "Das Passwort wird nur für diesen Import im Speicher gehalten.".into(),
+            None,
+        );
+        self.replies
+            .lock()
+            .unwrap()
+            .recv()
+            .ok()
+            .flatten()
+            .filter(|p| !p.is_empty())
+            .map(Zeroizing::new)
     }
 
     fn drain(&self) {
@@ -481,48 +631,242 @@ fn tokio_runtime() -> Result<tokio::runtime::Runtime, String> {
         .map_err(|e| e.to_string())
 }
 
-fn load_bookings(win: &MainWindow, vault: &Vault, id: i64) {
-    match booking_rows(vault, id, &win.get_search_text()) {
-        Ok(b) => win.set_bookings(ModelRc::new(VecModel::from(b))),
-        Err(e) => win.set_sync_status(e.into()),
-    }
+/// Redraws the account list and header (balances follow privacy mode).
+/// `selected`: account id, 0 = all accounts, `None` = the first account. Returns the selection.
+fn render_header(
+    win: &MainWindow,
+    vault: &Vault,
+    selected: Option<i64>,
+) -> Result<Option<i64>, String> {
+    let (rows, total) = account_rows(vault, win.get_privacy())?;
+    let first = rows.first().map(|r| r.id as i64);
+    let header: Vec<(i64, String, String, String)> = rows
+        .iter()
+        .map(|r| {
+            (
+                r.id as i64,
+                r.name.to_string(),
+                r.balance.to_string(),
+                r.currency.to_string(),
+            )
+        })
+        .collect();
+    win.set_accounts(ModelRc::new(VecModel::from(rows)));
+    win.set_total(total.clone().into());
+    let sel = selected.or(first);
+    win.set_selected(sel.map_or(-1, |s| s as i32));
+    let cur = if sel == Some(0) {
+        ("Alle Konten".to_string(), total, "EUR".to_string())
+    } else {
+        header
+            .iter()
+            .find(|h| Some(h.0) == sel)
+            .map(|h| (h.1.clone(), h.2.clone(), h.3.clone()))
+            .unwrap_or_else(|| (String::new(), money(0, "EUR"), "EUR".into()))
+    };
+    win.set_selected_name(cur.0.into());
+    win.set_selected_balance(cur.1.into());
+    win.set_selected_currency(cur.2.into());
+    Ok(sel)
 }
 
-fn show(win: &MainWindow, vault: &Vault, selected: Option<i64>) {
-    match account_rows(vault) {
-        Ok((rows, total)) => {
-            let first = rows.first().map(|r| r.id as i64);
-            let header: Vec<(i64, String, String, String)> = rows
-                .iter()
-                .map(|r| {
-                    (
-                        r.id as i64,
-                        r.name.to_string(),
-                        r.balance.to_string(),
-                        r.currency.to_string(),
-                    )
-                })
-                .collect();
-            win.set_accounts(ModelRc::new(VecModel::from(rows)));
-            win.set_total(total.into());
-            let sel = selected.or(first);
-            win.set_selected(sel.map_or(-1, |s| s as i32));
-            let cur = header
-                .iter()
-                .find(|h| Some(h.0) == sel)
-                .map(|h| (h.1.clone(), h.2.clone(), h.3.clone()))
-                .unwrap_or_else(|| (String::new(), money(0, "EUR"), "EUR".into()));
-            win.set_selected_name(cur.0.into());
-            win.set_selected_balance(cur.1.into());
-            win.set_selected_currency(cur.2.into());
-            match sel {
-                Some(id) => load_bookings(win, vault, id),
-                None => win.set_bookings(ModelRc::new(VecModel::from(Vec::<BookingRow>::new()))),
+/// Header plus a reload of the bookings of the selected scope.
+fn show(win: &MainWindow, vault: &Arc<Vault>, selected: Option<i64>) {
+    match render_header(win, vault, selected) {
+        Ok(sel) => {
+            refresh_transfer_sources(win, vault);
+            if sel.is_some() {
+                reload(win, vault.clone());
+            } else {
+                with_state(|st| {
+                    st.rows.clear();
+                    st.shown.clear();
+                    st.selected_booking = None;
+                });
+                render_bookings(win);
             }
             win.set_unlocked(true);
         }
         Err(e) => win.set_message(e.into()),
     }
+}
+
+/// Accounts a transfer can start from: those that belong to a bank connection.
+fn refresh_transfer_sources(win: &MainWindow, vault: &Vault) {
+    let sources: Vec<(i64, String, String)> = vault
+        .list_accounts()
+        .unwrap_or_default()
+        .iter()
+        .filter(|a| a.connection_id.is_some())
+        .map(|a| (a.id, a.name.clone(), a.bank_name.clone()))
+        .collect();
+    let labels: Vec<SharedString> = sources
+        .iter()
+        .map(|s| SharedString::from(s.1.as_str()))
+        .collect();
+    win.set_transfer_accounts(ModelRc::new(VecModel::from(labels)));
+    with_state(|st| st.transfer_sources = sources);
+}
+
+/// Result line of an import run.
+fn import_file(
+    vault: &Arc<Vault>,
+    path: &std::path::Path,
+    target_account: Option<i64>,
+    ui: &DialogBridge,
+) -> Result<String, String> {
+    let e = |e: girocrab_core::CoreError| e.to_string();
+    let kind = daily::import_kind(path)
+        .ok_or("Dieser Dateityp wird nicht unterstützt (.moneymoney, .csv, .xml, .sta, .mt940).")?;
+    match kind {
+        daily::ImportKind::Statement => {
+            let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let r = vault
+                .import_moneymoney_data(bytes, name, target_account, true, true)
+                .map_err(e)?;
+            Ok(format!(
+                "Import: {} neu, {} bereits vorhanden, {} ergänzt.",
+                r.imported, r.duplicates, r.enriched
+            ))
+        }
+        daily::ImportKind::MoneyMoneyDb => {
+            let pw = ui
+                .ask_import_password()
+                .ok_or("Import abgebrochen.".to_string())?;
+            let location = path.display().to_string();
+            let preview = vault
+                .preview_moneymoney_database(location.clone(), pw.to_string(), None)
+                .map_err(e)?;
+            let options = girocrab_core::importers::moneymoney_db::MoneyMoneyDbImportOptions {
+                accounts: preview
+                    .accounts
+                    .iter()
+                    .map(
+                        |a| girocrab_core::importers::moneymoney_db::MoneyMoneyDbAccountChoice {
+                            mm_id: a.mm_id,
+                            import: true,
+                            kind: a.suggested_kind,
+                            target_account_id: a.existing_account_id,
+                        },
+                    )
+                    .collect(),
+                import_categories: true,
+                import_notes: true,
+                create_connections: false,
+                import_groups: false,
+                import_statements: false,
+                statements_dir: None,
+                bank_choices: vec![],
+            };
+            let r = vault
+                .import_moneymoney_database(location, pw.to_string(), options)
+                .map_err(e)?;
+            Ok(format!(
+                "MoneyMoney-Import: {} neue Umsätze, {} Duplikate, {} Konten neu, {} zusammengeführt.",
+                r.bookings_new, r.bookings_duplicates, r.accounts_created, r.accounts_merged
+            ))
+        }
+    }
+}
+
+/// Native file dialog (Windows). Elsewhere (development builds) there is none.
+#[cfg(windows)]
+fn pick_import_file() -> Option<PathBuf> {
+    rfd::FileDialog::new()
+        .set_title("Umsätze importieren")
+        .add_filter(
+            "MoneyMoney, CSV, CAMT",
+            &["moneymoney", "csv", "xml", "sta", "mt940", "txt"],
+        )
+        .pick_file()
+}
+
+#[cfg(not(windows))]
+fn pick_import_file() -> Option<PathBuf> {
+    std::env::var_os("GIROCRAB_IMPORT_FILE").map(PathBuf::from)
+}
+
+/// `TransferSession` driven synchronously.
+struct CoreTransfer {
+    session: Arc<girocrab_core::TransferSession>,
+    rt: tokio::runtime::Runtime,
+}
+
+impl transfer_flow::TransferStepper for CoreTransfer {
+    fn start(&self) -> Result<TransferStep, String> {
+        self.rt
+            .block_on(self.session.start())
+            .map_err(|e| e.to_string())
+    }
+    fn submit_code(&self, code: String) -> Result<TransferStep, String> {
+        self.rt
+            .block_on(self.session.submit_code(code))
+            .map_err(|e| e.to_string())
+    }
+    fn poll(&self) -> Result<TransferStep, String> {
+        self.rt
+            .block_on(self.session.poll())
+            .map_err(|e| e.to_string())
+    }
+    fn confirm_payee(&self) -> Result<TransferStep, String> {
+        self.rt
+            .block_on(self.session.confirm_payee())
+            .map_err(|e| e.to_string())
+    }
+    fn cancel(&self) {
+        let _ = self.rt.block_on(self.session.cancel());
+    }
+}
+
+impl transfer_flow::TransferUi for DialogBridge {
+    fn confirm_payee(&self, check: &PayeeCheck) -> bool {
+        self.drain();
+        self.show(
+            "confirm",
+            "Empfänger prüfen".into(),
+            transfer_flow::payee_text(check),
+            None,
+        );
+        matches!(self.replies.lock().unwrap().recv(), Ok(Some(_)))
+    }
+}
+
+fn run_transfer(
+    vault: Arc<Vault>,
+    demo: bool,
+    request: girocrab_core::SepaTransferRequest,
+    bank: &str,
+    ui: &DialogBridge,
+) -> Result<String, String> {
+    if policy::apply(VERSION).all {
+        return Err(
+            "Überweisung gesperrt: Diese Version ist durch die Sicherheitssperre gesperrt.".into(),
+        );
+    }
+    let mut secret = if demo {
+        Zeroizing::new(String::new())
+    } else {
+        use sync_flow::Ui;
+        match ui.ask_secret(bank) {
+            Some(s) if !s.trim().is_empty() => s,
+            Some(_) => return Err("Bitte die PIN eingeben.".into()),
+            None => return Err(transfer_flow::CANCELLED_TRANSFER.into()),
+        }
+    };
+    let session = vault
+        .begin_transfer(request, std::mem::take(&mut *secret), demo)
+        .map_err(|e| e.to_string())?;
+    transfer_flow::drive_transfer(
+        &CoreTransfer {
+            session,
+            rt: tokio_runtime()?,
+        },
+        ui,
+    )
 }
 
 fn main() -> Result<(), slint::PlatformError> {
@@ -584,13 +928,11 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
     {
-        let (weak, vault) = (win.as_weak(), vault.clone());
+        // Search text, "ohne Kategorie" toggle and status filter: in memory, no vault access.
+        let weak = win.as_weak();
         win.on_search_changed(move || {
-            let (Some(win), Some(v)) = (weak.upgrade(), vault.lock().unwrap().clone()) else {
-                return;
-            };
-            if win.get_selected() >= 0 {
-                load_bookings(&win, &v, win.get_selected() as i64);
+            if let Some(win) = weak.upgrade() {
+                apply_filter(&win);
             }
         });
     }
@@ -669,6 +1011,225 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
+    {
+        let weak = win.as_weak();
+        win.on_select_booking(move |id| {
+            let Some(win) = weak.upgrade() else { return };
+            with_state(|st| st.selected_booking = Some(id as i64));
+            render_bookings(&win);
+        });
+    }
+    {
+        // Privacy mode: only the rendering changes; the cached rows stay as they are.
+        let (weak, vault) = (win.as_weak(), vault.clone());
+        win.on_privacy_changed(move || {
+            let (Some(win), Some(v)) = (weak.upgrade(), vault.lock().unwrap().clone()) else {
+                return;
+            };
+            let sel = Some(win.get_selected() as i64).filter(|s| *s >= 0);
+            let _ = render_header(&win, &v, sel);
+            render_bookings(&win);
+        });
+    }
+    {
+        let (weak, vault) = (win.as_weak(), vault.clone());
+        win.on_lock(move || {
+            let Some(win) = weak.upgrade() else { return };
+            *vault.lock().unwrap() = None;
+            with_state(|st| *st = State::default());
+            win.set_unlocked(false);
+            win.set_bookings(ModelRc::new(VecModel::from(Vec::<BookingRow>::new())));
+            win.set_accounts(ModelRc::new(VecModel::from(Vec::<AccountRow>::new())));
+            win.set_has_inspector(false);
+            win.set_first_run(false);
+        });
+    }
+    {
+        // Inspector edits: one-row updates, applied to the cache so the list needs no reload.
+        let (weak, vault) = (win.as_weak(), vault.clone());
+        let edit = move |f: EditFn| {
+            let (Some(win), Some(v)) = (weak.upgrade(), vault.lock().unwrap().clone()) else {
+                return;
+            };
+            if privacy_on(&win) {
+                return;
+            }
+            let Some(id) = with_state(|st| st.selected_booking) else {
+                return;
+            };
+            if let Err(e) = f(&v, id) {
+                win.set_sync_status(e.into());
+                return;
+            }
+            apply_filter(&win);
+        };
+        let edit = Arc::new(edit);
+        {
+            let edit = edit.clone();
+            win.on_set_category(move |index| {
+                edit(Box::new(move |v, id_| {
+                    let cat = with_state(|st| {
+                        (index > 0)
+                            .then(|| st.categories.get(index as usize - 1).cloned())
+                            .flatten()
+                    });
+                    v.set_transaction_category(id_, cat.as_ref().map(|c| c.id))
+                        .map_err(|e| e.to_string())?;
+                    with_state(|st| {
+                        if let Some(r) = st.rows.iter_mut().find(|r| r.id == id_) {
+                            r.category_id = cat.as_ref().map(|c| c.id);
+                            r.category_name =
+                                cat.as_ref().map(|c| c.name.clone()).unwrap_or_default();
+                            r.category_color_hex = cat
+                                .as_ref()
+                                .map(|c| c.color_hex.clone())
+                                .unwrap_or_default();
+                        }
+                    });
+                    Ok(())
+                }))
+            });
+        }
+        {
+            let edit = edit.clone();
+            win.on_set_checked(move |checked| {
+                edit(Box::new(move |v, id_| {
+                    v.set_transaction_checked(id_, checked)
+                        .map_err(|e| e.to_string())?;
+                    with_state(|st| {
+                        if let Some(r) = st.rows.iter_mut().find(|r| r.id == id_) {
+                            r.checked = checked;
+                        }
+                    });
+                    Ok(())
+                }))
+            });
+        }
+        {
+            let edit = edit.clone();
+            win.on_save_note(move |text| {
+                let text = text.trim().to_string();
+                edit(Box::new(move |v, id_| {
+                    v.update_transaction_note(id_, text.clone())
+                        .map_err(|e| e.to_string())?;
+                    with_state(|st| {
+                        if let Some(r) = st.rows.iter_mut().find(|r| r.id == id_) {
+                            r.note = text.clone();
+                        }
+                    });
+                    Ok(())
+                }))
+            });
+        }
+    }
+    {
+        let (weak, vault) = (win.as_weak(), vault.clone());
+        win.on_apply_rules(move || {
+            let (Some(win), Some(v)) = (weak.upgrade(), vault.lock().unwrap().clone()) else {
+                return;
+            };
+            win.set_busy(true);
+            win.set_sync_status("Regeln werden angewendet …".into());
+            let weak = win.as_weak();
+            std::thread::spawn(move || {
+                let result = v.apply_rules(true).map_err(|e| e.to_string());
+                let _ = weak.upgrade_in_event_loop(move |win| {
+                    win.set_busy(false);
+                    match result {
+                        Ok(n) => {
+                            win.set_sync_status(
+                                format!("Regeln angewendet: {n} Umsätze kategorisiert.").into(),
+                            );
+                            reload(&win, v);
+                        }
+                        Err(e) => win.set_sync_status(e.into()),
+                    }
+                });
+            });
+        });
+    }
+    {
+        let (weak, vault, bridge) = (win.as_weak(), vault.clone(), bridge.clone());
+        win.on_import_file(move || {
+            let (Some(win), Some(v)) = (weak.upgrade(), vault.lock().unwrap().clone()) else {
+                return;
+            };
+            let target = Some(win.get_selected() as i64).filter(|s| *s > 0);
+            win.set_busy(true);
+            win.set_sync_status("Import: Datei wählen …".into());
+            let (weak, bridge) = (win.as_weak(), bridge.clone());
+            // The file dialog and the core import block: worker thread.
+            std::thread::spawn(move || {
+                let result = match pick_import_file() {
+                    None => Err("Import abgebrochen.".to_string()),
+                    Some(path) => import_file(&v, &path, target, &bridge),
+                };
+                bridge.hide();
+                let _ = weak.upgrade_in_event_loop(move |win| {
+                    win.set_busy(false);
+                    let ok = result.is_ok();
+                    let sel = Some(win.get_selected() as i64).filter(|s| *s >= 0);
+                    if ok {
+                        show(&win, &v, sel);
+                    }
+                    win.set_sync_status(result.unwrap_or_else(|e| e).into());
+                });
+            });
+        });
+    }
+    {
+        let weak = win.as_weak();
+        win.on_transfer_start(move || {
+            let Some(win) = weak.upgrade() else { return };
+            win.set_transfer_status(SharedString::new());
+            win.set_transfer_open(true);
+        });
+    }
+    {
+        let (weak, vault, demo_active, bridge) = (
+            win.as_weak(),
+            vault.clone(),
+            demo_active.clone(),
+            bridge.clone(),
+        );
+        win.on_transfer_submit(move |index, name, iban, amount, purpose| {
+            let (Some(win), Some(v)) = (weak.upgrade(), vault.lock().unwrap().clone()) else {
+                return;
+            };
+            let source = with_state(|st| st.transfer_sources.get(index.max(0) as usize).cloned());
+            let input = daily::TransferInput {
+                account_id: source.as_ref().map_or(0, |s| s.0),
+                name: name.to_string(),
+                iban: iban.to_string(),
+                amount: amount.to_string(),
+                purpose: purpose.to_string(),
+            };
+            let request = match daily::validate_transfer(&input) {
+                Ok(r) => r,
+                Err(e) => {
+                    win.set_transfer_status(e.into());
+                    return;
+                }
+            };
+            let bank = source.map(|s| s.2).unwrap_or_default();
+            let demo = *demo_active.lock().unwrap();
+            win.set_transfer_open(false);
+            win.set_busy(true);
+            win.set_sync_status("Überweisung läuft …".into());
+            let (weak, bridge) = (win.as_weak(), bridge.clone());
+            std::thread::spawn(move || {
+                let result = run_transfer(v.clone(), demo, request, &bank, &bridge);
+                bridge.hide();
+                let _ = weak.upgrade_in_event_loop(move |win| {
+                    let sel = Some(win.get_selected() as i64).filter(|s| *s >= 0);
+                    show(&win, &v, sel);
+                    win.set_busy(false);
+                    win.set_sync_status(result.unwrap_or_else(|e| e).into());
+                });
+            });
+        });
+    }
+
     if demo_mode {
         open(true);
     }
@@ -685,11 +1246,20 @@ mod tests {
             std::env::temp_dir().join(format!("girocrab-win-demo-{}.sqlite", std::process::id()));
         let vault = Vault::open(path.display().to_string(), vec![7; 32]).unwrap();
         vault.seed_demo_data().unwrap();
-        let (rows, _) = account_rows(&vault).unwrap();
+        let (rows, _) = account_rows(&vault, false).unwrap();
         assert!(!rows.is_empty());
-        assert!(!booking_rows(&vault, rows[0].id as i64, "")
-            .unwrap()
-            .is_empty());
+        assert!(!load_rows(&vault, rows[0].id as i64).unwrap().is_empty());
+        // All accounts (scope 0) holds at least as many rows as one account.
+        assert!(
+            load_rows(&vault, 0).unwrap().len()
+                >= load_rows(&vault, rows[0].id as i64).unwrap().len()
+        );
+        // Privacy hides balances and the IBAN tail.
+        let (hidden, total) = account_rows(&vault, true).unwrap();
+        assert!(hidden
+            .iter()
+            .all(|r| r.balance == daily::MASK && r.iban != "•••• 3000"));
+        assert_eq!(total, daily::MASK);
         let _ = std::fs::remove_file(&path);
     }
 

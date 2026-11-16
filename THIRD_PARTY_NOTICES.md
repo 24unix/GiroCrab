@@ -90,6 +90,7 @@ Own Cargo workspace. Shares `girocrab-core`, `serde`, `serde_json`, `base64`, `z
 | **`slint`** (UI, with `slint-build`) | `1.19.0` | `GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0` (used under GPL-3.0) | [https://github.com/slint-ui/slint](https://github.com/slint-ui/slint) |
 | **`image`** (decodes photoTAN PNG/JPEG, features `png`, `jpeg`) | `0.25.10` | `MIT OR Apache-2.0` | [https://github.com/image-rs/image](https://github.com/image-rs/image) |
 | **`keyring`** (Windows Credential Manager, `windows-native`) | `3.6.3` | `MIT OR Apache-2.0` | [https://github.com/hwchen/keyring-rs](https://github.com/hwchen/keyring-rs) |
+| **`rfd`** (native file dialog for the import, Windows only, no default features) | `0.15.4` | `MIT` | [https://github.com/PolyMeilex/rfd](https://github.com/PolyMeilex/rfd) |
 
 ## Swift Packages (`GiroCrabApp`)
 

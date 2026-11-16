@@ -1,8 +1,9 @@
-import { Button, ListView, LineEdit, Palette } from "std-widgets.slint";
+import { Button, ListView, LineEdit, Palette, ComboBox, CheckBox, TextEdit } from "std-widgets.slint";
 
 export struct AccountRow { id: int, name: string, bank: string, iban: string, dot: color, balance: string, currency: string, negative: bool }
-export struct BookingRow { date: string, counterparty: string, category: string, category-color: color, purpose: string, amount: string, negative: bool }
+export struct BookingRow { id: int, checked: bool, date: string, counterparty: string, category: string, category-color: color, purpose: string, amount: string, negative: bool }
 export struct BankHit { name: string, detail: string }
+export struct InspectorData { counterparty: string, iban: string, purpose: string, booking-date: string, value-date: string, account: string, amount: string, note: string, read-only: bool }
 
 global Theme {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
@@ -52,11 +53,16 @@ component AccountCard inherits Rectangle {
 
 component BookingLine inherits Rectangle {
     in property <BookingRow> b;
+    in property <bool> active;
+    callback clicked();
     height: 56px;
+    background: active ? Theme.accent.with-alpha(0.14) : ta.has-hover ? Theme.text.with-alpha(0.04) : transparent;
+    ta := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
         padding-left: 16px;
         padding-right: 16px;
         spacing: 12px;
+        Text { text: b.checked ? "✓" : "○"; color: b.checked ? Theme.positive : Theme.muted; font-size: 12px; width: 14px; vertical-alignment: center; }
         Text { text: b.date; color: Theme.muted; font-size: 12px; width: 84px; vertical-alignment: center; }
         VerticalLayout {
             horizontal-stretch: 1;
@@ -121,6 +127,31 @@ export component MainWindow inherits Window {
     in-out property <string> add-status;
     in property <bool> add-busy: false;
 
+    // daily driver: filter bar, inspector, privacy, import, transfer
+    in-out property <bool> privacy: false;
+    in-out property <bool> uncategorized-only: false;
+    in-out property <int> status-index: 0;
+    in property <int> selected-booking: -1;
+    in property <bool> has-inspector: false;
+    in property <InspectorData> inspector;
+    in property <[string]> category-names;
+    in-out property <int> inspector-category: 0;
+    in-out property <bool> inspector-checked: false;
+    in-out property <string> note-text;
+    in-out property <bool> transfer-open: false;
+    in property <[string]> transfer-accounts;
+    in-out property <string> transfer-status;
+    callback select-booking(int);
+    callback set-category(int);
+    callback set-checked(bool);
+    callback save-note(string);
+    callback apply-rules();
+    callback privacy-changed();
+    callback lock();
+    callback import-file();
+    callback transfer-submit(int, string, string, string, string);
+    callback transfer-start();
+
     callback unlock();
     callback demo();
     callback select-account(int);
@@ -175,6 +206,13 @@ export component MainWindow inherits Window {
                     Text { text: "GiroCrab"; font-size: 18px; font-weight: 700; color: Theme.text; }
                     Text { text: "Tresor entsperrt  ·  " + root.total; font-size: 11px; color: Theme.muted; overflow: elide; }
                 }
+                Rectangle {
+                    height: 36px;
+                    border-radius: 10px;
+                    background: root.selected == 0 ? Theme.accent.with-alpha(0.18) : all-ta.has-hover ? Theme.text.with-alpha(0.06) : transparent;
+                    all-ta := TouchArea { clicked => { root.select-account(0); } }
+                    Text { x: 14px; text: "Alle Konten"; color: Theme.text; font-size: 13px; font-weight: 600; vertical-alignment: center; }
+                }
                 ListView {
                     vertical-stretch: 1;
                     for a in root.accounts: AccountCard {
@@ -199,6 +237,20 @@ export component MainWindow inherits Window {
         VerticalLayout {
             padding: 16px;
             spacing: 12px;
+            // toolbar
+            HorizontalLayout {
+                spacing: 8px;
+                Button { text: "Importieren …"; enabled: !root.busy; clicked => { root.import-file(); } }
+                Button { text: "Überweisung …"; enabled: !root.busy && root.transfer-accounts.length > 0; clicked => { root.transfer-start(); } }
+                Button { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
+                Rectangle { horizontal-stretch: 1; }
+                CheckBox {
+                    text: "Privatmodus";
+                    checked <=> root.privacy;
+                    toggled => { root.privacy-changed(); }
+                }
+                Button { text: "Sperren"; clicked => { root.lock(); } }
+            }
             Rectangle {
                 height: 96px;
                 background: Theme.surface;
@@ -225,15 +277,9 @@ export component MainWindow inherits Window {
                     }
                     VerticalLayout {
                         alignment: center;
-                        spacing: 6px;
-                        width: 260px;
-                        LineEdit {
-                            placeholder-text: "Umsätze suchen";
-                            text <=> root.search-text;
-                            edited => { root.search-changed(); }
-                        }
+                        width: 200px;
                         Button {
-                            text: root.busy ? "Abruf läuft …" : "Jetzt abrufen";
+                            text: root.busy ? "Bitte warten …" : "Jetzt abrufen";
                             primary: true;
                             enabled: !root.busy;
                             clicked => { root.sync(); }
@@ -244,21 +290,91 @@ export component MainWindow inherits Window {
             if root.sync-status != "": Text {
                 text: root.sync-status; color: Theme.muted; font-size: 11px; wrap: word-wrap;
             }
-            Rectangle {
-                vertical-stretch: 1;
-                background: Theme.surface;
-                border-radius: 12px;
-                border-width: 1px;
-                border-color: Theme.border;
-                clip: true;
-                if root.bookings.length == 0: Text {
-                    text: root.search-text == "" ? "Keine Umsätze" : "Keine Treffer";
-                    color: Theme.muted;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+            // filter bar
+            HorizontalLayout {
+                spacing: 10px;
+                LineEdit {
+                    horizontal-stretch: 1;
+                    placeholder-text: "Gegenpartei, Verwendungszweck, Notiz suchen";
+                    text <=> root.search-text;
+                    edited => { root.search-changed(); }
                 }
-                ListView {
-                    for b in root.bookings: BookingLine { b: b; }
+                ComboBox {
+                    width: 150px;
+                    model: ["Alle Umsätze", "Ungeprüft", "Geprüft", "Ausgaben", "Einnahmen"];
+                    current-index <=> root.status-index;
+                    selected => { root.search-changed(); }
+                }
+                CheckBox {
+                    text: "Ohne Kategorie";
+                    checked <=> root.uncategorized-only;
+                    toggled => { root.search-changed(); }
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: Theme.surface;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    clip: true;
+                    if root.bookings.length == 0: Text {
+                        text: (root.search-text == "" && !root.uncategorized-only && root.status-index == 0) ? "Keine Umsätze" : "Keine Treffer";
+                        color: Theme.muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    ListView {
+                        for b in root.bookings: BookingLine {
+                            b: b;
+                            active: root.selected-booking == b.id;
+                            clicked => { root.select-booking(b.id); }
+                        }
+                    }
+                }
+                if root.has-inspector: Rectangle {
+                    width: 330px;
+                    background: Theme.surface;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    VerticalLayout {
+                        padding: 16px;
+                        spacing: 8px;
+                        Text { text: root.inspector.counterparty; font-size: 16px; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+                        Text { text: root.inspector.amount; font-size: 20px; font-weight: 700; color: Theme.text; }
+                        Text { text: "IBAN: " + root.inspector.iban; font-size: 11px; color: Theme.muted; wrap: word-wrap; visible: root.inspector.iban != ""; }
+                        Text { text: "Buchung " + root.inspector.booking-date + " · Wert " + root.inspector.value-date; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+                        Text { text: "Konto: " + root.inspector.account; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+                        Text { text: root.inspector.purpose; font-size: 12px; color: Theme.text; wrap: word-wrap; }
+                        Text { text: "Kategorie"; font-size: 11px; color: Theme.muted; }
+                        ComboBox {
+                            model: root.category-names;
+                            current-index <=> root.inspector-category;
+                            enabled: !root.inspector.read-only;
+                            selected => { root.set-category(root.inspector-category); }
+                        }
+                        CheckBox {
+                            text: "Geprüft";
+                            checked <=> root.inspector-checked;
+                            enabled: !root.inspector.read-only;
+                            toggled => { root.set-checked(root.inspector-checked); }
+                        }
+                        Text { text: "Notiz"; font-size: 11px; color: Theme.muted; }
+                        TextEdit {
+                            text <=> root.note-text;
+                            enabled: !root.inspector.read-only;
+                            height: 90px;
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Button { text: "Notiz speichern"; enabled: !root.inspector.read-only; clicked => { root.save-note(root.note-text); } }
+                            Button { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
+                        }
+                        Rectangle { vertical-stretch: 1; }
+                    }
                 }
             }
         }
@@ -327,6 +443,46 @@ export component MainWindow inherits Window {
         }
     }
 
+    // ---- SEPA transfer dialog (overlay)
+    if transfer-open: Rectangle {
+        background: #00000088;
+        TouchArea { }
+        Rectangle {
+            width: min(480px, parent.width - 32px);
+            height: tr-col.preferred-height + 4px;
+            background: Theme.surface;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: Theme.border;
+            tr-col := VerticalLayout {
+                padding: 18px;
+                spacing: 8px;
+                Text { text: "Überweisung"; font-size: 18px; font-weight: 700; color: Theme.text; }
+                Text { text: "Von Konto"; font-size: 11px; color: Theme.muted; }
+                tr-account := ComboBox { model: root.transfer-accounts; current-index: 0; }
+                tr-name := LineEdit { placeholder-text: "Empfänger (Name)"; }
+                tr-iban := LineEdit { placeholder-text: "IBAN des Empfängers"; }
+                tr-amount := LineEdit { placeholder-text: "Betrag in EUR, z. B. 12,50"; }
+                tr-purpose := LineEdit { placeholder-text: "Verwendungszweck (max. 140 Zeichen)"; }
+                Text {
+                    text: "PIN und TAN werden erst beim Senden abgefragt und nie gespeichert.";
+                    color: Theme.muted; font-size: 11px; wrap: word-wrap;
+                }
+                if root.transfer-status != "": Text { text: root.transfer-status; color: Theme.negative; font-size: 12px; wrap: word-wrap; }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    Button { text: "Abbrechen"; clicked => { root.transfer-open = false; } }
+                    Button {
+                        text: "Senden";
+                        primary: true;
+                        clicked => { root.transfer-submit(tr-account.current-index, tr-name.text, tr-iban.text, tr-amount.text, tr-purpose.text); }
+                    }
+                }
+            }
+        }
+    }
+
     // ---- PIN / TAN dialog (overlay); the input is cleared as soon as it is handed over
     if tan-open: Rectangle {
         background: #000000aa;
@@ -348,7 +504,7 @@ export component MainWindow inherits Window {
                     text: "Warte auf Freigabe in der Bank-App …";
                     color: Theme.text; font-size: 13px; horizontal-alignment: center;
                 }
-                if root.tan-mode != "push": LineEdit {
+                if root.tan-mode != "push" && root.tan-mode != "confirm": LineEdit {
                     text <=> root.tan-text;
                     input-type: root.tan-mode == "pin" ? InputType.password : InputType.text;
                     placeholder-text: root.tan-mode == "pin" ? "PIN" : root.tan-mode == "redirect" ? "Adresse oder Code aus dem Browser einfügen" : "TAN";
@@ -359,7 +515,7 @@ export component MainWindow inherits Window {
                     spacing: 8px;
                     Button { text: "Abbrechen"; clicked => { root.tan-text = ""; root.tan-cancel(); } }
                     if root.tan-mode != "push": Button {
-                        text: "Weiter";
+                        text: root.tan-mode == "confirm" ? "Trotzdem senden" : "Weiter";
                         primary: true;
                         clicked => { root.tan-submit(root.tan-text); root.tan-text = ""; }
                     }
