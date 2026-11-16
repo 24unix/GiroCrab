@@ -18,7 +18,11 @@ public final class AppModel {
     }
 
     let options: LaunchOptions
-    private(set) var vault: Vault?
+    private(set) var vault: Vault? { didSet { vaultRevision &+= 1 } }
+    /// Counts vault swaps (unlock, lock, demo ↔ own): views that cache vault data reload when it changes.
+    private(set) var vaultRevision = 0
+    /// Securities depot view: inventory or activities (toolbar on macOS, header on iOS).
+    var depotTab: DepotTab = .positions
     /// Manual loans (GitHub #36), see ManualLoansUI.swift.
     @ObservationIgnored let loanStore = ManualLoanStore()
     /// Sachwerte (GitHub #87), see TangibleAssetsUI.swift.
@@ -650,6 +654,7 @@ public final class AppModel {
             }
             if let q = options.selectAccount, let a = allAccounts.first(where: { $0.name.lowercased().contains(q) }) {
                 sidebarSelection = .account(a.id)
+                if options.depotTab == "activities" { depotTab = .activities }
                 selectedBookingID = bookings.first?.id
             }
             switch options.demoFilter {

@@ -44,6 +44,11 @@ import Foundation
 ///  --redact[=labels]      (developer) draw the main window as the bug report
 ///                         screenshot does (#301): personal data covered, with
 ///                         `=labels` category and group names too
+///  --scroll-end           scroll the largest scroll view to its end before capturing
+///  --expand-rows          unfold the first two rows of compact position/activity lists
+///  --window-height <pt>   (macOS, with --screenshot) window height, to see the end of long lists
+///  --window-width <pt>    (macOS, with --screenshot) resize the main window first, to check narrow layouts
+///  --depot-tab activities (demo) open a securities depot on its activities tab
 ///  --demo-menu <title>    (macOS, with --screenshot and GIROCRAB_SCREENSHOT_NATIVE=1)
 ///                         pop up that menu-bar menu over the window and capture it
 ///  --screenshot <file>    (macOS) render the main window, save a PNG, quit.
@@ -67,6 +72,16 @@ public struct LaunchOptions: Sendable {
     public var selectAccount: String?
     /// (demo) preselect the booking whose merchant/counterparty contains this text
     public var pickBooking: String?
+    /// (demo) `--depot-tab activities`: tab of the securities depot view
+    public var depotTab: String?
+    /// (developer) `--window-height`: window height for a screenshot
+    let windowHeight: Double?
+    /// (developer) `--expand-rows`: the first two compact list rows start unfolded (screenshots)
+    let expandRows: Bool
+    /// (developer) `--scroll-end`: scroll the main content to its end before the screenshot
+    let scrollEnd: Bool
+    /// (developer) `--window-width`: content width of the main window for a screenshot
+    public var windowWidth: Double?
     /// (demo) with `--pick`: open the list of that booking's merchant (#495)
     public var merchantList = false
     /// (demo) open the inspector in its edit mode (#448), for PR screenshots
@@ -151,6 +166,11 @@ public struct LaunchOptions: Sendable {
         }
         if (shot != nil || sync || demoSheet != nil || demoSettings != nil) && !freshVault { demo = true }
         self.demoSync = sync
+        expandRows = arguments.contains("--expand-rows")
+        scrollEnd = arguments.contains("--scroll-end")
+        windowHeight = arguments.firstIndex(of: "--window-height").flatMap { $0 + 1 < arguments.count ? Double(arguments[$0 + 1]) : nil }
+        windowWidth = arguments.firstIndex(of: "--window-width").flatMap { $0 + 1 < arguments.count ? Double(arguments[$0 + 1]) : nil }
+        depotTab = arguments.firstIndex(of: "--depot-tab").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1].lowercased() : nil }
         if let i = arguments.firstIndex(of: "--view"), i + 1 < arguments.count {
             initialView = arguments[i + 1].lowercased()
         } else {

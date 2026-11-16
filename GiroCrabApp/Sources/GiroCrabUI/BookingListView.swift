@@ -22,14 +22,6 @@ struct BookingStreamView: View {
     @State private var showCashflowIOS = false
     #endif
 
-    /// Depots show positions; bookings (buys, sells) live on the clearing account.
-    private var isDepot: Bool {
-        if case .account(let id)? = model.sidebarSelection, let a = model.account(for: id) {
-            return a.kind == .brokerage || a.name.localizedCaseInsensitiveContains("depot")
-        }
-        return false
-    }
-
     var body: some View {
         @Bindable var model = model
         let isOverview: Bool = { if case .allAccounts? = model.sidebarSelection { return true }; return false }()
@@ -75,7 +67,7 @@ struct BookingStreamView: View {
                         }
                         if model.scope == .investments {
                             InvestmentDashboardView()
-                        } else if cards.any, !isNewBookings, !model.allAccounts.isEmpty, isOverview || showAnalytics, !isDepot {
+                        } else if cards.any, !isNewBookings, !model.allAccounts.isEmpty, isOverview || showAnalytics {
                             // Overview: always; single account: only when toggled on.
                             #if os(iOS)
                             if cards.cashflow {
@@ -108,11 +100,6 @@ struct BookingStreamView: View {
                                 .padding(.top, 40)
                         } else if isNewBookings {
                             // the cards below bring their own empty state
-                        } else if isDepot, case .account(let id)? = model.sidebarSelection, let a = model.account(for: id) {
-                            // depots: positions as cards (an empty depot explains itself there)
-                            DepotPositionsView(account: a)
-                        } else if model.dayGroups.isEmpty && isDepot {
-                            // no "Keine Buchungen" placeholder under the positions
                         } else if model.dayGroups.isEmpty && !(model.allAccounts.isEmpty && !model.demoActive) {
                             ContentUnavailableView(
                                 model.searchText.isEmpty ? "Keine Buchungen" : "Keine Treffer",
@@ -154,16 +141,6 @@ struct BookingStreamView: View {
                     #endif
                     .padding(.bottom, 18)
                     .frame(maxWidth: .infinity)
-                    // Sachwerte: a click on empty space (margins, gaps between the
-                    // cards) shows the whole account again; a background layer, so
-                    // clicks on rows never reach it
-                    .background {
-                        if model.assetStore.selected != nil {
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .onTapGesture { model.deselectAssetItem() }
-                        }
-                    }
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
                 }
                 .coordinateSpace(name: StreamDayTracker.space)
@@ -285,24 +262,7 @@ struct BookingStreamView: View {
         #if os(iOS)
         .modifier(WindowTitle(title: model.title))
         #endif
-        .capturableSheet(isPresented: $model.showPrintSheet) { PrintSheet() }
-        .capturableSheet(isPresented: $model.showExportSheet) { ExportSheet() }
-        .fileExporter(
-            isPresented: $model.showCSVExporter,
-            document: model.csvExport,
-            contentType: .commaSeparatedText,
-            defaultFilename: "GiroCrab-Buchungen"
-        ) { result in
-            if case .failure(let e) = result { model.showError(String(localized: "Export fehlgeschlagen"), e.localizedDescription) }
-        }
-        .fileExporter(
-            isPresented: $model.showExportExporter,
-            document: model.exportFile,
-            contentType: model.exportContentType,
-            defaultFilename: model.exportFilename
-        ) { result in
-            if case .failure(let e) = result { model.showError(String(localized: "Export fehlgeschlagen"), e.localizedDescription) }
-        }
+        .bookingOutputSheets()
     }
 
 
@@ -321,7 +281,7 @@ struct BookingStreamView: View {
                     #endif
                     if !emptyVault {
                         StreamHeaderCard()
-                        if showStatistics && !isOverview && !isDepot && model.scope != .investments && !model.allAccounts.isEmpty {
+                        if showStatistics && !isOverview && model.scope != .investments && !model.allAccounts.isEmpty {
                             HStack {
                                 Button {
                                     withAnimation(Motion.animation(.easeInOut(duration: 0.25))) { showAnalytics.toggle() }
@@ -380,6 +340,40 @@ struct BookingStreamView: View {
         model.scrollFocusDay = nil
         proxy.scrollTo(Self.topID, anchor: .top)
     }
+}
+
+
+/// Print and export sheets plus the file exporters behind the menu commands; shared by the
+/// booking list and the depot view, so a command works in both.
+private struct BookingOutputSheets: ViewModifier {
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        @Bindable var model = model
+        content
+        .capturableSheet(isPresented: $model.showPrintSheet) { PrintSheet() }
+        .capturableSheet(isPresented: $model.showExportSheet) { ExportSheet() }
+        .fileExporter(
+            isPresented: $model.showCSVExporter,
+            document: model.csvExport,
+            contentType: .commaSeparatedText,
+            defaultFilename: "GiroCrab-Buchungen"
+        ) { result in
+            if case .failure(let e) = result { model.showError(String(localized: "Export fehlgeschlagen"), e.localizedDescription) }
+        }
+        .fileExporter(
+            isPresented: $model.showExportExporter,
+            document: model.exportFile,
+            contentType: model.exportContentType,
+            defaultFilename: model.exportFilename
+        ) { result in
+            if case .failure(let e) = result { model.showError(String(localized: "Export fehlgeschlagen"), e.localizedDescription) }
+        }
+    }
+}
+
+extension View {
+    func bookingOutputSheets() -> some View { modifier(BookingOutputSheets()) }
 }
 
 #if os(macOS)
@@ -1206,8 +1200,13 @@ struct MainToolbar: ViewModifier {
                 } else if model.sidebarSelection == .documents {
                     DocumentsScopePicker()
                 } else {
-                    BookingScopePicker()
-                        .disabled(model.sidebarSelection == .newBookings)
+                    switch model.presentation {
+                    case .securities: DepotTabPicker()
+                    // Sachwerte have neither booking scopes nor depot tabs; the item stays so the
+                    // customizable toolbar keeps its layout
+                    case .tangible: Color.clear.frame(width: 1, height: 1).accessibilityHidden(true)
+                    case .bookings: BookingScopePicker().disabled(model.sidebarSelection == .newBookings)
+                    }
                 }
             }
             ToolbarItem(id: "transfer", placement: .primaryAction) {

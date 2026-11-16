@@ -654,7 +654,7 @@ extension AppModel {
 
     private var headerBalanceUnsplit: (label: String, cents: Int64)? {
         switch sidebarSelection {
-        case .account(let id): return allAccounts.first { $0.id == id }.map { (isTangible(id) ? String(localized: "Wert heute") : String(localized: "Kontostand"), $0.balanceCents) }
+        case .account(let id): return allAccounts.first { $0.id == id }.map { (isTangible(id) ? String(localized: "Wert heute") : depotKind(of: id) == .securities ? String(localized: "Depotwert") : String(localized: "Kontostand"), $0.balanceCents) }
         case .group(let id): return groups.first { $0.id == id }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .bank(let key): return bankGroup(for: key).map { (String(localized: "Summe"), $0.balanceCents) }
         case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }.map { (String(localized: "Summe"), $0.balanceCents) }

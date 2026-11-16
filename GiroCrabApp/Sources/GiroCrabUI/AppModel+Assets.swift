@@ -120,9 +120,9 @@ extension AppModel {
                 if r.requested { self.reloadAccounts(); self.reloadHistory() }
                 guard userInitiated else { return }
                 if let e = r.error {
-                    self.toast = String(localized: "Kurse konnten nicht geladen werden: \(e)")
+                    self.toast = String(localized: "Goldpreis konnte nicht geladen werden: \(e)")
                 } else if r.requested {
-                    self.toast = String(localized: "Kurse aktualisiert")
+                    self.toast = String(localized: "Goldpreis aktualisiert")
                 }
             } catch {
                 if userInitiated { self.toast = describe(error) }

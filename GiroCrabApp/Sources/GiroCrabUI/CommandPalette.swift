@@ -31,8 +31,17 @@ struct CommandPaletteView: View {
     private var items: [Item] {
         var out: [Item] = []
         let action = String(localized: "Aktion")
-        for s in BookingScope.ordered {
-            out.append(Item(title: s.title, subtitle: String(localized: "Ansicht"), symbol: "rectangle.split.3x1") { model.scope = s })
+        switch model.presentation {
+        case .securities:
+            for tab in DepotTab.allCases {
+                out.append(Item(title: tab.titleText, subtitle: String(localized: "Ansicht"), symbol: "rectangle.split.3x1") { model.depotTab = tab })
+            }
+        case .tangible:
+            break
+        case .bookings:
+            for s in BookingScope.ordered {
+                out.append(Item(title: s.title, subtitle: String(localized: "Ansicht"), symbol: "rectangle.split.3x1") { model.scope = s })
+            }
         }
         if model.canTransfer {
             out.append(Item(title: String(localized: "Überweisung senden"), subtitle: "\(action) · ⌘N", symbol: "paperplane") { model.openTransfer() })

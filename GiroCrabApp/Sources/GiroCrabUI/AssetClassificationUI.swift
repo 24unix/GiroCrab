@@ -111,6 +111,14 @@ struct WealthGroup: Hashable {
     let order: Int
     /// "Nicht klassifiziert": grey, hideable in the chart, offers the assign queue.
     let unclassified: Bool
+
+    /// The group of an asset class / an instrument kind: one mapping for the wealth view and the depot view.
+    static func of(_ asset: AssetClass) -> WealthGroup {
+        WealthGroup(key: asset.key, title: asset.title, order: AssetClass.choices.firstIndex(of: asset) ?? 0, unclassified: asset == .unclassified)
+    }
+    static func of(_ kind: InstrumentKind) -> WealthGroup {
+        WealthGroup(key: kind.key, title: kind.title, order: InstrumentKind.choices.firstIndex(of: kind) ?? 0, unclassified: kind == .unclassified)
+    }
 }
 
 /// One or several positions to classify; several are worked through one after the other.
@@ -280,12 +288,7 @@ struct WealthClassRow: Identifiable {
             .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
     }
     func group(by grouping: WealthGrouping) -> WealthGroup {
-        if grouping == .instrument {
-            let kind = classification.instrument
-            return WealthGroup(key: kind.key, title: kind.title, order: InstrumentKind.choices.firstIndex(of: kind) ?? 0, unclassified: kind == .unclassified)
-        }
-        let asset = classification.assetClass
-        return WealthGroup(key: asset.key, title: asset.title, order: AssetClass.choices.firstIndex(of: asset) ?? 0, unclassified: asset == .unclassified)
+        grouping == .instrument ? .of(classification.instrument) : .of(classification.assetClass)
     }
     static func make(_ s: WealthSummary, assets: [Int64: [ClassifiedAsset]]) -> [Self] {
         func c(_ asset: AssetClass, source: ClassificationSource = .rule) -> AssetClassification {

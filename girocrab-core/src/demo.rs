@@ -1865,6 +1865,446 @@ impl Vault {
                 )?;
             }
         }
+        // More securities activities for the demo (#314): the two depots show buys with fees,
+        // sells, distributions with withholding tax, own fee/tax lines, a foreign-currency
+        // distribution and an other-kind line. Three world-depot savings-plan buys carry the
+        // amount and day of the Giro's "Sparplan" bookings, which they are linked to below.
+        {
+            use crate::models::{SecurityDirection as D, SecurityTransaction};
+            const ISHARES: (&str, &str, &str) = (
+                "IE00B4L5Y983",
+                "A0RPWH",
+                "iShares Core MSCI World UCITS ETF",
+            );
+            const VANGUARD: (&str, &str, &str) = (
+                "IE00BK5BQT80",
+                "A2PKXG",
+                "Vanguard FTSE All-World UCITS ETF",
+            );
+            const XTRACKERS: (&str, &str, &str) = (
+                "LU0290358497",
+                "DBX0AN",
+                "Xtrackers II EUR Overnight Rate Swap UCITS ETF",
+            );
+            const SIEMENS: (&str, &str, &str) = ("DE0007236101", "723610", "Siemens AG");
+            const APPLE: (&str, &str, &str) = ("US0378331005", "865985", "Apple Inc.");
+            const SAP: (&str, &str, &str) = ("DE0007164600", "716460", "SAP SE");
+            const MICROSOFT: (&str, &str, &str) = ("US5949181045", "870747", "Microsoft Corp.");
+            const ALLIANZ: (&str, &str, &str) = ("DE0008404005", "840400", "Allianz SE");
+            const BUND: (&str, &str, &str) = (
+                "DE0001102580",
+                "110258",
+                "Bundesrepublik Deutschland Anleihe 2032",
+            );
+            const GOLD: (&str, &str, &str) = ("DE000A0S9GB0", "A0S9GB", "Xetra-Gold");
+            struct Row {
+                account: &'static str,
+                days_ago: i64,
+                settle_after: i64,
+                direction: D,
+                security: (&'static str, &'static str, &'static str),
+                quantity: f64,
+                price: i64,
+                currency: &'static str,
+                value: i64,
+                fees: i64,
+                taxes: i64,
+                accrued: i64,
+                text: &'static str,
+            }
+            let row = |account,
+                       days_ago,
+                       settle_after,
+                       direction,
+                       security,
+                       quantity,
+                       price,
+                       value,
+                       fees,
+                       taxes,
+                       accrued,
+                       text| Row {
+                account,
+                days_ago,
+                settle_after,
+                direction,
+                security,
+                quantity,
+                price,
+                currency: "EUR",
+                value,
+                fees,
+                taxes,
+                accrued,
+                text,
+            };
+            let w = "demo-depot";
+            let e = "demo-einzeltitel";
+            let mut rows = vec![
+                // savings-plan buys that match the Giro's bookings (linked to them below)
+                row(
+                    w,
+                    53,
+                    0,
+                    D::Buy,
+                    ISHARES,
+                    5.4,
+                    92_59,
+                    500_00,
+                    0,
+                    0,
+                    0,
+                    "Sparplan",
+                ),
+                row(
+                    w,
+                    23,
+                    0,
+                    D::Buy,
+                    ISHARES,
+                    4.8,
+                    104_17,
+                    500_00,
+                    0,
+                    0,
+                    0,
+                    "Sparplan",
+                ),
+                row(
+                    w,
+                    24,
+                    0,
+                    D::Buy,
+                    VANGUARD,
+                    2.3,
+                    108_70,
+                    250_00,
+                    0,
+                    0,
+                    0,
+                    "Sparplan",
+                ),
+                // world depot: a buy with a fee, a sale with fee and tax, a distribution with
+                // withholding tax, the annual advance lump-sum tax and an unlinked fee line
+                row(
+                    w,
+                    100,
+                    2,
+                    D::Buy,
+                    XTRACKERS,
+                    10.0,
+                    145_00,
+                    1_450_00,
+                    4_90,
+                    0,
+                    0,
+                    "Kauf",
+                ),
+                row(
+                    w,
+                    40,
+                    2,
+                    D::Sell,
+                    XTRACKERS,
+                    5.0,
+                    146_00,
+                    730_00,
+                    1_50,
+                    0,
+                    0,
+                    "Verkauf",
+                ),
+                row(
+                    w,
+                    62,
+                    0,
+                    D::Dividend,
+                    VANGUARD,
+                    0.0,
+                    0,
+                    62_00,
+                    0,
+                    16_35,
+                    0,
+                    "Ausschüttung",
+                ),
+                row(
+                    w,
+                    120,
+                    0,
+                    D::Tax,
+                    ISHARES,
+                    0.0,
+                    0,
+                    3_20,
+                    0,
+                    0,
+                    0,
+                    "Vorabpauschale",
+                ),
+                row(
+                    w,
+                    95,
+                    0,
+                    D::Fee,
+                    ISHARES,
+                    0.0,
+                    0,
+                    0,
+                    2_50,
+                    0,
+                    0,
+                    "Fremdkostenpauschale",
+                ),
+                // single-stock depot: initial purchases at the demo cost prices
+                row(
+                    e,
+                    340,
+                    2,
+                    D::Buy,
+                    SIEMENS,
+                    15.0,
+                    148_00,
+                    2_220_00,
+                    4_90,
+                    0,
+                    0,
+                    "Kauf",
+                ),
+                row(
+                    e,
+                    300,
+                    2,
+                    D::Buy,
+                    APPLE,
+                    12.0,
+                    165_00,
+                    1_980_00,
+                    4_90,
+                    0,
+                    0,
+                    "Kauf",
+                ),
+                row(
+                    e,
+                    280,
+                    2,
+                    D::Buy,
+                    SAP,
+                    10.0,
+                    131_00,
+                    1_310_00,
+                    4_90,
+                    0,
+                    0,
+                    "Kauf",
+                ),
+                row(
+                    e,
+                    200,
+                    2,
+                    D::Buy,
+                    MICROSOFT,
+                    6.0,
+                    310_00,
+                    1_860_00,
+                    4_90,
+                    0,
+                    0,
+                    "Kauf",
+                ),
+                row(
+                    e,
+                    150,
+                    2,
+                    D::Buy,
+                    ALLIANZ,
+                    8.0,
+                    232_50,
+                    1_860_00,
+                    4_90,
+                    0,
+                    0,
+                    "Kauf",
+                ),
+                row(
+                    e,
+                    120,
+                    2,
+                    D::Buy,
+                    BUND,
+                    20.0,
+                    99_20,
+                    1_984_00,
+                    4_90,
+                    0,
+                    18_40,
+                    "Kauf",
+                ),
+                row(
+                    e,
+                    90,
+                    2,
+                    D::Buy,
+                    GOLD,
+                    30.0,
+                    52_40,
+                    1_572_00,
+                    4_90,
+                    0,
+                    0,
+                    "Kauf",
+                ),
+                // a partial sale with its own tax line, distributions, a custody fee
+                row(
+                    e,
+                    45,
+                    2,
+                    D::Sell,
+                    APPLE,
+                    3.0,
+                    205_00,
+                    615_00,
+                    4_90,
+                    0,
+                    0,
+                    "Verkauf",
+                ),
+                row(
+                    e,
+                    45,
+                    0,
+                    D::Tax,
+                    APPLE,
+                    0.0,
+                    0,
+                    36_50,
+                    0,
+                    0,
+                    0,
+                    "Kapitalertragsteuer",
+                ),
+                row(
+                    e,
+                    255,
+                    0,
+                    D::Dividend,
+                    SIEMENS,
+                    15.0,
+                    4_70,
+                    70_50,
+                    0,
+                    18_59,
+                    0,
+                    "Dividende",
+                ),
+                row(
+                    e,
+                    190,
+                    0,
+                    D::Dividend,
+                    SAP,
+                    10.0,
+                    2_35,
+                    23_50,
+                    0,
+                    6_20,
+                    0,
+                    "Dividende",
+                ),
+                row(
+                    e,
+                    175,
+                    0,
+                    D::Dividend,
+                    ALLIANZ,
+                    8.0,
+                    13_80,
+                    110_40,
+                    0,
+                    29_12,
+                    0,
+                    "Dividende",
+                ),
+                row(
+                    e,
+                    60,
+                    0,
+                    D::Fee,
+                    SIEMENS,
+                    0.0,
+                    0,
+                    12_50,
+                    0,
+                    0,
+                    0,
+                    "Depotentgelt",
+                ),
+                row(
+                    e,
+                    20,
+                    0,
+                    D::Other,
+                    MICROSOFT,
+                    0.0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    "Kapitalmaßnahme",
+                ),
+            ];
+            // a foreign-currency distribution: shown, but never summed into the euro figures
+            let mut usd = row(
+                e,
+                70,
+                0,
+                D::Dividend,
+                MICROSOFT,
+                6.0,
+                83,
+                4_98,
+                0,
+                0,
+                0,
+                "Dividende",
+            );
+            usd.currency = "USD";
+            rows.push(usd);
+            let mut n = 1000;
+            for r in rows {
+                n += 1;
+                let day = |d: i64| (today - Duration::days(d)).format("%Y-%m-%d").to_string();
+                crate::security_transactions::upsert(
+                    &tx,
+                    acc_ids[r.account],
+                    &SecurityTransaction {
+                        external_id: format!("demo-st-{n}"),
+                        booking_date: day(r.days_ago),
+                        settlement_date: if r.settle_after > 0 {
+                            day(r.days_ago - r.settle_after)
+                        } else {
+                            String::new()
+                        },
+                        isin: r.security.0.into(),
+                        wkn: r.security.1.into(),
+                        name: r.security.2.into(),
+                        direction: r.direction,
+                        quantity: r.quantity,
+                        price_cents: r.price,
+                        currency: r.currency.into(),
+                        value_cents: r.value,
+                        fees_cents: r.fees,
+                        taxes_cents: r.taxes,
+                        accrued_interest_cents: r.accrued,
+                        fx_rate: (r.currency == "USD").then_some(1.08),
+                        booking_text: r.text.into(),
+                        ..Default::default()
+                    },
+                )?;
+            }
+        }
         // manual loan without a bank account (#36): Stand two months ago, rates from the Giro
         // (linked by `apply_rules_inner` below)
         let car = crate::loans::create_in(
@@ -1959,6 +2399,18 @@ impl Vault {
             .find(|s| s.external_ref == "demo-visa")
             .map_or(0, |s| s.opening_cents);
         crate::opening_balance::calibrate_in(&tx, visa, card)?;
+        // The three savings-plan buys above meet the Giro's "Sparplan" bookings (same amount and
+        // day). The depot sits on its own login, which the automatic matching does not cross, so
+        // the demo sets the link the way a connector with a cash reference does.
+        tx.execute(
+            "UPDATE security_transactions SET cash_transaction_id = (
+                 SELECT t.id FROM transactions t
+                  WHERE t.account_id = ?1 AND t.booking_date = security_transactions.booking_date
+                    AND t.amount_cents = -(security_transactions.value_cents + security_transactions.fees_cents)
+                    AND t.purpose = 'Sparplan' LIMIT 1)
+             WHERE account_id = ?2 AND external_id IN ('demo-st-1001', 'demo-st-1002', 'demo-st-1003')",
+            params![acc_ids["demo-giro"], acc_ids["demo-depot"]],
+        )?;
         Vault::apply_rules_inner(&tx, true)?;
         demo_documents(&tx, today)?;
         demo_tags(&tx)?;
@@ -2257,6 +2709,40 @@ mod tests {
             .transactions;
         assert!(both.iter().any(|b| b.counterparty.starts_with("Sixt")));
         assert!(both.iter().all(|b| b.tags.len() >= 2));
+    }
+
+    #[test]
+    fn demo_depots_have_activities_and_linked_savings_plan_buys() {
+        use crate::models::SecurityDirection as D;
+        let dir_dir = crate::test_support::TempDir::new("girocrab-test");
+        let v = Vault::open(
+            dir_dir.join("v.db").to_string_lossy().to_string(),
+            vec![7u8; 32],
+        )
+        .unwrap();
+        v.seed_demo_data().unwrap();
+        let accounts = v.list_accounts().unwrap();
+        let id = |name: &str| accounts.iter().find(|a| a.name == name).unwrap().id;
+        let world = v.list_security_transactions(id("Welt-Depot ETF")).unwrap();
+        let singles = v
+            .list_security_transactions(id("Einzeltitel-Depot"))
+            .unwrap();
+        for list in [&world, &singles] {
+            for d in [D::Buy, D::Sell, D::Dividend, D::Fee, D::Tax] {
+                assert!(list.iter().any(|t| t.direction == d), "{d:?}");
+            }
+        }
+        assert!(singles.iter().any(|t| t.currency == "USD"));
+        assert!(singles.iter().any(|t| t.direction == D::Other));
+        // exactly the three matching savings-plan buys point to a Giro booking
+        assert_eq!(
+            world
+                .iter()
+                .filter(|t| t.cash_transaction_id.is_some())
+                .count(),
+            3
+        );
+        assert!(singles.iter().all(|t| t.cash_transaction_id.is_none()));
     }
 
     #[test]

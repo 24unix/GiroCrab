@@ -154,7 +154,7 @@ public struct GiroCrabScenes: Scene {
                     .keyboardShortcut(.upArrow, modifiers: [.command, .control])
                 Divider()
                 ForEach(Array(BookingScope.ordered.enumerated()), id: \.offset) { i, s in
-                    Button(s.title) { model.scope = s }
+                    Button(model.presentation.menuTitle(index: i, scope: s)) { model.applyScopeShortcut(index: i, scope: s) }
                         .keyboardShortcut(KeyEquivalent(Character(String(i + 1))), modifiers: .command)
                 }
                 Divider()
@@ -658,7 +658,7 @@ struct MainSplitView: View {
             } else if model.sidebarSelection == .wealth {
                 WealthView()
             } else {
-                BookingStreamView()
+                accountColumn
             }
         }
         #if os(macOS)
@@ -671,6 +671,20 @@ struct MainSplitView: View {
         .modifier(WindowTitle(title: model.title))
         #endif
         .frame(minHeight: 0, maxHeight: .infinity)
+    }
+
+    /// A securities depot and a Sachwerte account each have their own view on the shared holdings frame
+    /// (`AssetAccountFrame`); everything else shows bookings. `.id` keeps no state of another account.
+    @ViewBuilder
+    private var accountColumn: some View {
+        switch model.presentation {
+        case .securities:
+            if let depot = model.selectedSecuritiesDepot { DepotDetailView(account: depot).id(depot.id) }
+        case .tangible:
+            if let account = model.selectedTangibleAccount { TangibleAccountDetailView(account: account).id(account.id) }
+        case .bookings:
+            BookingStreamView()
+        }
     }
 
     #if os(macOS)

@@ -10,28 +10,28 @@ final class HoldingsGainTests: XCTestCase {
     }
 
     func testFractionalPositionUsesReportedValueAndRoundsCostToCents() throws {
-        let gain = try XCTUnwrap(DepotPositionsView.calculatedGain(holding()))
+        let gain = try XCTUnwrap(HoldingFigures.calculatedGain(holding()))
         XCTAssertEqual(gain.cents, 13_125)
         XCTAssertEqual(gain.percent, 11.6666666667, accuracy: 0.000001)
-        let fractional = try XCTUnwrap(DepotPositionsView.calculatedGain(holding(quantity: 1.2345, costPrice: 1_001, value: 1_500)))
+        let fractional = try XCTUnwrap(HoldingFigures.calculatedGain(holding(quantity: 1.2345, costPrice: 1_001, value: 1_500)))
         XCTAssertEqual(fractional.cents, 264) // rounded cost basis: 1,236 cents
     }
 
     func testLossBreakEvenAndTotalLoss() throws {
-        XCTAssertEqual(try XCTUnwrap(DepotPositionsView.calculatedGain(holding(value: 100_000))).cents, -12_500)
-        XCTAssertEqual(try XCTUnwrap(DepotPositionsView.calculatedGain(holding(value: 112_500))).percent, 0)
-        XCTAssertEqual(try XCTUnwrap(DepotPositionsView.calculatedGain(holding(value: 0))).percent, -100)
+        XCTAssertEqual(try XCTUnwrap(HoldingFigures.calculatedGain(holding(value: 100_000))).cents, -12_500)
+        XCTAssertEqual(try XCTUnwrap(HoldingFigures.calculatedGain(holding(value: 112_500))).percent, 0)
+        XCTAssertEqual(try XCTUnwrap(HoldingFigures.calculatedGain(holding(value: 0))).percent, -100)
     }
 
     func testMissingOrInvalidCostBasisDoesNotBecomeAnApparentGain() {
         for quantity in [Double.nan, .infinity, 0, -1, .greatestFiniteMagnitude] {
-            XCTAssertNil(DepotPositionsView.calculatedGain(holding(quantity: quantity)))
+            XCTAssertNil(HoldingFigures.calculatedGain(holding(quantity: quantity)))
         }
         for cost in [Int64(0), -1] {
-            XCTAssertNil(DepotPositionsView.calculatedGain(holding(costPrice: cost)))
+            XCTAssertNil(HoldingFigures.calculatedGain(holding(costPrice: cost)))
         }
-        XCTAssertNil(DepotPositionsView.calculatedGain(holding(quantity: 0.00001, costPrice: 1)))
-        XCTAssertNil(DepotPositionsView.calculatedGain(holding(quantity: 2, costPrice: .max)))
-        XCTAssertNil(DepotPositionsView.calculatedGain(holding(value: -1)))
+        XCTAssertNil(HoldingFigures.calculatedGain(holding(quantity: 0.00001, costPrice: 1)))
+        XCTAssertNil(HoldingFigures.calculatedGain(holding(quantity: 2, costPrice: .max)))
+        XCTAssertNil(HoldingFigures.calculatedGain(holding(value: -1)))
     }
 }

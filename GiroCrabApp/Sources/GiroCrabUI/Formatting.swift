@@ -165,8 +165,8 @@ enum Money {
     }
 
     /// "+1.234,56 €" for inflows.
-    static func signed(_ cents: Int64) -> String {
-        cents > 0 ? "+" + format(cents) : format(cents)
+    static func signed(_ cents: Int64, currency code: String = "EUR") -> String {
+        cents > 0 ? "+" + format(cents, currency: code) : format(cents, currency: code)
     }
 
     /// "2.064,83" / "-15,00" for the clipboard (ASCII minus, no currency sign).

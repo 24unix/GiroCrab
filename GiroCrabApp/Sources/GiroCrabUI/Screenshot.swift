@@ -5,6 +5,9 @@ import SwiftUI
 /// `--screenshot <file.png>`: waits ~120 frames (2 s at 60 Hz), renders the
 /// main window (including title bar and toolbar) into a PNG and quits.
 public enum WindowScreenshot {
+    @MainActor private static var resized = false
+    @MainActor private static var scrolled = false
+
     @MainActor
     public static func scheduleIfRequested(_ options: LaunchOptions = .current) {
         guard let path = options.screenshotPath else { return }
@@ -32,6 +35,33 @@ public enum WindowScreenshot {
                 FileHandle.standardError.write("screenshot: no window found\n".data(using: .utf8)!)
                 exit(2)
             }
+            return
+        }
+        // --window-width: resize once, give the layout a moment, then capture
+        if LaunchOptions.current.windowWidth != nil || LaunchOptions.current.windowHeight != nil, !resized {
+            resized = true
+            var frame = window.frame
+            if let width = LaunchOptions.current.windowWidth { frame.size.width = max(width, window.minSize.width) }
+            if let height = LaunchOptions.current.windowHeight {
+                let h = max(height, window.minSize.height)
+                frame.origin.y -= h - frame.size.height
+                frame.size.height = h
+            }
+            window.setFrame(frame, display: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { capture(to: path, attempt: attempt) }
+            return
+        }
+        // --scroll-end: the largest scroll view of the window to its bottom, then capture after a pause
+        if LaunchOptions.current.scrollEnd, !scrolled {
+            scrolled = true
+            func all(_ v: NSView) -> [NSScrollView] { (v as? NSScrollView).map { [$0] } ?? [] + v.subviews.flatMap(all) }
+            let candidates = all(content)
+            if let sv = candidates.filter({ ($0.documentView?.frame.height ?? 0) > $0.frame.height }).max(by: { $0.frame.width < $1.frame.width }),
+               let doc = sv.documentView {
+                sv.contentView.scroll(to: NSPoint(x: 0, y: max(0, doc.frame.height - sv.contentView.bounds.height)))
+                sv.reflectScrolledClipView(sv.contentView)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { capture(to: path, attempt: attempt) }
             return
         }
         // With a sheet open (e.g. --demo-sync), capture the sheet instead.
