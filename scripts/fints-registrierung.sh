@@ -37,6 +37,7 @@ case "${1:-}" in
     IFS= read -rs v; echo >&2
     v="$(printf '%s' "$v" | tr -d '[:space:]')"
     [ -n "$v" ] || die "empty value"
+    [ "${#v}" -eq 25 ] || die "the product ID must be exactly 25 characters (got ${#v})"
     security add-generic-password -U -s "$SERVICE" -a "$ACCOUNT" -w "$v" >/dev/null
     echo "stored in keychain service '$SERVICE'"
     ;;
