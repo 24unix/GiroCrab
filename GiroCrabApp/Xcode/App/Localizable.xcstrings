@@ -3989,6 +3989,17 @@
         }
       }
     },
+    "Art der Zahlung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Payment type"
+          }
+        }
+      }
+    },
     "Artikel einklappen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9262,6 +9273,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Create Your Own Account"
+          }
+        }
+      }
+    },
+    "Eigenes Zielkonto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Own destination account"
           }
         }
       }
@@ -17076,6 +17098,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Name matches"
+          }
+        }
+      }
+    },
+    "Name und IBAN werden aus dem gewählten Konto übernommen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name and IBAN are taken from the selected account."
           }
         }
       }
@@ -26348,6 +26381,17 @@
       }
     },
     "Überweisen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transfer"
+          }
+        }
+      }
+    },
+    "Überweisung" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {

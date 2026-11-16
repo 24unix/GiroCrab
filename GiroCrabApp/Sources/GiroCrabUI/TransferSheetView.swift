@@ -16,8 +16,39 @@ struct TransferSheetView: View {
     @FocusState private var nameFocused: Bool
     @State private var dropTargeted = false
     @State private var importNote: String?
+    /// "Umbuchung": the recipient is one of the user's own accounts.
+    @State private var ownTransfer = false
+    @State private var ownTargetID: Int64?
 
     private let maxPurpose = 140
+
+    /// Own accounts that can receive a transfer: any kind, but with an IBAN, not archived, not the sender.
+    private var ownTargets: [Account] {
+        model.allAccounts.filter {
+            !$0.iban.isEmpty && !$0.isArchived && $0.id != model.transferDraft.accountID
+        }
+    }
+
+    /// Fills name and IBAN from the chosen own account (owner, else account name).
+    private func applyOwnTarget(_ id: Int64?) {
+        guard let t = ownTargets.first(where: { $0.id == id }) else { return }
+        model.transferDraft.name = t.owner.isEmpty ? t.name : t.owner
+        model.transferDraft.iban = t.iban
+        model.transferDraft.bic = ""
+        suggestions = []
+    }
+
+    private func setOwnTransfer(_ on: Bool) {
+        ownTransfer = on
+        if on {
+            if !ownTargets.contains(where: { $0.id == ownTargetID }) { ownTargetID = ownTargets.first?.id }
+            applyOwnTarget(ownTargetID)
+        } else {
+            model.transferDraft.name = ""
+            model.transferDraft.iban = ""
+            model.transferDraft.bic = ""
+        }
+    }
 
     private var account: Account? {
         model.transferFormAccounts.first { $0.id == model.transferDraft.accountID }
@@ -107,6 +138,11 @@ struct TransferSheetView: View {
 #if os(macOS)
         .onPasteCommand(of: [.plainText]) { _ in pasteFromClipboard() }
 #endif
+        .onChange(of: model.transferDraft.accountID) { _, _ in
+            guard ownTransfer else { return }
+            if !ownTargets.contains(where: { $0.id == ownTargetID }) { ownTargetID = ownTargets.first?.id }
+            applyOwnTarget(ownTargetID)
+        }
         .onChange(of: model.transferDraft.iban) { _, new in
             let f = Self.groupedIBAN(new)
             if f != new { model.transferDraft.iban = f }
@@ -148,13 +184,43 @@ struct TransferSheetView: View {
             Section {
                 Picker("Von Konto", selection: draft.accountID) {
                     ForEach(model.transferFormAccounts) { a in
-                        Text("\(a.name) · \(formatIBAN(a.iban))").tag(Optional(a.id))
+                        Text("\(a.name) · \(formatIBAN(a.iban))").tag(Optional(a.id)).sensitive()
                     }
                 }
             } footer: {
                 if account != nil && !canSend { noDirectTransferNote }
             }
 
+            if !ownTargets.isEmpty || ownTransfer {
+                Section {
+                    Picker("Art der Zahlung", selection: Binding(get: { ownTransfer }, set: { setOwnTransfer($0) })) {
+                        Text("Überweisung").tag(false)
+                        Text("Umbuchung").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+            }
+
+            if ownTransfer {
+                Section {
+                    Picker("Zielkonto", selection: Binding(get: { ownTargetID }, set: { ownTargetID = $0; applyOwnTarget($0) })) {
+                        ForEach(ownTargets) { a in
+                            Text("\(a.name) · \(formatIBAN(a.iban))").tag(Optional(a.id)).sensitive()
+                        }
+                    }
+                    LabeledContent("Name") {
+                        Text(draft.wrappedValue.name).appFont(.body).sensitive()
+                    }
+                    LabeledContent("IBAN") {
+                        Text(formatIBAN(draft.wrappedValue.iban)).appFont(.body, design: .monospaced).sensitive()
+                    }
+                } header: {
+                    Text("Eigenes Zielkonto").appSectionHeader()
+                } footer: {
+                    Text("Name und IBAN werden aus dem gewählten Konto übernommen.")
+                }
+            } else {
             Section {
                 TextField("Name", text: draft.name, prompt: Text("Name des Empfängers"))
                     .multilineTextAlignment(.trailing)
@@ -191,6 +257,7 @@ struct TransferSheetView: View {
                 Text("Empfänger").appSectionHeader()
             } footer: {
                 Text(importNote ?? String(localized: "Oder Rechnung hierher ziehen"))
+            }
             }
 
             Section {
