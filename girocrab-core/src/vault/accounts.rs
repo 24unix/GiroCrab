@@ -674,9 +674,14 @@ impl Vault {
 
     /// Changes the account type (Kontoart), e.g. a checking account that is really a card.
     pub fn set_account_kind(&self, account_id: i64, kind: AccountKind) -> Result<(), CoreError> {
-        let n = self.db()?.execute(
-            "UPDATE accounts SET kind = ?1 WHERE id = ?2",
-            params![kind.as_str(), account_id],
+        let db = self.db()?;
+        // The "by kind" sidebar sections are the `account_groups`: move the
+        // account into the section of its new kind (#575).
+        let (group, sym, order) = crate::connectors::group_for(kind);
+        let gid = Self::ensure_group(&db, group, sym, order)?;
+        let n = db.execute(
+            "UPDATE accounts SET kind = ?1, group_id = ?2 WHERE id = ?3",
+            params![kind.as_str(), gid, account_id],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
@@ -768,6 +773,44 @@ pub(crate) fn holdings_from_db(
 #[cfg(test)]
 mod kind_owner_tests {
     use super::*;
+
+    #[test]
+    fn set_kind_moves_account_to_kind_section_and_persists() {
+        let dir = std::env::temp_dir().join(format!("gc-kind-move-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path: String = dir.join("v.db").to_string_lossy().into();
+        let section_of = |v: &Vault, id: i64| {
+            let groups = v.list_account_groups().unwrap();
+            let hits: Vec<_> = groups
+                .iter()
+                .filter(|g| g.accounts.iter().any(|a| a.id == id))
+                .map(|g| g.name.clone())
+                .collect();
+            assert_eq!(hits.len(), 1);
+            hits[0].clone()
+        };
+        let v = Vault::open(path.clone(), vec![7u8; 32]).unwrap();
+        let id = {
+            let db = v.db().unwrap();
+            let (g, s, o) = crate::connectors::group_for(AccountKind::Checking);
+            let gid = Vault::ensure_group(&db, g, s, o).unwrap();
+            db.execute(
+                "INSERT INTO accounts(group_id, external_ref, name) VALUES (?1, 'X', 'Konto')",
+                [gid],
+            )
+            .unwrap();
+            db.last_insert_rowid()
+        };
+        let before = section_of(&v, id);
+        v.set_account_kind(id, AccountKind::CreditCard).unwrap();
+        let after = section_of(&v, id);
+        assert_ne!(before, after);
+        drop(v);
+        let v = Vault::open(path, vec![7u8; 32]).unwrap();
+        assert_eq!(section_of(&v, id), after);
+        drop(v);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn set_kind_and_owner() {
