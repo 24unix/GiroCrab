@@ -153,3 +153,63 @@ fn empty_external_ids_do_not_collapse() {
     let s = store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(txs)).unwrap();
     assert_eq!(s.transactions_imported, 0);
 }
+
+#[test]
+fn refetch_fills_empty_field_groups_and_heals_text() {
+    let (v, conn) = setup();
+    let row = || -> [String; 8] {
+        v.db()
+            .unwrap()
+            .query_row(
+                "SELECT counterparty, purpose, purpose_code, gvc, end_to_end_id, mandate_id, creditor_id, item_refs
+                   FROM transactions",
+                [],
+                |r| Ok(std::array::from_fn(|i| r.get(i).unwrap())),
+            )
+            .unwrap()
+    };
+    let mut first = tx("2026-11-09", -90_000, "Caf\u{FFFD} Nord");
+    first.external_id = "t1".into();
+    first.gvc = "116".into();
+    store_fetch(
+        &v,
+        ConnectorKind::Comdirect,
+        conn,
+        fetch(vec![first.clone()]),
+    )
+    .unwrap();
+    // no text from the bank: the corrupted name stays rather than going blank
+    let blank = RemoteTransaction {
+        counterparty: String::new(),
+        ..first.clone()
+    };
+    store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(vec![blank])).unwrap();
+    assert_eq!(row()[0], "Caf\u{FFFD} Nord");
+    let again = RemoteTransaction {
+        counterparty: "Café Nord".into(),
+        purpose_code: "RINP".into(),
+        gvc: "117".into(),
+        end_to_end_id: "E2E-1".into(),
+        mandate_id: "M-1".into(),
+        creditor_id: "C-1".into(),
+        item_refs: "A1".into(),
+        ..first
+    };
+    let s = store_fetch(&v, ConnectorKind::Comdirect, conn, fetch(vec![again])).unwrap();
+    assert_eq!(s.transactions_imported, 0);
+    // healed and filled; the codes are a pair the bank sent together, so a
+    // half-stored pair is left alone
+    assert_eq!(
+        row(),
+        [
+            "Café Nord",
+            "Einkauf",
+            "",
+            "116",
+            "E2E-1",
+            "M-1",
+            "C-1",
+            "A1"
+        ]
+    );
+}

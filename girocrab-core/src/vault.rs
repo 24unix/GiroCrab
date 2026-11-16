@@ -442,6 +442,9 @@ impl Vault {
             return Err(first_err.unwrap_or(CoreError::WrongKey));
         };
         Self::repair(&conn);
+        // Fetch and import loops cycle through about a dozen cached statements
+        // per booking; an LRU smaller than the cycle would evict every one.
+        conn.set_prepared_statement_cache_capacity(64);
         Ok(Arc::new(Vault {
             conn: Mutex::new(conn),
             pending_account_fetches: Mutex::new(std::collections::HashMap::new()),

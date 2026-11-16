@@ -471,13 +471,13 @@ pub(crate) fn booking_is_deleted(
     account_id: i64,
     external_id: &str,
 ) -> CoreResult<bool> {
-    Ok(conn.query_row(
-        // includes soft-deleted rows
-        "SELECT EXISTS (SELECT 1 FROM transactions
-          WHERE account_id = ?1 AND external_id = ?2 AND deleted_ms IS NOT NULL)",
-        params![account_id, external_id],
-        |r| r.get(0),
-    )?)
+    Ok(conn
+        .prepare_cached(
+            // includes soft-deleted rows
+            "SELECT EXISTS (SELECT 1 FROM transactions
+              WHERE account_id = ?1 AND external_id = ?2 AND deleted_ms IS NOT NULL)",
+        )?
+        .query_row(params![account_id, external_id], |r| r.get(0))?)
 }
 
 pub(crate) fn connection_key(conn: &Connection, id: i64) -> CoreResult<String> {
@@ -1786,11 +1786,6 @@ fn take_ranked<T: Clone, K: Ord>(
     }
 }
 
-/// No replacement character and no UTF-8/Latin-1 mojibake.
-fn text_is_clean(s: &str) -> bool {
-    !s.contains('\u{FFFD}') && !crate::text::has_mojibake(s)
-}
-
 impl BookingFields {
     /// Joins `o` into `self`; the same result in either order.
     fn merge(&mut self, o: &BookingFields) {
@@ -1817,7 +1812,10 @@ impl BookingFields {
         // clean text beats text with U+FFFD or mojibake (unstamped text after
         // the migration: one device may hold the healed copy), then by value
         take_ranked(&mut self.text, &mut self.text_ms, &o.text, o.text_ms, |t| {
-            (text_is_clean(&t.0) && text_is_clean(&t.1), t.clone())
+            (
+                crate::text::is_clean(&t.0) && crate::text::is_clean(&t.1),
+                t.clone(),
+            )
         });
         take_ranked(
             &mut self.splits,

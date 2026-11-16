@@ -101,6 +101,11 @@ pub fn has_mojibake(s: &str) -> bool {
     s.contains("Ãƒ") || s.contains("Ã‚") || MOJIBAKE.iter().any(|(bad, _)| s.contains(bad))
 }
 
+/// No replacement character and no UTF-8/Latin-1 mojibake.
+pub(crate) fn is_clean(s: &str) -> bool {
+    !s.contains('\u{FFFD}') && !has_mojibake(s)
+}
+
 /// Repairs "MÃ¼ller" -> "Müller", "StraÃŸe" -> "Straße" (also doubly broken text).
 pub fn fix_mojibake(s: &str) -> String {
     if !has_mojibake(s) {

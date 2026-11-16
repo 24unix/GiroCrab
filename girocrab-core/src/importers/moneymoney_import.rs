@@ -898,29 +898,29 @@ pub(crate) fn merge_rows(
             }
             continue;
         }
-        conn.execute(
+        conn.prepare_cached(
             "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency,
                     counterparty, counterparty_iban, purpose, booking_text, category_id, category_source, checked, note, import_fp, category_ms, note_ms)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 1, ?13, ?14, ?15, ?16)",
-            params![
-                st.account_id,
-                format!("mm-{fp}-{k}"),
-                r.booking_date,
-                r.value_date,
-                r.amount_cents,
-                if r.currency.is_empty() { account_currency } else { &r.currency },
-                r.name,
-                r.iban,
-                r.stored_purpose(),
-                r.booking_text,
-                cat_id,
-                if cat_id.is_some() { "manual" } else { "none" },
-                note,
-                fp,
-                if cat_id.is_some() { crate::user_groups::now_ms() } else { 0 },
-                if note.is_empty() { 0 } else { crate::user_groups::now_ms() }
-            ],
-        )?;
+        )?
+        .execute(params![
+            st.account_id,
+            format!("mm-{fp}-{k}"),
+            r.booking_date,
+            r.value_date,
+            r.amount_cents,
+            if r.currency.is_empty() { account_currency } else { &r.currency },
+            r.name,
+            r.iban,
+            r.stored_purpose(),
+            r.booking_text,
+            cat_id,
+            if cat_id.is_some() { "manual" } else { "none" },
+            note,
+            fp,
+            if cat_id.is_some() { crate::user_groups::now_ms() } else { 0 },
+            if note.is_empty() { 0 } else { crate::user_groups::now_ms() }
+        ])?;
         st.new += 1;
         st.balance_cents += r.amount_cents;
         if !note.is_empty() {
@@ -944,7 +944,7 @@ fn find_twin(
     name: &str,
     purpose: &str,
 ) -> CoreResult<Option<i64>> {
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare_cached(
         "SELECT id, counterparty, counterparty_iban, purpose FROM transactions
           WHERE account_id = ?1 AND external_id LIKE 'mm-%' AND amount_cents = ?2
             AND deleted_ms IS NULL AND id != ?3 AND abs(julianday(booking_date) - julianday(?4)) <= 2",
@@ -1003,30 +1003,28 @@ pub(crate) fn adopt_import(
     purpose: &str,
     booking_text: &str,
 ) -> CoreResult<bool> {
+    // Checked first: on a re-fetch most bookings are already stored, and this
+    // spares them the fingerprint and twin lookups.
+    let taken = conn
+        .prepare_cached(
+            // includes soft-deleted rows: (account, external_id) is unique
+            "SELECT 1 FROM transactions WHERE account_id = ?1 AND external_id = ?2",
+        )?
+        .exists(params![account_id, external_id])?;
+    if taken {
+        return Ok(false);
+    }
     let fp = fingerprint(date, cents, iban, name, purpose);
     let mut row: Option<i64> = conn
-        .query_row(
+        .prepare_cached(
             "SELECT id FROM transactions WHERE account_id = ?1 AND import_fp = ?2 AND external_id LIKE 'mm-%' AND deleted_ms IS NULL LIMIT 1",
-            params![account_id, fp],
-            |r| r.get(0),
-        )
+        )?
+        .query_row(params![account_id, fp], |r| r.get(0))
         .optional()?;
     if row.is_none() {
         row = find_twin(conn, account_id, None, date, cents, iban, name, purpose)?;
     }
     let Some(id) = row else { return Ok(false) };
-    let taken: bool = conn
-        .query_row(
-            // includes soft-deleted rows: (account, external_id) is unique
-            "SELECT 1 FROM transactions WHERE account_id = ?1 AND external_id = ?2",
-            params![account_id, external_id],
-            |_| Ok(true),
-        )
-        .optional()?
-        .unwrap_or(false);
-    if taken {
-        return Ok(false);
-    }
     take_over(conn, id, external_id, iban, booking_text)?;
     Ok(true)
 }
@@ -1040,13 +1038,13 @@ fn take_over(
     iban: &str,
     booking_text: &str,
 ) -> CoreResult<()> {
-    conn.execute(
+    conn.prepare_cached(
         "UPDATE transactions SET external_id = ?1,
                 counterparty_iban = CASE WHEN counterparty_iban = '' THEN ?3 ELSE counterparty_iban END,
                 booking_text = CASE WHEN booking_text = '' THEN ?4 ELSE booking_text END
           WHERE id = ?2",
-        params![external_id, id, iban, booking_text],
-    )?;
+    )?
+    .execute(params![external_id, id, iban, booking_text])?;
     Ok(())
 }
 
@@ -1065,15 +1063,16 @@ pub(crate) fn merge_synced_twin(
     purpose: &str,
 ) -> CoreResult<bool> {
     let bank: Option<(i64, String, String)> = conn
-        .query_row(
+        .prepare_cached(
             "SELECT id, counterparty_iban, booking_text FROM transactions
               WHERE account_id = ?1 AND external_id = ?2
                 AND deleted_ms IS NULL AND category_source != 'manual' AND checked = 0 AND trim(note) = ''
                 AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = transactions.id)
                 AND NOT EXISTS (SELECT 1 FROM booking_documents d WHERE d.booking_id = transactions.id)",
-            params![account_id, external_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        )
+        )?
+        .query_row(params![account_id, external_id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
         .optional()?;
     let Some((bank_id, bank_iban, bank_text)) = bank else {
         return Ok(false);
