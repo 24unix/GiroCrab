@@ -420,6 +420,15 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[],
     },
     MatrixEntry {
+        name: "PayPal (DE)",
+        kind: None,
+        interface: Interface::EnableBanking,
+        official: Some(true),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
         name: "Revolut",
         kind: None,
         interface: Interface::EnableBanking,

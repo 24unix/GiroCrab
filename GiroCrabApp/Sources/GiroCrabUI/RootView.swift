@@ -128,6 +128,8 @@ public struct GiroCrabScenes: Scene {
                     .disabled(!model.canMarkAllChecked)
                 Button("Notiz bearbeiten") { if let b = model.selectedBooking { model.editNote(for: b) } }
                     .disabled(model.selectedBooking == nil)
+                Button("Tags bearbeiten") { if let b = model.selectedBooking { model.editTags(for: b) } }
+                    .disabled(model.selectedBooking == nil)
                 // like the Finder (⌘Y); Space in the list does the same
                 Button("Beleg in Quick Look anzeigen") {
                     if let b = model.selectedBooking, let d = model.documents(for: b).first { model.quickLook(d) }
@@ -178,8 +180,11 @@ public struct GiroCrabScenes: Scene {
                     Button("Mitteilungen …") { openWindow(id: "announcements") }
                     Divider()
                     // #301: redacted screenshot + scrubbed diagnostics, then a prefilled issue.
+                    // While the report window is open, its "Neu aufnehmen" is
+                    // the way to refresh the picture (markings would be lost).
                     Button("Problem melden …") { openWindow(id: "bug-report") }
                         .keyboardShortcut("b", modifiers: [.command, .option])
+                        .disabled(model.isReportOpen)
                     Divider()
                     Link("Webseite & Dokumentation (girocrab.de)", destination: HelpLinks.website)
                     Link("Fehler melden / Issue erstellen (GitHub)", destination: HelpLinks.issues)
@@ -269,10 +274,14 @@ public struct GiroCrabScenes: Scene {
         .defaultSize(width: 640, height: 720)
         Settings {
             // HIG: the Settings window fits each tab (SettingsView sizes them).
+            // `reportCapturable`: "Problem melden" draws the Settings window
+            // (a window of its own, like a sheet) over the main window, so its
+            // views get the same redaction and mark personal data.
             SettingsView()
                 .environment(model)
                 .appTextSize(textSize.effective)
                 .preferredColorScheme(appearance.colorScheme)
+                .reportCapturable()
         }
         #endif
     }
@@ -293,12 +302,17 @@ public struct GiroCrabRootView: View {
         #endif
     }()
     @Environment(\.scenePhase) private var scenePhase
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
     /// iOS cold start: keep the animated crab visible for ~1 s, even when the vault
     /// is ready earlier. Only the view is held back; `bootstrap()` runs immediately.
     #if os(iOS)
     @State private var splashHold = true
     #else
     @State private var splashHold = false
+    /// `--demo-sheet report`: the report window was opened (see `MainSplitView`).
+    @State private var demoReportShown = false
     #endif
 
     @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
@@ -333,9 +347,30 @@ public struct GiroCrabRootView: View {
                 MainSplitView()
                     // the only window the bug report may capture; inside the
                     // redaction environment, so it can report what was built
-                    .background(MainWindowTracker())
+                    .background(ReportWindowTracker(role: .main))
                     .environment(\.reportRedaction, model.reportRedaction.union(LaunchOptions.current.redaction))
                     .onAppear { StartupClock.mark("MainSplitView appear") }
+                    #if os(macOS)
+                    // screenshots: --demo-sheet report[:<sheet>] captures the open
+                    // view or demo sheet, as "Problem melden" would; once, also
+                    // after a lock/unlock brings this view back
+                    .task(id: model.options.demoSheet) {
+                        guard model.options.demoSheetOpensReport, !demoReportShown else { return }
+                        demoReportShown = true
+                        try? await Task.sleep(for: .milliseconds(2400))
+                        openWindow(id: "bug-report")
+                    }
+                    #endif
+                    #if os(iOS)
+                    .onDisappear {
+                        // #384: a pick with no scene left to pick in ends (iPad:
+                        // scenes closed). Checked after this update, once the
+                        // closed scene's views are gone.
+                        Task { @MainActor in
+                            if model.reportPick != nil, !BugReport.hasMainWindow { model.reportPick = nil }
+                        }
+                    }
+                    #endif
                     // Asked only once the vault is open, so it never competes with Touch ID.
                     .modifier(SystemLanguageChangedAlert(newLanguage: Binding(
                         get: { if case .systemChanged(let to) = languageQuestion { to } else { nil } },
@@ -708,15 +743,15 @@ struct MainSplitView: View {
             openSettings()
         }
         #endif
-        .sheet(isPresented: $model.showGroupManager) {
+        .capturableSheet(isPresented: $model.showGroupManager) {
             GroupManagerSheet()
                 .environment(model)
         }
-        .sheet(isPresented: $model.showRuleEditor) {
+        .capturableSheet(isPresented: $model.showRuleEditor) {
             RuleEditorView(initialDraft: model.ruleDraft)
                 .environment(model)
         }
-        .sheet(isPresented: $model.showCommandPalette, onDismiss: {
+        .capturableSheet(isPresented: $model.showCommandPalette, onDismiss: {
             // Follow-up sheet/popover chosen in the palette: opened once the
             // palette is really gone, instead of after a guessed delay.
             let next = model.afterPaletteDismiss
@@ -726,38 +761,38 @@ struct MainSplitView: View {
             CommandPaletteView()
                 .environment(model)
         }
-        .sheet(item: $model.accountSelectionConnection) { c in
+        .capturableSheet(item: $model.accountSelectionConnection) { c in
             AccountSelectionSheet(connection: c)
                 .environment(model)
         }
-        .sheet(isPresented: $model.showAddBank) {
+        .capturableSheet(isPresented: $model.showAddBank) {
             AddBankSheet()
                 .environment(model)
         }
-        .sheet(isPresented: $model.showMoneyMoneyImport) {
+        .capturableSheet(isPresented: $model.showMoneyMoneyImport) {
             MoneyMoneyImportSheet()
                 .environment(model)
         }
-        .sheet(isPresented: $model.showRecurringSheet) {
+        .capturableSheet(isPresented: $model.showRecurringSheet) {
             RecurringSheet()
                 .environment(model)
         }
-        .sheet(item: $model.customRecurringBooking) { b in
+        .capturableSheet(item: $model.customRecurringBooking) { b in
             CustomDatesSheet(initialDates: model.recurringSeries(for: b).flatMap { $0.interval == .custom ? $0.customDates : nil } ?? []) { dates in
                 model.markRecurring(b, .custom, customDates: dates)
             }
             .environment(model)
         }
-        .sheet(isPresented: $model.showCategorizer) {
+        .capturableSheet(isPresented: $model.showCategorizer) {
             CategorizerSheet()
                 .environment(model)
         }
-        .sheet(isPresented: $model.showBatchSheet) {
+        .capturableSheet(isPresented: $model.showBatchSheet) {
             BatchTransferSheet()
                 .environment(model)
                 .interactiveDismissDisabled(model.transferBusy)
         }
-        .sheet(isPresented: $model.showStandingSheet) {
+        .capturableSheet(isPresented: $model.showStandingSheet) {
             StandingOrderSheet()
                 .environment(model)
                 .interactiveDismissDisabled(model.transferBusy)
@@ -767,25 +802,25 @@ struct MainSplitView: View {
         } message: {
             Text("Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Bitte zuerst im Online-Banking prüfen, ob der Dauerauftrag angelegt, geändert oder gelöscht wurde, bevor Sie es erneut versuchen.\n\nBank: \(model.standingUnknown ?? "")")
         }
-        .sheet(isPresented: $model.showTransferSheet) {
+        .capturableSheet(isPresented: $model.showTransferSheet) {
             TransferSheetView()
                 .environment(model)
                 .interactiveDismissDisabled(model.transferBusy)
         }
-        .sheet(isPresented: Binding(get: { model.splitBooking != nil }, set: { if !$0 { model.splitBooking = nil } })) {
+        .capturableSheet(isPresented: Binding(get: { model.splitBooking != nil }, set: { if !$0 { model.splitBooking = nil } })) {
             if let b = model.splitBooking { SplitSheet(booking: b).environment(model) }
         }
-        .sheet(item: $model.payeeCheck) { _ in
+        .capturableSheet(item: $model.payeeCheck) { _ in
             PayeeCheckSheet()
                 .environment(model)
                 .interactiveDismissDisabled()
         }
-        .sheet(item: $model.activeChallenge) { _ in
+        .capturableSheet(item: $model.activeChallenge) { _ in
             TwoFactorSheet()
                 .environment(model)
                 .interactiveDismissDisabled()
         }
-        .sheet(item: $model.webLoginConnection) { c in
+        .capturableSheet(item: $model.webLoginConnection) { c in
             Group {
                 if c.connector == .tradeRepublic { WebLoginSheet(connection: c) }
                 else if c.connector == .amazonOrders { AmazonWebSheet(connection: c) }
@@ -795,16 +830,16 @@ struct MainSplitView: View {
             }
             .environment(model)
         }
-        .sheet(item: $model.setupRequest) { req in
+        .capturableSheet(item: $model.setupRequest) { req in
             BankSetupSheet(request: req)
                 .environment(model)
         }
-        .sheet(item: $model.pendingLogin) { login in
+        .capturableSheet(item: $model.pendingLogin) { login in
             PinSheet(connection: login.connection)
                 .environment(model)
         }
         #if os(iOS)
-        .sheet(isPresented: $model.showSettings) {
+        .capturableSheet(isPresented: $model.showSettings) {
             NavigationStack { SettingsView() }
                 .environment(model)
         }

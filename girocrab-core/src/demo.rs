@@ -164,6 +164,58 @@ fn demo_documents(conn: &Connection, today: NaiveDate) -> CoreResult<()> {
 pub const MAGIC_DEMO_LOGIN: &str = "demo";
 pub const MAGIC_DEMO_PIN: &str = "12345";
 
+/// A few tags across categories (#228): the car, a trip, the family.
+fn demo_tags(conn: &Connection) -> CoreResult<()> {
+    const TAGS: [(&str, &str, &[&str]); 3] = [
+        (
+            "Auto",
+            "#E67E22",
+            &["Shell Station", "Aral AG", "EnBW%", "Sixt%"],
+        ),
+        ("Urlaub", "#2E86DE", &["Sixt%"]),
+        (
+            "Familie",
+            "#27AE60",
+            &["dm-drogerie markt", "Apotheke am Markt"],
+        ),
+    ];
+    let now = crate::user_groups::now_ms();
+    for (i, (name, color, counterparties)) in TAGS.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO tags(uuid, name, color_hex, sort_order, updated_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                crate::sync_merge::tag_uuid_for_name(name),
+                name,
+                color,
+                i as i64,
+                now
+            ],
+        )?;
+        let tag = conn.last_insert_rowid();
+        for c in *counterparties {
+            conn.execute(
+                "INSERT OR IGNORE INTO transaction_tags(transaction_id, tag_id)
+                 SELECT id, ?1 FROM transactions WHERE counterparty LIKE ?2",
+                params![tag, c],
+            )?;
+        }
+        // the trip: only the long-distance ticket of the train bookings
+        if *name == "Urlaub" {
+            conn.execute(
+                "INSERT OR IGNORE INTO transaction_tags(transaction_id, tag_id)
+                 SELECT id, ?1 FROM transactions WHERE purpose LIKE 'ICE Ticket%'",
+                [tag],
+            )?;
+        }
+    }
+    conn.execute(
+        "UPDATE transactions SET tags_ms = ?1
+          WHERE id IN (SELECT transaction_id FROM transaction_tags)",
+        [now],
+    )?;
+    Ok(())
+}
+
 pub fn is_magic_demo_login(login: &str) -> bool {
     login.trim().eq_ignore_ascii_case(MAGIC_DEMO_LOGIN)
 }
@@ -1909,6 +1961,7 @@ impl Vault {
         crate::opening_balance::calibrate_in(&tx, visa, card)?;
         Vault::apply_rules_inner(&tx, true)?;
         demo_documents(&tx, today)?;
+        demo_tags(&tx)?;
         tx.commit()?;
         Ok(n)
     }
@@ -2174,6 +2227,36 @@ mod tests {
                 .unwrap()),
             sum(&all)
         );
+    }
+
+    #[test]
+    fn demo_seed_tags_bookings_across_categories() {
+        let dir = crate::test_support::TempDir::new("girocrab-test");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![7u8; 32],
+        )
+        .unwrap();
+        v.seed_demo_data().unwrap();
+        let tags: Vec<(String, u32)> = v
+            .list_tags()
+            .unwrap()
+            .into_iter()
+            .map(|t| (t.name, t.booking_count))
+            .collect();
+        let names: Vec<&str> = tags.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["Auto", "Urlaub", "Familie"]);
+        assert!(tags.iter().all(|(_, n)| *n > 0), "{tags:?}");
+        // the rental car carries two tags
+        let both = v
+            .list_transactions(crate::models::BookingFilter {
+                tag_ids: v.list_tags().unwrap()[..2].iter().map(|t| t.id).collect(),
+                ..Default::default()
+            })
+            .unwrap()
+            .transactions;
+        assert!(both.iter().any(|b| b.counterparty.starts_with("Sixt")));
+        assert!(both.iter().all(|b| b.tags.len() >= 2));
     }
 
     #[test]

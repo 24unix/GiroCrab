@@ -63,8 +63,8 @@ struct DirectDebitsView: View {
             await model.reloadMandates()
             creditorText = model.creditorID
         }
-        .sheet(item: $model.mandateDraft) { MandateEditorSheet(initial: $0) }
-        .sheet(isPresented: $model.showCollectionSheet) { CollectionSheet() }
+        .capturableSheet(item: $model.mandateDraft) { MandateEditorSheet(initial: $0) }
+        .capturableSheet(isPresented: $model.showCollectionSheet) { CollectionSheet() }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.commaSeparatedText, .plainText, .text, .xml]) { result in
             if case .success(let url) = result { model.importMandateFile(url) }
         }

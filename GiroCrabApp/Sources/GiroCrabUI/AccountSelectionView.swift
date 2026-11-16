@@ -6,6 +6,7 @@ import GiroCrabCore
 /// accounts stay listed so the choice can be changed later.
 struct AccountSelectionList: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
     let connection: BankConnection
     /// Called after a successful save (the sheet closes itself).
     var onSaved: () -> Void = {}
@@ -31,10 +32,10 @@ struct AccountSelectionList: View {
                             if on { enabled.insert(c.accountRef) } else { enabled.remove(c.accountRef) }
                         })) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(c.name)
-                            Text(detail(c)).appFont(.caption).foregroundStyle(.secondary)
+                            Text(c.name).sensitive()
+                            Text(detail(c)).appFont(.caption).foregroundStyle(.secondary).sensitive()
                             if c.pending {
-                                Label("Bereits über „\(c.existingConnection)“ eingebunden", systemImage: "exclamationmark.triangle")
+                                Label("Bereits über „\(redaction.masking(c.existingConnection))“ eingebunden", systemImage: "exclamationmark.triangle")
                                     .appFont(.caption).foregroundStyle(Theme.warning)
                             }
                         }
@@ -84,13 +85,14 @@ struct AccountSelectionList: View {
 /// The choice itself: title, explanation, the list and "Später". Used as a sheet and
 /// inside a running portal fetch (before documents are downloaded).
 struct AccountSelectionPanel: View {
+    @Environment(\.reportRedaction) private var redaction
     let connection: BankConnection
     var onDone: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Konten auswählen – \(connection.displayName)").appFont(.title3, weight: .bold)
+                Text("Konten auswählen – \(redaction.masking(connection.displayName))").appFont(.title3, weight: .bold)
                 Text("Einige Konten sind bereits über einen anderen Zugang eingebunden. Wählen Sie, welche über diesen Zugang abgerufen werden sollen. Ohne Auswahl werden sie übersprungen.")
                     .appFont(.callout).foregroundStyle(.secondary)
             }

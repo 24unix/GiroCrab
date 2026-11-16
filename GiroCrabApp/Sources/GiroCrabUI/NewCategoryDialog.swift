@@ -17,7 +17,7 @@ struct NewCategoryDialog: ViewModifier {
     func body(content: Content) -> some View {
         @Bindable var model = model
         content
-            .sheet(item: $model.newCategoryRequest) { request in
+            .capturableSheet(item: $model.newCategoryRequest) { request in
                 NewCategorySheet(request: request).environment(model)
             }
     }
@@ -61,7 +61,7 @@ struct NewCategorySheet: View {
                     }
                 } footer: {
                     if let path = model.categoryPath(request.parent) {
-                        Text("Wird angelegt unter „\(path)“.").leadingFooter()
+                        Text("Wird angelegt unter „\(path)“.").leadingFooter().sensitive(.labels)
                     }
                 }
             }

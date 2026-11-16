@@ -4,6 +4,7 @@ import GiroCrabCore
 /// ⌘K command palette: views, actions, accounts, categories, merchants.
 struct CommandPaletteView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
     @Environment(\.dismiss) private var dismiss
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
@@ -17,6 +18,13 @@ struct CommandPaletteView: View {
         let title: String
         let subtitle: String
         let symbol: String
+        /// What the bug report hides of the title (account, payee, group
+        /// or category names) and of the subtitle (a category path).
+        var hides: ReportRedaction = []
+        var subtitleHides: ReportRedaction = []
+        /// What the row shows instead of `title` (a name masked inside it);
+        /// the search still matches `title`, so a capture keeps the list.
+        var shownTitle: String?
         let action: () -> Void
     }
 
@@ -50,8 +58,8 @@ struct CommandPaletteView: View {
             model.afterPaletteDismiss = { model.showCustomPeriod = true }
         })
         if let b = model.selectedBooking {
-            out.append(Item(title: String(localized: "„\(b.merchant.name)“ kategorisieren"), subtitle: "\(action) · C", symbol: "tag") { model.showCategorizer = true })
-            out.append(Item(title: String(localized: "Regel für „\(b.merchant.name)“ erstellen"), subtitle: "\(action) · R", symbol: "wand.and.stars") { model.openRuleEditor(from: b) })
+            out.append(Item(title: String(localized: "„\(b.merchant.name)“ kategorisieren"), subtitle: "\(action) · C", symbol: "tag", hides: .personal) { model.showCategorizer = true })
+            out.append(Item(title: String(localized: "Regel für „\(b.merchant.name)“ erstellen"), subtitle: "\(action) · R", symbol: "wand.and.stars", hides: .personal) { model.openRuleEditor(from: b) })
         }
         out.append(Item(title: String(localized: "Historie & Kategorien importieren"), subtitle: action, symbol: "square.and.arrow.down.on.square") { model.openMoneyMoneyImport() })
         out.append(Item(title: String(localized: "Regeln jetzt anwenden"), subtitle: action, symbol: "play") { model.applyAllRules() })
@@ -75,7 +83,7 @@ struct CommandPaletteView: View {
             out.append(Item(title: String(localized: "Sachwert hinzufügen"), subtitle: action, symbol: "plus") { model.openAssetEditor(accountId: id) })
         }
         if case .account(let id) = model.sidebarSelection, let loan = model.manualLoan(id) {
-            out.append(Item(title: String(localized: "Stand von „\(loan.setup.name)“ neu setzen"), subtitle: action, symbol: "calendar.badge.clock") { model.openLoanEditor(.anchor, accountId: id) })
+            out.append(Item(title: String(localized: "Stand von „\(loan.setup.name)“ neu setzen"), subtitle: action, symbol: "calendar.badge.clock", hides: .personal) { model.openLoanEditor(.anchor, accountId: id) })
         }
         for m in AccountSidebarMode.allCases where m != model.accountView {
             out.append(Item(title: m.switchTitle, subtitle: String(localized: "Ansicht"), symbol: m.symbol) { model.accountView = m })
@@ -87,26 +95,27 @@ struct CommandPaletteView: View {
             })
         }
         for g in model.namedUserGroups {
-            out.append(Item(title: g.name, subtitle: String(localized: "Gruppe · \(accountCountText(g.accounts.count))"), symbol: g.sfSymbol) {
+            out.append(Item(title: g.name, subtitle: String(localized: "Gruppe · \(accountCountText(g.accounts.count))"), symbol: g.sfSymbol, hides: .labels) {
                 model.accountView = .byGroup
                 model.interactiveSidebarSelection = .userGroup(g.uuid)
             })
         }
         if case .account(let id) = model.sidebarSelection, let a = model.account(for: id) {
             for g in model.namedUserGroups where g.uuid != a.userGroupUuid {
-                out.append(Item(title: String(localized: "„\(a.name)“ nach „\(g.name)“ verschieben"), subtitle: action, symbol: "folder") { model.moveAccount(a.id, to: g.uuid) })
+                out.append(Item(title: String(localized: "„\(a.name)“ nach „\(g.name)“ verschieben"), subtitle: action, symbol: "folder", hides: .labels,
+                                shownTitle: String(localized: "„\(redaction.masking(a.name))“ nach „\(g.name)“ verschieben")) { model.moveAccount(a.id, to: g.uuid) })
             }
         }
         for a in model.allAccounts {
-            out.append(Item(title: a.name, subtitle: String(localized: "Konto · \(a.bankName)"), symbol: a.sfSymbol) { model.interactiveSidebarSelection = .account(a.id) })
+            out.append(Item(title: a.name, subtitle: String(localized: "Konto · \(a.bankName)"), symbol: a.sfSymbol, hides: .personal) { model.interactiveSidebarSelection = .account(a.id) })
         }
         for c in model.categories {
-            out.append(Item(title: c.name, subtitle: String(localized: "Kategorie · \(c.path)"), symbol: c.sfSymbol) { model.interactiveSidebarSelection = .category(c.id) })
+            out.append(Item(title: c.name, subtitle: String(localized: "Kategorie · \(c.path)"), symbol: c.sfSymbol, hides: .labels, subtitleHides: .labels) { model.interactiveSidebarSelection = .category(c.id) })
         }
         var seen = Set<String>()
         for b in model.bookings where seen.insert(b.merchant.key).inserted && seen.count < 300 {
             let name = b.merchant.name
-            out.append(Item(title: name, subtitle: String(localized: "Händler suchen"), symbol: "magnifyingglass") { model.searchText = name })
+            out.append(Item(title: name, subtitle: String(localized: "Händler suchen"), symbol: "magnifyingglass", hides: .personal) { model.searchText = name })
         }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return Array(out.prefix(14)) }
@@ -136,9 +145,9 @@ struct CommandPaletteView: View {
                         Button { index = i; run(list) } label: {
                         HStack(spacing: 10) {
                             Image(systemName: item.symbol).frame(width: 20).foregroundStyle(i == index ? Theme.accent : Theme.secondary)
-                            Text(item.title).foregroundStyle(Theme.text)
+                            Text(item.shownTitle ?? item.title).foregroundStyle(Theme.text).sensitive(item.hides)
                             Spacer()
-                            Text(item.subtitle).appFont(.caption).foregroundStyle(Theme.secondary)
+                            Text(item.subtitle).appFont(.caption).foregroundStyle(Theme.secondary).sensitive(item.subtitleHides)
                         }
                         .padding(.horizontal, 12).padding(.vertical, 7)
                         .background(RoundedRectangle(cornerRadius: 7).fill(i == index ? Theme.selection : Color.clear))
@@ -226,13 +235,15 @@ struct CategorizerSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(many.count) Buchungen kategorisieren").appFont(.headline)
                     Text(Money.format(many.reduce(0) { $0 + $1.amountCents })).appFont(.caption, monospacedDigit: true).foregroundStyle(Theme.secondary)
+                        .sensitive(.amounts)
                 }
             } else if let b = model.selectedBooking {
                 HStack(spacing: 10) {
                     MerchantSignet(merchant: b.merchant, categorySymbol: b.categorySymbol)
                     VStack(alignment: .leading) {
-                        Text(b.merchant.name).appFont(.headline)
+                        Text(b.merchant.name).appFont(.headline).sensitive()
                         Text(Money.format(b.amountCents)).appFont(.caption, monospacedDigit: true).foregroundStyle(Theme.secondary)
+                            .sensitive(.amounts)
                     }
                     Spacer()
                 }
@@ -249,6 +260,7 @@ struct CategorizerSheet: View {
                                 Label(root.name, systemImage: root.sfSymbol)
                                     .appFont(.caption, weight: .semibold)
                                     .foregroundStyle(Theme.secondary)
+                                    .sensitive(.labels)
                                     .accessibilityAddTraits(.isHeader)
                             }
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 6)], spacing: 6) {

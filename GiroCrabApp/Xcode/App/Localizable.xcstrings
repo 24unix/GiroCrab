@@ -1883,6 +1883,10 @@
         }
       }
     },
+    "+%lld" : {
+      "extractionState" : "manual",
+      "shouldTranslate" : false
+    },
     "+%lld weitere" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3411,6 +3415,17 @@
         }
       }
     },
+    "Andere Ansicht aufnehmen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capture Another View …"
+          }
+        }
+      }
+    },
     "Andere Datei …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4117,6 +4132,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Register an application on enablebanking.com: choose “Production”, let the browser generate the key, and enter this redirect URL:"
+          }
+        }
+      }
+    },
+    "Aufgenommen wird das Hauptfenster samt geöffnetem Dialog. Liegt das Problem woanders, wechsle dort zur betroffenen Ansicht oder öffne den Dialog und wähle dann „Neu aufnehmen“. Eine neue Aufnahme verwirft die Markierungen, weil sich der Inhalt verschoben haben kann." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The main window is captured together with the open dialog. If the problem is elsewhere, go to the affected view there or open the dialog, then choose “Retake”. A new capture discards the markings, as the content may have moved."
+          }
+        }
+      }
+    },
+    "Aufgenommen wird, was unter diesem Bericht liegt, samt geöffneter Dialoge. Liegt das Problem woanders, wechsle mit „Andere Ansicht aufnehmen …“ dorthin. Eine neue Aufnahme verwirft die Markierungen, weil sich der Inhalt verschoben haben kann." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What lies beneath this report is captured, including open dialogs. If the problem is elsewhere, go there with “Capture Another View …”. A new capture discards the markings, as the content may have moved."
           }
         }
       }
@@ -5224,6 +5261,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Command Palette…"
+          }
+        }
+      }
+    },
+    "Bei allen ausgewählten Buchungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On all selected bookings"
           }
         }
       }
@@ -9453,6 +9501,17 @@
         }
       }
     },
+    "Ein geöffneter Hinweis oder Bestätigungsdialog wird nicht aufgenommen; das Bild zeigt, was darunter liegt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An open notice or confirmation dialog is not captured; the picture shows what lies beneath it."
+          }
+        }
+      }
+    },
     "Einblenden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9515,17 +9574,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "A selected transaction counts as reviewed after this time – like a read email. Never with multiple selection."
-          }
-        }
-      }
-    },
-    "Eine neue Aufnahme verwirft die Markierungen, weil sich der Inhalt verschoben haben kann." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A new capture discards the marks, since the content may have moved."
           }
         }
       }
@@ -12677,6 +12725,17 @@
         }
       }
     },
+    "Hier aufnehmen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capture Here"
+          }
+        }
+      }
+    },
     "Hier die heruntergeladene .pem-Datei wählen. GiroCrab übernimmt Schlüssel und Application-ID und prüft die Anwendung." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12827,6 +12886,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Load merchant logos"
+          }
+        }
+      }
+    },
+    "Höchstens %lld Zeichen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "At most %lld characters"
           }
         }
       }
@@ -17795,6 +17865,17 @@
         }
       }
     },
+    "Neuer Tag …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Tag …"
+          }
+        }
+      }
+    },
     "Neues Archivkonto „%@“ – der Saldo ist die Summe der Umsätze." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18594,6 +18675,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Only shown for income"
+          }
+        }
+      }
+    },
+    "Nur bei einigen – klicken, um ihn allen zu geben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only on some – click to add it to all"
           }
         }
       }
@@ -20877,6 +20969,17 @@
         }
       }
     },
+    "Schließe zuerst den geöffneten Hinweis, dann wähle erneut „Hier aufnehmen“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close the open notice first, then choose “Capture Here” again."
+          }
+        }
+      }
+    },
     "Schließen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22633,6 +22736,39 @@
         }
       }
     },
+    "Tag entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove Tag"
+          }
+        }
+      }
+    },
+    "Tag hinzufügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Tag"
+          }
+        }
+      }
+    },
+    "Tag hinzufügen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add tag …"
+          }
+        }
+      }
+    },
     "Tage" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22695,6 +22831,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Daily balance column"
+          }
+        }
+      }
+    },
+    "Tags" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tags"
+          }
+        }
+      }
+    },
+    "Tags (%lld Buchungen)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tags (%lld bookings)"
+          }
+        }
+      }
+    },
+    "Tags bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Tags"
+          }
+        }
+      }
+    },
+    "Tags: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tags: %@"
           }
         }
       }
@@ -24553,6 +24733,17 @@
         }
       }
     },
+    "Wechsle zur betroffenen Ansicht oder öffne den Dialog und nimm ihn dann auf." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Go to the affected view or open the dialog, then capture it."
+          }
+        }
+      }
+    },
     "Weicht ab" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24681,6 +24872,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "World"
+          }
+        }
+      }
+    },
+    "Weniger" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Less"
           }
         }
       }
@@ -26578,6 +26780,17 @@
         }
       }
     },
+    "Ähnlich wie „%@“ – ↩ legt trotzdem neu an" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Similar to “%@” – ↩ creates it anyway"
+          }
+        }
+      }
+    },
     "Ältere Buchungen (nicht gezählt)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -26985,6 +27198,17 @@
         }
       }
     },
+    "„%@“ entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove “%@”"
+          }
+        }
+      }
+    },
     "„%@“ entfernen?" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27003,6 +27227,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Import “%@”"
+          }
+        }
+      }
+    },
+    "„%@“ ist schon bei allen gesetzt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” is already set on all"
+          }
+        }
+      }
+    },
+    "„%@“ ist schon gesetzt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” is already set"
           }
         }
       }
@@ -27257,6 +27503,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "€ per month"
+          }
+        }
+      }
+    },
+    "↩ fügt „%@“ hinzu" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "↩ adds “%@”"
+          }
+        }
+      }
+    },
+    "↩ legt „%@“ neu an" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "↩ creates “%@”"
           }
         }
       }

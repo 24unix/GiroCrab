@@ -32,7 +32,7 @@ struct AnnouncementBanner: View {
         }
         .animation(.default, value: center.banner?.id)
         .task { await center.refresh() }
-        .sheet(item: $detail) { a in
+        .capturableSheet(item: $detail) { a in
             AnnouncementSheet(announcement: a, language: center.languageCode)
         }
     }

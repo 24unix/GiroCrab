@@ -64,6 +64,7 @@ struct SidebarView: View {
                 Text("Geplant").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
+            .badge(model.plannedCount)
             .tag(SidebarItem.planned)
             // „Lastschriften“ (#143): mandates and collections
             HStack(spacing: 8) {
@@ -71,6 +72,7 @@ struct SidebarView: View {
                 Text("Lastschriften").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
+            .badge(model.mandateCount)
             .tag(SidebarItem.directDebits)
             SidebarCaption("Dokumente")
             HStack(spacing: 8) {
@@ -197,7 +199,7 @@ struct SidebarView: View {
             default: EmptyView()
             }
         }
-        .sheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
+        .capturableSheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
     }
 
     /// "Nach Kontoart": the fixed kind sections.
@@ -295,7 +297,7 @@ struct SidebarView: View {
                 .contextMenu {
                     UserGroupMenu(group: group)
                 }
-                .popover(isPresented: model.iconColorBinding(.group(group.uuid)), arrowEdge: .trailing) {
+                .capturablePopover(isPresented: model.iconColorBinding(.group(group.uuid)), arrowEdge: .trailing) {
                     IconColorPopover(target: .group(group.uuid)).environment(model)
                 }
                 // no custom preview: the drag shows the row itself, like MoneyMoney
@@ -379,7 +381,7 @@ struct SidebarView: View {
             .listRowInsets(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6))
             .tag(SidebarItem.account(account.id))
             .contextMenu { accountMenu(account) }
-            .popover(isPresented: model.iconColorBinding(.account(account.id)), arrowEdge: .trailing) {
+            .capturablePopover(isPresented: model.iconColorBinding(.account(account.id)), arrowEdge: .trailing) {
                 IconColorPopover(target: .account(account.id)).environment(model)
             }
             #if os(iOS)
@@ -396,12 +398,7 @@ struct SidebarView: View {
         // accounts have – then archive / delete
         Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .renameAccount(account) }
         Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .account(account.id) }
-        Toggle(isOn: Binding(
-            get: { ViewLayout.showsCategoryChip(for: account.id) },
-            set: { ViewLayout.setShowsCategoryChip($0, for: account.id) }
-        )) {
-            Label("Kategorie in der Buchungszeile anzeigen", systemImage: "tag")
-        }
+        CategoryChipToggle(accountID: account.id)
         Menu("Kontoart ändern …", systemImage: "list.bullet.rectangle") {
             ForEach(AccountKind.importChoices, id: \.self) { k in
                 Button { model.setAccountKind(account.id, to: k) } label: {
@@ -630,7 +627,7 @@ struct AccountRow: View {
                     }
                     Spacer(minLength: 4)
                     Text(Money.format(account.balanceCents, currency: account.currency))
-                        .sensitive()
+                        .sensitive(.amounts)
                         .appFont(.subheadline, monospacedDigit: true)
                         .fixedSize() // the subtitle truncates, never the balance (#343)
                         .foregroundStyle(onSelection ? AnyShapeStyle(.primary) : AnyShapeStyle(account.kind == .loan ? Theme.loan : (account.balanceCents < 0 ? Theme.negative : Theme.text)))
@@ -676,7 +673,7 @@ struct CategoryRow: View {
             Spacer(minLength: 4)
             if category.totalCents != 0 {
                 Text(Money.format(category.totalCents))
-                    .sensitive()
+                    .sensitive(.amounts)
                     .appFont(.caption, monospacedDigit: true)
                     .fixedSize()
                     .foregroundStyle(.secondary) // follows selection, Dark Mode, Increase Contrast
@@ -825,7 +822,7 @@ private struct CategoryIconColorPopover: ViewModifier {
     let id: Int64
 
     func body(content: Content) -> some View {
-        content.popover(isPresented: model.iconColorBinding(.category(id)), arrowEdge: .trailing) {
+        content.capturablePopover(isPresented: model.iconColorBinding(.category(id)), arrowEdge: .trailing) {
             IconColorPopover(target: .category(id)).environment(model)
         }
     }
@@ -906,5 +903,30 @@ struct NewCountBadge: View {
                 .fixedSize() // the name truncates, never the count
                 .accessibilityLabel(Text("\(count) neue Buchungen"))
         }
+    }
+}
+
+/// „Kategorie in der Buchungszeile anzeigen“ in an account's menu (GitHub #604).
+/// Reads the setting through `@AppStorage` so the checkmark follows the stored value;
+/// a Binding over `UserDefaults` is not observed and kept a stale checkmark in the menu.
+private struct CategoryChipToggle: View {
+    let accountID: Int64
+    @AppStorage(ViewLayout.hiddenCategoryChipAccountsKey) private var hiddenRaw = ""
+
+    var body: some View {
+        Toggle(isOn: Binding(
+            get: { !hiddenIDs.contains(accountID) },
+            set: { show in
+                var ids = hiddenIDs
+                if show { ids.remove(accountID) } else { ids.insert(accountID) }
+                hiddenRaw = ids.sorted().map(String.init).joined(separator: ",")
+            }
+        )) {
+            Label("Kategorie in der Buchungszeile anzeigen", systemImage: "tag")
+        }
+    }
+
+    private var hiddenIDs: Set<Int64> {
+        Set(hiddenRaw.split(separator: ",").compactMap { Int64($0) })
     }
 }

@@ -789,7 +789,7 @@ struct GroupListRow: View {
             Image(systemName: group.sfSymbol).foregroundStyle(Theme.accent).frame(width: 22)
                 .padding(.leading, CGFloat(group.depth) * 14)
             VStack(alignment: .leading, spacing: 1) {
-                Text(group.name).lineLimit(1)
+                Text(group.name).lineLimit(1).sensitive(.labels)
                 Text(subtitle)
                     .appFont(.caption).foregroundStyle(Theme.secondary)
             }
@@ -875,6 +875,7 @@ private struct GroupAccountsList: View {
                 Text(a.name).foregroundStyle(Theme.text)
                 Text(rowDetail(a)).appFont(.caption2).foregroundStyle(Theme.secondary)
             }
+            .sensitive()
         }
         .draggable(GroupDrag.account(a.id))
     }
@@ -1062,6 +1063,7 @@ private struct UngroupedDetail: View {
 /// One group: name, symbol, total switch and which accounts belong to it.
 struct GroupDetailEditor: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
     @Environment(\.dismiss) private var dismiss
     let uuid: String
     var search: String = ""
@@ -1094,7 +1096,7 @@ struct GroupDetailEditor: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(Text("Symbol & Farbe …"))
-                        .popover(isPresented: $iconColorOpen, arrowEdge: .trailing) {
+                        .capturablePopover(isPresented: $iconColorOpen, arrowEdge: .trailing) {
                             IconColorPopover(target: .group(g.uuid)).environment(model)
                         }
                     }
@@ -1109,6 +1111,7 @@ struct GroupDetailEditor: View {
                             Text(verbatim: c.indentedName).tag(c.uuid)
                         }
                     }
+                    .sensitive(.labels) // another group's name
                 } footer: {
                     Text("Summe, Buchungsliste und Saldoverlauf einer Gruppe enthalten auch ihre Untergruppen.").leadingFooter()
                 }
@@ -1138,7 +1141,7 @@ struct GroupDetailEditor: View {
             }
             .formStyle(.grouped)
             #if os(iOS)
-            .navigationTitle(g.name)
+            .navigationTitle(redaction.masking(g.name, .labels))
             #endif
             .onAppear { name = g.name }
             .onDisappear { commitName() }

@@ -3,6 +3,14 @@ import SwiftUI
 import GiroCrabCore
 
 extension AppModel {
+    static func expandedCategoriesKey(demo: Bool) -> String {
+        demo ? "sidebar.expandedCategories.demo" : "sidebar.expandedCategories"
+    }
+
+    static func storedExpandedCategories(demo: Bool) -> Set<Int64> {
+        Set(UserDefaults.standard.array(forKey: expandedCategoriesKey(demo: demo)) as? [Int64] ?? [])
+    }
+
     /// Marks the selected booking as checked after `autoReviewDelay`, unless
     /// the selection moved on (or became a multiple one) in the meantime.
     func scheduleAutoReview() {
