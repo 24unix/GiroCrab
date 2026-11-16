@@ -167,7 +167,7 @@ struct ConnectionEditSheet: View {
         case .americanExpress, .amazonVisa: return []
         case .bunq: return ["bunq.environment"]
         case .enableBanking: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
-        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank, .uberspace: return []
+        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank, .uberspace, .schwaebischHall: return []
         }
     }
 
@@ -305,6 +305,19 @@ struct ConnectionEditSheet: View {
                             ForEach(advancedKeys, id: \.self) { key in field(key) }
                         }
                     }
+                }
+                // Browser-only portals keep their session cookies in the app's web
+                // store: offer to remove them like for the card portals above.
+                if connection.connector == .schwaebischHall {
+                    Section {
+                        Button {
+                            save()
+                            dismiss()
+                            model.webLoginConnection = model.connections.first { $0.id == connection.id } ?? connection
+                        } label: { Label("Anmelden & Abrufen", systemImage: "safari") }
+                            .buttonStyle(.borderedProminent)
+                        Button("Web-Sitzung (Cookies) löschen …", role: .destructive) { confirmClear = .portal }
+                    } header: { Text("Direkt-Login (Web-Session)").appSectionHeader() }
                 }
                 if isComdirect {
                     Section {

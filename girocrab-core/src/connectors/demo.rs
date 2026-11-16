@@ -112,6 +112,7 @@ impl BankConnector for DemoConnector {
             | ConnectorKind::AmazonVisa
             | ConnectorKind::AmazonOrders
             | ConnectorKind::Quirion
+            | ConnectorKind::SchwaebischHall
             | ConnectorKind::Fnz
             | ConnectorKind::EnableBanking => Challenge {
                 kind: ChallengeKind::Redirect,

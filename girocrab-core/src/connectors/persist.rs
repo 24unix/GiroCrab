@@ -255,7 +255,12 @@ pub(crate) fn store_fetch(
                     }
                     // Brokerage: depots found later. Savings: PSD2 savings accounts
                     // first stored as checking (e.g. C24 PocketZINS, typed by product).
-                    if acc.kind == AccountKind::Brokerage || acc.kind == AccountKind::Savings {
+                    // Loan: a Schwäbisch Hall Bausparvertrag moving on to its loan phase
+                    // (same contract id), which must not stay a savings account.
+                    if acc.kind == AccountKind::Brokerage
+                        || acc.kind == AccountKind::Savings
+                        || (acc.kind == AccountKind::Loan && kind == ConnectorKind::SchwaebischHall)
+                    {
                         let (group, sym, order) = group_for(acc.kind);
                         let gid = Vault::ensure_group(&tx, group, sym, order)?;
                         tx.execute(

@@ -391,6 +391,7 @@ pub fn display_name(id: &str) -> String {
         "ibkr" => "Interactive Brokers",
         "quirion" => "quirion",
         "uberspace" => "Uberspace",
+        "schwaebischhall" => "Schwäbisch Hall",
         "fin4u" => "Alte Leipziger",
         other => other,
     };

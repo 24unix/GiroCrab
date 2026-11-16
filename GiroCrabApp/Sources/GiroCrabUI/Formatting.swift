@@ -464,6 +464,7 @@ extension ConnectorKind {
         case .alteLeipziger: return "Alte Leipziger"
         case .volkswagenBank: return "Volkswagen Bank"
         case .uberspace: return "Uberspace"
+        case .schwaebischHall: return "Schwäbisch Hall"
         }
     }
 
@@ -489,6 +490,7 @@ extension ConnectorKind {
         case .alteLeipziger: return "#BE0D3E"
         case .volkswagenBank: return "#001E50"
         case .uberspace: return "#2C3E50"
+        case .schwaebischHall: return "#004F9F"
         }
     }
 
@@ -521,6 +523,7 @@ extension ConnectorKind {
         case .alteLeipziger: return "AL"
         case .volkswagenBank: return "VW"
         case .uberspace: return "US"
+        case .schwaebischHall: return "SH"
         }
     }
 }

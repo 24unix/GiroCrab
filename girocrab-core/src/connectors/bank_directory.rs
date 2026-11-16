@@ -169,6 +169,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
             "quirion quirin privatbank depot",
         ),
         (
+            ConnectorKind::SchwaebischHall,
+            "Schwäbisch Hall",
+            "schwaebisch bsh bausparvertrag bauspar",
+        ),
+        (
             ConnectorKind::ScalableCapital,
             "Scalable Capital",
             "scalable capital depot broker overnight festgeld",
@@ -224,6 +229,7 @@ fn fints_result(b: FinTsBankInfo) -> BankSearchResult {
 
 /// Alte Leipziger Bauspar AG: not in the FinTS directory, reached via fin4u.
 const ALTE_LEIPZIGER_BLZ: &str = "50012800";
+const SCHWAEBISCH_HALL_BLZ: &str = "62220000";
 
 fn own_result(kind: ConnectorKind, name: &str) -> BankSearchResult {
     BankSearchResult {
@@ -302,6 +308,11 @@ pub fn search(
             out.push(own_result(ConnectorKind::Fnz, "FNZ Bank"));
         } else if blz == ALTE_LEIPZIGER_BLZ {
             out.push(own_result(ConnectorKind::AlteLeipziger, "Alte Leipziger"));
+        } else if blz == SCHWAEBISCH_HALL_BLZ {
+            out.push(own_result(
+                ConnectorKind::SchwaebischHall,
+                "Schwäbisch Hall",
+            ));
         }
         return out;
     }
@@ -833,5 +844,27 @@ mod tests {
             );
         }
         assert_eq!(ids(&search("50012800", vec![], 10)), vec!["api:fin4u"]);
+    }
+
+    #[test]
+    fn schwaebisch_hall_routes_names_and_blz_to_browser() {
+        for query in [
+            "Schwäbisch Hall",
+            "schwaebisch hall",
+            "Bausparvertrag",
+            "BSH",
+            "62220000",
+        ] {
+            let r = search(query, vec![], 20);
+            assert!(
+                r.iter().any(|b| b.mode == BankAccessMode::OwnApi
+                    && b.connector == Some(ConnectorKind::SchwaebischHall)),
+                "{query}"
+            );
+        }
+        assert_eq!(
+            ids(&search("62220000", vec![], 10)),
+            vec!["api:schwaebischhall"]
+        );
     }
 }

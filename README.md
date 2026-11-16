@@ -198,11 +198,12 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | Alte Leipziger (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ✅ Verifiziert |
 | Amazon Bestellungen | Web-Portal | ✓ | – | – | – | – | – | 🧪 Test gesucht |
 | easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Test gesucht |
-| Volkswagen Bank | Web-Portal | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
-| Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Mit Einschränkungen |
+| Schwäbisch Hall (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Test gesucht [#290](https://github.com/GiroCrab/GiroCrab/issues/290) |
+| Trade Republic | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ⚠️ Mit Einschränkungen |
 | Uberspace | Web-Portal | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
+| Volkswagen Bank | Web-Portal | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen |
 
 Weitere deutsche Banken mit FinTS 3.0 (PIN/TAN) lassen sich über BLZ und FinTS-URL anbinden (2.011 Institute im FinTS-Verzeichnis); europäische PSD2-Banken über Enable Banking mit einer eigenen, kostenlosen Anwendung.
 
@@ -406,11 +407,12 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | Alte Leipziger (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ✅ Verified |
 | Amazon orders | Web-Portal | ✓ | – | – | – | – | – | 🧪 Testing wanted |
 | easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Testing wanted |
-| Volkswagen Bank | Web-Portal | ✓ | ✓ | – | – | – | – | ⚠️ Limited |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
-| Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Limited |
+| Schwäbisch Hall (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Testing wanted [#290](https://github.com/GiroCrab/GiroCrab/issues/290) |
+| Trade Republic | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ⚠️ Limited |
 | Uberspace | Web-Portal | ✓ | ✓ | – | – | – | – | ✅ Verified |
+| Volkswagen Bank | Web-Portal | ✓ | ✓ | – | – | – | – | ⚠️ Limited |
 
 Further German banks with FinTS 3.0 (PIN/TAN) can be connected via bank code and FinTS URL (2,011 institutions in the FinTS directory); European PSD2 banks via Enable Banking with your own free application.
 

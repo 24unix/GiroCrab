@@ -581,7 +581,7 @@ fn call(method: &str, a: &Value) -> R {
                 .block_on(v.refresh_asset_prices(force))
                 .map_err(|e| e.to_string())?)
         }
-        // --- portal logins --- (src/web_login.rs: browser cookies, Amex/Amazon/FNZ/quirion imports)
+        // --- portal logins --- (src/web_login.rs: browser cookies, Amex/Amazon/FNZ/quirion/Schwäbisch Hall imports)
         m if crate::web_login::handles(m) => crate::web_login::call(m, a, vault),
         _ => {
             let v = vault()?;

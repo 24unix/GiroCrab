@@ -104,6 +104,7 @@ CONNECTOR_DOCS = {
     "scalable-capital": ("Scalable Capital", "Scalable Capital"),
     "volkswagen-bank": ("Volkswagen Bank", "Volkswagen Bank"),
     "uberspace": ("Uberspace", "Uberspace"),
+    "schwaebisch-hall": ("Schwäbisch Hall (Bausparen)", "Schwäbisch Hall"),
 }
 
 

@@ -1,6 +1,6 @@
 //! Web logins (WebLoginSheet.qml): the browser profile's cookies and the core
 //! calls of the portal flows (PortalUI.swift, AmazonUI.swift, FnzUI.swift,
-//! QuirionUI.swift, ConnectionsUI.swift › WebLoginSheet).
+//! QuirionUI.swift, SchwaebischHallUI.swift, ConnectionsUI.swift › WebLoginSheet).
 //!
 //! Cookies are read from the QtWebEngine cookie store (cpp/webcookies.cpp) and
 //! go straight into the vault; they never travel through QML / JavaScript and
@@ -54,6 +54,9 @@ pub fn handles(method: &str) -> bool {
             | "import_quirion_snapshot"
             | "pending_quirion_documents"
             | "import_quirion_document"
+            | "import_schwaebisch_hall_snapshot"
+            | "pending_schwaebisch_hall_documents"
+            | "import_schwaebisch_hall_document"
     )
 }
 
@@ -193,6 +196,15 @@ pub fn call(method: &str, a: &Value, vault: fn() -> Result<Arc<Vault>, String>) 
             .map_err(err)?),
         "import_quirion_document" => ok(vault()?
             .import_quirion_document(id()?, arg(a, "document_json")?, bytes(a)?)
+            .map_err(err)?),
+        "import_schwaebisch_hall_snapshot" => ok(vault()?
+            .import_schwaebisch_hall_snapshot(id()?, arg(a, "snapshot_json")?)
+            .map_err(err)?),
+        "pending_schwaebisch_hall_documents" => ok(vault()?
+            .pending_schwaebisch_hall_documents(id()?, arg(a, "documents_json")?)
+            .map_err(err)?),
+        "import_schwaebisch_hall_document" => ok(vault()?
+            .import_schwaebisch_hall_document(id()?, arg(a, "document_json")?, bytes(a)?)
             .map_err(err)?),
         _ => Err(format!("unknown core method `{method}`")),
     }

@@ -30,6 +30,7 @@ pub mod ibkr;
 pub mod paypal;
 pub mod quirion;
 pub mod scalable;
+pub mod schwaebisch_hall;
 pub mod template;
 pub mod trade_republic;
 pub mod uberspace;

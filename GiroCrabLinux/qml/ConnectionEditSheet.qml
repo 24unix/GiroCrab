@@ -226,6 +226,15 @@ Sheet {
                     Button { text: qsTr("Web-Sitzung (Cookies) löschen …"); palette.buttonText: Theme.negative
                              onClicked: { confirmClear.kind = "portal"; confirmClear.open() } }
                 }
+                // Browser-only portal: sign in, and remove its session cookies like for the cards above.
+                SettingsFormSection {
+                    visible: sheet.kind === "SchwaebischHall"
+                    title: qsTr("Direkt-Login (Web-Session)")
+                    Button { text: qsTr("Anmelden && Abrufen"); highlighted: true
+                             onClicked: { sheet.save(); const c = sheet.current(); sheet.close(); AppModel.webLoginConnection = c } }
+                    Button { text: qsTr("Web-Sitzung (Cookies) löschen …"); palette.buttonText: Theme.negative
+                             onClicked: { confirmClear.kind = "portal"; confirmClear.open() } }
+                }
                 SettingsFormSection {
                     visible: sheet.isPortal
                     RowLayout {

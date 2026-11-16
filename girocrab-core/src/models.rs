@@ -48,6 +48,9 @@ pub enum ConnectorKind {
     VolkswagenBank,
     /// Uberspace hosting accounts (balance and bookings per Asteroid) via the web dashboard.
     Uberspace,
+    /// Bausparkasse Schwäbisch Hall (Bausparverträge, postbox PDFs) via the
+    /// "Mein Konto" portal, authenticated inside the embedded browser (#290).
+    SchwaebischHall,
 }
 
 impl ConnectorKind {
@@ -72,6 +75,7 @@ impl ConnectorKind {
             ConnectorKind::AlteLeipziger => "fin4u",
             ConnectorKind::VolkswagenBank => "volkswagenbank",
             ConnectorKind::Uberspace => "uberspace",
+            ConnectorKind::SchwaebischHall => "schwaebischhall",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -125,6 +129,7 @@ impl ConnectorKind {
             ConnectorKind::AlteLeipziger,
             ConnectorKind::VolkswagenBank,
             ConnectorKind::Uberspace,
+            ConnectorKind::SchwaebischHall,
         ]
     }
 }

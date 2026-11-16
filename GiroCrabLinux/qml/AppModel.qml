@@ -1201,7 +1201,7 @@ QtObject {
         })
     }
     function connectionStatus(id) { return run(() => core("connection_status", { connection_id: id })) || null }
-    /// Amex / Amazon Visa / FNZ / Quirion / Amazon orders: embedded web-portal login.
+    /// Amex / Amazon Visa / FNZ / Quirion / Schwäbisch Hall / Amazon orders: embedded web-portal login.
     function usesPortal(c) { return usesPortalLogin(c) }   // MARK: Web logins
 
     // MARK: - Adding banks
@@ -3316,6 +3316,8 @@ QtObject {
         // Amazon Visa customer portal (Open Bank / Zinia); www.openbank.de has no card login.
         case "AmazonVisa": return "https://kunden.openbankpay.com/amazon/login"
         case "Quirion": return "https://banking.quirion.de/login/"
+        // starts the B2C sign-in (302 to login.schwaebisch-hall.de), SchwaebischHallScripts.loginURL
+        case "SchwaebischHall": return "https://www.schwaebisch-hall.de/bin/bshweb/authentication"
         case "Fnz": return "https://portal.fnz.de/"
         case "AmazonOrders": return "https://www.amazon.de/gp/css/order-history"
         case "TradeRepublic": return "https://app.traderepublic.com/login"
@@ -3332,6 +3334,7 @@ QtObject {
         case "AmazonOrders": return ["amazon.de", "amazon.com"]
         case "Fnz": return ["portal.fnz.de"]
         case "Quirion": return ["banking.quirion.de"]
+        case "SchwaebischHall": return ["www.schwaebisch-hall.de", "login.schwaebisch-hall.de"]
         case "TradeRepublic": return ["traderepublic.com"]
         default: return []
         }
@@ -3361,7 +3364,7 @@ QtObject {
     /// under "Erweitert" *and* the credentials are set (PortalUI.swift › usesPortal).
     function usesPortalLogin(c) {
         if (isMagicDemoLogin(c.login_name)) return false
-        if (!isDemo && ["AmazonOrders", "Fnz", "Quirion"].indexOf(c.connector) >= 0) return true
+        if (!isDemo && ["AmazonOrders", "Fnz", "Quirion", "SchwaebischHall"].indexOf(c.connector) >= 0) return true
         if (isDemo || (c.connector !== "AmericanExpress" && c.connector !== "AmazonVisa")) return false
         const optIn = settingEntry(enableBankingOptInKey(c.connector))
         const app = settingEntry("enablebanking.application_id"), key = settingEntry("enablebanking.private_key_pem")
