@@ -11,6 +11,8 @@ struct ExportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var options = ExportOptions.load()
     @State private var busy = false
+    /// Export error, shown on the sheet itself (the app's alert would stay hidden behind it).
+    @State private var failure: String?
     @State private var showDetails = ExportOptions.load().hasNonDefaultContent
     /// Booking count and file name for the current choices, loaded off the main thread
     /// (`nil` while loading). Refreshed only when `previewKey` changes.
@@ -235,6 +237,12 @@ struct ExportSheet: View {
             idealHeight: isSelectionExport ? 460 : 720
         )
         #endif
+        .alert(String(localized: "Export fehlgeschlagen"),
+               isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(failure ?? "")
+        }
         .onAppear { bootstrap() }
         .onDisappear { persistOptions() }
         .task(id: previewKey) { await refreshPreview() }
@@ -710,8 +718,7 @@ struct ExportSheet: View {
         defer { busy = false }
         let ids = effectiveAccountIDs
         guard !ids.isEmpty || options.scope == .selection else {
-            model.showError(String(localized: "Export fehlgeschlagen"),
-                            String(localized: "Bitte mindestens ein Konto wählen."))
+            failure = String(localized: "Bitte mindestens ein Konto wählen.")
             return
         }
         if isBulk {
@@ -727,8 +734,10 @@ struct ExportSheet: View {
             finishAndPresent(file: file, askWhere: askWhere)
         } catch is CancellationError {
             return
+        } catch let CoreError.InvalidInput(message) {
+            failure = message
         } catch {
-            model.showError(String(localized: "Export fehlgeschlagen"), error.localizedDescription)
+            failure = describe(error)
         }
     }
 
@@ -743,13 +752,14 @@ struct ExportSheet: View {
             }
         } catch is CancellationError {
             return
+        } catch let CoreError.InvalidInput(message) {
+            failure = message
         } catch {
-            model.showError(String(localized: "Export fehlgeschlagen"), error.localizedDescription)
+            failure = describe(error)
             return
         }
         guard !files.isEmpty else {
-            model.showError(String(localized: "Export fehlgeschlagen"),
-                            String(localized: "Keine Umsätze für den Export."))
+            failure = String(localized: "Keine Umsätze für den Export.")
             return
         }
         model.exportBookingIDs = nil

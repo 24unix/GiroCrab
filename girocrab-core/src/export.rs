@@ -191,7 +191,8 @@ impl Vault {
     /// currency (see [`booked_balance`]). Pending entries are listed as
     /// `PDNG`, entries in another currency with their own; neither counts.
     /// For a period CLBD = OPBD + booked entries; for marked bookings both
-    /// stay the account's real balances. Loans and depots are refused: their
+    /// stay the account's real balances, so a marking must not leave out a
+    /// booked booking between its first and last day. Loans and depots are refused: their
     /// balance is no sum of own bookings.
     pub fn camt053_export(&self, request: Camt053Request) -> Result<String, CoreError> {
         let mut account = self
@@ -269,6 +270,18 @@ impl Vault {
             return Err(CoreError::InvalidInput {
                 message: tr("Der Zeitraum endet vor seinem Beginn.").to_string(),
             });
+        }
+        // Marked bookings: OPBD + entries = CLBD only holds when no booked
+        // booking between the first and the last day is left out.
+        if let Some(ids) = &ids {
+            let gap = camt_entries(&db, account.id, Some(&from), Some(&to), None)?
+                .iter()
+                .any(|(id, e)| !e.pending && !ids.contains(id));
+            if gap {
+                return Err(CoreError::InvalidInput {
+                    message: tr("CAMT.053 erfordert eine lückenlose Auswahl. Markiere alle Umsätze eines zusammenhängenden Zeitraums.").to_string(),
+                });
+            }
         }
         let opening = booked_balance(&db, &account, &currency, &previous_day(&from))?;
         let closing = booked_balance(&db, &account, &currency, &to)?;
@@ -710,11 +723,15 @@ fn entry_xml(b: &CamtEntry, account_currency: &str, owner: &str, v08: bool) -> S
         }
         e += "</Refs>";
     }
-    // The peer is the creditor of a debit, of a direct debit (a mandate or
-    // creditor id) and of a returned direct debit (GVC 009/109/159), also when
-    // that comes back as a credit.
-    let is_return = matches!(gvc, "009" | "109" | "159");
-    let peer_is_creditor = debit || is_return || !mandate.is_empty() || !creditor_id.is_empty();
+    // Roles of the original payment: the peer is the creditor of a debit and
+    // the debtor of a credit. A return (GVC 009/109/159 or a return reason)
+    // turns this around: a returned direct debit is a credit, yet the peer stays
+    // the creditor; a direct debit the owner collected (a credit with the
+    // owner's creditor id) comes back as a debit, yet the peer stays the debtor.
+    // The creditor id belongs to the creditor.
+    let return_reason = detect_return_reason(gvc, &b.purpose, &b.booking_text);
+    let is_return = matches!(gvc, "009" | "109" | "159") || return_reason.is_some();
+    let peer_is_creditor = debit != is_return;
     let (debtor, creditor) = if peer_is_creditor {
         (
             party_xml("Dbtr", owner, "", v08),
@@ -723,7 +740,7 @@ fn entry_xml(b: &CamtEntry, account_currency: &str, owner: &str, v08: bool) -> S
     } else {
         (
             party_xml("Dbtr", name, "", v08),
-            party_xml("Cdtr", owner, "", v08),
+            party_xml("Cdtr", owner, creditor_id, v08),
         )
     };
     let peer_acct = if peer_iban.is_empty() {
@@ -771,7 +788,7 @@ fn entry_xml(b: &CamtEntry, account_currency: &str, owner: &str, v08: bool) -> S
         }
         e += "</RmtInf>";
     }
-    if let Some(reason) = detect_return_reason(gvc, &b.purpose, &b.booking_text) {
+    if let Some(reason) = return_reason {
         e += &format!("<RtrInf><Rsn><Cd>{reason}</Cd></Rsn></RtrInf>");
     }
     e += "</TxDtls></NtryDtls>";
@@ -1237,20 +1254,82 @@ mod tests {
     }
 
     /// #483 (#403): marked bookings are allowed – the balances stay the real
-    /// ones at the edges of the marked period, even with unmarked entries.
+    /// ones at the edges of the marked period, so a marking with a gap is refused.
     #[test]
     fn camt053_marked_bookings_keep_the_real_balances() {
         let (v, _) = vault("camt-selection");
         let a = bank_account(&v, "selection", "EUR", 100_000, &day(0));
         let first = add(&v, a, "b1", &day(-20), 50_000);
-        add(&v, a, "b2", &day(-5), -10_000);
+        let middle = add(&v, a, "b2", &day(-5), -10_000);
         let last = add(&v, a, "b3", &day(-1), -2_000);
-        let xml = export(&v, a, None, None, Some(vec![first, last]), CamtVersion::V08);
-        assert_eq!(xml.matches("<Ntry>").count(), 2, "{xml}");
-        // The unmarked -100,00 entry stays out.
-        assert!(!xml.contains("<Amt Ccy=\"EUR\">100.00</Amt>"), "{xml}");
-        assert_eq!(balance(&xml, "OPBD").0, 62_000, "{xml}");
+        let same_day = add(&v, a, "b4", &day(-1), -3_000);
+        // The newest bookings without a gap: real balances, OPBD + entries = CLBD.
+        let xml = export(
+            &v,
+            a,
+            None,
+            None,
+            Some(vec![middle, last, same_day]),
+            CamtVersion::V08,
+        );
+        assert_eq!(xml.matches("<Ntry>").count(), 3, "{xml}");
+        assert_eq!(balance(&xml, "OPBD").0, 115_000, "{xml}");
         assert_eq!(balance(&xml, "CLBD").0, 100_000, "{xml}");
+        // A marking that leaves out a booked booking between its first and last
+        // day (also on the same day) would contradict itself: refused.
+        for gap in [vec![first, last, same_day], vec![last]] {
+            let err = v
+                .camt053_export(Camt053Request {
+                    account_id: a,
+                    date_from: None,
+                    date_to: None,
+                    booking_ids: Some(gap),
+                    version: CamtVersion::V08,
+                    created_at: "2026-03-31T12:00:00+02:00".into(),
+                })
+                .unwrap_err();
+            assert!(err.to_string().contains("lückenlose"), "{err}");
+        }
+    }
+
+    /// A direct debit the account holder collected (own creditor id) and its
+    /// return: the peer stays the debtor, the holder the creditor with its id.
+    #[test]
+    fn camt053_own_direct_debit_keeps_the_roles() {
+        let (v, _) = vault("camt-collect");
+        let a = bank_account(&v, "collect", "EUR", 100_000, &day(0));
+        let collect = add(&v, a, "c1", &day(-10), 3_000);
+        let returned = add(&v, a, "c2", &day(-8), -3_000);
+        {
+            let db = v.db().unwrap();
+            for (id, gvc) in [(collect, "171"), (returned, "109")] {
+                db.execute(
+                    "UPDATE transactions SET counterparty = 'Max Mitglied', mandate_id = 'M-1',
+                            creditor_id = 'DE11ZZZ00000000001', gvc = ?2 WHERE id = ?1",
+                    params![id, gvc],
+                )
+                .unwrap();
+            }
+        }
+        for version in [CamtVersion::V02, CamtVersion::V08] {
+            let xml = export(&v, a, None, None, None, version);
+            let (v08, schema) = if version == CamtVersion::V08 {
+                (true, "camt.053.001.08")
+            } else {
+                (false, "camt.053.001.02")
+            };
+            validate(&xml, schema);
+            let debtor = party_xml("Dbtr", "Max Mitglied", "", v08);
+            let creditor = party_xml("Cdtr", "Erika Muster", "DE11ZZZ00000000001", v08);
+            let entries: Vec<&str> = xml.split("<Ntry>").skip(1).collect();
+            assert_eq!(entries.len(), 2, "{xml}");
+            for e in entries {
+                assert!(
+                    e.contains(&format!("<RltdPties>{debtor}{creditor}</RltdPties>")),
+                    "{e}"
+                );
+            }
+        }
     }
 
     /// #483 (7–18): bank data stays as delivered, the missing references and
