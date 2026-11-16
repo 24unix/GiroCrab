@@ -57,6 +57,7 @@
   "Die Konten aus „%1“ kommen nach „%2“. „%1“ wird entfernt.": "The accounts from “%1” move to “%2”. “%1” is removed.",
   "Druckvorschau": "Print Preview",
   "Eigenes Konto anlegen": "Create Own Account",
+  "Eine neue Aufnahme verwirft die Markierungen, weil sich der Inhalt verschoben haben kann.": "Taking a new screenshot discards the annotations because the content may have shifted.",
   "Entwickler-Schlüssel (GIROCRAB_NO_KEYCHAIN, Schlüsselbund unbenutzt)": "Developer key (GIROCRAB_NO_KEYCHAIN, keyring unused)",
   "Erfundene Buchungen aller 7 Banken – keine echte Bank verbunden. Sobald echte Daten da sind, schützt Face ID bzw. Ihr Gerätecode den Tresor automatisch; hier können Sie den Sperrbildschirm testen.": "Fictitious transactions from all 7 banks – no real bank connected. As soon as real data exists, Face ID or your device passcode protects the vault automatically; here you can test the lock screen.",
   "Erkennt IBAN, Betrag, Empfänger und Zweck (⇧Strg+V; Strg+V außerhalb von Textfeldern). Rechnung (PDF, ZUGFeRD) hierher ziehen.": "Recognises IBAN, amount, recipient and reference (⇧Ctrl+V; Ctrl+V outside text fields). Drag an invoice (PDF, ZUGFeRD) here.",

@@ -118,7 +118,9 @@ fn fresh_vault_matches_golden_schema() {
     if !golden.exists() {
         std::fs::write(&golden, &dump).unwrap();
     }
-    let expected = std::fs::read_to_string(golden).unwrap();
+    let expected = std::fs::read_to_string(golden)
+        .unwrap()
+        .replace("\r\n", "\n");
     assert_eq!(
         dump, expected,
         "fresh vault schema differs from the golden file"

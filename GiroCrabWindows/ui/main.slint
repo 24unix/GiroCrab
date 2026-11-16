@@ -1,0 +1,318 @@
+import { Button, ListView, LineEdit, Palette } from "std-widgets.slint";
+
+export struct AccountRow { id: int, name: string, bank: string, iban: string, dot: color, balance: string, currency: string, negative: bool }
+export struct BookingRow { date: string, counterparty: string, category: string, category-color: color, purpose: string, amount: string, negative: bool }
+export struct BankHit { name: string, detail: string }
+
+global Theme {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <color> window: dark ? #1c1c1e : #f5f5f7;
+    out property <color> surface: dark ? #26262a : #ffffff;
+    out property <color> sidebar: dark ? #202023 : #ececf0;
+    out property <color> border: dark ? #3a3a3f : #dcdce1;
+    out property <color> text: dark ? #f2f2f7 : #1d1d1f;
+    out property <color> muted: dark ? #9a9aa2 : #6e6e73;
+    out property <color> accent: #3478f6;
+    out property <color> positive: dark ? #4cd17a : #1e8449;
+    out property <color> negative: dark ? #ff7b6e : #c0392b;
+}
+
+component AccountCard inherits Rectangle {
+    in property <AccountRow> account;
+    in property <bool> active;
+    callback clicked();
+    height: 62px;
+    border-radius: 10px;
+    background: active ? Theme.accent.with-alpha(0.18) : ta.has-hover ? Theme.text.with-alpha(0.06) : transparent;
+    ta := TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle { height: 10px; width: 10px; border-radius: 5px; background: account.dot; }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text { text: account.name; color: Theme.text; font-weight: 600; font-size: 13px; overflow: elide; }
+            Text { text: account.bank + (account.iban == "" ? "" : "  " + account.iban); color: Theme.muted; font-size: 11px; overflow: elide; }
+        }
+        Text {
+            text: account.balance;
+            color: account.negative ? Theme.negative : Theme.text;
+            font-size: 13px;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+        }
+    }
+}
+
+component BookingLine inherits Rectangle {
+    in property <BookingRow> b;
+    height: 56px;
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 12px;
+        Text { text: b.date; color: Theme.muted; font-size: 12px; width: 84px; vertical-alignment: center; }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text { text: b.counterparty; color: Theme.text; font-size: 13px; font-weight: 600; overflow: elide; }
+            Text { text: b.purpose; color: Theme.muted; font-size: 11px; overflow: elide; }
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 22px;
+                width: pill.preferred-width + 16px;
+                border-radius: 11px;
+                background: b.category-color.with-alpha(0.18);
+                pill := Text {
+                    text: b.category;
+                    color: Theme.dark ? b.category-color.brighter(0.4) : b.category-color.darker(0.3);
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        Text {
+            text: b.amount;
+            color: b.negative ? Theme.text : Theme.positive;
+            font-size: 13px;
+            font-weight: 600;
+            width: 110px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border.with-alpha(0.6); }
+}
+
+export component MainWindow inherits Window {
+    title: "GiroCrab";
+    min-width: 960px;
+    min-height: 600px;
+    background: Theme.window;
+
+    in property <bool> unlocked: false;
+    in property <bool> first-run: false;
+    in property <string> message;
+    in property <string> sync-status;
+    in property <string> total;
+    in property <bool> busy: false;
+    in property <[AccountRow]> accounts;
+    in property <[BookingRow]> bookings;
+    in property <string> selected-name;
+    in property <string> selected-balance;
+    in property <string> selected-currency;
+    in-out property <int> selected: -1;
+    in-out property <string> search-text;
+
+    // "Bank / Konto hinzufügen" dialog
+    in-out property <bool> add-open: false;
+    in property <[BankHit]> bank-hits;
+    in-out property <int> bank-choice: -1;
+    in-out property <string> add-status;
+    in property <bool> add-busy: false;
+
+    callback unlock();
+    callback demo();
+    callback select-account(int);
+    callback sync();
+    callback search-changed();
+    callback bank-search(string);
+    callback bank-add(int, string);
+
+    if !unlocked: VerticalLayout {
+        alignment: center;
+        spacing: 14px;
+        padding: 40px;
+        Text { text: "GiroCrab"; font-size: 36px; font-weight: 700; color: Theme.text; horizontal-alignment: center; }
+        Text {
+            text: first-run ? "Neuen Tresor anlegen. Der Schlüssel liegt in der Windows-Anmeldeinformationsverwaltung."
+                            : "Tresor entsperren (Schlüssel aus der Windows-Anmeldeinformationsverwaltung).";
+            color: Theme.muted;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 12px;
+            Button { text: first-run ? "Tresor anlegen" : "Entsperren"; primary: true; clicked => { root.unlock(); } }
+            Button { text: "Demo-Modus"; clicked => { root.demo(); } }
+        }
+        Text { text: root.message; color: Theme.negative; horizontal-alignment: center; wrap: word-wrap; }
+    }
+
+    if unlocked: HorizontalLayout {
+        // ---- sidebar
+        Rectangle {
+            width: 260px;
+            background: Theme.sidebar;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                VerticalLayout {
+                    padding: 4px;
+                    spacing: 2px;
+                    Text { text: "GiroCrab"; font-size: 18px; font-weight: 700; color: Theme.text; }
+                    Text { text: "Tresor entsperrt  ·  " + root.total; font-size: 11px; color: Theme.muted; overflow: elide; }
+                }
+                ListView {
+                    vertical-stretch: 1;
+                    for a in root.accounts: AccountCard {
+                        account: a;
+                        active: root.selected == a.id;
+                        clicked => { root.select-account(a.id); }
+                    }
+                }
+                Button {
+                    text: "+ Bank / Konto hinzufügen";
+                    clicked => {
+                        root.add-status = "";
+                        root.bank-search("");
+                        root.add-open = true;
+                    }
+                }
+            }
+            Rectangle { x: parent.width - 1px; width: 1px; background: Theme.border; }
+        }
+
+        // ---- main pane
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+            Rectangle {
+                height: 96px;
+                background: Theme.surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.border;
+                HorizontalLayout {
+                    padding: 16px;
+                    spacing: 12px;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        spacing: 4px;
+                        Text {
+                            text: root.selected-name == "" ? "Keine Konten" : root.selected-name;
+                            font-size: 18px; font-weight: 700; color: Theme.text; overflow: elide;
+                        }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+                            Text { text: root.selected-balance; font-size: 22px; font-weight: 700; color: Theme.text; }
+                            Text { text: root.selected-currency; font-size: 12px; color: Theme.muted; vertical-alignment: bottom; }
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 6px;
+                        width: 260px;
+                        LineEdit {
+                            placeholder-text: "Umsätze suchen";
+                            text <=> root.search-text;
+                            edited => { root.search-changed(); }
+                        }
+                        Button {
+                            text: root.busy ? "Abruf läuft …" : "Jetzt abrufen";
+                            primary: true;
+                            enabled: !root.busy;
+                            clicked => { root.sync(); }
+                        }
+                    }
+                }
+            }
+            if root.sync-status != "": Text {
+                text: root.sync-status; color: Theme.muted; font-size: 11px; wrap: word-wrap;
+            }
+            Rectangle {
+                vertical-stretch: 1;
+                background: Theme.surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.border;
+                clip: true;
+                if root.bookings.length == 0: Text {
+                    text: root.search-text == "" ? "Keine Umsätze" : "Keine Treffer";
+                    color: Theme.muted;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                ListView {
+                    for b in root.bookings: BookingLine { b: b; }
+                }
+            }
+        }
+    }
+
+    // ---- add bank dialog (overlay)
+    if add-open: Rectangle {
+        background: #00000088;
+        TouchArea { }
+        Rectangle {
+            width: min(520px, parent.width - 32px);
+            height: min(520px, parent.height - 32px);
+            background: Theme.surface;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: Theme.border;
+            VerticalLayout {
+                padding: 18px;
+                spacing: 10px;
+                Text { text: "Bank / Konto hinzufügen"; font-size: 18px; font-weight: 700; color: Theme.text; }
+                LineEdit {
+                    placeholder-text: "Bankname oder BLZ suchen";
+                    edited(t) => { root.bank-search(t); }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    border-radius: 8px;
+                    clip: true;
+                    ListView {
+                        for h[i] in root.bank-hits: Rectangle {
+                            height: 48px;
+                            background: root.bank-choice == i ? Theme.accent.with-alpha(0.18) : transparent;
+                            TouchArea { clicked => { root.bank-choice = i; } }
+                            VerticalLayout {
+                                padding-left: 12px;
+                                padding-right: 12px;
+                                alignment: center;
+                                Text { text: h.name; color: Theme.text; font-size: 13px; font-weight: 600; overflow: elide; }
+                                Text { text: h.detail; color: Theme.muted; font-size: 11px; overflow: elide; }
+                            }
+                        }
+                    }
+                }
+                login := LineEdit {
+                    placeholder-text: "Zugangskennung / Login (bei der Demo-Bank leer lassen)";
+                }
+                Text {
+                    text: "PIN/TAN werden nicht abgefragt oder gespeichert; der erste Abruf echter Banken folgt in einer späteren Version.";
+                    color: Theme.muted; font-size: 11px; wrap: word-wrap;
+                }
+                if root.add-status != "": Text { text: root.add-status; color: Theme.negative; font-size: 12px; wrap: word-wrap; }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    Button { text: "Abbrechen"; clicked => { root.add-open = false; } }
+                    Button {
+                        text: root.add-busy ? "Bitte warten …" : "Hinzufügen";
+                        primary: true;
+                        enabled: root.bank-choice >= 0 && !root.add-busy;
+                        clicked => { root.bank-add(root.bank-choice, login.text); }
+                    }
+                }
+            }
+        }
+    }
+}

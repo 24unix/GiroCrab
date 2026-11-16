@@ -1,3 +1,6 @@
 # String Catalogs are merged per JSON key, not per line (scripts/xcstrings.py).
 # Without the driver in the local git config this falls back to the normal text merge.
 *.xcstrings merge=xcstrings
+
+# Golden schema fixtures must compare byte-for-byte on every platform (Windows CI).
+girocrab-core/tests/fixtures/schema-v*.sql text eol=lf

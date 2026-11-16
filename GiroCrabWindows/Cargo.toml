@@ -1,0 +1,33 @@
+[package]
+name = "girocrab-windows"
+# Kept equal to [workspace.package] in ../Cargo.toml.
+version = "0.7.5"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "GiroCrab for Windows (MVP): Slint front end on the GiroCrab Rust core"
+build = "build.rs"
+
+# Own workspace: the macOS/Linux CI (`cargo clippy --workspace`) must not build Slint.
+[workspace]
+
+[[bin]]
+name = "girocrab"
+path = "src/main.rs"
+
+[dependencies]
+girocrab-core = { path = "../girocrab-core" }
+slint = "1"
+# Windows Credential Manager on Windows; an in-memory store elsewhere so `cargo check` and the tests
+# run on macOS/Linux too (see src/vault_key.rs).
+base64 = "0.22"
+ed25519-dalek = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zeroize = "1"
+tokio = { version = "1", features = ["rt"] }
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["windows-native"] }
+
+[build-dependencies]
+slint-build = "1"

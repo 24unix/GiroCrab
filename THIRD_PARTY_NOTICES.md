@@ -81,6 +81,15 @@ The Flatpak runs on the KDE runtime (`org.kde.Platform`, Qt 6 and Kirigami, see 
 | **Leptonica** (image library used by Tesseract) | `1.87.0` | `BSD-2-Clause` | [https://github.com/DanBloomberg/leptonica](https://github.com/DanBloomberg/leptonica) |
 | **tessdata_fast** (`deu.traineddata`, `eng.traineddata`) | `4.1.0` | `Apache-2.0` | [https://github.com/tesseract-ocr/tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) |
 
+## Windows Direct Dependencies (`GiroCrabWindows`)
+
+Own Cargo workspace. Shares `girocrab-core`, `serde`, `serde_json`, `base64`, `zeroize`, `ed25519-dalek` and `tokio` with the lists above.
+
+| Crate | Version | License | Repository |
+|---|---|---|---|
+| **`slint`** (UI, with `slint-build`) | `1.19.0` | `GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0` (used under GPL-3.0) | [https://github.com/slint-ui/slint](https://github.com/slint-ui/slint) |
+| **`keyring`** (Windows Credential Manager, `windows-native`) | `3.6.3` | `MIT OR Apache-2.0` | [https://github.com/hwchen/keyring-rs](https://github.com/hwchen/keyring-rs) |
+
 ## Swift Packages (`GiroCrabApp`)
 
 | Package | Version | License | Repository |

@@ -44,7 +44,7 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
             # Rust core, workspace manifests, Linux front end, CI itself
-            echo "$files" | grep -qE '^(girocrab-core/|GiroCrabLinux/|Cargo\.(toml|lock)$|\.github/|build-xcframework\.sh$)' || rust=false
+            echo "$files" | grep -qE '^(girocrab-core/|GiroCrabLinux/|GiroCrabWindows/|Cargo\.(toml|lock)$|\.github/|build-xcframework\.sh$)' || rust=false
             # Swift app, the core behind it (bindings), CI itself
             echo "$files" | grep -qE '^(GiroCrabApp/|girocrab-core/|Cargo\.(toml|lock)$|\.github/|build-xcframework\.sh$)' || swift=false
           fi
@@ -118,6 +118,47 @@ jobs:
         run: cargo check -p girocrab-core --features serde
       - if: needs.changes.outputs.rust == 'true'
         run: cargo test --workspace
+
+  # Windows MVP: the core must build and pass its tests on MSVC (Unix-only code such as the
+  # local API socket is gated with cfg(unix)). SQLCipher links a vendored OpenSSL, so the
+  # first run is slow; the cache keeps later ones short.
+  windows-core:
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.rust == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - run: cargo test --manifest-path girocrab-core/Cargo.toml
+
+  # GiroCrabWindows: Slint front end on the core (own workspace). Also checked on Linux to keep
+  # the cross-platform fallback (no Credential Manager) building.
+  windows-app:
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.rust == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: GiroCrabWindows
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev
+      - run: cargo test --manifest-path GiroCrabWindows/Cargo.toml
+      - if: runner.os == 'Windows'
+        run: cargo build --release --manifest-path GiroCrabWindows/Cargo.toml
 
   swift:
     needs: changes
