@@ -512,9 +512,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         return Box::new(demo::DemoConnector::new(kind));
     }
     match kind {
-        ConnectorKind::FinTsGeneric => Box::new(fints::FinTsConnector::new(
-            ConnectorKind::fints_blz(key).unwrap_or(""),
-        )),
+        ConnectorKind::FinTsGeneric => Box::new(fints::FinTsConnector::for_key(key)),
         ConnectorKind::VolksbankKasselGoettingen => {
             Box::new(fints::FinTsConnector::new("52090000"))
         }

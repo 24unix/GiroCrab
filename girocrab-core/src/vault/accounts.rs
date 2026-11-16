@@ -159,6 +159,14 @@ impl Vault {
 
     fn purge_connection(db: &Connection, connection_id: i64) -> Result<(), CoreError> {
         crate::sync_merge::soft_delete_connection(db, connection_id)?;
+        db.execute(
+            "DELETE FROM settings WHERE key IN (?1, ?2, ?3)",
+            params![
+                format!("fints.rah10.private.{connection_id}"),
+                format!("fints.rah10.counter.{connection_id}"),
+                format!("fints.rah10.bank_keys.{connection_id}")
+            ],
+        )?;
         // stored secrets of this connection (PIN); the soft delete blanked the session (state_json)
         db.execute(
             "DELETE FROM settings WHERE key = ?1",

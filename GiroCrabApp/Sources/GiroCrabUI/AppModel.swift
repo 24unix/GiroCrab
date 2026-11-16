@@ -1317,6 +1317,11 @@ public final class AppModel {
 struct VaultPin: Sendable {
     fileprivate let vault: Vault
 
+    /// Async core calls use the same pinned vault without exposing it to views.
+    func runAsync<T: Sendable>(_ work: @escaping @Sendable (Vault) async throws -> T) async throws -> T {
+        try await work(vault)
+    }
+
     func run<T: Sendable>(_ work: @escaping @Sendable (Vault) throws -> T) async throws -> T {
         let vault = vault
         return try await AppModel.offMain { try work(vault) }

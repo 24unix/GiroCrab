@@ -34,6 +34,22 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 export PATH="$HOME/.cargo/bin:$PATH"
+CARGO="${CARGO:-}"
+
+# Homebrew can install standalone Rust alongside rustup. Targets added by
+# rustup belong to its toolchain, not Homebrew's rustc. Select the compiler
+# explicitly too: merely choosing rustup's cargo still finds rustc via PATH.
+if command -v rustup >/dev/null 2>&1; then
+  if RUSTUP_CARGO="$(rustup which cargo 2>/dev/null)" && \
+     RUSTUP_RUSTC="$(rustup which rustc 2>/dev/null)"; then
+    CARGO="${CARGO:-$RUSTUP_CARGO}"
+    export RUSTC="${RUSTC:-$RUSTUP_RUSTC}"
+    if RUSTUP_RUSTDOC="$(rustup which rustdoc 2>/dev/null)"; then
+      export RUSTDOC="${RUSTDOC:-$RUSTUP_RUSTDOC}"
+    fi
+  fi
+fi
+
 CARGO="${CARGO:-cargo}"
 
 MACOS_ONLY=0
@@ -173,7 +189,17 @@ export PATH="$SHIM_DIR:$PATH"
 trap 'rm -rf "$SHIM_DIR"' EXIT
 
 if command -v rustup >/dev/null 2>&1; then
-  rustup target add "${TARGETS[@]}" >/dev/null 2>&1 || true
+  # Already installed targets need no network access (including offline builds).
+  installed_targets="$(rustup target list --installed)"
+  missing_targets=()
+  for t in "${TARGETS[@]}"; do
+    if ! printf '%s\n' "$installed_targets" | /usr/bin/grep -Fxq "$t"; then
+      missing_targets+=("$t")
+    fi
+  done
+  if (( ${#missing_targets[@]} )); then
+    rustup target add "${missing_targets[@]}"
+  fi
 fi
 
 echo "==> Building $CRATE ($PROFILE) for: ${TARGETS[*]}"

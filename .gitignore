@@ -38,6 +38,8 @@ exports/
 .env.*
 *.pem
 *.key
+*.rdh
+*.rah10
 *.p12
 *.mobileprovision
 secrets*

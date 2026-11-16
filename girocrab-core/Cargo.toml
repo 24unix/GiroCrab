@@ -16,7 +16,7 @@ serde = []
 
 [dependencies]
 uniffi = { version = "0.32", features = ["tokio"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
 rusqlite = { version = "0.42", features = ["bundled-sqlcipher-vendored-openssl", "backup"] }
 zeroize = { version = "1.9", features = ["zeroize_derive"] }
 async-trait = "0.1"
@@ -29,10 +29,16 @@ tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 jsonwebtoken = { version = "12", default-features = false, features = ["rust_crypto", "use_pem"] }
 base64 = "0.22"
-rsa = { version = "0.10", features = ["encoding", "getrandom", "pkcs1v15"] }
+rsa = { version = "0.10", features = ["encoding", "getrandom", "pkcs1v15", "hazmat"] }
 getrandom = { version = "0.4", features = ["sys_rng"] }
 p256 = { version = "0.14", features = ["ecdsa"] }
 sha2 = "0.11"
+aes = { version = "0.9", features = ["zeroize"] }
+cbc = { version = "0.2", features = ["alloc", "zeroize"] }
+des = { version = "0.9", features = ["zeroize"] }
+hmac = { version = "0.13", features = ["zeroize"] }
+pbkdf2 = "0.13"
+crypto-primes = { version = "0.7", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rand = "0.9"
 hex = "0.4"

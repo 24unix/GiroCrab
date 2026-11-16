@@ -36,12 +36,15 @@
 //! The registration-bound product ID is never hardcoded; it comes from
 //! Settings (`fints.product_id`).
 
+pub mod bank_keys;
 pub mod camt;
+pub mod keyfile;
 pub mod kku;
 pub mod mt535;
 pub mod mt940;
 pub mod pain008;
 pub mod product_id;
+pub(crate) mod rah10;
 pub mod sepa;
 mod standing;
 mod standing_order;
@@ -581,6 +584,9 @@ pub struct FinTsConnector {
     blz: String,
     url: String,
     client: Option<reqwest::Client>,
+    rah: Option<rah10::Rah10>,
+    requires_rah10: bool,
+    rah_stream: Option<tokio::net::TcpStream>,
     dialog_id: String,
     msg_no: u32,
     st: FinTsState,
@@ -675,6 +681,9 @@ impl FinTsConnector {
             blz: blz.to_string(),
             url: String::new(),
             client: None,
+            rah: None,
+            requires_rah10: false,
+            rah_stream: None,
             dialog_id: "0".into(),
             msg_no: 1,
             st: FinTsState::default(),
@@ -695,6 +704,12 @@ impl FinTsConnector {
             vop_with_tan: false,
             vop_pending: None,
         }
+    }
+
+    pub fn for_key(key: &str) -> Self {
+        let mut connector = Self::new(crate::models::ConnectorKind::fints_blz(key).unwrap_or(""));
+        connector.requires_rah10 = key.ends_with(":rah10");
+        connector
     }
 
     fn now() -> (String, String) {
@@ -849,36 +864,52 @@ impl FinTsConnector {
             }
         }
         sent.insert(3 + payload.len() as u32, "HNSHA".to_string());
-        let msg = self.build_message(ctx, &payload, sec_func, tan);
-        super::ensure_secure_fints_url(&self.url)?;
-        let client = match &self.client {
-            Some(c) => c.clone(),
-            None => {
-                let c = super::http_client_no_redirect()?;
-                self.client = Some(c.clone());
-                c
+        let raw = if let Some(rah) = &mut self.rah {
+            let message = rah.build(
+                &payload,
+                if self.st.system_id.is_empty() {
+                    "0"
+                } else {
+                    &self.st.system_id
+                },
+                &self.dialog_id,
+                self.msg_no,
+            )?;
+            let raw = rah10::exchange(&mut self.rah_stream, &message).await?;
+            rah.unwrap(&raw, self.msg_no, &self.dialog_id)?
+        } else {
+            let msg = self.build_message(ctx, &payload, sec_func, tan);
+            super::ensure_secure_fints_url(&self.url)?;
+            let client = match &self.client {
+                Some(c) => c.clone(),
+                None => {
+                    let c = super::http_client_no_redirect()?;
+                    self.client = Some(c.clone());
+                    c
+                }
+            };
+            let body = base64::engine::general_purpose::STANDARD.encode(&msg);
+            let resp = client
+                .post(&self.url)
+                .header("Content-Type", "text/plain")
+                .body(body)
+                .send()
+                .await?;
+            if !resp.status().is_success() {
+                return Err(CoreError::Network {
+                    message: format!("FinTS server answered HTTP {}", resp.status()),
+                });
             }
+            let text = super::read_text_limited(resp).await?;
+            let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+            let raw = base64::engine::general_purpose::STANDARD
+                .decode(cleaned.as_bytes())
+                .map_err(|e| CoreError::Protocol {
+                    message: format!("base64: {e}"),
+                })?;
+            parse_response(&raw)?
         };
-        let body = base64::engine::general_purpose::STANDARD.encode(&msg);
-        let resp = client
-            .post(&self.url)
-            .header("Content-Type", "text/plain")
-            .body(body)
-            .send()
-            .await?;
-        if !resp.status().is_success() {
-            return Err(CoreError::Network {
-                message: format!("FinTS server answered HTTP {}", resp.status()),
-            });
-        }
-        let text = super::read_text_limited(resp).await?;
-        let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-        let raw = base64::engine::general_purpose::STANDARD
-            .decode(cleaned.as_bytes())
-            .map_err(|e| CoreError::Protocol {
-                message: format!("base64: {e}"),
-            })?;
-        let segments = parse_response(&raw)?;
+        let segments = raw;
         self.msg_no += 1;
         let mut codes = Vec::new();
         for s in &segments {
@@ -955,6 +986,7 @@ impl FinTsConnector {
     }
 
     fn reset_dialog(&mut self) {
+        self.rah_stream = None;
         self.dialog_id = "0".into();
         self.msg_no = 1;
     }
@@ -1173,9 +1205,15 @@ impl FinTsConnector {
     }
 
     fn hkidn(&self, ctx: &ConnectContext, n: u32) -> Vec<u8> {
+        let customer = self
+            .rah
+            .as_ref()
+            .map(|r| r.identity.customer_id.as_str())
+            .filter(|c| !c.is_empty())
+            .unwrap_or(&ctx.login_name);
         SegmentBuilder::new("HKIDN", n, 2)
             .raw(&format!("{COUNTRY}:{}", self.blz))
-            .de(&[&ctx.login_name])
+            .de(&[customer])
             .de(&[self.system_id()])
             .raw("1")
             .build()
@@ -2713,7 +2751,7 @@ impl FinTsConnector {
     }
 
     fn sec(&self) -> String {
-        if self.st.single_step || self.st.sec_func.is_empty() {
+        if self.rah.is_some() || self.st.single_step || self.st.sec_func.is_empty() {
             "999".into()
         } else {
             self.st.sec_func.clone()
@@ -3025,7 +3063,47 @@ fn strip_mime_header(b: Vec<u8>) -> Vec<u8> {
 #[async_trait]
 impl BankConnector for FinTsConnector {
     async fn begin(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
-        self.url = ctx.setting(&format!("fints.url.{}", self.blz))?.to_string();
+        let keyfile_setting = format!("fints.rah10.private.{}", ctx.connection_id);
+        let keyfile = ctx.setting_or(&keyfile_setting, "");
+        if self.requires_rah10 && keyfile.is_empty() {
+            return Err(CoreError::MissingSetting {
+                key: "RAH-10-Schlüsseldatei fehlt auf diesem Gerät; Zugang hier neu importieren."
+                    .into(),
+            });
+        }
+        if self.requires_rah10 {
+            let bytes = zeroize::Zeroizing::new(
+                base64::engine::general_purpose::STANDARD
+                    .decode(keyfile)
+                    .map_err(|_| CoreError::InvalidInput {
+                        message: "Ungültige gespeicherte Schlüsseldatei.".into(),
+                    })?,
+            );
+            let mut file = keyfile::KeyFile::open(&bytes, ctx.secret.expose().as_bytes())?;
+            let saved = ctx.setting_or(&format!("fints.rah10.bank_keys.{}", ctx.connection_id), "");
+            if !saved.is_empty() {
+                let keys: bank_keys::SavedBankKeys = serde_json::from_str(saved)?;
+                let verified =
+                    bank_keys::confirmed_keys(&self.blz, &keys.candidates, &keys.expected)?;
+                file.bank_keys.retain(|key| key.blz != self.blz);
+                file.bank_keys.extend(verified);
+            }
+            let first: u64 = ctx
+                .setting("fints.rah10.counter_start")?
+                .parse()
+                .map_err(|_| CoreError::SessionClosed)?;
+            self.rah = Some(rah10::Rah10::new(
+                file,
+                &ctx.login_name,
+                first,
+                first + 10_000,
+            )?);
+            if self.rah.as_ref().is_none_or(|r| r.identity.blz != self.blz) {
+                return Err(CoreError::SessionClosed);
+            }
+        } else {
+            self.url = ctx.setting(&format!("fints.url.{}", self.blz))?.to_string();
+        }
         self.product_id = ctx.setting("fints.product_id")?.to_string();
         self.product_version = ctx.setting_or("fints.product_version", "0.1").to_string();
         if ctx.secret.is_empty() {
@@ -3035,6 +3113,12 @@ impl BankConnector for FinTsConnector {
         }
         if let Ok(st) = serde_json::from_value::<FinTsState>(ctx.state.clone()) {
             self.st = st;
+        }
+        if let Some(rah) = &self.rah {
+            if self.st.system_id.is_empty() {
+                self.st.system_id = rah.identity.system_id.clone();
+            }
+            self.st.sec_func = "999".into();
         }
         self.tan_medium_override = ctx
             .setting_or(&format!("fints.tan_medium.{}", ctx.connection_id), "")
@@ -3426,6 +3510,11 @@ impl BankConnector for FinTsConnector {
         ctx: &ConnectContext,
         job: &TransferJob,
     ) -> CoreResult<Phase> {
+        if self.rah.is_some() {
+            return Err(CoreError::InvalidInput {
+                message: "RAH-10 unterstützt zunächst nur Kontoabrufe.".into(),
+            });
+        }
         self.transferring = true;
         self.result = TransferResult::default();
         self.order_submitted = false;
@@ -3498,6 +3587,31 @@ impl BankConnector for FinTsConnector {
 mod tests {
     use super::*;
     use crate::secret::SecretString;
+
+    #[tokio::test]
+    async fn rah10_without_keyfile_never_falls_back_to_pin_tan() {
+        let mut connector = FinTsConnector::for_key("fints:12345678:rah10");
+        let mut ctx = test_ctx();
+        // Even a valid-looking PIN/TAN URL must not enable a downgrade.
+        ctx.settings.insert(
+            "fints.url.12345678".into(),
+            SecretString::new("https://example.invalid/fints".into()),
+        );
+        assert!(matches!(
+            connector.begin(&ctx).await,
+            Err(CoreError::MissingSetting { .. })
+        ));
+        assert!(connector.client.is_none());
+        assert!(connector.rah_stream.is_none());
+        assert_eq!(
+            crate::models::ConnectorKind::fints_blz("fints:12345678:rah10"),
+            Some("12345678")
+        );
+        assert_eq!(
+            crate::models::ConnectorKind::fints_blz("fints:12345678:unknown"),
+            None
+        );
+    }
 
     fn test_ctx() -> ConnectContext {
         ConnectContext {

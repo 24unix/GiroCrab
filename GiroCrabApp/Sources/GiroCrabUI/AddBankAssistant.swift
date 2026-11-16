@@ -31,6 +31,7 @@ struct AddBankSheet: View {
     /// hundreds of banks – they are found by name, place or BLZ instead.
     private static let popularNames = ["ING", "DKB", "comdirect", "Postbank", "Consorsbank", "N26", "C24", "Revolut", "bunq", "Trade Republic", "Scalable Capital", "PayPal"]
     private static let manualFinTs = BankSearchResult(id: "fints:custom", name: "", mode: .finTs, country: "DE", blz: "", url: "", connector: nil, aspsp: "", tested: "")
+    private static let rah10Bank = BankSearchResult(id: "fints:commerzbank-rah10", name: "Commerzbank · Schlüsseldatei", mode: .finTs, country: "DE", blz: "", url: "", connector: nil, aspsp: "", tested: "")
 
     private var results: [BankSearchResult] {
         searchBanks(query: query, livePsd2: model.livePsd2Banks, perGroupLimit: 12)
@@ -151,7 +152,8 @@ struct AddBankSheet: View {
     }
 
     private var isLastStep: Bool {
-        step == .setup || (step == .access && missingSettings.isEmpty)
+        if selected?.id == Self.rah10Bank.id && step == .setup { return false }
+        return step == .setup || (step == .access && missingSettings.isEmpty)
     }
 
     private var canContinue: Bool {
@@ -168,16 +170,16 @@ struct AddBankSheet: View {
         switch step {
         case .bank:
             guard let s = selected else { return }
-            ways = s.id == Self.manualFinTs.id ? [s]
+            ways = (s.id == Self.manualFinTs.id || s.id == Self.rah10Bank.id) ? [s]
                 : Self.ways(to: s, in: searchBanks(query: s.name, livePsd2: model.livePsd2Banks, perGroupLimit: 12))
-            step = .access
+            step = s.id == Self.rah10Bank.id && !missingSettings.isEmpty ? .setup : .access
         case .access:
             if missingSettings.isEmpty { submit.action() } else { step = .setup }
         case .setup:
             for (k, v) in setupValues where !v.trimmingCharacters(in: .whitespaces).isEmpty {
                 model.saveSetting(k, v)
             }
-            submit.action()
+            if selected?.id == Self.rah10Bank.id { step = .access } else { submit.action() }
         }
     }
 
@@ -185,7 +187,7 @@ struct AddBankSheet: View {
         switch step {
         case .bank: break
         case .access: step = .bank
-        case .setup: step = .access
+        case .setup: step = selected?.id == Self.rah10Bank.id ? .bank : .access
         }
     }
 
@@ -236,6 +238,9 @@ struct AddBankSheet: View {
                     resultSections
                 }
                 Section {
+                    row(symbol: "key", title: "Commerzbank · Schlüsseldatei",
+                        detail: "Bestehende HBCI-Datei mit Profil 10 importieren")
+                        .tag(Self.rah10Bank.id)
                     row(symbol: "square.and.pencil", title: String(localized: "Andere FinTS-Bank"),
                         detail: String(localized: "Bankleitzahl und FinTS-Adresse selbst eingeben"))
                         .tag(Self.manualFinTs.id)
@@ -309,7 +314,7 @@ struct AddBankSheet: View {
 
     private func choose(_ id: String?) {
         guard let id else { selected = nil; return }
-        selected = id == Self.manualFinTs.id ? Self.manualFinTs : candidates.first { $0.id == id }
+        selected = id == Self.manualFinTs.id ? Self.manualFinTs : id == Self.rah10Bank.id ? Self.rah10Bank : candidates.first { $0.id == id }
     }
 
     @ViewBuilder private var resultSections: some View {
@@ -392,7 +397,9 @@ struct AddBankSheet: View {
                 }
                 // every form brings its own sections (Zugang, Anmeldung, Erweitert …)
                 Group {
-                    if s.mode == .finTs {
+                    if s.id == Self.rah10Bank.id {
+                        Rah10AddForm(onAdded: { dismiss() }, submit: submit)
+                    } else if s.mode == .finTs {
                         FinTsAddForm(prefill: s.id == Self.manualFinTs.id ? nil : s, onAdded: { dismiss() }, submit: submit)
                     } else if let k = s.connector {
                         KindAddForm(kind: k, onAdded: { dismiss() }, submit: submit)

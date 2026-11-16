@@ -15,6 +15,9 @@ struct PinSheet: View {
     @State private var secret = ""
     @State private var savePin = false
 
+    private var isRah10: Bool { model.usesRah10(connection) }
+    private var secretLabel: String { isRah10 ? "Passwort der Schlüsseldatei" : (bankCatalog().first { $0.kind == connection.connector }?.secretLabel ?? String(localized: "PIN")) }
+
     private var isTR: Bool { connection.connector == .tradeRepublic }
 
     var body: some View {
@@ -33,6 +36,7 @@ struct PinSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(d?.loginLabel ?? String(localized: "Anmeldung")).appFont(.caption).foregroundStyle(Theme.secondary)
                 TextField(d?.loginLabel ?? String(localized: "Anmeldung"), text: $login)
+                    .disabled(isRah10)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     #if os(iOS)
@@ -45,15 +49,17 @@ struct PinSheet: View {
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(d?.secretLabel ?? String(localized: "PIN")).appFont(.caption).foregroundStyle(Theme.secondary)
-                SecureField(d?.secretLabel ?? String(localized: "PIN"), text: $secret)
+                Text(secretLabel).appFont(.caption).foregroundStyle(Theme.secondary)
+                SecureField(secretLabel, text: $secret)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(start)
-                Toggle("PIN im Tresor speichern", isOn: $savePin)
+                Toggle(isRah10 ? "Passwort im Tresor speichern" : "PIN im Tresor speichern", isOn: $savePin)
                     .appFont(.caption)
                     .help("Verschlüsselt in der SQLCipher-Datenbank; beim nächsten Abruf wird nicht mehr gefragt.")
             }
-            Text(savePin ? "Die PIN wird verschlüsselt im Tresor gespeichert." : "Die PIN wird nur für diesen Abruf verwendet und nie gespeichert.")
+            Text(isRah10
+                 ? (savePin ? "Das Passwort wird verschlüsselt im Tresor gespeichert." : "Das Passwort wird nur für diesen Abruf verwendet.")
+                 : (savePin ? "Die PIN wird verschlüsselt im Tresor gespeichert." : "Die PIN wird nur für diesen Abruf verwendet und nie gespeichert."))
                 .appFont(.caption).foregroundStyle(Theme.secondary)
             if isTR {
                 Divider()
@@ -138,6 +144,8 @@ struct ConnectionEditSheet: View {
         var id: Self { self }
     }
 
+    private var isRah10: Bool { model.usesRah10(connection) }
+
     private var descriptor: BankDescriptor? { bankCatalog().first { $0.kind == connection.connector } }
 
     /// Global setting keys relevant for this connector.
@@ -151,7 +159,7 @@ struct ConnectionEditSheet: View {
         switch connection.connector {
         case .volksbankKasselGoettingen: return ["fints.url.52090000", "fints.product_id", "fints.product_version"]
         case .direkt1822: return ["fints.url.50050201", "fints.product_id", "fints.product_version"]
-        case .finTsGeneric: return ["fints.url.\(connection.bankCode)", "fints.product_id", "fints.product_version"]
+        case .finTsGeneric: return isRah10 ? ["fints.product_id", "fints.product_version"] : ["fints.url.\(connection.bankCode)", "fints.product_id", "fints.product_version"]
         case .comdirect: return ["comdirect.client_id", "comdirect.client_secret"]
         case .payPal: return ["paypal.client_id", "paypal.client_secret", "paypal.environment"]
         case .tradeRepublic: return []
@@ -241,6 +249,7 @@ struct ConnectionEditSheet: View {
                 Section {
                     TextField("Anzeigename", text: $name)
                     TextField(descriptor?.loginLabel ?? String(localized: "Benutzerkennung"), text: $login)
+                        .disabled(isRah10)
                         .autocorrectionDisabled()
                     if isTR && !login.isEmpty {
                         LabeledContent("Gespeichert als", value: normalizePhoneNumber(input: login))
@@ -250,9 +259,9 @@ struct ConnectionEditSheet: View {
                         LabeledContent("BLZ", value: blz)
                     }
                     if usesPin {
-                        Toggle(connection.connector == .bunq ? "API-Schlüssel im Tresor speichern" : connection.connector == .ibkr ? "Flex-Query-ID im Tresor speichern" : connection.connector == .easybank ? "Passwort im Tresor speichern" : "PIN im Tresor speichern", isOn: $storePin)
+                        Toggle(isRah10 ? "Passwort im Tresor speichern" : connection.connector == .bunq ? "API-Schlüssel im Tresor speichern" : connection.connector == .ibkr ? "Flex-Query-ID im Tresor speichern" : connection.connector == .easybank ? "Passwort im Tresor speichern" : "PIN im Tresor speichern", isOn: $storePin)
                         if storePin {
-                            SecureField(status?.hasPin == true ? "Gespeicherte PIN (leer = unverändert)" : (connection.connector == .ibkr ? "Flex-Query-ID" : connection.connector == .easybank ? "Passwort" : "PIN"), text: $pin)
+                            SecureField(isRah10 ? "Passwort der Schlüsseldatei (leer = unverändert)" : status?.hasPin == true ? "Gespeicherte PIN (leer = unverändert)" : (connection.connector == .ibkr ? "Flex-Query-ID" : connection.connector == .easybank ? "Passwort" : "PIN"), text: $pin)
                         }
                     }
                     if isFinTs {

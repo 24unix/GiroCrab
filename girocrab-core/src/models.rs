@@ -87,7 +87,8 @@ impl ConnectorKind {
     }
     /// BLZ of a `fints:<8 digits>` connector key (any FinTS bank).
     pub fn fints_blz(key: &str) -> Option<&str> {
-        let blz = key.strip_prefix("fints:")?;
+        let rest = key.strip_prefix("fints:")?;
+        let blz = rest.strip_suffix(":rah10").unwrap_or(rest);
         (blz.len() == 8 && blz.bytes().all(|b| b.is_ascii_digit())).then_some(blz)
     }
     /// Connector key stored in the DB for a generic FinTS bank.
