@@ -64,6 +64,7 @@ struct SidebarView: View {
                 Text("Geplant").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
+            .badge(model.plannedCount)
             .tag(SidebarItem.planned)
             // „Lastschriften“ (#143): mandates and collections
             HStack(spacing: 8) {
@@ -71,6 +72,7 @@ struct SidebarView: View {
                 Text("Lastschriften").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
+            .badge(model.mandateCount)
             .tag(SidebarItem.directDebits)
             SidebarCaption("Dokumente")
             HStack(spacing: 8) {

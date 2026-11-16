@@ -10,6 +10,7 @@ extension AppModel {
         let all = Perf.signposter.beginInterval("reloadAll")
         defer { Perf.signposter.endInterval("reloadAll", all) }
         reloadAccounts()
+        refreshSidebarCounts()
         refreshSalaryCycle()
         refreshRecurring()
         mirrorDocumentsIfEnabled()
@@ -29,6 +30,19 @@ extension AppModel {
             connectionKeys = Dictionary(uniqueKeysWithValues: connections.compactMap { c in
                 (try? vault.connectionKey(connectionId: c.id)).map { (c.id, $0) }
             })
+        }
+    }
+
+    /// Badge counts of „Geplant“ and „Lastschriften“: two `COUNT(*)`s off the main thread.
+    func refreshSidebarCounts() {
+        guard isUnlocked else { return }
+        Task { [weak self] in
+            guard let self,
+                  let r = try? await self.vaultOffMain({ v in
+                      (Int(try v.countPlannedPayments()), Int(try v.countActiveMandates()))
+                  }) else { return }
+            if self.plannedCount != r.0 { self.plannedCount = r.0 }
+            if self.mandateCount != r.1 { self.mandateCount = r.1 }
         }
     }
 

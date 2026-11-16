@@ -250,6 +250,18 @@ impl Vault {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    /// Number of active mandates over all accounts (sidebar badge): one `COUNT(*)`.
+    pub fn count_active_mandates(&self) -> Result<u32, CoreError> {
+        let db = self.db()?;
+        let n: i64 = db.query_row(
+            "SELECT count(*) FROM mandates m JOIN accounts a ON a.id = m.account_id
+             WHERE a.deleted_ms IS NULL AND m.active = 1",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(u32::try_from(n).unwrap_or(u32::MAX))
+    }
+
     /// Creates (`id` = `None`) or changes a mandate. The reference must be
     /// unique per creditor account.
     pub fn save_mandate(&self, id: Option<i64>, input: MandateInput) -> Result<Mandate, CoreError> {

@@ -282,7 +282,10 @@ public final class AppModel {
     var plannedTotals = PlannedTotals(count: 0, outgoingCents: 0, incomingCents: 0)
     var plannedAccountFilter: Int64?
     var plannedHorizon: PlannedHorizon = .days90
-    var plannedVersion = 0
+    var plannedVersion = 0 { didSet { refreshSidebarCounts() } }
+    /// Sidebar badges: scheduled payments / active mandates over all accounts (SQL counts).
+    var plannedCount = 0
+    var mandateCount = 0
     var selectedPlannedID: String?
     /// „Lastschriften“ (#143): mandates of the creditor account shown.
     var mandates: [Mandate] = []
@@ -291,7 +294,7 @@ public final class AppModel {
     var mandateDraft: MandateDraft?
     var mandateError: String?
     var mandateNote: String?
-    var mandatesVersion = 0
+    var mandatesVersion = 0 { didSet { refreshSidebarCounts() } }
     var creditorID = ""
     var suggestedCreditorID = ""
     var collectionLines: [CollectionLine] = []
