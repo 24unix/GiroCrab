@@ -23,7 +23,10 @@ public final class AppModel {
     @ObservationIgnored let loanStore = ManualLoanStore()
     /// Sachwerte (GitHub #87), see TangibleAssetsUI.swift.
     @ObservationIgnored let assetStore = AssetStore()
-    var vaultState: VaultState = .locked
+    var vaultState: VaultState = .locked {
+        // The external analysis serves only while the own vault is shown (#136).
+        didSet { if oldValue != vaultState { reconcileLocalApiServer() } }
+    }
     /// The vault is open and the lock screen shows the crab's unlock hop for a moment.
     var unlockCelebrating = false
 
@@ -353,7 +356,7 @@ public final class AppModel {
     /// Showing the throw-away demo vault (also when the own vault is still empty).
     /// The external analysis never serves while the demo is shown (#136).
     var demoActive = false {
-        didSet { reconcileLocalApiServer() }
+        didSet { if oldValue != demoActive { reconcileLocalApiServer() } }
     }
     /// Where the own Enable Banking application is shared between devices.
     @ObservationIgnored var enableBankingKeyStore: EnableBankingKeyStore = KeychainEnableBankingKeyStore()
@@ -361,7 +364,7 @@ public final class AppModel {
     var enableBankingAdoptNotice: EnableBankingAdoptNotice?
     /// The personal vault while demo data is shown (nil if never unlocked).
     private(set) var ownVault: Vault? {
-        didSet { reconcileLocalApiServer() }
+        didSet { if oldValue !== ownVault { reconcileLocalApiServer() } }
     }
     /// Socket of the read-only interface for external analysis (#136) and the
     /// vault it serves, see AppModel+LocalApi.

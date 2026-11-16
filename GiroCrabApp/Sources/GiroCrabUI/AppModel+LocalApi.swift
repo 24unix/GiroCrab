@@ -26,9 +26,13 @@ extension AppModel {
 
     var isLocalApiRunning: Bool { localApi != nil }
 
+    /// The own vault is unlocked and shown: not the demo, not the lock screen
+    /// (also not while the unlock still loads behind it).
+    private var mayServeLocalApi: Bool { holdsRealData && vaultState == .open }
+
     /// Matches the socket to the current vault and its stored settings. Runs
-    /// whenever `ownVault` or `demoActive` changes (every path that locks,
-    /// unlocks, swaps or shows the demo) and after a failed start on activation.
+    /// whenever `ownVault`, `demoActive` or `vaultState` changes (every path that
+    /// locks, unlocks, swaps or shows the demo) and after a failed start on activation.
     /// Stopping is immediate; starting follows the queued scope read. macOS only:
     /// on iOS no other app could reach the socket, so nothing runs there.
     func reconcileLocalApiServer() {
@@ -41,6 +45,11 @@ extension AppModel {
             return
         }
         if let running = localApi, running.servedVault !== ownVault { stopLocalApiServer() }
+        // Lock screen still up (unlocking): `.open` comes back here.
+        guard vaultState == .open else {
+            if localApi != nil { stopLocalApiServer() }
+            return
+        }
         Task { _ = try? await localApiJob { _ in () } }
         #endif
     }
@@ -110,6 +119,7 @@ extension AppModel {
             return
         }
         #if os(macOS)
+        guard mayServeLocalApi else { return }
         if localApi?.servedVault === v { return }
         stopLocalApiServer()
         _ = Self.localApiActivationObserver

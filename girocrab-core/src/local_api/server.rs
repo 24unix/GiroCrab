@@ -18,12 +18,12 @@
 //! - No polling: threads sleep in `poll(2)` on their socket and a stop pipe.
 //!   `stop()` never waits: it wakes them, removes the socket file and returns.
 //! - Several instances (a debug build next to the app): a lock file next to the
-//!   socket (`flock`) decides who serves, and a server only removes the socket
+//!   socket (`<socket>.lock`, `flock`) decides who serves, and a server only removes the socket
 //!   file it created itself.
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, ErrorKind, Write};
-use std::os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -49,6 +49,8 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 /// The `busy` answer is written on the accept thread.
 const BUSY_WRITE_TIMEOUT: Duration = Duration::from_millis(100);
 const MAX_PAUSE: Duration = Duration::from_millis(250);
+/// After a failed `accept()` (e.g. no descriptors left).
+const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 
 /// The running socket; `stop()` (or dropping it) closes it and removes the file.
 #[derive(uniffi::Object)]
@@ -232,7 +234,12 @@ fn bind(path: &Path) -> Result<(UnixListener, (u64, u64), File), CoreError> {
         .ok_or_else(|| invalid(tr("Der Socket-Pfad braucht einen Ordner.")))?;
     let created = match std::fs::symlink_metadata(dir) {
         Err(e) if e.kind() == ErrorKind::NotFound => {
-            std::fs::create_dir_all(dir).map_err(io_error)?;
+            // 0700 from the start, also for missing parents (no world-readable window).
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(dir)
+                .map_err(io_error)?;
             true
         }
         _ => false,
@@ -261,7 +268,7 @@ fn bind(path: &Path) -> Result<(UnixListener, (u64, u64), File), CoreError> {
         .create(true)
         .truncate(false)
         .mode(0o600)
-        .open(path.with_extension("lock"))
+        .open(lock_path(path))
         .map_err(io_error)?;
     // SAFETY: the descriptor belongs to `lock`, which outlives the call.
     if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
@@ -300,6 +307,14 @@ fn bind(path: &Path) -> Result<(UnixListener, (u64, u64), File), CoreError> {
     }
 }
 
+/// `<socket>.lock` next to the socket (never the socket path itself). It stays
+/// after `stop()`: removing a lock file others may be waiting on would race.
+fn lock_path(socket: &Path) -> PathBuf {
+    let mut name = socket.as_os_str().to_owned();
+    name.push(".lock");
+    PathBuf::from(name)
+}
+
 /// Removes the socket file only if it is still the one this server created.
 fn remove_own_socket(path: &Path, file_id: (u64, u64)) {
     if std::fs::symlink_metadata(path)
@@ -335,6 +350,9 @@ fn accept_loop(listener: UnixListener, vault: Weak<Vault>, stopper: Arc<Stopper>
             Wait::Stopped | Wait::TimedOut => return,
         }
         let Ok((mut stream, _)) = listener.accept() else {
+            // Out of descriptors or similar: the listener stays readable, so
+            // back off instead of spinning.
+            std::thread::sleep(ACCEPT_BACKOFF);
             continue;
         };
         // BSD hands the listener's O_NONBLOCK on to the accepted socket.
@@ -437,8 +455,14 @@ fn serve(stream: UnixStream, vault: &Weak<Vault>, stopper: &Stopper, turn: &Mute
             }
         }
         let starting = line.is_empty();
+        // EOF ends the connection; a last request without a newline is still answered.
+        let mut eof = false;
         let (used, complete) = match reader.fill_buf() {
-            Ok([]) => return,
+            Ok([]) if line.is_empty() => return,
+            Ok([]) => {
+                eof = true;
+                (0, true)
+            }
             Ok(chunk) => match chunk.iter().position(|b| *b == b'\n') {
                 Some(i) => {
                     line.extend_from_slice(&chunk[..i]);
@@ -466,34 +490,41 @@ fn serve(stream: UnixStream, vault: &Weak<Vault>, stopper: &Stopper, turn: &Mute
         let answer = {
             let mut next = turn.lock().unwrap_or_else(|e| e.into_inner());
             std::thread::sleep(next.saturating_duration_since(Instant::now()));
-            if stopper.stopped.load(Ordering::SeqCst) {
-                return;
-            }
             let started = Instant::now();
-            let answer = answer(vault, &line);
+            let answer = answer(vault, stopper, &line);
             *next = Instant::now() + started.elapsed().min(MAX_PAUSE);
             answer
         };
+        // Stopped (locked) meanwhile: nothing more goes out.
+        let Some(answer) = answer else { return };
         line.clear();
         deadline = Instant::now() + IDLE;
-        if writeln!(out, "{answer}").is_err() {
+        if writeln!(out, "{answer}").is_err() || eof {
             return;
         }
     }
 }
 
-fn answer(vault: &Weak<Vault>, line: &[u8]) -> String {
+/// None once `stop()` ran: checked after taking the vault and again after the
+/// request, so an answer computed while the app locked is never sent.
+fn answer(vault: &Weak<Vault>, stopper: &Stopper, line: &[u8]) -> Option<String> {
+    let stopped = || stopper.stopped.load(Ordering::SeqCst);
     // The vault is held only for this one request.
     let Some(vault) = vault.upgrade() else {
-        return response(Err(ApiError::new(
+        return Some(response(Err(ApiError::new(
             ApiErrorCode::Locked,
             "GiroCrab is locked",
-        )));
+        ))));
     };
-    match std::str::from_utf8(line) {
+    if stopped() {
+        return None;
+    }
+    let answer = match std::str::from_utf8(line) {
         Ok(text) => vault.local_api_socket_request(text.trim_end_matches('\r')),
         Err(_) => response(Err(ApiError::invalid("request is not UTF-8"))),
-    }
+    };
+    drop(vault);
+    (!stopped()).then_some(answer)
 }
 
 #[cfg(test)]
@@ -801,6 +832,32 @@ mod tests {
         drop(UnixListener::bind(&path).unwrap()); // left behind by a crash
         let server = start(&d, &vault);
         assert!(Client::connect(&path).call(&token, "info")["result"].is_object());
+        server.stop();
+    }
+
+    #[test]
+    fn a_last_request_without_newline_is_answered() {
+        let d = ShortDir::new();
+        let (_v, vault, token) = vault();
+        let server = start(&d, &vault);
+        let mut c = Client::connect(&d.socket());
+        let req = json!({ "v": 1, "token": token, "method": "info" });
+        write!(c.writer, "{req}").unwrap();
+        c.writer.shutdown(std::net::Shutdown::Write).unwrap();
+        assert!(c.read()["result"].is_object());
+        c.assert_closed();
+        server.stop();
+    }
+
+    #[test]
+    fn missing_folders_are_created_private() {
+        let d = ShortDir::new();
+        let (_v, vault, _) = vault();
+        let server = start(&d, &vault);
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&d.0), 0o700, "a created parent too");
+        assert_eq!(mode(d.socket().parent().unwrap()), 0o700);
+        assert!(lock_path(&d.socket()).ends_with("s.sock.lock"));
         server.stop();
     }
 }

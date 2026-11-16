@@ -26,7 +26,7 @@ was dort verarbeitet werden darf.
 Nur solange GiroCrab läuft, der eigene Tresor entsperrt ist und angezeigt wird (nie mit den
 Demo-Daten), die Schnittstelle eingeschaltet ist und ein Zugangsschlüssel existiert. Beim Sperren, beim
 Wechsel zur Demo und beim Beenden wird der Socket geschlossen und seine Datei entfernt (bleibt sie nach
-einem Absturz liegen, erkennt der nächste Start sie über `girocrab.lock` als verwaist und ersetzt sie).
+einem Absturz liegen, erkennt der nächste Start sie über `girocrab.sock.lock` als verwaist und ersetzt sie).
 
 ## Verbindung
 
@@ -38,7 +38,7 @@ einem Absturz liegen, erkennt der nächste Start sie über `girocrab.lock` als v
   ankommen, Verbindungen ohne Anfrage enden nach einer Minute.
 - Anfragen werden nacheinander beantwortet, nach jeder folgt eine Pause so lang wie die Anfrage (höchstens
   0,25 s): Die App bleibt bedienbar, auch wenn ein Programm ständig abfragt.
-- `girocrab.lock` neben dem Socket legt fest, welche GiroCrab-Instanz ihn bereitstellt.
+- `girocrab.sock.lock` neben dem Socket legt fest, welche GiroCrab-Instanz ihn bereitstellt.
 
 ```
 → {"v":1,"token":"gcapi_…","method":"transactions","params":{"date_from":"2026-01-01","limit":50}}

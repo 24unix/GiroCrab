@@ -10,6 +10,9 @@ struct ExternalAccessSettings: View {
     @Environment(AppModel.self) private var model
     @State private var scope: ShareScope?
     @State private var confirmRevoke = false
+    /// Counts the pane's saves: a failed one restores what is stored only if no
+    /// newer change was made meanwhile.
+    @State private var saves = 0
 
     var body: some View {
         Form {
@@ -67,9 +70,30 @@ struct ExternalAccessSettings: View {
                     }
                 }
             }
+            if !unlistedSharedIds.isEmpty {
+                LabeledContent {
+                    Button("Nicht mehr teilen") { unshareUnlisted() }
+                } label: {
+                    Text("Weitere geteilte Konten, die hier nicht aufgeführt sind: \(unlistedSharedIds.count)")
+                }
+            }
             Text("Neue Konten werden erst geteilt, wenn Sie sie hier auswählen.")
                 .appFont(.callout).foregroundStyle(.secondary)
         } header: { Text("Geteilte Konten").appSectionHeader() }
+    }
+
+    /// Shared ids without a toggle above (an account outside every listed group):
+    /// they must not stay shared without a way to stop it.
+    private var unlistedSharedIds: [Int64] {
+        let listed = Set(model.groups.flatMap { $0.accounts.map(\.id) })
+        return (scope?.accountIds ?? []).filter { !listed.contains($0) }
+    }
+
+    private func unshareUnlisted() {
+        guard var s = scope else { return }
+        let unlisted = Set(unlistedSharedIds)
+        s.accountIds.removeAll { unlisted.contains($0) }
+        save(s)
     }
 
     private var fieldsSection: some View {
@@ -142,8 +166,11 @@ struct ExternalAccessSettings: View {
     /// Shown at once; if the write did not happen, the pane goes back to what is stored.
     private func save(_ s: ShareScope) {
         scope = s
+        saves += 1
+        let mine = saves
         Task {
-            if await !model.saveLocalApiScope(s) { scope = await model.loadLocalApiScope() }
+            guard await !model.saveLocalApiScope(s), mine == saves else { return }
+            if let stored = await model.loadLocalApiScope(), mine == saves { scope = stored }
         }
     }
 }

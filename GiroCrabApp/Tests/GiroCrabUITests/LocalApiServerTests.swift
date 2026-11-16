@@ -187,7 +187,13 @@ final class LocalApiServerTests: XCTestCase {
         model.lock()
         XCTAssertFalse(model.isLocalApiRunning)
         // The unlock path of the lock screen, with no settings call afterwards.
-        await model.adoptOpenedOwnVault(v, isEmpty: false)
+        model.vaultState = .unlocking
+        let unlock = Task { await model.adoptOpenedOwnVault(v, isEmpty: false) }
+        await Task.yield()
+        XCTAssertNotEqual(model.vaultState, .open)
+        XCTAssertFalse(model.isLocalApiRunning, "not behind the lock screen")
+        await unlock.value
+        XCTAssertEqual(model.vaultState, .open)
         try await awaitRunning(true)
     }
 
