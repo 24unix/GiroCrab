@@ -71,7 +71,9 @@ Item {
                         : qsTr("Schlüsselbund (Secret Service: KWallet / GNOME Schlüsselbund)")
                 }
                 SettingsFormRow { label: qsTr("Datei"); value: AppModel.isDemo ? "–" : (AppModel.vaultInfo.path || "–"); selectable: true }
-                SettingsFormRow { label: qsTr("Version"); value: pane.versionText; selectable: true }
+                // Linux: "Kern-Version" – the number is the core's; the Linux interface follows the
+                // Mac app at its own pace (Community-Maintained Port, #389), so it may offer less
+                SettingsFormRow { label: qsTr("Kern-Version"); value: pane.versionText; selectable: true }
             }
             SettingsFormSection {
                 title: qsTr("Tresor-Schlüssel")
