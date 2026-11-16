@@ -411,7 +411,7 @@ struct TagOverflowBadge: View {
                 }
             }
             .onDisappear { hoverTask?.cancel(); showsAll = false }
-            .popover(isPresented: $showsAll, arrowEdge: .bottom) {
+            .capturablePopover(isPresented: $showsAll, arrowEdge: .bottom) {
                 // only as large as the chips need: one row for a few short tags
                 TagFlow(maxLineWidth: 260 * textScale) {
                     ForEach(tags, id: \.id) { t in TagChip(name: t.name, colorHex: t.colorHex) }
