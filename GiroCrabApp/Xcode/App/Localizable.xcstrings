@@ -18026,17 +18026,6 @@
         }
       }
     },
-    "Nicht mehr teilen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stop sharing"
-          }
-        }
-      }
-    },
     "Nicht verbinden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24615,17 +24604,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Other currencies are not converted and not included in the total."
-          }
-        }
-      }
-    },
-    "Weitere geteilte Konten, die hier nicht aufgeführt sind: %lld" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "More shared accounts not listed here: %lld"
           }
         }
       }

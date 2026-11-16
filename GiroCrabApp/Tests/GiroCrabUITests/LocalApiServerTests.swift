@@ -112,15 +112,19 @@ final class LocalApiServerTests: XCTestCase {
         let loaded = await model.loadLocalApiScope()
         var scope = try XCTUnwrap(loaded)
         scope.enabled = true
-        var saves: [Task<Void, Never>] = []
-        for ids in [[1], [1, 2], [1, 2, 3]] as [[Int64]] {
-            scope.accountIds = ids
+        // Switches, not account ids: the fresh vault may hold no accounts (the
+        // core keeps only live ones).
+        var saves: [Task<Bool, Never>] = []
+        for (notes, purpose) in [(true, false), (false, false), (true, true)] {
+            scope.shareNotes = notes
+            scope.sharePurpose = purpose
             let copy = scope
             saves.append(Task { await model.saveLocalApiScope(copy) })
         }
-        for s in saves { await s.value }
+        for s in saves { _ = await s.value }
         let stored = await model.loadLocalApiScope()
-        XCTAssertEqual(stored?.accountIds, [1, 2, 3])
+        XCTAssertEqual(stored?.shareNotes, true)
+        XCTAssertEqual(stored?.sharePurpose, true)
     }
 
     func testOnThenQuicklyOffLeavesTheSocketOff() async throws {
@@ -144,7 +148,7 @@ final class LocalApiServerTests: XCTestCase {
         let loaded = await model.loadLocalApiScope()
         var scope = try XCTUnwrap(loaded)
         scope.enabled = true
-        scope.accountIds = [7]
+        scope.shareNotes = true
         let save = Task { await model.saveLocalApiScope(scope) }
         await Task.yield() // queued while the own vault is shown
         model.showDemo()
@@ -152,7 +156,7 @@ final class LocalApiServerTests: XCTestCase {
         await save.value
         model.showOwnVault()
         let stored = await model.loadLocalApiScope()
-        XCTAssertEqual(stored?.accountIds, [7])
+        XCTAssertEqual(stored?.shareNotes, true)
     }
 
     func testAFailedStartIsRetried() async throws {
@@ -208,5 +212,18 @@ final class LocalApiServerTests: XCTestCase {
         _ = await model.createLocalApiToken()
         model.lock()
         XCTAssertNil(model.localApiNewToken, "never shown again after locking")
+    }
+
+    func testTheModelHoldsWhatIsStored() async throws {
+        let loaded = await model.loadLocalApiScope()
+        var scope = try XCTUnwrap(loaded)
+        scope.shareNotes = true
+        model.updateLocalApiScope(scope)
+        XCTAssertEqual(model.localApiScope?.shareNotes, true, "shown at once")
+        _ = await model.loadLocalApiScope() // queued behind the save
+        XCTAssertEqual(model.localApiScope?.shareNotes, true, "and stored")
+        model.showDemo()
+        XCTAssertNil(model.localApiScope, "nothing while the demo is shown")
+        model.showOwnVault()
     }
 }

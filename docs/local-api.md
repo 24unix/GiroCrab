@@ -10,7 +10,7 @@ Einstellungen › Analyse:
 
 1. „Lesenden Zugriff für Programme auf diesem Mac erlauben“ einschalten.
 2. Unter „Geteilte Konten“ die Konten auswählen. Neue Konten sind erst geteilt, wenn sie hier
-   ausgewählt werden.
+   ausgewählt werden; gelöschte Konten fallen aus der Auswahl heraus.
 3. Unter „Geteilte Felder“ festlegen, ob Empfänger/Auftraggeber, Verwendungszweck/Buchungstext,
    IBANs/Kontonummern und Notizen mitgehen. IBANs/Kontonummern und Notizen sind standardmäßig aus;
    dann werden IBANs und Ziffernfolgen ab sechs Stellen auch in Texten und Kontonamen unkenntlich
@@ -24,7 +24,8 @@ was dort verarbeitet werden darf.
 ## Wann der Zugriff besteht
 
 Nur solange GiroCrab läuft, der eigene Tresor entsperrt ist und angezeigt wird (nie mit den
-Demo-Daten), die Schnittstelle eingeschaltet ist und ein Zugangsschlüssel existiert. Beim Sperren, beim
+Demo-Daten, nicht solange noch der Sperrbildschirm zu sehen ist), die Schnittstelle eingeschaltet ist und
+ein Zugangsschlüssel existiert. Nur auf dem Mac. Beim Sperren, beim
 Wechsel zur Demo und beim Beenden wird der Socket geschlossen und seine Datei entfernt (bleibt sie nach
 einem Absturz liegen, erkennt der nächste Start sie über `girocrab.sock.lock` als verwaist und ersetzt sie).
 
@@ -33,11 +34,12 @@ einem Absturz liegen, erkennt der nächste Start sie über `girocrab.sock.lock` 
 - Unix-Domain-Socket, kein Netzwerkport:
   `~/Library/Application Support/GiroCrab/local-api/girocrab.sock`
   (Ordner `0700`, Socket `0600`; Verbindungen anderer Benutzer werden sofort geschlossen).
-- Eine JSON-Anfrage pro Zeile, eine JSON-Antwort pro Zeile; mehrere Anfragen pro Verbindung.
+- Eine JSON-Anfrage pro Zeile, eine JSON-Antwort pro Zeile; mehrere Anfragen pro Verbindung. Eine
+  letzte Anfrage ohne Zeilenende wird noch beantwortet, bevor die Verbindung endet.
 - Höchstens 4 Verbindungen, 64 KiB pro Anfrage; eine Anfrage muss innerhalb von 10 Sekunden vollständig
   ankommen, Verbindungen ohne Anfrage enden nach einer Minute.
-- Anfragen werden nacheinander beantwortet, nach jeder folgt eine Pause so lang wie die Anfrage (höchstens
-  0,25 s): Die App bleibt bedienbar, auch wenn ein Programm ständig abfragt.
+- Anfragen werden nacheinander beantwortet; die nächste beginnt erst nach einer Pause so lang wie die
+  vorige (höchstens 0,25 s): Die App bleibt bedienbar, auch wenn ein Programm ständig abfragt.
 - `girocrab.sock.lock` neben dem Socket legt fest, welche GiroCrab-Instanz ihn bereitstellt.
 
 ```

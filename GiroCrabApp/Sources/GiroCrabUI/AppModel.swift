@@ -371,13 +371,16 @@ public final class AppModel {
     var localApi: RunningLocalApi?
     /// Why the socket did not start (shown in Einstellungen › Analyse); nil = no error.
     var localApiStartError: String?
-    /// The stored token hash ("" = none), as of the last settings call.
-    var localApiTokenHash = ""
+    /// What is shared, as stored after the newest settings call (a pending
+    /// switch shows at once); nil while nothing may be served.
+    var localApiScope: ShareScope?
     /// The key just created, until the settings pane closes, the vault locks or
     /// another key replaces it; never stored.
     var localApiNewToken: String?
     /// The last queued settings/token call: they run one after another (AppModel+LocalApi).
     @ObservationIgnored var localApiQueue: Task<Void, Never>?
+    /// Counts queued jobs: only the newest one publishes the whole scope.
+    @ObservationIgnored var localApiJobs = 0
     var activeChallenge: ActiveChallenge?
     var payeeCheck: PendingPayeeCheck?
     var syncingConnectionID: Int64?

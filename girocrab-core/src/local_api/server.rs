@@ -345,10 +345,10 @@ fn accept_loop(listener: UnixListener, vault: Weak<Vault>, stopper: Arc<Stopper>
     // One request at a time across all connections, and when the next may start (see `serve`).
     let turn = Arc::new(Mutex::new(Instant::now()));
     loop {
-        match stopper.wait_readable(listener.as_raw_fd(), None) {
-            Wait::Ready => {}
-            Wait::Stopped | Wait::TimedOut => return,
-        }
+        // No time limit: only `stop()` ends the wait other than a connection.
+        let Wait::Ready = stopper.wait_readable(listener.as_raw_fd(), None) else {
+            return;
+        };
         let Ok((mut stream, _)) = listener.accept() else {
             // Out of descriptors or similar: the listener stays readable, so
             // back off instead of spinning.
@@ -455,14 +455,11 @@ fn serve(stream: UnixStream, vault: &Weak<Vault>, stopper: &Stopper, turn: &Mute
             }
         }
         let starting = line.is_empty();
-        // EOF ends the connection; a last request without a newline is still answered.
-        let mut eof = false;
+        // EOF ends the connection; a last request without a newline is still
+        // answered (the next round sees EOF with nothing pending).
         let (used, complete) = match reader.fill_buf() {
             Ok([]) if line.is_empty() => return,
-            Ok([]) => {
-                eof = true;
-                (0, true)
-            }
+            Ok([]) => (0, true),
             Ok(chunk) => match chunk.iter().position(|b| *b == b'\n') {
                 Some(i) => {
                     line.extend_from_slice(&chunk[..i]);
@@ -499,7 +496,7 @@ fn serve(stream: UnixStream, vault: &Weak<Vault>, stopper: &Stopper, turn: &Mute
         let Some(answer) = answer else { return };
         line.clear();
         deadline = Instant::now() + IDLE;
-        if writeln!(out, "{answer}").is_err() || eof {
+        if writeln!(out, "{answer}").is_err() {
             return;
         }
     }
@@ -509,6 +506,9 @@ fn serve(stream: UnixStream, vault: &Weak<Vault>, stopper: &Stopper, turn: &Mute
 /// request, so an answer computed while the app locked is never sent.
 fn answer(vault: &Weak<Vault>, stopper: &Stopper, line: &[u8]) -> Option<String> {
     let stopped = || stopper.stopped.load(Ordering::SeqCst);
+    if stopped() {
+        return None;
+    }
     // The vault is held only for this one request.
     let Some(vault) = vault.upgrade() else {
         return Some(response(Err(ApiError::new(
@@ -516,14 +516,10 @@ fn answer(vault: &Weak<Vault>, stopper: &Stopper, line: &[u8]) -> Option<String>
             "GiroCrab is locked",
         ))));
     };
-    if stopped() {
-        return None;
-    }
     let answer = match std::str::from_utf8(line) {
         Ok(text) => vault.local_api_socket_request(text.trim_end_matches('\r')),
         Err(_) => response(Err(ApiError::invalid("request is not UTF-8"))),
     };
-    drop(vault);
     (!stopped()).then_some(answer)
 }
 

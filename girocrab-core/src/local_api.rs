@@ -291,11 +291,25 @@ impl From<CoreError> for ApiError {
 type ApiResult<T> = Result<T, ApiError>;
 
 /// The stored scope; default (disabled, nothing shared) when none or an
-/// unreadable one is stored.
+/// unreadable one is stored. Its accounts are the live ones only: a deleted
+/// account is neither served nor reported as shared.
 fn stored_scope(conn: &rusqlite::Connection) -> Result<ShareScope, CoreError> {
-    Ok(Vault::setting_inner(conn, SCOPE_SETTING)?
+    let mut scope: ShareScope = Vault::setting_inner(conn, SCOPE_SETTING)?
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default())
+        .unwrap_or_default();
+    scope.account_ids = live_account_ids(conn, &scope.account_ids)?;
+    Ok(scope)
+}
+
+/// `ids` without deleted or unknown accounts, in the accounts' sort order.
+fn live_account_ids(conn: &rusqlite::Connection, ids: &[i64]) -> Result<Vec<i64>, CoreError> {
+    let wanted: HashSet<i64> = ids.iter().copied().collect();
+    let mut stmt =
+        conn.prepare("SELECT id FROM accounts WHERE deleted_ms IS NULL ORDER BY sort_order, id")?;
+    let live = stmt
+        .query_map([], |r| r.get::<_, i64>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(live.into_iter().filter(|id| wanted.contains(id)).collect())
 }
 
 // MARK: - Vault
@@ -346,6 +360,7 @@ impl Vault {
         let db = self.db()?;
         let mut scope = stored_scope(&db)?;
         change(&mut scope);
+        scope.account_ids = live_account_ids(&db, &scope.account_ids)?;
         let json = serde_json::to_string(&scope).map_err(|e| CoreError::InvalidInput {
             message: e.to_string(),
         })?;
@@ -689,16 +704,7 @@ impl Vault {
 /// Ids of the shared accounts that still exist: what bookings and sums need,
 /// without the balances and counts of `list_accounts`.
 fn shared_account_ids(db: &rusqlite::Connection, scope: &ShareScope) -> ApiResult<Vec<i64>> {
-    let wanted: HashSet<i64> = scope.account_ids.iter().copied().collect();
-    let mut stmt = db
-        .prepare("SELECT id FROM accounts WHERE deleted_ms IS NULL ORDER BY sort_order, id")
-        .map_err(CoreError::from)?;
-    let ids = stmt
-        .query_map([], |r| r.get::<_, i64>(0))
-        .map_err(CoreError::from)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CoreError::from)?;
-    Ok(ids.into_iter().filter(|id| wanted.contains(id)).collect())
+    Ok(live_account_ids(db, &scope.account_ids)?)
 }
 
 /// Requested accounts, all of them shared (an unknown id reads as not shared,

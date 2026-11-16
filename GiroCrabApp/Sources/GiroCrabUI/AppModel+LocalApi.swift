@@ -26,28 +26,26 @@ extension AppModel {
 
     var isLocalApiRunning: Bool { localApi != nil }
 
-    /// The own vault is unlocked and shown: not the demo, not the lock screen
-    /// (also not while the unlock still loads behind it).
-    private var mayServeLocalApi: Bool { holdsRealData && vaultState == .open }
+    /// The vault the socket may serve: the own one, unlocked and shown (not the
+    /// demo, not behind the lock screen while the unlock still loads). nil =
+    /// nothing. The one definition every start, stop and settings call checks.
+    private var localApiTarget: Vault? {
+        holdsRealData && vaultState == .open ? ownVault : nil
+    }
 
-    /// Matches the socket to the current vault and its stored settings. Runs
+    /// Matches the socket to `localApiTarget` and its stored settings. Runs
     /// whenever `ownVault`, `demoActive` or `vaultState` changes (every path that
     /// locks, unlocks, swaps or shows the demo) and after a failed start on activation.
     /// Stopping is immediate; starting follows the queued scope read. macOS only:
     /// on iOS no other app could reach the socket, so nothing runs there.
     func reconcileLocalApiServer() {
         #if os(macOS)
-        guard holdsRealData else {
-            if localApi != nil || localApiStartError != nil { stopLocalApiServer() }
-            // Locked or demo: a key shown once is never shown again.
-            localApiTokenHash = ""
-            localApiNewToken = nil
-            return
-        }
-        if let running = localApi, running.servedVault !== ownVault { stopLocalApiServer() }
-        // Lock screen still up (unlocking): `.open` comes back here.
-        guard vaultState == .open else {
-            if localApi != nil { stopLocalApiServer() }
+        let target = localApiTarget
+        if target == nil || localApi?.servedVault !== target { stopLocalApiServer() }
+        guard target != nil else {
+            // Locked, demo or unlocking: a key shown once is never shown again.
+            if localApiScope != nil { localApiScope = nil }
+            if localApiNewToken != nil { localApiNewToken = nil }
             return
         }
         Task { _ = try? await localApiJob { _ in () } }
@@ -59,29 +57,34 @@ extension AppModel {
         if localApiStartError != nil { reconcileLocalApiServer() }
     }
 
-    /// Closes the socket and removes its file (also on quit). Returns at once:
-    /// the core's `stop()` does not wait for its threads.
+    /// Closes the socket and removes its file (also on quit), and clears a start
+    /// error. Returns at once: the core's `stop()` does not wait for its threads.
     func stopLocalApiServer() {
+        guard localApi != nil || localApiStartError != nil else { return }
         localApi?.server.stop()
         localApi = nil
         localApiStartError = nil
     }
 
-    /// Every call of this feature, one after another on the own vault as it was
-    /// when the call was made: a read never overtakes a pending save, quick
-    /// toggles keep the newest, and nothing lands in the demo vault. The same
-    /// background hop reads the stored scope afterwards, and the job ends by
-    /// matching the socket to it, so the queue also orders starts and stops.
-    /// nil when the own vault is not shown or was locked before the call's turn;
-    /// a call that ran returns its result even if the vault was swapped since.
+    /// Every call of this feature, one after another on the target vault as it
+    /// was when the call was made: a read never overtakes a pending save, quick
+    /// toggles keep the newest, and nothing lands in the demo vault. A queued
+    /// call still runs while that vault stays unlocked (a save made just before
+    /// the demo was shown is kept). The same background hop reads the stored
+    /// scope afterwards, and the job ends by matching the socket and
+    /// `localApiScope` to it, so the queue also orders starts and stops. nil when
+    /// there is no target, or the vault was locked or swapped before the call's
+    /// turn; a call that ran returns its result even if the target changed since.
     /// `publish` runs in the job, after the socket was matched, only while the
-    /// vault is still the own, shown one (so no later job can overtake it).
+    /// target is unchanged (so no later job can overtake it).
     private func localApiJob<T: Sendable>(
         _ work: @escaping @Sendable (Vault) throws -> T,
         publish: ((T) -> Void)? = nil
     ) async throws -> T? {
-        guard holdsRealData, let v = ownVault else { return nil }
+        guard let v = localApiTarget else { return nil }
         let previous = localApiQueue
+        localApiJobs &+= 1
+        let number = localApiJobs
         let job = Task { () -> Result<T, Error>? in
             await previous?.value
             guard self.ownVault === v else { return nil }
@@ -89,8 +92,8 @@ extension AppModel {
             guard let (result, stored) = try? await Self.offMain({
                 (Result { try work(v) }, Result { try v.localApiScope() })
             }) else { return nil }
-            self.applyLocalApiScope(stored, for: v)
-            if case .success(let value) = result, self.holdsRealData, self.ownVault === v {
+            self.applyLocalApiScope(stored, for: v, isNewest: number == self.localApiJobs)
+            if case .success(let value) = result, self.localApiTarget === v {
                 publish?(value)
             }
             return result
@@ -99,10 +102,13 @@ extension AppModel {
         return try await job.value?.get()
     }
 
-    /// The end of every job: start, keep or stop the socket for `v`.
-    private func applyLocalApiScope(_ stored: Result<ShareScope, Error>, for v: Vault) {
-        // Locked, swapped or switched to the demo meanwhile: the didSet already stopped it.
-        guard holdsRealData, ownVault === v else { return }
+    /// The end of every job: publish the stored scope and start, keep or stop
+    /// the socket for `v`. While newer jobs wait, only the token is taken over,
+    /// so quick toggles do not flicker back; the newest job publishes it all
+    /// (and so undoes a save that failed).
+    private func applyLocalApiScope(_ stored: Result<ShareScope, Error>, for v: Vault, isNewest: Bool) {
+        // The target changed meanwhile: the didSet already stopped the socket.
+        guard localApiTarget === v else { return }
         let scope: ShareScope
         switch stored {
         case .success(let s): scope = s
@@ -112,14 +118,17 @@ extension AppModel {
             return
         }
         // Another token (revoked, replaced): the one shown is no longer valid.
-        if scope.tokenSha256 != localApiTokenHash { localApiNewToken = nil }
-        localApiTokenHash = scope.tokenSha256
+        if scope.tokenSha256 != (localApiScope?.tokenSha256 ?? "") { localApiNewToken = nil }
+        if isNewest || localApiScope == nil {
+            localApiScope = scope
+        } else {
+            localApiScope?.tokenSha256 = scope.tokenSha256
+        }
         guard scope.enabled, !scope.tokenSha256.isEmpty else {
-            if localApi != nil || localApiStartError != nil { stopLocalApiServer() }
+            stopLocalApiServer()
             return
         }
         #if os(macOS)
-        guard mayServeLocalApi else { return }
         if localApi?.servedVault === v { return }
         stopLocalApiServer()
         _ = Self.localApiActivationObserver
@@ -178,10 +187,19 @@ extension AppModel {
     }
 
     /// Saves what is shared (the token stays). false when nothing was written
-    /// (failed, or the own vault went away first).
+    /// (failed, or the own vault went away first); the job then restores
+    /// `localApiScope` to what is stored.
     @discardableResult
     func saveLocalApiScope(_ scope: ShareScope) async -> Bool {
-        await localApiWrite { try $0.setLocalApiScope(scope: scope) } != nil
+        if localApiTarget != nil { localApiScope = scope }
+        return await localApiWrite { try $0.setLocalApiScope(scope: scope) } != nil
+    }
+
+    /// A switch in the settings pane: shown at once, saved in the queue.
+    func updateLocalApiScope(_ scope: ShareScope) {
+        guard localApiTarget != nil else { return }
+        localApiScope = scope
+        Task { await saveLocalApiScope(scope) }
     }
 
     /// A new access token, shown once (`localApiNewToken`); the previous one stops working.

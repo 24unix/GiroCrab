@@ -8,11 +8,7 @@ import GiroCrabCore
 /// switched on. The access token is shown once, only its hash is stored.
 struct ExternalAccessSettings: View {
     @Environment(AppModel.self) private var model
-    @State private var scope: ShareScope?
     @State private var confirmRevoke = false
-    /// Counts the pane's saves: a failed one restores what is stored only if no
-    /// newer change was made meanwhile.
-    @State private var saves = 0
 
     var body: some View {
         Form {
@@ -21,7 +17,7 @@ struct ExternalAccessSettings: View {
                     Text("Die externe Analyse ist nur mit Ihrem eigenen, entsperrten Tresor verfügbar – nicht mit den Demo-Daten.")
                         .appFont(.callout).foregroundStyle(.secondary)
                 } header: { Text("Externe Analyse").appSectionHeader() }
-            } else if let scope {
+            } else if let scope = model.localApiScope {
                 accessSection(scope)
                 if scope.enabled {
                     accountsSection
@@ -31,7 +27,6 @@ struct ExternalAccessSettings: View {
             }
         }
         .formStyle(.grouped)
-        .task(id: model.holdsRealData) { scope = await model.loadLocalApiScope() }
         .onDisappear { model.forgetNewLocalApiToken() }
         .confirmationDialog("Zugriff widerrufen?", isPresented: $confirmRevoke, titleVisibility: .visible) {
             Button("Widerrufen", role: .destructive) {
@@ -70,30 +65,9 @@ struct ExternalAccessSettings: View {
                     }
                 }
             }
-            if !unlistedSharedIds.isEmpty {
-                LabeledContent {
-                    Button("Nicht mehr teilen") { unshareUnlisted() }
-                } label: {
-                    Text("Weitere geteilte Konten, die hier nicht aufgeführt sind: \(unlistedSharedIds.count)")
-                }
-            }
             Text("Neue Konten werden erst geteilt, wenn Sie sie hier auswählen.")
                 .appFont(.callout).foregroundStyle(.secondary)
         } header: { Text("Geteilte Konten").appSectionHeader() }
-    }
-
-    /// Shared ids without a toggle above (an account outside every listed group):
-    /// they must not stay shared without a way to stop it.
-    private var unlistedSharedIds: [Int64] {
-        let listed = Set(model.groups.flatMap { $0.accounts.map(\.id) })
-        return (scope?.accountIds ?? []).filter { !listed.contains($0) }
-    }
-
-    private func unshareUnlisted() {
-        guard var s = scope else { return }
-        let unlisted = Set(unlistedSharedIds)
-        s.accountIds.removeAll { unlisted.contains($0) }
-        save(s)
     }
 
     private var fieldsSection: some View {
@@ -122,10 +96,10 @@ struct ExternalAccessSettings: View {
                     .appFont(.callout).foregroundStyle(.secondary)
             }
             HStack {
-                Button(model.localApiTokenHash.isEmpty ? "Zugangsschlüssel erzeugen" : "Neuen Schlüssel erzeugen") {
+                Button(!hasToken ? "Zugangsschlüssel erzeugen" : "Neuen Schlüssel erzeugen") {
                     Task { await model.createLocalApiToken() }
                 }
-                if !model.localApiTokenHash.isEmpty {
+                if hasToken {
                     Button("Zugriff widerrufen", role: .destructive) { confirmRevoke = true }
                 }
             }
@@ -135,7 +109,7 @@ struct ExternalAccessSettings: View {
     }
 
     private func status(_ scope: ShareScope) -> String {
-        if model.localApiTokenHash.isEmpty { return String(localized: "Wartet auf einen Zugangsschlüssel") }
+        if !hasToken { return String(localized: "Wartet auf einen Zugangsschlüssel") }
         if let error = model.localApiStartError { return String(localized: "Nicht gestartet: \(error)") }
         if scope.accountIds.isEmpty { return String(localized: "Aktiv, noch kein Konto geteilt") }
         return model.isLocalApiRunning ? String(localized: "Aktiv") : String(localized: "Wird gestartet …")
@@ -144,9 +118,9 @@ struct ExternalAccessSettings: View {
     /// A switch of the scope; every change is saved at once.
     private func field(_ key: WritableKeyPath<ShareScope, Bool>) -> Binding<Bool> {
         Binding(
-            get: { scope?[keyPath: key] ?? false },
+            get: { model.localApiScope?[keyPath: key] ?? false },
             set: { on in
-                guard var s = scope else { return }
+                guard var s = model.localApiScope else { return }
                 s[keyPath: key] = on
                 save(s)
             })
@@ -154,9 +128,9 @@ struct ExternalAccessSettings: View {
 
     private func accountBinding(_ id: Int64) -> Binding<Bool> {
         Binding(
-            get: { scope?.accountIds.contains(id) ?? false },
+            get: { model.localApiScope?.accountIds.contains(id) ?? false },
             set: { on in
-                guard var s = scope else { return }
+                guard var s = model.localApiScope else { return }
                 s.accountIds.removeAll { $0 == id }
                 if on { s.accountIds.append(id) }
                 save(s)
@@ -164,14 +138,10 @@ struct ExternalAccessSettings: View {
     }
 
     /// Shown at once; if the write did not happen, the pane goes back to what is stored.
+    private var hasToken: Bool { !(model.localApiScope?.tokenSha256 ?? "").isEmpty }
+
     private func save(_ s: ShareScope) {
-        scope = s
-        saves += 1
-        let mine = saves
-        Task {
-            guard await !model.saveLocalApiScope(s), mine == saves else { return }
-            if let stored = await model.loadLocalApiScope(), mine == saves { scope = stored }
-        }
+        model.updateLocalApiScope(s)
     }
 }
 #endif

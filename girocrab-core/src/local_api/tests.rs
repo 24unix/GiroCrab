@@ -640,3 +640,16 @@ fn children_of_deleted_categories_read_as_top_level() {
         }
     }
 }
+
+#[test]
+fn a_deleted_account_drops_out_of_the_scope() {
+    let (_d, v) = demo();
+    let ids: Vec<i64> = v.list_accounts().unwrap().iter().map(|a| a.id).collect();
+    share(&v, &ids, |_| {});
+    v.set_account_archived(ids[0], true).unwrap();
+    v.delete_account(ids[0]).unwrap();
+    assert_eq!(v.local_api_scope().unwrap().account_ids, ids[1..]);
+    // A save from an older copy cannot bring it back either.
+    share(&v, &ids, |_| {});
+    assert_eq!(v.local_api_scope().unwrap().account_ids, ids[1..]);
+}
