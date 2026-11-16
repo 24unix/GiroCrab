@@ -347,6 +347,16 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
                 1
             };
             let is_folded = head.fold == 2;
+            let eur: Vec<i64> = members
+                .iter()
+                .filter(|a| a.currency == "EUR")
+                .map(|a| a.balance_cents)
+                .collect();
+            if !eur.is_empty() {
+                let sum: i64 = eur.iter().sum();
+                head.amount = hide(money(sum, "EUR"));
+                head.negative = sum < 0 && !input.privacy;
+            }
             rows.push(head);
             if is_folded {
                 continue;

@@ -3,7 +3,7 @@ import { Button, ListView, LineEdit, Palette, ComboBox, CheckBox, TextEdit } fro
 export struct AccountRow { id: int, name: string, bank: string, iban: string, header: string, monogram: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
 export struct CategoryRow { id: int, name: string, depth: int, color: color }
 export struct BookingRow { id: int, checked: bool, date: string, counterparty: string, category: string, category-color: color, purpose: string, amount: string, negative: bool }
-export struct SideRow { kind: int, key: string, label: string, detail: string, badge: string, amount: string, negative: bool, progress: float, dot: color, has-dot: bool, depth: int, fold: int }
+export struct SideRow { kind: int, key: string, label: string, detail: string, badge: string, amount: string, negative: bool, progress: float, dot: color, has-dot: bool, glyph: string, depth: int, fold: int }
 export struct TableRow { id: int, c0: string, c1: string, c2: string, c3: string, c4: string, negative: bool }
 export struct KpiTile { label: string, value: string, negative: bool }
 export struct ShareBar { label: string, value: string, share: float, color: color }
@@ -66,20 +66,39 @@ component SideLine inherits Rectangle {
     in property <bool> active;
     callback clicked();
     callback fold();
-    height: r.kind == 1 ? 30px : r.kind == 2 ? 24px : r.progress >= 0 ? 50px : 32px;
-    border-radius: 8px;
-    background: active ? Theme.selected : (ta.has-hover && r.kind != 1 && r.kind != 2) ? Theme.text.with-alpha(0.05) : transparent;
+    property <bool> all-card: r.key == "all";
+    property <bool> subtitle: r.kind == 3 && r.progress < 0 && r.detail != "";
+    height: r.kind == 1 ? 26px : r.kind == 2 ? 22px : all-card ? 34px : r.progress >= 0 ? 48px : subtitle ? 40px : 30px;
+    border-radius: all-card ? 7px : 8px;
+    border-width: all-card ? 1px : 0px;
+    border-color: Theme.border;
+    background: active ? Theme.selected : all-card ? Theme.surface : (ta.has-hover && r.kind != 1 && r.kind != 2) ? Theme.text.with-alpha(0.05) : transparent;
     ta := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
-        padding-left: 6px + max(r.depth - 1, 0) * 14px;
-        padding-right: 8px;
+        padding-left: all-card ? 10px : 6px + max(r.depth - 1, 0) * 14px;
+        padding-right: all-card ? 10px : 8px;
+        padding-top: all-card ? 6px : 0px;
+        padding-bottom: all-card ? 6px : 0px;
         spacing: 6px;
         if r.fold != 0: Rectangle {
             width: 16px;
-            Text { text: r.fold == 2 ? "▸" : "▾"; color: Theme.muted; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+            Text { text: r.fold == 2 ? "›" : "⌄"; color: Theme.muted; font-size: 12px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
             if r.kind == 4: TouchArea { clicked => { root.fold(); } }
         }
         if r.fold == 0 && (r.kind == 3 || r.kind == 4): Rectangle {
+            width: 16px;
+        }
+        if r.fold == 0 && r.kind == 3: Rectangle {
+            width: 26px;
+            height: 26px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 6px;
+            background: r.dot.with-alpha(0.2);
+            border-width: 1px;
+            border-color: r.dot.with-alpha(0.45);
+            Text { text: r.glyph; color: r.dot; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        if r.fold == 0 && r.kind == 4: Rectangle {
             width: 16px;
             if r.has-dot: Rectangle { width: 9px; height: 9px; border-radius: 4.5px; background: r.dot; }
         }
@@ -101,7 +120,7 @@ component SideLine inherits Rectangle {
                 background: Theme.text.with-alpha(0.12);
                 Rectangle { x: 0px; width: parent.width * r.progress; border-radius: 2px; background: Theme.positive; }
             }
-            if r.progress >= 0: Text { text: r.detail; color: Theme.muted; font-size: 10px; overflow: elide; }
+            if r.progress >= 0 || subtitle: Text { text: r.detail; color: Theme.muted; font-size: r.progress >= 0 ? 10px : 11px; overflow: elide; }
         }
         if r.badge != "": Rectangle {
             width: max(badge-text.preferred-width + 12px, 20px);
@@ -129,12 +148,11 @@ component SegButton inherits Rectangle {
     callback clicked();
     height: 28px;
     border-radius: 7px;
-    border-width: 1px;
-    border-color: checked ? Theme.accent : Theme.control-border;
-    background: checked ? Theme.accent.with-alpha(0.18) : ta.has-hover ? Theme.text.with-alpha(0.07) : Theme.surface;
+    border-width: checked ? 0px : 0px;
+    background: checked ? Theme.primary : ta.has-hover ? Theme.text.with-alpha(0.07) : transparent;
     horizontal-stretch: 1;
     ta := TouchArea { clicked => { root.clicked(); } }
-    Text { text: root.text; color: Theme.text; font-size: 11px; font-weight: checked ? 700 : 500; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+    Text { text: root.text; color: checked ? #ffffff : Theme.text; font-size: 11px; font-weight: checked ? 700 : 500; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
 }
 
 component KpiCard inherits Rectangle {
@@ -506,27 +524,48 @@ export component MainWindow inherits Window {
             width: 292px;
             background: Theme.sidebar;
             VerticalLayout {
-                padding: 12px;
-                spacing: 8px;
+                padding: 10px;
+                spacing: 6px;
                 Text { text: "GiroCrab"; font-size: 18px; font-weight: 700; color: Theme.text; x: 4px; }
                 ListView {
                     vertical-stretch: 1;
                     for r in root.side-rows: Rectangle {
-                        height: r.kind == 5 ? 76px : r.kind == 1 ? 30px : r.kind == 2 ? 24px : r.progress >= 0 ? 50px : 32px;
+                        height: r.kind == 5 ? 68px : r.kind == 1 ? 26px : r.kind == 2 ? 22px : r.key == "all" ? 38px : r.progress >= 0 ? 48px : (r.kind == 3 && r.detail != "") ? 40px : 30px;
                         if r.kind == 5: VerticalLayout {
                             padding-left: 6px;
                             padding-right: 6px;
                             spacing: 6px;
-                            HorizontalLayout {
-                                spacing: 4px;
-                                SegButton { text: "Gruppen"; checked: root.group-mode == 0; clicked => { root.group-mode = 0; root.side-controls-changed(); } }
-                                SegButton { text: "Banken"; checked: root.group-mode == 1; clicked => { root.group-mode = 1; root.side-controls-changed(); } }
-                                SegButton { text: "Kontoart"; checked: root.group-mode == 2; clicked => { root.group-mode = 2; root.side-controls-changed(); } }
+                            Rectangle {
+                                height: 28px;
+                                border-radius: 7px;
+                                background: #161b22;
+                                HorizontalLayout {
+                                    spacing: 0px;
+                                    SegButton { text: "Gruppen"; checked: root.group-mode == 0; clicked => { root.group-mode = 0; root.side-controls-changed(); } }
+                                    SegButton { text: "Banken"; checked: root.group-mode == 1; clicked => { root.group-mode = 1; root.side-controls-changed(); } }
+                                    SegButton { text: "Kontoart"; checked: root.group-mode == 2; clicked => { root.group-mode = 2; root.side-controls-changed(); } }
+                                }
                             }
-                            LineEdit {
-                                placeholder-text: "Konten filtern";
-                                text <=> root.side-query;
-                                edited => { root.side-controls-changed(); }
+                            Rectangle {
+                                height: 28px;
+                                border-radius: 7px;
+                                border-width: 1px;
+                                border-color: Theme.control-border;
+                                background: Theme.surface;
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 6px;
+                                    spacing: 6px;
+                                    Text { text: "🔍"; font-size: 11px; color: Theme.muted; vertical-alignment: center; }
+                                    TextInput {
+                                        text <=> root.side-query;
+                                        font-size: 12px;
+                                        color: Theme.text;
+                                        vertical-alignment: center;
+                                        edited => { root.side-controls-changed(); }
+                                        Text { visible: parent.text == ""; text: "Konten filtern"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+                                    }
+                                }
                             }
                         }
                         if r.kind != 5: SideLine {
