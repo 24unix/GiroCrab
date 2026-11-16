@@ -12930,6 +12930,17 @@
         }
       }
     },
+    "Im Finder anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show in Finder"
+          }
+        }
+      }
+    },
     "Im Finder zeigen" : {
       "extractionState" : "manual",
       "localizations" : {

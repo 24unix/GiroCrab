@@ -131,6 +131,9 @@ struct DocumentsCard: View {
                     Button { model.quickLook(d) } label: { Image(systemName: "eye") }
                         .buttonStyle(.borderless).help("QuickLook (Leertaste)")
                     Menu {
+                        #if os(macOS)
+                        Button("Im Finder anzeigen") { model.showInFinder(d) }
+                        #endif
                         Button("Zuordnung aufheben") { model.linkDocument(d, to: nil) }
                         Divider()
                         Button("Beleg löschen …", role: .destructive) { docToDelete = d }
@@ -291,6 +294,9 @@ struct DocumentsView: View {
                         .contentShape(Rectangle())
                         .contextMenu {
                             Button("QuickLook") { model.quickLook(d) }
+                            #if os(macOS)
+                            Button("Im Finder anzeigen") { model.showInFinder(d) }
+                            #endif
                             Button("Zuordnung aufheben") { model.linkDocument(d, to: nil) }
                             Divider()
                             Button("Beleg löschen …", role: .destructive) { docToDelete = d }
