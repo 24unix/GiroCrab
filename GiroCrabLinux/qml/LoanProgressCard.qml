@@ -45,6 +45,7 @@ Rectangle {
             TextField {
                 id: amount; visible: card.manual === null && card.editing; Layout.preferredWidth: 130
                 placeholderText: qsTr("z. B. %1").arg(Fmt.plain(28000000)); onAccepted: card.commit()
+                Sensitive {}
             }
             Button { visible: card.manual === null && card.editing; text: qsTr("Abbrechen"); onClicked: card.editing = false }
             Button { visible: card.manual === null && card.editing; text: qsTr("Speichern"); highlighted: true; onClicked: card.commit() }
@@ -55,10 +56,11 @@ Rectangle {
                 text: card.initial === null ? qsTr("Betrag eingeben") : qsTr("Ursprünglich: %1").arg(Fmt.money(card.initial))
                 font.pixelSize: Theme.caption
                 // narrow inspector: the title shrinks (…) instead of running past the card
-                Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
+                Layout.fillWidth: true; Layout.maximumWidth: Math.ceil(implicitWidth)
                 implicitWidth: origText.implicitWidth + 12
                 contentItem: Text { id: origText; text: parent.text; elide: Text.ElideRight; horizontalAlignment: Text.AlignRight
-                                    verticalAlignment: Text.AlignVCenter; font.pixelSize: Theme.caption; color: Theme.text }
+                                    verticalAlignment: Text.AlignVCenter; font.pixelSize: Theme.caption; color: Theme.text
+                                    Sensitive { when: card.initial !== null } }   // the original loan amount
                 ToolTip.text: qsTr("Ursprünglicher Kreditbetrag bearbeiten")
                 onClicked: { amount.text = card.initial ? Fmt.plain(card.initial) : ""; card.editing = true; amount.forceActiveFocus() }
             }

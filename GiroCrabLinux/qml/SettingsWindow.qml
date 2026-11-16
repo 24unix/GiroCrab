@@ -4,19 +4,26 @@ import QtQuick.Layouts
 
 // SettingsView.swift: the macOS Settings window with its tabs Allgemein, Banken, Sicherheit.
 // Dropped on Linux: Dokumente (document folder), Updates (Sparkle).
-Window {
+ApplicationWindow {
     id: win
     // `--dark` / `--light`: the controls follow the forced appearance (Theme.forcedPalette)
     Binding on palette { when: Theme.forced !== ""; value: Theme.forcedPalette }
+    // appTextSize (#343): an ApplicationWindow so the controls inherit the scaled font
+    font.pointSize: Theme.controlPointSize
     title: qsTr("Einstellungen")
+    // an independent window like the Mac's Settings, not a dialog pinned above the main
+    // window: bank dialogs (PIN, TAN, consent) of the main window must be able to come to front
+    transientParent: null
     // HIG: each tab has its own height and the window follows it.
     readonly property var tabs: [
-        { id: "general", title: qsTr("Allgemein"), symbol: "gearshape", height: 420 },
+        // SettingsView.swift › settingsPane(height:): "Allgemein" 600 since #343/#388 (it scrolls)
+        { id: "general", title: qsTr("Allgemein"), symbol: "gearshape", height: 600 },
         { id: "banks", title: qsTr("Banken"), symbol: "building.columns", height: 600 },
         { id: "security", title: qsTr("Sicherheit"), symbol: "lock.shield", height: 780 }]
     readonly property int tabIndex: Math.max(0, tabs.findIndex(t => t.id === AppModel.settingsTab))
-    width: 680
-    height: tabs[tabIndex].height
+    width: 680 * Theme.textScale   // SettingsPaneFrame: 680 × textScale
+    // never taller than the screen (small laptop displays)
+    height: Math.min(tabs[tabIndex].height, Screen.desktopAvailableHeight - 60)
     minimumWidth: 560; minimumHeight: 360
     color: Theme.canvas
     visible: AppModel.showSettings

@@ -250,6 +250,19 @@ impl Vault {
         Ok(out)
     }
 
+    /// Number of scheduled transfers and direct debits from today on, over all accounts
+    /// (sidebar badge): one `COUNT(*)`, no rows are loaded.
+    pub fn count_planned_payments(&self) -> Result<u32, CoreError> {
+        let db = self.db()?;
+        let n: i64 = db.query_row(
+            "SELECT count(*) FROM planned_transfers p JOIN accounts a ON a.id = p.account_id
+             WHERE a.deleted_ms IS NULL AND p.execution_date >= ?1",
+            [today()],
+            |r| r.get(0),
+        )?;
+        Ok(u32::try_from(n).unwrap_or(u32::MAX))
+    }
+
     /// Count and sums of what [`Self::list_planned_payments`] would return, as one SQL
     /// aggregate (no rows are loaded or built).
     pub fn planned_payment_totals(

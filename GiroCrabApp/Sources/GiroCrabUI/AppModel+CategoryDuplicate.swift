@@ -24,7 +24,7 @@ extension AppModel {
             newRoot = try copy(root, under: root.parentId, name: "\(root.name) \(suffix)", depth: 0)
         }
         reloadCategories()
-        if let parent = root.parentId { expandedCategories.insert(parent) }
+        if let parent = root.parentId { expandCategoryPath(to: parent) }
         return newRoot
     }
 }

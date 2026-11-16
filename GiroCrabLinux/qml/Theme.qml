@@ -1,12 +1,20 @@
 pragma Singleton
 import QtQuick
+import QtCore
 
 // Formatting.swift › enum Theme: "Daylight" / "Nightfall" design tokens.
 QtObject {
     id: theme
-    /// `--dark` / `--light` (LaunchOptions.swift): "dark" / "light" force the appearance, "" = system.
+    /// Einstellungen › Allgemein › Erscheinungsbild (Appearance.swift, GitHub #388): `appearance`
+    /// = "system", "light" or "dark", the Mac's defaults key. Forced through this file alone (no
+    /// QStyleHints::setColorScheme, which Qt 6.6 lacks), like `--dark` / `--light`.
+    readonly property Settings appearanceSettings: Settings { property string appearance: "system" }
+    /// `--dark` / `--light` (LaunchOptions.swift) or the appearance setting: "dark" / "light" force
+    /// the appearance, "" = system. Screenshot launches follow the system unless forced by flag.
     readonly property string forced: Qt.application.arguments.indexOf("--dark") >= 0 ? "dark"
-        : Qt.application.arguments.indexOf("--light") >= 0 ? "light" : ""
+        : Qt.application.arguments.indexOf("--light") >= 0 ? "light"
+        : Qt.application.arguments.indexOf("--screenshot") >= 0 ? ""
+        : ["light", "dark"].indexOf(appearanceSettings.appearance) >= 0 ? appearanceSettings.appearance : ""
     readonly property bool dark: forced !== "" ? forced === "dark" : Application.styleHints.colorScheme === Qt.ColorScheme.Dark
     function c(light, darkHex) { return dark ? darkHex : light }
 
@@ -20,6 +28,11 @@ QtObject {
     readonly property color outflow: c("#0F172A", "#F1F5F9")
     readonly property color inflow: c("#059669", "#34D399")
     readonly property color inflowBadge: c("#ECFDF5", "#064E3B")
+    /// Order-account charge colour: the red counterpart of `inflow`, paired
+    /// with `outflowBadge` so badged charges and refunds read symmetrically.
+    readonly property color charge: c("#DC2626", "#F87171")
+    /// Red counterpart of `inflowBadge` (Amazon order rows: colour = direction, no sign).
+    readonly property color outflowBadge: c("#FEF2F2", "#7F1D1D")
     // AccentColor of the asset catalog (GiroCrab blue).
     readonly property color accent: c("#2563EB", "#60A5FA")
     readonly property color selection: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.28 : 0.13)
@@ -28,19 +41,55 @@ QtObject {
     readonly property color invest: c("#1F7A5C", "#5EC79F")
     readonly property color negative: c("#B91C1C", "#F87171")
     readonly property color personFill: c("#E2E8F0", "#334155")
+    /// PrivacyRedaction.swift `Color.redactionFill` (systemGray): the opaque box of `Sensitive`.
+    readonly property color redactionFill: "#8E8E93"
     readonly property color personText: c("#475569", "#CBD5E1")
     readonly property color neutralTile: c("#F1F3F5", "#273449")
 
-    // SwiftUI text styles (macOS point sizes).
-    readonly property int largeTitle: 26
-    readonly property int title: 22
-    readonly property int title2: 17
-    readonly property int title3: 15
-    readonly property int body: 13
-    readonly property int callout: 12
-    readonly property int subheadline: 11
-    readonly property int caption: 10
-    readonly property int caption2: 10
+    // TextSize.swift › AppTextSize (#343): text size of the whole app, Einstellungen › Allgemein ›
+    // Schriftgröße and Darstellung › Größer / Kleiner / Originalgröße.
+    readonly property var textSizes: [
+        { id: "standard", title: qsTr("Standard"), scale: 1 },
+        { id: "large", title: qsTr("Groß"), scale: 1.15 },
+        { id: "larger", title: qsTr("Sehr groß"), scale: 1.3 }]
+    /// `@AppStorage("textSize")`: key `textSize` in GiroCrab.conf.
+    property Settings textSizeDefaults: Settings { property string textSize: "standard" }
+    /// The stored choice (unknown values count as "standard", like a failed raw value).
+    readonly property string textSize: textSizes.some(s => s.id === textSizeDefaults.textSize) ? textSizeDefaults.textSize : "standard"
+    function setTextSize(id) { textSizeDefaults.textSize = id }
+    /// AppTextSize.larger / .smaller: the next size, "" at the end of the range.
+    function steppedTextSize(delta) {
+        const i = textSizes.findIndex(s => s.id === textSize) + delta
+        return i >= 0 && i < textSizes.length ? textSizes[i].id : ""
+    }
+    /// AppTextSize.effective: `--text-size <standard|large|larger>` wins; screenshot
+    /// launches otherwise stay at "standard" (reproducible pictures).
+    readonly property string effectiveTextSize: {
+        const args = Qt.application.arguments
+        const i = args.indexOf("--text-size")
+        const forced = i >= 0 && i + 1 < args.length ? args[i + 1].toLowerCase() : ""
+        if (textSizes.some(s => s.id === forced)) return forced
+        return args.indexOf("--screenshot") >= 0 ? "standard" : textSize
+    }
+    /// `@Environment(\.textScale)`: factor for text and for fixed sizes that hold text.
+    readonly property real textScale: textSizes.find(s => s.id === effectiveTextSize).scale
+    /// macSize(scale:): whole pixels stay crisp (caption 10 → 12 → 13, body 13 → 15 → 17).
+    function scaled(size) { return Math.round(size * textScale) }
+    /// Default font of the controls (labels, check boxes, pickers) at the current scale:
+    /// bound to `font.pointSize` of every window (appTextSize on the Mac). Menus keep the
+    /// system size (AppMenu, MenuBar), as on the Mac.
+    readonly property real controlPointSize: (Qt.application.font.pointSize > 0 ? Qt.application.font.pointSize : 10) * textScale
+
+    // SwiftUI text styles (macOS point sizes), scaled by the text size.
+    readonly property int largeTitle: scaled(26)
+    readonly property int title: scaled(22)
+    readonly property int title2: scaled(17)
+    readonly property int title3: scaled(15)
+    readonly property int body: scaled(13)
+    readonly property int callout: scaled(12)
+    readonly property int subheadline: scaled(11)
+    readonly property int caption: scaled(10)
+    readonly property int caption2: scaled(10)
 
     // Color.readable(hex:): brand/category colours, lightened in dark mode.
     function readable(hex) {

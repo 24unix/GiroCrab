@@ -4,7 +4,8 @@ import QtQuick.Dialogs
 
 // NewCategoryDialog.swift › ColorSwatches (+ the "Eigene Farbe" colour well):
 // colour circles with a ring around the chosen one. The palette is the core's
-// `account_color_palette`, plus the current colour first if it is not in it.
+// `account_color_palette` (IconColorPopover: plus Gelb, Braun, Schiefer), plus the current
+// colour first if it is in neither row.
 Flow {
     id: sw
     property string selection: ""
@@ -14,8 +15,12 @@ Flow {
     signal chosen(string hex)
     spacing: 6
     readonly property string current: selection.toUpperCase()
-    readonly property var colors: current === "" || AppModel.colorPalette.indexOf(current) >= 0
-                                  ? AppModel.colorPalette : [current].concat(AppModel.colorPalette)
+    /// The colours offered: the core palette (category dialog) or ColorChoices.swatches (popover).
+    property var swatches: AppModel.colorPalette
+    /// Colours shown in another row (IconColorPopover's „Eigene Farben“): the current one is marked there.
+    property var elsewhere: []
+    readonly property var colors: current === "" || swatches.indexOf(current) >= 0 || elsewhere.indexOf(current) >= 0
+                                  ? swatches : [current].concat(swatches)
     Repeater {
         model: sw.colors
         Rectangle {

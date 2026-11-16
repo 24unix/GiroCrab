@@ -90,6 +90,7 @@ Sheet {
 
             // MARK: Options
             ScrollView {
+                ScrollBar.vertical: ScrollViewBar {}
                 Layout.preferredWidth: 360; Layout.fillHeight: true
                 contentWidth: availableWidth
                 ColumnLayout {

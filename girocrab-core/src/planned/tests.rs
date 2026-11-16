@@ -104,3 +104,17 @@ fn past_orders_range_and_account_filter() {
         .list_planned_payments(Some("kaputt".into()), None, vec![])
         .is_err());
 }
+
+#[test]
+fn planned_payments_are_counted_without_past_ones() {
+    let v = vault("planned-count");
+    let a = account(&v, "Giro");
+    assert_eq!(v.count_planned_payments().unwrap(), 0);
+    v.record_planned_transfer(a, &job("E1", Some("2999-01-15"), 100))
+        .unwrap();
+    v.record_planned_transfer(a, &job("E2", Some("2999-02-15"), 200))
+        .unwrap();
+    v.record_planned_transfer(a, &job("E3", Some("2000-01-01"), 300))
+        .unwrap();
+    assert_eq!(v.count_planned_payments().unwrap(), 2);
+}

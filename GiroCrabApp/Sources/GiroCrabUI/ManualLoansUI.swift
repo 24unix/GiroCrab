@@ -218,12 +218,12 @@ private struct ManualLoanSheets: ViewModifier {
     func body(content: Content) -> some View {
         @Bindable var store = model.loanStore
         content
-            .sheet(item: $store.editor) { req in
+            .capturableSheet(item: $store.editor) { req in
                 LoanEditorSheet(request: req).environment(model)
             }
             .task {
                 // screenshots: --demo-sheet loan | loan-edit | loan-anchor
-                guard let sheet = model.options.demoSheet, sheet.hasPrefix("loan") else { return }
+                guard let sheet = model.options.demoSheetName, sheet.hasPrefix("loan") else { return }
                 try? await Task.sleep(for: .milliseconds(300))
                 let car = model.loanStore.loans.first
                 switch sheet {
@@ -430,9 +430,9 @@ struct LoanEditorSheet: View {
                 ForEach(p.matches, id: \.id) { b in
                     HStack {
                         Text(DateText.medium(b.bookingDate)).monospacedDigit().foregroundStyle(Theme.secondary)
-                        Text(b.merchant.name.isEmpty ? b.counterparty : b.merchant.name).lineLimit(1)
+                        Text(b.merchant.name.isEmpty ? b.counterparty : b.merchant.name).lineLimit(1).sensitive()
                         Spacer()
-                        Text(Money.format(b.amountCents)).monospacedDigit()
+                        Text(Money.format(b.amountCents)).monospacedDigit().sensitive(.amounts)
                     }
                     .appFont(.callout)
                     .accessibilityElement(children: .combine)
@@ -448,14 +448,14 @@ struct LoanEditorSheet: View {
     private var previewRows: some View {
         if let s = preview?.status {
             if isAnchor, let old = existing?.status {
-                LabeledContent("Restschuld bisher", value: Money.format(-old.remainingCents))
+                LabeledContent("Restschuld bisher") { Text(Money.format(-old.remainingCents)).sensitive(.amounts) }
             }
-            LabeledContent("Restschuld", value: Money.format(-s.remainingCents))
+            LabeledContent("Restschuld") { Text(Money.format(-s.remainingCents)).sensitive(.amounts) }
                 .appFont(.headline)
             LabeledContent("Stand vom", value: DateText.medium(s.asOfDate))
-            LabeledContent("Raten seit Stichtag", value: "\(s.paymentCount) · \(Money.format(s.paidCents))")
+            LabeledContent("Raten seit Stichtag") { Text("\(s.paymentCount) · \(Money.format(s.paidCents))").sensitive(.amounts) }
             if s.interestCents > 0 {
-                LabeledContent("davon Zinsen / Tilgung", value: "\(Money.format(s.interestCents)) / \(Money.format(s.principalCents))")
+                LabeledContent("davon Zinsen / Tilgung") { Text("\(Money.format(s.interestCents)) / \(Money.format(s.principalCents))").sensitive(.amounts) }
             }
             if s.beforeAnchorCount > 0 {
                 LabeledContent("Ältere Buchungen (nicht gezählt)", value: "\(s.beforeAnchorCount)")
@@ -624,7 +624,7 @@ struct ManualLoanDetails: View {
             if let rate = loan.setup.interestRatePpm {
                 Text("Sollzins \(PercentText.format(rate)) % · Zinsen seit Stichtag \(Money.format(s.interestCents))")
                     .appFont(.caption)
-                    .sensitive()
+                    .sensitive(.amounts)
                     .foregroundStyle(Theme.secondary)
             }
             if let m = s.monthsLeft, m > 0 {

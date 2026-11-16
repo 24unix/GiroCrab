@@ -34,9 +34,17 @@ Card {
                 spacing: 4
                 // Button { editing = IDBox(id: s.categoryId) }
                 TapHandler { onTapped: AppModel.budgetCategoryID = modelData.category_id }
+                TapHandler { acceptedButtons: Qt.RightButton; onTapped: budgetMenu.popup() }
+                HoverHandler { id: rowHover }
+                ToolTip.visible: rowHover.hovered; ToolTip.delay: 600; ToolTip.text: qsTr("Budget bearbeiten …")
+                AppMenu { id: budgetMenu
+                    AppMenuItem { text: qsTr("Budget bearbeiten …"); icon.name: SF.icon("pencil"); onTriggered: AppModel.budgetCategoryID = modelData.category_id }
+                    AppMenuItem { text: qsTr("Budget entfernen"); icon.name: SF.icon("trash"); onTriggered: AppModel.setBudget(null, modelData.category_id) } }
                 RowLayout {
-                    Text { text: modelData.name; font.pixelSize: Theme.callout + 1; color: Theme.text; Layout.fillWidth: true }
-                    Text { text: Fmt.money(modelData.spent_cents) + " / " + Fmt.money(modelData.budget_cents); font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: tone(modelData.percent) }
+                    Text { text: modelData.name; font.pixelSize: Theme.callout + 1; color: Theme.text; Layout.fillWidth: true; Sensitive { labels: true } }
+                    Text { text: Fmt.money(modelData.spent_cents) + " / " + Fmt.money(modelData.budget_cents); font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: tone(modelData.percent); Sensitive {} }
+                    // shows the row opens the editor (it looked read-only)
+                    SFIcon { symbol: "pencil"; size: Theme.caption; opacity: rowHover.hovered ? 1 : 0 }
                 }
                 Rectangle {
                     Layout.fillWidth: true; height: 6; radius: 3; color: Theme.border

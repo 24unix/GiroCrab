@@ -712,3 +712,17 @@ fn merge_keeps_the_later_acknowledgement_of_returns() {
         .unwrap();
     assert_eq!(ack, "2026-10-05");
 }
+
+#[test]
+fn active_mandates_are_counted_over_all_accounts() {
+    let (v, _dir) = vault();
+    let acc = v.list_accounts().unwrap()[0].id;
+    assert_eq!(v.count_active_mandates().unwrap(), 0);
+    v.save_mandate(None, input(acc, "M-1")).unwrap();
+    let off = v.save_mandate(None, input(acc, "M-2")).unwrap();
+    assert_eq!(v.count_active_mandates().unwrap(), 2);
+    let mut changed = input(acc, "M-2");
+    changed.active = false;
+    v.save_mandate(Some(off.id), changed).unwrap();
+    assert_eq!(v.count_active_mandates().unwrap(), 1);
+}

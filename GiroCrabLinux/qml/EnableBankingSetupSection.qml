@@ -73,6 +73,12 @@ ColumnLayout {
             TextEdit { text: eb.redirect; readOnly: true; selectByMouse: true; font.family: "monospace"; font.pixelSize: Theme.caption; color: Theme.text }
             IconButton { symbol: "doc.on.doc"; symbolSize: 13; ToolTip.text: qsTr("Redirect-URL kopieren"); onClicked: AppModel.copyToClipboard(eb.redirect) }
         }
+        TextEdit {
+            Layout.leftMargin: 22; Layout.fillWidth: true
+            text: qsTr("Für „Privacy URL“ und „Terms URL“ genügt z. B. https://girocrab.de oder https://github.com/GiroCrab/GiroCrab.")
+            readOnly: true; selectByMouse: true; wrapMode: TextEdit.WordWrap
+            font.pixelSize: Theme.caption; color: Theme.secondary
+        }
         Step { n: 2; text: qsTr("Bei der Anwendung „Activate by linking accounts“ wählen und alle Konten verknüpfen, die GiroCrab sehen soll – nicht verknüpfte Konten liefert die Bank nicht.") }
         // importedAccounts: the accounts the MoneyMoney import attached to Enable Banking
         // connections – the ones to link while activating the application.

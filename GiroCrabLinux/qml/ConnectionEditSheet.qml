@@ -173,6 +173,7 @@ Sheet {
         }
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
         ScrollView {
+            ScrollBar.vertical: ScrollViewBar {}
             id: scroll
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(form.implicitHeight, 520, sheet.maxBodyHeight - 150)
@@ -245,6 +246,10 @@ Sheet {
                                       value: sheet.kind === "Comdirect" ? qsTr("Schnittstelle der Bank") : qsTr("Online-Banking (FinTS)") }
                     Button { text: sheet.kind === "Comdirect" ? qsTr("Auf FinTS umstellen …") : qsTr("Auf die Schnittstelle der Bank umstellen …")
                              onClicked: confirmSwitch.open() }
+                }
+                SettingsFormSection {
+                    title: qsTr("Kontenauswahl")
+                    AccountSelectionList { connection: sheet.visible ? sheet.connection : null }
                 }
                 SettingsFormSection {
                     title: qsTr("Status")

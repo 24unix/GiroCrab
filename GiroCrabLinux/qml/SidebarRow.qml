@@ -21,7 +21,13 @@ Item {
              : hover.hovered ? Theme.withAlpha(Theme.secondary, 0.07) : "transparent"
     }
     HoverHandler { id: hover }
-    TapHandler { onTapped: AppModel.sidebarSelection = row.selectionKey }
+    TapHandler {
+        onTapped: {
+            AppModel.sidebarSelection = row.selectionKey
+            // the sidebar takes the keyboard (↑/↓) like a clicked List
+            if (row.ListView.view && row.ListView.view.takeKeyFocus) row.ListView.view.takeKeyFocus()
+        }
+    }
     Item {
         id: area
         x: 8; y: row.topGap

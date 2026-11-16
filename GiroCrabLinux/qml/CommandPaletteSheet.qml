@@ -22,11 +22,13 @@ Sheet {
         if (m.canTransfer) add(qsTr("Überweisung senden"), action + " · " + Fmt.keys("Strg+N"), "paperplane", () => m.openTransfer())
         if (!m.bankingBlocksAll) add(qsTr("Alle Konten abrufen"), action + " · " + Fmt.keys("Strg+R"), "arrow.triangle.2.circlepath", () => m.requestSyncAll())
         add(qsTr("Regeln bearbeiten"), action, "wand.and.stars", () => m.openRuleEditor(null))
+        add(qsTr("Umsätze exportieren"), action, "square.and.arrow.up", () => m.openBookingExport(false))
         add(qsTr("Buchungen drucken"), action + " · " + Fmt.keys("Strg+P"), "printer", () => m.showPrintSheet = true)
         add(qsTr("Wiederkehrende Buchungen"), action, "repeat", () => m.showRecurringSheet = true)
         add(qsTr("Zeitraum: Seit letztem Gehalt"), view, "banknote", () => m.period = "sinceSalary")
-        add(qsTr("Zeitraum: Letzte 12 Monate"), view, "calendar", () => m.period = "last12Months")
-        add(qsTr("Zeitraum: Letztes Jahr"), view, "calendar", () => m.period = "lastYear")
+        add(qsTr("Zeitraum: 12 Monate"), view, "calendar", () => m.period = "months12")
+        const previousYear = m.previousYearPeriod()
+        add(qsTr("Zeitraum: %1").arg(m.periodTitleOf(previousYear)), view, "calendar", () => m.period = previousYear)
         add(qsTr("Zeitraum: Benutzerdefiniert …"), view, "calendar.badge.clock", () => m.showCustomPeriod = true)
         const b = m.selectedBooking
         if (b) {
@@ -36,18 +38,25 @@ Sheet {
         add(qsTr("Historie & Kategorien importieren"), action, "square.and.arrow.down.on.square", () => m.openMoneyMoneyImport())
         add(qsTr("Regeln jetzt anwenden"), action, "play", () => m.applyAllRules())
         add(qsTr("Einstellungen"), action + " · " + Fmt.keys("Strg+,"), "gearshape", () => m.openSettings())
-        add(qsTr("Übersicht"), qsTr("Konten"), "square.grid.2x2", () => m.sidebarSelection = "all")
+        add(qsTr("Alle Konten"), qsTr("Konten"), "square.grid.2x2", () => m.sidebarSelection = "all")
+        add(qsTr("Neue Umsätze"), qsTr("Konten"), "tray.full", () => m.sidebarSelection = "newBookings")
         add(qsTr("Neue Kontogruppe"), action + " · " + Fmt.keys("Strg+Umschalt+N"), "folder.badge.plus", () => m.groupDialog = { kind: "create", movingAccount: null, parent: null })
         add(qsTr("Kontogruppen bearbeiten"), action, "slider.horizontal.3", () => m.openGroupManager())
         add(qsTr("Neue Hauptkategorie"), action, "plus.square", () => m.newCategoryRequest = { parent: null })
         add(qsTr("Neues Darlehen"), action, "car", () => m.openLoanEditor("create"))
+        add(qsTr("Neues Sachwerte-Konto"), action, "diamond", () => m.createTangibleAccount())
         if (m.sidebarSelection.startsWith("account:")) {
             const accId = parseInt(m.sidebarSelection.slice(8))
+            if (m.isTangible(accId)) add(qsTr("Sachwert hinzufügen"), action, "plus", () => m.openAssetEditor(accId))
             const loan = m.manualLoan(accId)
             if (loan) add(qsTr("Stand von „%1“ neu setzen").arg(loan.setup.name), action, "calendar.badge.clock", () => m.openLoanEditor("anchor", accId))
         }
         if (m.accountView !== "byGroup") add(qsTr("Konten nach Gruppe anzeigen"), view, "folder", () => m.setAccountView("byGroup"))
+        if (m.accountView !== "byBank") add(qsTr("Konten nach Bank anzeigen"), view, "building.columns", () => m.setAccountView("byBank"))
         if (m.accountView !== "byKind") add(qsTr("Konten nach Kontoart anzeigen"), view, "square.stack.3d.up", () => m.setAccountView("byKind"))
+        for (const b of m.bankGroups)
+            add(b.name, qsTr("Bank · %1").arg(m.accountCountText(b.accounts.length)), b.sf_symbol, () => {
+                m.setAccountView("byBank"); m.sidebarSelection = "bank:" + b.id })
         for (const g of m.namedUserGroups)
             add(g.name, qsTr("Gruppe · %1").arg(m.accountCountText(g.accounts.length)), g.sf_symbol, () => {
                 m.setAccountView("byGroup"); m.sidebarSelection = "userGroup:" + g.uuid })

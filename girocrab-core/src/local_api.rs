@@ -1,8 +1,9 @@
 //! Read-only local interface for external analysis tools (GitHub #136).
 //!
 //! A versioned JSON request/response layer over the open vault: accounts,
-//! categories, bookings (keyset-paged) and period summaries. No transport here:
-//! the app serves it while the vault is unlocked (local socket, MCP adapter).
+//! categories, bookings (keyset-paged) and period summaries. The app serves it
+//! on a local socket while the vault is unlocked ([`server`]); every socket
+//! request carries the access token the user created in the app.
 //!
 //! - Opt-in: off until the user stores an enabled [`ShareScope`]; the scope is
 //!   read on every request, so revoking takes effect at once.
@@ -47,7 +48,7 @@ const MAX_SUMMARY_DAYS: i64 = 3 * 366;
 
 /// What the user shares. Accounts are an explicit allow list: an account added
 /// later is not shared until the user selects it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
 #[serde(default)]
 pub struct ShareScope {
     pub enabled: bool,
@@ -58,6 +59,9 @@ pub struct ShareScope {
     /// Purpose and booking text.
     pub share_purpose: bool,
     pub share_notes: bool,
+    /// SHA-256 (hex) of the access token; "" = none, socket requests are refused.
+    /// Only `create_local_api_token` / `revoke_local_api_token` change it.
+    pub token_sha256: String,
 }
 
 impl Default for ShareScope {
@@ -69,6 +73,7 @@ impl Default for ShareScope {
             share_counterparty: true,
             share_purpose: true,
             share_notes: false,
+            token_sha256: String::new(),
         }
     }
 }
@@ -192,6 +197,9 @@ pub struct ApiSummary {
 struct Request {
     #[serde(default)]
     v: Option<u32>,
+    /// Required on the socket, ignored in process.
+    #[serde(default)]
+    token: Option<String>,
     method: String,
     #[serde(default)]
     params: Value,
@@ -225,6 +233,12 @@ struct SummaryParams {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiErrorCode {
     Disabled,
+    /// Missing or wrong access token.
+    Unauthorized,
+    /// The vault is locked (socket only).
+    Locked,
+    /// All connections in use; try again later (socket only).
+    Busy,
     UnsupportedVersion,
     UnknownMethod,
     InvalidParams,
@@ -236,6 +250,9 @@ impl ApiErrorCode {
     pub fn as_str(&self) -> &'static str {
         match self {
             ApiErrorCode::Disabled => "disabled",
+            ApiErrorCode::Unauthorized => "unauthorized",
+            ApiErrorCode::Locked => "locked",
+            ApiErrorCode::Busy => "busy",
             ApiErrorCode::UnsupportedVersion => "unsupported_version",
             ApiErrorCode::UnknownMethod => "unknown_method",
             ApiErrorCode::InvalidParams => "invalid_params",
@@ -273,38 +290,96 @@ impl From<CoreError> for ApiError {
 
 type ApiResult<T> = Result<T, ApiError>;
 
+/// The stored scope; default (disabled, nothing shared) when none or an
+/// unreadable one is stored. Its accounts are the live ones only: a deleted
+/// account is neither served nor reported as shared.
+fn stored_scope(conn: &rusqlite::Connection) -> Result<ShareScope, CoreError> {
+    let mut scope: ShareScope = Vault::setting_inner(conn, SCOPE_SETTING)?
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    scope.account_ids = live_account_ids(conn, &scope.account_ids)?;
+    Ok(scope)
+}
+
+/// `ids` without deleted or unknown accounts, in the accounts' sort order.
+fn live_account_ids(conn: &rusqlite::Connection, ids: &[i64]) -> Result<Vec<i64>, CoreError> {
+    let wanted: HashSet<i64> = ids.iter().copied().collect();
+    let mut stmt =
+        conn.prepare("SELECT id FROM accounts WHERE deleted_ms IS NULL ORDER BY sort_order, id")?;
+    let live = stmt
+        .query_map([], |r| r.get::<_, i64>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(live.into_iter().filter(|id| wanted.contains(id)).collect())
+}
+
 // MARK: - Vault
 
+#[uniffi::export]
 impl Vault {
     /// The stored scope; default (disabled, nothing shared) when none is stored.
     pub fn local_api_scope(&self) -> Result<ShareScope, CoreError> {
-        let stored = self.get_setting(SCOPE_SETTING.into())?;
-        Ok(stored
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default())
+        let db = self.db()?;
+        stored_scope(&db)
     }
 
-    pub fn set_local_api_scope(&self, scope: &ShareScope) -> Result<(), CoreError> {
-        let json = serde_json::to_string(scope).map_err(|e| CoreError::InvalidInput {
+    /// Stores what is shared. The token stays as stored (`token_sha256` of
+    /// `scope` is ignored), so saving a toggle never revokes or restores access.
+    pub fn set_local_api_scope(&self, scope: ShareScope) -> Result<(), CoreError> {
+        self.update_local_api_scope(|stored| {
+            *stored = ShareScope {
+                token_sha256: std::mem::take(&mut stored.token_sha256),
+                ..scope
+            }
+        })
+    }
+
+    /// A new access token for external tools, shown once: only its hash is
+    /// stored, and it replaces (revokes) the previous one.
+    pub fn create_local_api_token(&self) -> Result<String, CoreError> {
+        use rand::RngCore;
+        let mut raw = [0u8; 32];
+        rand::rng().fill_bytes(&mut raw);
+        let token = format!("gcapi_{}", hex::encode(raw));
+        self.update_local_api_scope(|s| s.token_sha256 = token_hash(&token))?;
+        Ok(token)
+    }
+
+    /// Revokes access: socket requests are refused until a new token exists.
+    pub fn revoke_local_api_token(&self) -> Result<(), CoreError> {
+        self.update_local_api_scope(|s| s.token_sha256.clear())
+    }
+}
+
+impl Vault {
+    /// Read, change and write the stored scope under one vault lock, so a
+    /// settings save and a new token at the same moment cannot undo each other.
+    fn update_local_api_scope(
+        &self,
+        change: impl FnOnce(&mut ShareScope),
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let mut scope = stored_scope(&db)?;
+        change(&mut scope);
+        scope.account_ids = live_account_ids(&db, &scope.account_ids)?;
+        let json = serde_json::to_string(&scope).map_err(|e| CoreError::InvalidInput {
             message: e.to_string(),
         })?;
-        self.set_setting(SCOPE_SETTING.into(), json)
+        Vault::set_setting_inner(&db, SCOPE_SETTING, &json)
     }
 
     /// Answers one JSON request (`{"v":1,"method":"…","params":{…}}`) with
     /// `{"v":1,"result":…}` or `{"v":1,"error":{"code":"…","message":"…"}}`.
+    /// In process, without a token (tests, the app itself).
     pub fn local_api_request(&self, request: &str) -> String {
-        let response = match self.local_api_dispatch(request) {
-            Ok(result) => json!({ "v": API_VERSION, "result": result }),
-            Err(e) => json!({
-                "v": API_VERSION,
-                "error": { "code": e.code.as_str(), "message": e.message },
-            }),
-        };
-        response.to_string()
+        response(self.local_api_dispatch(request, false))
     }
 
-    fn local_api_dispatch(&self, request: &str) -> ApiResult<Value> {
+    /// The same for a request from the socket: it must carry the current token.
+    pub(crate) fn local_api_socket_request(&self, request: &str) -> String {
+        response(self.local_api_dispatch(request, true))
+    }
+
+    fn local_api_dispatch(&self, request: &str, require_token: bool) -> ApiResult<Value> {
         let req: Request = serde_json::from_str(request)
             .map_err(|e| ApiError::invalid(format!("malformed request: {e}")))?;
         if req.v.is_some_and(|v| v != API_VERSION) {
@@ -314,6 +389,17 @@ impl Vault {
             ));
         }
         let scope = self.local_api_scope()?;
+        // Token first: without it, a socket client learns nothing, not even
+        // whether access is switched on.
+        if require_token {
+            let given = req.token.as_deref().map(token_hash).unwrap_or_default();
+            if scope.token_sha256.is_empty() || !same_bytes(&given, &scope.token_sha256) {
+                return Err(ApiError::new(
+                    ApiErrorCode::Unauthorized,
+                    "missing or wrong access token",
+                ));
+            }
+        }
         if !scope.enabled {
             return Err(ApiError::new(
                 ApiErrorCode::Disabled,
@@ -618,16 +704,7 @@ impl Vault {
 /// Ids of the shared accounts that still exist: what bookings and sums need,
 /// without the balances and counts of `list_accounts`.
 fn shared_account_ids(db: &rusqlite::Connection, scope: &ShareScope) -> ApiResult<Vec<i64>> {
-    let wanted: HashSet<i64> = scope.account_ids.iter().copied().collect();
-    let mut stmt = db
-        .prepare("SELECT id FROM accounts WHERE deleted_ms IS NULL ORDER BY sort_order, id")
-        .map_err(CoreError::from)?;
-    let ids = stmt
-        .query_map([], |r| r.get::<_, i64>(0))
-        .map_err(CoreError::from)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(CoreError::from)?;
-    Ok(ids.into_iter().filter(|id| wanted.contains(id)).collect())
+    Ok(live_account_ids(db, &scope.account_ids)?)
 }
 
 /// Requested accounts, all of them shared (an unknown id reads as not shared,
@@ -643,6 +720,32 @@ fn requested_accounts(shared: &[i64], requested: &[i64]) -> ApiResult<Vec<i64>> 
         ));
     }
     Ok(requested.to_vec())
+}
+
+/// The response envelope of a dispatch result.
+pub(crate) fn response(result: ApiResult<Value>) -> String {
+    match result {
+        Ok(result) => json!({ "v": API_VERSION, "result": result }),
+        Err(e) => json!({
+            "v": API_VERSION,
+            "error": { "code": e.code.as_str(), "message": e.message },
+        }),
+    }
+    .to_string()
+}
+
+fn token_hash(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(token.as_bytes()))
+}
+
+/// Comparison in constant time for equal lengths (token hashes).
+fn same_bytes(a: &str, b: &str) -> bool {
+    a.len() == b.len()
+        && a.bytes()
+            .zip(b.bytes())
+            .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+            == 0
 }
 
 fn to_value<T: Serialize>(v: T) -> Value {
@@ -746,12 +849,14 @@ fn api_transaction(scope: &ShareScope, t: &Booking) -> ApiTransaction {
         currency: t.currency.clone(),
         category_id: t.category_id,
         category_path: t.category_path.clone(),
-        // The merchant is read from counterparty and purpose.
-        merchant: if scope.share_counterparty && scope.share_purpose {
-            t.merchant_name.clone()
-        } else {
-            String::new()
-        },
+        // The merchant is read from counterparty and purpose, so it is masked
+        // like them ("Darlehen Kto 4009988").
+        merchant: shared_text(
+            scope,
+            scope.share_counterparty && scope.share_purpose,
+            &t.merchant_name,
+        )
+        .unwrap_or_default(),
         flow: flow_str(t.flow).into(),
         // Read from booking text and purpose.
         payment_method: if scope.share_purpose {
@@ -768,6 +873,9 @@ fn api_transaction(scope: &ShareScope, t: &Booking) -> ApiTransaction {
         note: shared_text(scope, scope.share_notes, &t.note).filter(|n| !n.is_empty()),
     }
 }
+
+#[cfg(unix)]
+pub mod server;
 
 #[cfg(test)]
 mod tests;

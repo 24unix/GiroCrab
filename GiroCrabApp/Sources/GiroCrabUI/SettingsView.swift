@@ -34,6 +34,11 @@ struct SettingsView: View {
                 .tabItem { Label("Sicherheit", systemImage: "lock.shield") }
                 .tag(SettingsTab.security)
             #if os(macOS)
+            ExternalAccessSettings()
+                .settingsPane(height: 640)
+                .disabled(!model.isUnlocked)
+                .tabItem { Label("Analyse", systemImage: "chart.bar.doc.horizontal") }
+                .tag(SettingsTab.externalAccess)
             // Own pane like macOS "Softwareupdate"; works without an open vault.
             // Only in the Developer-ID build (Sparkle registered).
             if AppUpdates.shared.isAvailable {
@@ -154,7 +159,7 @@ struct GeneralSettings: View {
         }
         .formStyle(.grouped)
         #if os(iOS)
-        .sheet(isPresented: $showHelp) { HelpSheet() }
+        .capturableSheet(isPresented: $showHelp) { HelpSheet() }
         #endif
     }
 }
@@ -182,7 +187,7 @@ struct BalanceChartSettingsSection: View {
 
 /// Tabs of the settings window (macOS) / sheet (iOS).
 enum SettingsTab: Hashable {
-    case general, banks, documents, security, updates
+    case general, banks, documents, security, externalAccess, updates
 
     /// `--demo-settings <name>` (screenshots).
     init?(demoName: String) {
@@ -193,6 +198,7 @@ enum SettingsTab: Hashable {
         case "logos": self = .general   // merchant logos are a section of "Allgemein"
         case "documents": self = .documents
         case "security": self = .security
+        case "external": self = .externalAccess
         case "updates": self = .updates
         default: return nil
         }
@@ -200,6 +206,7 @@ enum SettingsTab: Hashable {
 }
 
 struct BankConnectionsSettings: View {
+    @Environment(\.reportRedaction) private var redaction
     @Environment(AppModel.self) private var model
     @State private var showAddBank = false
     @State private var editing: BankConnection?
@@ -228,11 +235,11 @@ struct BankConnectionsSettings: View {
                     HStack(spacing: 10) {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(c.tint.opacity(0.12))
-                            .overlay(Text(c.monogram).appFont(.caption, weight: .bold).foregroundStyle(c.tint))
+                            .overlay(Text(c.monogram).appFont(.caption, weight: .bold).foregroundStyle(c.tint).sensitive())
                             .frame(width: 30, height: 30)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(c.displayName).fontWeight(.medium)
-                            Text(protocolName(c.connector) + (c.loginName.isEmpty ? "" : " · \(c.loginName)"))
+                            Text(c.displayName).fontWeight(.medium).sensitive()
+                            Text(protocolName(c.connector) + (c.loginName.isEmpty ? "" : " · \(redaction.masking(c.loginName))"))
                                 .appFont(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -266,11 +273,11 @@ struct BankConnectionsSettings: View {
             fintsRegistrationSection
         }
         .formStyle(.grouped)
-        .sheet(isPresented: $showAddBank) {
+        .capturableSheet(isPresented: $showAddBank) {
             AddBankSheet()
                 .environment(model)
         }
-        .sheet(item: $editing) { c in
+        .capturableSheet(item: $editing) { c in
             ConnectionEditSheet(connection: c)
                 .environment(model)
         }
@@ -383,6 +390,7 @@ struct DocumentFolderSettings: View {
                             Text(displayPath(path))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
+                                .sensitive() // the path names the user
                                 .help(path)
                             Button("Ändern …") { choosing = true }
                             Button("Im Finder zeigen") {
@@ -451,7 +459,7 @@ struct SecuritySettings: View {
                         }
                 }
                 #endif
-                LabeledContent("Datei", value: vaultPath)
+                LabeledContent("Datei") { Text(vaultPath).sensitive() } // the path names the user
                     .textSelection(.enabled)
                 LabeledContent("Version", value: AppVersionDisplay.current(core: coreVersion()))
                     .textSelection(.enabled)
@@ -613,7 +621,7 @@ struct ICloudSyncSection: View {
                     }
                 }
             if sync.isEnabled {
-                LabeledContent("Ordner", value: sync.folderName ?? "iCloud Drive / GiroCrab")
+                LabeledContent("Ordner") { Text(sync.folderName ?? "iCloud Drive / GiroCrab").sensitive() }
                 if sync.folderNotice {
                     Text("Der Ordner „GiroCrab“ in iCloud Drive enthält bereits andere Dateien. Ihre bisherigen Daten bleiben unverändert im bisherigen Ordner und werden dort weiter synchronisiert.")
                         .appFont(.caption).foregroundStyle(.orange)
@@ -695,7 +703,7 @@ struct ICloudSyncSection: View {
                 .appFont(.caption).foregroundStyle(.secondary)
         } header: { Text("iCloud Sync").appSectionHeader() }
         .onChange(of: sync.keyMismatch) { _, bad in if bad { showKeySheet = true } }
-        .sheet(isPresented: $showKeySheet) {
+        .capturableSheet(isPresented: $showKeySheet) {
             KeyPasteSheet().environment(model)
         }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { r in

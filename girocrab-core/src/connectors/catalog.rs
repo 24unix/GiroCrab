@@ -135,6 +135,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("Bausparverträge und Darlehen der Alte Leipziger über die Schnittstelle des fin4u-Portals. Inoffizielle Nutzung – kann sich ändern.").into(),
         },
+        ConnectorKind::VolkswagenBank => BankDescriptor {
+            kind,
+            name: "Volkswagen Bank".into(),
+            protocol: tr("Online-Banking-Portal (Direkt-Login, photoTAN/pushTAN)").into(),
+            bank_code: String::new(),
+            sf_symbol: "building.columns".into(),
+            login_label: tr("Benutzername").into(),
+            secret_label: tr("Passwort / PIN").into(),
+            required_settings: vec![],
+            note: tr("Volkswagen Bank: Konten, Salden und Umsätze; die Anmeldung wird per pushTAN in der Volkswagen-Bank-App freigegeben. photoTAN wird noch nicht unterstützt. Interne Portal-API; Änderungen sind möglich.").into(),
+        },
         ConnectorKind::Fnz => BankDescriptor {
             kind,
             name: "FNZ Bank".into(),
@@ -420,6 +431,15 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[],
     },
     MatrixEntry {
+        name: "PayPal (DE)",
+        kind: None,
+        interface: Interface::EnableBanking,
+        official: Some(true),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
         name: "Revolut",
         kind: None,
         interface: Interface::EnableBanking,
@@ -470,6 +490,15 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
             Capability::Documents,
         ],
         status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
+        name: "Volkswagen Bank",
+        kind: Some(ConnectorKind::VolkswagenBank),
+        interface: Interface::WebPortal,
+        official: Some(false),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Limited,
         issues: &[],
     },
     MatrixEntry {
@@ -561,6 +590,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),
         ConnectorKind::Easybank => Box::new(easybank::EasybankConnector::new()),
         ConnectorKind::AlteLeipziger => Box::new(fin4u::Fin4uConnector::new()),
+        ConnectorKind::VolkswagenBank => Box::new(volkswagen_bank::VolkswagenBankConnector::new()),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {
             let (country, aspsp) = ConnectorKind::enable_banking_target(key).unwrap_or(("DE", ""));

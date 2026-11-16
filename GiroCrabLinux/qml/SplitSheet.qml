@@ -22,9 +22,12 @@ Sheet {
 
     readonly property real total: booking ? Math.abs(booking.amount_cents) : 0
     readonly property int sign: booking && booking.amount_cents < 0 ? -1 : 1
-    function cents(p) { const c = AppModel.parseCents(p.amount); return c === null ? 0 : c }
+    // Fmt.plain writes negative parts with "−" (U+2212), the core parser takes "-"
+    function cents(p) { const c = AppModel.parseCents(String(p.amount).replace("−", "-")); return c === null ? 0 : c }
     readonly property real remaining: { revision; return total - parts.reduce((s, p) => s + cents(p), 0) }
-    readonly property bool valid: { revision; return parts.length >= 2 && remaining === 0 && parts.every(p => cents(p) > 0) }
+    // Amounts are entered in the booking's direction: a negative part counter-books the others
+    // (+59 = +200 and -141, #427). Only the sum must match; no part may be 0 (SplitMath).
+    readonly property bool valid: { revision; return parts.length >= 2 && remaining === 0 && parts.every(p => cents(p) !== 0) }
     function part(categoryID, amount, note) { return { uid: nextUid++, categoryID: categoryID, amount: amount, note: note } }
 
     onAboutToShow: {
@@ -40,7 +43,7 @@ Sheet {
             hasSplits = existing.length > 0
             parts = existing.length === 0
                 ? [part(b.category_id, Fmt.plain(total), ""), part(null, "", "")]
-                : existing.map(s => part(s.category_id, Fmt.plain(Math.abs(s.amount_cents)), s.note))
+                : existing.map(s => part(s.category_id, Fmt.plain(sign * s.amount_cents), s.note))
         })
     }
     function save() {
@@ -103,14 +106,36 @@ Sheet {
             Layout.fillWidth: true
             IconButton {
                 text: qsTr("Teil hinzufügen"); symbol: "plus"; symbolSize: 13
-                onClicked: sheet.parts = sheet.parts.concat([sheet.part(null, sheet.remaining > 0 ? Fmt.plain(sheet.remaining) : "", "")])
+                onClicked: sheet.parts = sheet.parts.concat([sheet.part(null, sheet.remaining !== 0 ? Fmt.plain(sheet.remaining) : "", "")])
             }
             Item { Layout.fillWidth: true }
             Text {
-                text: qsTr("Rest: %1").arg(Fmt.money(sheet.remaining))
-                font.pixelSize: Theme.callout + 1; font.features: { "tnum": 1 }
+                text: qsTr("Restbetrag: %1").arg(Fmt.money(sheet.remaining))
+                font.pixelSize: Theme.callout + 1; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                 color: sheet.remaining === 0 ? Theme.inflow : Theme.warning
             }
+            // one click: the rest goes into the last part (#427)
+            Button {
+                visible: sheet.remaining !== 0 && sheet.parts.length > 0
+                text: qsTr("Rest zuweisen")
+                ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: qsTr("Trägt den Restbetrag im letzten Teil ein")
+                onClicked: {
+                    const last = sheet.parts.length - 1
+                    const others = sheet.parts.reduce((s, p, i) => i === last ? s : s + sheet.cents(p), 0)
+                    sheet.parts[last].amount = Fmt.plain(sheet.total - others)
+                    // rebuild the rows: the last amount field shows the new text
+                    sheet.parts = sheet.parts.slice()
+                    sheet.revision++
+                }
+            }
+        }
+        // Why "Speichern" is greyed out (#383): say so instead of leaving it silent.
+        Text {
+            visible: !sheet.valid && sheet.parts.length > 0 && sheet.error === ""
+            text: sheet.remaining !== 0
+                ? qsTr("Die Teilbeträge müssen zusammen %1 ergeben (Restbetrag: %2), erst dann lässt sich speichern.").arg(Fmt.money(sheet.total)).arg(Fmt.money(sheet.remaining))
+                : qsTr("Jeder Teil braucht einen Betrag ungleich 0.")
+            font.pixelSize: Theme.callout + 1; color: Theme.secondary; wrapMode: Text.WordWrap; Layout.fillWidth: true
         }
         Text { visible: sheet.error !== ""; text: sheet.error; font.pixelSize: Theme.callout + 1; color: Theme.negative; wrapMode: Text.WordWrap; Layout.fillWidth: true }
         RowLayout {

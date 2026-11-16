@@ -9,6 +9,8 @@ ToolButton {
     property string symbol
     property int symbolSize: 16
     property color tint: enabled ? Theme.secondary : Theme.withAlpha(Theme.secondary, 0.4)
+    /// Label colour (role: .destructive → Theme.negative).
+    property color textColor: Theme.text
     implicitWidth: Math.max(28, content.implicitWidth + 12)
     implicitHeight: 26
     contentItem: Item {
@@ -18,7 +20,7 @@ ToolButton {
             anchors.centerIn: parent
             spacing: 5
             SFIcon { visible: b.symbol !== ""; symbol: b.symbol; size: b.symbolSize; color: b.checked ? Theme.accent : b.tint }
-            Text { visible: b.text !== ""; text: b.text; font.pixelSize: b.font.pixelSize > 0 ? b.font.pixelSize : Theme.body; color: b.enabled ? Theme.text : Theme.tertiary }
+            Text { visible: b.text !== ""; text: b.text; font.pixelSize: b.font.pixelSize > 0 ? b.font.pixelSize : Theme.body; color: b.enabled ? b.textColor : Theme.tertiary }
         }
     }
     ToolTip.visible: hovered && ToolTip.text !== ""

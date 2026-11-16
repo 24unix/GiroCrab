@@ -37,4 +37,6 @@ Rectangle {
         Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Keine Vorschau"); font.pixelSize: Theme.title3; font.weight: Font.DemiBold; color: Theme.text }
         Button { visible: preview.doc !== null; Layout.alignment: Qt.AlignHCenter; text: qsTr("Im Standardprogramm öffnen"); onClicked: AppModel.quickLook(preview.doc) }
     }
+    // statements and receipts are full of names, IBANs and amounts (#301)
+    Sensitive {}
 }

@@ -236,6 +236,8 @@ WebLoginFlow {
         running = false
         AppModel.documentsVersion++
         AppModel.reloadAll()
+        // accounts another login already delivers wait for a choice (#346)
+        AppModel.checkPendingAccountSelection()
     }
 
     Button { text: qsTr("Schließen"); onClicked: flow.close(false) }

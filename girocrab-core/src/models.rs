@@ -44,6 +44,8 @@ pub enum ConnectorKind {
     Easybank,
     /// Alte Leipziger (Bauspar) via the fin4u customer portal API
     AlteLeipziger,
+    /// Volkswagen Bank online banking (photoTAN / pushTAN) via the web portal.
+    VolkswagenBank,
 }
 
 impl ConnectorKind {
@@ -66,6 +68,7 @@ impl ConnectorKind {
             ConnectorKind::Quirion => "quirion",
             ConnectorKind::Easybank => "easybank",
             ConnectorKind::AlteLeipziger => "fin4u",
+            ConnectorKind::VolkswagenBank => "volkswagenbank",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -117,6 +120,7 @@ impl ConnectorKind {
             ConnectorKind::Quirion,
             ConnectorKind::Easybank,
             ConnectorKind::AlteLeipziger,
+            ConnectorKind::VolkswagenBank,
         ]
     }
 }

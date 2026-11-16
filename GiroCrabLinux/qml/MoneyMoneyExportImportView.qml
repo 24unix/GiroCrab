@@ -164,6 +164,7 @@ ColumnLayout {
 
         // MARK: - 2. Options
         ScrollView {
+            ScrollBar.vertical: ScrollViewBar {}
             contentWidth: availableWidth
             enabled: !v.importing
             ColumnLayout {

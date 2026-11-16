@@ -24,7 +24,7 @@ struct TwoFactorSheet: View {
                 HStack(spacing: 10) {
                     SymbolTile(symbol: active.connection.sfSymbol, tint: active.connection.tint, size: 30)
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(active.connection.displayName).appFont(.headline)
+                        Text(active.connection.displayName).appFont(.headline).sensitive()
                         Text(c.methodName).appFont(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -46,6 +46,7 @@ struct TwoFactorSheet: View {
                         .padding(.top, 6)
                     Text(c.title).appFont(.title3, weight: .bold)
                     Text(c.message).multilineTextAlignment(.center).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .sensitive() // a transfer TAN names payee and amount
                     if let s = c.redirectUrl, let url = URL(string: s) {
                         Button { openURL(url) } label: { Label("Im Browser anmelden", systemImage: "safari") }
                             .buttonStyle(.borderedProminent)
@@ -64,8 +65,10 @@ struct TwoFactorSheet: View {
                         img.resizable().interpolation(.none).scaledToFit().frame(maxWidth: 220, maxHeight: 220)
                             .background(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .sensitive() // photoTAN/QR codes encode the order
                     }
                     Text(c.message).multilineTextAlignment(.center).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .sensitive() // a transfer TAN names payee and amount
                     TextField("TAN / Code", text: $code)
                         .appFont(.title2, design: .monospaced)
                         .multilineTextAlignment(.center)
@@ -116,6 +119,7 @@ struct TwoFactorSheet: View {
                     DisclosureGroup("Stattdessen im eigenen Browser anmelden", isExpanded: $showManualRedirect) {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(c.message).appFont(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                                .sensitive()
                             if let s = c.redirectUrl, let url = URL(string: s) {
                                 Button { openURL(url) } label: { Label("Zustimmungsseite öffnen", systemImage: "arrow.up.right.square") }
                                     .buttonStyle(.bordered)

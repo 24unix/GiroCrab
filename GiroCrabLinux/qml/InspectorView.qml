@@ -11,6 +11,8 @@ Rectangle {
     readonly property var b: AppModel.selectedBooking
 
     ScrollView {
+
+        ScrollBar.vertical: ScrollViewBar {}
         anchors.fill: parent
         contentWidth: availableWidth
         ColumnLayout {
@@ -51,11 +53,11 @@ Rectangle {
                     GridLayout {
                         columns: 2; Layout.fillWidth: true; rowSpacing: 4
                         Text { text: qsTr("Summe"); color: Theme.text; font.pixelSize: Theme.callout + 1; Layout.fillWidth: true }
-                        Text { text: Fmt.money(multi.income + multi.expense); color: Theme.secondary; font.pixelSize: Theme.callout + 1 }
+                        Text { text: Fmt.money(multi.income + multi.expense); color: Theme.secondary; font.pixelSize: Theme.callout + 1; Sensitive {} }
                         Text { visible: multi.income !== 0; text: qsTr("Einnahmen"); color: Theme.text; font.pixelSize: Theme.callout + 1 }
-                        Text { visible: multi.income !== 0; text: Fmt.money(multi.income); color: Theme.secondary; font.pixelSize: Theme.callout + 1 }
+                        Text { visible: multi.income !== 0; text: Fmt.money(multi.income); color: Theme.secondary; font.pixelSize: Theme.callout + 1; Sensitive {} }
                         Text { visible: multi.expense !== 0; text: qsTr("Ausgaben"); color: Theme.text; font.pixelSize: Theme.callout + 1 }
-                        Text { visible: multi.expense !== 0; text: Fmt.money(multi.expense); color: Theme.secondary; font.pixelSize: Theme.callout + 1 }
+                        Text { visible: multi.expense !== 0; text: Fmt.money(multi.expense); color: Theme.secondary; font.pixelSize: Theme.callout + 1; Sensitive {} }
                     }
                     Button { text: qsTr("Kategorisieren …"); icon.name: SF.icon("tag"); highlighted: true; Layout.fillWidth: true; onClicked: AppModel.showCategorizer = true }
                     Button { text: qsTr("Auswahl aufheben"); onClicked: AppModel.selectBooking(AppModel.selectedBookingID) }
@@ -97,6 +99,7 @@ Rectangle {
     component ReceiptCard: Card {
         id: rc
         property var booking
+        readonly property var amazonRef: AmazonOrderRef.parse(booking)
         ColumnLayout {
             width: parent.width; spacing: 12
             RowLayout {
@@ -135,6 +138,7 @@ Rectangle {
                 ColumnLayout {
                     id: titleBlock
                     spacing: 2; Layout.fillWidth: true
+                    Layout.minimumWidth: 0   // the name and account line elide (larger text size, #343)
                     Layout.preferredHeight: Math.max(implicitHeight, implicitHeight - merchantName.implicitHeight
                                                      + Math.ceil(nameMetrics.lineSpacing * 2))
                     Item { Layout.fillHeight: true }
@@ -148,8 +152,9 @@ Rectangle {
                         FontMetrics { id: nameMetrics; font: merchantName.font }
                         HoverHandler { id: nameHover; enabled: merchantName.truncated }
                         ToolTip.visible: nameHover.hovered; ToolTip.text: text; ToolTip.delay: 500
+                        Sensitive {}
                     }
-                    Text { text: rc.booking.account_name + " · " + rc.booking.payment_method; font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
+                    Text { text: rc.booking.account_name + " · " + rc.booking.payment_method; font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                     MerchantDomainRow { merchant: rc.booking.merchant; Layout.fillWidth: true }
                     Item { Layout.fillHeight: true }
                 }
@@ -158,17 +163,59 @@ Rectangle {
                 text: Fmt.signed(rc.booking.amount_cents)
                 font.pixelSize: Theme.largeTitle + 6; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
                 color: rc.booking.amount_cents > 0 ? Theme.inflow : Theme.outflow
+                Sensitive {}
             }
             RowLayout {
                 spacing: 6
                 SFIcon { symbol: "calendar"; size: 12; color: Theme.tertiary }
-                Text { text: Fmt.longDate(rc.booking.booking_date); font.pixelSize: Theme.caption; color: Theme.secondary; Layout.fillWidth: true }
+                Text { text: Fmt.longDate(rc.booking.booking_date); font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true }
                 FlowBadge { flow: rc.booking.flow }
             }
+            // Amazon order: one item per line instead of the ";" purpose run;
+            // an item with a stored ASIN opens its product page (#354)
+            ColumnLayout {
+                visible: rc.amazonRef !== null && rc.amazonRef.itemList.length > 0
+                Layout.fillWidth: true; spacing: 2
+                Repeater {
+                    model: visible ? rc.amazonRef.itemList : []
+                    TextEdit {
+                        id: amazonItem
+                        required property int index
+                        required property string modelData
+                        readonly property string url: AmazonOrderRef.productURL(rc.amazonRef, index)
+                        text: modelData; readOnly: true; selectByMouse: url === ""
+                        wrapMode: Text.Wrap; font.pixelSize: Theme.callout + 1; Layout.fillWidth: true
+                        color: url !== "" ? Theme.accent : Theme.text
+                        HoverHandler { id: itemHover; enabled: amazonItem.url !== ""; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { enabled: amazonItem.url !== ""; onTapped: Qt.openUrlExternally(amazonItem.url) }
+                        ToolTip.visible: itemHover.hovered; ToolTip.delay: 500
+                        ToolTip.text: qsTr("Produkt auf %1 öffnen").arg(rc.amazonRef.domain)
+                        Sensitive {}
+                    }
+                }
+            }
             TextEdit {
-                visible: rc.booking.clean_purpose !== ""
+                visible: !(rc.amazonRef !== null && rc.amazonRef.itemList.length > 0) && rc.booking.clean_purpose !== ""
                 text: rc.booking.clean_purpose; readOnly: true; selectByMouse: true
                 wrapMode: Text.Wrap; font.pixelSize: Theme.callout + 1; color: Theme.text; Layout.fillWidth: true
+                Sensitive {}
+            }
+            // refund: jump to the order it belongs to (same order code)
+            RowLayout {
+                id: refundJump
+                readonly property var source: AmazonOrderRef.refundSource(rc.booking, AppModel.bookings)
+                visible: source !== null
+                Layout.fillWidth: true; spacing: 5
+                SFIcon { symbol: "arrow.uturn.backward"; size: 11; color: Theme.accent; Layout.alignment: Qt.AlignTop; Layout.topMargin: 2 }
+                Text {
+                    text: refundJump.source ? qsTr("Erstattung zu: %1").arg(refundJump.source.items) : ""
+                    font.pixelSize: Theme.caption; color: Theme.accent; wrapMode: Text.Wrap; Layout.fillWidth: true
+                    Sensitive {}
+                }
+                HoverHandler { id: refundHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: AppModel.selectedBookingID = refundJump.source.id }
+                ToolTip.visible: refundHover.hovered; ToolTip.delay: 600
+                ToolTip.text: qsTr("Zur erstatteten Bestellung springen")
             }
             RowLayout {
                 Text { text: qsTr("Geprüft"); font.pixelSize: Theme.caption; color: Theme.text }
@@ -195,7 +242,9 @@ Rectangle {
         SFIcon { symbol: "globe"; size: 10; color: Theme.tertiary }
         Text { text: merchant.domain || (merchant.is_person ? qsTr("Privatperson – kein Logo") : qsTr("Domain festlegen"))
                font.family: "monospace"; font.pixelSize: Theme.caption; color: Theme.tertiary
-               elide: Text.ElideRight; Layout.minimumWidth: 24; Layout.preferredWidth: implicitWidth }
+               elide: Text.ElideRight; Layout.minimumWidth: 24; Layout.preferredWidth: implicitWidth
+               // a guessed domain spells out the (redacted) counterparty; dictionary brands show their logo anyway
+               Sensitive { when: merchant.domain !== "" && merchant.domain_source !== "dictionary" } }
         Text { visible: merchant.domain !== ""; text: "· " + parent.sourceLabel; font.pixelSize: Theme.caption2; color: Theme.tertiary }
         SFIcon { symbol: "pencil"; size: 10; color: Theme.tertiary }
         Item { Layout.fillWidth: true }
@@ -247,6 +296,7 @@ Rectangle {
                 onActiveFocusChanged: if (!activeFocus) nc.save()
                 // Esc: leave the note (saves via focus loss) and go back to the list
                 Keys.onEscapePressed: AppModel.focusList()
+                Sensitive {}
             }
         }
     }
@@ -315,8 +365,34 @@ Rectangle {
                     ? qsTr("Nicht als wiederkehrend erkannt. Markieren Sie die Buchung, damit sie in den anstehenden Fixkosten erscheint.")
                     : rec.series.source === "Manual" ? qsTr("Manuell markiert · ca. %1").arg(Fmt.money(rec.series.amount_cents))
                     : qsTr("Automatisch erkannt aus %1 Buchungen · ca. %2").arg(rec.series.occurrences).arg(Fmt.money(rec.series.amount_cents))
+                Sensitive { when: rec.series !== null }
             }
         }
+    }
+
+    // MerchantHistoryCard.statsRow
+    component StatsRow: ColumnLayout {
+        id: sr
+        property var stats: null
+        property string label: ""
+        property string accountName: ""
+        spacing: 4; Layout.fillWidth: true
+        Text { visible: sr.label !== ""; text: sr.accountName ? sr.label + " · " + sr.accountName : sr.label
+               font.pixelSize: Theme.caption; font.weight: Font.Medium; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+               Sensitive { when: sr.accountName !== "" } }
+        RowLayout {
+            spacing: 10; Layout.fillWidth: true
+            Repeater {
+                model: sr.stats ? [[qsTr("Buchungen"), sr.stats.count + "×", false], [qsTr("Summe"), Fmt.money(sr.stats.total_cents), true], [qsTr("Ø Betrag"), Fmt.money(sr.stats.average_cents), true]] : []
+                ColumnLayout { required property var modelData; spacing: 2; Layout.fillWidth: true; Layout.preferredWidth: 1
+                    Text { text: modelData[0]; font.pixelSize: Theme.caption2; color: Theme.secondary }
+                    Text { text: modelData[1]; font.pixelSize: Theme.callout + 1; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true
+                           Sensitive { when: modelData[2] } } }
+            }
+        }
+        Text { visible: sr.stats !== null && sr.stats.first_date !== ""
+               text: sr.stats ? qsTr("Seit %1 · zuletzt %2").arg(Fmt.medium(sr.stats.first_date)).arg(Fmt.medium(sr.stats.last_date)) : ""
+               font.pixelSize: Theme.caption2; color: Theme.tertiary }
     }
 
     // MerchantHistoryCard
@@ -324,22 +400,17 @@ Rectangle {
         id: mh
         property var booking
         readonly property var s: AppModel.merchantStats && AppModel.merchantStats.key === booking.merchant.key ? AppModel.merchantStats : null
+        /// The merchant also occurs on other accounts (#299): the booking's own account's stats.
+        readonly property var own: {
+            const o = AppModel.merchantAccountStats
+            return s && o && o.account_id === booking.account_id && o.stats.key === s.key && o.stats.count < s.count ? o.stats : null
+        }
         ColumnLayout {
             width: parent.width; spacing: 10
             CardTitle { text: qsTr("Händler-Historie") }
-            RowLayout {
-                visible: mh.s !== null
-                spacing: 10; Layout.fillWidth: true
-                Repeater {
-                    model: mh.s ? [[qsTr("Buchungen"), mh.s.count + "×"], [qsTr("Summe"), Fmt.money(mh.s.total_cents)], [qsTr("Ø Betrag"), Fmt.money(mh.s.average_cents)]] : []
-                    ColumnLayout { required property var modelData; spacing: 2; Layout.fillWidth: true; Layout.preferredWidth: 1
-                        Text { text: modelData[0]; font.pixelSize: Theme.caption2; color: Theme.secondary }
-                        Text { text: modelData[1]; font.pixelSize: Theme.callout + 1; font.weight: Font.DemiBold; font.features: { "tnum": 1 }; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true } }
-                }
-            }
-            Text { visible: mh.s !== null && mh.s.first_date !== ""
-                   text: mh.s ? qsTr("Seit %1 · zuletzt %2").arg(Fmt.medium(mh.s.first_date)).arg(Fmt.medium(mh.s.last_date)) : ""
-                   font.pixelSize: Theme.caption2; color: Theme.tertiary }
+            // total and the booking's own account side by side, else one unlabelled row
+            StatsRow { visible: mh.s !== null; stats: mh.s; label: mh.own ? qsTr("Alle Konten") : "" }
+            StatsRow { visible: mh.own !== null; stats: mh.own; label: qsTr("Dieses Konto"); accountName: mh.booking.account_name }
             Rectangle { visible: mh.booking.merchant.isin !== "" || mh.booking.merchant.asset_class !== ""; Layout.fillWidth: true; height: 1; color: Theme.border }
             RowLayout {
                 visible: mh.booking.merchant.isin !== "" || mh.booking.merchant.asset_class !== ""
@@ -385,7 +456,8 @@ Rectangle {
             width: parent.width; spacing: 10
             RowLayout {
                 CardTitle { text: qsTr("Kategorie"); Layout.fillWidth: true }
-                Text { text: cg.booking.category_path || qsTr("Ohne Kategorie"); font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.maximumWidth: 160 }
+                Text { text: cg.booking.category_path || qsTr("Ohne Kategorie"); font.pixelSize: Theme.caption; color: Theme.secondary; elide: Text.ElideRight; Layout.maximumWidth: 160
+                       Sensitive { labels: true; when: cg.booking.category_path !== "" } }
             }
             ChipGrid { card: cg; Layout.fillWidth: true; nodes: AppModel.categoryTree; selectedId: cg.path.length ? cg.path[0] : -1; level: 0; minimum: 104 }
             Repeater {
@@ -445,7 +517,7 @@ Rectangle {
             anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 5
             SFIcon { symbol: parent.parent.category.sf_symbol; size: 13; color: Theme.text }
             Text { text: parent.parent.category.name; font.pixelSize: Theme.caption + 1; font.weight: parent.parent.selected ? Font.DemiBold : Font.Normal
-                   color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                   color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive { labels: true } }
         }
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked() }
     }
@@ -475,7 +547,7 @@ Rectangle {
                         anchors.fill: parent; anchors.margins: 6; spacing: 8
                         SFIcon { symbol: AppModel.docSymbol(modelData); size: 15; color: Theme.accent; Layout.preferredWidth: 18 }
                         ColumnLayout { spacing: 1; Layout.fillWidth: true
-                            Text { text: modelData.title; font.pixelSize: Theme.callout + 1; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                            Text { text: modelData.title; font.pixelSize: Theme.callout + 1; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                             Text { text: Fmt.medium(modelData.doc_date) + " · " + AppModel.byteCount(modelData.size_bytes); font.pixelSize: Theme.caption2; color: Theme.secondary } }
                         IconButton { symbol: "eye"; symbolSize: 14; ToolTip.text: qsTr("QuickLook (Leertaste)"); onClicked: AppModel.quickLook(modelData) }
                         IconButton { symbol: "ellipsis.circle"; symbolSize: 14; ToolTip.text: qsTr("Aktionen"); onClicked: docMenu.popup() }
@@ -536,6 +608,12 @@ Rectangle {
         readonly property var rows: {
             const r = [[qsTr("Verwendungszweck (roh)"), booking.purpose || "–"]]
             if (booking.booking_text) r.push([qsTr("Buchungstext"), booking.booking_text])
+            const ref = AmazonOrderRef.parse(booking)
+            if (ref) {
+                // the order number opens the order on the shop (third entry: link)
+                r.push([qsTr("Bestellnummer"), ref.code, AmazonOrderRef.orderURL(ref), qsTr("Bestellung auf %1 öffnen").arg(ref.domain)])
+                if (ref.isSubscription) r.push([qsTr("Bestelltyp"), qsTr("Abonnement (Spar-Abo) – wiederkehrende Abbuchung")])
+            }
             const e = sepa("EREF"), m = sepa("MREF"), c = sepa("CRED")
             if (e) r.push([qsTr("EREF (Ende-zu-Ende-Referenz)"), e])
             if (m) r.push([qsTr("MREF (Mandatsreferenz)"), m])
@@ -564,8 +642,18 @@ Rectangle {
                     model: raw.expanded ? raw.rows : []
                     ColumnLayout { required property var modelData; spacing: 1; Layout.fillWidth: true
                         Text { text: modelData[0]; font.pixelSize: Theme.caption2; color: Theme.secondary }
-                        TextEdit { text: modelData[1]; readOnly: true; selectByMouse: true; wrapMode: Text.WrapAnywhere
-                                   font.family: "monospace"; font.pixelSize: Theme.caption; color: Theme.text; Layout.fillWidth: true } }
+                        TextEdit {
+                            id: rawValue
+                            readonly property string url: modelData[2] || ""
+                            text: modelData[1]; readOnly: true; selectByMouse: url === ""; wrapMode: Text.WrapAnywhere
+                            font.family: "monospace"; font.pixelSize: Theme.caption; color: url !== "" ? Theme.accent : Theme.text
+                            Layout.fillWidth: url === ""
+                            HoverHandler { id: rawHover; enabled: rawValue.url !== ""; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { enabled: rawValue.url !== ""; onTapped: Qt.openUrlExternally(rawValue.url) }
+                            ToolTip.visible: rawHover.hovered; ToolTip.delay: 500; ToolTip.text: modelData[3] || ""
+                            // raw data is personal; codes and the value date stay visible
+                            Sensitive { when: [qsTr("Purpose-Code"), qsTr("Geschäftsvorfallcode"), qsTr("Wertstellung")].indexOf(modelData[0]) < 0 }
+                        } }
                 }
             }
         }

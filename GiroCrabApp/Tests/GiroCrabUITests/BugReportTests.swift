@@ -17,6 +17,29 @@ final class BugReportTests: XCTestCase {
                        logLines: log)
     }
 
+    func testPersonalRedactionImpliesAmounts() {
+        XCTAssertEqual(ReportRedaction.amounts.effective, .amounts)
+        XCTAssertEqual(ReportRedaction.personal.effective, [.personal, .amounts])
+        XCTAssertEqual(ReportRedaction([.personal, .labels]).effective, [.personal, .amounts, .labels])
+        XCTAssertEqual(ReportRedaction.personal.masking("12,00 €", .amounts), "•••")
+        XCTAssertEqual(ReportRedaction.amounts.masking("Girokonto"), "Girokonto")
+        XCTAssertEqual(ReportRedaction.labels.masking("12,00 €", .amounts), "12,00 €")
+    }
+
+    func testSmudgeBackgroundIgnoresTransparentPixels() throws {
+        func image(_ rgba: [UInt8]) throws -> CGImage {
+            var bytes = rgba
+            let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+            let ctx = try XCTUnwrap(CGContext(data: &bytes, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                              space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            return try XCTUnwrap(ctx.makeImage())
+        }
+        XCTAssertNil(RedactionSmudge.color(of: try image([0, 0, 0, 0]), at: .zero))
+        XCTAssertNil(RedactionSmudge.color(of: try image([100, 100, 100, 128]), at: .zero))
+        let white = try XCTUnwrap(RedactionSmudge.color(of: try image([255, 255, 255, 255]), at: .zero))
+        XCTAssertEqual(white.components?.first ?? 0, 1, accuracy: 0.01)
+    }
+
     func testHeaderKeepsVersionSystemAndConnectors() {
         let text = BugReport.diagnostics(info(), knownTerms: ["Sparkasse", "Giro"])
         XCTAssertTrue(text.contains("GiroCrab 0.6.2 (Build 14)"), text)
@@ -124,6 +147,24 @@ final class BugReportTests: XCTestCase {
         XCTAssertEqual(model.reportRedaction, [.personal, .labels], "the older capture must not reset a newer one")
         guard case .noWindow = await second.value else { return XCTFail("no main window in unit tests") }
         XCTAssertEqual(model.reportRedaction, [], "restored after the last capture")
+    }
+
+    func testOptionsRedactPersonalDataOutsideTheDemo() {
+        // #384 carries these through "Andere Ansicht aufnehmen"; the own
+        // vault is always redacted, whatever the demo-only switch says.
+        let off = BugReport.Options(autoRedact: false, hideLabels: true, includeLog: false)
+        XCTAssertEqual(off.redaction(demo: false), [.personal, .labels])
+        XCTAssertEqual(off.redaction(demo: true), [.labels])
+        XCTAssertEqual(BugReport.Options().redaction(demo: true), .personal)
+    }
+
+    @MainActor
+    func testLockingEndsAPendingPick() {
+        // #384: the capture bar must not come back after the next unlock.
+        let model = AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))
+        model.reportPick = BugReport.Options(hideLabels: true)
+        model.releaseVaultState()
+        XCTAssertNil(model.reportPick)
     }
 
     /// Red channel of the pixel at (x, y), origin top left.

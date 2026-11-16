@@ -116,7 +116,7 @@ struct EmptyVaultCard: View {
             }
         }
         .card()
-        .sheet(isPresented: $showAddBank) {
+        .capturableSheet(isPresented: $showAddBank) {
             AddBankSheet()
                 .environment(model)
         }
@@ -137,6 +137,7 @@ struct EmptyVaultCard: View {
 /// Fill in what a bank still needs (FinTS product ID, API keys …), then sync.
 struct BankSetupSheet: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
     @Environment(\.dismiss) private var dismiss
     let request: SetupRequest
     @State private var values: [String: String] = [:]
@@ -155,7 +156,7 @@ struct BankSetupSheet: View {
                 HStack(spacing: 10) {
                     SymbolTile(symbol: request.connection.sfSymbol, tint: request.connection.tint, size: 34)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(request.connection.displayName) einrichten").appFont(.headline)
+                        Text("\(redaction.masking(request.connection.displayName)) einrichten").appFont(.headline)
                             .fixedSize(horizontal: false, vertical: true)
                         Text("Diese Angaben fehlen noch, bevor Buchungen abgerufen werden können.")
                             .appFont(.caption).foregroundStyle(Theme.secondary)

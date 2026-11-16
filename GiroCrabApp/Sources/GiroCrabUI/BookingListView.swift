@@ -116,7 +116,7 @@ struct BookingStreamView: View {
                             ContentUnavailableView(
                                 model.searchText.isEmpty ? "Keine Buchungen" : "Keine Treffer",
                                 systemImage: model.searchText.isEmpty ? "tray" : "magnifyingglass",
-                                description: Text(model.searchText.isEmpty ? "Konto abrufen oder anderen Zeitraum wählen." : "Nichts passt zu „\(redaction.contains(.personal) ? BugReport.searchPlaceholder : model.searchText)“.")
+                                description: Text(model.searchText.isEmpty ? "Konto abrufen oder anderen Zeitraum wählen." : "Nichts passt zu „\(redaction.masking(model.searchText))“.")
                             )
                             .padding(.top, 40)
                         }
@@ -176,7 +176,7 @@ struct BookingStreamView: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { columnWidth = $0 }
             #if os(iOS)
             // iPhone: the detail column is not reachable by tapping, so show it as a sheet.
-            .sheet(isPresented: Binding(
+            .capturableSheet(isPresented: Binding(
                 get: { hSize == .compact && model.showBookingSheet && model.selectedBookingID != nil },
                 set: { if !$0 { model.showBookingSheet = false } }
             )) {
@@ -267,8 +267,8 @@ struct BookingStreamView: View {
         #if os(iOS)
         .modifier(WindowTitle(title: model.title))
         #endif
-        .sheet(isPresented: $model.showPrintSheet) { PrintSheet() }
-        .sheet(isPresented: $model.showExportSheet) { ExportSheet() }
+        .capturableSheet(isPresented: $model.showPrintSheet) { PrintSheet() }
+        .capturableSheet(isPresented: $model.showExportSheet) { ExportSheet() }
         .fileExporter(
             isPresented: $model.showCSVExporter,
             document: model.csvExport,
@@ -527,6 +527,7 @@ struct DayCardRow: View {
         CategorizeMenuButton(booking: b)
         Button("Regel für diesen Händler erstellen …", systemImage: "wand.and.stars") { model.openRuleEditor(from: b) }
         Button("Notiz bearbeiten …", systemImage: "note.text") { model.editNote(for: b) }
+        TagsMenu(model: model, booking: b)
         Button("Umsatz aufteilen (Splitbuchung) …", systemImage: "arrow.triangle.branch") { model.splitBooking = b }
         LoanAssignMenu(model: model, booking: b, hidesWhenUnavailable: true)
         Divider()
@@ -679,6 +680,14 @@ struct BookingRow: View {
                         }
                         .layoutPriority(-1)
                     }
+                    if isSingleLine, !booking.tags.isEmpty {
+                        // like the category: only when the markers fit, the purpose yields first
+                        ViewThatFits(in: .horizontal) {
+                            BookingTagMarkers(tags: booking.tags)
+                            Color.clear.frame(width: 0, height: 0)
+                        }
+                        .layoutPriority(-1)
+                    }
                     if isSingleLine, !visiblePurpose.isEmpty {
                         Text(visiblePurpose)
                             .sensitive()
@@ -705,6 +714,7 @@ struct BookingRow: View {
                             BookingCategoryLabel(booking: booking)
                                 .layoutPriority(1)
                         }
+                        BookingTagMarkers(tags: booking.tags)
                         if let ref = amazonRef {
                             // Amazon order: what was ordered beats the "Bestellung" kind label.
                             // Refunds show the refunded order's items (joined via the order code).
@@ -804,7 +814,7 @@ struct BookingRow: View {
                 // Order account: no signs — colour says the direction. Charges and
                 // refunds are badged symmetrically (same padding, same alignment).
                 Text(Money.format(ref.isRefund ? booking.amountCents : abs(booking.amountCents)))
-                    .sensitive()
+                    .sensitive(.amounts)
                     .appFont(.body, weight: .semibold, monospacedDigit: true)
                     .foregroundStyle(ref.isRefund ? Theme.inflow : Theme.charge)
                     .padding(.horizontal, 8).padding(.vertical, 3)

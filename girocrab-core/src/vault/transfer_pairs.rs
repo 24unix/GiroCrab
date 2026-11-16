@@ -31,6 +31,40 @@ fn has_indicator(bank_text: &str, pp_text: &str) -> bool {
     b.contains("paypal") || PAYOUT_WORDS.iter().any(|w| p.contains(w))
 }
 
+/// Candidate pairs: every uncategorised payment-service booking with each
+/// bank booking of the opposite amount in the window. CROSS JOIN keeps the
+/// payment-service accounts outermost, so `p` is read by account.
+fn pairs_sql() -> String {
+    format!(
+        "SELECT p.id, b.id, b.counterparty || ' ' || b.purpose, p.counterparty || ' ' || p.purpose \
+         FROM accounts pa CROSS JOIN transactions p ON p.account_id = pa.id \
+         JOIN transactions b ON b.account_id != p.account_id AND {b} \
+         JOIN accounts ba ON ba.id = b.account_id AND ba.deleted_ms IS NULL \
+              AND ba.kind NOT IN ('loan', 'brokerage') \
+         WHERE pa.kind = 'payment_service' AND pa.iban = '' AND pa.deleted_ms IS NULL \
+           AND p.deleted_ms IS NULL AND b.deleted_ms IS NULL \
+           AND p.category_id IS NULL AND b.category_id IS NULL \
+           AND p.amount_cents != 0 \
+           AND NOT (ba.kind = 'payment_service' AND ba.iban = '' AND b.id < p.id) \
+           AND NOT EXISTS (SELECT 1 FROM transactions m WHERE m.account_id = p.account_id \
+                AND m.id != p.id AND m.deleted_ms IS NULL AND {m})",
+        b = opposite_near_p("b"),
+        m = opposite_near_p("m"),
+    )
+}
+
+/// Booking `t` has the opposite amount of `p` within `WINDOW_DAYS`. The BETWEEN
+/// bounds, a day wider than the window, let `tx_amount_date` find the
+/// candidates; the julianday test still decides.
+fn opposite_near_p(t: &'static str) -> String {
+    let (w, wide) = (WINDOW_DAYS, WINDOW_DAYS + 1);
+    format!(
+        "{t}.amount_cents = -p.amount_cents \
+         AND {t}.booking_date BETWEEN date(p.booking_date, '-{wide} days') AND date(p.booking_date, '+{wide} days') \
+         AND abs(julianday({t}.booking_date) - julianday(p.booking_date)) <= {w}"
+    )
+}
+
 impl Vault {
     /// Ids of both legs of every unambiguous, uncategorised bank ↔ payment-service
     /// transfer. Safeguards against plain purchases: a payment-service leg that
@@ -49,29 +83,10 @@ impl Vault {
         if !has_pp {
             return Ok(HashSet::new());
         }
-        let win = WINDOW_DAYS as f64;
         // (payment-service booking, bank booking, texts)
-        let mut st = db.prepare(
-            "SELECT p.id, b.id, b.counterparty || ' ' || b.purpose, p.counterparty || ' ' || p.purpose \
-             FROM transactions p \
-             JOIN accounts pa ON pa.id = p.account_id AND pa.kind = 'payment_service' \
-                  AND pa.iban = '' AND pa.deleted_ms IS NULL \
-             JOIN transactions b ON b.account_id != p.account_id \
-                  AND b.amount_cents = -p.amount_cents \
-                  AND abs(julianday(b.booking_date) - julianday(p.booking_date)) <= ?1 \
-             JOIN accounts ba ON ba.id = b.account_id AND ba.deleted_ms IS NULL \
-                  AND ba.kind NOT IN ('loan', 'brokerage') \
-             WHERE p.deleted_ms IS NULL AND b.deleted_ms IS NULL \
-               AND p.category_id IS NULL AND b.category_id IS NULL \
-               AND p.amount_cents != 0 \
-               AND NOT (ba.kind = 'payment_service' AND ba.iban = '' AND b.id < p.id) \
-               AND NOT EXISTS (SELECT 1 FROM transactions m WHERE m.account_id = p.account_id \
-                    AND m.id != p.id AND m.deleted_ms IS NULL \
-                    AND m.amount_cents = -p.amount_cents \
-                    AND abs(julianday(m.booking_date) - julianday(p.booking_date)) <= ?1)",
-        )?;
+        let mut st = db.prepare(&pairs_sql())?;
         let rows: Vec<(i64, i64, String, String)> = st
-            .query_map([win], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
             .collect::<Result<_, _>>()?;
         let mut by_p: HashMap<i64, Vec<i64>> = HashMap::new();
         let mut by_b: HashMap<i64, Vec<i64>> = HashMap::new();
@@ -104,6 +119,26 @@ mod tests {
     use std::sync::Arc;
 
     const GIRO_IBAN: &str = "DE89370400440532013000";
+
+    /// The pairing runs on every booking list: it must look up the counter
+    /// bookings by amount and date, never scan the table per booking.
+    #[test]
+    fn pairing_uses_the_amount_index() {
+        let f = fx();
+        let db = f.v.db().unwrap();
+        let plan: Vec<String> = db
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", super::pairs_sql()))
+            .unwrap()
+            .query_map([], |r| r.get(3))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        let by_amount = plan
+            .iter()
+            .filter(|l| l.contains("USING INDEX tx_amount_date (amount_cents=?"))
+            .count();
+        assert_eq!(by_amount, 2, "{plan:#?}");
+    }
 
     struct Fx {
         _d: TempDir,

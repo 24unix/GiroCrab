@@ -10,12 +10,14 @@ ApplicationWindow {
     id: window
     // `--dark` / `--light`: the controls follow the forced appearance (Theme.forcedPalette)
     Binding on palette { when: Theme.forced !== ""; value: Theme.forcedPalette }
+    // appTextSize: controls without their own size follow the text size (#343)
+    font.pointSize: Theme.controlPointSize
     visible: true
     // Fits a 13" MacBook Air with room for the Dock – same default here.
     width: 1280; height: 820
     // The booking list gives up width first (560 → 360) so the inspector never leaves the
     // window on small screens (e.g. 1920 px at 200 % scaling).
-    minimumWidth: 240 + 360 + 280; minimumHeight: 480
+    minimumWidth: 240 * Theme.textScale + 360 + 280; minimumHeight: 480
     title: AppModel.isUnlocked ? AppModel.title + " – GiroCrab" : "GiroCrab"
     color: Theme.canvas
 
@@ -32,11 +34,11 @@ ApplicationWindow {
     /// item that had it before), so the search field keeps it.
     function focusSearch() {
         window.requestActivate()
-        search.forceActiveFocus(Qt.ShortcutFocusReason)
-        search.selectAll()
+        mainToolbar.focusSearch()
     }
 
     menuBar: MenuBar {
+        font: Qt.application.font   // menus keep the system size (#343)
         // Same look as the menus (AppMenu): calm bar, rounded highlight for the open menu.
         background: Rectangle { color: Theme.canvas; Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border } }
         delegate: MenuBarItem {
@@ -55,10 +57,12 @@ ApplicationWindow {
                      onTriggered: AppModel.groupDialog = { kind: "create", movingAccount: null, parent: null } }
             Action { text: qsTr("Bank hinzufügen …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.showAddBank = true }
             Action { text: qsTr("Neues Darlehen …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.openLoanEditor("create") }
+            Action { text: qsTr("Neues Sachwerte-Konto …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.createTangibleAccount() }
             Action { text: qsTr("Neue Hauptkategorie …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.newCategoryRequest = { parent: null } }
             AppMenuSeparator {}
             Action { text: qsTr("Vorhandene Daten importieren …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.openMoneyMoneyImport() }
-            Action { text: qsTr("Buchungen als CSV exportieren …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.exportFilteredBookingsCSV() }
+            Action { text: qsTr("Umsätze exportieren …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.openBookingExport(false) }
+            Action { text: qsTr("Umsätze als CSV exportieren …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.exportFilteredBookingsCSV() }
             AppMenuSeparator {}
             Action { text: qsTr("Drucken …"); shortcut: "Ctrl+P"; enabled: AppModel.isUnlocked; onTriggered: AppModel.showPrintSheet = true }
             AppMenuSeparator {}
@@ -78,11 +82,26 @@ ApplicationWindow {
             Action { text: AppModel.showInspector ? qsTr("Informationen ausblenden") : qsTr("Informationen einblenden")
                      shortcut: "Ctrl+Alt+I"; enabled: AppModel.isUnlocked; onTriggered: AppModel.showInspector = !AppModel.showInspector }
             Action { text: qsTr("Auswertungen anzeigen"); checkable: true; checked: AppModel.showStatistics; onToggled: AppModel.showStatistics = checked }
+            Action { text: qsTr("Budgets anzeigen"); checkable: true; checked: AppModel.showBudgets; enabled: AppModel.isUnlocked; onToggled: AppModel.showBudgets = checked }
+            AppMenuSeparator {}
+            // Like Mail/Notes: text size of the whole app (#343).
+            Action { text: qsTr("Größer"); shortcut: "Ctrl++"; enabled: Theme.steppedTextSize(1) !== ""
+                     onTriggered: Theme.setTextSize(Theme.steppedTextSize(1)) }
+            Action { text: qsTr("Kleiner"); shortcut: "Ctrl+-"; enabled: Theme.steppedTextSize(-1) !== ""
+                     onTriggered: Theme.setTextSize(Theme.steppedTextSize(-1)) }
+            Action { text: qsTr("Originalgröße"); shortcut: "Ctrl+0"; enabled: Theme.textSize !== "standard"
+                     onTriggered: Theme.setTextSize("standard") }
             AppMenuSeparator {}
             Action { text: qsTr("Befehlspalette …"); shortcut: "Ctrl+K"; enabled: AppModel.isUnlocked; onTriggered: AppModel.showCommandPalette = true }
             AppMenuSeparator {}
-            Action { text: qsTr("Nach Gruppe"); checkable: true; checked: AppModel.accountView === "byGroup"; enabled: AppModel.isUnlocked; onTriggered: AppModel.setAccountView("byGroup") }
-            Action { text: qsTr("Nach Kontoart"); checkable: true; checked: AppModel.accountView === "byKind"; enabled: AppModel.isUnlocked; onTriggered: AppModel.setAccountView("byKind") }
+            // Picker("Konten anzeigen"): a submenu with the three AccountSidebarMode titles
+            AppMenu {
+                title: qsTr("Konten anzeigen")
+                enabled: AppModel.isUnlocked
+                Action { text: qsTr("Nach Gruppe"); checkable: true; checked: AppModel.accountView === "byGroup"; onTriggered: AppModel.setAccountView("byGroup") }
+                Action { text: qsTr("Nach Bank"); checkable: true; checked: AppModel.accountView === "byBank"; onTriggered: AppModel.setAccountView("byBank") }
+                Action { text: qsTr("Nach Kontoart"); checkable: true; checked: AppModel.accountView === "byKind"; onTriggered: AppModel.setAccountView("byKind") }
+            }
             Action { text: qsTr("Kontogruppen bearbeiten …"); enabled: AppModel.isUnlocked; onTriggered: AppModel.openGroupManager() }
             AppMenuSeparator {}
             Action { text: AppModel.demoActive ? qsTr("Eigenen Tresor anzeigen") : qsTr("Demo-Daten anzeigen"); shortcut: "Ctrl+Shift+D"
@@ -161,6 +180,9 @@ ApplicationWindow {
             title: qsTr("&Hilfe")
             Action { text: qsTr("GiroCrab-Hilfe"); shortcut: "Ctrl+?"; onTriggered: AppModel.showHelp = true }
             AppMenuSeparator {}
+            // #301: redacted screenshot + scrubbed diagnostics, then a prefilled issue.
+            Action { text: qsTr("Problem melden …"); shortcut: "Ctrl+Alt+B"; onTriggered: AppModel.showBugReport = true }
+            AppMenuSeparator {}
             Action { text: qsTr("Webseite && Dokumentation (girocrab.de)"); onTriggered: Qt.openUrlExternally("https://girocrab.de") }
             Action { text: qsTr("Fehler melden / Issue erstellen (GitHub)"); onTriggered: Qt.openUrlExternally("https://github.com/GiroCrab/GiroCrab/issues") }
             Action { text: qsTr("Community && Diskussionen (GitHub)"); onTriggered: Qt.openUrlExternally("https://github.com/GiroCrab/GiroCrab/discussions") }
@@ -191,7 +213,7 @@ ApplicationWindow {
     id: rootLayout
     anchors.fill: parent
     spacing: 0
-    MainToolbar { Layout.fillWidth: true }
+    MainToolbar { id: mainToolbar; Layout.fillWidth: true }
     // GiroCrabRootView: vault state
     StackLayout {
         Layout.fillWidth: true
@@ -201,12 +223,14 @@ ApplicationWindow {
         // splash (starting)
         Rectangle {
             color: Theme.canvas
-            ColumnLayout {
+            // RootView.swift › StartLogo: square #263040 backdrop, crab on top, spinner 96 below the centre
+            Rectangle {
                 anchors.centerIn: parent
-                spacing: 18
-                Image { Layout.alignment: Qt.AlignHCenter; source: "qrc:/qt/qml/GiroCrab/assets/app-icon.png"; sourceSize.width: 120; sourceSize.height: 120 }
-                BusyIndicator { Layout.alignment: Qt.AlignHCenter; running: true }
+                width: 120; height: 120
+                color: "#263040"
+                AnimatedCrabLogo { size: 120; showBackgroundSquircle: false; busy: true }
             }
+            BusyIndicator { anchors.centerIn: parent; anchors.verticalCenterOffset: 96; running: true }
         }
 
         // LockView / LockView(error:)
@@ -221,16 +245,18 @@ ApplicationWindow {
             }
             SidebarView {
                 id: sidebarPane
-                SplitView.minimumWidth: 240; SplitView.preferredWidth: 260; SplitView.maximumWidth: 480
+                SplitView.minimumWidth: 240 * Theme.textScale; SplitView.preferredWidth: 260 * Theme.textScale; SplitView.maximumWidth: 480 * Theme.textScale
                 onWidthChanged: window.sidebarWidth = width
             }
-            // bookingColumn: Belege replaces the booking list
+            // bookingColumn: Belege or Vermögen replace the booking list
             StackLayout {
                 SplitView.minimumWidth: Math.max(360, Math.min(560, window.width - sidebarPane.width - (AppModel.showInspector ? 280 : 0) - 2))
                 SplitView.fillWidth: true
-                currentIndex: AppModel.sidebarSelection === "documents" ? 1 : 0
+                currentIndex: AppModel.sidebarSelection === "documents" ? 1 : AppModel.sidebarSelection === "wealth" ? 2 : 0
                 BookingStreamView {}
                 DocumentsView {}
+                // built only while shown (it loads the depot positions and the cash history)
+                Loader { active: AppModel.sidebarSelection === "wealth"; sourceComponent: Component { WealthView {} } }
             }
             InspectorView {
                 visible: AppModel.showInspector
@@ -244,16 +270,26 @@ ApplicationWindow {
     // MainToolbar (macOS): scope picker in the centre, then transfer, sync, inspector, search.
     component MainToolbar: ToolBar {
         visible: AppModel.isUnlocked
+        // the search field is an id inside this component: Main.focusSearch() reaches it here
+        function focusSearch() { search.forceActiveFocus(Qt.ShortcutFocusReason); search.selectAll() }
         background: Rectangle { color: Theme.canvas; Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border } }
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: window.sidebarWidth + 8; anchors.rightMargin: 10
             spacing: 6
             Item { Layout.fillWidth: true }
+            // Same toolbar item, other content: the booking filter makes no sense in the wealth view.
             Segmented {
+                visible: AppModel.sidebarSelection === "wealth"
+                options: AppModel.wealthScopes
+                current: AppModel.wealthScope
+                onActivated: id => AppModel.wealthScope = id
+            }
+            Segmented {
+                visible: AppModel.sidebarSelection !== "wealth"
                 options: AppModel.scopes
                 current: AppModel.scope
-                enabled: AppModel.sidebarSelection !== "documents"
+                enabled: AppModel.sidebarSelection !== "documents" && AppModel.sidebarSelection !== "newBookings"
                 onActivated: id => AppModel.scope = id
                 ToolTip.text: qsTr("Ansicht wählen (Strg+1, Strg+2, Strg+3)")
             }
@@ -288,6 +324,7 @@ ApplicationWindow {
                 leftPadding: 28
                 SFIcon { symbol: "magnifyingglass"; size: 14; anchors.verticalCenter: parent.verticalCenter; x: 8 }
                 Keys.onEscapePressed: AppModel.searchText = ""
+                Sensitive { when: search.text !== "" }   // typed names, IBANs, amounts (#301)
             }
         }
     }
@@ -327,6 +364,10 @@ ApplicationWindow {
              onLoaded: { item.reload(); item.requestActivate(); item.raise() } }
     Loader { active: AppModel.showHelp; sourceComponent: Component { HelpWindow {} }
              onLoaded: { item.requestActivate(); item.raise(); item.focusSearch() } }
+    // BugReportView: its own window, so the main window stays free to be captured.
+    Loader { active: AppModel.showBugReport
+             sourceComponent: Component { BugReportWindow { mainWindow: window; captureItem: rootLayout } }
+             onLoaded: { item.requestActivate(); item.raise() } }
     TwoFactorSheet {}
     BankSetupSheet {}
     AccountDocumentsSheet {}
@@ -439,15 +480,36 @@ ApplicationWindow {
         onRejected: AppModel.showCSVExporter = false
     }
 
+    // Umsätze exportieren (ExportSheet.swift); „Unter …“ asks here, after the sheet has closed.
+    Loader { active: AppModel.showExportSheet; sourceComponent: Component { ExportSheet { visible: AppModel.showExportSheet } } }
+    FileDialog {
+        readonly property var request: AppModel.exportSaveRequest
+        readonly property string folder: "file://" + BookingExport.preferredDirectory()
+        title: qsTr("Umsätze sichern")
+        acceptLabel: qsTr("Sichern")
+        fileMode: FileDialog.SaveFile
+        nameFilters: !request ? [] : request.format === "pdf" ? [qsTr("PDF-Dokumente (*.pdf)")]
+                   : request.format === "csv" ? [qsTr("CSV-Dateien (*.csv)")] : [qsTr("XML-Dateien (*.xml)")]
+        currentFolder: folder
+        selectedFile: request ? folder + "/" + request.filename : ""
+        visible: request !== null
+        onAccepted: BookingExport.saveExportRequest(AppModel.localPath(selectedFile))
+        onRejected: BookingExport.saveExportRequest(null)
+    }
+
     TransferSheet {}
     PayeeCheckSheet {}
     // MARK: manual loans / Startsaldo: .manualLoanSheets(model), .openingBalanceSheet(model)
     LoanEditorSheet {}
+    // Sachwerte (TangibleAssetsUI.swift › tangibleAssetSheets)
+    AssetEditorSheet {}
+    AssetActionSheet {}
     OpeningBalanceSheet {}
 
     // MARK: account groups & command palette (AccountGroupsUI.swift, CommandPalette.swift)
     AccountGroupDialogs {}
     Loader { active: AppModel.showGroupManager; sourceComponent: Component { GroupManagerSheet {} } }
+    Loader { active: AppModel.accountSelectionConnection !== null; sourceComponent: Component { AccountSelectionSheet {} } }
     Loader { active: AppModel.showCommandPalette; sourceComponent: Component { CommandPaletteSheet {} } }
 
     // MARK: - Web logins

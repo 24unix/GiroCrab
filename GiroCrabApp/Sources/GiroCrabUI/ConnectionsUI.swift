@@ -9,6 +9,7 @@ import GiroCrabCore
 /// editable here (normalised to +49…), and the in-app browser login is offered.
 struct PinSheet: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
     @Environment(\.dismiss) private var dismiss
     let connection: BankConnection
     @State private var login = ""
@@ -26,7 +27,7 @@ struct PinSheet: View {
             HStack(spacing: 10) {
                 SymbolTile(symbol: connection.sfSymbol, tint: connection.tint, size: 34)
                 VStack(alignment: .leading) {
-                    Text("Anmeldung bei \(connection.displayName)").appFont(.headline)
+                    Text("Anmeldung bei \(redaction.masking(connection.displayName))").appFont(.headline)
                     Text(d?.protocol ?? "").appFont(.caption).foregroundStyle(Theme.secondary)
                 }
                 Spacer()
@@ -44,7 +45,7 @@ struct PinSheet: View {
                     #endif
                 if isTR && !login.isEmpty {
                     let n = normalizePhoneNumber(input: login)
-                    Text(n == login ? "Format korrekt (E.164)" : "Wird gesendet als \(n)")
+                    Text(n == login ? "Format korrekt (E.164)" : "Wird gesendet als \(redaction.masking(n))")
                         .appFont(.caption2).foregroundStyle(Theme.secondary)
                 }
             }
@@ -166,7 +167,7 @@ struct ConnectionEditSheet: View {
         case .americanExpress, .amazonVisa: return []
         case .bunq: return ["bunq.environment"]
         case .enableBanking: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
-        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger: return []
+        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .alteLeipziger, .volkswagenBank: return []
         }
     }
 
@@ -230,7 +231,7 @@ struct ConnectionEditSheet: View {
     }
     @State private var showAdvanced = false
 
-    private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq, .ibkr, .easybank, .alteLeipziger].contains(connection.connector) }
+    private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq, .ibkr, .easybank, .alteLeipziger, .volkswagenBank].contains(connection.connector) }
     private var isTR: Bool { connection.connector == .tradeRepublic }
 
     var body: some View {
@@ -238,7 +239,7 @@ struct ConnectionEditSheet: View {
             HStack(spacing: 10) {
                 SymbolTile(symbol: connection.sfSymbol, tint: connection.tint, size: 34)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(connection.displayName).appFont(.headline)
+                    Text(connection.displayName).appFont(.headline).sensitive()
                     Text(descriptor?.protocol ?? "").appFont(.caption).foregroundStyle(Theme.secondary)
                 }
                 Spacer()
@@ -252,7 +253,7 @@ struct ConnectionEditSheet: View {
                         .disabled(isRah10)
                         .autocorrectionDisabled()
                     if isTR && !login.isEmpty {
-                        LabeledContent("Gespeichert als", value: normalizePhoneNumber(input: login))
+                        LabeledContent("Gespeichert als") { Text(normalizePhoneNumber(input: login)).sensitive() }
                     }
                     let blz = connection.bankCode.isEmpty ? (descriptor?.bankCode ?? "") : connection.bankCode
                     if !blz.isEmpty {

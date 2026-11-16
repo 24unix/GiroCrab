@@ -539,6 +539,7 @@ ColumnLayout {
 
         // MARK: 3. Data and bank connections
         ScrollView {
+            ScrollBar.vertical: ScrollViewBar {}
             contentWidth: availableWidth
             ColumnLayout {
                 width: parent.width
@@ -615,6 +616,7 @@ ColumnLayout {
 
         // MARK: 4. Enable Banking
         ScrollView {
+            ScrollBar.vertical: ScrollViewBar {}
             contentWidth: availableWidth
             EnableBankingSetupSection {
                 width: parent.width - 6   // .padding(.trailing, 6)
@@ -643,6 +645,7 @@ ColumnLayout {
 
         // MARK: Result
         ScrollView {
+            ScrollBar.vertical: ScrollViewBar {}
             contentWidth: availableWidth
             ColumnLayout {
                 id: doneCol

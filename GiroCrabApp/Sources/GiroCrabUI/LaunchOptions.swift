@@ -22,7 +22,7 @@ import Foundation
 ///               asset|asset-edit|asset-values|asset-quantities|mandate|collection|collection-files|mandate-select
 ///                         (demo) open that sheet pre-filled with fictional data,
 ///                         for README / PR screenshots
-///  --demo-settings general|banks|groups|documents|security[:edit|:add|:remove|:select]
+///  --demo-settings general|banks|groups|documents|security|external[:edit|:add|:remove|:select]
 ///                         (demo) open the Settings window on that tab (`groups` opens the
 ///                         group editor sheet instead), optionally with
 ///                         the first bank's edit sheet or the "add bank" sheet;
@@ -73,6 +73,18 @@ public struct LaunchOptions: Sendable {
     public var inspectorEdit = false
     /// (demo) "transfer", "moneymoney", "moneymoney-db" or "print": open that sheet with fictional data
     public var demoSheet: String?
+    /// `demoSheet` without the `report:` prefix (#384): `--demo-sheet report:transfer`
+    /// opens the same sheet as `--demo-sheet transfer`, with the bug report over it.
+    public var demoSheetName: String? { demoSheet.map(Self.droppingReportPrefix) }
+    /// `--demo-sheet report[:<sheet>]`: open the bug report over the view or sheet.
+    public var demoSheetOpensReport: Bool { demoSheet == "report" || demoSheet?.hasPrefix(Self.reportPrefix) == true }
+
+    static let reportPrefix = "report:"
+
+    /// `sheet` without a leading `report:` (any case).
+    static func droppingReportPrefix(_ sheet: String) -> String {
+        sheet.lowercased().hasPrefix(reportPrefix) ? String(sheet.dropFirst(reportPrefix.count)) : sheet
+    }
     /// (demo) "income" or "expense": start with that booking list filter
     public var demoFilter: String?
     /// (demo) Settings tab to open on start, e.g. "banks" or "banks:edit"

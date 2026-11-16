@@ -246,7 +246,18 @@ extension AppModel {
     /// top level (nil). The core refuses moving it below itself.
     func moveCategory(_ id: Int64, to parent: Int64?) {
         editCategory(id) { $0.parentId = parent }
-        if let parent { expandedCategories.insert(parent) } // keep it in view
+        if let parent { expandCategoryPath(to: parent) } // keep it in view
+    }
+
+    /// Opens `id` and every category above it, so what is placed under `id`
+    /// shows in the sidebar even inside a folded main category.
+    func expandCategoryPath(to id: Int64) {
+        var path: Set<Int64> = []
+        var next: Int64? = id
+        while let c = next, path.insert(c).inserted {
+            next = categories.first { $0.id == c }?.parentId
+        }
+        expandedCategories.formUnion(path)
     }
 
     /// "Symbol & Farbe …" of a category.

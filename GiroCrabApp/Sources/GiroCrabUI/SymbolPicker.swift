@@ -302,7 +302,7 @@ struct SymbolPickerButton: View {
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Symbol wählen"))
             .accessibilityValue(SymbolCatalog.name(of: selection).map { Text($0) } ?? Text(verbatim: selection))
-            .popover(isPresented: $open, arrowEdge: .trailing) {
+            .capturablePopover(isPresented: $open, arrowEdge: .trailing) {
                 SymbolPicker(selection: $selection, tint: tint) { open = false }
                     .presentationCompactAdaptation(.popover)
             }

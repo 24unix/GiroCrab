@@ -223,15 +223,29 @@ extension AppModel {
 
     /// Writes the document to a temp file and shows it in QuickLook.
     func quickLook(_ doc: DocumentInfo) {
-        guard let data = documentData(doc) else { return }
+        guard let url = writeTemporaryFile(for: doc) else { return }
+        quickLookURL = url
+    }
+
+    #if os(macOS)
+    /// Writes the document to the temp directory and reveals it in Finder.
+    func showInFinder(_ doc: DocumentInfo) {
+        guard let url = writeTemporaryFile(for: doc) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+    #endif
+
+    /// Decrypts the document into an owner-only temp file; nil when it cannot be read or written.
+    private func writeTemporaryFile(for doc: DocumentInfo) -> URL? {
+        guard let data = documentData(doc) else { return nil }
         let ext = ["image/png": "png", "image/jpeg": "jpg", "image/heic": "heic"][doc.mimeType] ?? "pdf"
         _ = Self.quickLookCleanupObserver
-        guard let dir = Self.preparedQuickLookDirectory() else { return }
+        guard let dir = Self.preparedQuickLookDirectory() else { return nil }
         let url = dir.appendingPathComponent("GiroCrab-Beleg-\(doc.id).\(ext)")
         // Owner-only from the first byte: O_EXCL + O_NOFOLLOW, mode 0600.
         try? FileManager.default.removeItem(at: url)
         let fd = Darwin.open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-        guard fd >= 0 else { return }
+        guard fd >= 0 else { return nil }
         let written = data.withUnsafeBytes { buf -> Bool in
             var off = 0
             while off < buf.count {
@@ -242,8 +256,8 @@ extension AppModel {
             return true
         }
         Darwin.close(fd)
-        guard written else { try? FileManager.default.removeItem(at: url); return }
-        quickLookURL = url
+        guard written else { try? FileManager.default.removeItem(at: url); return nil }
+        return url
     }
 
     func exportAllDocuments(to folder: URL) {
