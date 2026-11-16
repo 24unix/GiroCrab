@@ -1,5 +1,7 @@
 # Externe Analyse: lokale, lesende Schnittstelle (#136)
 
+Für Entwicklung, Bündelung und lokale Tests siehe [local-api-entwicklung.md](local-api-entwicklung.md).
+
 GiroCrab kann ausgewählte Konten, Buchungen, Kategorien und Summen für Programme auf demselben Mac
 lesbar machen, etwa für eigene Auswertungen oder einen KI-Assistenten. Die Schnittstelle ist
 standardmäßig aus und strikt lesend: keine Änderungen, keine Zahlungen, keine Zugangsdaten.
@@ -67,3 +69,49 @@ Schlüsselprüfung beantwortet.
 Daten im Format `YYYY-MM-DD`, Beträge in Cent (`amount_cents`, negativ = Ausgang). Buchungs-IDs bleiben
 für die Lebensdauer einer Buchung gleich. Die Suche steht nur zur Verfügung, wenn Empfänger,
 Verwendungszweck und Kontonummern geteilt sind, weil sie auch diese Felder durchsucht.
+
+## MCP-Adapter (`girocrab-mcp`)
+
+Für KI-Assistenten und andere MCP-Clients gibt es einen kleinen Adapter, den der Client selbst startet
+und über stdio anspricht (JSON-RPC 2.0, eine Nachricht pro Zeile). Er leitet jeden Tool-Aufruf als
+Anfrage an den Socket weiter; den Tresor öffnet er nie und er hängt nicht vom Core ab.
+
+Der Adapter liegt der App bei: `GiroCrab.app/Contents/Helpers/girocrab-mcp` (signiert und notarisiert
+mit der App). Einstellungen › Analyse › „Für KI-Assistenten“ zeigt den fertigen Eintrag für die
+MCP-Konfiguration mit diesem Pfad, direkt nach dem Erzeugen eines Schlüssels auch mit dem Schlüssel, und
+kopiert ihn auf Knopfdruck (mit Schlüssel wird die Zwischenablage nach 60 Sekunden geleert).
+„Verbindung testen“ startet das Hilfsprogramm so, wie es der Client tut, und meldet, ob Socket und
+Schlüssel passen. In Entwickler-Builds: `cargo build --release -p girocrab-mcp` (→ `target/release/`).
+
+Eintrag in der Konfiguration des MCP-Clients (Form je nach Client):
+
+```json
+{
+  "mcpServers": {
+    "girocrab": {
+      "command": "/Pfad/zu/girocrab-mcp",
+      "env": { "GIROCRAB_API_TOKEN": "gcapi_…" }
+    }
+  }
+}
+```
+
+Verbindung von der Kommandozeile prüfen: `girocrab-mcp --check` (mit `--json` als eine JSON-Zeile mit
+`problem` und `message`; Exit-Codes und Namen nennt `girocrab-mcp --help`).
+
+Den Schlüssel nie als Argument übergeben (die Befehlszeile ist für andere Programme sichtbar):
+`GIROCRAB_API_TOKEN` im Client-Eintrag oder `--token-file <Datei>` (Datei nur für Sie lesbar). Der
+Socket-Pfad lässt sich mit `--socket` oder `GIROCRAB_API_SOCKET` ändern.
+
+| Tool | Methode | Hinweis |
+|---|---|---|
+| `get_info` | `info` | |
+| `list_accounts` | `accounts` | Ergebnis als `items` in `structuredContent` |
+| `list_categories` | `categories` | Ergebnis als `items` in `structuredContent` |
+| `list_transactions` | `transactions` | gleiche Parameter wie die Methode |
+| `get_summary` | `summary` | `date_from` und `date_to` sind Pflicht |
+
+Alle Tools sind als nur lesend markiert (`readOnlyHint`); ihre Beschreibungen und Eingabeschemas liefert
+`tools/list`. Ist GiroCrab gesperrt, ausgeschaltet oder nicht gestartet, sind alle Verbindungen belegt
+(`busy`) oder passt bzw. fehlt der Schlüssel, liefert der Tool-Aufruf einen lesbaren Fehler (`isError`),
+den der Assistent weitergeben kann. Unterstützte MCP-Versionen: 2025-06-18, 2025-03-26, 2024-11-05.

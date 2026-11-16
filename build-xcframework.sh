@@ -33,24 +33,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
-export PATH="$HOME/.cargo/bin:$PATH"
-CARGO="${CARGO:-}"
-
-# Homebrew can install standalone Rust alongside rustup. Targets added by
-# rustup belong to its toolchain, not Homebrew's rustc. Select the compiler
-# explicitly too: merely choosing rustup's cargo still finds rustc via PATH.
-if command -v rustup >/dev/null 2>&1; then
-  if RUSTUP_CARGO="$(rustup which cargo 2>/dev/null)" && \
-     RUSTUP_RUSTC="$(rustup which rustc 2>/dev/null)"; then
-    CARGO="${CARGO:-$RUSTUP_CARGO}"
-    export RUSTC="${RUSTC:-$RUSTUP_RUSTC}"
-    if RUSTUP_RUSTDOC="$(rustup which rustdoc 2>/dev/null)"; then
-      export RUSTDOC="${RUSTDOC:-$RUSTUP_RUSTDOC}"
-    fi
-  fi
-fi
-
-CARGO="${CARGO:-cargo}"
+# Toolchain (rustup's cargo/rustc), Mac target and deployment target; shared
+# with package-macos-app.sh, which builds the MCP helper the same way.
+source "$ROOT/scripts/rust-toolchain.sh"
 
 MACOS_ONLY=0
 FORCE_IOS=0
@@ -163,15 +148,8 @@ OUT="$ROOT/generated/GiroCrabCorePackage"
 BUILD_FLAGS=()
 [[ "$PROFILE" == "release" ]] && BUILD_FLAGS+=(--release)
 
-export MACOSX_DEPLOYMENT_TARGET=14.0
 export IPHONEOS_DEPLOYMENT_TARGET=17.0
 
-HOST_ARCH="$(uname -m)"
-if [[ "$HOST_ARCH" == "x86_64" ]]; then
-  MAC_TARGET="x86_64-apple-darwin"
-else
-  MAC_TARGET="aarch64-apple-darwin"
-fi
 TARGETS=($MAC_TARGET)
 if [[ $MACOS_ONLY -eq 0 || $FORCE_IOS -eq 1 ]]; then
   TARGETS+=(aarch64-apple-ios)

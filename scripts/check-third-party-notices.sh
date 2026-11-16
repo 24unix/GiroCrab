@@ -9,7 +9,7 @@ NOTICES="$ROOT/THIRD_PARTY_NOTICES.md"
 missing=()
 
 # --- Rust: names under any [*dependencies] table of the workspace manifests ---
-for manifest in "$ROOT/Cargo.toml" "$ROOT/girocrab-core/Cargo.toml" \
+for manifest in "$ROOT/Cargo.toml" "$ROOT/girocrab-core/Cargo.toml" "$ROOT/girocrab-mcp/Cargo.toml" \
   "$ROOT/uniffi-bindgen/Cargo.toml" "$ROOT/tools/gen-bic-directory/Cargo.toml"; do
   [ -f "$manifest" ] || continue
   while IFS= read -r dep; do

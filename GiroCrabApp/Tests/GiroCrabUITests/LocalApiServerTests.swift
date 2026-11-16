@@ -226,4 +226,74 @@ final class LocalApiServerTests: XCTestCase {
         XCTAssertNil(model.localApiScope, "nothing while the demo is shown")
         model.showOwnVault()
     }
+
+    #if os(macOS)
+    /// A stand-in for the helper (runs in CI, where it is not built): a script
+    /// printing `body` and exiting with `code`.
+    private func fakeHelper(_ body: String, code: Int32 = 0) throws -> URL {
+        let script = dir.appendingPathComponent("fake-helper")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try "#!/bin/sh\n\(body)\nexit \(code)\n".write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+        return script
+    }
+
+    /// The names of `girocrab-mcp --check --json` (girocrab-mcp/src/lib.rs,
+    /// `Problem::name`) and what the pane makes of them.
+    func testEveryCheckProblemIsMapped() async throws {
+        let cases: [(String, LocalApiCheck)] = [
+            ("ok", .works), ("unreachable", .notReachable), ("no_key", .reachableWithoutKey),
+            ("key_rejected", .keyRejected), ("disabled", .turnedOff), ("locked", .locked),
+            ("busy", .busy), ("other", .failed("odd")), ("something_new", .failed("odd")),
+        ]
+        for (name, expected) in cases {
+            let helper = try fakeHelper(#"echo '{"problem":"\#(name)","message":"odd"}'"#)
+            let result = await model.checkLocalApiConnection(helper: helper)
+            XCTAssertEqual(result, expected, name)
+        }
+        // No JSON at all (an older helper, a usage error on stderr): its first line.
+        let old = try fakeHelper("echo 'unknown argument: --json' >&2", code: 2)
+        let result = await model.checkLocalApiConnection(helper: old)
+        XCTAssertEqual(result, .failed("unknown argument: --json"))
+    }
+
+    func testCancellingTheCheckEndsTheHelper() async throws {
+        let slow = try fakeHelper("sleep 30")
+        let started = Date()
+        let check = Task { await model.checkLocalApiConnection(helper: slow) }
+        try await Task.sleep(for: .milliseconds(300))
+        check.cancel()
+        let result = await check.value
+        XCTAssertEqual(result, .noAnswer)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "the helper was stopped, not waited for")
+    }
+
+    func testTheConnectionTestRunsTheHelperAgainstTheSocket() async throws {
+        // Not built in CI's Swift job: skipped there, the mapping is covered above.
+        guard let built = AppModel.localApiDevelopmentHelper() else {
+            throw XCTSkip("girocrab-mcp not built (cargo build -p girocrab-mcp)")
+        }
+        try await enable()
+        _ = await model.createLocalApiToken()
+        try await awaitRunning(true)
+        let works = await model.checkLocalApiConnection(helper: built)
+        XCTAssertEqual(works, .works)
+        model.forgetNewLocalApiToken() // pane closed: no key at hand any more
+        let reachable = await model.checkLocalApiConnection(helper: built)
+        XCTAssertEqual(reachable, .reachableWithoutKey)
+        model.lock()
+        let gone = await model.checkLocalApiConnection(helper: built)
+        XCTAssertEqual(gone, .notReachable)
+    }
+
+    func testTheClientEntryIsValidJSONWithPathAndKey() throws {
+        let helper = URL(fileURLWithPath: "/Applications/Giro \"Crab\".app/Contents/Helpers/girocrab-mcp")
+        let entry = AppModel.localApiClientConfig(helper: helper, token: "gcapi_abc")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(entry.utf8)) as? [String: Any])
+        let server = try XCTUnwrap((json["mcpServers"] as? [String: Any])?["girocrab"] as? [String: Any])
+        XCTAssertEqual(server["command"] as? String, helper.path)
+        XCTAssertEqual((server["env"] as? [String: String])?["GIROCRAB_API_TOKEN"], "gcapi_abc")
+        XCTAssertTrue(AppModel.localApiClientConfig(helper: helper, token: nil).contains("gcapi_…"))
+    }
+    #endif
 }

@@ -19,6 +19,8 @@ Rust core (`girocrab-core`, UniFFI) + SwiftUI app (`GiroCrabApp`). Root = this d
 - `girocrab-core/src/merchants.rs` – merchant matching
 - `girocrab-core/src/documents.rs` – booking documents / PDF text extraction
 - `girocrab-core/src/text.rs` – text helpers (mojibake repair etc.)
+- `girocrab-core/src/local_api.rs` + `local_api/server.rs` – read-only local interface for external analysis (#136): queries, scope/token, Unix socket server (`docs/local-api.md`)
+- `girocrab-mcp/` – MCP stdio adapter for that socket (own crate, no core dependency outside tests; architecture, bundling, local testing: `docs/local-api-entwicklung.md`)
 - `girocrab-core/src/report_sanitizer.rs` – scrubs log/diagnostics text for public bug reports (`sanitize_report_text`)
 - `GiroCrabApp/Sources/GiroCrabUI/PrivacyRedaction.swift` – `.sensitive()` modifier; `BugReport.swift` / `BugReportUI.swift` – Hilfe › Problem melden
 - `GiroCrabApp/Sources/GiroCrabUI/AppModel.swift` – app state (all stored instance properties; static members stay in their feature file), init, vault lifecycle,

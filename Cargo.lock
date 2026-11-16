@@ -898,6 +898,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "girocrab-mcp"
+version = "0.7.5"
+dependencies = [
+ "girocrab-core",
+ "serde_json",
+]
+
+[[package]]
 name = "glob"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
