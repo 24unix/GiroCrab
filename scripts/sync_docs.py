@@ -101,6 +101,7 @@ CONNECTOR_DOCS = {
     "miles-and-more": ("Miles & More Kreditkarte (Deutsche Bank)", "Deutsche Bank / Miles & More"),
     "quirion": ("quirion", "quirion"),
     "scalable-capital": ("Scalable Capital", "Scalable Capital"),
+    "volkswagen-bank": ("Volkswagen Bank", "Volkswagen Bank"),
 }
 
 

@@ -42,6 +42,8 @@ pub enum ConnectorKind {
     Quirion,
     /// easybank (formerly Barclays Deutschland) credit cards and statements, see #209.
     Easybank,
+    /// Volkswagen Bank online banking (photoTAN / pushTAN) via the web portal.
+    VolkswagenBank,
 }
 
 impl ConnectorKind {
@@ -63,6 +65,7 @@ impl ConnectorKind {
             ConnectorKind::Ibkr => "ibkr",
             ConnectorKind::Quirion => "quirion",
             ConnectorKind::Easybank => "easybank",
+            ConnectorKind::VolkswagenBank => "volkswagenbank",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -113,6 +116,7 @@ impl ConnectorKind {
             ConnectorKind::Ibkr,
             ConnectorKind::Quirion,
             ConnectorKind::Easybank,
+            ConnectorKind::VolkswagenBank,
         ]
     }
 }

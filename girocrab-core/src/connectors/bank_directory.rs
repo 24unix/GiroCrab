@@ -142,6 +142,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
             "easybank barclays kreditkarte bawag",
         ),
         (
+            ConnectorKind::VolkswagenBank,
+            "Volkswagen Bank",
+            "volkswagen bank vw vwfs autobank tagesgeld girokonto",
+        ),
+        (
             ConnectorKind::Ibkr,
             "Interactive Brokers (IBKR)",
             "interactive brokers ibkr depot broker",
