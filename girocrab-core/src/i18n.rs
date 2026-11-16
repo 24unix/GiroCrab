@@ -581,6 +581,17 @@ fn english(de: &str) -> Option<&'static str> {
         "Bitte den Auftrag in der Volkswagen-Bank-App per pushTAN freigeben." => "Please approve the request with pushTAN in the Volkswagen Bank app.",
         "Bitte die photoTAN eingeben." => "Please enter the photoTAN.",
         "Volkswagen Bank: Unerwartete Antwort auf die TAN-Abfrage." => "Volkswagen Bank: unexpected answer to the TAN request.",
+        // ------------------------------------------------------------ connectors/uberspace.rs
+        "Web-Dashboard (Direkt-Login)" => "Web dashboard (direct login)",
+        "E-Mail-Adresse" => "Email address",
+        "Uberspace-Hosting: Guthaben und Buchungen aller Asteroids, die zur E-Mail-Adresse des Dashboards gehören. Inoffiziell: liest die Seiten des Dashboards, Änderungen sind möglich." => "Uberspace hosting: balance and bookings of every Asteroid that belongs to the dashboard's email address. Unofficial: reads the dashboard pages, changes are possible.",
+        "Uberspace: Anmeldeseite nicht erkannt (Dashboard geändert?)." => "Uberspace: login page not recognised (dashboard changed?).",
+        "Uberspace: Unvollständige oder ungültige Dashboard-Antwort. Es wurden keine Daten übernommen." => "Uberspace: Incomplete or invalid dashboard response. No data was imported.",
+        "Uberspace: Anmeldung fehlgeschlagen. Bitte E-Mail-Adresse und Passwort prüfen." => "Uberspace: Login failed. Please check email address and password.",
+        "Uberspace: Unerwartete Weiterleitung zu einer fremden Adresse – abgebrochen." => "Uberspace: Unexpected redirect to another address – aborted.",
+        "Uberspace: Die Anfrage wurde abgelehnt." => "Uberspace: The request was rejected.",
+        "Uberspace: E-Mail-Adresse und Passwort erforderlich." => "Uberspace: Email address and password required.",
+        "Uberspace: Keine Asteroids gefunden (Dashboard geändert?)." => "Uberspace: No Asteroids found (dashboard changed?).",
         // ------------------------------------------------------------ connectors/easybank.rs (catalog)
         "Online-Banking-API (Direkt-Login)" => "Online banking API (direct login)",
         "Benutzername" => "User name",
@@ -1003,7 +1014,8 @@ mod tests {
                 "KARTENZAHLUNG",
                 "",
                 crate::models::AccountKind::Checking,
-                -5_00
+                -5_00,
+                false
             )),
             "Card payment"
         );

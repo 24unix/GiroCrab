@@ -146,6 +146,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("Volkswagen Bank: Konten, Salden und Umsätze; die Anmeldung wird per pushTAN in der Volkswagen-Bank-App freigegeben. photoTAN wird noch nicht unterstützt. Interne Portal-API; Änderungen sind möglich.").into(),
         },
+        ConnectorKind::Uberspace => BankDescriptor {
+            kind,
+            name: "Uberspace".into(),
+            protocol: tr("Web-Dashboard (Direkt-Login)").into(),
+            bank_code: String::new(),
+            sf_symbol: "server.rack".into(),
+            login_label: tr("E-Mail-Adresse").into(),
+            secret_label: tr("Passwort").into(),
+            required_settings: vec![],
+            note: tr("Uberspace-Hosting: Guthaben und Buchungen aller Asteroids, die zur E-Mail-Adresse des Dashboards gehören. Inoffiziell: liest die Seiten des Dashboards, Änderungen sind möglich.").into(),
+        },
         ConnectorKind::Fnz => BankDescriptor {
             kind,
             name: "FNZ Bank".into(),
@@ -502,6 +513,15 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[],
     },
     MatrixEntry {
+        name: "Uberspace",
+        kind: Some(ConnectorKind::Uberspace),
+        interface: Interface::WebPortal,
+        official: Some(false),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
         name: "Trade Republic",
         kind: Some(ConnectorKind::TradeRepublic),
         interface: Interface::WebPortal,
@@ -591,6 +611,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::Easybank => Box::new(easybank::EasybankConnector::new()),
         ConnectorKind::AlteLeipziger => Box::new(fin4u::Fin4uConnector::new()),
         ConnectorKind::VolkswagenBank => Box::new(volkswagen_bank::VolkswagenBankConnector::new()),
+        ConnectorKind::Uberspace => Box::new(uberspace::UberspaceConnector::new()),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {
             let (country, aspsp) = ConnectorKind::enable_banking_target(key).unwrap_or(("DE", ""));
