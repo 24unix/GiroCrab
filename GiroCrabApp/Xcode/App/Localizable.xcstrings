@@ -5430,6 +5430,17 @@
         }
       }
     },
+    "Belastung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Charge"
+          }
+        }
+      }
+    },
     "Beleg" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10304,6 +10315,17 @@
         }
       }
     },
+    "Erstattung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refund"
+          }
+        }
+      }
+    },
     "Erstattung zu:" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10700,13 +10722,13 @@
         }
       }
     },
-    "Farbe von Abbuchungen in der Buchungsliste: neutral wie der übrige Text oder rot wie negative Salden in der Seitenleiste. Das Minuszeichen bleibt immer sichtbar." : {
+    "Farbe von Abbuchungen in der Buchungsliste: neutral wie der übrige Text, rot wie negative Salden in der Seitenleiste oder kontraststark (orange und blau, auch bei Rot-Grün-Schwäche gut unterscheidbar). Das Vorzeichen bleibt immer sichtbar." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Color of debits in the booking list: neutral like the rest of the text, or red like negative balances in the sidebar. The minus sign always stays visible."
+            "value" : "Color of debits in the booking list: neutral like the rest of the text, red like negative balances in the sidebar, or high contrast (orange and blue, easy to tell apart with red-green color blindness). The sign always stays visible."
           }
         }
       }
@@ -15814,6 +15836,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Balance After"
+          }
+        }
+      }
+    },
+    "Kontraststark" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "High contrast"
           }
         }
       }

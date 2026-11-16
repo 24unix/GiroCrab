@@ -12,27 +12,87 @@ extension SettingEntry: @retroactive Identifiable { public var id: String { key 
 extension BankDescriptor: @retroactive Identifiable { public var id: ConnectorKind { kind } }
 extension SavingsPlan: @retroactive Identifiable { public var id: String { merchant.key } }
 
+/// Hex values of one theme colour in all four appearances (light, dark and
+/// the "Kontrast erhöhen" variants). The tables below hold the hex strings so
+/// `ThemeContrastTests` can audit the exact values the UI renders.
+struct ThemeShade: Equatable {
+    let light: String
+    let dark: String
+    var lightHighContrast: String?
+    var darkHighContrast: String?
+
+    init(light: String, dark: String, lightHighContrast: String? = nil, darkHighContrast: String? = nil) {
+        self.light = light
+        self.dark = dark
+        self.lightHighContrast = lightHighContrast
+        self.darkHighContrast = darkHighContrast
+    }
+
+    var color: Color {
+        Color(light: light, dark: dark, lightHighContrast: lightHighContrast, darkHighContrast: darkHighContrast)
+    }
+
+    /// The four appearances with their hex (high-contrast falls back to the normal one).
+    var variants: [(name: String, hex: String)] {
+        [("light", light), ("dark", dark),
+         ("lightHighContrast", lightHighContrast ?? light), ("darkHighContrast", darkHighContrast ?? dark)]
+    }
+}
+
 /// "Daylight" / "Nightfall" design tokens: calm, high-contrast UI that follows
 /// the system appearance (light: slate on white, dark: slate on deep navy).
 enum Theme {
-    static let canvas = Color(light: "#F8FAFC", dark: "#0F172A")
+    static let canvasSpec = ThemeShade(light: "#F8FAFC", dark: "#0F172A")
+    static let cardSpec = ThemeShade(light: "#FFFFFF", dark: "#1E293B")
+    static let canvas = canvasSpec.color
     static let sidebar = Color(light: "#F3F4F6", dark: "#0B1220")
-    static let card = Color(light: "#FFFFFF", dark: "#1E293B")
+    static let card = cardSpec.color
+    /// Surfaces text sits on (hex per appearance), for the contrast audit.
+    static let surfaceHex: [(name: String, light: String, dark: String)] = [
+        ("canvas", canvasSpec.light, canvasSpec.dark), ("card", cardSpec.light, cardSpec.dark),
+    ]
     // Text colours meet 4.5:1 on canvas and card (HIG / WCAG AA); "Kontrast
-    // erhöhen" gets stronger variants.
-    static let border = Color(light: "#E2E8F0", dark: "#334155", lightHighContrast: "#94A3B8", darkHighContrast: "#64748B")
-    static let text = Color(light: "#0F172A", dark: "#F1F5F9", lightHighContrast: "#000000", darkHighContrast: "#FFFFFF")
-    static let secondary = Color(light: "#4B5A70", dark: "#A3B1C4", lightHighContrast: "#1E293B", darkHighContrast: "#E2E8F0")
-    static let tertiary = Color(light: "#64748B", dark: "#8494AA", lightHighContrast: "#334155", darkHighContrast: "#CBD5E1")
-    static let outflow = Color(light: "#0F172A", dark: "#F1F5F9")
-    static let inflow = Color(light: "#059669", dark: "#34D399")
-    static let inflowBadge = Color(light: "#ECFDF5", dark: "#064E3B")
+    // erhöhen" gets stronger variants. `textSpecs` lists every token used as
+    // text, `badgePairs` the text-on-badge combinations (ThemeContrastTests).
+    static let borderSpec = ThemeShade(light: "#E2E8F0", dark: "#334155", lightHighContrast: "#94A3B8", darkHighContrast: "#64748B")
+    static let textSpec = ThemeShade(light: "#0F172A", dark: "#F1F5F9", lightHighContrast: "#000000", darkHighContrast: "#FFFFFF")
+    static let secondarySpec = ThemeShade(light: "#4B5A70", dark: "#A3B1C4", lightHighContrast: "#1E293B", darkHighContrast: "#E2E8F0")
+    static let tertiarySpec = ThemeShade(light: "#64748B", dark: "#8494AA", lightHighContrast: "#334155", darkHighContrast: "#CBD5E1")
+    static let outflowSpec = ThemeShade(light: "#0F172A", dark: "#F1F5F9", lightHighContrast: "#000000", darkHighContrast: "#FFFFFF")
+    /// Emerald; light #047857 (was #059669, only 3.8:1 on white).
+    static let inflowSpec = ThemeShade(light: "#047857", dark: "#34D399", lightHighContrast: "#065F46", darkHighContrast: "#6EE7B7")
+    static let inflowBadgeSpec = ThemeShade(light: "#ECFDF5", dark: "#064E3B", lightHighContrast: "#D1FAE5", darkHighContrast: "#022C22")
+    static let chargeSpec = ThemeShade(light: "#B91C1C", dark: "#F87171", lightHighContrast: "#991B1B", darkHighContrast: "#FCA5A5")
+    static let outflowBadgeSpec = ThemeShade(light: "#FEF2F2", dark: "#5B1B1B", lightHighContrast: "#FEE2E2", darkHighContrast: "#450A0A")
+    static let loanSpec = ThemeShade(light: "#64748B", dark: "#94A3B8", lightHighContrast: "#334155", darkHighContrast: "#CBD5E1")
+    static let warningSpec = ThemeShade(light: "#B45309", dark: "#F59E0B", lightHighContrast: "#92400E", darkHighContrast: "#FBBF24")
+    static let investSpec = ThemeShade(light: "#1F7A5C", dark: "#5EC79F", lightHighContrast: "#176B4F", darkHighContrast: "#86EFAC")
+    static let negativeSpec = ThemeShade(light: "#B91C1C", dark: "#F87171", lightHighContrast: "#991B1B", darkHighContrast: "#FCA5A5")
+
+    static let border = borderSpec.color
+    static let text = textSpec.color
+    static let secondary = secondarySpec.color
+    static let tertiary = tertiarySpec.color
+    static let outflow = outflowSpec.color
+    static let inflow = inflowSpec.color
+    static let inflowBadge = inflowBadgeSpec.color
     /// Order-account charge colour: the red counterpart of `inflow`, paired
     /// with `outflowBadge` so badged charges and refunds read symmetrically.
-    static let charge = Color(light: "#DC2626", dark: "#F87171")
+    static let charge = chargeSpec.color
     /// Red counterpart of `inflowBadge`, so the order-account rows can badge
-    /// charges and refunds symmetrically (colour = direction, no sign).
-    static let outflowBadge = Color(light: "#FEF2F2", dark: "#7F1D1D")
+    /// charges and refunds symmetrically (direction additionally via sign/symbol).
+    static let outflowBadge = outflowBadgeSpec.color
+    /// Every token that is drawn as text on `surfaceHex` (≥ 4.5:1 required).
+    static let textSpecs: [(name: String, spec: ThemeShade)] = [
+        ("text", textSpec), ("secondary", secondarySpec), ("tertiary", tertiarySpec),
+        ("outflow", outflowSpec), ("inflow", inflowSpec), ("charge", chargeSpec),
+        ("loan", loanSpec), ("warning", warningSpec), ("invest", investSpec), ("negative", negativeSpec),
+    ]
+    /// Text colour on its badge background (≥ 4.5:1 required).
+    static let badgePairs: [(name: String, text: ThemeShade, background: ThemeShade)] = [
+        ("inflow/inflowBadge", inflowSpec, inflowBadgeSpec),
+        ("charge/outflowBadge", chargeSpec, outflowBadgeSpec),
+    ]
     /// The app accent colour (HIG › Color › App accent colors): GiroCrab blue,
     /// defined as `AccentColor` in the asset catalog, so buttons, toggles and
     /// focus rings use it too. With the system default "Multicolour" everyone
@@ -52,10 +112,10 @@ enum Theme {
         Color.accentColor.opacity(0.15)
         #endif
     }()
-    static let loan = Color(light: "#64748B", dark: "#94A3B8")
-    static let warning = Color(light: "#B45309", dark: "#F59E0B")
-    static let invest = Color(light: "#1F7A5C", dark: "#5EC79F")
-    static let negative = Color(light: "#B91C1C", dark: "#F87171")
+    static let loan = loanSpec.color
+    static let warning = warningSpec.color
+    static let invest = investSpec.color
+    static let negative = negativeSpec.color
     static let personFill = Color(light: "#E2E8F0", dark: "#334155")
     static let personText = Color(light: "#475569", dark: "#CBD5E1")
     static let neutralTile = Color(light: "#F1F3F5", dark: "#273449")

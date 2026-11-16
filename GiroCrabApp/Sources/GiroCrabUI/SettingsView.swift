@@ -117,7 +117,7 @@ struct GeneralSettings: View {
                 Picker("Negative Beträge", selection: $negativeAmountStyle) {
                     ForEach(NegativeAmountStyle.allCases) { Text($0.title).tag($0) }
                 }
-                Text("Farbe von Abbuchungen in der Buchungsliste: neutral wie der übrige Text oder rot wie negative Salden in der Seitenleiste. Das Minuszeichen bleibt immer sichtbar.")
+                Text("Farbe von Abbuchungen in der Buchungsliste: neutral wie der übrige Text, rot wie negative Salden in der Seitenleiste oder kontraststark (orange und blau, auch bei Rot-Grün-Schwäche gut unterscheidbar). Das Vorzeichen bleibt immer sichtbar.")
                     .appFont(.caption).foregroundStyle(.secondary)
             } header: { Text("Ansicht").appSectionHeader() }
             Section {

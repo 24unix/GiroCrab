@@ -812,9 +812,10 @@ struct BookingRow: View {
                     .accessibilityLabel("Vorgemerkt")
             }
             if let ref = amazonRef {
-                // Order account: no signs — colour says the direction. Charges and
-                // refunds are badged symmetrically (same padding, same alignment).
-                Text(Money.format(ref.isRefund ? booking.amountCents : abs(booking.amountCents)))
+                // Order account: the direction is never colour alone — charges get a
+                // minus, refunds a plus (and a spoken label); both are badged
+                // symmetrically (same padding, same alignment).
+                Text(ref.isRefund ? Money.signed(booking.amountCents) : Money.format(-abs(booking.amountCents)))
                     .sensitive(.amounts)
                     .appFont(.body, weight: .semibold, monospacedDigit: true)
                     .foregroundStyle(ref.isRefund ? Theme.inflow : Theme.charge)
@@ -822,6 +823,7 @@ struct BookingRow: View {
                     .background(Capsule().fill(ref.isRefund ? Theme.inflowBadge : Theme.outflowBadge))
                     .lineLimit(1).fixedSize()
                     .help(ref.isRefund ? "Gutschrift (Erstattung)" : "Bestellung")
+                    .accessibilityLabel(Text(verbatim: "\(ref.isRefund ? String(localized: "Erstattung") : String(localized: "Belastung")): \(Money.format(abs(booking.amountCents)))"))
             } else {
                 AmountLabel(cents: booking.amountCents)
                     .lineLimit(1)
@@ -1016,7 +1018,8 @@ struct AccountChip: View {
     }
 }
 
-/// Outflows dark slate (or red, Einstellungen › Allgemein, #218), inflows an emerald badge.
+/// Outflows dark slate (or red / orange, Einstellungen › Allgemein, #218), inflows an
+/// emerald (or blue) badge; the sign always carries the direction too.
 struct AmountLabel: View {
     let cents: Int64
     @AppStorage(NegativeAmountStyle.defaultsKey) private var negativeStyle: NegativeAmountStyle = .neutral
@@ -1026,9 +1029,9 @@ struct AmountLabel: View {
             Text(Money.signed(cents))
                 .sensitive()
                 .appFont(.body, weight: .semibold, monospacedDigit: true)
-                .foregroundStyle(Theme.inflow)
+                .foregroundStyle(negativeStyle.positiveColor)
                 .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(Capsule().fill(Theme.inflowBadge))
+                .background(Capsule().fill(negativeStyle.positiveBadge))
         } else {
             Text(Money.format(cents))
                 .sensitive()

@@ -16,8 +16,17 @@ final class NegativeAmountStyleTests: XCTestCase {
     }
 
     func testColours() {
-        XCTAssertEqual(NegativeAmountStyle.neutral.color, Theme.outflow)
-        XCTAssertEqual(NegativeAmountStyle.red.color, Theme.negative)
-        XCTAssertNotEqual(NegativeAmountStyle.red.color, NegativeAmountStyle.neutral.color)
+        XCTAssertEqual(NegativeAmountStyle.neutral.negativeSpec, Theme.outflowSpec)
+        XCTAssertEqual(NegativeAmountStyle.red.negativeSpec, Theme.negativeSpec)
+        XCTAssertNotEqual(NegativeAmountStyle.red.negativeSpec, NegativeAmountStyle.neutral.negativeSpec)
+        XCTAssertNotEqual(NegativeAmountStyle.contrast.negativeSpec, NegativeAmountStyle.red.negativeSpec)
+    }
+
+    func testContrastSchemeIsOrangeAndBlue() throws {
+        XCTAssertEqual(NegativeAmountStyle.allCases, [.neutral, .red, .contrast])
+        XCTAssertEqual(NegativeAmountStyle(rawValue: "contrast"), .contrast)
+        // Positive amounts keep the green pair except in the colour-blind-safe scheme.
+        XCTAssertEqual(NegativeAmountStyle.red.positiveSpec, Theme.inflowSpec)
+        XCTAssertNotEqual(NegativeAmountStyle.contrast.positiveSpec, Theme.inflowSpec)
     }
 }
