@@ -18,7 +18,7 @@ struct SidebarView: View {
 
     /// One inset for every sidebar row, so chevrons and icons share their columns.
     static let captionInsets = rowInsets
-    private static let rowInsets = EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6)
+    private static let rowInsets = EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 6)
 
     private func toggler(_ flag: Binding<Bool>) -> () -> Void {
         { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { flag.wrappedValue.toggle() } }
@@ -237,7 +237,7 @@ struct SidebarView: View {
             Button("Abbrechen", role: .cancel) {}
         } message: { d in
             switch d {
-            case .archiveAccount(let a):
+            case .archiveAccount:
                 Text("Das Konto wird nicht mehr abgerufen, von Regeln nicht mehr verändert und zählt nicht mehr zur Gesamtsumme. Buchungen, Kategorien, Belege und die Gruppe bleiben erhalten. Es lässt sich jederzeit reaktivieren.")
             case .deleteAccount(let a):
                 Text("Das Konto wird samt \(a.transactionCount) Buchungen, Belegen und Depotpositionen unwiderruflich gelöscht – auch aus Auswertungen und Kategoriesummen. Ist es das letzte Konto seines Bankzugangs, wird auch der Bankzugang mit den gespeicherten Zugangsdaten entfernt.")
@@ -333,7 +333,7 @@ struct SidebarView: View {
         ForEach(model.userGroups.filter(model.isUserGroupListed)) { group in
             let open = model.isUserGroupOpen(group)
             let toggle = { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { model.toggleCollapsed(group) } }
-            let indent = CGFloat(group.depth) * DisclosureChevron.iconInset
+            let indent = CGFloat(group.depth) * DisclosureChevron.indentStep
             UserGroupHeader(group: group, open: open, toggle: toggle)
                 .padding(.vertical, 3) // taller hit area for the drop zones
                 // an account goes to the top of this group; a group above it
@@ -503,7 +503,7 @@ struct SidebarView: View {
     /// The category tree at any depth (#101): a node with sub-categories is a
     /// disclosure group whose content recurses into its children.
     private func categoryRows(_ nodes: [CategoryNode], depth: Int) -> AnyView {
-        let indent = CGFloat(depth) * DisclosureChevron.iconInset
+        let indent = CGFloat(depth) * DisclosureChevron.indentStep
         return AnyView(ForEach(nodes) { node in
             if let kids = node.children {
                 let open = model.expandedCategories.contains(node.id)
@@ -593,11 +593,13 @@ private struct AccountRowHeight: ViewModifier {
 }
 
 /// Disclosure arrow of every collapsible sidebar header: `chevron.right` when
-/// closed, turned to point down when open. One 14 pt column, so the icons of
+/// closed, `chevron.down` when open. One 12 pt column, so the icons of
 /// all headers and accounts share one vertical axis.
 struct DisclosureChevron: View {
     /// The one leading column of the sidebar: every chevron sits in it, and rows without one reserve it.
-    static let leadingSlotWidth: CGFloat = 14
+    static let leadingSlotWidth: CGFloat = 12
+    /// Indent of a child account / sub-category / subgroup per depth level.
+    static let indentStep: CGFloat = 12
     static let width: CGFloat = leadingSlotWidth
     /// Gap between the chevron column and the icon (HStack spacing of the headers).
     static let gap: CGFloat = 5
@@ -605,9 +607,8 @@ struct DisclosureChevron: View {
     static let iconInset: CGFloat = width + gap
     let open: Bool
     var body: some View {
-        Image(systemName: "chevron.right")
+        Image(systemName: open ? "chevron.down" : "chevron.right")
             .appFont(.caption, weight: .bold)
-            .rotationEffect(.degrees(open ? 90 : 0))
             .frame(width: Self.width, height: 18)
             .contentShape(Rectangle())
     }
