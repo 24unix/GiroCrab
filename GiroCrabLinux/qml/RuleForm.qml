@@ -176,7 +176,17 @@ Item {
                     }
                     FormRow {
                         label: qsTr("Konto")
+                        // a rule limited to several accounts (made on the Mac, #562): the single-account
+                        // picker would replace the list, so it only says so until Linux has the multi-picker
+                        Text {
+                            readonly property int count: form.rule && form.rule.account_ids ? form.rule.account_ids.length : 0
+                            visible: count > 1
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            text: qsTr("Auf %1 Konten eingeschränkt (in der Mac-App festgelegt)").arg(count)
+                            font.pixelSize: Theme.body; color: Theme.secondary
+                        }
                         AppComboBox {
+                            visible: !(form.rule && form.rule.account_ids && form.rule.account_ids.length > 1)
                             Layout.fillWidth: true
                             model: form.accountOptions
                             textRole: "title"

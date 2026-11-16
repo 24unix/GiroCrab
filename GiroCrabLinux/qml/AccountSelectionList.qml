@@ -52,7 +52,7 @@ ColumnLayout {
         AppModel.coreAsync("set_connection_account_choices", { connection_id: id, enabled_refs: Object.keys(enabledRefs) }, () => {
             AppModel.reloadAll()
             list.saved()
-        }, err => { list.error = err })
+        }, err => { list.error = AppModel.parseCoreError(err).message })
     }
 
     Spinner { visible: !list.loaded; size: 20; Layout.alignment: Qt.AlignHCenter }

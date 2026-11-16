@@ -1409,13 +1409,16 @@ QtObject {
     }
     /// Login with accounts that another login already delivers: asks which to fetch (#346).
     property var accountSelectionConnection: null
+    /// Logins whose choice was put off with „Später“ in this session (not asked again).
+    property var postponedAccountSelection: ({})
     /// Opens the account choice for the first login whose new accounts overlap with
     /// another login (#346). No-op while a choice is already shown.
     function checkPendingAccountSelection() {
         if (accountSelectionConnection !== null) return
         coreAsync("pending_account_selection_connections", {}, ids => {
-            if (!ids.length || accountSelectionConnection !== null) return
-            accountSelectionConnection = connections.find(c => c.id === ids[0]) || null
+            const id = ids.find(i => !postponedAccountSelection[i])
+            if (id === undefined || accountSelectionConnection !== null) return
+            accountSelectionConnection = connections.find(c => c.id === id) || null
         }, () => {})
     }
     function syncNotice(connection, s) {

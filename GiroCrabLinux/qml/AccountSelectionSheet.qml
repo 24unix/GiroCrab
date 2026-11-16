@@ -12,6 +12,10 @@ Sheet {
     // Esc = "Später"
     onClosed: if (AppModel.accountSelectionConnection !== null) finish()
     function finish() {
+        // "Später" leaves the login pending: don't ask again for it in this session (the Mac
+        // re-checks right away and would show the same choice again)
+        const c = AppModel.accountSelectionConnection
+        if (c) { const p = Object.assign({}, AppModel.postponedAccountSelection); p[c.id] = true; AppModel.postponedAccountSelection = p }
         AppModel.accountSelectionConnection = null
         AppModel.checkPendingAccountSelection()
     }

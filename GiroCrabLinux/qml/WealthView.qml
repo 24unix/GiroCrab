@@ -254,7 +254,7 @@ Rectangle {
         padding: 18
         readonly property real assets: Math.max(wv.summary.grossCents, 0)
         readonly property real debts: -Math.min(wv.summary.liabilitiesCents, 0)
-        readonly property real scale: Math.max(assets, debts, 1)
+        readonly property real maxCents: Math.max(assets, debts, 1)
         implicitWidth: 340
         ColumnLayout {
             width: parent.width; spacing: 14
@@ -267,8 +267,8 @@ Rectangle {
                 fontSizeMode: Text.HorizontalFit; minimumPixelSize: 22; elide: Text.ElideNone
                 Sensitive {}
             }
-            Bar { title: qsTr("Vermögenswerte"); cents: sc.assets; fraction: sc.assets / sc.scale; tint: Theme.accent }
-            Bar { title: qsTr("Verbindlichkeiten"); cents: -sc.debts; fraction: sc.debts / sc.scale; tint: Theme.negative
+            Bar { title: qsTr("Vermögenswerte"); cents: sc.assets; fraction: sc.assets / sc.maxCents; tint: Theme.accent }
+            Bar { title: qsTr("Verbindlichkeiten"); cents: -sc.debts; fraction: sc.debts / sc.maxCents; tint: Theme.negative
                   opacity: prefs.includeLiabilities ? 1 : 0.45 }
             CheckBox {
                 visible: sc.debts > 0

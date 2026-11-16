@@ -722,7 +722,7 @@ Rectangle {
         spacing: 3
         SFIcon { symbol: none ? "questionmark.folder" : (booking.category_symbol || "tag.fill"); size: 11; color: parent.tint }
         Text { text: none ? qsTr("Ohne Kategorie") : booking.category_name; font.pixelSize: Theme.callout + 1; font.weight: Font.Medium; color: parent.tint; elide: Text.ElideRight
-               Sensitive { labels: true; when: !parent.none } }
+               Sensitive { labels: true; when: !parent.parent.none } }   // parent: the Text, its parent the label
     }
 
     // Onboarding.swift › EmptyVaultCard: the personal vault has no accounts yet.
