@@ -1165,7 +1165,9 @@ fn sample(r: &MmRow, i: i64, account_id: i64) -> Booking {
         external_id: String::new(),
         tags: Vec::new(),
     };
-    enrich(&mut b);
+    // preview of an import: no connection yet, a payment service reads as before
+    let paypal = b.account_kind == AccountKind::PaymentService;
+    enrich(&mut b, paypal);
     b.is_salary = crate::salary::salary_signal(&b);
     b
 }

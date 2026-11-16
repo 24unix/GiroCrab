@@ -67,7 +67,8 @@ fn category_match_sql(cat_match: &str) -> String {
 }
 
 /// Adds merchant, flow kind, payment method and clean purpose to a booking.
-pub(crate) fn enrich(t: &mut Booking) {
+/// `paypal`: its account is a PayPal account (see `BookingFinisher`).
+pub(crate) fn enrich(t: &mut Booking, paypal: bool) {
     t.merchant = MerchantResolver::resolve(&t.counterparty, &t.purpose);
     t.merchant_name = t.merchant.name.clone();
     t.merchant_domain = Some(t.merchant.domain.clone()).filter(|d| !d.is_empty());
@@ -88,7 +89,13 @@ pub(crate) fn enrich(t: &mut Booking) {
         &top,
         t.account_kind,
     );
-    t.payment_method = payment_method(&t.booking_text, &t.purpose, t.account_kind, t.amount_cents);
+    t.payment_method = payment_method(
+        &t.booking_text,
+        &t.purpose,
+        t.account_kind,
+        t.amount_cents,
+        paypal,
+    );
     t.clean_purpose = clean_purpose(&t.purpose);
     t.recurrence_key = crate::recurring::series_key(t);
 }
@@ -197,6 +204,7 @@ pub(super) struct BookingFinisher {
     pair_transfers: std::collections::HashSet<i64>,
     loan_links: std::collections::HashMap<i64, i64>,
     visible: Option<std::collections::HashSet<i64>>,
+    paypal_accounts: std::collections::HashSet<i64>,
 }
 
 impl BookingFinisher {
@@ -220,6 +228,23 @@ impl BookingFinisher {
             ibans
         };
         let pair_transfers = Vault::payment_service_transfer_ids(db)?;
+        // PayPal accounts: linked to a PayPal connection, or imported without
+        // one (MoneyMoney) and named after PayPal. Other payment services
+        // (Uberspace, Amazon orders) must not read "PayPal".
+        let paypal_accounts: std::collections::HashSet<i64> = {
+            let mut st = db.prepare(
+                "SELECT a.id FROM accounts a
+                   LEFT JOIN bank_connections c ON c.id = a.connection_id
+                  WHERE a.kind = 'payment_service'
+                    AND (c.connector = 'paypal'
+                         OR (c.id IS NULL AND (lower(a.name) LIKE '%paypal%'
+                                               OR lower(a.bank_name) LIKE '%paypal%')))",
+            )?;
+            let ids = st
+                .query_map([], |r| r.get::<_, i64>(0))?
+                .collect::<Result<_, _>>()?;
+            ids
+        };
         Ok(Self {
             paths,
             salary_ibans,
@@ -228,6 +253,7 @@ impl BookingFinisher {
             pair_transfers,
             loan_links,
             visible: visible.map(|v| v.iter().copied().collect()),
+            paypal_accounts,
         })
     }
 
@@ -238,7 +264,7 @@ impl BookingFinisher {
             t.category_color_hex = color.clone();
             t.category_symbol = sym.clone();
         }
-        enrich(t);
+        enrich(t, self.paypal_accounts.contains(&t.account_id));
         t.is_salary = crate::salary::is_salary(t, &self.salary_ibans);
         // A salary stays income although its booking text names a transfer
         // (comdirect: "Übertrag / Überweisung"); a transfer category still wins.

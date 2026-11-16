@@ -1073,11 +1073,15 @@ pub fn classify(
 }
 
 /// "Kartenzahlung", "Lastschrift", "Überweisung", "Sparplan" … for the row subtitle.
+/// `paypal`: the booking's account is a PayPal account (see
+/// `BookingFinisher`); other payment services (Uberspace, Amazon orders)
+/// get the labels from their texts.
 pub fn payment_method(
     booking_text: &str,
     purpose: &str,
     account_kind: AccountKind,
     amount_cents: i64,
+    paypal: bool,
 ) -> String {
     let t = normalise(&format!("{booking_text} {purpose}"));
     let m = if booking_text == "Amazon-Bestellung" {
@@ -1115,7 +1119,7 @@ pub fn payment_method(
         "Entgelt"
     } else if account_kind == AccountKind::CreditCard {
         "Kreditkarte"
-    } else if account_kind == AccountKind::PaymentService {
+    } else if paypal {
         "PayPal"
     } else if contains_any(
         &t,

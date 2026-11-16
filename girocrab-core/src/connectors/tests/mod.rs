@@ -1337,6 +1337,7 @@ mod banking_gate;
 mod batch_transfer;
 mod content_id;
 mod direct_debit;
+mod payment_method;
 mod standing_order;
 mod statements_auto;
 mod transfer_cancel;

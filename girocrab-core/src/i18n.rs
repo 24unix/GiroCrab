@@ -994,7 +994,8 @@ mod tests {
                 "KARTENZAHLUNG",
                 "",
                 crate::models::AccountKind::Checking,
-                -5_00
+                -5_00,
+                false
             )),
             "Card payment"
         );
