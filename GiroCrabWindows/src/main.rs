@@ -20,6 +20,8 @@ mod policy;
 mod portfolio;
 mod recurring_ui;
 mod recurring_view;
+mod settings_import;
+mod settings_import_ui;
 mod sync_flow;
 mod tags_ui;
 mod transfer_flow;
@@ -34,6 +36,7 @@ use std::time::Duration;
 
 use girocrab_core::connectors::bank_directory::{BankAccessMode, BankSearchResult};
 use girocrab_core::connectors::PayeeCheck;
+use girocrab_core::sync_log::{SyncLogOutcome, SyncLogSource};
 use girocrab_core::{
     BookingFilter, Category, Challenge, ChallengeKind, ConnectorKind, PeriodGranularity, SyncStep,
     TransferStep, Vault,
@@ -779,8 +782,25 @@ fn run_sync(vault: Arc<Vault>, demo: bool, ui: &DialogBridge) -> Result<String, 
             Ok(s) => {
                 done += 1;
                 imported += s.transactions_imported;
+                let _ = vault.log_sync(
+                    Some(c.id),
+                    SyncLogSource::Manual,
+                    SyncLogOutcome::Ok,
+                    String::new(),
+                    s.transactions_imported,
+                );
             }
-            Err(e) => problems.push(format!("{}: {e}", c.display_name)),
+            Err(e) => {
+                // the core scrubs logins, PINs, TANs and IBANs from the text
+                let _ = vault.log_sync(
+                    Some(c.id),
+                    SyncLogSource::Manual,
+                    SyncLogOutcome::Error,
+                    e.clone(),
+                    0,
+                );
+                problems.push(format!("{}: {e}", c.display_name));
+            }
         }
     }
     ui.hide();

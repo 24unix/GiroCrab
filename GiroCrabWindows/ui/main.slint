@@ -5,7 +5,9 @@ import { RecLine, RecurringPanel } from "recurring_dialog.slint";
 import { GroupsState, GroupsPanel } from "groups_dialog.slint";
 import { AssetsState, AssetsLoansPanel } from "assets_loans_dialog.slint";
 import { MandatesState, MdRow, MandatesPanel } from "mandates_dialog.slint";
+import { SettingsImportState, SiRow, SettingsImportPanel } from "settings_import_dialog.slint";
 export { GroupsState }
+export { SettingsImportState, SiRow }
 export { AssetsState }
 export { MandatesState, MdRow }
 export { RecLine }
@@ -960,6 +962,7 @@ export component MainWindow inherits Window {
                 GhostButton { text: "Budgets …"; clicked => { root.budgets-request(); } }
                 GhostButton { text: "Vorlagen …"; clicked => { root.templates-request(); } }
                 GhostButton { text: "Wiederkehrend …"; clicked => { root.rc-request(); } }
+                GhostButton { text: "Import & Export …"; enabled: !root.busy; clicked => { SettingsImportState.request(); } }
                 GhostButton { text: "Info"; clicked => { root.about-open = true; } }
                 Rectangle { horizontal-stretch: 1; }
                 PillToggle {
@@ -1633,6 +1636,15 @@ export component MainWindow inherits Window {
         MandatesPanel {
             ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
             close() => { MandatesState.open = false; root.refocus(); }
+        }
+    }
+
+    // ---- Import, Export, Sicherung, Einstellungen, Abrufprotokoll (settings_import_ui.rs; panel in settings_import_dialog.slint)
+    if SettingsImportState.open: Dialog {
+        dialog-width: 820px;
+        SettingsImportPanel {
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            close() => { SettingsImportState.open = false; root.refocus(); }
         }
     }
 

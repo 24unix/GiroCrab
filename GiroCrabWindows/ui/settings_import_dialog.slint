@@ -1,0 +1,313 @@
+// "Import, Export & Einstellungen": statement and MoneyMoney imports, Amazon orders, CSV / CAMT.053
+// export, encrypted backup, settings and the Abrufprotokoll. The panel is the content of a
+// `Dialog` in main.slint (which owns the theme), so colours come in as properties. All state and
+// callbacks live in the `SettingsImportState` global; settings_import_ui.rs fills it and runs
+// every vault call, file dialog and file access on a worker thread.
+import { Button, ListView, LineEdit, ComboBox, CheckBox } from "std-widgets.slint";
+
+export struct SiRow { title: string, detail: string }
+
+export global SettingsImportState {
+    in-out property <bool> open: false;
+    // 0 = Import, 1 = Export, 2 = Sicherung, 3 = Einstellungen, 4 = Abrufprotokoll
+    in-out property <int> tab: 0;
+    in property <string> status;
+    in property <bool> busy: false;
+    in property <float> progress: 0;
+    in property <bool> show-progress: false;
+    // accounts (import target: first entry = new archive account)
+    in property <[string]> target-names;
+    in-out property <int> target: 0;
+    in property <[string]> acc-names;
+    in-out property <int> acc: 0;
+    callback tab-changed(int);
+    // ---- Import
+    in property <string> file-info;
+    in property <bool> file-ready: false;
+    callback pick-file();
+    callback run-import();
+    in-out property <string> db-password;
+    in property <string> db-info;
+    in property <bool> db-ready: false;
+    callback pick-db();
+    callback run-db();
+    callback cancel-db();
+    in property <string> amazon-info;
+    in property <bool> amazon-ready: false;
+    in property <[string]> amazon-names;
+    in-out property <int> amazon: 0;
+    callback pick-amazon();
+    callback run-amazon();
+    // ---- Export
+    in-out property <string> date-from;
+    in-out property <string> date-to;
+    in-out property <bool> col-category: true;
+    in-out property <bool> col-note: true;
+    in-out property <bool> col-balance: false;
+    in property <[string]> camt-versions;
+    in-out property <int> camt-version: 1;
+    callback export-csv();
+    callback export-camt();
+    // ---- Sicherung
+    in-out property <string> backup-password;
+    in-out property <string> backup-repeat;
+    in property <bool> restore-armed: false;
+    callback write-backup();
+    callback restore-backup();
+    // ---- Einstellungen
+    in property <[SiRow]> settings;
+    in-out property <int> sel-setting: -1;
+    in property <string> setting-label;
+    in property <string> setting-help;
+    in property <bool> setting-secret: false;
+    in-out property <string> setting-value;
+    callback setting-select(int);
+    callback setting-save();
+    in property <[string]> mode-names;
+    in-out property <int> mode: 0;
+    in property <string> mode-source;
+    callback mode-changed(int);
+    // ---- Abrufprotokoll
+    in property <[SiRow]> log;
+    in property <string> log-summary;
+    in-out property <string> log-search;
+    in-out property <bool> log-errors: false;
+    in property <bool> clear-armed: false;
+    callback log-reload();
+    callback log-clear();
+    callback log-export();
+    callback request();
+}
+
+component Tab inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    in property <color> accent;
+    in property <color> ink;
+    callback clicked();
+    height: 30px;
+    border-radius: 6px;
+    background: active ? accent.with-alpha(0.2) : transparent;
+    TouchArea { clicked => { root.clicked(); } }
+    Text { text: root.text; color: root.ink; font-size: 12px; font-weight: root.active ? 700 : 400; horizontal-alignment: center; vertical-alignment: center; padding-left: 8px; padding-right: 8px; }
+}
+
+component Caption inherits Text {
+    in property <color> ink;
+    color: root.ink;
+    font-size: 12px;
+    vertical-alignment: center;
+    min-width: 120px;
+}
+
+component Info inherits Text {
+    in property <color> ink;
+    color: root.ink;
+    font-size: 11px;
+    wrap: word-wrap;
+}
+
+component Rows inherits Rectangle {
+    in property <[SiRow]> rows;
+    in property <string> empty;
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> accent;
+    in property <color> line;
+    in property <length> list-height: 170px;
+    in property <int> selected: -1;
+    callback pick(int);
+    height: list-height;
+    border-width: 1px;
+    border-color: line;
+    border-radius: 8px;
+    clip: true;
+    if root.rows.length == 0: Text { text: root.empty; color: root.muted; horizontal-alignment: center; vertical-alignment: center; }
+    ListView {
+        for r[i] in root.rows: Rectangle {
+            height: 44px;
+            background: root.selected == i ? root.accent.with-alpha(0.18) : transparent;
+            TouchArea { clicked => { root.pick(i); } }
+            VerticalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                alignment: center;
+                spacing: 2px;
+                Text { text: r.title; color: root.ink; font-size: 13px; font-weight: 600; overflow: elide; }
+                Text { text: r.detail; color: root.muted; font-size: 11px; overflow: elide; }
+            }
+        }
+    }
+}
+
+export component SettingsImportPanel inherits VerticalLayout {
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> line;
+    in property <color> accent;
+    in property <color> negative;
+    callback close();
+    spacing: 8px;
+    Text { text: "Import, Export & Einstellungen"; color: root.ink; font-size: 18px; font-weight: 700; }
+    HorizontalLayout {
+        spacing: 4px;
+        Tab { text: "Import"; active: SettingsImportState.tab == 0; accent: root.accent; ink: root.ink; clicked => { SettingsImportState.tab = 0; SettingsImportState.tab-changed(0); } }
+        Tab { text: "Export"; active: SettingsImportState.tab == 1; accent: root.accent; ink: root.ink; clicked => { SettingsImportState.tab = 1; SettingsImportState.tab-changed(1); } }
+        Tab { text: "Sicherung"; active: SettingsImportState.tab == 2; accent: root.accent; ink: root.ink; clicked => { SettingsImportState.tab = 2; SettingsImportState.tab-changed(2); } }
+        Tab { text: "Einstellungen"; active: SettingsImportState.tab == 3; accent: root.accent; ink: root.ink; clicked => { SettingsImportState.tab = 3; SettingsImportState.tab-changed(3); } }
+        Tab { text: "Abrufprotokoll"; active: SettingsImportState.tab == 4; accent: root.accent; ink: root.ink; clicked => { SettingsImportState.tab = 4; SettingsImportState.tab-changed(4); } }
+    }
+
+    // ---- 0: import
+    if SettingsImportState.tab == 0: VerticalLayout {
+        spacing: 6px;
+        Text { text: "Kontoauszug (CSV, XML, CAMT.053, MT940)"; color: root.ink; font-size: 13px; font-weight: 600; }
+        HorizontalLayout {
+            spacing: 8px;
+            Caption { text: "Zielkonto"; ink: root.muted; }
+            ComboBox { horizontal-stretch: 1; model: SettingsImportState.target-names; current-index <=> SettingsImportState.target; }
+            Button { text: "Datei wählen …"; enabled: !SettingsImportState.busy; clicked => { SettingsImportState.pick-file(); } }
+            Button { text: "Importieren"; primary: true; enabled: !SettingsImportState.busy && SettingsImportState.file-ready; clicked => { SettingsImportState.run-import(); } }
+        }
+        Info { text: SettingsImportState.file-info; ink: root.muted; }
+        Text { text: "MoneyMoney-Datenbank"; color: root.ink; font-size: 13px; font-weight: 600; }
+        HorizontalLayout {
+            spacing: 8px;
+            Caption { text: "Passwort"; ink: root.muted; }
+            LineEdit { horizontal-stretch: 1; input-type: password; text <=> SettingsImportState.db-password; placeholder-text: "Passwort der Datenbank"; }
+            Button { text: "Datenbank wählen …"; enabled: !SettingsImportState.busy; clicked => { SettingsImportState.pick-db(); } }
+            Button { text: "Importieren"; primary: true; enabled: !SettingsImportState.busy && SettingsImportState.db-ready; clicked => { SettingsImportState.run-db(); } }
+            Button { text: "Abbrechen"; enabled: SettingsImportState.busy && SettingsImportState.show-progress; clicked => { SettingsImportState.cancel-db(); } }
+        }
+        Info { text: SettingsImportState.db-info; ink: root.muted; }
+        if SettingsImportState.show-progress: Rectangle {
+            height: 8px;
+            border-radius: 4px;
+            background: root.line;
+            Rectangle { x: 0; width: parent.width * SettingsImportState.progress; height: parent.height; border-radius: 4px; background: root.accent; }
+        }
+        Text { text: "Amazon-Bestellungen (JSON)"; color: root.ink; font-size: 13px; font-weight: 600; }
+        HorizontalLayout {
+            spacing: 8px;
+            Caption { text: "Verbindung"; ink: root.muted; }
+            ComboBox { horizontal-stretch: 1; model: SettingsImportState.amazon-names; current-index <=> SettingsImportState.amazon; }
+            Button { text: "Datei wählen …"; enabled: !SettingsImportState.busy; clicked => { SettingsImportState.pick-amazon(); } }
+            Button { text: "Importieren"; primary: true; enabled: !SettingsImportState.busy && SettingsImportState.amazon-ready && SettingsImportState.amazon-names.length > 0; clicked => { SettingsImportState.run-amazon(); } }
+        }
+        Info { text: SettingsImportState.amazon-info; ink: root.muted; }
+    }
+
+    // ---- 1: export
+    if SettingsImportState.tab == 1: VerticalLayout {
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 8px;
+            Caption { text: "Konto"; ink: root.muted; }
+            ComboBox { horizontal-stretch: 1; model: SettingsImportState.acc-names; current-index <=> SettingsImportState.acc; }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Caption { text: "Von (JJJJ-MM-TT)"; ink: root.muted; }
+            LineEdit { horizontal-stretch: 1; text <=> SettingsImportState.date-from; placeholder-text: "leer = ab dem ersten Umsatz"; }
+            Caption { text: "Bis"; ink: root.muted; min-width: 40px; }
+            LineEdit { horizontal-stretch: 1; text <=> SettingsImportState.date-to; placeholder-text: "leer = bis heute"; }
+        }
+        Text { text: "CSV (Excel)"; color: root.ink; font-size: 13px; font-weight: 600; }
+        HorizontalLayout {
+            spacing: 12px;
+            CheckBox { text: "Kategorie"; checked <=> SettingsImportState.col-category; }
+            CheckBox { text: "Notiz"; checked <=> SettingsImportState.col-note; }
+            CheckBox { text: "Kontostand (Kopfzeile)"; checked <=> SettingsImportState.col-balance; }
+            Rectangle { horizontal-stretch: 1; }
+            Button { text: "CSV speichern …"; primary: true; enabled: !SettingsImportState.busy; clicked => { SettingsImportState.export-csv(); } }
+        }
+        Text { text: "CAMT.053 (Kontoauszug)"; color: root.ink; font-size: 13px; font-weight: 600; }
+        HorizontalLayout {
+            spacing: 8px;
+            Caption { text: "Version"; ink: root.muted; }
+            ComboBox { horizontal-stretch: 1; model: SettingsImportState.camt-versions; current-index <=> SettingsImportState.camt-version; }
+            Button { text: "CAMT speichern …"; primary: true; enabled: !SettingsImportState.busy; clicked => { SettingsImportState.export-camt(); } }
+        }
+    }
+
+    // ---- 2: backup
+    if SettingsImportState.tab == 2: VerticalLayout {
+        spacing: 6px;
+        Info { text: "Die Sicherung ist eine Kopie des Tresors, verschlüsselt mit einem eigenen Passwort. Beim Wiederherstellen werden die aktuellen Daten ersetzt."; ink: root.muted; }
+        HorizontalLayout {
+            spacing: 8px;
+            Caption { text: "Passwort"; ink: root.muted; }
+            LineEdit { horizontal-stretch: 1; input-type: password; text <=> SettingsImportState.backup-password; }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Caption { text: "Wiederholen"; ink: root.muted; }
+            LineEdit { horizontal-stretch: 1; input-type: password; text <=> SettingsImportState.backup-repeat; placeholder-text: "nur beim Sichern"; }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            Button { text: "Sicherung schreiben …"; primary: true; enabled: !SettingsImportState.busy; clicked => { SettingsImportState.write-backup(); } }
+            Button { text: SettingsImportState.restore-armed ? "Wirklich ersetzen …" : "Wiederherstellen …"; enabled: !SettingsImportState.busy; clicked => { SettingsImportState.restore-backup(); } }
+        }
+    }
+
+    // ---- 3: settings
+    if SettingsImportState.tab == 3: VerticalLayout {
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 8px;
+            Caption { text: "FinTS-Produkt"; ink: root.muted; }
+            ComboBox { horizontal-stretch: 1; model: SettingsImportState.mode-names; current-index <=> SettingsImportState.mode; selected(_) => { SettingsImportState.mode-changed(SettingsImportState.mode); } }
+        }
+        Info { text: SettingsImportState.mode-source; ink: root.muted; }
+        Rows {
+            list-height: 150px;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent;
+            rows: SettingsImportState.settings; empty: "Keine Einstellungen"; selected: SettingsImportState.sel-setting;
+            pick(i) => { SettingsImportState.setting-select(i); }
+        }
+        if SettingsImportState.sel-setting >= 0: VerticalLayout {
+            spacing: 4px;
+            Text { text: SettingsImportState.setting-label; color: root.ink; font-size: 13px; font-weight: 600; }
+            Info { text: SettingsImportState.setting-help; ink: root.muted; }
+            HorizontalLayout {
+                spacing: 8px;
+                LineEdit {
+                    horizontal-stretch: 1;
+                    input-type: SettingsImportState.setting-secret ? InputType.password : InputType.text;
+                    text <=> SettingsImportState.setting-value;
+                    placeholder-text: SettingsImportState.setting-secret ? "Neuer Wert (leer = löschen)" : "Wert (leer = löschen)";
+                    accepted => { SettingsImportState.setting-save(); }
+                }
+                Button { text: "Speichern"; primary: true; enabled: !SettingsImportState.busy; clicked => { SettingsImportState.setting-save(); } }
+            }
+        }
+    }
+
+    // ---- 4: Abrufprotokoll
+    if SettingsImportState.tab == 4: VerticalLayout {
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit { horizontal-stretch: 1; text <=> SettingsImportState.log-search; placeholder-text: "Suchen (Verbindung, Meldung)"; accepted => { SettingsImportState.log-reload(); } }
+            CheckBox { text: "Nur Fehler"; checked <=> SettingsImportState.log-errors; toggled => { SettingsImportState.log-reload(); } }
+            Button { text: "Suchen"; clicked => { SettingsImportState.log-reload(); } }
+        }
+        Info { text: SettingsImportState.log-summary; ink: root.muted; }
+        Rows {
+            list-height: 200px;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent;
+            rows: SettingsImportState.log; empty: "Noch keine Abrufe protokolliert";
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            Button { text: "Als XML speichern …"; enabled: !SettingsImportState.busy; clicked => { SettingsImportState.log-export(); } }
+            Button { text: SettingsImportState.clear-armed ? "Wirklich leeren" : "Protokoll leeren"; enabled: !SettingsImportState.busy; clicked => { SettingsImportState.log-clear(); } }
+        }
+    }
+
+    if SettingsImportState.status != "": Text { text: SettingsImportState.status; color: root.negative; font-size: 12px; wrap: word-wrap; }
+    HorizontalLayout { alignment: end; Button { text: "Schließen"; clicked => { root.close(); } } }
+}
