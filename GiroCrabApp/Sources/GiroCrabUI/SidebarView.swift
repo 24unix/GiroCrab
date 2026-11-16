@@ -398,12 +398,7 @@ struct SidebarView: View {
         // accounts have – then archive / delete
         Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .renameAccount(account) }
         Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .account(account.id) }
-        Toggle(isOn: Binding(
-            get: { ViewLayout.showsCategoryChip(for: account.id) },
-            set: { ViewLayout.setShowsCategoryChip($0, for: account.id) }
-        )) {
-            Label("Kategorie in der Buchungszeile anzeigen", systemImage: "tag")
-        }
+        CategoryChipToggle(accountID: account.id)
         Menu("Kontoart ändern …", systemImage: "list.bullet.rectangle") {
             ForEach(AccountKind.importChoices, id: \.self) { k in
                 Button { model.setAccountKind(account.id, to: k) } label: {
@@ -908,5 +903,30 @@ struct NewCountBadge: View {
                 .fixedSize() // the name truncates, never the count
                 .accessibilityLabel(Text("\(count) neue Buchungen"))
         }
+    }
+}
+
+/// „Kategorie in der Buchungszeile anzeigen“ in an account's menu (GitHub #604).
+/// Reads the setting through `@AppStorage` so the checkmark follows the stored value;
+/// a Binding over `UserDefaults` is not observed and kept a stale checkmark in the menu.
+private struct CategoryChipToggle: View {
+    let accountID: Int64
+    @AppStorage(ViewLayout.hiddenCategoryChipAccountsKey) private var hiddenRaw = ""
+
+    var body: some View {
+        Toggle(isOn: Binding(
+            get: { !hiddenIDs.contains(accountID) },
+            set: { show in
+                var ids = hiddenIDs
+                if show { ids.remove(accountID) } else { ids.insert(accountID) }
+                hiddenRaw = ids.sorted().map(String.init).joined(separator: ",")
+            }
+        )) {
+            Label("Kategorie in der Buchungszeile anzeigen", systemImage: "tag")
+        }
+    }
+
+    private var hiddenIDs: Set<Int64> {
+        Set(hiddenRaw.split(separator: ",").compactMap { Int64($0) })
     }
 }
