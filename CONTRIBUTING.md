@@ -110,6 +110,17 @@ Erstelle einen neuen Branch, committe die Änderungen mit den AI-Attribution-Tra
 
 New issue authors get this hint once as a comment (`.github/workflows/issue-ai-invite.yml`).
 
+### 🌟 Community Success Story: Vom anonymisierten Browser-Mitschnitt (HAR) zum eigenen Bank-Connector (#42)
+
+`@zcarsten` hat ohne Rust-Vorkenntnisse einen Connector für seine Bank gebaut – mit einem Browser-Mitschnitt und einer KI:
+
+1. **Mitschnitt:** Bank-Portal im Browser (Chrome/Edge) öffnen, DevTools › *Network* starten, einmal einloggen und Umsätze aufrufen, dann als `.har` exportieren.
+2. **Anonymisieren:** Namen, IBANs, Kontostände, Zugangsdaten, Tokens und Cookies in der `.har` durch Platzhalter ersetzen, **bevor** die Datei irgendwo geteilt oder in eine KI geladen wird.
+3. **KI bauen lassen:** Claude Code oder Codex bekommt die anonymisierte `.har`, `girocrab-core/src/connectors/template.rs` und `CLAUDE.md` und implementiert den Rust-Connector samt Tests.
+4. **Teilen:** Noch nicht bereit für einen Pull Request? Kein Problem – hänge den erzeugten `.patch` (`git diff > bank.patch`) einfach direkt im GitHub-Issue an, wie in #42 / PR #642. Wir helfen beim Rest.
+
+**From an anonymized browser capture (HAR) to your own bank connector (#42).** `@zcarsten` built a connector without prior Rust experience: record the bank portal in the browser DevTools (Network tab, export `.har`), anonymize names, IBANs, balances and credentials in the file *before* sharing it, then let Claude Code / Codex build the connector against `girocrab-core/src/connectors/template.rs` and `CLAUDE.md`. If you don't feel ready for a pull request yet, attach the generated `.patch` / `git diff` to the GitHub issue (as in #42 / PR #642) and we'll take it from there.
+
 ## Picking up an issue
 
 To avoid two people building the same thing (it has happened, e.g. account groups in #31):
