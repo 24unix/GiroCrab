@@ -80,6 +80,8 @@ struct AccountsSectionHeader: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(Theme.secondary)
+            // same height in every view (#596): the buttons only exist under „Gruppen“
+            .frame(minHeight: 18)
             Picker("Konten anzeigen nach", selection: $model.accountView) {
                 ForEach(AccountSidebarMode.allCases) { mode in
                     Text(mode.shortTitle).tag(mode)
@@ -157,7 +159,7 @@ struct UserGroupHeader: View {
             Spacer()
             Text(Money.format(group.balanceCents))
                 .sensitive()
-                .appFont(.callout, weight: .semibold) // same size as the account balances
+                .appFont(.footnote, weight: .semibold) // same size as in SectionHeader (#602)
                 .monospacedDigit()
                 .fixedSize() // the name truncates, never the balance (#343)
                 .foregroundStyle(selected ? AnyShapeStyle(.primary) : AnyShapeStyle(group.balanceCents < 0 ? Theme.negative : Theme.secondary))
@@ -879,6 +881,8 @@ private struct GroupAccountsList: View {
             .sensitive()
         }
         .draggable(GroupDrag.account(a.id))
+        // move to any group, also from „Ohne Gruppe“ (#671)
+        .contextMenu { AccountGroupMenu(account: a) }
     }
 
     /// Bank and IBAN/number (just the bank when that is all there is),

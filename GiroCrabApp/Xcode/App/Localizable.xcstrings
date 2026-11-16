@@ -7206,6 +7206,28 @@
         }
       }
     },
+    "Das Konto wird nicht mehr abgerufen, von Regeln nicht mehr verändert und zählt nicht mehr zur Gesamtsumme. Buchungen, Kategorien, Belege und die Gruppe bleiben erhalten. Es lässt sich jederzeit reaktivieren." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The account is no longer fetched, no longer changed by rules and no longer counts towards the total. Bookings, categories, documents and the group are kept. It can be reactivated at any time."
+          }
+        }
+      }
+    },
+    "Das Konto wird samt %u Buchungen, Belegen und Depotpositionen unwiderruflich gelöscht – auch aus Auswertungen und Kategoriesummen. Ist es das letzte Konto seines Bankzugangs, wird auch der Bankzugang mit den gespeicherten Zugangsdaten entfernt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The account is permanently deleted along with %u bookings, documents and securities positions – also from analyses and category totals. If it is the last account of its bank connection, the connection and its stored credentials are removed too."
+          }
+        }
+      }
+    },
     "Das Mandat „%@“ wird entfernt. Bereits eingereichte Einzüge bleiben unverändert." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8440,6 +8462,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The group is empty."
+          }
+        }
+      }
+    },
+    "Die Kategorie wird samt ihren Unterkategorien und Regeln unwiderruflich gelöscht. Zugeordnete Buchungen bleiben erhalten und stehen danach ohne Kategorie da." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The category is permanently deleted along with its subcategories and rules. Assigned bookings are kept and become uncategorized."
           }
         }
       }
@@ -14338,6 +14371,17 @@
         }
       }
     },
+    "Kategorie „%@“ löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete category “%@”?"
+          }
+        }
+      }
+    },
     "Kategorien" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -15748,6 +15792,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Account · %@"
+          }
+        }
+      }
+    },
+    "Konto „%@“ archivieren?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archive account “%@”?"
+          }
+        }
+      }
+    },
+    "Konto „%@“ löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete account “%@”?"
           }
         }
       }

@@ -75,7 +75,7 @@ struct BookingStreamView: View {
                         }
                         if model.scope == .investments {
                             InvestmentDashboardView()
-                        } else if cards.any, !isNewBookings, !model.allAccounts.isEmpty, isOverview || showAnalytics {
+                        } else if cards.any, !isNewBookings, !model.allAccounts.isEmpty, isOverview || showAnalytics, !isDepot {
                             // Overview: always; single account: only when toggled on.
                             #if os(iOS)
                             if cards.cashflow {

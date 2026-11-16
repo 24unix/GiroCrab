@@ -193,20 +193,21 @@ struct SidebarView: View {
         ) { d in
             switch d {
             case .archiveAccount(let a): Button("Archivieren") { model.setAccountArchived(a, true) }
-            case .deleteAccount(let a): Button("Endgültig löschen", role: .destructive) { model.deleteAccount(a.id) }
+            case .deleteAccount(let a): Button("Löschen", role: .destructive) { model.deleteAccount(a.id) }
             case .removeConnection(let id): Button("Entfernen", role: .destructive) { model.removeConnection(id) }
-            case .deleteCategory(let c): Button("„\(c.name)“ löschen", role: .destructive) { model.deleteCategory(c.id) }
+            case .deleteCategory(let c): Button("Löschen", role: .destructive) { model.deleteCategory(c.id) }
             }
             Button("Abbrechen", role: .cancel) {}
         } message: { d in
             switch d {
             case .archiveAccount(let a):
-                Text("„\(a.name)“ wird nicht mehr abgerufen, von Regeln nicht mehr verändert und zählt nicht mehr zur Gesamtsumme. Buchungen, Kategorien, Belege und die Gruppe bleiben erhalten. Das Konto lässt sich jederzeit reaktivieren.")
+                Text("Das Konto wird nicht mehr abgerufen, von Regeln nicht mehr verändert und zählt nicht mehr zur Gesamtsumme. Buchungen, Kategorien, Belege und die Gruppe bleiben erhalten. Es lässt sich jederzeit reaktivieren.")
             case .deleteAccount(let a):
-                Text("„\(a.name)“ wird samt \(a.transactionCount) Buchungen, Belegen und Depotpositionen unwiderruflich gelöscht – auch aus Auswertungen und Kategoriesummen. Ist es das letzte Konto seines Bankzugangs, wird auch der Bankzugang mit den gespeicherten Zugangsdaten entfernt.")
+                Text("Das Konto wird samt \(a.transactionCount) Buchungen, Belegen und Depotpositionen unwiderruflich gelöscht – auch aus Auswertungen und Kategoriesummen. Ist es das letzte Konto seines Bankzugangs, wird auch der Bankzugang mit den gespeicherten Zugangsdaten entfernt.")
+            case .deleteCategory:
+                Text("Die Kategorie wird samt ihren Unterkategorien und Regeln unwiderruflich gelöscht. Zugeordnete Buchungen bleiben erhalten und stehen danach ohne Kategorie da.")
             case .removeConnection:
                 Text("Alle Konten dieses Bankzugangs werden samt Buchungen, Belegen und gespeicherten Zugangsdaten aus dem Tresor gelöscht. Das lässt sich nicht widerrufen.")
-            default: EmptyView()
             }
         }
         .capturableSheet(item: $editedAccount) { box in AccountEditSheet(accountID: box.id).environment(model) }
@@ -857,10 +858,10 @@ private enum SidebarDialog {
 
     var title: Text {
         switch self {
-        case .archiveAccount: Text("Konto archivieren?")
-        case .deleteAccount: Text("Archiviertes Konto endgültig löschen?")
+        case .archiveAccount(let a): Text("Konto „\(a.name)“ archivieren?")
+        case .deleteAccount(let a): Text("Konto „\(a.name)“ löschen?")
         case .removeConnection: Text("Bankzugang entfernen?")
-        case .deleteCategory: Text("Kategorie löschen?")
+        case .deleteCategory(let c): Text("Kategorie „\(c.name)“ löschen?")
         }
     }
 }
