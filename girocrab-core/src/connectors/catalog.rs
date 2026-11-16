@@ -124,6 +124,17 @@ pub fn descriptor(kind: ConnectorKind) -> BankDescriptor {
             required_settings: vec![],
             note: tr("easybank (ehemals Barclays Deutschland): Kreditkarten und Umsätze der letzten zwei Jahre. Beim ersten Abruf fragt easybank eine SMS-TAN ab, danach erkennt die Bank GiroCrab wieder. Interne Portal-API; Änderungen sind möglich.").into(),
         },
+        ConnectorKind::VolkswagenBank => BankDescriptor {
+            kind,
+            name: "Volkswagen Bank".into(),
+            protocol: tr("Online-Banking-Portal (Direkt-Login, photoTAN/pushTAN)").into(),
+            bank_code: String::new(),
+            sf_symbol: "building.columns".into(),
+            login_label: tr("Benutzername").into(),
+            secret_label: tr("Passwort / PIN").into(),
+            required_settings: vec![],
+            note: tr("Volkswagen Bank: Konten, Salden und Umsätze; die Anmeldung wird per pushTAN in der Volkswagen-Bank-App freigegeben. photoTAN wird noch nicht unterstützt. Interne Portal-API; Änderungen sind möglich.").into(),
+        },
         ConnectorKind::Fnz => BankDescriptor {
             kind,
             name: "FNZ Bank".into(),
@@ -449,6 +460,15 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[],
     },
     MatrixEntry {
+        name: "Volkswagen Bank",
+        kind: Some(ConnectorKind::VolkswagenBank),
+        interface: Interface::WebPortal,
+        official: Some(false),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Limited,
+        issues: &[],
+    },
+    MatrixEntry {
         name: "Trade Republic",
         kind: Some(ConnectorKind::TradeRepublic),
         interface: Interface::WebPortal,
@@ -536,6 +556,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         ConnectorKind::Quirion => Box::new(quirion::WebOnlyConnector),
         ConnectorKind::Bunq => Box::new(bunq::BunqConnector::new()),
         ConnectorKind::Easybank => Box::new(easybank::EasybankConnector::new()),
+        ConnectorKind::VolkswagenBank => Box::new(volkswagen_bank::VolkswagenBankConnector::new()),
         ConnectorKind::ScalableCapital => Box::new(scalable::ScalableConnector::new()),
         ConnectorKind::EnableBanking => {
             let (country, aspsp) = ConnectorKind::enable_banking_target(key).unwrap_or(("DE", ""));

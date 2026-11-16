@@ -166,7 +166,7 @@ struct ConnectionEditSheet: View {
         case .americanExpress, .amazonVisa: return []
         case .bunq: return ["bunq.environment"]
         case .enableBanking: return ["enablebanking.application_id", "enablebanking.private_key_pem", "enablebanking.redirect_url"]
-        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank: return []
+        case .scalableCapital, .amazonOrders, .fnz, .ibkr, .quirion, .easybank, .volkswagenBank: return []
         }
     }
 
@@ -230,7 +230,7 @@ struct ConnectionEditSheet: View {
     }
     @State private var showAdvanced = false
 
-    private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq, .ibkr, .easybank].contains(connection.connector) }
+    private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq, .ibkr, .easybank, .volkswagenBank].contains(connection.connector) }
     private var isTR: Bool { connection.connector == .tradeRepublic }
 
     var body: some View {
