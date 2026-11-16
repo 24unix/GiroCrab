@@ -353,7 +353,7 @@ public final class AppModel {
     /// Showing the throw-away demo vault (also when the own vault is still empty).
     /// The external analysis never serves while the demo is shown (#136).
     var demoActive = false {
-        didSet { enforceLocalApiServerVault() }
+        didSet { reconcileLocalApiServer() }
     }
     /// Where the own Enable Banking application is shared between devices.
     @ObservationIgnored var enableBankingKeyStore: EnableBankingKeyStore = KeychainEnableBankingKeyStore()
@@ -361,18 +361,20 @@ public final class AppModel {
     var enableBankingAdoptNotice: EnableBankingAdoptNotice?
     /// The personal vault while demo data is shown (nil if never unlocked).
     private(set) var ownVault: Vault? {
-        didSet { enforceLocalApiServerVault() }
+        didSet { reconcileLocalApiServer() }
     }
-    /// Socket of the read-only interface for external analysis (#136), see AppModel+LocalApi.
-    var localApiServer: LocalApiServer?
-    /// The vault `localApiServer` serves (see `enforceLocalApiServerVault`).
-    @ObservationIgnored weak var localApiServerVault: Vault?
+    /// Socket of the read-only interface for external analysis (#136) and the
+    /// vault it serves, see AppModel+LocalApi.
+    var localApi: RunningLocalApi?
     /// Why the socket did not start (shown in Einstellungen › Analyse); nil = no error.
     var localApiStartError: String?
+    /// The stored token hash ("" = none), as of the last settings call.
+    var localApiTokenHash = ""
+    /// The key just created, until the settings pane closes, the vault locks or
+    /// another key replaces it; never stored.
+    var localApiNewToken: String?
     /// The last queued settings/token call: they run one after another (AppModel+LocalApi).
-    var localApiQueue: Task<Void, Never>?
-    /// Bumped by every `refreshLocalApiServer()`; only the newest one acts.
-    var localApiRefreshGeneration = 0
+    @ObservationIgnored var localApiQueue: Task<Void, Never>?
     var activeChallenge: ActiveChallenge?
     var payeeCheck: PendingPayeeCheck?
     var syncingConnectionID: Int64?
@@ -1144,7 +1146,6 @@ public final class AppModel {
         selectedBookingID = bookings.first?.id
         if demo { stopAutoSync() } else { startAutoSync() }
         if !demo { reconcileEnableBankingKey() }
-        refreshLocalApiServer()
     }
 
     /// Switch to the demo data (own vault stays unlocked in the background).

@@ -290,16 +290,22 @@ impl From<CoreError> for ApiError {
 
 type ApiResult<T> = Result<T, ApiError>;
 
+/// The stored scope; default (disabled, nothing shared) when none or an
+/// unreadable one is stored.
+fn stored_scope(conn: &rusqlite::Connection) -> Result<ShareScope, CoreError> {
+    Ok(Vault::setting_inner(conn, SCOPE_SETTING)?
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default())
+}
+
 // MARK: - Vault
 
 #[uniffi::export]
 impl Vault {
     /// The stored scope; default (disabled, nothing shared) when none is stored.
     pub fn local_api_scope(&self) -> Result<ShareScope, CoreError> {
-        let stored = self.get_setting(SCOPE_SETTING.into())?;
-        Ok(stored
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default())
+        let db = self.db()?;
+        stored_scope(&db)
     }
 
     /// Stores what is shared. The token stays as stored (`token_sha256` of
@@ -338,19 +344,12 @@ impl Vault {
         change: impl FnOnce(&mut ShareScope),
     ) -> Result<(), CoreError> {
         let db = self.db()?;
-        let mut scope: ShareScope = Vault::setting_inner(&db, SCOPE_SETTING)?
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+        let mut scope = stored_scope(&db)?;
         change(&mut scope);
         let json = serde_json::to_string(&scope).map_err(|e| CoreError::InvalidInput {
             message: e.to_string(),
         })?;
-        db.execute(
-            "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, 0)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            rusqlite::params![SCOPE_SETTING, json],
-        )?;
-        Ok(())
+        Vault::set_setting_inner(&db, SCOPE_SETTING, &json)
     }
 
     /// Answers one JSON request (`{"v":1,"method":"…","params":{…}}`) with

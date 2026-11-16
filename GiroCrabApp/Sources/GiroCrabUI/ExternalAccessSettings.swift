@@ -1,6 +1,5 @@
 #if os(macOS)
 import SwiftUI
-import AppKit
 import GiroCrabCore
 
 /// Einstellungen › Externe Analyse (#136): read-only access for local programs
@@ -10,10 +9,6 @@ import GiroCrabCore
 struct ExternalAccessSettings: View {
     @Environment(AppModel.self) private var model
     @State private var scope: ShareScope?
-    /// The token just created; shown until the pane closes.
-    @State private var newToken: String?
-    /// The stored hash right after `newToken` was made: another hash means it is gone.
-    @State private var newTokenHash: String?
     @State private var confirmRevoke = false
 
     var body: some View {
@@ -26,25 +21,19 @@ struct ExternalAccessSettings: View {
             } else if let scope {
                 accessSection(scope)
                 if scope.enabled {
-                    accountsSection(scope)
-                    fieldsSection(scope)
-                    tokenSection(scope)
+                    accountsSection
+                    fieldsSection
+                    tokenSection
                 }
             }
         }
         .formStyle(.grouped)
-        .task(id: model.holdsRealData) {
-            // Locked, demo or back: a shown key is never shown again.
-            newToken = nil
-            scope = await model.loadLocalApiScope()
-            model.retryLocalApiStart()
-        }
+        .task(id: model.holdsRealData) { scope = await model.loadLocalApiScope() }
+        .onDisappear { model.forgetNewLocalApiToken() }
         .confirmationDialog("Zugriff widerrufen?", isPresented: $confirmRevoke, titleVisibility: .visible) {
             Button("Widerrufen", role: .destructive) {
                 Task {
                     await model.revokeLocalApiToken()
-                    newToken = nil
-                    await reloadToken()
                 }
             }
             Button("Abbrechen", role: .cancel) {}
@@ -66,7 +55,7 @@ struct ExternalAccessSettings: View {
         } header: { Text("Externe Analyse").appSectionHeader() }
     }
 
-    private func accountsSection(_ scope: ShareScope) -> some View {
+    private var accountsSection: some View {
         Section {
             ForEach(model.groups, id: \.id) { group in
                 ForEach(group.accounts, id: \.id) { account in
@@ -83,7 +72,7 @@ struct ExternalAccessSettings: View {
         } header: { Text("Geteilte Konten").appSectionHeader() }
     }
 
-    private func fieldsSection(_ scope: ShareScope) -> some View {
+    private var fieldsSection: some View {
         Section {
             Toggle("Empfänger und Auftraggeber", isOn: field(\.shareCounterparty))
             Toggle("Verwendungszweck und Buchungstext", isOn: field(\.sharePurpose))
@@ -94,30 +83,25 @@ struct ExternalAccessSettings: View {
         } header: { Text("Geteilte Felder").appSectionHeader() }
     }
 
-    private func tokenSection(_ scope: ShareScope) -> some View {
+    private var tokenSection: some View {
         Section {
-            if let newToken {
+            if let newToken = model.localApiNewToken {
                 LabeledContent("Neuer Schlüssel") {
                     HStack {
                         Text(newToken).appFont(.caption, design: .monospaced).textSelection(.enabled)
                             .lineLimit(1).truncationMode(.middle)
-                        Button("Kopieren", systemImage: "doc.on.doc") { copy(newToken) }
+                        Button("Kopieren", systemImage: "doc.on.doc") { VaultKeyManager.copyToPasteboard(newToken) }
                             .labelStyle(.iconOnly)
                     }
                 }
-                Text("Der Schlüssel wird nur jetzt angezeigt. Tragen Sie ihn im Programm ein, das zugreifen soll.")
+                Text("Der Schlüssel wird nur jetzt angezeigt. Tragen Sie ihn im Programm ein, das zugreifen soll. Kopiert bleibt er 60 Sekunden in der Zwischenablage.")
                     .appFont(.callout).foregroundStyle(.secondary)
             }
             HStack {
-                Button(scope.tokenSha256.isEmpty ? "Zugangsschlüssel erzeugen" : "Neuen Schlüssel erzeugen") {
-                    Task {
-                        let token = await model.createLocalApiToken()
-                        await reloadToken()
-                        newToken = token
-                        newTokenHash = token == nil ? nil : self.scope?.tokenSha256
-                    }
+                Button(model.localApiTokenHash.isEmpty ? "Zugangsschlüssel erzeugen" : "Neuen Schlüssel erzeugen") {
+                    Task { await model.createLocalApiToken() }
                 }
-                if !scope.tokenSha256.isEmpty {
+                if !model.localApiTokenHash.isEmpty {
                     Button("Zugriff widerrufen", role: .destructive) { confirmRevoke = true }
                 }
             }
@@ -127,7 +111,7 @@ struct ExternalAccessSettings: View {
     }
 
     private func status(_ scope: ShareScope) -> String {
-        if scope.tokenSha256.isEmpty { return String(localized: "Wartet auf einen Zugangsschlüssel") }
+        if model.localApiTokenHash.isEmpty { return String(localized: "Wartet auf einen Zugangsschlüssel") }
         if let error = model.localApiStartError { return String(localized: "Nicht gestartet: \(error)") }
         if scope.accountIds.isEmpty { return String(localized: "Aktiv, noch kein Konto geteilt") }
         return model.isLocalApiRunning ? String(localized: "Aktiv") : String(localized: "Wird gestartet …")
@@ -155,25 +139,12 @@ struct ExternalAccessSettings: View {
             })
     }
 
-    /// After a token change, takes only the stored token hash: the switches are
-    /// this pane's own state (saved in order), a toggle made meanwhile must stay.
-    private func reloadToken() async {
-        guard let stored = await model.loadLocalApiScope() else { return }
-        scope?.tokenSha256 = stored.tokenSha256
-        if stored.tokenSha256 != newTokenHash { newToken = nil }
-    }
-
     /// Shown at once; if the write did not happen, the pane goes back to what is stored.
     private func save(_ s: ShareScope) {
         scope = s
         Task {
             if await !model.saveLocalApiScope(s) { scope = await model.loadLocalApiScope() }
         }
-    }
-
-    private func copy(_ s: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(s, forType: .string)
     }
 }
 #endif

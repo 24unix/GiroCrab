@@ -24,6 +24,12 @@ final class LocalApiServerTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        // Queued jobs may still start a server: let them finish first, while the
+        // test path is set (a later one would bind the real socket path).
+        for _ in 0..<3 {
+            await Task.yield() // a job a didSet just spawned gets queued
+            await model.localApiQueue?.value
+        }
         model.stopLocalApiServer()
         model = nil
         AppModel.localApiSocketPathOverride = nil
@@ -142,7 +148,7 @@ final class LocalApiServerTests: XCTestCase {
         let save = Task { await model.saveLocalApiScope(scope) }
         await Task.yield() // queued while the own vault is shown
         model.showDemo()
-        XCTAssertNil(model.localApiServer)
+        XCTAssertFalse(model.isLocalApiRunning)
         await save.value
         model.showOwnVault()
         let stored = await model.loadLocalApiScope()
@@ -171,5 +177,30 @@ final class LocalApiServerTests: XCTestCase {
         let saved = await model.saveLocalApiScope(scope)
         XCTAssertFalse(saved)
         model.showOwnVault()
+    }
+
+    func testANormalUnlockStartsTheSocket() async throws {
+        try await enable()
+        _ = await model.createLocalApiToken()
+        try await awaitRunning(true)
+        let v = try XCTUnwrap(model.ownVault)
+        model.lock()
+        XCTAssertFalse(model.isLocalApiRunning)
+        // The unlock path of the lock screen, with no settings call afterwards.
+        await model.adoptOpenedOwnVault(v, isEmpty: false)
+        try await awaitRunning(true)
+    }
+
+    func testANewKeyIsShownUntilItIsNoLongerValid() async throws {
+        let first = await model.createLocalApiToken()
+        XCTAssertNotNil(first)
+        XCTAssertEqual(model.localApiNewToken, first)
+        let second = await model.createLocalApiToken()
+        XCTAssertEqual(model.localApiNewToken, second, "the newest one")
+        await model.revokeLocalApiToken()
+        XCTAssertNil(model.localApiNewToken, "revoked")
+        _ = await model.createLocalApiToken()
+        model.lock()
+        XCTAssertNil(model.localApiNewToken, "never shown again after locking")
     }
 }

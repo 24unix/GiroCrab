@@ -13,170 +13,179 @@ extension AppModel {
     /// `~/Library/Application Support/GiroCrab/local-api/girocrab.sock` (the core
     /// creates the folder with mode 0700, the socket with 0600).
     nonisolated static var localApiSocketPath: String {
-        if let path = localApiSocketPathOverride { return path }
+        localApiSocketPathOverride ?? defaultLocalApiSocketPath
+    }
+
+    nonisolated private static let defaultLocalApiSocketPath: String = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return base.appendingPathComponent("GiroCrab/local-api/girocrab.sock").path
-    }
+    }()
 
     /// Tests: a short path outside Application Support (`sun_path` holds 104 bytes).
     nonisolated(unsafe) static var localApiSocketPathOverride: String?
 
-    var isLocalApiRunning: Bool { localApiServer != nil }
+    var isLocalApiRunning: Bool { localApi != nil }
 
-    /// The one rule, checked whenever `ownVault` or `demoActive` changes: a
-    /// server runs only for the own vault while it is shown, and only for the
-    /// vault it was started on. Starting is `refreshLocalApiServer`'s job.
-    func enforceLocalApiServerVault() {
-        if holdsRealData {
-            if localApiServer != nil, localApiServerVault !== ownVault { stopLocalApiServer() }
-        } else if localApiServer != nil || localApiStartError != nil {
-            stopLocalApiServer()
-        }
-    }
-
-    /// Starts or stops the socket to match the stored settings. Called when a vault
-    /// opens (`useVault`), after every settings change and, after a failed start,
-    /// when the app becomes active again.
-    /// Only the newest refresh acts: an older one may have read the scope before
-    /// a later save turned access off.
-    func refreshLocalApiServer() {
+    /// Matches the socket to the current vault and its stored settings. Runs
+    /// whenever `ownVault` or `demoActive` changes (every path that locks,
+    /// unlocks, swaps or shows the demo) and after a failed start on activation.
+    /// Stopping is immediate; starting follows the queued scope read. macOS only:
+    /// on iOS no other app could reach the socket, so nothing runs there.
+    func reconcileLocalApiServer() {
         #if os(macOS)
-        localApiRefreshGeneration &+= 1
-        let generation = localApiRefreshGeneration
-        guard holdsRealData, let v = ownVault else { stopLocalApiServer(); return }
-        Task {
-            let read: Result<ShareScope, Error>
-            do { read = .success(try await Self.offMain { try v.localApiScope() }) } catch { read = .failure(error) }
-            // Locked, swapped, switched to the demo or a newer refresh meanwhile.
-            guard generation == self.localApiRefreshGeneration,
-                  self.holdsRealData, self.ownVault === v else { return }
-            let scope: ShareScope
-            switch read {
-            case .success(let s): scope = s
-            case .failure(let error):
-                self.stopLocalApiServer()
-                self.localApiStartError = describe(error)
-                return
-            }
-            guard scope.enabled, !scope.tokenSha256.isEmpty else {
-                self.stopLocalApiServer()
-                return
-            }
-            if self.localApiServer != nil {
-                if self.localApiServerVault === v { return }
-                self.stopLocalApiServer()
-            }
-            _ = Self.localApiQuitObserver
-            _ = Self.localApiActivationObserver
-            Self.localApiRetryTarget = self
-            do {
-                let server = try LocalApiServer.start(vault: v, socketPath: Self.localApiSocketPath)
-                self.localApiServer = server
-                self.localApiServerVault = v
-                Self.runningLocalApiServer = server
-                self.localApiStartError = nil
-            } catch {
-                // Kept for the status line: a toast alone would leave "starting" forever.
-                // The core words its start errors for the user (localized).
-                if case .InvalidInput(let message)? = error as? CoreError {
-                    self.localApiStartError = message
-                } else {
-                    self.localApiStartError = describe(error)
-                }
-            }
+        guard holdsRealData else {
+            if localApi != nil || localApiStartError != nil { stopLocalApiServer() }
+            // Locked or demo: a key shown once is never shown again.
+            localApiTokenHash = ""
+            localApiNewToken = nil
+            return
         }
+        if let running = localApi, running.servedVault !== ownVault { stopLocalApiServer() }
+        Task { _ = try? await localApiJob { _ in () } }
         #endif
     }
 
     /// After a failed start (e.g. another instance served the socket): try again.
     func retryLocalApiStart() {
-        if localApiStartError != nil { refreshLocalApiServer() }
+        if localApiStartError != nil { reconcileLocalApiServer() }
     }
 
-    #if os(macOS)
-    /// The server this process runs, for the quit observer (no model there).
-    @MainActor static weak var runningLocalApiServer: LocalApiServer?
-
-    /// The model whose start the activation observer retries.
-    @MainActor static weak var localApiRetryTarget: AppModel?
-
-    /// Coming back to the app (the other instance may have quit meanwhile).
-    static let localApiActivationObserver: NSObjectProtocol = NotificationCenter.default.addObserver(
-        forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
-    ) { _ in
-        MainActor.assumeIsolated { AppModel.localApiRetryTarget?.retryLocalApiStart() }
-    }
-
-    /// Quit: nothing else stops the server on exit. `stop()` removes only the
-    /// socket file this server created and returns at once.
-    static let localApiQuitObserver: NSObjectProtocol = NotificationCenter.default.addObserver(
-        forName: NSApplication.willTerminateNotification, object: nil, queue: .main
-    ) { _ in
-        MainActor.assumeIsolated { AppModel.runningLocalApiServer?.stop() }
-    }
-    #endif
-
-    /// Closes the socket and removes its file (lock, demo, settings turned off).
-    /// Returns at once: the core's `stop()` does not wait for its threads.
+    /// Closes the socket and removes its file (also on quit). Returns at once:
+    /// the core's `stop()` does not wait for its threads.
     func stopLocalApiServer() {
-        localApiServer?.stop()
-        localApiServer = nil
-        localApiServerVault = nil
+        localApi?.server.stop()
+        localApi = nil
         localApiStartError = nil
     }
 
-    /// Every settings call of this feature, one after another on the own vault
-    /// as it was when the call was made: a read never overtakes a pending save,
-    /// quick toggles keep the newest, and nothing lands in the demo vault. nil
-    /// when the own vault is not shown or was locked before the call's turn; a
-    /// call that ran returns its result even if the vault was swapped since
-    /// (a committed token is still shown).
-    private func localApiCall<T: Sendable>(_ work: @escaping @Sendable (Vault) throws -> T) async throws -> T? {
+    /// Every call of this feature, one after another on the own vault as it was
+    /// when the call was made: a read never overtakes a pending save, quick
+    /// toggles keep the newest, and nothing lands in the demo vault. The same
+    /// background hop reads the stored scope afterwards, and the job ends by
+    /// matching the socket to it, so the queue also orders starts and stops.
+    /// nil when the own vault is not shown or was locked before the call's turn;
+    /// a call that ran returns its result even if the vault was swapped since.
+    /// `publish` runs in the job, after the socket was matched, only while the
+    /// vault is still the own, shown one (so no later job can overtake it).
+    private func localApiJob<T: Sendable>(
+        _ work: @escaping @Sendable (Vault) throws -> T,
+        publish: ((T) -> Void)? = nil
+    ) async throws -> T? {
         guard holdsRealData, let v = ownVault else { return nil }
         let previous = localApiQueue
         let job = Task { () -> Result<T, Error>? in
             await previous?.value
             guard self.ownVault === v else { return nil }
-            do { return .success(try await Self.offMain { try work(v) }) } catch { return .failure(error) }
+            // offMain throws only when cancelled.
+            guard let (result, stored) = try? await Self.offMain({
+                (Result { try work(v) }, Result { try v.localApiScope() })
+            }) else { return nil }
+            self.applyLocalApiScope(stored, for: v)
+            if case .success(let value) = result, self.holdsRealData, self.ownVault === v {
+                publish?(value)
+            }
+            return result
         }
         localApiQueue = Task { _ = await job.value }
         return try await job.value?.get()
     }
 
-    func loadLocalApiScope() async -> ShareScope? {
-        try? await localApiCall { try $0.localApiScope() }
-    }
-
-    /// Saves what is shared (the token stays) and starts or stops the socket.
-    /// false when nothing was written (failed, or the own vault went away first).
-    @discardableResult
-    func saveLocalApiScope(_ scope: ShareScope) async -> Bool {
-        defer { refreshLocalApiServer() }
-        do {
-            return try await localApiCall { try $0.setLocalApiScope(scope: scope) } != nil
-        } catch {
-            errorMessage = describe(error)
-            return false
+    /// The end of every job: start, keep or stop the socket for `v`.
+    private func applyLocalApiScope(_ stored: Result<ShareScope, Error>, for v: Vault) {
+        // Locked, swapped or switched to the demo meanwhile: the didSet already stopped it.
+        guard holdsRealData, ownVault === v else { return }
+        let scope: ShareScope
+        switch stored {
+        case .success(let s): scope = s
+        case .failure(let error):
+            stopLocalApiServer()
+            localApiStartError = describe(error)
+            return
         }
+        // Another token (revoked, replaced): the one shown is no longer valid.
+        if scope.tokenSha256 != localApiTokenHash { localApiNewToken = nil }
+        localApiTokenHash = scope.tokenSha256
+        guard scope.enabled, !scope.tokenSha256.isEmpty else {
+            if localApi != nil || localApiStartError != nil { stopLocalApiServer() }
+            return
+        }
+        #if os(macOS)
+        if localApi?.servedVault === v { return }
+        stopLocalApiServer()
+        _ = Self.localApiActivationObserver
+        _ = Self.localApiQuitObserver
+        Self.localApiOwner = self
+        do {
+            let server = try LocalApiServer.start(vault: v, socketPath: Self.localApiSocketPath)
+            localApi = RunningLocalApi(server: server, servedVault: v)
+        } catch {
+            // Kept for the status line: a toast alone would leave "starting" forever.
+            // The core words its start errors for the user (localized).
+            if case .InvalidInput(let message)? = error as? CoreError {
+                localApiStartError = message
+            } else {
+                localApiStartError = describe(error)
+            }
+        }
+        #endif
     }
 
-    /// A new access token, shown once; the previous one stops working.
-    func createLocalApiToken() async -> String? {
-        defer { refreshLocalApiServer() }
+    #if os(macOS)
+    /// The model whose socket the app observers below act on.
+    @MainActor static weak var localApiOwner: AppModel?
+
+    /// Quit: ends the threads and removes the socket file right away (a file left
+    /// behind by a crash is replaced on the next start, see the core's lock file).
+    static let localApiQuitObserver: NSObjectProtocol = NotificationCenter.default.addObserver(
+        forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+    ) { _ in
+        MainActor.assumeIsolated { AppModel.localApiOwner?.stopLocalApiServer() }
+    }
+
+    /// Coming back to the app (the other instance may have quit meanwhile).
+    static let localApiActivationObserver: NSObjectProtocol = NotificationCenter.default.addObserver(
+        forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+    ) { _ in
+        MainActor.assumeIsolated { AppModel.localApiOwner?.retryLocalApiStart() }
+    }
+    #endif
+
+    /// A job whose error goes to `errorMessage`.
+    private func localApiWrite<T: Sendable>(
+        _ work: @escaping @Sendable (Vault) throws -> T,
+        publish: ((T) -> Void)? = nil
+    ) async -> T? {
         do {
-            return try await localApiCall { try $0.createLocalApiToken() }
+            return try await localApiJob(work, publish: publish)
         } catch {
             errorMessage = describe(error)
             return nil
         }
     }
 
+    func loadLocalApiScope() async -> ShareScope? {
+        try? await localApiJob { try $0.localApiScope() }
+    }
+
+    /// Saves what is shared (the token stays). false when nothing was written
+    /// (failed, or the own vault went away first).
+    @discardableResult
+    func saveLocalApiScope(_ scope: ShareScope) async -> Bool {
+        await localApiWrite { try $0.setLocalApiScope(scope: scope) } != nil
+    }
+
+    /// A new access token, shown once (`localApiNewToken`); the previous one stops working.
+    @discardableResult
+    func createLocalApiToken() async -> String? {
+        await localApiWrite({ try $0.createLocalApiToken() }, publish: { self.localApiNewToken = $0 })
+    }
+
+    /// The pane closed: the new key is not shown again.
+    func forgetNewLocalApiToken() {
+        localApiNewToken = nil
+    }
+
     func revokeLocalApiToken() async {
-        do {
-            _ = try await localApiCall { try $0.revokeLocalApiToken() }
-        } catch {
-            errorMessage = describe(error)
-        }
-        refreshLocalApiServer()
+        _ = await localApiWrite { try $0.revokeLocalApiToken() }
     }
 }

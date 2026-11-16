@@ -7752,13 +7752,13 @@
         }
       }
     },
-    "Der Schlüssel wird nur jetzt angezeigt. Tragen Sie ihn im Programm ein, das zugreifen soll." : {
+    "Der Schlüssel wird nur jetzt angezeigt. Tragen Sie ihn im Programm ein, das zugreifen soll. Kopiert bleibt er 60 Sekunden in der Zwischenablage." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The key is shown only now. Enter it in the program that should have access."
+            "value" : "The key is shown only now. Enter it in the program that should have access. Once copied, it stays on the clipboard for 60 seconds."
           }
         }
       }

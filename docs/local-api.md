@@ -25,7 +25,8 @@ was dort verarbeitet werden darf.
 
 Nur solange GiroCrab läuft, der eigene Tresor entsperrt ist und angezeigt wird (nie mit den
 Demo-Daten), die Schnittstelle eingeschaltet ist und ein Zugangsschlüssel existiert. Beim Sperren, beim
-Wechsel zur Demo und beim Beenden wird der Socket geschlossen.
+Wechsel zur Demo und beim Beenden wird der Socket geschlossen und seine Datei entfernt (bleibt sie nach
+einem Absturz liegen, erkennt der nächste Start sie über `girocrab.lock` als verwaist und ersetzt sie).
 
 ## Verbindung
 

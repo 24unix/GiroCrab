@@ -537,3 +537,9 @@ extension AccountKind {
         }
     }
 }
+
+/// The running socket and the vault it serves (`reconcileLocalApiServer`).
+struct RunningLocalApi {
+    let server: LocalApiServer
+    weak var servedVault: Vault?
+}
