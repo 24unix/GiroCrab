@@ -24234,6 +24234,17 @@
         }
       }
     },
+    "Weitere Währungen werden nicht umgerechnet und nicht in die Summe einbezogen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other currencies are not converted and not included in the total."
+          }
+        }
+      }
+    },
     "Weitergeleitete Adresse hier einfügen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25253,6 +25264,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open Consent Page"
+          }
+        }
+      }
+    },
+    "Zusätzlich: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Also: %@"
           }
         }
       }

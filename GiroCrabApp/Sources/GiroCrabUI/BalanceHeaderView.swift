@@ -129,6 +129,14 @@ struct StreamHeaderCard: View {
                         if !compactHeader {
                             Text(hb.label).appFont(.caption).foregroundStyle(Theme.secondary)
                         }
+                        if account == nil, let split = model.headerTotalSplit {
+                            Text("Zusätzlich: \(split.others.map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · "))")
+                                .sensitive()
+                                .appFont(.caption, monospacedDigit: true)
+                                .foregroundStyle(Theme.secondary)
+                                .lineLimit(1)
+                                .help("Weitere Währungen werden nicht umgerechnet und nicht in die Summe einbezogen.")
+                        }
                     }
                     .contextMenu {
                         Button("\(hb.label) kopieren", systemImage: "doc.on.doc") { copyToPasteboard(Money.clipboard(hb.cents)) }

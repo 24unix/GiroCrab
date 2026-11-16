@@ -577,7 +577,30 @@ extension AppModel {
         }
     }
 
+    /// Accounts behind the header total of the current selection (nil: single account / not a total).
+    private var headerTotalAccounts: [Account]? {
+        switch sidebarSelection {
+        case .allAccounts, .none: return liquidAccounts
+        case .group(let id): return groups.first { $0.id == id }?.accounts
+        case .bank(let key): return bankGroup(for: key)?.accounts
+        case .userGroup(let uuid): let ids = Set(userGroupAccountIDs(uuid)); return allAccounts.filter { ids.contains($0.id) }
+        default: return nil
+        }
+    }
+
+    /// The header total split into base currency + further currencies (#569).
+    var headerTotalSplit: HeaderTotal.Split? {
+        guard let accounts = headerTotalAccounts else { return nil }
+        let split = HeaderTotal.split(accounts.map { ($0.currency, $0.balanceCents) })
+        return split.others.isEmpty ? nil : split
+    }
+
     var headerBalance: (label: String, cents: Int64)? {
+        if let split = headerTotalSplit, let hb = headerBalanceUnsplit { return (hb.label, split.cents) }
+        return headerBalanceUnsplit
+    }
+
+    private var headerBalanceUnsplit: (label: String, cents: Int64)? {
         switch sidebarSelection {
         case .account(let id): return allAccounts.first { $0.id == id }.map { (isTangible(id) ? String(localized: "Wert heute") : String(localized: "Kontostand"), $0.balanceCents) }
         case .group(let id): return groups.first { $0.id == id }.map { (String(localized: "Summe"), $0.balanceCents) }
