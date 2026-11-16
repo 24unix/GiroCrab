@@ -23,7 +23,10 @@ public final class AppModel {
     @ObservationIgnored let loanStore = ManualLoanStore()
     /// Sachwerte (GitHub #87), see TangibleAssetsUI.swift.
     @ObservationIgnored let assetStore = AssetStore()
-    var vaultState: VaultState = .locked
+    var vaultState: VaultState = .locked {
+        // The external analysis serves only while the own vault is shown (#136).
+        didSet { if oldValue != vaultState { reconcileLocalApiServer() } }
+    }
     /// The vault is open and the lock screen shows the crab's unlock hop for a moment.
     var unlockCelebrating = false
 
@@ -383,15 +386,37 @@ public final class AppModel {
     /// Connector key per login (`fints:<BLZ>`, …) for the banking policy.
     var connectionKeys: [Int64: String] = [:]
     /// Showing the throw-away demo vault (also when the own vault is still empty).
+    /// The external analysis never serves while the demo is shown (#136).
     var demoActive = false {
-        didSet { if demoActive != oldValue { expandedCategories = Self.storedExpandedCategories(demo: demoActive) } }
+        didSet {
+            guard oldValue != demoActive else { return }
+            expandedCategories = Self.storedExpandedCategories(demo: demoActive)
+            reconcileLocalApiServer()
+        }
     }
     /// Where the own Enable Banking application is shared between devices.
     @ObservationIgnored var enableBankingKeyStore: EnableBankingKeyStore = KeychainEnableBankingKeyStore()
     /// Taken over from another device; shown once unless the user turned it off.
     var enableBankingAdoptNotice: EnableBankingAdoptNotice?
     /// The personal vault while demo data is shown (nil if never unlocked).
-    private(set) var ownVault: Vault?
+    private(set) var ownVault: Vault? {
+        didSet { if oldValue !== ownVault { reconcileLocalApiServer() } }
+    }
+    /// Socket of the read-only interface for external analysis (#136) and the
+    /// vault it serves, see AppModel+LocalApi.
+    var localApi: RunningLocalApi?
+    /// Why the socket did not start (shown in Einstellungen › Analyse); nil = no error.
+    var localApiStartError: String?
+    /// What is shared, as stored after the newest settings call (a pending
+    /// switch shows at once); nil while nothing may be served.
+    var localApiScope: ShareScope?
+    /// The key just created, until the settings pane closes, the vault locks or
+    /// another key replaces it; never stored.
+    var localApiNewToken: String?
+    /// The last queued settings/token call: they run one after another (AppModel+LocalApi).
+    @ObservationIgnored var localApiQueue: Task<Void, Never>?
+    /// Counts queued jobs: only the newest one publishes the whole scope.
+    @ObservationIgnored var localApiJobs = 0
     var activeChallenge: ActiveChallenge?
     var payeeCheck: PendingPayeeCheck?
     var syncingConnectionID: Int64?

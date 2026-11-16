@@ -34,6 +34,11 @@ struct SettingsView: View {
                 .tabItem { Label("Sicherheit", systemImage: "lock.shield") }
                 .tag(SettingsTab.security)
             #if os(macOS)
+            ExternalAccessSettings()
+                .settingsPane(height: 640)
+                .disabled(!model.isUnlocked)
+                .tabItem { Label("Analyse", systemImage: "chart.bar.doc.horizontal") }
+                .tag(SettingsTab.externalAccess)
             // Own pane like macOS "Softwareupdate"; works without an open vault.
             // Only in the Developer-ID build (Sparkle registered).
             if AppUpdates.shared.isAvailable {
@@ -182,7 +187,7 @@ struct BalanceChartSettingsSection: View {
 
 /// Tabs of the settings window (macOS) / sheet (iOS).
 enum SettingsTab: Hashable {
-    case general, banks, documents, security, updates
+    case general, banks, documents, security, externalAccess, updates
 
     /// `--demo-settings <name>` (screenshots).
     init?(demoName: String) {
@@ -193,6 +198,7 @@ enum SettingsTab: Hashable {
         case "logos": self = .general   // merchant logos are a section of "Allgemein"
         case "documents": self = .documents
         case "security": self = .security
+        case "external": self = .externalAccess
         case "updates": self = .updates
         default: return nil
         }
