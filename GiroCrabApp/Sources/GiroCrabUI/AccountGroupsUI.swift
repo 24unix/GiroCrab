@@ -50,14 +50,23 @@ enum GroupDrag {
 /// hidden in a menu.
 struct AccountsSectionHeader: View {
     @Environment(AppModel.self) private var model
+    var open: Bool = true
+    var toggle: () -> Void = {}
 
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 2) {
+                Button(action: toggle) { DisclosureChevron(open: open) }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.secondary)
+                    .padding(.trailing, DisclosureChevron.gap - 2)
+                    .accessibilityLabel(open ? "Konten einklappen" : "Konten ausklappen")
+                    .accessibilityValue(open ? "Ausgeklappt" : "Eingeklappt")
                 Text("Konten")
                     .appFont(.caption, weight: .semibold)
                     .foregroundStyle(Theme.secondary)
+                    .onTapGesture(perform: toggle)
                 Spacer()
                 if model.hasArchivedAccounts {
                     Button { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { model.showArchivedAccounts.toggle() } } label: {

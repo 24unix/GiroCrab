@@ -11,6 +11,18 @@ struct SidebarView: View {
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
     /// Where a drop would land: a thin line above or below one row.
     @State private var dropLine: DropLine?
+    /// Collapsed state of the section headers (Kategorien lives in the model).
+    @AppStorage("sidebar.accountsCollapsed") private var accountsCollapsed = false
+    @AppStorage("sidebar.paymentsCollapsed") private var paymentsCollapsed = false
+    @AppStorage("sidebar.documentsCollapsed") private var documentsCollapsed = false
+
+    /// One inset for every sidebar row, so chevrons and icons share their columns.
+    static let captionInsets = rowInsets
+    private static let rowInsets = EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6)
+
+    private func toggler(_ flag: Binding<Bool>) -> () -> Void {
+        { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { flag.wrappedValue.toggle() } }
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -18,32 +30,38 @@ struct SidebarView: View {
             // Pages across all accounts that are opened daily or as a starting point stay above the
             // account tree: with many accounts they must not end up below the visible part.
             // „Neue Umsätze“ (#352)
-            HStack(spacing: 8) {
+            HStack(spacing: DisclosureChevron.gap) {
+                SidebarLeadingSlot()
                 Image(systemName: "tray.full").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Neue Umsätze").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
             .badge(model.newCount)
             .tag(SidebarItem.newBookings)
+            .listRowInsets(Self.rowInsets)
             .contextMenu {
                 Button("Alle Buchungen als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
                     .disabled(model.newCount == 0)
             }
             // „Vermögen“ (#348): the counterpart of „Alle Konten“
-            HStack(spacing: 8) {
+            HStack(spacing: DisclosureChevron.gap) {
+                SidebarLeadingSlot()
                 Image(systemName: "chart.pie").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Vermögen").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
             .tag(SidebarItem.wealth)
+            .listRowInsets(Self.rowInsets)
             if !model.allAccounts.isEmpty {
-                AccountsSectionHeader()
+                AccountsSectionHeader(open: !accountsCollapsed, toggle: toggler($accountsCollapsed))
+                    .listRowInsets(Self.rowInsets)
             }
+            if !accountsCollapsed || model.allAccounts.isEmpty {
             // the root of the account tree
             // no system badge here: it took the room of the name („All…“); „Neue Umsätze“ and the accounts show the count
             AllAccountsRow()
                 .modifier(AccountRowHeight())
-                .listRowInsets(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6))
+                .listRowInsets(Self.rowInsets)
                 .tag(SidebarItem.allAccounts)
                 .contextMenu {
                     Button("Alle Buchungen als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
@@ -58,31 +76,42 @@ struct SidebarView: View {
                     }
                 }
             }
+            }
             // payments and documents are used less often: below the accounts, each under its heading
-            SidebarCaption("Zahlungen")
+            SidebarCaption("Zahlungen", open: !paymentsCollapsed, toggle: toggler($paymentsCollapsed))
+            if !paymentsCollapsed {
             // „Geplant“ (#240): ordered at the bank, not booked yet
-            HStack(spacing: 8) {
+            HStack(spacing: DisclosureChevron.gap) {
+                SidebarLeadingSlot()
                 Image(systemName: "calendar.badge.clock").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Geplant").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
             .badge(model.plannedCount)
             .tag(SidebarItem.planned)
+            .listRowInsets(Self.rowInsets)
             // „Lastschriften“ (#143): mandates and collections
-            HStack(spacing: 8) {
+            HStack(spacing: DisclosureChevron.gap) {
+                SidebarLeadingSlot()
                 Image(systemName: "arrow.down.left.arrow.up.right.square").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Lastschriften").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
             .badge(model.mandateCount)
             .tag(SidebarItem.directDebits)
-            SidebarCaption("Dokumente")
-            HStack(spacing: 8) {
+            .listRowInsets(Self.rowInsets)
+            }
+            SidebarCaption("Dokumente", open: !documentsCollapsed, toggle: toggler($documentsCollapsed))
+            if !documentsCollapsed {
+            HStack(spacing: DisclosureChevron.gap) {
+                SidebarLeadingSlot()
                 Image(systemName: "doc.on.doc").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Belege & PostBox").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
             .tag(SidebarItem.documents)
+            .listRowInsets(Self.rowInsets)
+            }
             // The MoneyMoney import is an action, not a place: it lives in
             // Ablage › Vorhandene Daten importieren …, the command palette and
             // the welcome card (HIG: sidebar rows are navigation destinations).
@@ -117,17 +146,20 @@ struct SidebarView: View {
             // header, whose small caption style can't match them)
             CategoriesHeader()
                 .padding(.top, 10)
+                .listRowInsets(Self.rowInsets)
             if !model.categoriesCollapsed, let note = model.categorySumNote {
                 Text(note)
                     .appFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
-                    .padding(.leading, 14)
+                    .padding(.leading, DisclosureChevron.iconInset)
+                    .listRowInsets(Self.rowInsets)
                     .selectionDisabled()
             }
             if !model.categoriesCollapsed {
                 Group {
-                    HStack(spacing: 8) {
+                    HStack(spacing: DisclosureChevron.gap) {
+                        SidebarLeadingSlot()
                         Image(systemName: "questionmark.folder").foregroundStyle(Theme.warning).frame(width: 20)
                         Text(model.uncategorizedLabel).appDefaultFont().sensitive(.labels)
                         Spacer()
@@ -140,10 +172,9 @@ struct SidebarView: View {
                     }
                     .badge(model.uncategorizedCount)
                     .tag(SidebarItem.uncategorized)
-                    categoryRows(model.categoryTree)
+            .listRowInsets(Self.rowInsets)
+                    categoryRows(model.categoryTree, depth: 0)
                 }
-                // one step right of their header, like the groups under „Alle Konten“
-                .padding(.leading, 14)
             }
         }
         .listStyle(.sidebar)
@@ -247,7 +278,7 @@ struct SidebarView: View {
                 open: open, toggle: toggle
             )
                 .padding(.top, 10)
-                .listRowInsets(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6))
+                .listRowInsets(Self.rowInsets)
                 .groupHeaderTap(SidebarItem.group(group.id), toggle: toggle)
                 #if os(iOS)
                 .contextMenu {
@@ -281,7 +312,7 @@ struct SidebarView: View {
                     open: open, toggle: toggle
                 )
                 .padding(.top, 10)
-                .listRowInsets(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6))
+                .listRowInsets(Self.rowInsets)
                 .groupHeaderTap(SidebarItem.bank(group.id), toggle: toggle)
                 #if os(iOS)
                 .contextMenu {
@@ -302,7 +333,7 @@ struct SidebarView: View {
         ForEach(model.userGroups.filter(model.isUserGroupListed)) { group in
             let open = model.isUserGroupOpen(group)
             let toggle = { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { model.toggleCollapsed(group) } }
-            let indent = CGFloat(group.depth) * 14
+            let indent = CGFloat(group.depth) * DisclosureChevron.iconInset
             UserGroupHeader(group: group, open: open, toggle: toggle)
                 .padding(.vertical, 3) // taller hit area for the drop zones
                 // an account goes to the top of this group; a group above it
@@ -316,7 +347,7 @@ struct SidebarView: View {
                 }, freeLeading: 12))  // the expand/collapse arrow
                 .padding(.top, group.depth == 0 ? 10 : 4)
                 .padding(.leading, indent)
-                .listRowInsets(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6))
+                .listRowInsets(Self.rowInsets)
                 .groupHeaderTap(SidebarItem.userGroup(group.uuid), toggle: toggle)
                 .contextMenu {
                     UserGroupMenu(group: group)
@@ -415,7 +446,7 @@ struct SidebarView: View {
                     RoundedRectangle(cornerRadius: 6).fill(Theme.accent.opacity(0.22)).allowsHitTesting(false)
                 }
             }
-            .listRowInsets(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6))
+            .listRowInsets(Self.rowInsets)
             .tag(SidebarItem.account(account.id))
             .contextMenu { accountMenu(account) }
             .capturablePopover(isPresented: model.iconColorBinding(.account(account.id)), arrowEdge: .trailing) {
@@ -471,35 +502,49 @@ struct SidebarView: View {
 
     /// The category tree at any depth (#101): a node with sub-categories is a
     /// disclosure group whose content recurses into its children.
-    private func categoryRows(_ nodes: [CategoryNode]) -> AnyView {
-        // a childless sibling has no chevron: shift its icon into the column of the
-        // folders' icons so a level reads as one icon axis under the parent title (#597)
-        let leafInset: CGFloat = nodes.contains { $0.children != nil } ? DisclosureChevron.iconInset : 0
+    private func categoryRows(_ nodes: [CategoryNode], depth: Int) -> AnyView {
+        let indent = CGFloat(depth) * DisclosureChevron.iconInset
         return AnyView(ForEach(nodes) { node in
             if let kids = node.children {
-                DisclosureGroup(isExpanded: Binding(
-                    get: { model.expandedCategories.contains(node.id) },
-                    set: { if $0 { model.expandedCategories.insert(node.id) } else { model.expandedCategories.remove(node.id) } }
-                )) {
-                    categoryRows(kids)
-                } label: {
+                let open = model.expandedCategories.contains(node.id)
+                HStack(spacing: DisclosureChevron.gap) {
+                    Button {
+                        withAnimation(Motion.animation(.easeInOut(duration: 0.15))) {
+                            if open { model.expandedCategories.remove(node.id) } else { model.expandedCategories.insert(node.id) }
+                        }
+                    } label: {
+                        DisclosureChevron(open: open)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(open ? "„\(node.category.name)“ einklappen" : "„\(node.category.name)“ ausklappen")
+                    .accessibilityValue(open ? "Ausgeklappt" : "Eingeklappt")
                     CategoryRow(category: node.category)
-                        .contextMenu { categoryMenu(node.category) }
-                        .modifier(CategoryIconColorPopover(id: node.id))
                 }
+                .padding(.leading, indent)
+                .listRowInsets(Self.rowInsets)
                 .tag(SidebarItem.category(node.id))
+                .contextMenu { categoryMenu(node.category) }
+                .modifier(CategoryIconColorPopover(id: node.id))
+                if open {
+                    categoryRows(kids, depth: depth + 1)
+                }
             } else {
-                CategoryRow(category: node.category)
-                    .padding(.leading, leafInset)
-                    #if os(macOS)
-                    // only leaves take dragged bookings, as only leaves are assigned
-                    .modifier(DropSlot(key: "c:\(node.id)", inset: 0, line: $dropLine, edge: { _ in .into }, perform: { items, _ in
-                        model.dropBookings(items, onCategory: node.id)
-                    }, takesBookings: true))
-                    #endif
-                    .tag(SidebarItem.category(node.id))
-                    .contextMenu { categoryMenu(node.category) }
-                    .modifier(CategoryIconColorPopover(id: node.id))
+                HStack(spacing: DisclosureChevron.gap) {
+                    SidebarLeadingSlot()
+                    CategoryRow(category: node.category)
+                }
+                .padding(.leading, indent)
+                .listRowInsets(Self.rowInsets)
+                #if os(macOS)
+                // only leaves take dragged bookings, as only leaves are assigned
+                .modifier(DropSlot(key: "c:\(node.id)", inset: 0, line: $dropLine, edge: { _ in .into }, perform: { items, _ in
+                    model.dropBookings(items, onCategory: node.id)
+                }, takesBookings: true))
+                #endif
+                .tag(SidebarItem.category(node.id))
+                .contextMenu { categoryMenu(node.category) }
+                .modifier(CategoryIconColorPopover(id: node.id))
             }
         })
     }
@@ -548,10 +593,12 @@ private struct AccountRowHeight: ViewModifier {
 }
 
 /// Disclosure arrow of every collapsible sidebar header: `chevron.right` when
-/// closed, turned to point down when open. One 12 pt column, so the icons of
+/// closed, turned to point down when open. One 14 pt column, so the icons of
 /// all headers and accounts share one vertical axis.
 struct DisclosureChevron: View {
-    static let width: CGFloat = 12
+    /// The one leading column of the sidebar: every chevron sits in it, and rows without one reserve it.
+    static let leadingSlotWidth: CGFloat = 14
+    static let width: CGFloat = leadingSlotWidth
     /// Gap between the chevron column and the icon (HStack spacing of the headers).
     static let gap: CGFloat = 5
     /// Leading offset of an account row: its icon sits on the headers' icon axis.
@@ -903,15 +950,38 @@ private struct CategoryIconColorPopover: ViewModifier {
 /// Heading of a group of sidebar pages, in the style of the „Konten“ heading. Not selectable.
 private struct SidebarCaption: View {
     let title: LocalizedStringKey
-    init(_ title: LocalizedStringKey) { self.title = title }
+    let open: Bool
+    let toggle: () -> Void
+    init(_ title: LocalizedStringKey, open: Bool, toggle: @escaping () -> Void) {
+        self.title = title
+        self.open = open
+        self.toggle = toggle
+    }
 
     var body: some View {
-        Text(title)
-            .appFont(.caption, weight: .semibold)
-            .foregroundStyle(Theme.secondary)
-            .padding(.top, 10)
-            .selectionDisabled()
-            .accessibilityAddTraits(.isHeader)
+        HStack(spacing: DisclosureChevron.gap) {
+            Button(action: toggle) { DisclosureChevron(open: open) }
+                .buttonStyle(.plain)
+                .accessibilityLabel(open ? Text("\(Text(title)) einklappen") : Text("\(Text(title)) ausklappen"))
+                .accessibilityValue(open ? "Ausgeklappt" : "Eingeklappt")
+            Text(title)
+                .appFont(.caption, weight: .semibold)
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+        }
+        .foregroundStyle(Theme.secondary)
+        .padding(.top, 10)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggle)
+        .listRowInsets(SidebarView.captionInsets)
+        .selectionDisabled()
+    }
+}
+
+/// Empty stand-in for the chevron on rows that cannot expand, so their icons share the headers' icon axis.
+private struct SidebarLeadingSlot: View {
+    var body: some View {
+        Color.clear.frame(width: DisclosureChevron.leadingSlotWidth, height: 18).accessibilityHidden(true)
     }
 }
 
