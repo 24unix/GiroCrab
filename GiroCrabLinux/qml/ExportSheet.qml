@@ -4,7 +4,7 @@ import QtQuick.Layouts
 
 // ExportSheet.swift – Umsätze exportieren (GitHub #53 / #372 / #401):
 // output mode → searchable account list (by bank) → period → format.
-// PDF = white-label Umsatzliste; CAMT.053 needs exactly one account (#372).
+// PDF = white-label Umsatzliste; CAMT.053 needs exactly one account (#372), no loan or depot (#483).
 Sheet {
     id: sheet
     sheetWidth: isSelectionExport ? 480 : 560
@@ -12,6 +12,8 @@ Sheet {
 
     property var options: BookingExport.load()
     property bool busy: false
+    /// Export error, shown on the sheet itself ("" = none).
+    property string failure: ""
     property bool showDetails: BookingExport.hasNonDefaultContent(options)
     /// Booking count and file name for the current choices, loaded on a worker thread
     /// (`null` while loading). Refreshed only when `previewKey` changes.
@@ -34,13 +36,10 @@ Sheet {
     /// The `.onChange` handlers of the Swift sheet, applied in one step.
     function applyOptions(o) {
         const old = options
-        if (o.scope === "selection" && BookingExport.isCamt(o.format)) o.format = "pdf"
         if (BookingExport.isCamt(o.format) && o.format !== old.format) {
             o.accountOutput = "combined"
-            if (!isSelectionExport && selectedIDList.length !== 1) {
-                const first = selectedAccounts.length ? selectedAccounts[0] : (poolAccounts.length ? poolAccounts[0] : null)
-                if (first) { const s = {}; s[first.id] = true; selectedIDs = s }
-            }
+            const first = firstCamtAccount
+            if (!isSelectionExport && !camtAccountOKFor(o) && first) { const s = {}; s[first.id] = true; selectedIDs = s }
         }
         options = o
         persistOptions()
@@ -98,7 +97,25 @@ Sheet {
     readonly property bool showsOutputMode: !isSelectionExport && !BookingExport.isCamt(options.format)
         && options.scope !== "selection" && selectedAccounts.length > 1
     readonly property bool isBulk: showsOutputMode && options.accountOutput === "perAccount"
-    readonly property bool camtAccountOK: !BookingExport.isCamt(options.format) || effectiveAccountIDs.length === 1
+    /// A loan's balance is no sum of its own bookings, a depot has none: CAMT.053
+    /// refuses both in the core, so the picker does too (#483).
+    function camtUsable(account) { return account.kind !== "Loan" && account.kind !== "Brokerage" }
+    /// camtAccountOK for options `o` (applyOptions checks the new format before it is set).
+    function camtAccountOKFor(o) {
+        if (!BookingExport.isCamt(o.format)) return true
+        const ids = o.scope === "selection" && accountIDsForSelectedBookings.length ? accountIDsForSelectedBookings : selectedIDList
+        const account = ids.length === 1 ? AppModel.account(ids[0]) : null
+        return account !== null && camtUsable(account)
+    }
+    readonly property bool camtAccountOK: camtAccountOKFor(options)
+    /// The single chosen account when CAMT.053 cannot cover it (loan or depot), else `null`.
+    readonly property var camtUnusableAccount: {
+        if (effectiveAccountIDs.length !== 1) return null
+        const account = AppModel.account(effectiveAccountIDs[0])
+        return account && !camtUsable(account) ? account : null
+    }
+    /// First account a CAMT.053 statement can cover.
+    readonly property var firstCamtAccount: selectedAccounts.find(camtUsable) || poolAccounts.find(camtUsable) || null
     readonly property bool canExport: !busy && camtAccountOK && effectiveAccountIDs.length > 0
         && (isBulk || (previewCount || 0) > 0 || options.scope === "selection")
 
@@ -133,10 +150,6 @@ Sheet {
     }
     readonly property string sheetTitle: isSelectionExport && selectionCount <= 1 ? qsTr("Umsatz exportieren") : qsTr("Umsätze exportieren")
 
-    /// CAMT.053 is a statement: OPBD + all entries = CLBD. Marked bookings alone would give
-    /// a closing balance that differs from the bank's, so it needs a period.
-    readonly property var availableFormats: options.scope === "selection" ? BookingExport.formats.filter(f => !f.camt) : BookingExport.formats
-
     /// Write current options without re-triggering the bindings.
     /// Selection-export keeps period/account prefs for the next menu/toolbar open.
     function persistOptions() {
@@ -149,8 +162,8 @@ Sheet {
             snapshot.customTo = previous.customTo
             snapshot.selectedAccountIDs = previous.selectedAccountIDs
             snapshot.accountOutput = previous.accountOutput
-            // CAMT is not offered for marked bookings; keep it as the saved choice.
-            if (BookingExport.isCamt(previous.format) && snapshot.format === "pdf") snapshot.format = previous.format
+            // Keep the saved format; the selection export may use it too.
+            snapshot.format = previous.format
         } else {
             snapshot.selectedAccountIDs = selectedIDList
             if (snapshot.scope === "selection") snapshot.scope = "filtered"
@@ -192,7 +205,6 @@ Sheet {
         if (isSelectionExport) {
             // Context menu: only the marked bookings — ignore saved period/account prefs.
             o.scope = "selection"
-            if (BookingExport.isCamt(o.format)) o.format = "pdf"
             const ids = accountIDsForSelectedBookings.length ? accountIDsForSelectedBookings : poolAccounts.map(a => a.id)
             const s = {}
             for (const id of ids) s[id] = true
@@ -207,7 +219,11 @@ Sheet {
                 const scope = AppModel.selectionAccountIDs()
                 ids = scope.length === 1 ? scope : pool
             }
-            if (BookingExport.isCamt(o.format) && ids.length !== 1) ids = poolAccounts.length ? [poolAccounts[0].id] : []
+            if (BookingExport.isCamt(o.format) && ids.length !== 1) {
+                ids = firstCamtAccount ? [firstCamtAccount.id] : []
+            } else if (BookingExport.isCamt(o.format) && AppModel.account(ids[0]) && !camtUsable(AppModel.account(ids[0]))) {
+                ids = firstCamtAccount ? [firstCamtAccount.id] : []
+            }
             const s = {}
             for (const id of ids) s[id] = true
             selectedIDs = s
@@ -246,7 +262,9 @@ Sheet {
             if (gen !== previewGeneration) return
             const report = BookingExport.exportReport(bookings, accountIDs, preset, bookingIDs, o)
             previewCount = report.rows.length
-            previewName = BookingExport.defaultFilename(report.accounts, report.rows, o.format, fallbackTitle)
+            const range = BookingExport.camtRange(accountIDs, preset, bookingIDs, o)
+            previewName = BookingExport.defaultFilename(report.accounts, report.rows, o.format, fallbackTitle,
+                                                        range ? range.from : null, range ? range.to : null)
         }, () => {
             if (gen !== previewGeneration) return
             previewCount = 0
@@ -254,10 +272,11 @@ Sheet {
         })
     }
 
+    /// Export error, shown on the sheet itself (the app's alert would stay hidden behind it).
+    /// A CAMT.053 refusal of the core (InvalidInput) arrives as its plain message (dispatch.rs).
     function fail(message) {
         busy = false
-        AppModel.errorTitle = qsTr("Export fehlgeschlagen")
-        AppModel.errorMessage = message
+        failure = message
     }
     /// Closes the sheet, then saves. close() unloads the sheet (lazy Loader in Main.qml): hand
     /// over BookingExport's function itself, not a closure over this sheet's context.
@@ -472,7 +491,10 @@ Sheet {
                                             onClicked: {
                                                 const accounts = bankGroup.modelData.accounts
                                                 if (BookingExport.isCamt(sheet.options.format)) {
-                                                    const s = {}; s[accounts[0].id] = true; sheet.setSelectedIDs(s); return
+                                                    // A group without a CAMT-capable account: leave the choice alone.
+                                                    const one = accounts.find(sheet.camtUsable)
+                                                    if (one) { const s = {}; s[one.id] = true; sheet.setSelectedIDs(s) }
+                                                    return
                                                 }
                                                 const s = Object.assign({}, sheet.selectedIDs)
                                                 const allOn = bankGroup.selectedCount === accounts.length
@@ -492,20 +514,24 @@ Sheet {
                                             id: accRow
                                             required property var modelData
                                             readonly property bool on: !!sheet.selectedIDs[modelData.id]
-                                            readonly property string sub: [modelData.owner, modelData.iban ? Fmt.iban(modelData.iban) : ""].filter(x => !!x).join(" · ")
+                                            readonly property bool usable: !BookingExport.isCamt(sheet.options.format) || sheet.camtUsable(modelData)
+                                            readonly property string sub: !usable ? qsTr("Nicht für Darlehen und Depots")
+                                                : [modelData.owner, modelData.iban ? Fmt.iban(modelData.iban) : ""].filter(x => !!x).join(" · ")
                                             width: bankGroup.width; height: 36
                                             RowLayout {
                                                 anchors.fill: parent; anchors.leftMargin: 22; anchors.rightMargin: 4
                                                 spacing: 8
-                                                CheckBox { checked: accRow.on; onClicked: accRow.toggle() }
+                                                CheckBox { checked: accRow.on; enabled: accRow.usable; onClicked: accRow.toggle() }
                                                 ColumnLayout {
                                                     spacing: 1; Layout.fillWidth: true
-                                                    Text { text: accRow.modelData.name; color: Theme.text; font.pixelSize: Theme.body; elide: Text.ElideRight; Layout.fillWidth: true }
+                                                    Text { text: accRow.modelData.name; color: accRow.usable ? Theme.text : Theme.secondary
+                                                           font.pixelSize: Theme.body; elide: Text.ElideRight; Layout.fillWidth: true }
                                                     Text { visible: accRow.sub !== ""; text: accRow.sub; color: Theme.secondary; font.pixelSize: Theme.caption
                                                            elide: Text.ElideRight; Layout.fillWidth: true }
                                                 }
                                             }
                                             function toggle() {
+                                                if (!usable) return
                                                 let s
                                                 if (BookingExport.isCamt(sheet.options.format)) { s = {}; s[modelData.id] = true }
                                                 else { s = Object.assign({}, sheet.selectedIDs); if (on) delete s[modelData.id]; else s[modelData.id] = true }
@@ -561,10 +587,13 @@ Sheet {
                 // MARK: formatSection
                 FormSection {
                     title: qsTr("Format")
-                    footer: sheet.options.scope === "selection"
-                        ? qsTr("CAMT.053 nur für einen Zeitraum: Ein Kontoauszug braucht alle Buchungen, sonst stimmt der Endsaldo nicht.") : ""
+                    footer: BookingExport.isCamt(sheet.options.format) && !sheet.camtAccountOK
+                        ? (sheet.camtUnusableAccount ? qsTr("Für Darlehen und Depots gibt es keinen CAMT.053-Auszug.")
+                                                     : qsTr("CAMT.053 gilt immer für genau ein Konto (#372)."))
+                        : sheet.options.scope === "selection" && BookingExport.isCamt(sheet.options.format)
+                        ? qsTr("CAMT.053 für markierte Buchungen enthält deren Zeitraum mit den echten Salden des Kontos.") : ""
                     Repeater {
-                        model: sheet.availableFormats
+                        model: BookingExport.formats
                         ChoiceRow {
                             required property var modelData
                             title: modelData.title; subtitle: modelData.subtitle
@@ -625,6 +654,26 @@ Sheet {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // .alert("Export fehlgeschlagen", isPresented: failure != nil)
+    Sheet {
+        id: failureDialog
+        sheetWidth: 420
+        visible: sheet.failure !== ""
+        onClosed: sheet.failure = ""
+        ColumnLayout {
+            width: failureDialog.availableWidth
+            spacing: 12
+            Text { text: qsTr("Export fehlgeschlagen"); font.pixelSize: Theme.body + 2; font.weight: Font.Bold; color: Theme.text
+                   wrapMode: Text.WordWrap; Layout.fillWidth: true }
+            TextEdit { text: sheet.failure; readOnly: true; selectByMouse: true; wrapMode: Text.WordWrap; color: Theme.text
+                       font.pixelSize: Theme.body; Layout.fillWidth: true }
+            RowLayout {
+                Item { Layout.fillWidth: true }
+                Button { text: qsTr("OK"); highlighted: true; onClicked: failureDialog.close() }
             }
         }
     }

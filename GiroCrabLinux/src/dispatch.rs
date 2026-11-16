@@ -1025,9 +1025,27 @@ fn read_invoice(a: &Value) -> R {
     ok(json!({ "xml": xml, "text": text }))
 }
 
+/// Vault methods, plus the ones whose errors the sheet shows differently.
+fn dispatch_vault(v: &Vault, method: &str, a: &Value) -> Option<R> {
+    match method {
+        // Umsatz-Export: CAMT.053 straight from the vault (#483). ExportSheet.swift shows
+        // a refusal (`InvalidInput`: loan/depot, gap in the marked bookings) as its plain
+        // message, without the „Ungültige Eingabe:“ prefix of other errors.
+        "camt053_export" => Some(camt053_export(v, a)),
+        _ => dispatch_vault_methods(v, method, a),
+    }
+}
+
+fn camt053_export(v: &Vault, a: &Value) -> R {
+    ok(v.camt053_export(arg(a, "request")?).map_err(|e| match e {
+        girocrab_core::CoreError::InvalidInput { message } => message,
+        e => e.to_string(),
+    })?)
+}
+
 macro_rules! vault_methods {
     ($($name:ident ( $($p:ident),* ))*) => {
-        fn dispatch_vault(v: &Vault, method: &str, _a: &Value) -> Option<R> {
+        fn dispatch_vault_methods(v: &Vault, method: &str, _a: &Value) -> Option<R> {
             match method {
                 $( stringify!($name) => Some((|| -> R {
                     ok(v.$name($(arg(_a, stringify!($p))?),*).map_err(|e| e.to_string())?)
@@ -1088,8 +1106,6 @@ vault_methods! {
     set_account_archived(account_id, archived) set_account_color(account_id, color_hex)
     set_account_symbol(account_id, sf_symbol) reset_account_symbol(account_id)
     set_account_kind(account_id, kind) set_account_owner(account_id, owner)
-    // --- Umsatz-Export: CAMT.053 straight from the vault (#483) ---
-    camt053_export(request)
     // categories
     list_categories(date_from, date_to)
     create_category(name, parent_id, sf_symbol, color_hex)
@@ -1764,6 +1780,74 @@ mod tests {
         let camt = camt.as_str().unwrap();
         assert!(camt.contains("urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"));
         assert!(camt.contains("<Cd>OPBD</Cd>") && camt.contains("<Cd>CLBD</Cd>"));
+        // A period in the older version, as BookingExport.qml › camtRequest sends it
+        let days: Vec<String> = bookings
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["booking_date"].as_str().unwrap().to_string())
+            .collect();
+        let (from, to) = (days.iter().min().unwrap(), days.iter().max().unwrap());
+        let camt = call(
+            "camt053_export",
+            json!({ "request": { "account_id": account["id"], "date_from": from, "date_to": to,
+                    "booking_ids": null, "version": "V02", "created_at": "2026-11-15T11:00:00Z" } }),
+        );
+        let camt = camt.as_str().unwrap();
+        assert!(camt.contains("urn:iso:std:iso:20022:tech:xsd:camt.053.001.02"));
+        assert!(camt.contains(&format!("<Dt>{to}</Dt>")));
+        // Marked bookings („Auswahl“): every booking of the newest day is a gapless marking
+        let newest: Vec<i64> = bookings
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|b| b["booking_date"].as_str() == Some(to.as_str()))
+            .map(|b| b["id"].as_i64().unwrap())
+            .collect();
+        let camt = call(
+            "camt053_export",
+            json!({ "request": { "account_id": account["id"], "date_from": null, "date_to": null,
+                    "booking_ids": newest, "version": "V08", "created_at": "2026-11-15T11:00:00Z" } }),
+        );
+        assert_eq!(
+            camt.as_str().unwrap().matches("<Ntry>").count(),
+            newest.len()
+        );
+        // A marking with a gap and a loan/depot are refused with the core's plain
+        // message (ExportSheet.swift: `catch CoreError.InvalidInput(message)`).
+        let ids: Vec<i64> = bookings
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["id"].as_i64().unwrap())
+            .collect();
+        let (oldest, newest_id) = (ids[ids.len() - 1], ids[0]);
+        let gap = dispatch_vault(
+            &v,
+            "camt053_export",
+            &json!({ "request": { "account_id": account["id"], "date_from": null, "date_to": null,
+                     "booking_ids": [oldest, newest_id], "version": "V08",
+                     "created_at": "2026-11-15T11:00:00Z" } }),
+        )
+        .unwrap()
+        .unwrap_err();
+        assert!(gap.starts_with("CAMT.053 "), "{gap}");
+        if let Some(depot) = accounts
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["kind"] == "Brokerage" || a["kind"] == "Loan")
+        {
+            let refused = dispatch_vault(
+                &v,
+                "camt053_export",
+                &json!({ "request": { "account_id": depot["id"], "date_from": null, "date_to": null,
+                         "booking_ids": null, "version": "V08", "created_at": "2026-11-15T11:00:00Z" } }),
+            )
+            .unwrap()
+            .unwrap_err();
+            assert!(refused.starts_with("CAMT.053 "), "{refused}");
+        }
         let dir = std::env::temp_dir().join(format!("girocrab-export-out-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let save = |a: Value| call_ok("save_export_file", a).as_str().unwrap().to_string();

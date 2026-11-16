@@ -134,11 +134,13 @@ QtObject {
     }
 
     /// Suggested save name, e.g. `Umsaetze-Girokonto-2025-03-01_2025-03-31.pdf`.
-    function defaultFilename(accounts, rows, formatId, fallbackTitle) {
+    /// `rangeFrom`/`rangeTo` (the CAMT.053 period, see camtRange) win over the rows' dates.
+    function defaultFilename(accounts, rows, formatId, fallbackTitle, rangeFrom, rangeTo) {
         const used = usedAccounts(accounts, rows)
         const dates = rows.map(r => r.date).filter(d => !!d).sort()
-        const range = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : dates[0] + "_" + dates[dates.length - 1])
-                                   : Fmt.iso(new Date())
+        const from = rangeFrom ? rangeFrom : (dates.length ? dates[0] : null)
+        const to = rangeTo ? rangeTo : (dates.length ? dates[dates.length - 1] : null)
+        const range = from && to ? (from === to ? from : from + "_" + to) : Fmt.iso(new Date())
         const accountPart = used.length === 0 ? "Umsaetze-" + safeFileComponent(fallbackTitle || "Export")
                           : used.length === 1 ? "Umsaetze-" + safeFileComponent(used[0].name)
                           : "Umsaetze-" + used.length + "-Konten"
@@ -166,15 +168,22 @@ QtObject {
         return out
     }
 
-    /// Day before `iso` (`yyyy-MM-dd`), for loading the history the opening balance needs.
-    function previousISODate(iso) {
-        const d = Fmt.date(iso)
-        if (!d) return null
-        d.setDate(d.getDate() - 1)
-        return Fmt.iso(d)
+    /// CAMT.053 cannot state a balance after today: the core caps the end date,
+    /// so the file name uses the same bound (`camtRange` passes it on).
+    function camtEndDate(requested, today) {
+        if (!requested) return null
+        today = today || Fmt.iso(new Date())
+        return requested < today ? requested : today
     }
-    /// Opening balance at the start of `firstDate` (= end of the previous day); `null` when the
-    /// history has no value for that day: a CAMT file must not invent a 0 opening balance.
+
+    /// Request for the core's CAMT.053 export (#483). The core reads the entries and the
+    /// booked balances itself; `from`/`to`/`bookingIDs` only narrow the statement.
+    function camtRequest(accountID, formatId, from, to, bookingIDs, created) {
+        return { account_id: accountID, date_from: from || null, date_to: to || null,
+                 booking_ids: bookingIDs ? bookingIDs.slice().sort((a, b) => a - b) : null,
+                 version: formatId === "camt053v02" ? "V02" : "V08",
+                 created_at: (created || new Date()).toISOString().replace(/\.\d{3}Z$/, "Z") }
+    }
 
     /// Excel CSV with optional Tagessaldo column; formatting and formula guard live in the core.
     function csv(report, o) {
@@ -284,10 +293,11 @@ QtObject {
                     const earliest = report.rows.map(r => r.date).reduce((a, b) => (a < b ? a : b))
                     const ids = Object.keys(report.rows.reduce((m, r) => { m[r.account_id] = true; return m }, {}))
                         .map(Number).sort((a, b) => a - b)
-                    // From the day before: CAMT's opening balance is that day's end balance.
-                    report.daily_balances = AppModel.printDailyBalances(ids, previousISODate(earliest) || earliest)
+                    report.daily_balances = AppModel.printDailyBalances(ids, earliest)
                 }
-                const filename = defaultFilename(report.accounts, report.rows, o.format, report.title)
+                const range = camtRange(accountIDs, preset, bookingIDs, o)
+                const filename = defaultFilename(report.accounts, report.rows, o.format, report.title,
+                                                 range ? range.from : null, range ? range.to : null)
                 if (o.format === "csv") {
                     done({ format: o.format, filename: filename, text: csv(report, o) })
                 } else if (camt) {
@@ -301,25 +311,22 @@ QtObject {
         }, failed)
     }
 
-    /// ExportSheet.swift › camtRange: a period export uses the list's bounds (without its
-    /// search/category filters), the end capped at today; marked bookings bring their own period.
+    /// ExportSheet.swift › camtRange: period the core states for a CAMT.053 export (`null` for
+    /// other formats and marked bookings, where the rows set it). Also names the file, so name
+    /// and OPBD/CLBD dates agree.
     function camtRange(accountIDs, preset, bookingIDs, o) {
-        if (bookingIDs) return null
+        if (!isCamt(o.format) || bookingIDs) return null
         const f = exportFilter(accountIDs, preset, o, true)
-        const today = Qt.formatDate(new Date(), "yyyy-MM-dd")
-        return { from: f.date_from, to: f.date_to ? (f.date_to < today ? f.date_to : today) : null }
+        return { from: f.date_from || null, to: camtEndDate(f.date_to) }
     }
     /// The core's CAMT.053 export (#483): it reads the entries and the booked balances from the
-    /// vault itself; account, period and marked bookings only narrow the statement.
+    /// vault itself. Marked bookings export their own period; a period export uses the same
+    /// bounds as the list, without its search/category filters.
     function camtXML(accountIDs, preset, bookingIDs, o) {
         if (accountIDs.length !== 1) throw new Error(qsTr("CAMT.053 nur für ein einzelnes Konto (#372)."))
         const range = camtRange(accountIDs, preset, bookingIDs, o)
-        return AppModel.core("camt053_export", { request: {
-            account_id: accountIDs[0],
-            date_from: range ? range.from : null, date_to: range ? range.to : null,
-            booking_ids: bookingIDs ? bookingIDs.slice().sort((a, b) => a - b) : null,
-            version: o.format === "camt053v02" ? "V02" : "V08",
-            created_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z") } })
+        return AppModel.core("camt053_export", { request: camtRequest(
+            accountIDs[0], o.format, range ? range.from : null, range ? range.to : null, bookingIDs) })
     }
 
     /// HTMLPDFRenderer: the Umsatzliste through WebPrinter.qml (QtWebEngine, A4 portrait) into a temp file.
