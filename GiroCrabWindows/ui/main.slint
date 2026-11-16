@@ -4,8 +4,10 @@ export { TagRow, SplitRow, BudgetRow, TemplateRow }
 import { RecLine, RecurringPanel } from "recurring_dialog.slint";
 import { GroupsState, GroupsPanel } from "groups_dialog.slint";
 import { AssetsState, AssetsLoansPanel } from "assets_loans_dialog.slint";
+import { MandatesState, MdRow, MandatesPanel } from "mandates_dialog.slint";
 export { GroupsState }
 export { AssetsState }
+export { MandatesState, MdRow }
 export { RecLine }
 
 export struct AccountRow { id: int, name: string, bank: string, iban: string, header: string, monogram: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
@@ -954,6 +956,7 @@ export component MainWindow inherits Window {
                 GhostButton { text: "Tags …"; clicked => { root.tags-request(); } }
                 GhostButton { text: "Gruppen …"; enabled: !root.busy; clicked => { GroupsState.request(); } }
                 GhostButton { text: "Sachwerte …"; enabled: !root.busy; clicked => { AssetsState.request(); } }
+                GhostButton { text: "Lastschriften …"; enabled: !root.busy; clicked => { MandatesState.request(); } }
                 GhostButton { text: "Budgets …"; clicked => { root.budgets-request(); } }
                 GhostButton { text: "Vorlagen …"; clicked => { root.templates-request(); } }
                 GhostButton { text: "Wiederkehrend …"; clicked => { root.rc-request(); } }
@@ -1621,6 +1624,15 @@ export component MainWindow inherits Window {
         GroupsPanel {
             ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
             close() => { GroupsState.open = false; root.refocus(); }
+        }
+    }
+
+    // ---- Lastschriften, Mandate, Rücklastschriften (mandates_ui.rs; panel in mandates_dialog.slint)
+    if MandatesState.open: Dialog {
+        dialog-width: 900px;
+        MandatesPanel {
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            close() => { MandatesState.open = false; root.refocus(); }
         }
     }
 

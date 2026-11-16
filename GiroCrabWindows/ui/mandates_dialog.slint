@@ -1,0 +1,316 @@
+// Lastschrift-Mandate, Einzug, Rücklastschriften and the batch-transfer CSV preview. The panel is
+// the content of a `Dialog` in main.slint (which owns the theme), so colours come in as
+// properties. All state and callbacks live in the `MandatesState` global; mandates_ui.rs fills it
+// and runs every vault call on a worker thread.
+import { Button, ListView, LineEdit, ComboBox, CheckBox, ScrollView } from "std-widgets.slint";
+
+export struct MdRow { title: string, detail: string, amount: string, checked: bool, negative: bool }
+
+export global MandatesState {
+    in-out property <bool> open: false;
+    // 0 = Mandate, 1 = Einzug, 2 = Rücklastschriften, 3 = Sammelüberweisung (CSV)
+    in-out property <int> tab: 0;
+    in property <string> status;
+    in property <bool> busy: false;
+    // creditor account
+    in property <[string]> acc-names;
+    in-out property <int> acc: 0;
+    in-out property <string> creditor-id;
+    // ---- Mandate
+    in property <[MdRow]> mandates;
+    in property <string> mandates-summary;
+    in-out property <int> sel-mandate: -1;
+    in property <bool> delete-armed: false;
+    in-out property <string> f-name;
+    in-out property <string> f-iban;
+    in-out property <string> f-bic;
+    in-out property <string> f-ref;
+    in-out property <string> f-date;
+    in property <[string]> scheme-names;
+    in-out property <int> f-scheme: 0;
+    in-out property <bool> f-oneoff: false;
+    in-out property <string> f-amount;
+    in-out property <string> f-purpose;
+    in-out property <string> f-note;
+    in-out property <bool> f-active: true;
+    in property <string> f-next;
+    // CSV import preview
+    in property <[MdRow]> csv-rows;
+    in property <string> csv-summary;
+    in property <bool> csv-ready: false;
+    // ---- Einzug
+    in property <[MdRow]> coll-rows;
+    in property <string> coll-summary;
+    in-out property <int> sel-coll: -1;
+    in-out property <string> c-amount;
+    in-out property <string> c-purpose;
+    in-out property <bool> c-last: false;
+    in-out property <string> c-date;
+    in property <[MdRow]> files;
+    in property <string> files-summary;
+    in property <bool> files-ready: false;
+    // ---- Rücklastschriften
+    in property <[MdRow]> returns;
+    in property <string> returns-summary;
+    in-out property <int> sel-return: -1;
+    in property <[MdRow]> history;
+    // ---- Sammelüberweisung (CSV)
+    in property <[MdRow]> batch-rows;
+    in property <string> batch-summary;
+    callback request();
+    callback tab-changed(int);
+    callback account-changed(int);
+    callback creditor-save();
+    callback creditor-suggest();
+    callback mandate-select(int);
+    callback mandate-new();
+    callback mandate-save();
+    callback mandate-delete();
+    callback form-changed();
+    callback csv-import();
+    callback csv-apply();
+    callback csv-edit(int);
+    callback csv-export();
+    callback pain-import();
+    callback coll-toggle(int);
+    callback coll-select(int);
+    callback coll-edit-apply();
+    callback coll-all(bool);
+    callback coll-build();
+    callback coll-mark();
+    callback return-select(int);
+    callback return-ack();
+    callback returns-refresh();
+    callback batch-import();
+}
+
+component Frame inherits Rectangle {
+    in property <length> list-height: 150px;
+    in property <color> line;
+    height: list-height;
+    border-width: 1px;
+    border-color: line;
+    border-radius: 8px;
+    clip: true;
+}
+
+component Caption inherits Text {
+    in property <color> ink;
+    color: ink;
+    font-size: 12px;
+    vertical-alignment: center;
+}
+
+component Tab inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    in property <color> accent;
+    in property <color> ink;
+    callback clicked();
+    height: 30px;
+    border-radius: 6px;
+    background: active ? accent.with-alpha(0.2) : transparent;
+    TouchArea { clicked => { root.clicked(); } }
+    Text { text: root.text; color: root.ink; font-size: 12px; font-weight: root.active ? 700 : 400; horizontal-alignment: center; vertical-alignment: center; }
+}
+
+component Rows inherits Frame {
+    in property <[MdRow]> rows;
+    in property <string> empty;
+    in property <bool> checks: false;
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> accent;
+    in property <color> negative;
+    in property <int> selected: -1;
+    callback pick(int);
+    callback toggle(int);
+    if root.rows.length == 0: Text { text: root.empty; color: root.muted; horizontal-alignment: center; vertical-alignment: center; }
+    ListView {
+        for r[i] in root.rows: Rectangle {
+            height: 44px;
+            background: root.selected == i ? root.accent.with-alpha(0.18) : transparent;
+            TouchArea { clicked => { root.pick(i); } }
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 12px;
+                spacing: 8px;
+                if root.checks: CheckBox { checked: r.checked; toggled => { root.toggle(i); } }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    Text { text: r.title; color: root.ink; font-size: 13px; font-weight: 600; overflow: elide; }
+                    Text { text: r.detail; color: root.muted; font-size: 11px; overflow: elide; }
+                }
+                Text { text: r.amount; color: r.negative ? root.negative : root.ink; font-size: 13px; vertical-alignment: center; }
+            }
+        }
+    }
+}
+
+export component MandatesPanel inherits VerticalLayout {
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> line;
+    in property <color> accent;
+    in property <color> negative;
+    callback close();
+    spacing: 8px;
+    Text { text: "Lastschriften & Mandate"; color: root.ink; font-size: 18px; font-weight: 700; }
+    HorizontalLayout {
+        spacing: 8px;
+        Caption { text: "Gläubigerkonto"; ink: root.muted; }
+        ComboBox { horizontal-stretch: 1; model: MandatesState.acc-names; current-index <=> MandatesState.acc; selected(_) => { MandatesState.account-changed(MandatesState.acc); } }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        Caption { text: "Gläubiger-ID"; ink: root.muted; }
+        LineEdit { horizontal-stretch: 1; text <=> MandatesState.creditor-id; placeholder-text: "DE98ZZZ09999999999"; accepted => { MandatesState.creditor-save(); } }
+        Button { text: "Vorschlag"; clicked => { MandatesState.creditor-suggest(); } }
+        Button { text: "Speichern"; clicked => { MandatesState.creditor-save(); } }
+    }
+    HorizontalLayout {
+        spacing: 4px;
+        Tab { text: "Mandate"; active: MandatesState.tab == 0; accent: root.accent; ink: root.ink; clicked => { MandatesState.tab = 0; MandatesState.tab-changed(0); } }
+        Tab { text: "Einzug"; active: MandatesState.tab == 1; accent: root.accent; ink: root.ink; clicked => { MandatesState.tab = 1; MandatesState.tab-changed(1); } }
+        Tab { text: "Rücklastschriften"; active: MandatesState.tab == 2; accent: root.accent; ink: root.ink; clicked => { MandatesState.tab = 2; MandatesState.tab-changed(2); } }
+        Tab { text: "Sammelüberweisung (CSV)"; active: MandatesState.tab == 3; accent: root.accent; ink: root.ink; clicked => { MandatesState.tab = 3; MandatesState.tab-changed(3); } }
+    }
+
+    // ---- 0: mandates
+    if MandatesState.tab == 0: VerticalLayout {
+        spacing: 6px;
+        Text { text: MandatesState.mandates-summary; color: root.muted; font-size: 11px; wrap: word-wrap; }
+        Rows {
+            list-height: 130px;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent; negative: root.negative;
+            rows: MandatesState.mandates; empty: "Noch keine Mandate"; selected: MandatesState.sel-mandate;
+            pick(i) => { MandatesState.mandate-select(i); }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit { horizontal-stretch: 1; text <=> MandatesState.f-name; placeholder-text: "Zahler (Name)"; }
+            LineEdit { horizontal-stretch: 1; text <=> MandatesState.f-iban; placeholder-text: "IBAN"; }
+            LineEdit { width: 110px; text <=> MandatesState.f-bic; placeholder-text: "BIC (optional)"; }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit { horizontal-stretch: 1; text <=> MandatesState.f-ref; placeholder-text: "Mandatsreferenz"; }
+            LineEdit { width: 130px; text <=> MandatesState.f-date; placeholder-text: "Unterschrift TT.MM.JJJJ"; }
+            ComboBox { width: 220px; model: MandatesState.scheme-names; current-index <=> MandatesState.f-scheme; selected(_) => { MandatesState.form-changed(); } }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit { width: 110px; text <=> MandatesState.f-amount; placeholder-text: "Betrag"; }
+            LineEdit { horizontal-stretch: 1; text <=> MandatesState.f-purpose; placeholder-text: "Standard-Verwendungszweck"; }
+            LineEdit { horizontal-stretch: 1; text <=> MandatesState.f-note; placeholder-text: "Notiz"; }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            CheckBox { text: "Einmalmandat"; checked <=> MandatesState.f-oneoff; toggled => { MandatesState.form-changed(); } }
+            CheckBox { text: "Aktiv"; checked <=> MandatesState.f-active; }
+            Text { text: MandatesState.f-next; color: root.muted; font-size: 11px; vertical-alignment: center; }
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            Button { text: "Neu"; clicked => { MandatesState.mandate-new(); } }
+            Button { text: "Speichern"; primary: true; enabled: !MandatesState.busy; clicked => { MandatesState.mandate-save(); } }
+            Button { text: MandatesState.delete-armed ? "Wirklich löschen?" : "Löschen"; enabled: MandatesState.sel-mandate >= 0; clicked => { MandatesState.mandate-delete(); } }
+            Rectangle { horizontal-stretch: 1; }
+            Button { text: "CSV importieren …"; enabled: !MandatesState.busy; clicked => { MandatesState.csv-import(); } }
+            Button { text: "CSV exportieren …"; enabled: !MandatesState.busy; clicked => { MandatesState.csv-export(); } }
+            Button { text: "pain.008 importieren …"; enabled: !MandatesState.busy; clicked => { MandatesState.pain-import(); } }
+        }
+        if MandatesState.csv-summary != "": VerticalLayout {
+            spacing: 4px;
+            Text { text: MandatesState.csv-summary; color: root.muted; font-size: 11px; wrap: word-wrap; }
+            Rows {
+                list-height: 100px;
+                line: root.line; ink: root.ink; muted: root.muted; accent: root.accent; negative: root.negative;
+                rows: MandatesState.csv-rows; empty: "";
+                pick(i) => { MandatesState.csv-edit(i); }
+            }
+            HorizontalLayout { alignment: end; Button { text: "Fehlerfreie Zeilen übernehmen"; enabled: MandatesState.csv-ready && !MandatesState.busy; clicked => { MandatesState.csv-apply(); } } }
+        }
+    }
+
+    // ---- 1: collection
+    if MandatesState.tab == 1: VerticalLayout {
+        spacing: 6px;
+        Text { text: MandatesState.coll-summary; color: root.muted; font-size: 11px; wrap: word-wrap; }
+        Rows {
+            list-height: 170px;
+            checks: true;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent; negative: root.negative;
+            rows: MandatesState.coll-rows; empty: "Keine aktiven Mandate"; selected: MandatesState.sel-coll;
+            pick(i) => { MandatesState.coll-select(i); }
+            toggle(i) => { MandatesState.coll-toggle(i); }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit { width: 110px; text <=> MandatesState.c-amount; placeholder-text: "Betrag"; enabled: MandatesState.sel-coll >= 0; }
+            LineEdit { horizontal-stretch: 1; text <=> MandatesState.c-purpose; placeholder-text: "Verwendungszweck (leer = Standard)"; enabled: MandatesState.sel-coll >= 0; }
+            CheckBox { text: "Letzter Einzug"; checked <=> MandatesState.c-last; enabled: MandatesState.sel-coll >= 0; }
+            Button { text: "Übernehmen"; enabled: MandatesState.sel-coll >= 0; clicked => { MandatesState.coll-edit-apply(); } }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Button { text: "Alle"; clicked => { MandatesState.coll-all(true); } }
+            Button { text: "Keine"; clicked => { MandatesState.coll-all(false); } }
+            Rectangle { horizontal-stretch: 1; }
+            Caption { text: "Fälligkeit"; ink: root.muted; }
+            LineEdit { width: 120px; text <=> MandatesState.c-date; placeholder-text: "TT.MM.JJJJ"; }
+            Button { text: "pain.008 erzeugen …"; primary: true; enabled: !MandatesState.busy; clicked => { MandatesState.coll-build(); } }
+        }
+        Text { text: MandatesState.files-summary; color: root.muted; font-size: 11px; wrap: word-wrap; }
+        if MandatesState.files.length > 0: Rows {
+            list-height: 80px;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent; negative: root.negative;
+            rows: MandatesState.files; empty: "";
+        }
+        HorizontalLayout {
+            alignment: end;
+            Button { text: "Als eingezogen markieren"; enabled: MandatesState.files-ready && !MandatesState.busy; clicked => { MandatesState.coll-mark(); } }
+        }
+    }
+
+    // ---- 2: returns
+    if MandatesState.tab == 2: VerticalLayout {
+        spacing: 6px;
+        Text { text: MandatesState.returns-summary; color: root.muted; font-size: 11px; wrap: word-wrap; }
+        Rows {
+            list-height: 150px;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent; negative: root.negative;
+            rows: MandatesState.returns; empty: "Keine offenen Rücklastschriften"; selected: MandatesState.sel-return;
+            pick(i) => { MandatesState.return-select(i); }
+        }
+        Text { text: "Buchungen des ausgewählten Mandats"; color: root.ink; font-size: 12px; font-weight: 700; }
+        Rows {
+            list-height: 130px;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent; negative: root.negative;
+            rows: MandatesState.history; empty: "Rücklastschrift auswählen";
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            Button { text: "Aktualisieren"; clicked => { MandatesState.returns-refresh(); } }
+            Button { text: "Als gesehen markieren"; enabled: MandatesState.sel-return >= 0 && !MandatesState.busy; clicked => { MandatesState.return-ack(); } }
+        }
+    }
+
+    // ---- 3: batch transfer CSV
+    if MandatesState.tab == 3: VerticalLayout {
+        spacing: 6px;
+        Text { text: MandatesState.batch-summary; color: root.muted; font-size: 11px; wrap: word-wrap; }
+        Rows {
+            list-height: 230px;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent; negative: root.negative;
+            rows: MandatesState.batch-rows; empty: "CSV-Datei mit Name, IBAN, Betrag und Zweck wählen";
+        }
+        HorizontalLayout { alignment: end; Button { text: "CSV öffnen …"; enabled: !MandatesState.busy; clicked => { MandatesState.batch-import(); } } }
+    }
+
+    Text { text: MandatesState.status; color: root.muted; font-size: 11px; wrap: word-wrap; }
+    HorizontalLayout { alignment: end; Button { text: "Schließen"; clicked => { root.close(); } } }
+}

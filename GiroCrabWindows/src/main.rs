@@ -12,6 +12,8 @@ mod lists;
 mod logos;
 mod manage;
 mod manage_ui;
+mod mandates_ui;
+mod mandates_view;
 mod nav;
 mod planning;
 mod policy;

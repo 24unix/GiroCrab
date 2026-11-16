@@ -646,6 +646,7 @@ pub fn on_lock(win: &MainWindow) {
     crate::groups_ui::on_lock(win);
     crate::assets_loans_ui::on_lock(win);
     crate::recurring_ui::on_lock(win);
+    crate::mandates_ui::on_lock(win);
     clear_table(win, "");
 }
 
@@ -1160,6 +1161,7 @@ pub fn wire(win: &MainWindow, vault: VaultSlot) {
     crate::groups_ui::wire(win, vault.clone());
     crate::assets_loans_ui::wire(win, vault.clone());
     crate::recurring_ui::wire(win, vault.clone());
+    crate::mandates_ui::wire(win, vault.clone());
 }
 
 #[cfg(test)]
