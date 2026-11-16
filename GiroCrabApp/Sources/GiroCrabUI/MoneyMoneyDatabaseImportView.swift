@@ -254,6 +254,7 @@ struct MoneyMoneyDatabaseImportView: View {
             Section {
                 ImportFileRow(title: "Importdaten", url: fileURL, name: fileURL?.lastPathComponent ?? "") { pickFile() }
                 SecureField("Datenbank-Passwort", text: $password, prompt: Text("Erforderlich"))
+                    .visibleInsertionPoint()
             } header: {
                 Text("Datenbank").appSectionHeader()
             } footer: {

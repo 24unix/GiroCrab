@@ -29,6 +29,7 @@ struct BackupImportView: View {
                 Section {
                     ImportFileRow(title: "Sicherung", url: fileURL, name: fileURL?.lastPathComponent ?? "") { picking = true }
                     SecureField("Passwort", text: $password)
+                        .visibleInsertionPoint()
                         .textContentType(.password)
                 } header: {
                     Text("Datei").appSectionHeader()

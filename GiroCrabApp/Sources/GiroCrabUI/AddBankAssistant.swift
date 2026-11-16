@@ -459,6 +459,7 @@ struct AddBankSheet: View {
         let binding = Binding(get: { setupValues[key] ?? "" }, set: { setupValues[key] = $0 })
         if entry?.isSecret ?? key.contains("secret") {
             SecureField(label, text: binding, prompt: Text("Erforderlich"))
+                .visibleInsertionPoint()
         } else {
             TextField(label, text: binding, prompt: Text("Erforderlich"))
                 .autocorrectionDisabled()

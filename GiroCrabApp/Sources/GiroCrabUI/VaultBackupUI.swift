@@ -108,6 +108,7 @@ private struct BackupPasswordSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(restoring ? "Tresor wiederherstellen" : "Tresor sichern").appFont(.headline)
             SecureField("Passwort", text: $password)
+                .visibleInsertionPoint()
                 // AutoFill from the Passwords app (or another password manager) instead of typing.
                 .textContentType(.password)
             if restoring {
@@ -116,6 +117,7 @@ private struct BackupPasswordSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 SecureField("Passwort wiederholen", text: $repeated)
+                .visibleInsertionPoint()
                 Button("Passwort vorschlagen", systemImage: "key") {
                     let p = VaultBackup.suggestedPassword()
                     password = p; repeated = p; suggestion = p; copied = false
