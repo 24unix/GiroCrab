@@ -1,8 +1,19 @@
 //! Builds the native SwiftUI app as part of `cargo build`:
-//!   1. ./build-xcframework.sh --macos-only   (Rust core + UniFFI Swift package)
-//!   2. swift build -c release --product GiroCrabMac
-//!   3. wraps the executable into target/GiroCrab.app (ad-hoc signed), with the
-//!      UI translations compiled from the String Catalogs (xcstringstool)
+//!   1. ./build-xcframework.sh --macos-only   (Rust core + UniFFI Swift package),
+//!      skipped when `--check` finds generated/ up to date
+//!   2. swift build --product GiroCrabMac, configured by cargo's profile:
+//!      - release: `-c release` in GiroCrabApp/.build, as package-macos-app.sh
+//!        builds it. Whole-module optimization compiles GiroCrabUI on mostly one
+//!        core, and every edit recompiles all of it.
+//!      - dev: `-c debug -Xswiftc -O` in target/swift-dev. Optimized, but
+//!        parallel and incremental; `#if DEBUG` code is active. Its own scratch
+//!        path, so plain `swift build`/`swift test` (-Onone) and this build
+//!        don't recompile everything each time the other one ran.
+//!   3. wraps the executable into target/<profile>/GiroCrab.app (ad-hoc signed),
+//!      with translations compiled from the String Catalogs (xcstringstool).
+//!      One bundle per profile: switching back to a profile cargo already built
+//!      does not rerun this script, so a shared bundle would still hold the
+//!      other profile's binary.
 //!
 //! The launcher binary (src/main.rs) then starts that app.
 //!
@@ -10,7 +21,7 @@
 
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 fn clean_env(cmd: &mut Command) {
     // Don't leak the outer cargo's build-script environment into the nested
@@ -75,7 +86,13 @@ fn main() {
     }
     println!("cargo:rerun-if-env-changed=GIROCRAB_SKIP_SWIFT");
 
-    let app_dir = root.join("target").join("GiroCrab.app");
+    // Cargo reports "debug" or "release" (a custom profile reports the one it
+    // inherits from); SwiftPM's configurations have the same names.
+    let profile = match env::var("PROFILE").as_deref() {
+        Ok("release") => "release",
+        _ => "debug",
+    };
+    let app_dir = root.join("target").join(profile).join("GiroCrab.app");
     let app_bin = app_dir.join("Contents/MacOS/GiroCrab");
     println!("cargo:rustc-env=GIROCRAB_APP_BIN={}", app_bin.display());
 
@@ -87,32 +104,41 @@ fn main() {
     }
 
     // 1. Rust core -> XCFramework + Swift bindings (separate target dir: no lock contention)
-    let mut xcf = Command::new("bash");
-    xcf.arg(root.join("build-xcframework.sh"))
-        .arg("--macos-only")
-        .current_dir(&root);
-    clean_env(&mut xcf);
-    xcf.env("GIROCRAB_TARGET_DIR", root.join("target").join("apple"));
-    run(&mut xcf, "build-xcframework.sh --macos-only");
+    let script = root.join("build-xcframework.sh");
+    let mut check = Command::new("bash");
+    check
+        .arg(&script)
+        .arg("--check")
+        .current_dir(&root)
+        .stderr(Stdio::null());
+    clean_env(&mut check);
+    if !check.status().is_ok_and(|s| s.success()) {
+        let mut xcf = Command::new("bash");
+        xcf.arg(&script).arg("--macos-only").current_dir(&root);
+        clean_env(&mut xcf);
+        xcf.env("GIROCRAB_TARGET_DIR", root.join("target").join("apple"));
+        run(&mut xcf, "build-xcframework.sh --macos-only");
+    }
 
-    // 2. SwiftUI app
+    // 2. SwiftUI app (configurations: see the module docs)
     let pkg = root.join("GiroCrabApp");
     let mut swift = Command::new("xcrun");
+    swift.args(["swift", "build", "-c", profile, "--product", "GiroCrabMac"]);
+    let scratch = if profile == "release" {
+        pkg.join(".build")
+    } else {
+        swift.args(["-Xswiftc", "-O"]);
+        root.join("target").join("swift-dev")
+    };
     swift
-        .args([
-            "swift",
-            "build",
-            "-c",
-            "release",
-            "--product",
-            "GiroCrabMac",
-            "--package-path",
-        ])
+        .arg("--package-path")
         .arg(&pkg)
+        .arg("--scratch-path")
+        .arg(&scratch)
         .current_dir(&pkg);
     clean_env(&mut swift);
     run(&mut swift, "swift build (GiroCrabMac)");
-    let built = pkg.join(".build/release/GiroCrabMac");
+    let built = scratch.join(profile).join("GiroCrabMac");
     assert!(
         built.exists(),
         "swift build did not produce {}",
@@ -120,14 +146,14 @@ fn main() {
     );
 
     // 3. .app bundle (gives the window a proper app identity, Dock icon, menu name)
-    make_bundle(&app_dir, &built);
+    make_bundle(&app_dir, &built, &scratch);
 }
 
-fn make_bundle(app_dir: &Path, exe: &Path) {
+fn make_bundle(app_dir: &Path, exe: &Path, scratch: &Path) {
     let macos = app_dir.join("Contents/MacOS");
     std::fs::create_dir_all(&macos).unwrap();
     std::fs::copy(exe, macos.join("GiroCrab")).expect("copy app binary");
-    embed_sparkle(app_dir, exe);
+    embed_sparkle(app_dir, exe, scratch);
     make_icns(app_dir);
     let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -169,13 +195,14 @@ fn make_bundle(app_dir: &Path, exe: &Path) {
 /// GiroCrabMac links Sparkle.framework dynamically (in-app updates): copy it into
 /// Contents/Frameworks and let the binary find it there, like
 /// package-macos-app.sh does for release builds. Without it dyld aborts at launch.
-fn embed_sparkle(app_dir: &Path, exe: &Path) {
+fn embed_sparkle(app_dir: &Path, exe: &Path, scratch: &Path) {
     let bin_dir = exe.parent().unwrap();
-    let pkg = bin_dir.parent().unwrap().parent().unwrap(); // GiroCrabApp/.build/release -> GiroCrabApp
     let src = [
         bin_dir.join("Sparkle.framework"),
         bin_dir.join("PackageFrameworks/Sparkle.framework"),
-        pkg.join(".build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"),
+        scratch.join(
+            "artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework",
+        ),
     ]
     .into_iter()
     .find(|p| p.is_dir())
