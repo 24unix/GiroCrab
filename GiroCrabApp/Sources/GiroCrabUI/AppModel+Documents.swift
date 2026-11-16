@@ -189,24 +189,31 @@ extension AppModel {
     @discardableResult
     func dropAnywhere(_ urls: [URL]) -> Bool {
         let urls = urls.filter(\.isFileURL)
-        guard let vault, !urls.isEmpty else { return false }
+        guard !urls.isEmpty, let pin = pinVault() else { return false }
         Task {
             var linked: [String] = []
             var unmatched = 0
+            var failure: Error?
             for url in urls {
                 let ok = url.startAccessingSecurityScopedResource()
                 defer { if ok { url.stopAccessingSecurityScopedResource() } }
                 guard let data = try? Data(contentsOf: url) else { continue }
-                let text = await ReceiptText.extract(data: data, fileName: url.lastPathComponent)
+                let fileName = url.lastPathComponent
+                let text = await ReceiptText.extract(data: data, fileName: fileName)
                 do {
-                    if let hit = try vault.autoMatchDocument(fileName: url.lastPathComponent, bytes: data, textHint: text) {
+                    // Parses the PDF and scores every booking: too slow for the main thread.
+                    if let hit = try await pin.run({ try $0.autoMatchDocument(fileName: fileName, bytes: data, textHint: text) }) {
                         linked.append(hit)
                     } else {
                         unmatched += 1
                     }
                 } catch {
-                    showError(String(localized: "Beleg konnte nicht zugeordnet werden"), describe(error))
+                    failure = error
                 }
+            }
+            guard isCurrent(pin) else { return }
+            if let failure {
+                showError(String(localized: "Beleg konnte nicht zugeordnet werden"), describe(failure))
             }
             if !linked.isEmpty {
                 toast = String(localized: "Beleg zugeordnet: \(linked.joined(separator: ", "))")

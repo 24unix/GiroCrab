@@ -1,6 +1,5 @@
 import SwiftUI
 import WebKit
-import PDFKit
 import UniformTypeIdentifiers
 import GiroCrabCore
 
@@ -70,24 +69,36 @@ extension AppModel {
     }
 
     func importStatement(_ c: BankConnection, url: URL) {
-        guard let vault else { return }
+        guard let pin = pinVault() else { return }
         let ok = url.startAccessingSecurityScopedResource()
         defer { if ok { url.stopAccessingSecurityScopedResource() } }
+        let fileName = url.lastPathComponent
+        let data: Data
         do {
-            let data = try Data(contentsOf: url)
-            var hint = ""
-            if data.starts(with: Array("%PDF".utf8)) { hint = PDFDocument(data: data)?.string ?? "" }
-            let s = try vault.importStatement(connectionId: c.id, fileName: url.lastPathComponent, bytes: data, pdfTextHint: hint)
-            toast = String(localized: "\(c.displayName): \(s.transactionsImported) neue Buchungen aus \(url.lastPathComponent)")
-            reloadAll()
-        } catch let e as CoreError {
-            if case .InvalidInput = e {
-                showError(String(localized: "Keine Umsätze erkannt"), String(localized: "In \(url.lastPathComponent) wurden keine Umsätze erkannt. Erwartet: CSV mit Datum, Beschreibung, Betrag oder ein Kontoauszug als PDF mit Textebene."))
-            } else {
-                showError(String(localized: "Kontoauszug-Import fehlgeschlagen"), describe(e))
-            }
+            data = try Data(contentsOf: url)
         } catch {
             showError(String(localized: "Kontoauszug-Import fehlgeschlagen"), describe(error))
+            return
+        }
+        let id = c.id
+        Task {
+            do {
+                let isPDF = data.starts(with: Array("%PDF".utf8))
+                let hint = isPDF ? await ReceiptText.extract(data: data, fileName: fileName) ?? "" : ""
+                // Parsing a large PDF statement takes seconds.
+                let s = try await pin.run {
+                    try $0.importStatement(connectionId: id, fileName: fileName, bytes: data, pdfTextHint: hint)
+                }
+                guard isCurrent(pin) else { return }
+                toast = String(localized: "\(c.displayName): \(s.transactionsImported) neue Buchungen aus \(fileName)")
+                reloadAll()
+            } catch where !isCurrent(pin) {
+                // Locked or switched vault meanwhile: no error over another vault.
+            } catch CoreError.InvalidInput {
+                showError(String(localized: "Keine Umsätze erkannt"), String(localized: "In \(fileName) wurden keine Umsätze erkannt. Erwartet: CSV mit Datum, Beschreibung, Betrag oder ein Kontoauszug als PDF mit Textebene."))
+            } catch {
+                showError(String(localized: "Kontoauszug-Import fehlgeschlagen"), describe(error))
+            }
         }
     }
 }

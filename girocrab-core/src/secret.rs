@@ -1,9 +1,13 @@
 //! Small secret wrapper: the bytes are wiped (zeroize) when dropped and never
 //! printed by `Debug`.
 
+use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-#[derive(Clone, Default, Zeroize, ZeroizeOnDrop)]
+/// Serialises as the plain string, for connector state that is persisted in the
+/// encrypted vault.
+#[derive(Clone, Default, Zeroize, ZeroizeOnDrop, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct SecretString(String);
 
 impl SecretString {

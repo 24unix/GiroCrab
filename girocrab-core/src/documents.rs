@@ -187,8 +187,10 @@ fn literal_strings(content: &[u8], out: &mut String) {
     }
 }
 
-/// Zip-bomb guards for [`extract_pdf_text`].
+/// Zip-bomb guards for [`extract_pdf_text`]. The total keeps a hostile PDF from
+/// inflating `MAX_PDF_STREAMS` streams of `MAX_INFLATED_STREAM` each (2 GB).
 const MAX_INFLATED_STREAM: usize = 8 * 1024 * 1024;
+const MAX_INFLATED_TOTAL: usize = 32 * 1024 * 1024;
 const MAX_PDF_STREAMS: usize = 256;
 const MAX_PDF_TEXT: usize = 4 * 1024 * 1024;
 
@@ -198,6 +200,7 @@ const MAX_PDF_TEXT: usize = 4 * 1024 * 1024;
 pub fn extract_pdf_text(bytes: &[u8]) -> String {
     let mut out = String::new();
     let mut streams = 0usize;
+    let mut inflate_budget = MAX_INFLATED_TOTAL;
     let mut i = 0;
     while let Some(pos) = find(bytes, b"stream", i) {
         let dict_start = bytes[..pos]
@@ -217,20 +220,33 @@ pub fn extract_pdf_text(bytes: &[u8]) -> String {
             break;
         };
         let data = &bytes[start..end];
+        i = end + 9;
         if out.len() >= MAX_PDF_TEXT || streams >= MAX_PDF_STREAMS {
             break;
         }
         streams += 1;
+        // Images hold no text; skipping them before inflation keeps them out of the budget.
+        if find(dict, b"Image", 0).is_some() {
+            continue;
+        }
         if find(dict, b"FlateDecode", 0).is_some() {
-            if let Ok(inflated) =
-                miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(data, MAX_INFLATED_STREAM)
-            {
-                literal_strings(&inflated, &mut out);
+            let limit = MAX_INFLATED_STREAM.min(inflate_budget);
+            if limit > 0 {
+                let used =
+                    match miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(data, limit) {
+                        Ok(inflated) => {
+                            literal_strings(&inflated, &mut out);
+                            inflated.len()
+                        }
+                        // A stream over the limit is dropped, but its inflation still counts.
+                        Err(e) => e.output.len(),
+                    };
+                // `used <= limit <= inflate_budget`: no underflow.
+                inflate_budget -= used;
             }
-        } else if find(dict, b"Image", 0).is_none() {
+        } else {
             literal_strings(data, &mut out);
         }
-        i = end + 9;
     }
     out
 }
@@ -1071,11 +1087,15 @@ mod pdf_limit_tests {
     fn pdf_with(streams: &[Vec<u8>]) -> Vec<u8> {
         let mut pdf = b"%PDF-1.4\n".to_vec();
         for s in streams {
-            pdf.extend_from_slice(b"<< /Filter /FlateDecode >>\nstream\n");
-            pdf.extend_from_slice(s);
-            pdf.extend_from_slice(b"\nendstream\n");
+            push_stream(&mut pdf, "/Filter /FlateDecode", s);
         }
         pdf
+    }
+
+    fn push_stream(pdf: &mut Vec<u8>, dict: &str, data: &[u8]) {
+        pdf.extend_from_slice(format!("<< {dict} >>\nstream\n").as_bytes());
+        pdf.extend_from_slice(data);
+        pdf.extend_from_slice(b"\nendstream\n");
     }
 
     #[test]
@@ -1090,6 +1110,31 @@ mod pdf_limit_tests {
         big.resize(MAX_INFLATED_STREAM + 1024, b' ');
         let pdf = pdf_with(&[zlib(&big)]);
         assert!(!extract_pdf_text(&pdf).contains("Bomb"));
+    }
+
+    #[test]
+    fn total_inflated_size_is_capped() {
+        let mut big = b"BT (Chunk) Tj ET".to_vec();
+        big.resize(MAX_INFLATED_STREAM - 1024, b' ');
+        let n = MAX_INFLATED_TOTAL / big.len() + 2;
+        let pdf = pdf_with(&vec![zlib(&big); n]);
+        let extracted = extract_pdf_text(&pdf).matches("Chunk").count();
+        assert_eq!(extracted, MAX_INFLATED_TOTAL / big.len());
+    }
+
+    #[test]
+    fn image_streams_leave_the_budget_to_text() {
+        let mut image = b"BT (Pixel) Tj ET".to_vec();
+        image.resize(MAX_INFLATED_STREAM - 1024, b' ');
+        let image = zlib(&image);
+        let mut pdf = b"%PDF-1.4\n".to_vec();
+        for _ in 0..MAX_INFLATED_TOTAL / MAX_INFLATED_STREAM + 1 {
+            push_stream(&mut pdf, "/Subtype /Image /Filter /FlateDecode", &image);
+        }
+        push_stream(&mut pdf, "/Filter /FlateDecode", &zlib(b"BT (Text) Tj ET"));
+        let text = extract_pdf_text(&pdf);
+        assert!(text.contains("Text"));
+        assert!(!text.contains("Pixel"));
     }
 
     #[test]

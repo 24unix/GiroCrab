@@ -9,8 +9,10 @@ use base64::Engine;
 use p256::ecdsa::{signature::Signer, Signature, SigningKey};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
 
 use crate::error::{CoreError, CoreResult};
+use crate::secret::SecretString;
 
 pub struct DpopKey {
     key: SigningKey,
@@ -29,17 +31,19 @@ impl DpopKey {
 
     /// Restores a key persisted with [`to_hex`](Self::to_hex).
     pub fn from_hex(hex_str: &str) -> CoreResult<Self> {
-        let bytes = hex::decode(hex_str.trim()).map_err(|_| CoreError::Protocol {
-            message: "DPoP key: invalid hex".into(),
-        })?;
+        let bytes = hex::decode(hex_str.trim())
+            .map(Zeroizing::new)
+            .map_err(|_| CoreError::Protocol {
+                message: "DPoP key: invalid hex".into(),
+            })?;
         let key = SigningKey::from_slice(&bytes).map_err(|_| CoreError::Protocol {
             message: "DPoP key: invalid scalar".into(),
         })?;
         Ok(DpopKey { key })
     }
 
-    pub fn to_hex(&self) -> String {
-        hex::encode(self.key.to_bytes())
+    pub fn to_hex(&self) -> SecretString {
+        SecretString::new(hex::encode(self.key.to_bytes()))
     }
 
     /// Public key as a JWK (`{"kty":"EC","crv":"P-256","x":..,"y":..}`).
@@ -175,7 +179,7 @@ mod tests {
     #[test]
     fn key_round_trips_through_hex() {
         let key = DpopKey::generate();
-        let again = DpopKey::from_hex(&key.to_hex()).unwrap();
+        let again = DpopKey::from_hex(key.to_hex().expose()).unwrap();
         assert_eq!(key.public_jwk(), again.public_jwk());
         assert!(DpopKey::from_hex("zz").is_err());
     }

@@ -32,6 +32,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, Holding, SecurityDirection, SecurityTransaction};
 use crate::money::{json_number_to_cents, json_number_to_cents_rounded};
+use crate::secret::SecretString;
 
 const GRAPHQL_URL: &str = "https://de.scalable.capital/api/cli/graphql";
 const ISSUER: &str = "https://secure.scalable.capital";
@@ -48,13 +49,13 @@ const MAX_PAGES: usize = 100;
 #[derive(Serialize, Deserialize, Default, Clone)]
 struct Session {
     #[serde(default)]
-    dpop_key_hex: String,
+    dpop_key_hex: SecretString,
     #[serde(default)]
-    access_token: String,
+    access_token: SecretString,
     #[serde(default)]
     access_expires_at: i64,
     #[serde(default)]
-    refresh_token: String,
+    refresh_token: SecretString,
     #[serde(default)]
     login_at: i64,
     #[serde(default)]
@@ -718,13 +719,16 @@ impl ScalableConnector {
                     message: tr("Keine Scalable-Sitzung – bitte anmelden.").into(),
                 });
             }
-            let proof =
-                self.key()?
-                    .proof("POST", GRAPHQL_URL, self.api_nonce.as_deref(), Some(&token));
+            let proof = self.key()?.proof(
+                "POST",
+                GRAPHQL_URL,
+                self.api_nonce.as_deref(),
+                Some(token.expose()),
+            );
             let client = self.client()?;
             let resp = client
                 .post(GRAPHQL_URL)
-                .header("Authorization", format!("DPoP {token}"))
+                .header("Authorization", format!("DPoP {}", token.expose()))
                 .header("DPoP", proof)
                 .json(&json!({"query": query, "variables": variables, "operationName": op}))
                 .send()
@@ -805,10 +809,10 @@ impl ScalableConnector {
     fn apply_tokens(&mut self, v: &Value) {
         let access = str_of(&v["access_token"]);
         if !access.is_empty() {
-            self.session.access_token = access.clone();
+            let claims = jwt_claims(&access);
+            self.session.access_token = SecretString::new(access);
             let expires_in = v["expires_in"].as_i64().unwrap_or(1200);
             self.session.access_expires_at = now() + expires_in;
-            let claims = jwt_claims(&access);
             let pid = [
                 "https://de.scalable.capital/person_id",
                 "https://de.scalable.capital/personId",
@@ -835,7 +839,7 @@ impl ScalableConnector {
         }
         let refresh = str_of(&v["refresh_token"]);
         if !refresh.is_empty() {
-            self.session.refresh_token = refresh;
+            self.session.refresh_token = SecretString::new(refresh);
         }
     }
 
@@ -853,7 +857,7 @@ impl ScalableConnector {
         let mut form = vec![
             ("grant_type", "refresh_token"),
             ("client_id", CLIENT_ID),
-            ("refresh_token", refresh.as_str()),
+            ("refresh_token", refresh.expose()),
         ];
         if !sid.is_empty() {
             form.push(("session_id", sid.as_str()));
@@ -1475,7 +1479,7 @@ impl BankConnector for ScalableConnector {
     async fn begin(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
         self.session = serde_json::from_value(ctx.state.clone()).unwrap_or_default();
         if self.session_usable() {
-            match DpopKey::from_hex(&self.session.dpop_key_hex) {
+            match DpopKey::from_hex(self.session.dpop_key_hex.expose()) {
                 Ok(k) => self.key = Some(k),
                 Err(_) => return self.start_device_flow().await,
             }
@@ -1764,5 +1768,16 @@ mod tests {
         // No network in unit tests: a stale session must not be treated as valid.
         let c = ScalableConnector::new();
         assert!(!c.session_usable());
+    }
+
+    #[test]
+    fn stored_session_keeps_its_json_shape() {
+        let stored = json!({
+            "dpop_key_hex": "ab01", "access_token": "at", "access_expires_at": 5,
+            "refresh_token": "rt", "login_at": 7, "person_id": "p", "session_id": "s"
+        });
+        let session: Session = serde_json::from_value(stored.clone()).unwrap();
+        assert_eq!(session.refresh_token.expose(), "rt");
+        assert_eq!(serde_json::to_value(&session).unwrap(), stored);
     }
 }

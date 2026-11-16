@@ -73,4 +73,20 @@ final class DocumentsScopeTests: XCTestCase {
         XCTAssertNil(receipt.bookingId)
         XCTAssertTrue(model.allDocuments(search: "Unbekannte", scope: .postbox).isEmpty)
     }
+
+    /// Dropping a file runs the match off the main thread and still stores it.
+    func testDroppedFileIsStoredInTheBackground() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Unbekannter Beleg \(UUID()).pdf")
+        try Data("%PDF-1.4\n".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let version = model.documentsVersion
+
+        XCTAssertTrue(model.dropAnywhere([url]))
+        for _ in 0..<300 where model.documentsVersion == version {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertGreaterThan(model.documentsVersion, version)
+        XCTAssertEqual(model.allDocuments(search: "Unbekannter Beleg", unlinkedOnly: true).count, 1)
+        XCTAssertNil(model.errorMessage)
+    }
 }
