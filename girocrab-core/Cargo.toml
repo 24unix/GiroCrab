@@ -39,6 +39,7 @@ des = { version = "0.9", features = ["zeroize"] }
 hmac = { version = "0.13", features = ["zeroize"] }
 pbkdf2 = "0.13"
 crypto-primes = { version = "0.7", default-features = false }
+sha1 = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rand = "0.9"
 hex = "0.4"

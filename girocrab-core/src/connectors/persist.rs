@@ -777,6 +777,12 @@ pub(crate) const STATEMENTS_ONLY: &str = "__statements_only";
 pub(crate) const STATEMENTS_AUTO: &str = "__statements_auto";
 /// Days between two automatic statement fetches of one account.
 const STATEMENTS_AUTO_DAYS: i64 = 7;
+/// Setting listing the accounts (external refs, one per line) whose data a
+/// sync does not store: switched off or pending in the account selection,
+/// archived or deleted. Connectors that remember what they downloaded
+/// (documents) must not remember anything of these accounts, or it is
+/// never fetched again once the account is back.
+pub(crate) const SKIPPED_ACCOUNTS: &str = "__skipped_accounts";
 
 /// Vault setting key: fetch PDF statements of this account automatically.
 pub(crate) fn statements_auto_key(account_id: i64) -> String {
@@ -1030,6 +1036,13 @@ impl Vault {
                     .collect::<Result<Vec<_>, _>>()?;
                 rows
             };
+            let skipped = super::account_selection::skipped_refs(&db, connection_id)?;
+            if !skipped.is_empty() {
+                settings.insert(
+                    SKIPPED_ACCOUNTS.to_string(),
+                    SecretString::new(skipped.join("\n")),
+                );
+            }
             let days: i64 = Vault::setting_inner(&db, "sync.days_back")?
                 .and_then(|d| d.parse().ok())
                 .unwrap_or(90);
