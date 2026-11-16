@@ -3,6 +3,8 @@
 //! bookings of the selected account and bank sync (FinTS PIN/TAN dialog, PSD2 browser redirect).
 
 mod daily;
+mod manage;
+mod manage_ui;
 mod policy;
 mod sync_flow;
 mod transfer_flow;
@@ -134,10 +136,11 @@ fn account_rows(vault: &Vault, privacy: bool) -> Result<(Vec<AccountRow>, String
             name: a.name.clone().into(),
             bank: a.bank_name.clone().into(),
             iban: daily::mask(&mask_iban(&a.iban, &a.account_number), privacy).into(),
-            dot: dot_color(&a.bank_name),
+            dot: hex_color(&a.color_hex).unwrap_or_else(|| dot_color(&a.bank_name)),
             balance: daily::mask(&money(a.balance_cents, &a.currency), privacy).into(),
             currency: a.currency.clone().into(),
             negative: a.balance_cents < 0 && !privacy,
+            archived: a.archived_unix.is_some(),
         })
         .collect();
     Ok((rows, daily::mask(&money(total, "EUR"), privacy)))
@@ -686,6 +689,7 @@ fn show(win: &MainWindow, vault: &Arc<Vault>, selected: Option<i64>) {
                 render_bookings(win);
             }
             win.set_unlocked(true);
+            manage_ui::refocus_later(win);
         }
         Err(e) => win.set_message(e.into()),
     }
@@ -1229,6 +1233,8 @@ fn main() -> Result<(), slint::PlatformError> {
             });
         });
     }
+
+    manage_ui::wire(&win, vault.clone());
 
     if demo_mode {
         open(true);

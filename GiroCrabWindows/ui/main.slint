@@ -1,6 +1,7 @@
 import { Button, ListView, LineEdit, Palette, ComboBox, CheckBox, TextEdit } from "std-widgets.slint";
 
-export struct AccountRow { id: int, name: string, bank: string, iban: string, dot: color, balance: string, currency: string, negative: bool }
+export struct AccountRow { id: int, name: string, bank: string, iban: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
+export struct CategoryRow { id: int, name: string, depth: int, color: color }
 export struct BookingRow { id: int, checked: bool, date: string, counterparty: string, category: string, category-color: color, purpose: string, amount: string, negative: bool }
 export struct BankHit { name: string, detail: string }
 export struct InspectorData { counterparty: string, iban: string, purpose: string, booking-date: string, value-date: string, account: string, amount: string, note: string, read-only: bool }
@@ -37,8 +38,8 @@ component AccountCard inherits Rectangle {
             horizontal-stretch: 1;
             alignment: center;
             spacing: 2px;
-            Text { text: account.name; color: Theme.text; font-weight: 600; font-size: 13px; overflow: elide; }
-            Text { text: account.bank + (account.iban == "" ? "" : "  " + account.iban); color: Theme.muted; font-size: 11px; overflow: elide; }
+            Text { text: account.name; color: account.archived ? Theme.muted : Theme.text; font-weight: 600; font-size: 13px; overflow: elide; }
+            Text { text: (account.archived ? "archiviert  " : "") + account.bank + (account.iban == "" ? "" : "  " + account.iban); color: Theme.muted; font-size: 11px; overflow: elide; }
         }
         Text {
             text: account.balance;
@@ -100,8 +101,55 @@ component BookingLine inherits Rectangle {
     Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border.with-alpha(0.6); }
 }
 
+component Swatches inherits HorizontalLayout {
+    in property <[color]> colors;
+    in-out property <int> choice: -1;
+    spacing: 6px;
+    alignment: start;
+    for c[i] in root.colors: Rectangle {
+        width: 22px;
+        height: 22px;
+        border-radius: 11px;
+        background: c;
+        border-width: root.choice == i ? 3px : 1px;
+        border-color: root.choice == i ? Theme.text : Theme.border;
+        TouchArea { clicked => { root.choice = i; } }
+    }
+}
+
+// Zero-size helper: runs `fire` whenever `tick` changes (a LineEdit inside an `if` cannot be
+// reached by id from the window's public functions).
+component ChangeTrigger inherits Rectangle {
+    in property <int> tick;
+    callback fire();
+    width: 0px;
+    height: 0px;
+    changed tick => { root.fire(); }
+}
+
+component Dialog inherits Rectangle {
+    in property <length> dialog-width: 460px;
+    background: #00000088;
+    TouchArea { }
+    Rectangle {
+        width: min(root.dialog-width, parent.width - 32px);
+        height: min(col.preferred-height + 4px, parent.height - 32px);
+        background: Theme.surface;
+        border-radius: 14px;
+        border-width: 1px;
+        border-color: Theme.border;
+        col := VerticalLayout {
+            padding: 18px;
+            spacing: 10px;
+            @children
+        }
+    }
+}
+
 export component MainWindow inherits Window {
     title: "GiroCrab";
+    icon: @image-url("../../docs/assets/app-icon.png");
+    forward-focus: fs;
     min-width: 960px;
     min-height: 600px;
     background: Theme.window;
@@ -152,6 +200,39 @@ export component MainWindow inherits Window {
     callback transfer-submit(int, string, string, string, string);
     callback transfer-start();
 
+    // account / category management, About, keyboard shortcuts
+    in property <[color]> palette;
+    in property <string> app-version;
+    in-out property <bool> about-open: false;
+    in-out property <bool> acct-open: false;
+    in-out property <bool> acct-edit: false;
+    in-out property <string> acct-name;
+    in-out property <int> acct-color: -1;
+    in property <bool> acct-archived: false;
+    in property <bool> acct-armed: false;
+    in property <string> acct-status;
+    in-out property <bool> cat-open: false;
+    in property <[CategoryRow]> cat-rows;
+    in-out property <int> cat-selected: -1;
+    in-out property <string> cat-name;
+    in-out property <int> cat-color: -1;
+    in-out property <bool> cat-sub: false;
+    in property <bool> cat-armed: false;
+    in property <string> cat-status;
+    callback account-new();
+    callback account-edit();
+    callback account-save(string, int);
+    callback account-archive();
+    callback account-delete();
+    callback categories-open();
+    callback category-select(int);
+    callback category-add(string, int, bool);
+    callback category-save(string, int);
+    callback category-delete();
+    callback shortcut(string, bool) -> bool;
+    in property <int> search-focus-tick: 0;
+    public function refocus() { fs.focus(); }
+
     callback unlock();
     callback demo();
     callback select-account(int);
@@ -171,6 +252,11 @@ export component MainWindow inherits Window {
     in property <bool> tan-has-image: false;
     in-out property <string> tan-text;
 
+    fs := FocusScope {
+    capture-key-pressed(event) => {
+        if (root.shortcut(event.text, event.modifiers.control)) { return accept; }
+        reject
+    }
     if !unlocked: VerticalLayout {
         alignment: center;
         spacing: 14px;
@@ -220,6 +306,16 @@ export component MainWindow inherits Window {
                         active: root.selected == a.id;
                         clicked => { root.select-account(a.id); }
                     }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Button { text: "Neues Konto"; clicked => { root.account-new(); } }
+                    Button { text: "Bearbeiten"; enabled: root.selected > 0; clicked => { root.account-edit(); } }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Button { text: "Kategorien"; clicked => { root.categories-open(); } }
+                    Button { text: "Info"; clicked => { root.about-open = true; } }
                 }
                 Button {
                     text: "+ Bank / Konto hinzufügen";
@@ -293,7 +389,7 @@ export component MainWindow inherits Window {
             // filter bar
             HorizontalLayout {
                 spacing: 10px;
-                LineEdit {
+                search-edit := LineEdit {
                     horizontal-stretch: 1;
                     placeholder-text: "Gegenpartei, Verwendungszweck, Notiz suchen";
                     text <=> root.search-text;
@@ -320,6 +416,7 @@ export component MainWindow inherits Window {
                     border-width: 1px;
                     border-color: Theme.border;
                     clip: true;
+                    ChangeTrigger { tick: root.search-focus-tick; fire => { search-edit.focus(); } }
                     if root.bookings.length == 0: Text {
                         text: (root.search-text == "" && !root.uncategorized-only && root.status-index == 0) ? "Keine Umsätze" : "Keine Treffer";
                         color: Theme.muted;
@@ -522,5 +619,92 @@ export component MainWindow inherits Window {
                 }
             }
         }
+    }
+
+    // ---- account dialog: create / edit / archive / delete
+    if acct-open: Dialog {
+        dialog-width: 460px;
+        Text { text: root.acct-edit ? "Konto bearbeiten" : "Neues Konto"; font-size: 18px; font-weight: 700; color: Theme.text; }
+        if !root.acct-edit: Text {
+            text: "Ein Konto ohne Bankanbindung, z. B. Bargeld oder Sachwerte. Umsätze lassen sich per Import ergänzen.";
+            color: Theme.muted; font-size: 11px; wrap: word-wrap;
+        }
+        LineEdit {
+            placeholder-text: "Kontoname";
+            text <=> root.acct-name;
+            accepted => { root.account-save(root.acct-name, root.acct-color); }
+        }
+        Text { text: "Farbe"; font-size: 11px; color: Theme.muted; }
+        Swatches { colors: root.palette; choice <=> root.acct-color; }
+        if root.acct-status != "": Text { text: root.acct-status; color: Theme.negative; font-size: 12px; wrap: word-wrap; }
+        if root.acct-edit: Text {
+            text: root.acct-archived ? "Archiviert: wird beim Abruf übersprungen und zählt nicht zur Summe. Löschen entfernt Umsätze, Belege und Bestände endgültig."
+                                     : "Archivieren behält alle Umsätze, stoppt aber den Abruf. Gelöscht werden kann nur ein archiviertes Konto.";
+            color: Theme.muted; font-size: 11px; wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            if root.acct-edit: Button { text: root.acct-archived ? "Reaktivieren" : "Archivieren"; clicked => { root.account-archive(); } }
+            if root.acct-edit && root.acct-archived: Button { text: root.acct-armed ? "Wirklich löschen?" : "Löschen"; clicked => { root.account-delete(); } }
+            Rectangle { horizontal-stretch: 1; }
+            Button { text: "Abbrechen"; clicked => { root.acct-open = false; root.refocus(); } }
+            Button { text: "Speichern"; primary: true; clicked => { root.account-save(root.acct-name, root.acct-color); } }
+        }
+    }
+
+    // ---- category dialog: create / rename / recolour / delete
+    if cat-open: Dialog {
+        dialog-width: 560px;
+        Text { text: "Kategorien"; font-size: 18px; font-weight: 700; color: Theme.text; }
+        Rectangle {
+            height: 220px;
+            border-width: 1px;
+            border-color: Theme.border;
+            border-radius: 8px;
+            clip: true;
+            if root.cat-rows.length == 0: Text { text: "Noch keine Kategorien"; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+            ListView {
+                for r[i] in root.cat-rows: Rectangle {
+                    height: 32px;
+                    background: root.cat-selected == i ? Theme.accent.with-alpha(0.18) : transparent;
+                    TouchArea { clicked => { root.category-select(i); } }
+                    HorizontalLayout {
+                        padding-left: 12px + r.depth * 18px;
+                        padding-right: 12px;
+                        spacing: 8px;
+                        VerticalLayout { alignment: center; Rectangle { width: 10px; height: 10px; border-radius: 5px; background: r.color; } }
+                        Text { text: r.name; color: Theme.text; font-size: 13px; vertical-alignment: center; overflow: elide; }
+                    }
+                }
+            }
+        }
+        LineEdit { placeholder-text: "Name der Kategorie"; text <=> root.cat-name; }
+        Text { text: "Farbe"; font-size: 11px; color: Theme.muted; }
+        Swatches { colors: root.palette; choice <=> root.cat-color; }
+        CheckBox { text: "Neue Kategorie als Unterkategorie der Auswahl anlegen"; checked <=> root.cat-sub; enabled: root.cat-selected >= 0; }
+        if root.cat-status != "": Text { text: root.cat-status; color: Theme.negative; font-size: 12px; wrap: word-wrap; }
+        Text {
+            text: "Löschen entfernt auch Unterkategorien und deren Regeln; die Umsätze bleiben, werden aber unkategorisiert.";
+            color: Theme.muted; font-size: 11px; wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Button { text: "Neu anlegen"; clicked => { root.category-add(root.cat-name, root.cat-color, root.cat-sub); } }
+            Button { text: "Speichern"; enabled: root.cat-selected >= 0; clicked => { root.category-save(root.cat-name, root.cat-color); } }
+            Button { text: root.cat-armed ? "Wirklich löschen?" : "Löschen"; enabled: root.cat-selected >= 0; clicked => { root.category-delete(); } }
+            Rectangle { horizontal-stretch: 1; }
+            Button { text: "Schließen"; primary: true; clicked => { root.cat-open = false; root.refocus(); } }
+        }
+    }
+
+    // ---- About
+    if about-open: Dialog {
+        dialog-width: 380px;
+        Text { text: "GiroCrab"; font-size: 22px; font-weight: 700; color: Theme.text; }
+        Text { text: "Version " + root.app-version; font-size: 13px; color: Theme.text; }
+        Text { text: "Freie Software unter GPL-3.0-or-later. Der Tresor liegt verschlüsselt auf diesem Rechner."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+        Text { text: "Tastenkürzel: Strg+F Suche · Strg+L Sperren · Strg+R / F5 Abrufen · Strg+I Importieren · Strg+N Überweisung · Esc Dialog schließen"; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+        HorizontalLayout { alignment: end; Button { text: "Schließen"; primary: true; clicked => { root.about-open = false; root.refocus(); } } }
+    }
     }
 }

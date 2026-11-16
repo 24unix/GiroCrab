@@ -160,12 +160,14 @@ jobs:
       - if: runner.os == 'Windows'
         run: cargo build --release --manifest-path GiroCrabWindows/Cargo.toml
       - if: runner.os == 'Windows'
+        name: Package portable zip + installer
+        shell: pwsh
+        run: ./scripts/package-windows.ps1
+      - if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: girocrab-windows-x86_64
-          path: |
-            GiroCrabWindows/target/release/girocrab.exe
-            THIRD_PARTY_NOTICES.md
+          path: dist/*
           if-no-files-found: error
           retention-days: 14
 
