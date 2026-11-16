@@ -32,6 +32,7 @@ The macOS user interface uses only native Apple system frameworks (`SwiftUI`, `A
 | **`rusqlite`** | `0.42.0` | `MIT` | [https://github.com/rusqlite/rusqlite](https://github.com/rusqlite/rusqlite) |
 | **`serde`** | `1.0.229` | `MIT OR Apache-2.0` | [https://github.com/serde-rs/serde](https://github.com/serde-rs/serde) |
 | **`serde_json`** | `1.0.154` | `MIT OR Apache-2.0` | [https://github.com/serde-rs/json](https://github.com/serde-rs/json) |
+| **`sha1`** | `0.11.0` | `MIT OR Apache-2.0` | [https://github.com/RustCrypto/hashes](https://github.com/RustCrypto/hashes) |
 | **`sha2`** | `0.11.1` | `MIT OR Apache-2.0` | [https://github.com/RustCrypto/hashes](https://github.com/RustCrypto/hashes) |
 | **`simpleicons-rs`** | `16.37.0` | `MIT AND CC0-1.0` | [https://github.com/cscnk52/simpleicons-rs](https://github.com/cscnk52/simpleicons-rs) |
 | **`thiserror`** | `2.0.21` | `MIT OR Apache-2.0` | [https://github.com/dtolnay/thiserror](https://github.com/dtolnay/thiserror) |

@@ -42,6 +42,8 @@ pub enum ConnectorKind {
     Quirion,
     /// easybank (formerly Barclays Deutschland) credit cards and statements, see #209.
     Easybank,
+    /// Alte Leipziger (Bauspar) via the fin4u customer portal API
+    AlteLeipziger,
     /// Volkswagen Bank online banking (photoTAN / pushTAN) via the web portal.
     VolkswagenBank,
     /// Uberspace hosting accounts (balance and bookings per Asteroid) via the web dashboard.
@@ -67,6 +69,7 @@ impl ConnectorKind {
             ConnectorKind::Ibkr => "ibkr",
             ConnectorKind::Quirion => "quirion",
             ConnectorKind::Easybank => "easybank",
+            ConnectorKind::AlteLeipziger => "fin4u",
             ConnectorKind::VolkswagenBank => "volkswagenbank",
             ConnectorKind::Uberspace => "uberspace",
         }
@@ -119,6 +122,7 @@ impl ConnectorKind {
             ConnectorKind::Ibkr,
             ConnectorKind::Quirion,
             ConnectorKind::Easybank,
+            ConnectorKind::AlteLeipziger,
             ConnectorKind::VolkswagenBank,
             ConnectorKind::Uberspace,
         ]

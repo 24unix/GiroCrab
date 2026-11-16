@@ -143,6 +143,28 @@ pub(super) fn prepare(
     Ok((blocked, pending))
 }
 
+/// External refs of a connection whose fetched data is not stored: switched
+/// off or pending in the account selection, archived or deleted accounts.
+pub(super) fn skipped_refs(db: &Connection, connection_id: i64) -> CoreResult<Vec<String>> {
+    let mut refs: Vec<String> = load(db, connection_id)?
+        .into_iter()
+        .filter(|c| !c.enabled || c.pending)
+        .map(|c| c.account_ref)
+        .collect();
+    let mut st = db.prepare(
+        "SELECT external_ref FROM accounts
+          WHERE connection_id = ?1 AND (archived_unix IS NOT NULL OR deleted_ms IS NOT NULL)",
+    )?;
+    for r in st.query_map([connection_id], |r| r.get::<_, String>(0))? {
+        let r = r?;
+        if !refs.contains(&r) {
+            refs.push(r);
+        }
+    }
+    refs.sort();
+    Ok(refs)
+}
+
 /// Retain only pending accounts for an immediate replay after the user chooses.
 pub(super) fn deferred(data: &FetchResult, pending: &HashSet<String>) -> FetchResult {
     let mut copy = data.clone();

@@ -401,6 +401,7 @@ extension ConnectorKind {
         case .ibkr: return "Interactive Brokers (IBKR)"
         case .quirion: return "quirion"
         case .easybank: return "easybank"
+        case .alteLeipziger: return "Alte Leipziger"
         case .volkswagenBank: return "Volkswagen Bank"
         case .uberspace: return "Uberspace"
         }
@@ -425,6 +426,7 @@ extension ConnectorKind {
         case .ibkr: return "#D81222"
         case .quirion: return "#D4005A"
         case .easybank: return "#00AEEF"
+        case .alteLeipziger: return "#BE0D3E"
         case .volkswagenBank: return "#001E50"
         case .uberspace: return "#2C3E50"
         }
@@ -456,6 +458,7 @@ extension ConnectorKind {
         case .ibkr: return "IB"
         case .quirion: return "Q"
         case .easybank: return "EB"
+        case .alteLeipziger: return "AL"
         case .volkswagenBank: return "VW"
         case .uberspace: return "US"
         }

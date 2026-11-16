@@ -243,3 +243,32 @@ fn deleting_a_login_forgets_its_account_choice() {
         .unwrap();
     assert_eq!(left, 0);
 }
+
+#[test]
+fn skipped_refs_name_switched_off_and_archived_accounts() {
+    let (_dir, v) = open("girocrab-skipped-refs");
+    let conn = v
+        .add_bank_connection(ConnectorKind::AlteLeipziger, String::new(), "login".into())
+        .unwrap();
+    let all = vec![acc("A", "", "1"), acc("B", "", "2"), acc("C", "", "3")];
+    store_fetch(&v, ConnectorKind::AlteLeipziger, conn, fetch(all)).unwrap();
+    {
+        let db = v.db().unwrap();
+        assert!(super::super::account_selection::skipped_refs(&db, conn)
+            .unwrap()
+            .is_empty());
+    }
+    v.clone()
+        .set_connection_account_choices(conn, vec!["A".into(), "C".into()])
+        .unwrap();
+    let db = v.db().unwrap();
+    db.execute(
+        "UPDATE accounts SET archived_unix = 1 WHERE external_ref = 'C'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        super::super::account_selection::skipped_refs(&db, conn).unwrap(),
+        vec!["B".to_string(), "C".to_string()]
+    );
+}

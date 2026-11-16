@@ -95,6 +95,7 @@ def parse_matrix(text):
 NOTE_START, NOTE_END = "<!-- sync:connector-note:start -->", "<!-- sync:connector-note:end -->"
 # docs/<key>-connector.md -> (BANK_MATRIX name, name shown in the notice)
 CONNECTOR_DOCS = {
+    "alte-leipziger": ("Alte Leipziger (Bausparen)", "Alte Leipziger"),
     "consorsbank": ("Consorsbank", "Consorsbank"),
     "easybank": ("easybank (ehem. Barclays)", "easybank"),
     "fnz": ("FNZ Bank", "FNZ Bank"),

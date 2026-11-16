@@ -170,6 +170,7 @@ public struct BankingGate: Equatable, Sendable {
         case "ibkr": base = "Interactive Brokers"
         case "quirion": base = "quirion"
         case "easybank": base = "easybank"
+        case "fin4u": base = "Alte Leipziger"
         case "volkswagenbank": base = "Volkswagen Bank"
         case "uberspace": base = "Uberspace"
         default: base = parts.first ?? id

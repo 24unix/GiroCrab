@@ -159,6 +159,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
             "uberspace hosting asteroid webhosting",
         ),
         (
+            ConnectorKind::AlteLeipziger,
+            "Alte Leipziger",
+            "alte leipziger alh bausparvertrag bauspar fin4u",
+        ),
+        (
             ConnectorKind::Quirion,
             "quirion",
             "quirion quirin privatbank depot",
@@ -216,6 +221,9 @@ fn fints_result(b: FinTsBankInfo) -> BankSearchResult {
         aspsp: String::new(),
     }
 }
+
+/// Alte Leipziger Bauspar AG: not in the FinTS directory, reached via fin4u.
+const ALTE_LEIPZIGER_BLZ: &str = "50012800";
 
 fn own_result(kind: ConnectorKind, name: &str) -> BankSearchResult {
     BankSearchResult {
@@ -292,6 +300,8 @@ pub fn search(
             out.push(fints_result(b));
         } else if blz == "70013000" {
             out.push(own_result(ConnectorKind::Fnz, "FNZ Bank"));
+        } else if blz == ALTE_LEIPZIGER_BLZ {
+            out.push(own_result(ConnectorKind::AlteLeipziger, "Alte Leipziger"));
         }
         return out;
     }
@@ -804,5 +814,24 @@ mod tests {
         assert_eq!(b[0].country, "DE");
         assert!(b.iter().all(|x| x.live));
         assert!(live_banks(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn alte_leipziger_routes_names_blz_and_iban_to_fin4u() {
+        for query in [
+            "Alte Leipziger",
+            "bausparvertrag",
+            "fin4u",
+            "50012800",
+            "DE18 5001 2800 0123 4567 89",
+        ] {
+            let r = search(query, vec![], 10);
+            assert!(
+                r.iter().any(|b| b.mode == BankAccessMode::OwnApi
+                    && b.connector == Some(ConnectorKind::AlteLeipziger)),
+                "{query}"
+            );
+        }
+        assert_eq!(ids(&search("50012800", vec![], 10)), vec!["api:fin4u"]);
     }
 }

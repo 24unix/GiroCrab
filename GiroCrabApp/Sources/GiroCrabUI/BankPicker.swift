@@ -35,7 +35,7 @@ struct KindAddForm: View {
     /// Banks that need the login to sign in. For the others (Amazon, Amex,
     /// PayPal, bunq …) the field is only an optional display name.
     private var loginRequired: Bool {
-        [.comdirect, .tradeRepublic, .volksbankKasselGoettingen, .direkt1822, .finTsGeneric].contains(kind)
+        [.comdirect, .tradeRepublic, .volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .alteLeipziger].contains(kind)
     }
 
     /// Page where the bank hands out the API credentials GiroCrab asks for.
