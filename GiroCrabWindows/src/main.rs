@@ -2,6 +2,8 @@
 //! Unlock / create vault, demo mode (`GIROCRAB_DEMO_SEED=1`), accounts with balances,
 //! bookings of the selected account and bank sync (FinTS PIN/TAN dialog, PSD2 browser redirect).
 
+mod assets_loans;
+mod assets_loans_ui;
 mod cockpit;
 mod daily;
 mod groups;

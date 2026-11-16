@@ -3,7 +3,9 @@ import { TagRow, SplitRow, BudgetRow, TemplateRow, TagsPanel, SplitsPanel, Budge
 export { TagRow, SplitRow, BudgetRow, TemplateRow }
 import { RecLine, RecurringPanel } from "recurring_dialog.slint";
 import { GroupsState, GroupsPanel } from "groups_dialog.slint";
+import { AssetsState, AssetsLoansPanel } from "assets_loans_dialog.slint";
 export { GroupsState }
+export { AssetsState }
 export { RecLine }
 
 export struct AccountRow { id: int, name: string, bank: string, iban: string, header: string, monogram: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
@@ -951,6 +953,7 @@ export component MainWindow inherits Window {
                 GhostButton { text: "Regeln …"; clicked => { root.rules-request(); } }
                 GhostButton { text: "Tags …"; clicked => { root.tags-request(); } }
                 GhostButton { text: "Gruppen …"; enabled: !root.busy; clicked => { GroupsState.request(); } }
+                GhostButton { text: "Sachwerte …"; enabled: !root.busy; clicked => { AssetsState.request(); } }
                 GhostButton { text: "Budgets …"; clicked => { root.budgets-request(); } }
                 GhostButton { text: "Vorlagen …"; clicked => { root.templates-request(); } }
                 GhostButton { text: "Wiederkehrend …"; clicked => { root.rc-request(); } }
@@ -1618,6 +1621,15 @@ export component MainWindow inherits Window {
         GroupsPanel {
             ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
             close() => { GroupsState.open = false; root.refocus(); }
+        }
+    }
+
+    // ---- Sachwerte, Darlehen, Klassifizierung (assets_loans_ui.rs; panel in assets_loans_dialog.slint)
+    if AssetsState.open: Dialog {
+        dialog-width: 940px;
+        AssetsLoansPanel {
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            close() => { AssetsState.open = false; root.refocus(); }
         }
     }
 

@@ -1,0 +1,459 @@
+// Sachwerte (tangible assets), classification of positions and manual loans. The panel is the
+// content of a `Dialog` in main.slint (which owns the theme), so colours come in as properties.
+// All state and callbacks live in the `AssetsState` global; assets_loans_ui.rs fills it and runs
+// every vault call on a worker thread.
+import { Button, ListView, LineEdit, ComboBox, CheckBox, ScrollView } from "std-widgets.slint";
+
+export struct AlRow { name: string, detail: string }
+export struct AlPoint { date: string, text: string }
+
+export global AssetsState {
+    in-out property <bool> open: false;
+    // 0 = Sachwerte, 1 = Darlehen, 2 = Klassifizierung
+    in-out property <int> mode: 0;
+    in property <string> status;
+    in property <bool> busy: false;
+
+    // ---- Sachwerte
+    in property <[string]> acc-names;
+    in-out property <int> acc: 0;
+    in-out property <string> new-account;
+    in property <[AlRow]> items;
+    in property <string> items-summary;
+    in-out property <int> sel-item: -1;
+    in property <bool> item-armed: false;
+    in-out property <string> i-name;
+    in property <[string]> i-source-names;
+    in-out property <int> i-source: 0;
+    in property <[string]> i-presets;
+    in-out property <int> i-preset: 0;
+    in-out property <string> i-weight;
+    in-out property <string> i-purity;
+    in-out property <bool> i-linear: false;
+    in-out property <string> i-date;
+    in-out property <string> i-qty;
+    in-out property <string> i-price;
+    in-out property <string> i-start;
+    in-out property <string> i-note;
+    in-out property <string> i-symbol;
+    in property <bool> i-manual: true;
+    in property <string> item-info;
+    in property <[AlPoint]> quantities;
+    in property <[AlPoint]> values;
+    in-out property <string> q-date;
+    in-out property <string> q-amount;
+    in-out property <string> v-date;
+    in-out property <string> v-amount;
+    in-out property <string> s-date;
+    in-out property <string> s-count;
+    in-out property <string> s-price;
+    in-out property <string> p-date;
+    in-out property <string> p-amount;
+    in property <string> price-info;
+    in property <string> history-info;
+    callback request();
+    callback account-changed();
+    callback account-create();
+    callback item-select(int);
+    callback item-new();
+    callback item-save();
+    callback item-delete();
+    callback source-changed();
+    callback preset-chosen();
+    callback quantity-set();
+    callback quantity-remove(int);
+    callback value-set();
+    callback value-remove(int);
+    callback sell();
+    callback price-set();
+    callback price-lookup();
+    callback unit-value();
+
+    // ---- Darlehen
+    in property <[AlRow]> loans;
+    in-out property <int> sel-loan: -1;
+    in-out property <string> l-name;
+    in-out property <string> l-original;
+    in-out property <string> l-anchor-date;
+    in-out property <string> l-anchor-balance;
+    in-out property <string> l-rate;
+    in-out property <string> l-expr;
+    in property <string> l-status;
+    in property <string> l-preview;
+    in property <[string]> l-matches;
+    in property <string> link-info;
+    in property <string> booking-info;
+    in property <bool> has-booking: false;
+    in property <bool> booking-linked: false;
+    callback loan-select(int);
+    callback loan-new();
+    callback loan-save();
+    callback loan-anchor();
+    callback loan-preview();
+    callback booking-link();
+    callback booking-unlink();
+
+    // ---- Klassifizierung
+    in property <[string]> c-account-names;
+    in-out property <int> c-account: 0;
+    in property <[AlRow]> c-rows;
+    in-out property <int> sel-class: -1;
+    in property <[string]> c-class-names;
+    in-out property <int> c-class: 0;
+    in property <[string]> c-instr-names;
+    in-out property <int> c-instr: 0;
+    in property <string> c-info;
+    in property <string> c-preview;
+    callback class-account-changed();
+    callback class-select(int);
+    callback class-save();
+    callback class-preview();
+}
+
+component Frame inherits Rectangle {
+    in property <length> list-height: 130px;
+    in property <color> line;
+    height: list-height;
+    border-width: 1px;
+    border-color: line;
+    border-radius: 8px;
+    clip: true;
+}
+
+component Caption inherits Text {
+    in property <color> ink;
+    color: ink;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+component Tab inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    in property <color> ink;
+    in property <color> accent;
+    callback clicked();
+    height: 30px;
+    border-radius: 6px;
+    background: active ? accent.with-alpha(0.2) : transparent;
+    TouchArea { clicked => { root.clicked(); } }
+    Text { text: root.text; color: root.ink; font-size: 13px; font-weight: root.active ? 700 : 400; horizontal-alignment: center; vertical-alignment: center; }
+}
+
+component Hint inherits Text {
+    in property <color> muted;
+    color: muted;
+    font-size: 11px;
+    wrap: word-wrap;
+}
+
+export component AssetsLoansPanel inherits VerticalLayout {
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> line;
+    in property <color> accent;
+    in property <color> negative;
+    callback close();
+    spacing: 10px;
+    Text { text: "Sachwerte, Darlehen und Klassifizierung"; font-size: 18px; font-weight: 700; color: root.ink; }
+    HorizontalLayout {
+        spacing: 6px;
+        Tab { text: "Sachwerte"; active: AssetsState.mode == 0; ink: root.ink; accent: root.accent; width: 130px; clicked => { AssetsState.mode = 0; } }
+        Tab { text: "Darlehen"; active: AssetsState.mode == 1; ink: root.ink; accent: root.accent; width: 130px; clicked => { AssetsState.mode = 1; } }
+        Tab { text: "Klassifizierung"; active: AssetsState.mode == 2; ink: root.ink; accent: root.accent; width: 150px; clicked => { AssetsState.mode = 2; } }
+        Rectangle { horizontal-stretch: 1; }
+    }
+
+    // ================================================================== Sachwerte
+    if AssetsState.mode == 0: HorizontalLayout {
+        spacing: 16px;
+        height: 540px;
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                padding-right: 10px;
+                Caption { text: "Sachwert-Konto"; ink: root.ink; }
+                ComboBox { model: AssetsState.acc-names; current-index <=> AssetsState.acc; selected => { AssetsState.account-changed(); } }
+                HorizontalLayout {
+                    spacing: 6px;
+                    LineEdit { text <=> AssetsState.new-account; placeholder-text: "Neues Sachwert-Konto (z. B. Edelmetalle)"; horizontal-stretch: 1; accepted => { AssetsState.account-create(); } }
+                    Button { text: "Anlegen"; enabled: !AssetsState.busy; clicked => { AssetsState.account-create(); } }
+                }
+                if AssetsState.items-summary != "": Hint { text: AssetsState.items-summary; muted: root.muted; }
+                Frame {
+                    line: root.line;
+                    list-height: 150px;
+                    if AssetsState.items.length == 0: Text { text: "Noch keine Sachwerte"; color: root.muted; horizontal-alignment: center; vertical-alignment: center; }
+                    ListView {
+                        for it[i] in AssetsState.items: Rectangle {
+                            height: 34px;
+                            background: AssetsState.sel-item == i ? root.accent.with-alpha(0.18) : transparent;
+                            TouchArea { clicked => { AssetsState.item-select(i); } }
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 8px;
+                                Text { text: it.name; color: root.ink; font-size: 13px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                                Text { text: it.detail; color: root.muted; font-size: 11px; vertical-alignment: center; overflow: elide; }
+                            }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Button { text: "Neu"; clicked => { AssetsState.item-new(); } }
+                    Button { text: AssetsState.item-armed ? "Wirklich löschen?" : "Löschen"; enabled: AssetsState.sel-item >= 0 && !AssetsState.busy; clicked => { AssetsState.item-delete(); } }
+                }
+                Caption { text: AssetsState.sel-item >= 0 ? "Sachwert bearbeiten" : "Neuer Sachwert"; ink: root.ink; }
+                Caption { text: "Name"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.i-name; }
+                Caption { text: "Kursquelle"; ink: root.muted; }
+                ComboBox { model: AssetsState.i-source-names; current-index <=> AssetsState.i-source; selected => { AssetsState.source-changed(); } }
+                if !AssetsState.i-manual: VerticalLayout {
+                    spacing: 8px;
+                    Caption { text: "Stückelung"; ink: root.muted; }
+                    ComboBox { model: AssetsState.i-presets; current-index <=> AssetsState.i-preset; selected => { AssetsState.preset-chosen(); } }
+                    Caption { text: "Gewicht eines Stücks in Gramm"; ink: root.muted; }
+                    LineEdit { text <=> AssetsState.i-weight; placeholder-text: "z. B. 31,1035"; }
+                    Caption { text: "Feingehalt in Promille (leer = 1000)"; ink: root.muted; }
+                    LineEdit { text <=> AssetsState.i-purity; placeholder-text: "999,9 / 916,7 / 585"; }
+                }
+                Caption { text: "Kaufdatum"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.i-date; placeholder-text: "JJJJ-MM-TT oder TT.MM.JJJJ"; }
+                Caption { text: "Anzahl (Stück)"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.i-qty; }
+                Caption { text: "Gesamt-Kaufpreis (leer = Marktwert am Kaufdatum)"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.i-price; placeholder-text: "z. B. 2.000,00"; }
+                if AssetsState.i-manual: VerticalLayout {
+                    spacing: 8px;
+                    Caption { text: "Wert je Stück am Kaufdatum"; ink: root.muted; }
+                    LineEdit { text <=> AssetsState.i-start; placeholder-text: "z. B. 1.500,00"; }
+                    CheckBox { text: "Werte zwischen Stützpunkten linear verbinden"; checked <=> AssetsState.i-linear; }
+                }
+                Caption { text: "Notiz"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.i-note; }
+                Caption { text: "Symbol (leer = Standard)"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.i-symbol; }
+                Button { text: "Sachwert speichern"; primary: true; enabled: !AssetsState.busy; clicked => { AssetsState.item-save(); } }
+            }
+        }
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                padding-right: 10px;
+                if AssetsState.sel-item < 0: Hint { text: "Sachwert wählen, um Bestand, Werte, Verkauf und Kurse zu pflegen."; muted: root.muted; }
+                if AssetsState.sel-item >= 0: VerticalLayout {
+                    spacing: 8px;
+                    Hint { text: AssetsState.item-info; muted: root.muted; }
+                    Hint { text: AssetsState.history-info; muted: root.muted; }
+                    Caption { text: "Bestand ab Datum"; ink: root.ink; }
+                    Frame {
+                        line: root.line;
+                        list-height: 80px;
+                        ListView {
+                            for q[i] in AssetsState.quantities: Rectangle {
+                                height: 26px;
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 6px;
+                                    spacing: 8px;
+                                    Text { text: q.date; color: root.ink; font-size: 12px; vertical-alignment: center; }
+                                    Text { text: q.text; color: root.muted; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                                    Text { text: "✕"; color: root.negative; vertical-alignment: center; TouchArea { clicked => { AssetsState.quantity-remove(i); } } }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit { text <=> AssetsState.q-date; placeholder-text: "Datum"; horizontal-stretch: 1; }
+                        LineEdit { text <=> AssetsState.q-amount; placeholder-text: "Anzahl"; width: 90px; }
+                        Button { text: "Setzen"; enabled: !AssetsState.busy; clicked => { AssetsState.quantity-set(); } }
+                    }
+                    if AssetsState.i-manual: VerticalLayout {
+                        spacing: 8px;
+                        Caption { text: "Wert je Stück ab Datum"; ink: root.ink; }
+                        Frame {
+                            line: root.line;
+                            list-height: 80px;
+                            ListView {
+                                for v[i] in AssetsState.values: Rectangle {
+                                    height: 26px;
+                                    HorizontalLayout {
+                                        padding-left: 10px;
+                                        padding-right: 6px;
+                                        spacing: 8px;
+                                        Text { text: v.date; color: root.ink; font-size: 12px; vertical-alignment: center; }
+                                        Text { text: v.text; color: root.muted; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                                        Text { text: "✕"; color: root.negative; vertical-alignment: center; TouchArea { clicked => { AssetsState.value-remove(i); } } }
+                                    }
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            LineEdit { text <=> AssetsState.v-date; placeholder-text: "Datum"; horizontal-stretch: 1; }
+                            LineEdit { text <=> AssetsState.v-amount; placeholder-text: "Wert"; width: 90px; }
+                            Button { text: "Setzen"; enabled: !AssetsState.busy; clicked => { AssetsState.value-set(); } }
+                        }
+                    }
+                    Caption { text: "Verkauf"; ink: root.ink; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit { text <=> AssetsState.s-date; placeholder-text: "Datum"; horizontal-stretch: 1; }
+                        LineEdit { text <=> AssetsState.s-count; placeholder-text: "Anzahl"; width: 80px; }
+                        if AssetsState.i-manual: LineEdit { text <=> AssetsState.s-price; placeholder-text: "Preis je Stück"; width: 110px; }
+                        Button { text: "Verkaufen"; enabled: !AssetsState.busy; clicked => { AssetsState.sell(); } }
+                    }
+                    Button { text: "Wert je Stück am Datum anzeigen"; clicked => { AssetsState.unit-value(); } }
+                    if AssetsState.price-info != "": Hint { text: AssetsState.price-info; muted: root.ink; }
+                }
+                if !AssetsState.i-manual: VerticalLayout {
+                    spacing: 8px;
+                    Caption { text: "Kurs (EUR je Feinunze)"; ink: root.ink; }
+                    Hint { text: "Ein von Hand eingetragener Kurs wird von der Kursabfrage nicht überschrieben."; muted: root.muted; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit { text <=> AssetsState.p-date; placeholder-text: "Datum"; horizontal-stretch: 1; }
+                        LineEdit { text <=> AssetsState.p-amount; placeholder-text: "Kurs"; width: 110px; }
+                        Button { text: "Eintragen"; enabled: !AssetsState.busy; clicked => { AssetsState.price-set(); } }
+                        Button { text: "Abfragen"; clicked => { AssetsState.price-lookup(); } }
+                    }
+                }
+            }
+        }
+    }
+
+    // ================================================================== Darlehen
+    if AssetsState.mode == 1: HorizontalLayout {
+        spacing: 16px;
+        height: 540px;
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                padding-right: 10px;
+                Caption { text: "Darlehen ohne Bankzugang"; ink: root.ink; }
+                Frame {
+                    line: root.line;
+                    list-height: 140px;
+                    if AssetsState.loans.length == 0: Text { text: "Noch keine Darlehen"; color: root.muted; horizontal-alignment: center; vertical-alignment: center; }
+                    ListView {
+                        for l[i] in AssetsState.loans: Rectangle {
+                            height: 34px;
+                            background: AssetsState.sel-loan == i ? root.accent.with-alpha(0.18) : transparent;
+                            TouchArea { clicked => { AssetsState.loan-select(i); } }
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 8px;
+                                Text { text: l.name; color: root.ink; font-size: 13px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                                Text { text: l.detail; color: root.muted; font-size: 11px; vertical-alignment: center; overflow: elide; }
+                            }
+                        }
+                    }
+                }
+                Button { text: "Neues Darlehen"; clicked => { AssetsState.loan-new(); } }
+                if AssetsState.link-info != "": Hint { text: AssetsState.link-info; muted: root.muted; }
+                if AssetsState.has-booking: VerticalLayout {
+                    spacing: 6px;
+                    Caption { text: "Ausgewählte Buchung"; ink: root.ink; }
+                    Hint { text: AssetsState.booking-info; muted: root.muted; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Button { text: "Dem Darlehen zuordnen"; enabled: AssetsState.sel-loan >= 0 && !AssetsState.busy; clicked => { AssetsState.booking-link(); } }
+                        Button { text: "Zuordnung lösen"; enabled: AssetsState.booking-linked && !AssetsState.busy; clicked => { AssetsState.booking-unlink(); } }
+                    }
+                }
+                if !AssetsState.has-booking: Hint { text: "Eine Buchung in der Liste auswählen, um sie von Hand einem Darlehen zuzuordnen."; muted: root.muted; }
+            }
+        }
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                padding-right: 10px;
+                Caption { text: AssetsState.sel-loan >= 0 ? "Darlehen bearbeiten" : "Neues Darlehen"; ink: root.ink; }
+                Caption { text: "Name"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.l-name; }
+                Caption { text: "Ursprünglicher Betrag (leer = Restschuld zum Stand)"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.l-original; placeholder-text: "z. B. 150.000,00"; }
+                Caption { text: "Stand-Datum"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.l-anchor-date; placeholder-text: "JJJJ-MM-TT oder TT.MM.JJJJ"; }
+                Caption { text: "Restschuld zum Stand (positiv)"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.l-anchor-balance; placeholder-text: "z. B. 120.000,00"; }
+                Caption { text: "Zinssatz in % p. a. (leer = keiner)"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.l-rate; placeholder-text: "z. B. 3,5"; }
+                Caption { text: "Suchausdruck für Zahlungen (wie bei Regeln)"; ink: root.muted; }
+                LineEdit { text <=> AssetsState.l-expr; placeholder-text: "z. B. Kreditrate"; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Button { text: AssetsState.sel-loan >= 0 ? "Speichern" : "Anlegen"; primary: true; enabled: !AssetsState.busy; clicked => { AssetsState.loan-save(); } }
+                    Button { text: "Vorschau"; clicked => { AssetsState.loan-preview(); } }
+                    Button { text: "Neuen Stand setzen"; enabled: AssetsState.sel-loan >= 0 && !AssetsState.busy; clicked => { AssetsState.loan-anchor(); } }
+                }
+                Hint { text: "„Neuen Stand setzen“ übernimmt Stand-Datum und Restschuld, z. B. aus dem Jahresauszug des Kreditgebers."; muted: root.muted; }
+                if AssetsState.l-status != "": Hint { text: AssetsState.l-status; muted: root.ink; }
+                if AssetsState.l-preview != "": Hint { text: AssetsState.l-preview; muted: root.ink; }
+                for m in AssetsState.l-matches: Text { text: m; color: root.muted; font-size: 11px; overflow: elide; }
+            }
+        }
+    }
+
+    // ================================================================== Klassifizierung
+    if AssetsState.mode == 2: HorizontalLayout {
+        spacing: 16px;
+        height: 540px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 8px;
+            Caption { text: "Konto"; ink: root.muted; }
+            ComboBox { model: AssetsState.c-account-names; current-index <=> AssetsState.c-account; selected => { AssetsState.class-account-changed(); } }
+            Frame {
+                line: root.line;
+                list-height: 440px;
+                if AssetsState.c-rows.length == 0: Text { text: "Keine Positionen"; color: root.muted; horizontal-alignment: center; vertical-alignment: center; }
+                ListView {
+                    for r[i] in AssetsState.c-rows: Rectangle {
+                        height: 40px;
+                        background: AssetsState.sel-class == i ? root.accent.with-alpha(0.18) : transparent;
+                        TouchArea { clicked => { AssetsState.class-select(i); } }
+                        VerticalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            alignment: center;
+                            Text { text: r.name; color: root.ink; font-size: 13px; overflow: elide; }
+                            Text { text: r.detail; color: root.muted; font-size: 11px; overflow: elide; }
+                        }
+                    }
+                }
+            }
+        }
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                padding-right: 10px;
+                if AssetsState.sel-class < 0: Hint { text: "Position wählen, um Anlageklasse und Instrument festzulegen. „Automatisch“ nimmt die Vorgabe aus Import und Regeln."; muted: root.muted; }
+                if AssetsState.sel-class >= 0: VerticalLayout {
+                    spacing: 8px;
+                    Hint { text: AssetsState.c-info; muted: root.muted; }
+                    Caption { text: "Anlageklasse"; ink: root.muted; }
+                    ComboBox { model: AssetsState.c-class-names; current-index <=> AssetsState.c-class; selected => { AssetsState.class-preview(); } }
+                    Caption { text: "Instrument"; ink: root.muted; }
+                    ComboBox { model: AssetsState.c-instr-names; current-index <=> AssetsState.c-instr; selected => { AssetsState.class-preview(); } }
+                    if AssetsState.c-preview != "": Hint { text: AssetsState.c-preview; muted: root.muted; }
+                    Button { text: "Klassifizierung speichern"; primary: true; enabled: !AssetsState.busy; clicked => { AssetsState.class-save(); } }
+                }
+            }
+        }
+    }
+
+    if AssetsState.status != "": Text { text: AssetsState.status; color: root.negative; font-size: 12px; wrap: word-wrap; }
+    HorizontalLayout {
+        alignment: end;
+        Button { text: "Schließen"; clicked => { root.close(); } }
+    }
+}
