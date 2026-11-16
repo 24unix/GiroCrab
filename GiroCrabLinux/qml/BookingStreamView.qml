@@ -9,8 +9,13 @@ Rectangle {
     id: stream
     color: Theme.canvas
     readonly property bool isOverview: AppModel.sidebarSelection === "all"
+    readonly property bool isNewBookings: AppModel.sidebarSelection === "newBookings"
+    /// Cashflow and budget cards: overview always, a single account only when toggled on; never in „Neue Umsätze“.
+    readonly property bool showsAnalytics: AppModel.showStatistics && !isNewBookings && AppModel.allAccounts.length > 0
+                                           && (isOverview || showAnalytics) && AppModel.scope !== "Investments"
     readonly property bool isDepot: AppModel.selectedAccount !== null
         && (AppModel.selectedAccount.kind === "Brokerage" || AppModel.selectedAccount.name.toLowerCase().indexOf("depot") >= 0)
+    readonly property bool isTangible: AppModel.selectedAccount !== null && AppModel.isTangible(AppModel.selectedAccount.id)
     /// @AppStorage("showAccountAnalytics")
     readonly property bool showAnalytics: AppModel.uiDefaults.showAccountAnalytics
     /// No accounts in the personal vault: the welcome card replaces header and placeholder.
@@ -115,16 +120,23 @@ Rectangle {
                     sourceComponent: Component { InvestmentDashboardView {} }
                 }
                 CashflowCard {
-                    visible: AppModel.showStatistics && AppModel.allAccounts.length > 0 && (stream.isOverview || stream.showAnalytics) && AppModel.scope !== "Investments"
+                    visible: stream.showsAnalytics
                     Layout.fillWidth: true; Layout.leftMargin: 20; Layout.rightMargin: 20
                 }
                 BudgetProgressCard {
-                    visible: AppModel.showStatistics && AppModel.allAccounts.length > 0 && (stream.isOverview || stream.showAnalytics) && AppModel.scope !== "Investments"
+                    visible: stream.showsAnalytics && AppModel.showBudgets
                     Layout.fillWidth: true; Layout.leftMargin: 20; Layout.rightMargin: 20
+                }
+                // DepotPositionsView (Sachwerte, #87): held and sold items instead of bookings
+                Loader {
+                    active: stream.isTangible
+                    visible: active
+                    Layout.fillWidth: true; Layout.leftMargin: 20; Layout.rightMargin: 20
+                    sourceComponent: Component { AssetPositionsView { account: AppModel.selectedAccount } }
                 }
                 // ContentUnavailableView "Keine Buchungen im Depot", in the middle of the visible area
                 ColumnLayout {
-                    visible: AppModel.dayGroups.length === 0 && stream.isDepot && AppModel.searchText === ""
+                    visible: AppModel.dayGroups.length === 0 && stream.isDepot && !stream.isTangible && AppModel.searchText === ""
                     Layout.alignment: Qt.AlignHCenter // the column is only as wide as its texts
                     Layout.topMargin: Math.max(40, (list.height - implicitHeight) / 2 - 20)
                     spacing: 6
@@ -135,13 +147,23 @@ Rectangle {
                            text: qsTr("Ein Depot zeigt seine Positionen oben. Käufe, Verkäufe und Sparpläne stehen als Buchungen im Verrechnungskonto.") }
                 }
                 ColumnLayout {
-                    visible: AppModel.dayGroups.length === 0 && !(stream.isDepot && AppModel.searchText === "") && !stream.emptyVault
+                    visible: AppModel.dayGroups.length === 0 && !(stream.isDepot && AppModel.searchText === "") && !stream.emptyVault && !stream.isNewBookings
                     Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 40
                     spacing: 6
                     SFIcon { Layout.alignment: Qt.AlignHCenter; symbol: AppModel.searchText ? "magnifyingglass" : "tray"; size: 32 }
                     Text { Layout.alignment: Qt.AlignHCenter; text: AppModel.searchText ? qsTr("Keine Treffer") : qsTr("Keine Buchungen"); font.pixelSize: Theme.title2; font.weight: Font.Bold; color: Theme.text }
                     Text { Layout.alignment: Qt.AlignHCenter; color: Theme.secondary; font.pixelSize: Theme.body
-                           text: AppModel.searchText ? qsTr("Nichts passt zu „%1“.").arg(AppModel.searchText) : qsTr("Konto abrufen oder anderen Zeitraum wählen.") }
+                           text: AppModel.searchText ? qsTr("Nichts passt zu „%1“.").arg(AppModel.redactedSearch(AppModel.searchText)) : qsTr("Konto abrufen oder anderen Zeitraum wählen.") }
+                }
+                // NewBookingsCards: ContentUnavailableView "Keine neuen Umsätze"
+                ColumnLayout {
+                    visible: stream.isNewBookings && AppModel.streamItems.length === 0 && AppModel.page !== null
+                    Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 40
+                    spacing: 6
+                    SFIcon { Layout.alignment: Qt.AlignHCenter; symbol: "checkmark.circle"; size: 32 }
+                    Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("Keine neuen Umsätze"); font.pixelSize: Theme.title2; font.weight: Font.Bold; color: Theme.text }
+                    Text { Layout.alignment: Qt.AlignHCenter; color: Theme.secondary; font.pixelSize: Theme.body
+                           text: qsTr("Alle Buchungen sind geprüft.") }
                 }
             }
 
@@ -219,12 +241,19 @@ Rectangle {
                 required property int index
                 readonly property var modelData: AppModel.streamItems[index] ?? ({ type: "none" })
                 width: list.width
-                height: modelData.type === "header" ? 14 + dayHeader.height : row.height
+                height: modelData.type === "header" ? 14 + dayHeader.height
+                      : modelData.type === "account" ? 14 + accountHeader.height : row.height
 
                 DayHeader {
                     id: dayHeader
                     visible: item.modelData.type === "header"
                     day: item.modelData.type === "header" ? item.modelData.day : null
+                    x: 20; y: 14; width: item.width - 40
+                }
+                NewBookingsCardHeader {
+                    id: accountHeader
+                    visible: item.modelData.type === "account"
+                    section: item.modelData.type === "account" ? item.modelData.section : null
                     x: 20; y: 14; width: item.width - 40
                 }
                 DayCardRow {
@@ -313,6 +342,48 @@ Rectangle {
     }
 
     // DayCardSegment: one card per day, split into header + rows.
+    // NewBookingsView.swift › NewBookingsCardHeader: signet, name, IBAN · bank, balance and pending sum.
+    component NewBookingsCardHeader: Rectangle {
+        id: nh
+        property var section: null
+        readonly property var account: section ? section.account : null
+        readonly property string detail: !account ? ""
+            : [account.iban ? Fmt.iban(account.iban) : account.account_number, account.bank_name].filter(x => x).join(" · ")
+        height: headRow.implicitHeight + 24
+        color: Theme.card
+        radius: 12
+        border.color: Theme.border
+        Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; height: parent.height / 2; color: Theme.card
+                    Rectangle { anchors.left: parent.left; width: 1; height: parent.height; color: Theme.border }
+                    Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: Theme.border } }
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
+        RowLayout {
+            id: headRow
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            anchors.leftMargin: 16; anchors.rightMargin: 16; anchors.topMargin: 12
+            spacing: 10
+            AccountSignet { visible: nh.account !== null; account: nh.account; size: 28; Layout.alignment: Qt.AlignTop
+                            tintColor: nh.account ? AppModel.accountColor(nh.account.id) : Theme.tertiary }
+            ColumnLayout {
+                spacing: 2; Layout.fillWidth: true; Layout.alignment: Qt.AlignTop
+                Text { text: nh.section ? nh.section.title : ""; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.text
+                       elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
+                Text { visible: nh.detail !== ""; text: nh.detail; font.pixelSize: Theme.caption; color: Theme.secondary
+                       elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
+            }
+            ColumnLayout {
+                spacing: 2; Layout.alignment: Qt.AlignTop
+                Text { visible: nh.account !== null; Layout.alignment: Qt.AlignRight
+                       text: nh.account ? Fmt.money(nh.account.balance_cents, nh.account.currency) : ""
+                       font.pixelSize: Theme.body; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
+                       color: nh.account && nh.account.balance_cents < 0 ? Theme.negative : Theme.text; Sensitive {} }
+                Text { visible: nh.section !== null && nh.section.pendingCents !== 0; Layout.alignment: Qt.AlignRight
+                       text: nh.section ? qsTr("Vorgemerkt: %1").arg(Fmt.money(nh.section.pendingCents, nh.account ? nh.account.currency : "EUR")) : ""
+                       font.pixelSize: Theme.caption; font.features: { "tnum": 1 }; color: Theme.secondary; Sensitive {} }
+            }
+        }
+    }
+
     component DayHeader: Rectangle {
         property var day
         height: 40
@@ -326,7 +397,7 @@ Rectangle {
         RowLayout {
             anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 16
             Text { text: day ? Fmt.dayHeader(day.date) : ""; font.pixelSize: Theme.subheadline + 1; font.weight: Font.DemiBold; color: Theme.text; Layout.fillWidth: true }
-            Text { text: day ? Fmt.signed(day.sum) : ""; font.pixelSize: Theme.subheadline + 1; font.features: { "tnum": 1 }; color: day && day.sum > 0 ? Theme.inflow : Theme.secondary }
+            Text { text: day ? Fmt.signed(day.sum) : ""; font.pixelSize: Theme.subheadline + 1; font.features: { "tnum": 1 }; color: day && day.sum > 0 ? Theme.inflow : Theme.secondary; Sensitive {} }
         }
     }
 
@@ -335,7 +406,8 @@ Rectangle {
         property var booking
         property bool isLast
         readonly property bool selected: booking !== null && !!AppModel.selectedBookingIDs[booking.id]
-        height: 54 + (isLast ? 0 : 0)
+        // Amazon drill-down (all items below the row); collapsed rows keep the uniform height
+        height: 54 + row.drillHeight
 
         // background: rounded only at the bottom of the day's last row
         Rectangle {
@@ -390,7 +462,7 @@ Rectangle {
             radius: dc.isLast ? 10 : 0
             color: dc.selected ? Theme.selection : "transparent"
         }
-        BookingRow { anchors.fill: parent; booking: dc.booking }
+        BookingRow { id: row; anchors.fill: parent; booking: dc.booking }
         DropArea {
             id: rowDrop
             anchors.fill: parent
@@ -405,6 +477,9 @@ Rectangle {
                 stream.forceActiveFocus()
                 // the context menu acts on its own row and leaves the selection alone
                 if (m.button === Qt.RightButton) { stream.openRowMenu(dc.booking, dc, m.x, m.y); return }
+                // the Amazon drill-down chevron sits below this area
+                const c = row.chevron
+                if (c.visible && c.contains(c.mapFromItem(dc, m.x, m.y))) { stream.toggleAmazonExpanded(dc.booking.id); return }
                 AppModel.selectBooking(dc.booking.id, m.modifiers & Qt.ControlModifier, m.modifiers & Qt.ShiftModifier)
             }
             onDoubleClicked: m => { if (m.button === Qt.LeftButton) AppModel.editNote(dc.booking) }
@@ -434,9 +509,9 @@ Rectangle {
         AppMenuItem { text: qsTr("Regel für diesen Händler erstellen …"); icon.name: SF.icon("wand.and.stars"); onTriggered: AppModel.openRuleEditor(stream.menuBooking) }
         AppMenuItem { text: qsTr("Notiz bearbeiten …"); icon.name: SF.icon("note.text"); onTriggered: AppModel.editNote(stream.menuBooking) }
         AppMenuItem { text: qsTr("Umsatz aufteilen (Splitbuchung) …"); icon.name: SF.icon("arrow.triangle.branch"); onTriggered: AppModel.splitBooking = stream.menuBooking }
-        // LoanAssignMenu(hidesWhenUnavailable: true): left out for loan bookings
+        // LoanAssignMenu(hidesWhenUnavailable: true): left out for loan bookings and unlinked inflows
         Instantiator {
-            model: stream.menuBooking !== null && stream.menuBooking.account_kind !== "Loan" ? 1 : 0
+            model: AppModel.loanAssignable(stream.menuBooking) ? 1 : 0
             delegate: LoanAssignMenu { booking: stream.menuBooking }
             onObjectAdded: (index, menu) => {
                 let at = 0
@@ -456,19 +531,47 @@ Rectangle {
                    onTriggered: AppModel.openTransferFrom(stream.menuBooking) }
         AppMenuItem { text: qsTr("Umsatz kopieren"); icon.name: SF.icon("doc.on.doc")
                    onTriggered: AppModel.copyToClipboard(AppModel.clipboardLine(stream.menuBooking)) }
+        // exportMenuButton(for:)
+        AppMenuItem {
+            readonly property int count: AppModel.isMultiSelection && stream.menuBooking !== null && !!AppModel.selectedBookingIDs[stream.menuBooking.id]
+                ? Object.keys(AppModel.selectedBookingIDs).length : 1
+            text: count > 1 ? qsTr("%1 Umsätze exportieren …").arg(count) : qsTr("Umsatz exportieren …")
+            icon.name: SF.icon("square.and.arrow.up")
+            onTriggered: {
+                if (!AppModel.selectedBookingIDs[stream.menuBooking.id]) AppModel.selectedBookingID = stream.menuBooking.id
+                AppModel.openBookingExport(true)
+            }
+        }
         AppMenuSeparator {}
         AppMenuItem { text: stream.menuBooking && stream.menuBooking.checked ? qsTr("Als neu markieren") : qsTr("Als geprüft markieren"); icon.name: SF.icon("checkmark.circle")
                    onTriggered: AppModel.setChecked(!stream.menuBooking.checked, stream.menuBooking) }
+    }
+
+    /// BookingRow.amazonExpanded (`@State` per row on the Mac): booking ids with an
+    /// open Amazon drill-down. Kept here, ListView delegates are recycled.
+    property var amazonExpanded: ({})
+    function toggleAmazonExpanded(id) {
+        const e = Object.assign({}, amazonExpanded)
+        if (e[id]) delete e[id]; else e[id] = true
+        amazonExpanded = e
     }
 
     // BookingListView.swift › BookingRow
     component BookingRow: Item {
         id: br
         property var booking
+        /// Amazon orders: items, order code and the drill-down instead of the payment method.
+        readonly property var amazonRef: AmazonOrderRef.parse(booking)
+        /// Refunds show the refunded order's items (joined via the order code).
+        readonly property var refundSource: amazonRef !== null && amazonRef.isRefund ? AmazonOrderRef.refundSource(booking, AppModel.bookings) : null
+        readonly property bool expanded: amazonRef !== null && booking !== null && !!stream.amazonExpanded[booking.id]
+        readonly property real drillHeight: drill.visible ? drill.implicitHeight + 4 : 0
+        property alias chevron: chevron
         RowLayout {
             visible: br.booking !== null
-            anchors.fill: parent
-            anchors.leftMargin: 14; anchors.rightMargin: 14; anchors.topMargin: 5; anchors.bottomMargin: 5
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            height: 44
+            anchors.leftMargin: 14; anchors.rightMargin: 14; anchors.topMargin: 5
             spacing: 12
             MerchantSignet {
                 merchant: br.booking ? br.booking.merchant : null
@@ -485,7 +588,8 @@ Rectangle {
                     Text {
                         text: br.booking ? (br.booking.merchant.name || br.booking.booking_text) : ""
                         font.pixelSize: Theme.body + 1; font.weight: Font.DemiBold; color: Theme.text
-                        elide: Text.ElideRight; Layout.fillWidth: true; Layout.maximumWidth: implicitWidth
+                        elide: Text.ElideRight; Layout.fillWidth: true; Layout.maximumWidth: Math.ceil(implicitWidth)
+                        Sensitive {}
                     }
                     SFIcon { visible: br.booking && br.booking.document_count > 0; symbol: "doc.text.fill"; size: 11; color: Theme.withAlpha(Theme.accent, 0.8) }
                     SFIcon { visible: br.booking !== null && AppModel.recurringSeries(br.booking) !== null; symbol: "repeat"; size: 11 }
@@ -503,16 +607,99 @@ Rectangle {
                     }
                     BookingCategoryLabel { booking: br.booking }
                     Text {
-                        visible: br.booking && br.booking.payment_method !== ""
+                        visible: br.amazonRef === null && br.booking && br.booking.payment_method !== ""
                         text: br.booking ? "· " + br.booking.payment_method : ""
                         font.pixelSize: Theme.callout + 1; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true
+                    }
+                    // Amazon order: what was ordered beats the "Bestellung" kind label.
+                    // Refund rows start flush like every other row ("· item…");
+                    // the ↩ marker goes at the end of the item text.
+                    Text {
+                        id: amazonItems
+                        visible: text !== ""
+                        text: br.refundSource ? "· " + br.refundSource.items + "  ↩"
+                            : br.amazonRef !== null && br.amazonRef.items !== "" ? "· " + br.amazonRef.items : ""
+                        font.pixelSize: Theme.callout + 1; color: Theme.secondary; elide: Text.ElideRight
+                        Layout.fillWidth: true; Layout.maximumWidth: Math.ceil(implicitWidth)
+                        HoverHandler { id: itemsHover }
+                        ToolTip.visible: itemsHover.hovered; ToolTip.delay: 600
+                        ToolTip.text: br.amazonRef === null ? "" : br.amazonRef.isRefund
+                            ? qsTr("Erstattung für Bestellung #%1").arg(br.amazonRef.code) : br.amazonRef.itemList.join("\n")
+                        Sensitive {}
+                    }
+                    // items beyond the two shown; the drill-down lists everything
+                    Text {
+                        visible: br.amazonRef !== null && br.amazonRef.moreCount > 0
+                        text: visible ? qsTr("+%1 weitere").arg(br.amazonRef.moreCount) : ""
+                        font.pixelSize: Theme.caption2; font.weight: Font.Medium; color: Theme.tertiary
+                        HoverHandler { id: moreHover }
+                        ToolTip.visible: moreHover.hovered; ToolTip.delay: 600
+                        ToolTip.text: br.amazonRef !== null ? br.amazonRef.itemList.slice(2).join("\n") : ""
+                    }
+                    // "D01-…" charges are the recurring Spar-Abo, plain orders are one-off
+                    RowLayout {
+                        visible: br.amazonRef !== null && br.amazonRef.isSubscription
+                        spacing: 3
+                        SFIcon { symbol: "arrow.triangle.2.circlepath"; size: 10; color: Theme.tertiary }
+                        Text { text: qsTr("Abo"); font.pixelSize: Theme.caption2; font.weight: Font.Medium; color: Theme.tertiary }
+                        HoverHandler { id: aboHover }
+                        ToolTip.visible: aboHover.hovered; ToolTip.delay: 600
+                        ToolTip.text: qsTr("Abonnement (Spar-Abo) – wiederkehrende Abbuchung")
+                    }
+                    Text {
+                        visible: br.amazonRef !== null
+                        text: visible ? "· #" + br.amazonRef.code : ""
+                        font.pixelSize: Theme.callout + 1; font.features: { "tnum": 1 }; color: Theme.tertiary
+                        Sensitive {}
+                    }
+                    // drill-down when there is more than the head can show (clicks: DayCardRow)
+                    SFIcon {
+                        id: chevron
+                        visible: br.amazonRef !== null && (br.amazonRef.itemList.length > 1 || br.refundSource !== null)
+                        symbol: br.expanded ? "chevron.down" : "chevron.right"; size: 10; color: Theme.tertiary
+                        HoverHandler { id: chevronHover }
+                        ToolTip.visible: chevronHover.hovered; ToolTip.delay: 600
+                        ToolTip.text: br.expanded ? qsTr("Artikel einklappen") : qsTr("Alle Artikel anzeigen")
                     }
                     Item { Layout.fillWidth: true }
                 }
             }
-            SFIcon { visible: br.booking && br.booking.checked; symbol: "checkmark"; size: 11; color: Theme.tertiary }
+            // the row just checked in „Neue Umsätze“ or under "Neu" stays without a mark until it leaves
+            SFIcon { visible: br.booking && br.booking.checked && AppModel.lingeringBookingID !== br.booking.id; symbol: "checkmark"; size: 11; color: Theme.tertiary }
             SFIcon { visible: br.booking && br.booking.is_pending; symbol: "clock"; size: 11; color: Theme.tertiary }
-            AmountLabel { cents: br.booking ? br.booking.amount_cents : 0 }
+            AmountLabel { visible: br.amazonRef === null; cents: br.booking ? br.booking.amount_cents : 0 }
+            // Order account: no signs — colour says the direction. Charges and
+            // refunds are badged symmetrically (same padding, same alignment).
+            Rectangle {
+                visible: br.amazonRef !== null
+                implicitWidth: orderAmount.implicitWidth + 16; implicitHeight: orderAmount.implicitHeight + 6
+                radius: height / 2
+                color: br.amazonRef !== null && br.amazonRef.isRefund ? Theme.inflowBadge : Theme.outflowBadge
+                Text {
+                    id: orderAmount
+                    anchors.centerIn: parent
+                    text: br.amazonRef === null ? "" : Fmt.money(br.amazonRef.isRefund ? br.booking.amount_cents : Math.abs(br.booking.amount_cents))
+                    font.pixelSize: Theme.body; font.weight: Font.DemiBold; font.features: { "tnum": 1 }
+                    color: br.amazonRef !== null && br.amazonRef.isRefund ? Theme.inflow : Theme.charge
+                    Sensitive {}
+                }
+                HoverHandler { id: orderAmountHover }
+                ToolTip.visible: orderAmountHover.hovered; ToolTip.delay: 600
+                ToolTip.text: br.amazonRef !== null && br.amazonRef.isRefund ? qsTr("Gutschrift (Erstattung)") : qsTr("Bestellung")
+            }
+        }
+        // drill-down: every item on its own line, indented under the signet
+        ColumnLayout {
+            id: drill
+            visible: br.expanded
+            x: 14 + 48; y: 49; width: parent.width - x - 14
+            spacing: 2
+            Text { visible: br.refundSource !== null; text: qsTr("Erstattung zu:"); font.pixelSize: Theme.caption2; color: Theme.tertiary }
+            Repeater {
+                model: !br.expanded ? [] : br.refundSource !== null ? br.refundSource.list : br.amazonRef.itemList
+                Text { required property string modelData; text: modelData; font.pixelSize: Theme.callout + 1; color: Theme.secondary
+                       elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
+            }
         }
     }
 
@@ -525,7 +712,7 @@ Rectangle {
         color: Theme.withAlpha(tint, 0.12)
         RowLayout { id: ac; anchors.centerIn: parent; spacing: 4
             SFIcon { symbol: parent.parent.symbol; size: 11; color: parent.parent.tint }
-            Text { text: parent.parent.label; font.pixelSize: Theme.subheadline + 1; font.weight: Font.Medium; color: parent.parent.tint } }
+            Text { text: parent.parent.label; font.pixelSize: Theme.subheadline + 1; font.weight: Font.Medium; color: parent.parent.tint; Sensitive {} } }
     }
 
     component BookingCategoryLabel: RowLayout {
@@ -534,7 +721,8 @@ Rectangle {
         readonly property color tint: none ? Theme.warning : Theme.readable(booking.category_color_hex)
         spacing: 3
         SFIcon { symbol: none ? "questionmark.folder" : (booking.category_symbol || "tag.fill"); size: 11; color: parent.tint }
-        Text { text: none ? qsTr("Ohne Kategorie") : booking.category_name; font.pixelSize: Theme.callout + 1; font.weight: Font.Medium; color: parent.tint; elide: Text.ElideRight }
+        Text { text: none ? qsTr("Ohne Kategorie") : booking.category_name; font.pixelSize: Theme.callout + 1; font.weight: Font.Medium; color: parent.tint; elide: Text.ElideRight
+               Sensitive { labels: true; when: !parent.parent.none } }   // parent: the Text, its parent the label
     }
 
     // Onboarding.swift › EmptyVaultCard: the personal vault has no accounts yet.
@@ -543,7 +731,7 @@ Rectangle {
             width: parent.width; spacing: 14
             RowLayout {
                 spacing: 12
-                Image { source: "qrc:/qt/qml/GiroCrab/assets/app-icon.png"; sourceSize.width: 56; sourceSize.height: 56 }
+                AnimatedCrabLogo { size: 56 }
                 Text { text: qsTr("Willkommen bei GiroCrab"); font.pixelSize: Theme.title3 + 2; font.weight: Font.DemiBold; color: Theme.text }
             }
             Text { text: qsTr("Ihr Tresor ist eingerichtet, enthält aber noch keine Konten. So geht es weiter:")

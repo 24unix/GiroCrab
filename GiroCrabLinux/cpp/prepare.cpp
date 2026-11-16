@@ -112,3 +112,35 @@ extern "C" void girocrab_copy_secret(const char *text)
             c->clear();
     });
 }
+
+#include <QtGui/QPainter>
+
+// BugReport.compose (#301): the captured picture with black boxes over the
+// user's marks (unit rectangles x, y, width, height; origin top left), as PNG.
+extern "C" bool girocrab_compose_report(const char *base, const double *masks, size_t count, const char *out)
+{
+    QImage image(QString::fromUtf8(base));
+    if (image.isNull())
+        return false;
+    image = image.convertToFormat(QImage::Format_ARGB32);
+    QPainter p(&image);
+    const QRectF full(0, 0, image.width(), image.height());
+    for (size_t i = 0; i < count; ++i) {
+        const double *m = masks + 4 * i;
+        const QRectF r(m[0] * full.width(), m[1] * full.height(), m[2] * full.width(), m[3] * full.height());
+        p.fillRect(r.toAlignedRect().intersected(full.toRect()), Qt::black);
+    }
+    p.end();
+    return image.save(QString::fromUtf8(out), "PNG");
+}
+
+// BugReport.copyToPasteboard: the finished picture on the clipboard, so it
+// can be pasted into the issue.
+extern "C" bool girocrab_copy_image(const char *path)
+{
+    const QImage image(QString::fromUtf8(path));
+    if (image.isNull())
+        return false;
+    QGuiApplication::clipboard()->setImage(image);
+    return true;
+}

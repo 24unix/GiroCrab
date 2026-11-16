@@ -15,8 +15,9 @@ ScrollBar {
         implicitWidth: sb.hovered || sb.pressed ? 8 : 5
         implicitHeight: implicitWidth
         radius: width / 2
-        color: Theme.secondary
-        opacity: sb.pressed ? 0.75 : sb.hovered ? 0.6 : 0.38
+        // stronger in dark mode, where the grey handle sank into the dark panes
+        color: Theme.dark ? Theme.text : Theme.secondary
+        opacity: sb.pressed ? 0.75 : sb.hovered ? 0.6 : Theme.dark ? 0.45 : 0.38
         Behavior on implicitWidth { NumberAnimation { duration: 110 } }
         Behavior on opacity { NumberAnimation { duration: 110 } }
     }

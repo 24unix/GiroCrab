@@ -19,13 +19,12 @@ Rectangle {
         anchors.centerIn: parent
         width: Math.min(parent.width - 80, 520)
         spacing: 18
-        Image {
+        AnimatedCrabLogo {
             Layout.alignment: Qt.AlignHCenter
-            source: "qrc:/qt/qml/GiroCrab/assets/app-icon.png"
-            sourceSize.width: 120; sourceSize.height: 120
-            scale: AppModel.unlockCelebrating ? 1.08 : 1
-            Behavior on scale { NumberAnimation { duration: 160 } }
-            opacity: lock.error !== "" ? 0.6 : 1
+            size: 120
+            phase: AppModel.unlockCelebrating ? "unlocked" : lock.error !== "" ? "failed"
+                 : lock.unlocking ? "unlocking" : "idle"
+            busy: lock.unlocking
         }
         Text { Layout.alignment: Qt.AlignHCenter; text: qsTr("GiroCrab ist gesperrt"); font.pixelSize: Theme.title + 2; font.weight: Font.Bold; color: Theme.text }
         Text {

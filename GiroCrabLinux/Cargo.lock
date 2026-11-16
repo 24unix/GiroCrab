@@ -1449,6 +1449,7 @@ name = "girocrab-linux"
 version = "0.7.5"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "cxx",
  "cxx-qt",
  "cxx-qt-build",

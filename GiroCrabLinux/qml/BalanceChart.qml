@@ -15,7 +15,7 @@ Item {
         const pad = Math.max((hi - lo) * 0.15, 100)
         return { lo: lo - pad, hi: hi + pad }
     }
-    readonly property int axisHeight: 16
+    readonly property int axisHeight: Theme.scaled(16)   // holds a caption2 label
     function xAt(i) { return points.length < 2 ? 0 : i / (points.length - 1) * width }
     function yAt(c) { const h = height - axisHeight - 4; return 2 + h - (c - stats.lo) / (stats.hi - stats.lo) * h }
 
@@ -122,16 +122,16 @@ Item {
         const span = (last - first) / 86400000
         const marks = []
         if (span > 400) {
-            const every = axisStride(span / 365.25, 64, [1, 2, 5, 10, 20])
+            const every = axisStride(span / 365.25, 64 * Theme.textScale, [1, 2, 5, 10, 20])
             for (let i = 1; i < n; i++) {
                 const y = Number(points[i].date.slice(0, 4))
                 if (y !== Number(points[i - 1].date.slice(0, 4)) && y % every === 0) marks.push({ i: i, text: String(y) })
             }
         } else if (span < 62) {
-            const every = axisStride(span, 64, [7, 14, 28])
+            const every = axisStride(span, 64 * Theme.textScale, [7, 14, 28])
             for (let i = 0; i < n; i += every) marks.push({ i: i, text: Fmt.shortDay(Fmt.date(points[i].date)) })
         } else {
-            const every = axisStride(span / 30.44, 44, [1, 2, 3, 6])
+            const every = axisStride(span / 30.44, 44 * Theme.textScale, [1, 2, 3, 6])
             for (let i = 1; i < n; i++) {
                 const m = Number(points[i].date.slice(5, 7))
                 if (m !== Number(points[i - 1].date.slice(5, 7)) && (m - 1) % every === 0)
@@ -156,7 +156,8 @@ Item {
         width: tip.implicitWidth + 12; height: tip.implicitHeight + 8
         x: Math.max(0, Math.min(chart.width - width, chart.xAt(chart.hovered) + 8)); y: 0
         Text { id: tip; anchors.centerIn: parent; font.pixelSize: Theme.caption; color: Theme.text
-               text: chart.hovered >= 0 ? Fmt.medium(chart.points[chart.hovered].date) + "  " + Fmt.money(chart.points[chart.hovered].balance_cents) : "" }
+               text: chart.hovered >= 0 ? Fmt.medium(chart.points[chart.hovered].date) + "  " + Fmt.money(chart.points[chart.hovered].balance_cents) : ""
+               Sensitive {} }
     }
     MouseArea {
         anchors.fill: parent

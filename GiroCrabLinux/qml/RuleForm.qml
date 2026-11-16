@@ -34,13 +34,14 @@ Item {
         { id: "CounterpartyIban", title: qsTr("IBAN") }
     ]
     readonly property var categoryOptions: AppModel.categories.map(c => ({ id: c.id, title: "    ".repeat(c.depth) + c.name }))
-    readonly property var accountOptions: [{ id: null, title: qsTr("Alle Konten") }]
-        .concat(AppModel.allAccounts.map(a => ({ id: a.id, title: a.bank_name + " – " + a.name })))
+    /// same order and groups as the sidebar (#412)
+    readonly property var accountOptions: AppModel.accountMenuOptions(a => a.bank_name + " – " + a.name)
 
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
         ScrollView {
+            ScrollBar.vertical: ScrollViewBar {}
             id: scroll
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -175,12 +176,22 @@ Item {
                     }
                     FormRow {
                         label: qsTr("Konto")
+                        // a rule limited to several accounts (made on the Mac, #562): the single-account
+                        // picker would replace the list, so it only says so until Linux has the multi-picker
+                        Text {
+                            readonly property int count: form.rule && form.rule.account_ids ? form.rule.account_ids.length : 0
+                            visible: count > 1
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap
+                            text: qsTr("Auf %1 Konten eingeschränkt (in der Mac-App festgelegt)").arg(count)
+                            font.pixelSize: Theme.body; color: Theme.secondary
+                        }
                         AppComboBox {
+                            visible: !(form.rule && form.rule.account_ids && form.rule.account_ids.length > 1)
                             Layout.fillWidth: true
                             model: form.accountOptions
                             textRole: "title"
-                            currentIndex: form.rule ? Math.max(0, form.accountOptions.findIndex(o => o.id === (form.rule.account_ids && form.rule.account_ids.length ? form.rule.account_ids[0] : null))) : 0
-                            onActivated: i => form.set("account_ids", form.accountOptions[i].id === null || form.accountOptions[i].id === undefined ? [] : [form.accountOptions[i].id])
+                            currentIndex: form.rule ? Math.max(0, form.accountOptions.findIndex(o => !o.header && o.id === (form.rule.account_ids && form.rule.account_ids.length ? form.rule.account_ids[0] : null))) : 0
+                            onActivated: i => { const o = form.accountOptions[i]; if (!o.header) form.set("account_ids", o.id === null || o.id === undefined ? [] : [o.id]) }
                         }
                     }
                 }

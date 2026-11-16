@@ -34,15 +34,16 @@ ColumnLayout {
             readonly property var g: hc.gain(modelData)
             Layout.fillWidth: true
             ColumnLayout { spacing: 1; Layout.fillWidth: true
-                Text { text: modelData.name || modelData.isin || modelData.wkn; font.pixelSize: Theme.callout + 1; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { text: modelData.name || modelData.isin || modelData.wkn; font.pixelSize: Theme.callout + 1; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true
+                       Sensitive { labels: true } }
                 Text { text: hc.qty(modelData.quantity) + " × " + Fmt.money(modelData.current_price_cents) + " · " + (modelData.isin || modelData.wkn)
-                       font.pixelSize: Theme.caption2; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true } }
+                       font.pixelSize: Theme.caption2; color: Theme.secondary; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} } }
             ColumnLayout { spacing: 1
-                Text { Layout.alignment: Qt.AlignRight; text: Fmt.money(modelData.value_cents); font.pixelSize: Theme.callout + 1; font.features: { "tnum": 1 }; color: Theme.text }
+                Text { Layout.alignment: Qt.AlignRight; text: Fmt.money(modelData.value_cents); font.pixelSize: Theme.callout + 1; font.features: { "tnum": 1 }; color: Theme.text; Sensitive {} }
                 Text { visible: parent.parent.g !== null; Layout.alignment: Qt.AlignRight; font.pixelSize: Theme.caption2; font.features: { "tnum": 1 }
                        readonly property var g: parent.parent.g
                        text: g ? qsTr("GuV (berechnet): %1 (%2 %)").arg(Fmt.money(g.cents)).arg(Number(g.percent).toLocaleString(Qt.locale(), "f", 2)) : ""
-                       color: g && g.cents < 0 ? "red" : "green" } }
+                       color: g && g.cents < 0 ? "red" : "green"; Sensitive {} } }
             TapHandler { acceptedButtons: Qt.RightButton; onTapped: menu.popup() }
             AppMenu { id: menu
                 AppMenuItem { text: qsTr("Position kopieren"); onTriggered: AppModel.copyToClipboard(hc.line(modelData)) }

@@ -22,6 +22,13 @@ extern "C" {
         title: *const std::os::raw::c_char,
     ) -> bool;
     fn girocrab_copy_secret(text: *const std::os::raw::c_char);
+    fn girocrab_compose_report(
+        base: *const std::os::raw::c_char,
+        masks: *const f64,
+        count: usize,
+        out: *const std::os::raw::c_char,
+    ) -> bool;
+    fn girocrab_copy_image(path: *const std::os::raw::c_char) -> bool;
 }
 
 /// The vault on screen (demo or personal) – `AppModel.vault`. `None` = locked.
@@ -52,6 +59,78 @@ pub fn vault_path() -> std::path::PathBuf {
     } else {
         "tresor.girocrab"
     })
+}
+
+/// QSettings of the app (UserDefaults): `~/.config/GiroCrab/GiroCrab.conf` (XDG config dir).
+pub fn settings_file() -> std::path::PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config")
+        })
+        .join("GiroCrab/GiroCrab.conf")
+}
+
+/// Deletes `path`; a missing file is fine.
+fn remove_if_present(path: &std::path::Path) -> Result<(), String> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
+/// „App zurücksetzen“ ran in this process: `main` deletes the settings once more after
+/// the QML engine is gone (QML `Settings` write pending values back on destruction)
+/// and the new instance starts with `--app-was-reset`.
+static APP_RESET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn app_was_reset() -> bool {
+    APP_RESET.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Removes the settings file (and the lock file QSettings may leave next to it).
+pub fn remove_settings_file() -> Result<(), String> {
+    let conf = settings_file();
+    remove_if_present(&conf)?;
+    remove_if_present(&std::path::PathBuf::from(format!(
+        "{}.lock",
+        conf.display()
+    )))
+}
+
+/// AppModel+Reset.swift / VaultResources.swift (#241): deletes the vault file with its
+/// SQLite side files, the decrypted QuickLook copies, the settings and – last, since an
+/// existing file is unreadable without it – the key in the Secret Service. A failed file
+/// deletion stops before anything else is touched, so vault and key stay together.
+/// Not deleted (as on the Mac): `banking-policy.json` (anti-rollback anchor of the
+/// banking lock), documents exported by the user. Enable Banking credentials live in the
+/// vault on Linux and go with it.
+fn reset_app() -> R {
+    // Tests must never reach the real home directory or keyring.
+    #[cfg(test)]
+    assert!(
+        crate::vault_key::keychain_bypassed()
+            && std::env::var_os("XDG_DATA_HOME").is_some()
+            && std::env::var_os("XDG_CONFIG_HOME").is_some(),
+        "reset_app in tests only with GIROCRAB_NO_KEYCHAIN and temporary XDG dirs"
+    );
+    crate::sessions::cancel_all();
+    *VAULT.lock().unwrap() = None;
+    OWN.lock().unwrap().take();
+    remove_quicklook_files();
+    let vault = vault_path();
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        remove_if_present(&std::path::PathBuf::from(format!(
+            "{}{suffix}",
+            vault.display()
+        )))?;
+    }
+    remove_settings_file()?;
+    crate::vault_key::destroy()?;
+    APP_RESET.store(true, std::sync::atomic::Ordering::SeqCst);
+    ok(())
 }
 
 fn file_size(p: &std::path::Path) -> i64 {
@@ -114,6 +193,15 @@ fn restore_key(key: &[u8]) -> R {
     })?;
     drop(v);
     crate::vault_key::store(key)?;
+    ok(())
+}
+
+/// AccountSelectionList.save (#346): takes `self: Arc<Vault>` (a held-back fetch is
+/// imported right away), so not part of `vault_methods!`.
+fn set_connection_account_choices(v: &Arc<Vault>, a: &Value) -> R {
+    v.clone()
+        .set_connection_account_choices(arg(a, "connection_id")?, arg(a, "enabled_refs")?)
+        .map_err(|e| e.to_string())?;
     ok(())
 }
 
@@ -238,6 +326,48 @@ fn call(method: &str, a: &Value) -> R {
             // SAFETY: as above; both strings outlive the call.
             ok(unsafe { girocrab_grab_window_titled(path.as_ptr(), title.as_ptr()) })
         }
+        // --- Hilfe › Problem melden (BugReport.swift, #301) ---
+        "sanitize_report_text" => ok(girocrab_core::report_sanitizer::sanitize_report_text(
+            arg(a, "text")?,
+            arg(a, "known_terms")?,
+        )),
+        "bug_report_prepare" => {
+            let v = VAULT.lock().unwrap().clone();
+            ok(crate::bug_report::prepare(
+                v.as_deref(),
+                arg(a, "include_log")?,
+                arg(a, "demo")?,
+            ))
+        }
+        "bug_report_issue_url" => ok(crate::bug_report::issue_url(
+            &arg(a, "info")?,
+            &arg::<Vec<String>>(a, "log")?,
+            arg(a, "with_screenshot")?,
+        )),
+        "bug_report_temp_dir" => ok(crate::bug_report::temp_dir()?.display().to_string()),
+        "bug_report_clear" => {
+            crate::bug_report::clear_temp_dir();
+            ok(())
+        }
+        "bug_report_compose" => {
+            // BugReport.compose: black boxes over unit rectangles, saved as PNG.
+            let base =
+                std::ffi::CString::new(arg::<String>(a, "base")?).map_err(|e| e.to_string())?;
+            let out =
+                std::ffi::CString::new(arg::<String>(a, "path")?).map_err(|e| e.to_string())?;
+            let masks: Vec<[f64; 4]> = arg(a, "masks")?;
+            let flat: Vec<f64> = masks.concat();
+            // SAFETY: GUI thread (Core.call); strings and the slice outlive the call.
+            ok(unsafe {
+                girocrab_compose_report(base.as_ptr(), flat.as_ptr(), masks.len(), out.as_ptr())
+            })
+        }
+        "copy_image" => {
+            let path =
+                std::ffi::CString::new(arg::<String>(a, "path")?).map_err(|e| e.to_string())?;
+            // SAFETY: Core.call runs on the GUI thread (QClipboard); the string outlives the call.
+            ok(unsafe { girocrab_copy_image(path.as_ptr()) })
+        }
         // --- settings / recurring ---
         "copy_secret" => {
             let text =
@@ -289,6 +419,8 @@ fn call(method: &str, a: &Value) -> R {
             ok(())
         }
         "is_unlocked" => ok(VAULT.lock().unwrap().is_some()),
+        "reset_app" => reset_app(),
+        "set_connection_account_choices" => set_connection_account_choices(&vault()?, a),
         // catalog / directory (free functions of the core)
         "bank_catalog" => ok(girocrab_core::bank_catalog()),
         "fints_presets" => ok(girocrab_core::connectors::fints_presets::fints_presets()),
@@ -377,6 +509,13 @@ fn call(method: &str, a: &Value) -> R {
             std::fs::write(arg::<String>(a, "path")?, csv).map_err(|e| e.to_string())?;
             ok(())
         }
+        // --- Umsatz-Export (ExportSheet.swift): CSV / CAMT.053 from the core, files written here ---
+        "export_csv" => ok(girocrab_core::export::export_csv(
+            arg(a, "rows")?,
+            arg(a, "columns")?,
+            arg(a, "balance_lines")?,
+        )),
+        "save_export_file" => save_export_file(a),
         "print_pdf" => print_pdf(a),
         "print_web_assets" => print_web_assets(),
         "psd2_catalog" => ok(girocrab_core::connectors::bank_directory::psd2_catalog()),
@@ -433,6 +572,15 @@ fn call(method: &str, a: &Value) -> R {
         "validate_iban" => ok(girocrab_core::connectors::validate_iban(arg(a, "iban")?)),
         "girocode_matrix" => girocode_matrix(a),
         "read_invoice" => read_invoice(a),
+        // --- Sachwerte --- (gold prices over the network: called with Core.callAsync)
+        "asset_weight_presets" => ok(girocrab_core::assets::asset_weight_presets()),
+        "refresh_asset_prices" => {
+            let v = vault()?;
+            let force: bool = arg(a, "force")?;
+            ok(crate::sessions::RUNTIME
+                .block_on(v.refresh_asset_prices(force))
+                .map_err(|e| e.to_string())?)
+        }
         // --- portal logins --- (src/web_login.rs: browser cookies, Amex/Amazon/FNZ/quirion imports)
         m if crate::web_login::handles(m) => crate::web_login::call(m, a, vault),
         _ => {
@@ -505,6 +653,72 @@ fn print_web_assets() -> R {
         "paginator": print_assets::PRINT_PAGINATOR,
         "pdf_supported": pdf,
     }))
+}
+
+/// AppModel+Printing.swift › presentExportFile: writes an export (`text`, or the PDF
+/// WebPrinter.qml rendered at `from_path`, which is removed afterwards). With `path`
+/// (save dialog, which already asked about replacing) exactly there; otherwise into
+/// `dir` as `filename`, or the first free `Name-2.ext`, `Name-3.ext`, … so an export
+/// never replaces an existing file without asking; a `dir` that is gone falls back to
+/// `fallback_dir` (Downloads, created if needed). Returns the path written. `discard`
+/// (save dialog cancelled) only removes the rendered PDF.
+fn save_export_file(a: &Value) -> R {
+    use std::io::Write;
+    let text = arg::<Option<String>>(a, "text")?;
+    let from = arg::<Option<String>>(a, "from_path")?;
+    if arg::<Option<bool>>(a, "discard")?.unwrap_or(false) {
+        if let Some(p) = from {
+            let _ = std::fs::remove_file(p);
+        }
+        return ok(());
+    }
+    let bytes = match (&text, &from) {
+        (Some(t), _) => t.clone().into_bytes(),
+        (None, Some(p)) => std::fs::read(p).map_err(|e| format!("{p}: {e}"))?,
+        (None, None) => return Err("argument `text` or `from_path` missing".into()),
+    };
+    let written = if let Some(path) = arg::<Option<String>>(a, "path")? {
+        std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+        path
+    } else {
+        let mut dir = std::path::PathBuf::from(arg::<String>(a, "dir")?);
+        if !dir.is_dir() {
+            if let Some(fallback) = arg::<Option<String>>(a, "fallback_dir")? {
+                dir = fallback.into();
+                std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            }
+        }
+        let filename: String = arg(a, "filename")?;
+        let (stem, ext) = match filename.rsplit_once('.') {
+            Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
+            _ => (filename.clone(), String::new()),
+        };
+        let mut n = 1;
+        loop {
+            let name = if n == 1 {
+                filename.clone()
+            } else {
+                format!("{stem}-{n}{ext}")
+            };
+            let path = dir.join(&name);
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(mut f) => {
+                    f.write_all(&bytes).map_err(|e| e.to_string())?;
+                    break path.display().to_string();
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => n += 1,
+                Err(e) => return Err(format!("{}: {e}", path.display())),
+            }
+        }
+    };
+    if let Some(p) = from {
+        let _ = std::fs::remove_file(p);
+    }
+    ok(written)
 }
 
 /// Prints a PDF that WebPrinter.qml rendered from the Mac markup: system print dialog,
@@ -811,9 +1025,27 @@ fn read_invoice(a: &Value) -> R {
     ok(json!({ "xml": xml, "text": text }))
 }
 
+/// Vault methods, plus the ones whose errors the sheet shows differently.
+fn dispatch_vault(v: &Vault, method: &str, a: &Value) -> Option<R> {
+    match method {
+        // Umsatz-Export: CAMT.053 straight from the vault (#483). ExportSheet.swift shows
+        // a refusal (`InvalidInput`: loan/depot, gap in the marked bookings) as its plain
+        // message, without the „Ungültige Eingabe:“ prefix of other errors.
+        "camt053_export" => Some(camt053_export(v, a)),
+        _ => dispatch_vault_methods(v, method, a),
+    }
+}
+
+fn camt053_export(v: &Vault, a: &Value) -> R {
+    ok(v.camt053_export(arg(a, "request")?).map_err(|e| match e {
+        girocrab_core::CoreError::InvalidInput { message } => message,
+        e => e.to_string(),
+    })?)
+}
+
 macro_rules! vault_methods {
     ($($name:ident ( $($p:ident),* ))*) => {
-        fn dispatch_vault(v: &Vault, method: &str, _a: &Value) -> Option<R> {
+        fn dispatch_vault_methods(v: &Vault, method: &str, _a: &Value) -> Option<R> {
             match method {
                 $( stringify!($name) => Some((|| -> R {
                     ok(v.$name($(arg(_a, stringify!($p))?),*).map_err(|e| e.to_string())?)
@@ -842,6 +1074,16 @@ vault_methods! {
     rename_account(account_id, name)
     // --- depot / loans / dashboard ---
     set_account_initial_balance(account_id, cents) investment_dashboard(months)
+    // --- Vermögen (WealthView) ---
+    list_security_transactions(account_id)
+    list_tangible_account_ids() list_all_asset_items()
+    // --- Sachwerte (TangibleAssetsUI) ---
+    create_tangible_account(name) list_asset_items(account_id)
+    save_asset_item(account_id, item_id, setup) delete_asset_item(item_id)
+    set_asset_quantity(item_id, date, quantity) delete_asset_quantity(item_id, date)
+    set_asset_value(item_id, date, value_cents) delete_asset_value(item_id, date)
+    sell_asset(item_id, date, count, price_cents) set_asset_price(symbol, date, price_cents)
+    asset_price_on(symbol, date) asset_unit_value_on(item_id, date) asset_item_history(item_id)
     // --- loans / opening balance ---
     list_manual_loans() list_loan_links() create_manual_loan(setup)
     update_manual_loan(account_id, setup) preview_manual_loan(account_id, setup, limit)
@@ -863,6 +1105,7 @@ vault_methods! {
     delete_user_group(uuid) merge_user_groups(from_uuid, into_uuid) set_user_group_color(uuid, color_hex)
     set_account_archived(account_id, archived) set_account_color(account_id, color_hex)
     set_account_symbol(account_id, sf_symbol) reset_account_symbol(account_id)
+    set_account_kind(account_id, kind) set_account_owner(account_id, owner)
     // categories
     list_categories(date_from, date_to)
     create_category(name, parent_id, sf_symbol, color_hex)
@@ -899,9 +1142,14 @@ vault_methods! {
     // --- settings / recurring ---
     list_ignored_recurring(account_ids)
     list_sync_log(filter) clear_sync_log()
+    // --- Problem melden (#301) ---
+    counterparty_names(limit)
     // --- main window / editing ---
     set_checked_for_filter(filter, checked) recurring_snapshot(account_ids, year, month)
     log_sync(connection_id, source, outcome, message, imported)
+    // --- account selection per login (AccountSelectionView.swift, #346) ---
+    connection_account_choices(connection_id) pending_account_selection_connections()
+    seed_demo_account_selection()
 }
 
 #[cfg(test)]
@@ -985,6 +1233,49 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// „App zurücksetzen“ (#241) with the keychain bypass and temporary XDG dirs only:
+    /// vault, side files and settings go, the banking policy stays, the next start is a
+    /// first start (no vault file, a new one can be created).
+    #[test]
+    fn app_reset_deletes_vault_and_settings() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("girocrab-reset-{}", std::process::id()));
+        let (data, config) = (dir.join("data"), dir.join("config"));
+        std::fs::create_dir_all(config.join("GiroCrab")).unwrap();
+        std::env::set_var("XDG_DATA_HOME", &data);
+        std::env::set_var("XDG_CONFIG_HOME", &config);
+        std::env::set_var("GIROCRAB_NO_KEYCHAIN", "1");
+        assert!(vault_path().starts_with(&data) && settings_file().starts_with(&config));
+        call_ok("unlock_own", json!({ "allow_create": true }));
+        call_ok("use_own", json!({}));
+        call_ok("checkpoint", json!({}));
+        let conf = settings_file();
+        std::fs::write(&conf, "[General]\nhasRealData=true\n").unwrap();
+        let policy = config.join("GiroCrab/banking-policy.json");
+        std::fs::write(&policy, "{}").unwrap();
+        let side = std::path::PathBuf::from(format!("{}-journal", vault_path().display()));
+        std::fs::write(&side, "x").unwrap();
+        assert!(call_ok("vault_info", json!({}))["size"].as_i64().unwrap() > 0);
+
+        call_ok("reset_app", json!({}));
+        assert!(app_was_reset());
+        assert_eq!(call_ok("vault_info", json!({}))["size"], json!(-1));
+        assert!(
+            !side.exists() && !conf.exists(),
+            "side files and settings deleted"
+        );
+        assert!(policy.exists(), "banking policy anchor survives");
+        assert_eq!(call_ok("has_own_vault", json!({})), json!(false));
+        assert_eq!(call_ok("is_unlocked", json!({})), json!(false));
+        // a second reset (nothing left) is no error
+        call_ok("reset_app", json!({}));
+        // first start again: a new, empty vault
+        let r = call_ok("unlock_own", json!({ "allow_create": true }));
+        assert_eq!(r["account_count"], json!(0));
+        call_ok("lock", json!({}));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     /// The categorizer / rules / split arms with the JSON the QML sends.
     #[test]
     fn rules_categories_splits_roundtrip() {
@@ -1043,6 +1334,38 @@ mod tests {
             call_json("parse_amount_to_cents", r#"{"text":"1.234,56"}"#),
             r#"{"ok":123456}"#
         );
+        drop(v);
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+    }
+
+    /// Händler-Historie (#299): the merchant's stats over all accounts and in one account.
+    #[test]
+    fn merchant_history() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-merchant-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![7; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        let filter = json!({ "account_ids": [], "category_id": null, "include_subcategories": true,
+            "uncategorized_only": false, "search": null, "date_from": null, "date_to": null,
+            "limit": 1, "offset": 0, "scope": "All", "merchant_key": null, "direction": "All",
+            "checked": null, "whole_days": true });
+        let b = call("list_transactions", json!({ "filter": filter }))["transactions"][0].clone();
+        let key = b["merchant"]["key"].clone();
+        let h = call(
+            "merchant_history",
+            json!({ "merchant_key": key, "account_id": b["account_id"] }),
+        );
+        let (all, own) = (h["all"].clone(), h["account"].clone());
+        assert_eq!(own["key"], all["key"]);
+        assert!(own["count"].as_u64().unwrap() >= 1);
+        assert!(own["count"].as_u64().unwrap() <= all["count"].as_u64().unwrap());
         drop(v);
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
@@ -1220,10 +1543,442 @@ mod tests {
             json!({ "filter": filter, "checked": true }),
         );
         assert!(again.as_array().unwrap().is_empty());
+        // Sidebar › account menu: Kontoart ändern …, Kontoinhaber …
+        let id = call("list_accounts", json!({}))[0]["id"].clone();
+        call(
+            "set_account_kind",
+            json!({ "account_id": id, "kind": "Savings" }),
+        );
+        call(
+            "set_account_owner",
+            json!({ "account_id": id, "owner": "  Erika Muster " }),
+        );
+        let acc = call("list_accounts", json!({}))
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == id)
+            .cloned()
+            .unwrap();
+        assert_eq!(acc["kind"], "Savings");
+        assert_eq!(acc["owner"], "Erika Muster");
         assert_eq!(
             call_ok("bic_for_iban", json!({ "iban": "DE89370400440532013000" })),
             json!("COBADEFF")
         );
+        // Kontoauswahl (#346): a second login reaching accounts the first one delivers
+        let second = call("seed_demo_account_selection", json!({}));
+        assert_eq!(
+            call("pending_account_selection_connections", json!({})),
+            json!([second])
+        );
+        let choices = call(
+            "connection_account_choices",
+            json!({ "connection_id": second }),
+        );
+        let rows = choices.as_array().unwrap();
+        assert!(rows
+            .iter()
+            .any(|c| c["pending"] == true && c["enabled"] == false));
+        assert!(rows
+            .iter()
+            .all(|c| c["account_ref"].is_string() && c["existing_connection"].is_string()));
+        let keep: Vec<Value> = rows
+            .iter()
+            .filter(|c| c["enabled"] == true)
+            .map(|c| c["account_ref"].clone())
+            .collect();
+        set_connection_account_choices(
+            &v,
+            &json!({ "connection_id": second, "enabled_refs": keep }),
+        )
+        .unwrap();
+        assert_eq!(
+            call("pending_account_selection_connections", json!({})),
+            json!([])
+        );
+        let after = call(
+            "connection_account_choices",
+            json!({ "connection_id": second }),
+        );
+        assert!(after
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["pending"] == false));
+        assert!(set_connection_account_choices(
+            &v,
+            &json!({ "connection_id": second, "enabled_refs": ["unknown"] }),
+        )
+        .is_err());
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Vermögen (WealthView.qml): Sachwerte accounts and items, depot transactions,
+    /// with the JSON field names the QML reads.
+    #[test]
+    fn wealth_calls() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-wealth-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![5; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        let tangible = call("list_tangible_account_ids", json!({}));
+        let tangible = tangible.as_array().unwrap();
+        assert!(!tangible.is_empty(), "demo has a Sachwerte account");
+        let items = call("list_all_asset_items", json!({}));
+        let items = items.as_array().unwrap();
+        assert!(!items.is_empty());
+        for it in items {
+            assert!(tangible.contains(&it["account_id"]));
+            assert!(it["setup"]["name"].is_string() && it["setup"]["price_source"].is_string());
+            assert!(it["holding"]["value_cents"].is_i64() && it["holding"]["quantity"].is_f64());
+            assert!(it["sold"].is_boolean());
+        }
+        let accounts = call("list_accounts", json!({}));
+        let depot = accounts
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["kind"] == "Brokerage" && !tangible.contains(&a["id"]))
+            .expect("demo depot")["id"]
+            .clone();
+        let txs = call("list_security_transactions", json!({ "account_id": depot }));
+        for t in txs.as_array().unwrap() {
+            assert!(t["direction"].is_string() && t["booking_date"].is_string());
+            assert!(t["fees_cents"].is_i64() && t["taxes_cents"].is_i64());
+        }
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Sachwerte (AssetEditorSheet.qml, AssetActionSheet.qml): the JSON the sheets send.
+    #[test]
+    fn tangible_asset_calls() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-assets-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![6; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        let presets = call_ok("asset_weight_presets", json!({}));
+        assert!(presets[0]["label"].is_string() && presets[0]["grams"].is_f64());
+        let account = call("create_tangible_account", json!({ "name": "" }));
+        assert!(call("list_tangible_account_ids", json!({}))
+            .as_array()
+            .unwrap()
+            .contains(&account));
+        let setup = json!({ "name": "Bild", "price_source": "manual", "weight_grams": 0.0,
+            "purity_permille": 1000.0, "interpolation": "Linear", "purchase_date": "2024-01-10",
+            "quantity": 2.0, "purchase_price_cents": 200000, "start_value_cents": 100000,
+            "note": "Atelier", "symbol": "photo.artframe" });
+        let item = call(
+            "save_asset_item",
+            json!({ "account_id": account, "item_id": null, "setup": setup }),
+        );
+        call(
+            "set_asset_value",
+            json!({ "item_id": item, "date": "2025-01-10", "value_cents": 150000 }),
+        );
+        call(
+            "set_asset_quantity",
+            json!({ "item_id": item, "date": "2025-06-01", "quantity": 3.0 }),
+        );
+        assert_eq!(
+            call(
+                "asset_unit_value_on",
+                json!({ "item_id": item, "date": "2025-01-10" })
+            ),
+            json!(150000)
+        );
+        assert!(
+            call("asset_item_history", json!({ "item_id": item }))[0]["balance_cents"].is_i64()
+        );
+        let price = call(
+            "asset_price_on",
+            json!({ "symbol": "XAU", "date": "2025-01-10" }),
+        );
+        assert!(price.is_null() || price["value_cents"].is_i64());
+        call(
+            "sell_asset",
+            json!({ "item_id": item, "date": "2025-07-01", "count": 3.0, "price_cents": 160000 }),
+        );
+        let items = call("list_asset_items", json!({ "account_id": account }));
+        let it = &items[0];
+        assert_eq!(it["setup"]["interpolation"], "Linear");
+        assert_eq!(it["sold"], json!(true));
+        assert!(it["values"].as_array().unwrap().len() >= 2);
+        assert!(it["quantities"].as_array().unwrap().len() >= 3);
+        call(
+            "delete_asset_quantity",
+            json!({ "item_id": item, "date": "2025-07-01" }),
+        );
+        call(
+            "delete_asset_value",
+            json!({ "item_id": item, "date": "2025-07-01" }),
+        );
+        call("delete_asset_item", json!({ "item_id": item }));
+        assert!(call("list_asset_items", json!({ "account_id": account }))
+            .as_array()
+            .unwrap()
+            .is_empty());
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Umsatz-Export: CSV and CAMT.053 from demo bookings, saved without replacing a file.
+    #[test]
+    fn export_calls() {
+        let path =
+            std::env::temp_dir().join(format!("girocrab-export-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![7; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let call = |m: &str, a: Value| {
+            dispatch_vault(&v, m, &a)
+                .unwrap()
+                .unwrap_or_else(|e| panic!("{m}: {e}"))
+        };
+        let accounts = call("list_accounts", json!({}));
+        let account = accounts
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["kind"] == "Checking")
+            .unwrap()
+            .clone();
+        let filter = json!({ "account_ids": [account["id"]], "category_id": null,
+            "include_subcategories": true, "uncategorized_only": false, "search": null,
+            "date_from": null, "date_to": null, "limit": 0, "offset": 0, "scope": "All",
+            "merchant_key": null, "direction": "All", "checked": null, "whole_days": true });
+        let bookings =
+            call("list_transactions", json!({ "filter": filter }))["transactions"].clone();
+        let first = &bookings.as_array().unwrap()[0];
+        let rows = json!([{ "date": first["booking_date"], "account_name": account["name"],
+            "counterparty": "=SUMME(A1)", "purpose": "Miete; März", "category": "Wohnen",
+            "note": "", "amount_cents": -123456, "currency": "EUR", "day_balance_cents": 50 }]);
+        let csv = call_ok(
+            "export_csv",
+            json!({ "rows": rows, "columns": { "category": true, "note": false, "daily_balance": true },
+                    "balance_lines": [] }),
+        );
+        let csv = csv.as_str().unwrap();
+        assert!(csv.starts_with(
+            "\u{FEFF}Datum;Konto;Name;Verwendungszweck;Kategorie;Betrag;Währung;Tagessaldo\r\n"
+        ));
+        assert!(csv.contains(";'=SUMME(A1);\"Miete; März\";Wohnen;-1234,56;EUR;0,50\r\n"));
+        // CAMT.053 straight from the vault: account and period only (#483)
+        let camt = call(
+            "camt053_export",
+            json!({ "request": { "account_id": account["id"], "date_from": null, "date_to": null,
+                    "booking_ids": null, "version": "V08", "created_at": "2026-11-15T12:00:00+01:00" } }),
+        );
+        let camt = camt.as_str().unwrap();
+        assert!(camt.contains("urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"));
+        assert!(camt.contains("<Cd>OPBD</Cd>") && camt.contains("<Cd>CLBD</Cd>"));
+        // A period in the older version, as BookingExport.qml › camtRequest sends it
+        let days: Vec<String> = bookings
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["booking_date"].as_str().unwrap().to_string())
+            .collect();
+        let (from, to) = (days.iter().min().unwrap(), days.iter().max().unwrap());
+        let camt = call(
+            "camt053_export",
+            json!({ "request": { "account_id": account["id"], "date_from": from, "date_to": to,
+                    "booking_ids": null, "version": "V02", "created_at": "2026-11-15T11:00:00Z" } }),
+        );
+        let camt = camt.as_str().unwrap();
+        assert!(camt.contains("urn:iso:std:iso:20022:tech:xsd:camt.053.001.02"));
+        assert!(camt.contains(&format!("<Dt>{to}</Dt>")));
+        // Marked bookings („Auswahl“): every booking of the newest day is a gapless marking
+        let newest: Vec<i64> = bookings
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|b| b["booking_date"].as_str() == Some(to.as_str()))
+            .map(|b| b["id"].as_i64().unwrap())
+            .collect();
+        let camt = call(
+            "camt053_export",
+            json!({ "request": { "account_id": account["id"], "date_from": null, "date_to": null,
+                    "booking_ids": newest, "version": "V08", "created_at": "2026-11-15T11:00:00Z" } }),
+        );
+        assert_eq!(
+            camt.as_str().unwrap().matches("<Ntry>").count(),
+            newest.len()
+        );
+        // A marking with a gap and a loan/depot are refused with the core's plain
+        // message (ExportSheet.swift: `catch CoreError.InvalidInput(message)`).
+        let ids: Vec<i64> = bookings
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["id"].as_i64().unwrap())
+            .collect();
+        let (oldest, newest_id) = (ids[ids.len() - 1], ids[0]);
+        let gap = dispatch_vault(
+            &v,
+            "camt053_export",
+            &json!({ "request": { "account_id": account["id"], "date_from": null, "date_to": null,
+                     "booking_ids": [oldest, newest_id], "version": "V08",
+                     "created_at": "2026-11-15T11:00:00Z" } }),
+        )
+        .unwrap()
+        .unwrap_err();
+        assert!(gap.starts_with("CAMT.053 "), "{gap}");
+        if let Some(depot) = accounts
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["kind"] == "Brokerage" || a["kind"] == "Loan")
+        {
+            let refused = dispatch_vault(
+                &v,
+                "camt053_export",
+                &json!({ "request": { "account_id": depot["id"], "date_from": null, "date_to": null,
+                         "booking_ids": null, "version": "V08", "created_at": "2026-11-15T11:00:00Z" } }),
+            )
+            .unwrap()
+            .unwrap_err();
+            assert!(refused.starts_with("CAMT.053 "), "{refused}");
+        }
+        let dir = std::env::temp_dir().join(format!("girocrab-export-out-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let save = |a: Value| call_ok("save_export_file", a).as_str().unwrap().to_string();
+        let args = json!({ "text": "a", "dir": dir, "filename": "Umsaetze-Giro.csv" });
+        assert!(save(args.clone()).ends_with("/Umsaetze-Giro.csv"));
+        assert!(save(args).ends_with("/Umsaetze-Giro-2.csv"));
+        let tmp = dir.join("render.pdf");
+        std::fs::write(&tmp, b"%PDF-1.4").unwrap();
+        let target = dir.join("Umsaetze-Giro.pdf");
+        let written = save(json!({ "from_path": tmp, "path": target }));
+        assert_eq!(std::fs::read(&written).unwrap(), b"%PDF-1.4");
+        assert!(!tmp.exists());
+        std::fs::write(&tmp, b"%PDF-1.4").unwrap();
+        call_ok(
+            "save_export_file",
+            json!({ "from_path": tmp, "discard": true }),
+        );
+        assert!(!tmp.exists());
+        let moved = save(json!({ "text": "b", "dir": dir.join("gone"),
+            "fallback_dir": dir.join("Downloads"), "filename": "x.xml" }));
+        assert!(moved.ends_with("/Downloads/x.xml"));
+        assert_eq!(
+            std::fs::read_to_string(dir.join("Umsaetze-Giro.csv")).unwrap(),
+            "a"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Amazon orders (#333, #349, #354): the booking JSON carries what
+    /// AmazonOrderRef.qml reads – the purpose "<items> – Bestellung <code>" (items
+    /// joined by "; "), the refund purpose, the booking texts and `item_refs` with
+    /// one ASIN per item. No network: the capture JSON is invented.
+    #[test]
+    fn amazon_order_bookings_carry_items_and_asins() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        call_ok("open_demo", json!({}));
+        let conn = call_ok(
+            "add_bank_connection",
+            json!({ "connector": "AmazonOrders", "display_name": "Amazon Bestellungen", "login_name": "" }),
+        );
+        let orders = json!({ "orders": [{
+            "code": "302-1234567-7654321", "date": "12. März 2025",
+            "items": [{ "title": "USB-Kabel", "qty": 2, "asin": "B08XYZ1234" },
+                      { "title": "Buch" },
+                      { "title": "Lampe", "asin": "3453146883" }],
+            "rows": [{ "label": "Gesamtsumme:", "value": "45,98 €", "bold": true },
+                     { "label": "Erstattung gesamt", "value": "10,00 €" }] }] });
+        call_ok(
+            "import_amazon_orders",
+            json!({ "connection_id": conn, "orders_json": orders.to_string() }),
+        );
+        let filter = json!({ "account_ids": [], "category_id": null, "include_subcategories": true,
+            "uncategorized_only": false, "search": "302-1234567-7654321", "date_from": null,
+            "date_to": null, "limit": 0, "offset": 0, "scope": "All", "merchant_key": null,
+            "direction": "All", "checked": null, "whole_days": true });
+        let list =
+            call_ok("list_transactions", json!({ "filter": filter }))["transactions"].clone();
+        let list = list.as_array().unwrap();
+        let order = list
+            .iter()
+            .find(|b| b["amount_cents"] == json!(-4598))
+            .expect("order booking");
+        assert_eq!(
+            order["purpose"],
+            json!("2× USB-Kabel; Buch; Lampe – Bestellung 302-1234567-7654321")
+        );
+        assert_eq!(order["booking_text"], json!("Amazon-Bestellung"));
+        assert_eq!(order["item_refs"], json!("B08XYZ1234,,3453146883"));
+        let refund = list
+            .iter()
+            .find(|b| b["amount_cents"] == json!(1000))
+            .expect("refund booking");
+        assert_eq!(
+            refund["purpose"],
+            json!("Erstattung für Bestellung 302-1234567-7654321")
+        );
+        assert_eq!(refund["booking_text"], json!("Amazon-Erstattung"));
+        assert_eq!(refund["account_id"], order["account_id"]);
+        call_ok("lock", json!({}));
+    }
+
+    /// Problem melden (#301): the sanitizer through the bridge, the vault's payee names and
+    /// the issue URL. No network: the URL is only built, never opened.
+    #[test]
+    fn bug_report_calls() {
+        let text = call_ok(
+            "sanitize_report_text",
+            json!({ "text": "Überweisung an Erika Mustermann (DE89370400440532013000) über 1.234,56 € abgelehnt\nZeile 2",
+                    "known_terms": ["Erika Mustermann"] }),
+        );
+        let text = text.as_str().unwrap();
+        for leak in ["Erika", "DE89", "0532013000", "1.234,56"] {
+            assert!(!text.contains(leak), "{leak} in {text}");
+        }
+        assert!(
+            text.contains("[REDACTED]") && text.ends_with("\nZeile 2"),
+            "{text}"
+        );
+
+        let path =
+            std::env::temp_dir().join(format!("girocrab-report-{}.girocrab", std::process::id()));
+        let v = Vault::open(path.display().to_string(), vec![7; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let names = dispatch_vault(&v, "counterparty_names", &json!({ "limit": 3 }))
+            .unwrap()
+            .unwrap();
+        let names = names.as_array().unwrap();
+        assert!(!names.is_empty() && names.len() <= 3, "{names:?}");
+        let terms = crate::bug_report::known_terms(
+            &v,
+            &names
+                .iter()
+                .map(|n| n.as_str().unwrap().to_string())
+                .collect::<Vec<_>>(),
+            &girocrab_core::bank_catalog(),
+        )
+        .unwrap();
+        assert!(!terms.is_empty());
+        let prepared = crate::bug_report::prepare(Some(&v), true, true);
+        assert_eq!(prepared["log_unavailable"], json!(false));
+        assert!(prepared["text"].as_str().unwrap().starts_with("GiroCrab "));
+        let url = call_ok(
+            "bug_report_issue_url",
+            json!({ "info": prepared["info"], "log": ["2026-11-14 10:00 · FinTS · manual · error · +1"],
+                    "with_screenshot": true }),
+        );
+        let url = url.as_str().unwrap();
+        assert!(url.starts_with("https://github.com/GiroCrab/GiroCrab/issues/new?title="));
+        assert!(url.contains("%2B1") && !url.contains('+'), "{url}");
+        drop(v);
         let _ = std::fs::remove_file(path);
     }
 

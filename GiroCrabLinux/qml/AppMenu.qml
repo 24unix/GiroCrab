@@ -8,6 +8,7 @@ import QtQuick.Effects
 // so all titles of one menu start on one line (as in macOS menus).
 Menu {
     id: menu
+    font: Qt.application.font   // menus keep the system size, also with a larger text size (#343)
     // Separate bindings on purpose: the entries' widths depend on anyCheckable/anyIcon,
     // so those two must not read implicitWidth (no binding loop).
     readonly property bool anyCheckable: {

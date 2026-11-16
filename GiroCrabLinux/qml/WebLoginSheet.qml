@@ -256,6 +256,19 @@ Item {
                         onNewWindowRequested: request => { webView.url = request.requestedUrl }
                     }
                 }
+                // FnzUI.swift: AccountSelectionPanel over the page while a fetch asks (#346)
+                Loader {
+                    anchors.fill: parent
+                    active: !!sheet.flow && sheet.flow.choosingAccounts
+                    sourceComponent: Rectangle {
+                        color: Theme.card
+                        AccountSelectionPanel {
+                            anchors.fill: parent
+                            connection: sheet.flow ? sheet.flow.connection : null
+                            onDone: if (sheet.flow) sheet.flow.endAccountChoice()
+                        }
+                    }
+                }
             }
             Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
             Loader {
