@@ -440,6 +440,9 @@ pub struct FetchResult {
     pub holdings: Vec<RemoteHolding>,
     /// Explicitly fetched complete inventories, including empty depots.
     pub holdings_fetched: Vec<String>,
+    /// Accounts (external refs) whose balance could not be read this time: the
+    /// reported `balance_cents` is a placeholder and the stored balance stays.
+    pub balances_unknown: Vec<String>,
     /// Securities transactions (buy, sell, dividend …) of depots; added or
     /// refreshed by `(account, external_id)`, never removed.
     pub security_transactions: Vec<RemoteSecurityTransaction>,

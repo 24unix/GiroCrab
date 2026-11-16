@@ -199,14 +199,16 @@ pub(crate) fn store_fetch(
             let id = match existing {
                 Some(id) => {
                     if !data.adjust_balances {
-                        // A card reporting 0 (no /balances data) must not wipe a known balance.
-                        let keep = acc.balance_cents == 0
-                            && acc.kind == AccountKind::CreditCard
-                            && tx.query_row(
-                                "SELECT balance_cents FROM accounts WHERE id = ?1",
-                                [id],
-                                |r| r.get::<_, i64>(0),
-                            )? != 0;
+                        // A card reporting 0 (no /balances data) must not wipe a known balance,
+                        // and neither must an account whose balance was not read at all.
+                        let keep = data.balances_unknown.contains(&acc.external_ref)
+                            || acc.balance_cents == 0
+                                && acc.kind == AccountKind::CreditCard
+                                && tx.query_row(
+                                    "SELECT balance_cents FROM accounts WHERE id = ?1",
+                                    [id],
+                                    |r| r.get::<_, i64>(0),
+                                )? != 0;
                         if keep {
                             tx.execute(
                                 "UPDATE accounts SET currency = ?1 WHERE id = ?2",

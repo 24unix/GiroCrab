@@ -153,6 +153,7 @@ pub(super) fn deferred(data: &FetchResult, pending: &HashSet<String>) -> FetchRe
     copy.security_transactions
         .retain(|a| pending.contains(&a.account_ref));
     copy.holdings_fetched.retain(|a| pending.contains(a));
+    copy.balances_unknown.retain(|a| pending.contains(a));
     copy.documents.retain(|a| pending.contains(&a.account_ref));
     copy.accounts_complete = false;
     copy.state = None;

@@ -69,6 +69,68 @@ fn store_fetch_matches_depot_holdings_without_iban() {
 }
 
 #[test]
+fn unread_depot_keeps_its_positions_and_value() {
+    // A sync that could not read the depot (Trade Republic: portfolio request failed)
+    // still lists the account, with a placeholder balance of 0.
+    let p_dir = crate::test_support::TempDir::new("girocrab-depot-unread");
+    let p = p_dir.join("v.db");
+    let v = Vault::open(p.to_string_lossy().to_string(), vec![3u8; 32]).unwrap();
+    let conn = v
+        .add_bank_connection(ConnectorKind::TradeRepublic, String::new(), "login".into())
+        .unwrap();
+    let depot = |balance_cents: i64| RemoteAccount {
+        external_ref: "tr:depot".into(),
+        name: "Depot".into(),
+        owner: String::new(),
+        iban: String::new(),
+        account_number: String::new(),
+        currency: "EUR".into(),
+        kind: AccountKind::Brokerage,
+        balance_cents,
+        balance_date: "2026-11-10".into(),
+    };
+    let holding = RemoteHolding {
+        account_ref: "tr:depot".into(),
+        holding: crate::models::Holding {
+            isin: "DE0001234567".into(),
+            name: "X".into(),
+            quantity: 2.0,
+            value_cents: 5000,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let read = FetchResult {
+        accounts: vec![depot(5000)],
+        holdings: vec![holding],
+        holdings_fetched: vec!["tr:depot".into()],
+        ..Default::default()
+    };
+    store_fetch(&v, ConnectorKind::TradeRepublic, conn, read).unwrap();
+
+    let unread = FetchResult {
+        accounts: vec![depot(0)],
+        balances_unknown: vec!["tr:depot".into()],
+        ..Default::default()
+    };
+    store_fetch(&v, ConnectorKind::TradeRepublic, conn, unread).unwrap();
+    let acc = v.list_accounts().unwrap().pop().unwrap();
+    assert_eq!(acc.balance_cents, 5000);
+    assert_eq!(v.list_holdings(acc.id).unwrap().len(), 1);
+
+    // read and empty: everything was sold
+    let sold = FetchResult {
+        accounts: vec![depot(0)],
+        holdings_fetched: vec!["tr:depot".into()],
+        ..Default::default()
+    };
+    store_fetch(&v, ConnectorKind::TradeRepublic, conn, sold).unwrap();
+    let acc = v.list_accounts().unwrap().pop().unwrap();
+    assert_eq!(acc.balance_cents, 0);
+    assert!(v.list_holdings(acc.id).unwrap().is_empty());
+}
+
+#[test]
 fn archived_psd2_account_is_not_reported_as_revoked() {
     // #65 (archive) + #66 (revoked marking): an account the user archived
     // is skipped by store_fetch, so it must not look "missing" from a
