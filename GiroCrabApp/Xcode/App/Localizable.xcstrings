@@ -3839,6 +3839,17 @@
         }
       }
     },
+    "Anteile" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shares"
+          }
+        }
+      }
+    },
     "Anwendung prüfen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4621,6 +4632,17 @@
         }
       }
     },
+    "Auto: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto: %@"
+          }
+        }
+      }
+    },
     "Automatisch" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4876,17 +4898,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "One bar per"
-          }
-        }
-      }
-    },
-    "Balken zeigen den durchschnittlichen Saldo je Monat (bei kurzen Zeiträumen je Tag, ab sechs Jahren je Jahr) und machen Trends und Jahre vergleichbar. Gestrichelte Linien markieren den Jahreswechsel. Auch per Rechtsklick auf den Saldoverlauf umschaltbar." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bars show the average balance per month (per day for short periods, per year beyond six years), making trends and years easy to compare. Dashed lines mark the turn of the year. You can also switch by right-clicking the balance history."
           }
         }
       }
@@ -8152,6 +8163,28 @@
         }
       }
     },
+    "Diagramm" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chart"
+          }
+        }
+      }
+    },
+    "Diagramm anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Chart"
+          }
+        }
+      }
+    },
     "Diagramm und Anteile zeigen nur zugeordnete Werte. Summen und Positionen bleiben vollständig." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8159,6 +8192,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The chart and percentages show classified assets only. Totals and positions remain complete."
+          }
+        }
+      }
+    },
+    "Diagrammart" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chart type"
+          }
+        }
+      }
+    },
+    "Diagrammart (Linie, Balken, Kreis) und Balkenbreite wählen Sie auch direkt unter dem Diagramm. Balken zeigen den durchschnittlichen Saldo je Monat (bei kurzen Zeiträumen je Tag, ab sechs Jahren je Jahr) und machen Trends und Jahre vergleichbar. Gestrichelte Linien markieren den Jahreswechsel." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the chart type (line, bars, pie) and the bar width right below the chart. Bars show the average balance per month (per day for short periods, per year beyond six years) and make trends and years comparable. Dashed lines mark the turn of the year."
           }
         }
       }
@@ -8924,6 +8979,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Direct Login (Web Session)"
+          }
+        }
+      }
+    },
+    "Direkt: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Directly: %@"
           }
         }
       }
@@ -14646,6 +14712,17 @@
         }
       }
     },
+    "Keine Buchungen im Zeitraum" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No bookings in this period"
+          }
+        }
+      }
+    },
     "Keine Daten" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14873,6 +14950,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No planned payments"
+          }
+        }
+      }
+    },
+    "Keine kategorisierten Ausgaben im Zeitraum" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No categorized expenses in this period"
           }
         }
       }
@@ -15957,6 +16045,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Credit card"
+          }
+        }
+      }
+    },
+    "Kreis" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pie"
           }
         }
       }
@@ -20182,6 +20281,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Quarter"
+          }
+        }
+      }
+    },
+    "Quartale" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quarters"
           }
         }
       }

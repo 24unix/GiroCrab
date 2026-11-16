@@ -16,6 +16,8 @@ public struct GiroCrabScenes: Scene {
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
     @AppStorage(ViewLayout.compactHeaderKey) private var compactHeader = false
+    @AppStorage(BalanceChartStyle.defaultsKey) private var chartStyle: BalanceChartStyle = .line
+    @AppStorage(ViewLayout.headerChartCollapsedKey) private var chartCollapsed = false
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
     #endif
 
@@ -210,6 +212,13 @@ public struct GiroCrabScenes: Scene {
                     .disabled(!model.isUnlocked)
                 Toggle("Kopfbereich minimieren", isOn: $compactHeader)
                     .disabled(!model.isUnlocked)
+                // the header chart (#634): same switches as its title row
+                Toggle("Diagramm anzeigen", isOn: Binding(get: { !chartCollapsed }, set: { chartCollapsed = !$0 }))
+                    .disabled(!model.isUnlocked)
+                Picker("Diagramm", selection: $chartStyle) {
+                    ForEach(BalanceChartStyle.allCases) { Text($0.title).tag($0) }
+                }
+                .disabled(!model.isUnlocked)
                 Divider()
                 // Like Mail/Notes: text size of the whole app (#343).
                 Button("Größer") { textSize = textSize.larger ?? textSize }

@@ -164,22 +164,17 @@ struct GeneralSettings: View {
     }
 }
 
-/// Look of the balance history in the header (GitHub #203).
+/// Bar width of the balance history in the header (GitHub #203); the chart type itself
+/// is chosen below the chart (#634).
 struct BalanceChartSettingsSection: View {
-    @AppStorage(BalanceChartStyle.defaultsKey) private var style: BalanceChartStyle = .line
     @AppStorage(BalanceBarUnit.defaultsKey) private var barUnit: BalanceBarUnit = .automatic
 
     var body: some View {
         Section {
-            Picker("Darstellung", selection: $style) {
-                ForEach(BalanceChartStyle.allCases) { Text($0.title).tag($0) }
+            Picker("Balken je", selection: $barUnit) {
+                ForEach(BalanceBarUnit.balanceCases) { Text($0.title).tag($0) }
             }
-            if style == .bars {
-                Picker("Balken je", selection: $barUnit) {
-                    ForEach(BalanceBarUnit.allCases) { Text($0.title).tag($0) }
-                }
-            }
-            Text("Balken zeigen den durchschnittlichen Saldo je Monat (bei kurzen Zeiträumen je Tag, ab sechs Jahren je Jahr) und machen Trends und Jahre vergleichbar. Gestrichelte Linien markieren den Jahreswechsel. Auch per Rechtsklick auf den Saldoverlauf umschaltbar.")
+            Text("Diagrammart (Linie, Balken, Kreis) und Balkenbreite wählen Sie auch direkt unter dem Diagramm. Balken zeigen den durchschnittlichen Saldo je Monat (bei kurzen Zeiträumen je Tag, ab sechs Jahren je Jahr) und machen Trends und Jahre vergleichbar. Gestrichelte Linien markieren den Jahreswechsel.")
                 .appFont(.caption).foregroundStyle(.secondary)
         } header: { Text("Saldoverlauf").appSectionHeader() }
     }

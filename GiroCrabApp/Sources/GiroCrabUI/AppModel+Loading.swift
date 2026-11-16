@@ -446,7 +446,7 @@ extension AppModel {
         }
     }
 
-    /// Bar width actually used: own choice, else the global setting, else months.
+    /// Bar width actually used: own choice (also quarters, #634), else the global setting, else months.
     var effectiveCategoryBarUnit: BalanceBarUnit {
         if categoryBarUnit != .automatic { return categoryBarUnit }
         let global = BalanceBarUnit(rawValue: UserDefaults.standard.string(forKey: BalanceBarUnit.defaultsKey) ?? "") ?? .automatic
@@ -497,6 +497,9 @@ extension AppModel {
         let days = max(2, (Calendar.current.dateComponents([.day], from: start, to: today).day ?? 120) + 1)
         return (ids, UInt32(days))
     }
+
+    /// Accounts behind the header chart (balance history, expense pie #634).
+    var headerChartAccountIDs: [Int64] { historyRequest.ids }
 
     static func trimmedHistory(_ all: [DailyBalance], from: String?, to: String?) -> [DailyBalance] {
         var points = all

@@ -1,11 +1,14 @@
 import Foundation
 import GiroCrabCore
 
-/// Look of the balance history in the header (GitHub #203): the line shows every day,
-/// bars show the average balance per month (or per day) and make trends and years comparable.
+/// Look of the chart in the header (GitHub #203, #634): the line shows every day,
+/// bars show the average balance per month (or per day) and make trends and years comparable,
+/// the pie shows shares (a category's subcategories, an account's expenses by category).
+/// Whether the chart shows at all is a separate fold (`ViewLayout.headerChartCollapsedKey`).
 enum BalanceChartStyle: String, CaseIterable, Identifiable {
     case line
     case bars
+    case pie
 
     static let defaultsKey = "chart.balanceStyle"
     var id: String { rawValue }
@@ -14,16 +17,32 @@ enum BalanceChartStyle: String, CaseIterable, Identifiable {
         switch self {
         case .line: String(localized: "Linie")
         case .bars: String(localized: "Balken")
+        case .pie: String(localized: "Kreis")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .line: "chart.xyaxis.line"
+        case .bars: "chart.bar.xaxis"
+        case .pie: "chart.pie"
         }
     }
 }
 
 /// Width of one bar: automatic = days up to two months, months up to six years, years beyond.
+/// Quarters only exist for category sums (#634).
 enum BalanceBarUnit: String, CaseIterable, Identifiable {
     case automatic = "auto"
     case day
     case month
+    case quarter
     case year
+
+    /// Choices of the balance chart (accounts, groups).
+    static let balanceCases: [BalanceBarUnit] = [.automatic, .day, .month, .year]
+    /// Choices of the category chart.
+    static let categoryCases: [BalanceBarUnit] = [.day, .month, .quarter, .year]
 
     static let defaultsKey = "chart.balanceBarUnit"
     var id: String { rawValue }
@@ -33,6 +52,7 @@ enum BalanceBarUnit: String, CaseIterable, Identifiable {
         case .automatic: String(localized: "Automatisch")
         case .day: String(localized: "Tage")
         case .month: String(localized: "Monate")
+        case .quarter: String(localized: "Quartale")
         case .year: String(localized: "Jahre")
         }
     }
@@ -46,10 +66,11 @@ enum BalanceBarUnit: String, CaseIterable, Identifiable {
     }
 
     /// Characters of the ISO date (`yyyy-MM-dd`) that identify one bar.
+    /// Quarters are loaded as months and grouped in the app.
     var keyLength: Int {
         switch self {
         case .year: 4
-        case .month: 7
+        case .month, .quarter: 7
         case .day, .automatic: 10
         }
     }
@@ -57,6 +78,7 @@ enum BalanceBarUnit: String, CaseIterable, Identifiable {
     var calendarComponent: Calendar.Component {
         switch self {
         case .year: .year
+        case .quarter: .quarter
         case .month: .month
         case .day, .automatic: .day
         }

@@ -54,6 +54,9 @@ struct StreamHeaderCard: View {
     @State private var showDocuments = false
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics: Bool = true
     @AppStorage(ViewLayout.compactHeaderKey) private var compactHeader: Bool = false
+    @AppStorage(BalanceChartStyle.defaultsKey) private var chartStyle: BalanceChartStyle = .line
+    @AppStorage(ViewLayout.headerChartCollapsedKey) private var chartCollapsed: Bool = false
+    @AppStorage(BalanceBarUnit.defaultsKey) private var barUnit: BalanceBarUnit = .automatic
 
     private var account: Account? {
         if case .account(let id) = model.sidebarSelection { return model.account(for: id) }
@@ -180,22 +183,18 @@ struct StreamHeaderCard: View {
                     }
             } else {
                 if !compactHeader && showStatistics && model.scope != .investments {
-                    // iOS: 44 pt = HIG minimum hit region (the chart is tappable);
-                    // macOS: room for the min/max/0 axis labels (GitHub #203).
-                    if case .category = model.sidebarSelection {
-                        #if os(iOS)
-                        CategorySumChart(sums: model.categoryHistory).frame(height: 44)
-                        #else
-                        CategorySumChart(sums: model.categoryHistory).frame(height: 72)
-                        #endif
-                    } else {
-                    #if os(iOS)
-                    BalanceChart(points: model.history) { model.jumpToDay($0) }
-                        .frame(height: 44)
-                    #else
-                    BalanceChart(points: model.history) { model.jumpToDay($0) }
-                        .frame(height: 72)
-                    #endif
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !chartCollapsed {
+                            // iOS: 44 pt = HIG minimum hit region (the chart is tappable);
+                            // macOS: room for the min/max/0 axis labels (GitHub #203).
+                            #if os(iOS)
+                            headerChart.frame(height: 44)
+                            #else
+                            headerChart.frame(height: 72)
+                            #endif
+                        }
+                        // below the chart, also while it is hidden (#634)
+                        HeaderChartControls(collapsed: $chartCollapsed) { chartUnitMenu }
                     }
                 }
 
@@ -220,6 +219,50 @@ struct StreamHeaderCard: View {
             }
         }
         .card(padding: ViewLayout.cardPadding, vertical: ViewLayout.cardVerticalPadding(collapsed: compactHeader))
+    }
+
+    private var isCategory: Bool {
+        if case .category = model.sidebarSelection { return true }
+        return false
+    }
+
+    /// Bar width next to the chart type: category sums (line or bars), balance bars.
+    @ViewBuilder
+    private var chartUnitMenu: some View {
+        if chartStyle != .pie {
+            if isCategory {
+                BarUnitMenu(selection: Binding(get: { model.effectiveCategoryBarUnit },
+                                               set: { model.categoryBarUnit = $0; model.reloadCategoryHistory() }),
+                            units: BalanceBarUnit.categoryCases)
+            } else if chartStyle == .bars {
+                BarUnitMenu(selection: $barUnit, units: BalanceBarUnit.balanceCases,
+                            resolved: barUnit == .automatic ? barUnit.resolved(dayCount: model.history.count) : nil)
+            }
+        }
+    }
+
+    /// Chart of the header in the chosen type (#634); a category's sums, else the balance history.
+    @ViewBuilder
+    private var headerChart: some View {
+        if chartStyle == .pie {
+            Group {
+                if case .category(let id) = model.sidebarSelection {
+                    HeaderPieChart(
+                        slices: HeaderPieSlices.fold(HeaderPieSlices.subcategories(of: id, in: model.categories), limit: HeaderPieSlices.limit),
+                        emptyText: "Keine Buchungen im Zeitraum"
+                    ) { slice in
+                        if let sub = Int64(slice) { model.sidebarSelection = .category(sub) }
+                    }
+                } else {
+                    AccountExpensePie()
+                }
+            }
+            .contextMenu { ChartStyleInlinePicker() }
+        } else if case .category = model.sidebarSelection {
+            CategorySumChart(sums: model.categoryHistory)
+        } else {
+            BalanceChart(points: model.history) { model.jumpToDay($0) }
+        }
     }
 
     /// Depot: no cash-flow KPIs or booking filters – the period, documents and a hint.
@@ -572,12 +615,16 @@ struct BalanceChart: View {
 
     private var resolvedBarUnit: BalanceBarUnit { barUnit.resolved(dayCount: points.count) }
 
+    /// What this chart draws: the header shows the pie and hides the chart itself (#634),
+    /// so everything but bars is the line here (also for depots, which have no pie).
+    private var drawStyle: BalanceChartStyle { style == .bars ? .bars : .line }
+
     /// Keyboard: ←/→ walk the days (bars: the months), the hover readout follows; Return jumps
     /// to the bookings, Esc ends. VoiceOver: summary, adjustable by day / bar.
     @FocusState private var chartFocused: Bool
 
     private func step(_ delta: Int) {
-        if style == .bars {
+        if drawStyle == .bars {
             let all = buckets
             guard !all.isEmpty else { return }
             let current = hoveredBar.map(\.id) ?? (delta > 0 ? -1 : all.count)
@@ -601,7 +648,7 @@ struct BalanceChart: View {
     }
 
     private var currentValue: String {
-        if style == .bars, let b = hoveredBar {
+        if drawStyle == .bars, let b = hoveredBar {
             return String(localized: "\(barTitle(b)): Ø \(Money.format(b.averageCents)), Ende \(Money.format(b.closingCents))")
         }
         guard let h = hovered else { return summary }
@@ -611,6 +658,7 @@ struct BalanceChart: View {
     private func barTitle(_ b: BalanceBucket) -> String {
         switch resolvedBarUnit {
         case .year: b.start.formatted(.dateTime.year())
+        case .quarter: b.start.formatted(.dateTime.quarter().year())
         case .month: b.start.formatted(.dateTime.month(.wide).year())
         case .day, .automatic: b.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year())
         }
@@ -627,11 +675,11 @@ struct BalanceChart: View {
     /// Jumps to the bookings of the hovered day / bar; false if nothing is hovered.
     @discardableResult private func selectHovered() -> Bool {
         guard let onSelect else { return false }
-        switch style {
+        switch drawStyle {
         case .bars:
             guard let b = hoveredBar else { return false }
             onSelect(b.last)
-        case .line:
+        default:
             guard let h = hovered else { return false }
             onSelect(h.date)
         }
@@ -657,10 +705,7 @@ struct BalanceChart: View {
 
     @ViewBuilder private var interactiveChart: some View {
         Group {
-            switch style {
-            case .line: lineChart
-            case .bars: barChart
-            }
+            if drawStyle == .bars { barChart } else { lineChart }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { chartWidth = $0 }
         .onChange(of: points.first?.date) { _, _ in clearHover() }
@@ -688,13 +733,10 @@ struct BalanceChart: View {
 
     /// Right click (long press on iOS): switch between line and bars right at the chart.
     @ViewBuilder private var styleMenu: some View {
-        Picker("Darstellung", selection: $style) {
-            ForEach(BalanceChartStyle.allCases) { Text($0.title).tag($0) }
-        }
-        .pickerStyle(.inline)
-        if style == .bars {
+        ChartStyleInlinePicker()
+        if drawStyle == .bars {
             Picker("Balken je", selection: $barUnit) {
-                ForEach(BalanceBarUnit.allCases) { Text($0.title).tag($0) }
+                ForEach(BalanceBarUnit.balanceCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.inline)
         }
@@ -772,6 +814,7 @@ struct BalanceChart: View {
         let unit = barUnit.calendarComponent
         let xLabel: LocalizedStringKey = switch barUnit {
         case .year: "Jahr"
+        case .quarter: "Quartal"
         case .month: "Monat"
         case .day, .automatic: "Tag"
         }

@@ -2,30 +2,53 @@ import SwiftUI
 import Charts
 import GiroCrabCore
 
-/// Day, month or year sums of the selected category (incl. subcategories) above its bookings (GitHub #502, #557).
-/// Pure expense categories are drawn upwards (magnitude), mixed ones signed.
+/// Day, month, quarter or year sums of the selected category (incl. subcategories) above its
+/// bookings (GitHub #502, #557, #634). Pure expense categories are drawn upwards (magnitude),
+/// mixed ones signed. Bars or a line, following the header's chart type.
 struct CategorySumChart: View {
     let sums: [CategoryPeriodSum]
     @State private var selected: Date?
     @Environment(\.textScale) private var textScale
     @Environment(AppModel.self) private var model
+    @AppStorage(BalanceChartStyle.defaultsKey) private var style: BalanceChartStyle = .line
 
     struct Bar: Identifiable, Equatable {
         let start: Date
+        /// First day after the bar.
+        let end: Date
         let cents: Int64
         var id: Date { start }
+        var mid: Date { start.addingTimeInterval(end.timeIntervalSince(start) / 2) }
     }
 
-    /// `period` is `yyyy` (year), `yyyy-MM` (month) or `yyyy-MM-dd` (day).
-    static func bars(_ sums: [CategoryPeriodSum]) -> [Bar] {
-        sums.compactMap { s in
-            let iso: String = switch s.period.count {
-            case 4: s.period + "-01-01"
-            case 7: s.period + "-01"
-            default: s.period
+    /// `period` is `yyyy` (year), `yyyy-MM` (month) or `yyyy-MM-dd` (day); with `.quarter`
+    /// the months are folded into quarters first.
+    static func bars(_ sums: [CategoryPeriodSum], unit: BalanceBarUnit = .month) -> [Bar] {
+        let quarterly = unit == .quarter
+        return (quarterly ? quarters(sums) : sums).compactMap { s in
+            let (iso, step): (String, DateComponents) = switch s.period.count {
+            case 4: (s.period + "-01-01", DateComponents(year: 1))
+            case 7: (s.period + "-01", DateComponents(month: quarterly ? 3 : 1))
+            default: (s.period, DateComponents(day: 1))
             }
-            return DateText.date(iso).map { Bar(start: $0, cents: s.cents) }
+            guard let start = DateText.date(iso), let end = Calendar.current.date(byAdding: step, to: start) else { return nil }
+            return Bar(start: start, end: end, cents: s.cents)
         }
+    }
+
+    /// Month sums (`yyyy-MM`, oldest first) added up per quarter, keyed by its first month.
+    static func quarters(_ months: [CategoryPeriodSum]) -> [CategoryPeriodSum] {
+        var out: [CategoryPeriodSum] = []
+        for m in months {
+            guard m.period.count == 7, let month = Int(m.period.suffix(2)), (1...12).contains(month) else { continue }
+            let key = "\(m.period.prefix(4))-" + String(format: "%02d", (month - 1) / 3 * 3 + 1)
+            if let last = out.last, last.period == key {
+                out[out.count - 1] = CategoryPeriodSum(period: key, cents: last.cents + m.cents)
+            } else {
+                out.append(CategoryPeriodSum(period: key, cents: m.cents))
+            }
+        }
+        return out
     }
 
     /// Calendar unit of one bar (`.automatic` counts as months, like the model's fallback).
@@ -38,30 +61,52 @@ struct CategorySumChart: View {
         !bars.isEmpty && bars.allSatisfy { $0.cents <= 0 }
     }
 
+    /// At most `count` axis labels, one per shown bar (no repeated quarter labels).
+    static func axisDates(_ bars: [Bar], count: Int = 6) -> [Date] {
+        guard !bars.isEmpty else { return [] }
+        let every = max(1, Int((Double(bars.count) / Double(count)).rounded(.up)))
+        return stride(from: 0, to: bars.count, by: every).map { bars[$0].mid }
+    }
+
     private func height(_ b: Bar, flip: Bool) -> Double {
         Double(flip ? -b.cents : b.cents) / 100
     }
 
+    /// Gap between neighbouring bars.
+    private func inset(_ b: Bar) -> TimeInterval { b.end.timeIntervalSince(b.start) * 0.12 }
+
     var body: some View {
-        let bars = Self.bars(sums)
-        let unit = Self.component(model.effectiveCategoryBarUnit)
+        let choice = model.effectiveCategoryBarUnit
+        let bars = Self.bars(sums, unit: choice)
+        let unit = Self.component(choice)
         let flip = Self.flipsSign(bars)
+        let line = style == .line
         if bars.isEmpty {
             Color.clear
         } else {
-            let hit = selected.flatMap { d in
-                bars.first { Calendar.current.isDate($0.start, equalTo: d, toGranularity: unit) }
-            }
+            let hit = selected.flatMap { d in bars.first { $0.start <= d && d < $0.end } }
             Chart {
                 ForEach(bars) { b in
-                    BarMark(x: .value("Zeitraum", b.start, unit: unit), y: .value("Summe", height(b, flip: flip)))
-                        .foregroundStyle(b.cents < 0 && !flip ? Theme.outflow : (b.cents < 0 ? Theme.accent : Theme.inflow))
-                        .opacity(hit == nil || hit == b ? 0.85 : 0.35)
-                        .cornerRadius(1.5)
+                    if line {
+                        LineMark(x: .value("Zeitraum", b.mid), y: .value("Summe", height(b, flip: flip)))
+                            .foregroundStyle(Theme.accent.opacity(0.8))
+                            .lineStyle(StrokeStyle(lineWidth: 1.5))
+                            .interpolationMethod(.monotone)
+                        PointMark(x: .value("Zeitraum", b.mid), y: .value("Summe", height(b, flip: flip)))
+                            .foregroundStyle(b.cents < 0 && !flip ? Theme.outflow : Theme.accent)
+                            .symbolSize(hit == b ? 36 : 10)
+                    } else {
+                        RectangleMark(xStart: .value("Zeitraum", b.start.addingTimeInterval(inset(b))),
+                                      xEnd: .value("Zeitraum", b.end.addingTimeInterval(-inset(b))),
+                                      yStart: .value("Summe", 0.0), yEnd: .value("Summe", height(b, flip: flip)))
+                            .foregroundStyle(b.cents < 0 && !flip ? Theme.outflow : (b.cents < 0 ? Theme.accent : Theme.inflow))
+                            .opacity(hit == nil || hit == b ? 0.85 : 0.35)
+                            .cornerRadius(1.5)
+                    }
                 }
                 if let h = hit {
-                    RuleMark(x: .value("Zeitraum", h.start, unit: unit))
-                        .foregroundStyle(.clear)
+                    RuleMark(x: .value("Zeitraum", h.mid))
+                        .foregroundStyle(line ? Theme.secondary.opacity(0.45) : .clear)
                         .annotation(position: .top, spacing: 4, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
                             VStack(spacing: 1) {
                                 Text(h.start, format: Self.tooltipFormat(unit))
@@ -94,8 +139,8 @@ struct CategorySumChart: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 6)) { v in
-                    AxisValueLabel(centered: true) {
+                AxisMarks(values: Self.axisDates(bars)) { v in
+                    AxisValueLabel(anchor: .top) {
                         if let d = v.as(Date.self) {
                             Text(d, format: Self.axisFormat(unit))
                                 .appFont(.caption2).foregroundStyle(Theme.tertiary).fixedSize()
@@ -105,8 +150,10 @@ struct CategorySumChart: View {
             }
             .accessibilityLabel("Summen der Kategorie")
             .accessibilityChartDescriptor(Descriptor(bars: bars, unit: unit, flip: flip))
-            .overlay(alignment: .topLeading) { unitMenu }
-            .contextMenu { unitPicker }
+            .contextMenu {
+                ChartStyleInlinePicker()
+                unitPicker
+            }
         }
     }
 
@@ -141,6 +188,7 @@ struct CategorySumChart: View {
     static func tooltipFormat(_ unit: Calendar.Component) -> Date.FormatStyle {
         switch unit {
         case .year: .dateTime.year()
+        case .quarter: .dateTime.quarter().year()
         case .day: .dateTime.day().month(.abbreviated).year()
         default: .dateTime.month(.wide).year()
         }
@@ -149,29 +197,22 @@ struct CategorySumChart: View {
     static func axisFormat(_ unit: Calendar.Component) -> Date.FormatStyle {
         switch unit {
         case .year: .dateTime.year()
+        case .quarter: .dateTime.quarter().year(.twoDigits)
         case .day: .dateTime.day().month(.abbreviated)
         default: .dateTime.month(.abbreviated).year(.twoDigits)
         }
     }
 
-    /// Day / month / year per bar, right on the chart (#557).
-    private var unitPicker: some View {
-        @Bindable var model = model
-        return Picker("Balken je", selection: Binding(
-            get: { model.effectiveCategoryBarUnit },
-            set: { model.categoryBarUnit = $0; model.reloadCategoryHistory() }
-        )) {
-            ForEach([BalanceBarUnit.day, .month, .year]) { Text($0.title).tag($0) }
-        }
-        .pickerStyle(.inline)
+    private var unitSelection: Binding<BalanceBarUnit> {
+        Binding(get: { model.effectiveCategoryBarUnit },
+                set: { model.categoryBarUnit = $0; model.reloadCategoryHistory() })
     }
 
-    private var unitMenu: some View {
-        Menu { unitPicker } label: {
-            Text(model.effectiveCategoryBarUnit.title)
-                .appFont(.caption2).foregroundStyle(Theme.secondary)
+    /// Day / month / quarter / year per bar, right on the chart (#557, #634).
+    private var unitPicker: some View {
+        Picker("Balken je", selection: unitSelection) {
+            ForEach(BalanceBarUnit.categoryCases) { Text($0.title).tag($0) }
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        .accessibilityLabel("Balken je")
+        .pickerStyle(.inline)
     }
 }
