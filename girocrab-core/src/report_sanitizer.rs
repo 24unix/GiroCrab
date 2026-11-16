@@ -4,11 +4,12 @@
 //! issue. Everything that goes there passes [`sanitize_report_text`] first:
 //! it removes IBANs completely (also the `DE12…3456` form stored in the
 //! Abrufprotokoll), e-mail addresses, amounts (with a currency, German
-//! `1.234,56` / `1 234,56` / `1.234`, or `1234.56` as in API texts), URL query
-//! strings and every term the caller knows to be personal (account owners,
-//! account names, IBANs, payees; also in the genitive), and then runs the
-//! Abrufprotokoll scrubber ([`crate::sync_log::scrub`]: secrets, tokens, long
-//! digit runs).
+//! `1.234,56` / `1 234,56` / `1.234`, or `1234.56` as in API texts), URL
+//! paths and queries (only the host stays) and every term the caller knows
+//! to be personal (account owners, account names, IBANs, payees; also in the
+//! genitive), and then runs the
+//! Abrufprotokoll scrubber ([`crate::sync_log::scrub`]: secrets, cookies,
+//! tokens, phone numbers, long digit runs).
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -152,7 +153,7 @@ fn sanitize_line(line: &str, terms: &[Regex]) -> String {
     static SCRUBBED_AMOUNT: OnceLock<Regex> = OnceLock::new();
     static EMAIL: OnceLock<Regex> = OnceLock::new();
     static SHORT_IBAN: OnceLock<Regex> = OnceLock::new();
-    static URL_QUERY: OnceLock<Regex> = OnceLock::new();
+    static URL_PATH: OnceLock<Regex> = OnceLock::new();
     static AMOUNT_AFTER: OnceLock<Regex> = OnceLock::new();
     static AMOUNT_BEFORE: OnceLock<Regex> = OnceLock::new();
     static BARE_AMOUNT: OnceLock<Regex> = OnceLock::new();
@@ -166,8 +167,9 @@ fn sanitize_line(line: &str, terms: &[Regex]) -> String {
     )
     .replace_all(line, "[E-Mail]")
     .into_owned();
-    s = re(&URL_QUERY, r"(https?://[^\s?#]+)[?#]\S*")
-        .replace_all(&s, "$1?…")
+    // Paths name customers and accounts too ("/customers/<name>/…").
+    s = re(&URL_PATH, r"(https?://[^\s/?#]+)[/?#]\S*")
+        .replace_all(&s, "$1/…")
         .into_owned();
     for pattern in terms {
         s = pattern.replace_all(&s, REDACTED).into_owned();
@@ -370,7 +372,52 @@ mod tests {
         assert!(!s.contains("mustermann"), "{s}");
         assert!(!s.contains("abc123"), "{s}");
         assert!(s.contains("[E-Mail]"), "{s}");
-        assert!(s.contains("https://bank.example/cb?…"), "{s}");
+        assert!(s.contains("https://bank.example/…"), "{s}");
+    }
+
+    #[test]
+    fn reduces_urls_to_their_host() {
+        assert_eq!(
+            clean("GET https://api.bank.example/customers/erika-mustermann/accounts failed"),
+            "GET https://api.bank.example/… failed"
+        );
+        assert_eq!(
+            clean("Host https://bank.example erreichbar"),
+            "Host https://bank.example erreichbar"
+        );
+    }
+
+    #[test]
+    fn removes_cookies_tokens_and_phone_numbers() {
+        let s = clean(
+            r#"{"accessToken":"a1b2","refreshToken":"c3d4","clientSecret":"e5f6","sessionId":"g7h8"}"#,
+        );
+        for leaked in ["a1b2", "c3d4", "e5f6", "g7h8"] {
+            assert!(!s.contains(leaked), "{s}");
+        }
+        assert_eq!(
+            clean("Set-Cookie: JSESSIONID=abc; Path=/; HttpOnly"),
+            "Set-Cookie: •••"
+        );
+        assert_eq!(
+            clean("Redirect mit JSESSIONID=ab12cd"),
+            "Redirect mit JSESSIONID: •••"
+        );
+        assert_eq!(
+            clean("PIN 12345 falsch, TAN 4711 abgelaufen, TAN eingeben"),
+            "PIN ••• falsch, TAN ••• abgelaufen, TAN eingeben"
+        );
+        assert_eq!(
+            clean("Rückruf unter 0170 123 45 67 oder +49 30 1234567"),
+            "Rückruf unter ••• oder •••"
+        );
+        assert_eq!(
+            clean("Antwort eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc123 ungültig"),
+            "Antwort ••• ungültig"
+        );
+        // dates, versions, codes and long plain words stay
+        let keep = "Abruf 2026-11-16 10:00, Version 0.6.2, HTTP 403, Zeile 12, Kontoinformationsdienstleistung";
+        assert_eq!(clean(keep), keep);
     }
 
     #[test]

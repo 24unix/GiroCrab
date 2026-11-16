@@ -205,13 +205,20 @@ pub(crate) fn replace_ibans(s: &str, f: impl Fn(&str) -> String) -> String {
 }
 
 /// Removes what must not end up in the log (#196): the login name, values
-/// that follow a secret-like key (`pin=…`, `"token":"…"`, `Bearer …`),
-/// IBANs (kept as first four and last four characters) and any other run of
-/// six or more digits (TANs, customer and account numbers). The result is cut
-/// to [`MAX_MESSAGE_CHARS`].
+/// that follow a secret-like key (`pin=…`, `"accessToken":"…"`,
+/// `JSESSIONID=…`, `Bearer …`, `PIN 12345`), cookie headers, IBANs (kept as
+/// first four and last four characters), phone numbers, long tokens such as
+/// JWTs and any other run of six or more
+/// digits (TANs, customer and account numbers). URLs stay whole for
+/// debugging; the public report strips their paths. The result is cut to
+/// [`MAX_MESSAGE_CHARS`].
 pub(crate) fn scrub(message: &str, login: &str) -> String {
     static SECRET: OnceLock<Regex> = OnceLock::new();
+    static SPACED_PIN: OnceLock<Regex> = OnceLock::new();
     static BEARER: OnceLock<Regex> = OnceLock::new();
+    static COOKIE: OnceLock<Regex> = OnceLock::new();
+    static PHONE: OnceLock<Regex> = OnceLock::new();
+    static TOKEN: OnceLock<Regex> = OnceLock::new();
     static DIGITS: OnceLock<Regex> = OnceLock::new();
     let mut s = message.trim().to_string();
     let login = login.trim();
@@ -222,12 +229,22 @@ pub(crate) fn scrub(message: &str, login: &str) -> String {
     s = re(&BEARER, r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}")
         .replace_all(&s, "$1 •••")
         .into_owned();
+    // A cookie header holds several `name=value` pairs: drop the rest of the line.
+    s = re(&COOKIE, r"(?i)\b(set-cookie|cookie)\s*:[^\r\n]*")
+        .replace_all(&s, "$1: •••")
+        .into_owned();
+    // Longer keys match as a suffix ("accessToken", "JSESSIONID"); `pin` and
+    // `tan` only as whole words, or "Bestand: 12" would lose its value.
     s = re(
         &SECRET,
-        r#"(?i)("?\b(?:pin|tan|passwort|password|kennwort|token|access_token|refresh_token|secret|client_secret|api[-_ ]?key|authorization)\b"?)\s*[:=]\s*("[^"]*"|'[^']*'|\S+)"#,
+        r#"(?i)("?\b(?:pin|tan|[a-z_]*(?:passwort|password|kennwort|token|secret|api[-_ ]?key|authorization|session_?id|cookie))\b"?)\s*[:=]\s*("[^"]*"|'[^']*'|\S+)"#,
     )
     .replace_all(&s, "$1: •••")
     .into_owned();
+    // "PIN 12345": only a value with a digit, so "TAN eingeben" stays readable.
+    s = re(&SPACED_PIN, r"(?i)\b(pin|tan)\s+[a-z]*\d[a-z0-9]*\b")
+        .replace_all(&s, "$1 •••")
+        .into_owned();
     s = replace_ibans(&s, |compact| {
         let n = compact.chars().count();
         format!(
@@ -236,6 +253,36 @@ pub(crate) fn scrub(message: &str, login: &str) -> String {
             compact.chars().skip(n - 4).collect::<String>()
         )
     });
+    // German and international phone numbers, also grouped ("0170 123 45 67"),
+    // before the digit rule would leave the short groups behind.
+    s = re(
+        &PHONE,
+        r"(?:\+\d{1,3}[ /-]?|\b0)\d{2,5}(?:[ /-]\d{2,8}){1,4}\b",
+    )
+    .replace_all(&s, "•••")
+    .into_owned();
+    // JWTs and other base64 tokens: long runs mixing digits with letters
+    // beyond hex. Hex ids and UUIDs (consent, request ids) stay for support;
+    // plain words and digit runs fall through (the latter to the digit rule).
+    s = re(&TOKEN, r"[A-Za-z0-9_\-.]{24,}")
+        .replace_all(&s, |c: &regex::Captures| {
+            let m = c.get(0).expect("whole match");
+            let t = m.as_str();
+            let in_url = s[..m.start()]
+                .rsplit(char::is_whitespace)
+                .next()
+                .is_some_and(|word| word.contains("://"));
+            let has = |f: fn(&u8) -> bool| t.as_bytes().iter().any(f);
+            if !in_url
+                && has(u8::is_ascii_digit)
+                && has(|b| b.is_ascii_alphabetic() && !b.is_ascii_hexdigit())
+            {
+                "•••".to_string()
+            } else {
+                t.to_string()
+            }
+        })
+        .into_owned();
     s = re(&DIGITS, r"\d{6,}").replace_all(&s, "•••").into_owned();
     if s.chars().count() > MAX_MESSAGE_CHARS {
         s = s.chars().take(MAX_MESSAGE_CHARS).collect::<String>() + "…";

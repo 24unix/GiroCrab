@@ -300,3 +300,16 @@ fn clear_empties_the_log() {
     v.clear_sync_log().unwrap();
     assert!(all(&v).is_empty());
 }
+
+#[test]
+fn scrub_keeps_urls_but_masks_jwts() {
+    let url = "GET https://fints2.bank-1234.example/v2/consents/a1b2c3x9y8z7w6v5u4t3 503";
+    assert_eq!(scrub(url, ""), url);
+    assert_eq!(
+        scrub(
+            "token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc123 abgelehnt",
+            ""
+        ),
+        "token ••• abgelehnt"
+    );
+}
