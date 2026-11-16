@@ -201,7 +201,7 @@ Card {
             IconButton {
                 visible: card.isTangible && !AppModel.assetRefreshing && card.account !== null
                          && AppModel.assetItems(card.account.id).some(i => i.setup.price_source !== "manual")
-                text: qsTr("Kurse aktualisieren"); symbol: "arrow.clockwise"; symbolSize: 12; font.pixelSize: Theme.caption
+                text: qsTr("Goldpreis aktualisieren"); symbol: "arrow.clockwise"; symbolSize: 12; font.pixelSize: Theme.caption
                 ToolTip.text: qsTr("Goldpreis jetzt abrufen")
                 onClicked: AppModel.refreshAssetPrices(true)
             }

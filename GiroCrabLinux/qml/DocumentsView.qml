@@ -20,7 +20,7 @@ Rectangle {
     // One context menu for all documents (built once, not per row).
     property var menuDoc: null
     AppMenu { id: docMenu
-        AppMenuItem { text: qsTr("QuickLook"); onTriggered: AppModel.quickLook(view.menuDoc) }
+        AppMenuItem { text: qsTr("Vorschau"); onTriggered: AppModel.quickLook(view.menuDoc) }
         AppMenuItem { text: qsTr("Verknüpfung lösen"); onTriggered: AppModel.linkDocument(view.menuDoc, null) }
         AppMenuSeparator {}
         AppMenuItem { text: qsTr("Beleg löschen …"); onTriggered: view.docToDelete = view.menuDoc } }

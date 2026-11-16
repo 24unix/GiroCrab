@@ -34,7 +34,7 @@ ApplicationWindow {
         ["Strg+N", "Neue Überweisung"], ["Strg+Alt+K", "Regeln"],
         ["C", "Kategorie wählen (in der Buchungsliste)"], ["R", "Regel aus Buchung erstellen (in der Buchungsliste)"],
         ["Strg+Meta+C / Strg+Meta+R", "Kategorisieren / Regel erstellen (Menü Buchung)"],
-        ["Strg+Umschalt+U", "Als geprüft markieren"], ["Strg+Umschalt+Alt+U", "Alle als gelesen markieren"],
+        ["Strg+Umschalt+U", "Als geprüft markieren"], ["Strg+Umschalt+Alt+U", "Alle Buchungen als gelesen markieren"],
         ["Strg+Y", "Beleg in Quick Look"],
         ["Strg+Meta+↓ / Strg+Meta+↑", "Nächste / vorherige Buchung"], ["Strg+1 … Strg+3", "Buchungsbereich wechseln"],
         ["Strg+P", "Drucken"],

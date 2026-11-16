@@ -467,7 +467,7 @@ Rectangle {
     // „Alle Konten“ and „Neue Umsätze“: every account, whatever the list shows
     AppMenu {
         id: allMenu
-        AppMenuItem { text: qsTr("Alle als gelesen markieren"); icon.name: SF.icon("checkmark.circle"); enabled: AppModel.newCount > 0
+        AppMenuItem { text: qsTr("Alle Buchungen als gelesen markieren"); icon.name: SF.icon("checkmark.circle"); enabled: AppModel.newCount > 0
                    onTriggered: AppModel.markAllChecked(AppModel.allAccounts.map(a => a.id)) }
     }
     // pending bank logins ("Neue Bankzugänge")
@@ -528,7 +528,7 @@ Rectangle {
                        onTriggered: AppModel.groupDialog = { kind: "create", movingAccount: accountMenu.a.id, parent: null } }
         }
         AppMenuSeparator {}
-        AppMenuItem { text: qsTr("Alle als gelesen markieren"); icon.name: SF.icon("checkmark.circle"); onTriggered: AppModel.markAllChecked([accountMenu.a.id]) }
+        AppMenuItem { text: qsTr("Alle Buchungen als gelesen markieren"); icon.name: SF.icon("checkmark.circle"); onTriggered: AppModel.markAllChecked([accountMenu.a.id]) }
         // ManualLoanAccountMenu + OpeningBalanceMenuItem (ManualLoansUI.swift, OpeningBalanceUI.swift)
         AppMenuItem { readonly property bool shown: AppModel.isEditableManualLoan(accountMenu.a)
                    visible: shown; height: shown ? implicitHeight : 0
@@ -582,7 +582,7 @@ Rectangle {
         readonly property var g: sidebar.menuGroup
         AppMenuItem { text: qsTr("Umbenennen …"); icon.name: SF.icon("pencil"); onTriggered: AppModel.groupDialog = { kind: "rename", group: groupMenu.g } }
         AppMenuItem { text: qsTr("Symbol && Farbe …"); icon.name: SF.icon("paintpalette"); onTriggered: AppModel.iconColorTarget = { type: "group", uuid: groupMenu.g.uuid } }
-        AppMenuItem { text: qsTr("Alle als gelesen markieren"); icon.name: SF.icon("checkmark.circle")
+        AppMenuItem { text: qsTr("Alle Buchungen als gelesen markieren"); icon.name: SF.icon("checkmark.circle")
                    onTriggered: AppModel.markAllChecked(AppModel.userGroupAccountIDs(groupMenu.g.uuid)) }
         AppMenu {
             id: groupMoveMenu

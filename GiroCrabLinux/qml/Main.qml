@@ -127,7 +127,7 @@ ApplicationWindow {
                      enabled: AppModel.selectedBooking !== null
                      checked: AppModel.selectedBooking ? AppModel.selectedBooking.checked : false
                      onTriggered: AppModel.setChecked(!AppModel.selectedBooking.checked, AppModel.selectedBooking) }
-            Action { text: qsTr("Alle als gelesen markieren"); shortcut: "Ctrl+Shift+Alt+U"; enabled: AppModel.canMarkAllChecked
+            Action { text: qsTr("Alle Buchungen als gelesen markieren"); shortcut: "Ctrl+Shift+Alt+U"; enabled: AppModel.canMarkAllChecked
                      onTriggered: AppModel.markAllChecked() }
             Action { text: qsTr("Notiz bearbeiten"); enabled: AppModel.selectedBooking !== null; onTriggered: AppModel.editNote(AppModel.selectedBooking) }
             // like the Finder (Strg+Y); Space in the list does the same

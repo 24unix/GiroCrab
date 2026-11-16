@@ -549,7 +549,7 @@ Rectangle {
                         ColumnLayout { spacing: 1; Layout.fillWidth: true
                             Text { text: modelData.title; font.pixelSize: Theme.callout + 1; color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true; Sensitive {} }
                             Text { text: Fmt.medium(modelData.doc_date) + " · " + AppModel.byteCount(modelData.size_bytes); font.pixelSize: Theme.caption2; color: Theme.secondary } }
-                        IconButton { symbol: "eye"; symbolSize: 14; ToolTip.text: qsTr("QuickLook (Leertaste)"); onClicked: AppModel.quickLook(modelData) }
+                        IconButton { symbol: "eye"; symbolSize: 14; ToolTip.text: qsTr("Vorschau (Leertaste)"); onClicked: AppModel.quickLook(modelData) }
                         IconButton { symbol: "ellipsis.circle"; symbolSize: 14; ToolTip.text: qsTr("Aktionen"); onClicked: docMenu.popup() }
                     }
                     TapHandler { onTapped: dc.selectedDoc = dc.selectedDoc && dc.selectedDoc.id === modelData.id ? null : modelData }
