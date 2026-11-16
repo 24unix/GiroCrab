@@ -612,6 +612,7 @@ export component MainWindow inherits Window {
     in property <[string]> category-names;
     in-out property <int> inspector-category: 0;
     in-out property <bool> inspector-checked: false;
+    in-out property <bool> cards-open: false;
     in-out property <string> note-text;
     in-out property <bool> transfer-open: false;
     in property <[string]> transfer-accounts;
@@ -866,7 +867,7 @@ export component MainWindow inherits Window {
     if unlocked: HorizontalLayout {
         // ---- sidebar
         Rectangle {
-            width: 292px;
+            width: 260px;
             background: Theme.sidebar;
             VerticalLayout {
                 padding: 10px;
@@ -952,18 +953,38 @@ export component MainWindow inherits Window {
                 spacing: 8px;
                 GhostButton { text: "Importieren …"; enabled: !root.busy; clicked => { root.import-file(); } }
                 GhostButton { text: "Überweisung …"; enabled: !root.busy && root.transfer-accounts.length > 0; clicked => { root.transfer-start(); } }
-                GhostButton { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
-                GhostButton { text: "Kategorien"; clicked => { root.categories-open(); } }
-                GhostButton { text: "Regeln …"; clicked => { root.rules-request(); } }
-                GhostButton { text: "Tags …"; clicked => { root.tags-request(); } }
-                GhostButton { text: "Gruppen …"; enabled: !root.busy; clicked => { GroupsState.request(); } }
-                GhostButton { text: "Sachwerte …"; enabled: !root.busy; clicked => { AssetsState.request(); } }
-                GhostButton { text: "Lastschriften …"; enabled: !root.busy; clicked => { MandatesState.request(); } }
-                GhostButton { text: "Budgets …"; clicked => { root.budgets-request(); } }
-                GhostButton { text: "Vorlagen …"; clicked => { root.templates-request(); } }
-                GhostButton { text: "Wiederkehrend …"; clicked => { root.rc-request(); } }
-                GhostButton { text: "Import & Export …"; enabled: !root.busy; clicked => { SettingsImportState.request(); } }
-                GhostButton { text: "Info"; clicked => { root.about-open = true; } }
+                Rectangle {
+                    width: more-btn.width;
+                    height: more-btn.height;
+                    more-btn := GhostButton { text: "Mehr ▾"; clicked => { more-menu.show(); } }
+                    more-menu := PopupWindow {
+                        x: 0px;
+                        y: more-btn.height + 4px;
+                        width: 200px;
+                        Rectangle {
+                            background: Theme.surface;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: Theme.control-border;
+                            VerticalLayout {
+                                padding: 8px;
+                                spacing: 4px;
+                                GhostButton { width: parent.width - 16px; text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
+                                GhostButton { width: parent.width - 16px; text: "Kategorien"; clicked => { root.categories-open(); } }
+                                GhostButton { width: parent.width - 16px; text: "Regeln …"; clicked => { root.rules-request(); } }
+                                GhostButton { width: parent.width - 16px; text: "Tags …"; clicked => { root.tags-request(); } }
+                                GhostButton { width: parent.width - 16px; text: "Gruppen …"; enabled: !root.busy; clicked => { GroupsState.request(); } }
+                                GhostButton { width: parent.width - 16px; text: "Sachwerte …"; enabled: !root.busy; clicked => { AssetsState.request(); } }
+                                GhostButton { width: parent.width - 16px; text: "Lastschriften …"; enabled: !root.busy; clicked => { MandatesState.request(); } }
+                                GhostButton { width: parent.width - 16px; text: "Budgets …"; clicked => { root.budgets-request(); } }
+                                GhostButton { width: parent.width - 16px; text: "Vorlagen …"; clicked => { root.templates-request(); } }
+                                GhostButton { width: parent.width - 16px; text: "Wiederkehrend …"; clicked => { root.rc-request(); } }
+                                GhostButton { width: parent.width - 16px; text: "Import & Export …"; enabled: !root.busy; clicked => { SettingsImportState.request(); } }
+                                GhostButton { width: parent.width - 16px; text: "Info"; clicked => { root.about-open = true; } }
+                            }
+                        }
+                    }
+                }
                 Rectangle { horizontal-stretch: 1; }
                 PillToggle {
                     text: "Privatmodus";
@@ -1049,14 +1070,20 @@ export component MainWindow inherits Window {
                 }
             }
             // dashboard cards above the bookings: cashflow chart and budgets
-            if root.view-mode == 0: CashflowCard {
+            if root.view-mode == 0: HorizontalLayout {
+                height: 30px;
+                spacing: 8px;
+                GhostButton { text: root.cards-open ? "Übersicht ausblenden ▴" : "Cashflow & " + root.budget-title + " ▾"; clicked => { root.cards-open = !root.cards-open; } }
+                Rectangle { horizontal-stretch: 1; }
+            }
+            if root.view-mode == 0 && root.cards-open: CashflowCard {
                 height: 190px;
                 bars: root.cashflow-bars;
                 ticks: root.cashflow-ticks;
                 period <=> root.cashflow-period;
                 changed => { root.cashflow-changed(); }
             }
-            if root.view-mode == 0: Rectangle {
+            if root.view-mode == 0 && root.cards-open: Rectangle {
                 height: root.budget-lines.length == 0 ? 56px : 46px + min(root.budget-lines.length, 4) * 32px;
                 background: Theme.surface;
                 border-radius: 12px;
@@ -1205,16 +1232,16 @@ export component MainWindow inherits Window {
                 }
             }
                 }
-                if root.view-mode == 0: Rectangle {
-                    width: 310px;
-                    if !root.has-inspector: Rectangle {
+                Rectangle {
+                    width: 320px;
+                    if !(root.view-mode == 0 && root.has-inspector): Rectangle {
                         background: Theme.surface;
                         border-radius: 12px;
                         border-width: 1px;
                         border-color: Theme.border;
-                        Text { text: "Keine Buchung ausgewählt"; color: Theme.muted; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+                        Text { text: root.view-mode == 0 ? "Keine Buchung ausgewählt" : "Details zur Buchung erscheinen in der Umsatzliste"; wrap: word-wrap; color: Theme.muted.with-alpha(0.8); font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
                     }
-                    if root.has-inspector: VerticalLayout {
+                    if root.view-mode == 0 && root.has-inspector: VerticalLayout {
                         spacing: 10px;
                         // booking header
                         Rectangle {
