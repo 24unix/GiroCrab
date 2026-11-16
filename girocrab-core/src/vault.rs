@@ -29,6 +29,7 @@ mod categories;
 mod merge;
 mod rules;
 mod settings;
+mod transfer_pairs;
 
 pub(crate) use bookings::enrich;
 pub use merge::MergeStats;

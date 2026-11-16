@@ -193,6 +193,8 @@ pub(super) struct BookingFinisher {
     salary_ibans: std::collections::HashSet<String>,
     overrides: std::collections::HashMap<String, String>,
     own_ibans: std::collections::HashSet<String>,
+    /// Both legs of detected bank ↔ payment-service transfers (#302).
+    pair_transfers: std::collections::HashSet<i64>,
     loan_links: std::collections::HashMap<i64, i64>,
     visible: Option<std::collections::HashSet<i64>>,
 }
@@ -217,11 +219,13 @@ impl BookingFinisher {
                 .collect();
             ibans
         };
+        let pair_transfers = Vault::payment_service_transfer_ids(db)?;
         Ok(Self {
             paths,
             salary_ibans,
             overrides,
             own_ibans,
+            pair_transfers,
             loan_links,
             visible: visible.map(|v| v.iter().copied().collect()),
         })
@@ -256,7 +260,11 @@ impl BookingFinisher {
                 FlowKind::Consumption
             };
         }
-        if is_own_transfer(t, &self.own_ibans) {
+        if is_own_transfer(t, &self.own_ibans)
+            || (self.pair_transfers.contains(&t.id)
+                && t.category_id.is_none()
+                && !matches!(t.flow, FlowKind::Investment | FlowKind::Perk))
+        {
             t.flow = FlowKind::Transfer;
         }
         // Localise after `enrich`: flow classification needs the stored names.
