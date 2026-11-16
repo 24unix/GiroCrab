@@ -101,7 +101,7 @@ public enum MenuBarActions {
             showMain()
         })
         menu.addItem(.separator())
-        menu.addItem(item(String(localized: "Privatmodus"), checked: privateMode) {
+        menu.addItem(item(String(localized: "Beträge in der Menüleiste verdecken"), checked: privateMode) {
             UserDefaults.standard.set(!privateMode, forKey: MenuBarSummary.privateKey)
         })
         if unlocked {
@@ -249,7 +249,7 @@ public struct MenuBarPopover: View {
                     .appFont(.callout)
                     .disabled(model.vaultState == .unlocking)
             case .covered:
-                Label("Privatmodus aktiv", systemImage: "eye.slash").appFont(.headline)
+                Label("Beträge in der Menüleiste verdeckt", systemImage: "eye.slash").appFont(.headline)
                 Text("Beträge und Kontonamen sind verdeckt.")
                     .appFont(.caption).foregroundStyle(.secondary)
             case .visible:
@@ -268,7 +268,7 @@ public struct MenuBarPopover: View {
             }
             if visibility != .locked {
                 Divider()
-                Toggle("Privatmodus", isOn: $privateMode).appFont(.callout)
+                Toggle("Beträge in der Menüleiste verdecken", isOn: $privateMode).appFont(.callout)
             }
         }
     }
@@ -405,7 +405,7 @@ struct MenuBarSettingsSection: View {
     var body: some View {
         Section {
             Toggle("Konten in der Menüleiste anzeigen", isOn: $enabled)
-            Text("Zeigt das GiroCrab-Symbol in der Menüleiste. Ein Klick öffnet ein Popover mit dem Kontostand eines gewählten Kontos oder der Gesamtsumme, ein Rechtsklick ein Menü. Bei gesperrtem Tresor oder im Privatmodus erscheinen weder Beträge noch Kontonamen.")
+            Text("Zeigt das GiroCrab-Symbol in der Menüleiste. Ein Klick öffnet ein Popover mit dem Kontostand eines gewählten Kontos oder der Gesamtsumme, ein Rechtsklick ein Menü. Bei gesperrtem Tresor oder bei aktivem „Beträge in der Menüleiste verdecken“ erscheinen weder Beträge noch Kontonamen.")
                 .appFont(.caption).foregroundStyle(.secondary)
             if enabled {
                 Picker("In der Menüleiste", selection: $display) {
@@ -414,7 +414,7 @@ struct MenuBarSettingsSection: View {
                 }
                 Text("Bei „Nur Symbol“ steht der Betrag nur im Popover.")
                     .appFont(.caption).foregroundStyle(.secondary)
-                Toggle("Privatmodus", isOn: $privateMode)
+                Toggle("Beträge in der Menüleiste verdecken", isOn: $privateMode)
                 Text("Verdeckt Beträge und Kontonamen in der Menüleiste und im Popover.")
                     .appFont(.caption).foregroundStyle(.secondary)
                 if model.isUnlocked {
