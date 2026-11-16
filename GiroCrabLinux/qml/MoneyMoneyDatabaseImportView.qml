@@ -33,6 +33,7 @@ ColumnLayout {
     property bool importCategories: true
     property bool importNotes: true
     property bool importGroups: true
+    property bool importTemplates: true
     property bool createConnections: true
     /// Enable Banking credentials entered in the assistant.
     property var ebValues: ({})
@@ -55,7 +56,7 @@ ColumnLayout {
     function reset() {
         step = "source"; filePath = ""; fileIsFolder = false; statementsPath = ""; importStatements = true
         password = ""; preview = null; choices = ({}); bankChoice = ({}); importCategories = true; importNotes = true
-        importGroups = true; createConnections = true; ebValues = ({}); loading = false
+        importGroups = true; importTemplates = true; createConnections = true; ebValues = ({}); loading = false
         progress = null; cancelling = false; error = ""; result = null; checksExpanded = false
         tableSelection = ({}); tableAnchor = -1
         if (AppModel.demoDbPreview) {
@@ -316,6 +317,7 @@ ColumnLayout {
             import_notes: importNotes,
             create_connections: createConnections,
             import_groups: importGroups,
+            import_transfer_templates: importTemplates && preview.transfer_template_count > 0,
             import_statements: importStatements && preview.statements_found > 0,
             statements_dir: statementsPath === "" ? null : statementsPath,
             bank_choices: preview.banks.map(b => ({ mm_bank_id: b.mm_id, connection: chosenOption(b) }))
@@ -559,6 +561,9 @@ ColumnLayout {
                     FormRow { visible: dataSection.groupCount > 0
                               label: qsTr("Kontogruppen (%1)").arg(dataSection.groupCount)
                               Switch { checked: v.importGroups; onToggled: v.importGroups = checked } }
+                    FormRow { visible: v.preview !== null && v.preview.transfer_template_count > 0
+                              label: qsTr("Überweisungsvorlagen (%1)").arg(v.preview ? v.preview.transfer_template_count : 0)
+                              Switch { checked: v.importTemplates; onToggled: v.importTemplates = checked } }
                     // Statement PDFs: the database only lists them, the files are in its
                     // `Statements` folder – or, for a backup, wherever the user saved them.
                     FormRow {
@@ -696,13 +701,15 @@ ColumnLayout {
                     CountRow { label: qsTr("Kontogruppen"); n: doneCol.r ? doneCol.r.groups_created : 0 }
                     CountRow { label: qsTr("Kontoauszüge und Dokumente"); n: doneCol.r ? doneCol.r.documents_imported : 0 }
                     CountRow { label: qsTr("Depotpositionen"); n: doneCol.r ? doneCol.r.holdings_imported : 0 }
+                    CountRow { label: qsTr("Überweisungsvorlagen"); n: doneCol.r ? doneCol.r.transfer_templates_created : 0
+                               detail: doneCol.r && doneCol.r.transfer_templates_existing > 0 ? qsTr("%1 bereits vorhanden").arg(doneCol.r.transfer_templates_existing) : "" }
                     CountRow { label: qsTr("Bankzugänge"); n: doneCol.r ? doneCol.r.connections_created : 0
                                detail: doneCol.r && doneCol.r.connections_existing > 0 ? qsTr("%1 bereits vorhanden").arg(doneCol.r.connections_existing) : "" }
                 }
 
                 // What the import left out, each with its reason.
                 FormSection {
-                    visible: doneCol.r !== null && (doneCol.r.banks_skipped_names.length > 0 || doneCol.documentsSkipped > 0 || doneCol.r.pending_skipped > 0)
+                    visible: doneCol.r !== null && (doneCol.r.banks_skipped_names.length > 0 || doneCol.documentsSkipped > 0 || doneCol.r.pending_skipped > 0 || doneCol.r.transfer_templates_skipped > 0)
                     title: qsTr("Nicht übernommen")
                     footers: [doneCol.r && doneCol.r.banks_skipped_names.length > 0
                               ? qsTr("Für diese Banken hat GiroCrab noch keinen Zugang. Ihre Konten und Buchungen sind übernommen, werden aber nicht automatisch aktualisiert.") : ""]
@@ -718,6 +725,7 @@ ColumnLayout {
                     }
                     CountRow { label: qsTr("Dokumente ausgelassen"); detail: qsTr("Nicht gefunden, beschädigt oder größer als 25 MB"); n: doneCol.documentsSkipped }
                     CountRow { label: qsTr("Vorgemerkte Buchungen ausgelassen"); detail: qsTr("Die Bank liefert sie gebucht erneut"); n: doneCol.r ? doneCol.r.pending_skipped : 0 }
+                    CountRow { label: qsTr("Überweisungsvorlagen ausgelassen"); detail: qsTr("Ohne Empfänger, ohne gültige IBAN oder nicht in Euro"); n: doneCol.r ? doneCol.r.transfer_templates_skipped : 0 }
                 }
                 CheckSection { view: v; visible: doneCol.problems.length === 0 && doneCol.r !== null && doneCol.r.account_checks.length > 0
                                checks: doneCol.orderedChecks; problems: 0 }

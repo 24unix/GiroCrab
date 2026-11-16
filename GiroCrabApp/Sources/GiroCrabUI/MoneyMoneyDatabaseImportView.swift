@@ -56,6 +56,7 @@ struct MoneyMoneyDatabaseImportView: View {
     @State private var importCategories = true
     @State private var importNotes = true
     @State private var importGroups = true
+    @State private var importTemplates = true
     @State private var createConnections = true
     /// Enable Banking credentials entered in the assistant.
     @State private var ebValues: [String: String] = [:]
@@ -383,6 +384,9 @@ struct MoneyMoneyDatabaseImportView: View {
             if groupCount > 0 {
                 Toggle("Kontogruppen (\(groupCount))", isOn: $importGroups)
             }
+            if p.transferTemplateCount > 0 {
+                Toggle("Überweisungsvorlagen (\(p.transferTemplateCount))", isOn: $importTemplates)
+            }
             if p.statementCount > 0 { statementOptions(p) }
         } header: {
             Text("Daten").appSectionHeader()
@@ -617,6 +621,8 @@ struct MoneyMoneyDatabaseImportView: View {
             countRow("Kontogruppen", r.groupsCreated)
             countRow("Kontoauszüge und Dokumente", r.documentsImported)
             countRow("Depotpositionen", r.holdingsImported)
+            countRow("Überweisungsvorlagen", r.transferTemplatesCreated,
+                     detail: r.transferTemplatesExisting > 0 ? String(localized: "\(r.transferTemplatesExisting) bereits vorhanden") : nil)
             countRow("Bankzugänge", r.connectionsCreated,
                      detail: r.connectionsExisting > 0 ? String(localized: "\(r.connectionsExisting) bereits vorhanden") : nil)
         } header: { Text("Übernommen").appSectionHeader() }
@@ -638,7 +644,7 @@ struct MoneyMoneyDatabaseImportView: View {
     @ViewBuilder
     private func skippedSection(_ r: MoneyMoneyDbImportResult) -> some View {
         let documents = r.documentsMissing + r.documentsMismatched + r.documentsTooLarge
-        if !r.banksSkippedNames.isEmpty || documents > 0 || r.pendingSkipped > 0 {
+        if !r.banksSkippedNames.isEmpty || documents > 0 || r.pendingSkipped > 0 || r.transferTemplatesSkipped > 0 {
             Section {
                 ForEach(Array(r.banksSkippedNames.enumerated()), id: \.offset) { _, name in
                     LabeledContent {
@@ -663,6 +669,14 @@ struct MoneyMoneyDatabaseImportView: View {
                     } label: {
                         Text("Vorgemerkte Buchungen ausgelassen")
                         Text("Die Bank liefert sie gebucht erneut")
+                    }
+                }
+                if r.transferTemplatesSkipped > 0 {
+                    LabeledContent {
+                        Text(r.transferTemplatesSkipped.formatted()).monospacedDigit()
+                    } label: {
+                        Text("Überweisungsvorlagen ausgelassen")
+                        Text("Ohne Empfänger, ohne gültige IBAN oder nicht in Euro")
                     }
                 }
             } header: {
@@ -936,7 +950,8 @@ struct MoneyMoneyDatabaseImportView: View {
             importGroups: importGroups,
             importStatements: importStatements && preview.statementsFound > 0,
             statementsDir: statementsURL?.path,
-            bankChoices: preview.banks.map { MoneyMoneyDbBankChoice(mmBankId: $0.mmId, connection: chosenOption($0)) })
+            bankChoices: preview.banks.map { MoneyMoneyDbBankChoice(mmBankId: $0.mmId, connection: chosenOption($0)) },
+            importTransferTemplates: importTemplates && preview.transferTemplateCount > 0)
         let statements = statementsURL
         let pw = password
         progress.value = MoneyMoneyDbImportProgress(fraction: 0, accountIndex: 0, accountCount: 0, accountName: "", bookingsDone: 0, bookingsTotal: 0, documentsDone: 0, documentsTotal: 0)
@@ -982,6 +997,7 @@ struct MoneyMoneyDatabaseImportView: View {
             banksSkippedUnsupported: 1, banksSkippedNames: ["Musterbank"], documentsImported: statements ? p.statementsFound : 0, documentsExisting: 0,
             documentsMissing: 0, documentsMismatched: 0, documentsTooLarge: 0, documentsUnlisted: 0, holdingsImported: 3,
             rulesCreated: 0, rulesDisabled: 0,
+            transferTemplatesCreated: p.transferTemplateCount, transferTemplatesExisting: 0, transferTemplatesSkipped: 0,
             accountChecks: p.accounts.map { a in
                 MoneyMoneyDbAccountCheck(mmId: a.mmId, accountId: 0, name: a.name, currency: a.currency, mmBookings: a.bookingCount,
                                          foundBookings: a.bookingCount, deletedBookings: 0, otherBookings: 0,
@@ -1107,7 +1123,8 @@ extension AppModel {
                                    dateRangeStart: "2009-04-01", dateRangeEnd: "2026-11-09", replacesStarterCategories: true,
                                    databasePath: "Import.sqlite",
                                    statementCount: accounts.reduce(0) { $0 + $1.statementCount }, statementsDir: "Statements",
-                                   statementsFound: accounts.reduce(0) { $0 + $1.statementCount }, statementsBytes: 38_400_000)
+                                   statementsFound: accounts.reduce(0) { $0 + $1.statementCount }, statementsBytes: 38_400_000,
+                                   transferTemplateCount: 4)
     }
 }
 

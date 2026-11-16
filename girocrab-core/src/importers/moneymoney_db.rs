@@ -34,6 +34,9 @@
 //! PDFs. A file is looked up by its original path, then by its name, then by
 //! its SHA-256 anywhere in that folder – a renamed or re-sorted manual backup
 //! still matches, and a wrong file never does. Files are read one at a time.
+//!
+//! Transfer templates: rows of type 12 in `payments`, see [`templates`]; the
+//! blobs of sent orders in that table are never read.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -53,6 +56,9 @@ use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, ConnectorKind, Holding};
 use crate::secret::SecretString;
 use crate::vault::Vault;
+
+mod templates;
+use templates::SrcTemplate;
 
 /// `accounts.external_ref` prefix of accounts created by this importer.
 const EXT_PREFIX: &str = "moneymoney-db:";
@@ -197,6 +203,9 @@ pub struct MoneyMoneyDbPreview {
     pub statements_found: u32,
     /// … and their total size in bytes.
     pub statements_bytes: u64,
+    /// Transfer templates GiroCrab can take over (recipient and valid IBAN,
+    /// euro).
+    pub transfer_template_count: u32,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -231,6 +240,9 @@ pub struct MoneyMoneyDbImportOptions {
     /// bank without an entry gets its default (FinTS / own API; never
     /// Enable Banking unasked).
     pub bank_choices: Vec<MoneyMoneyDbBankChoice>,
+    /// Take over MoneyMoney's transfer templates (recipient, IBAN, BIC,
+    /// amount, purpose). A template that already exists is left alone.
+    pub import_transfer_templates: bool,
 }
 
 /// The connection chosen for one MoneyMoney bank login.
@@ -339,6 +351,12 @@ pub struct MoneyMoneyDbImportResult {
     /// Of those, switched off: unsupported fields, account restriction or
     /// invalid syntax.
     pub rules_disabled: u32,
+    /// Transfer templates newly created.
+    pub transfer_templates_created: u32,
+    /// Already in GiroCrab (same recipient, IBAN, amount and purpose).
+    pub transfer_templates_existing: u32,
+    /// Not taken over: no recipient, invalid IBAN or not in euro.
+    pub transfer_templates_skipped: u32,
     /// One check per imported account, in import order.
     pub account_checks: Vec<MoneyMoneyDbAccountCheck>,
     /// Enable Banking connections set up for banks without own connector.
@@ -517,6 +535,8 @@ struct Source {
     balances: HashMap<(i64, String), (i64, f64)>,
     /// securities positions per MoneyMoney account id (depots)
     holdings: HashMap<i64, Vec<SrcHolding>>,
+    /// transfer templates (not deleted), in MoneyMoney order
+    templates: Vec<SrcTemplate>,
 }
 
 // ------------------------------------------------------------------ helpers
@@ -1360,6 +1380,7 @@ fn read_source(path: &str, password: &SecretString) -> CoreResult<Source> {
     }
 
     src.docs = read_documents(&conn, &have)?;
+    src.templates = templates::read_templates(&conn, &have)?;
     Ok(src)
 }
 
@@ -2232,6 +2253,7 @@ fn preview(
         date_range_start: first,
         date_range_end: last,
         replaces_starter_categories: replaces_starter_categories(conn, src)?,
+        transfer_template_count: templates::usable_count(&src.templates),
     })
 }
 
@@ -2816,6 +2838,12 @@ fn import(
             created,
             accounts,
         });
+    }
+    if options.import_transfer_templates {
+        let (created, existing, skipped) = templates::import_templates(conn, &src.templates)?;
+        res.transfer_templates_created = created;
+        res.transfer_templates_existing = existing;
+        res.transfer_templates_skipped = skipped;
     }
     Vault::apply_rules_inner(conn, true)?;
     Ok(res)

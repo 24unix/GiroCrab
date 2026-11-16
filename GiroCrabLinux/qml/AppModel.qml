@@ -2604,7 +2604,7 @@ QtObject {
             pending_bookings: 5, notes_count: 312, split_parts: 14,
             date_range_start: "2009-04-01", date_range_end: "2026-11-09", replaces_starter_categories: true,
             database_path: "MoneyMoney.sqlite", statement_count: statements, statements_dir: "Statements",
-            statements_found: statements, statements_bytes: 38400000
+            statements_found: statements, statements_bytes: 38400000, transfer_template_count: 4
         }
     }
 
@@ -2617,6 +2617,7 @@ QtObject {
             banks_skipped_unsupported: 1, banks_skipped_names: ["Musterbank"], documents_imported: statements ? p.statements_found : 0,
             documents_existing: 0, documents_missing: 0, documents_mismatched: 0, documents_too_large: 0, documents_unlisted: 0,
             holdings_imported: 3, rules_created: 0, rules_disabled: 0,
+            transfer_templates_created: p.transfer_template_count, transfer_templates_existing: 0, transfer_templates_skipped: 0,
             account_checks: p.accounts.map(a => ({
                 mm_id: a.mm_id, account_id: 0, name: a.name, currency: a.currency, mm_bookings: a.booking_count,
                 found_bookings: a.booking_count, deleted_bookings: 0, other_bookings: 0,

@@ -16,9 +16,11 @@ CREATE TABLE balances (account_key INTEGER, currency TEXT, timestamp INTEGER, in
 CREATE TABLE banks (rowid INTEGER PRIMARY KEY, country TEXT, bankcode TEXT, username TEXT, customer TEXT, credential TEXT, name TEXT, server TEXT, protocol REAL, tanmethod TEXT, tanmedium TEXT, systemid TEXT, tanmethods TEXT, bpd BLOB, upd BLOB, spa INTEGER, spa_tsp INTEGER, local_storage TEXT, pubkey BLOB, privkey BLOB, userdata BLOB);
 CREATE TABLE categories (rowid INTEGER PRIMARY KEY, name TEXT, type INTEGER, perspective TEXT, group_key INTEGER, sort INTEGER, color TEXT, rules TEXT, apply_to_account TEXT, currency TEXT, is_valid_sum INTEGER, userdata BLOB);
 CREATE TABLE category_groups (rowid INTEGER PRIMARY KEY, name TEXT, perspective TEXT, group_key INTEGER, sort INTEGER, color TEXT, expanded INTEGER, currency TEXT, userdata BLOB);
+CREATE TABLE payments (rowid INTEGER PRIMARY KEY, version REAL, uuid BLOB, tombstone INTEGER, type INTEGER, sender INTEGER, recipient INTEGER, name TEXT, purpose TEXT, amount REAL, currency TEXT, category INTEGER, scheduled_or_transmitted INTEGER, standing_order_end INTEGER, "transaction" INTEGER, template_group INTEGER, data BLOB);
 CREATE TABLE pins (bank_key INTEGER PRIMARY KEY, pin TEXT);
 CREATE TABLE recipients (local_account_key INTEGER, name TEXT, owner TEXT, account TEXT, subaccount TEXT, bankcode TEXT, iban TEXT, bic TEXT, type INTEGER);
 CREATE TABLE securities (rowid INTEGER PRIMARY KEY, account_key INTEGER, ident TEXT, isin TEXT, wpn TEXT, symbol TEXT, quantity REAL, quantity_cur TEXT, amount REAL, amount_cur TEXT, ocmt REAL, ocmt_cur TEXT, purchase REAL, purchase_cur TEXT, price REAL, price_cur TEXT, exch REAL, trade_date INTEGER, trade_tsp INTEGER, purchase_tsp INTEGER, market TEXT, comment TEXT, userdata BLOB, visited INTEGER, deleted INTEGER, asset_class INTEGER);
+CREATE TABLE template_groups (rowid INTEGER PRIMARY KEY, version REAL, uuid BLOB, tombstone INTEGER, data BLOB);
 CREATE TABLE statements (rowid INTEGER PRIMARY KEY, account_key INTEGER, name TEXT, directory TEXT, filename TEXT, created_tsp INTEGER, fetched_tsp INTEGER, orderid INTEGER, userorder INTEGER, imported INTEGER, visited INTEGER, deleted INTEGER, number TEXT, year TEXT, identifier BLOB, digest TEXT);
 CREATE TABLE transactions (rowid INTEGER PRIMARY KEY, local_account_key INTEGER, account TEXT, bankcode TEXT, amount REAL, currency TEXT, timestamp INTEGER, value_timestamp INTEGER, pn TEXT, eref TEXT, mref TEXT, kref TEXT, cred TEXT, dept TEXT, rtcd TEXT, rtrn TEXT, ocmt REAL, ocmt_cur TEXT, chgs REAL, chgs_cur TEXT, coam REAL, coam_cur TEXT, oamt REAL, oamt_cur TEXT, exch REAL, abwe TEXT, abwa TEXT, seq TEXT, comment TEXT, attachment TEXT, booked INTEGER, nopretty INTEGER, unformatted_type TEXT, unformatted_name TEXT, unformatted_purpose TEXT, identifier TEXT, name TEXT, a1490107618 TEXT, visited INTEGER, checkmark INTEGER, splitted INTEGER, split_key INTEGER, reverse_key INTEGER, category_key INTEGER);
 "#;
@@ -127,6 +129,7 @@ pub(crate) fn options_from(
         import_statements: true,
         statements_dir: None,
         bank_choices: vec![],
+        import_transfer_templates: true,
     }
 }
 
@@ -2730,4 +2733,301 @@ fn import_goes_to_the_bank_account_a_twin_was_folded_into() {
         .preview_moneymoney_database(path, String::new(), None)
         .unwrap();
     assert_eq!(p.accounts[0].existing_account_id, Some(ids[0]));
+}
+
+// ------------------------------------------------------- transfer templates (#579)
+
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// One `payments` row; `data` is a MoneyMoney-style template blob.
+#[allow(clippy::too_many_arguments)]
+fn payment_row(
+    rowid: i64,
+    typ: i64,
+    tombstone: i64,
+    name: &str,
+    iban: &str,
+    bic: &str,
+    amount: f64,
+    currency: &str,
+    purpose: &str,
+) -> String {
+    let cents = (amount.abs() * 100.0).round() as i64;
+    let blob = templates::encode_template_blob(name, iban, bic, cents, purpose);
+    let (sched, group) = if typ == 12 {
+        ("NULL", 1)
+    } else {
+        ("1772712000", 0)
+    };
+    format!(
+        "INSERT INTO payments (rowid, version, tombstone, type, sender, recipient, name, purpose, amount, currency, \
+         category, scheduled_or_transmitted, \"transaction\", template_group, data) VALUES \
+         ({rowid}, 1.0, {tombstone}, {typ}, 1, 0, '{name}', '{purpose}', {amount}, '{currency}', 0, {sched}, 0, {group}, X'{}');\n",
+        hex(&blob)
+    )
+}
+
+fn templates_db() -> String {
+    let mut extra = String::from(
+        "INSERT INTO template_groups (rowid, version, tombstone) VALUES (1, 1.0, 0);\n",
+    );
+    // usable: with BIC and amount / without amount and BIC
+    extra += &payment_row(
+        1,
+        12,
+        0,
+        "Erika Mustermann",
+        "DE89 3704 0044 0532 0130 00",
+        "COBADEFFXXX",
+        -720.0,
+        "EUR",
+        "Miete Mai",
+    );
+    extra += &payment_row(
+        2,
+        12,
+        0,
+        "Muster Verein e.V.",
+        "DE02120300000000202051",
+        "",
+        0.0,
+        "EUR",
+        "Mitgliedsbeitrag",
+    );
+    // not usable: wrong checksum, foreign currency
+    extra += &payment_row(
+        3,
+        12,
+        0,
+        "Tippfehler GmbH",
+        "DE89370400440532013001",
+        "",
+        -1.0,
+        "EUR",
+        "x",
+    );
+    extra += &payment_row(
+        4,
+        12,
+        0,
+        "Muster Inc",
+        "DE02120300000000202051",
+        "",
+        -10.0,
+        "USD",
+        "y",
+    );
+    // deleted template, sent order (type 7)
+    extra += &payment_row(
+        5,
+        12,
+        1,
+        "Gelöscht AG",
+        "DE02120300000000202051",
+        "",
+        -5.0,
+        "EUR",
+        "z",
+    );
+    extra += &payment_row(
+        6,
+        7,
+        0,
+        "Gesendet GmbH",
+        "DE02120300000000202051",
+        "",
+        -9.0,
+        "EUR",
+        "Rechnung 1",
+    );
+    fake_db_with(false, &extra)
+}
+
+fn templates_of(v: &Vault) -> Vec<(String, String, String, String, Option<i64>, String)> {
+    v.list_transfer_templates()
+        .unwrap()
+        .into_iter()
+        .map(|t| {
+            (
+                t.name,
+                t.recipient_name,
+                t.recipient_iban,
+                t.recipient_bic,
+                t.default_amount_cents,
+                t.default_purpose,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn transfer_templates_are_taken_over_once() {
+    let path = templates_db();
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    assert_eq!(p.transfer_template_count, 2);
+
+    let r = v
+        .import_moneymoney_database(path.clone(), PW.into(), options_from(&p, false))
+        .unwrap();
+    assert_eq!(
+        (
+            r.transfer_templates_created,
+            r.transfer_templates_existing,
+            r.transfer_templates_skipped
+        ),
+        (2, 0, 2)
+    );
+    let expected = vec![
+        (
+            "Erika Mustermann".to_string(),
+            "Erika Mustermann".to_string(),
+            "DE89370400440532013000".to_string(),
+            "COBADEFFXXX".to_string(),
+            Some(72_000),
+            "Miete Mai".to_string(),
+        ),
+        (
+            "Muster Verein e.V.".to_string(),
+            "Muster Verein e.V.".to_string(),
+            "DE02120300000000202051".to_string(),
+            String::new(),
+            None,
+            "Mitgliedsbeitrag".to_string(),
+        ),
+    ];
+    assert_eq!(templates_of(&v), expected);
+
+    // second run: nothing new
+    let r = v
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false))
+        .unwrap();
+    assert_eq!(
+        (r.transfer_templates_created, r.transfer_templates_existing),
+        (0, 2)
+    );
+    assert_eq!(templates_of(&v), expected);
+}
+
+#[test]
+fn transfer_templates_only_when_chosen() {
+    let path = templates_db();
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    let options = MoneyMoneyDbImportOptions {
+        import_transfer_templates: false,
+        ..options_from(&p, false)
+    };
+    let r = v
+        .import_moneymoney_database(path, PW.into(), options)
+        .unwrap();
+    assert_eq!(
+        r.transfer_templates_created + r.transfer_templates_skipped,
+        0
+    );
+    assert!(v.list_transfer_templates().unwrap().is_empty());
+}
+
+#[test]
+fn databases_without_payments_have_no_templates() {
+    let path = fake_db_with(false, "DROP TABLE payments;");
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    assert_eq!(p.transfer_template_count, 0);
+    let r = v
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false))
+        .unwrap();
+    assert_eq!(r.transfer_templates_created, 0);
+}
+
+#[test]
+fn template_name_and_purpose_fall_back_to_the_blob() {
+    let mut extra = payment_row(
+        1,
+        12,
+        0,
+        "Erika Mustermann",
+        "DE89370400440532013000",
+        "",
+        -1.5,
+        "EUR",
+        "Miete",
+    );
+    extra += "UPDATE payments SET name = NULL, purpose = NULL;";
+    let path = fake_db_with(false, &extra);
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    v.import_moneymoney_database(path, PW.into(), options_from(&p, false))
+        .unwrap();
+    let t = &v.list_transfer_templates().unwrap()[0];
+    assert_eq!(
+        (
+            t.recipient_name.as_str(),
+            t.default_purpose.as_str(),
+            t.default_amount_cents
+        ),
+        ("Erika Mustermann", "Miete", Some(150))
+    );
+}
+
+/// Sent orders carry complete SEPA messages in `data`: their blobs must
+/// never be evaluated, only those of templates.
+#[test]
+fn blobs_of_sent_orders_are_never_read() {
+    let mut extra = String::new();
+    extra += &payment_row(
+        1,
+        12,
+        0,
+        "Erika Mustermann",
+        "DE89370400440532013000",
+        "",
+        -1.0,
+        "EUR",
+        "Miete",
+    );
+    extra += &payment_row(
+        2,
+        7,
+        0,
+        "Gesendet GmbH",
+        "DE02120300000000202051",
+        "",
+        -9.0,
+        "EUR",
+        "Rechnung",
+    );
+    extra += r#"
+ALTER TABLE payments RENAME TO payments_data;
+CREATE VIEW payments AS SELECT rowid, version, uuid, tombstone, type, sender, recipient, name, purpose, amount,
+  currency, category, scheduled_or_transmitted, standing_order_end, "transaction", template_group,
+  CASE WHEN type = 12 THEN data ELSE json('x') END AS data FROM payments_data;
+"#;
+    let path = fake_db_with(false, &extra);
+    // positive control: evaluating the blob of the sent order fails
+    let c = open_source(&path, &SecretString::new(PW.into())).unwrap();
+    assert!(c
+        .query_row("SELECT data FROM payments WHERE type = 7", [], |r| r
+            .get::<_, Vec<u8>>(0))
+        .is_err());
+    drop(c);
+    let v = vault();
+    let p = v
+        .preview_moneymoney_database(path.clone(), PW.into(), None)
+        .unwrap();
+    assert_eq!(p.transfer_template_count, 1);
+    let r = v
+        .import_moneymoney_database(path, PW.into(), options_from(&p, false))
+        .unwrap();
+    assert_eq!(r.transfer_templates_created, 1);
 }

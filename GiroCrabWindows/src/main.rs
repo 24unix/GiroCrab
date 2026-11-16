@@ -1038,6 +1038,7 @@ fn import_file(
                 import_statements: false,
                 statements_dir: None,
                 bank_choices: vec![],
+                import_transfer_templates: true,
             };
             let r = vault
                 .import_moneymoney_database(location, pw.to_string(), options)

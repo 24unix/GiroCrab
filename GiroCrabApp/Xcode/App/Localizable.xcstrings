@@ -20973,6 +20973,17 @@
         }
       }
     },
+    "Ohne Empfänger, ohne gültige IBAN oder nicht in Euro" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No recipient, no valid IBAN or not in euros"
+          }
+        }
+      }
+    },
     "Ohne Entsperren: Demo-Daten ansehen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29957,6 +29968,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Send Transfer"
+          }
+        }
+      }
+    },
+    "Überweisungsvorlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transfer templates"
+          }
+        }
+      }
+    },
+    "Überweisungsvorlagen (%u)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transfer templates (%u)"
+          }
+        }
+      }
+    },
+    "Überweisungsvorlagen ausgelassen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transfer Templates Skipped"
           }
         }
       }
