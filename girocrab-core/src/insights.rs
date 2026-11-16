@@ -1,13 +1,13 @@
 //! Händler-Historie, Sparplan-/Perks-Dashboard und der optionale
 //! Logo-Cache (Tier 2 des Merchant-Resolvers).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use chrono::{Datelike, Local, NaiveDate};
 use rusqlite::{params, OptionalExtension};
 
 use crate::error::CoreError;
-use crate::merchants::FlowKind;
+use crate::merchants::{FlowKind, MerchantResolver};
 use crate::models::*;
 use crate::vault::Vault;
 
@@ -48,16 +48,21 @@ fn lower_contains(b: &Booking, needles: &[&str]) -> bool {
 impl Vault {
     /// "Händler-Historie": how often and how much at this merchant.
     pub fn merchant_stats(&self, merchant_key: String) -> Result<MerchantStats, CoreError> {
-        self.merchant_stats_for(merchant_key, Vec::new())
+        Ok(self.merchant_history_for(&merchant_key, None)?.0)
     }
 
-    /// The same history restricted to one account (#299), next to the total.
-    pub fn merchant_stats_in_account(
+    /// Total and own-account (#299) history of a merchant in one pass (#591):
+    /// what the booking detail shows, at the cost of a single `merchant_stats`.
+    pub fn merchant_history(
         &self,
         merchant_key: String,
         account_id: i64,
-    ) -> Result<MerchantStats, CoreError> {
-        self.merchant_stats_for(merchant_key, vec![account_id])
+    ) -> Result<MerchantHistory, CoreError> {
+        let (all, account) = self.merchant_history_for(&merchant_key, Some(account_id))?;
+        Ok(MerchantHistory {
+            all,
+            account: account.unwrap_or_else(|| MerchantTally::default().stats(&merchant_key)),
+        })
     }
 
     /// KPI tiles for the selected accounts (empty = all) and period. Sums in the
@@ -267,39 +272,121 @@ impl Vault {
     }
 }
 
-impl Vault {
-    /// `account_ids` empty = all accounts.
-    fn merchant_stats_for(
-        &self,
-        merchant_key: String,
-        account_ids: Vec<i64>,
-    ) -> Result<MerchantStats, CoreError> {
-        let page = self.list_transactions(BookingFilter {
-            merchant_key: Some(merchant_key.clone()),
-            account_ids,
-            ..Default::default()
-        })?;
-        let txs = page.transactions;
-        let count = txs.len() as u32;
-        let total: i64 = txs.iter().map(|t| t.amount_cents).sum();
-        Ok(MerchantStats {
-            name: txs
-                .first()
-                .map(|t| t.merchant.name.clone())
-                .unwrap_or_default(),
-            key: merchant_key,
+/// Running totals of one side of `merchant_history_for`.
+#[derive(Default)]
+struct MerchantTally {
+    count: u32,
+    total: i64,
+    /// (date, id, merchant name) of the newest booking
+    newest: Option<(String, i64, String)>,
+    /// (date, id) of the oldest booking
+    oldest: Option<(String, i64)>,
+}
+
+impl MerchantTally {
+    fn add(&mut self, id: i64, date: &str, amount: i64, name: &str) {
+        self.count += 1;
+        self.total += amount;
+        // newest first by (booking_date, id), the order of `list_transactions`
+        if self
+            .newest
+            .as_ref()
+            .is_none_or(|(d, i, _)| (date, id) > (d.as_str(), *i))
+        {
+            self.newest = Some((date.to_string(), id, name.to_string()));
+        }
+        if self
+            .oldest
+            .as_ref()
+            .is_none_or(|(d, i)| (date, id) < (d.as_str(), *i))
+        {
+            self.oldest = Some((date.to_string(), id));
+        }
+    }
+
+    fn stats(self, key: &str) -> MerchantStats {
+        let count = self.count;
+        let (last_date, name) = self.newest.map(|(d, _, n)| (d, n)).unwrap_or_default();
+        MerchantStats {
+            key: key.to_string(),
+            name,
             count,
-            total_cents: total,
-            average_cents: if count > 0 { total / count as i64 } else { 0 },
-            first_date: txs
-                .last()
-                .map(|t| t.booking_date.clone())
-                .unwrap_or_default(),
-            last_date: txs
-                .first()
-                .map(|t| t.booking_date.clone())
-                .unwrap_or_default(),
-        })
+            total_cents: self.total,
+            average_cents: if count > 0 {
+                self.total / count as i64
+            } else {
+                0
+            },
+            first_date: self.oldest.map(|(d, _)| d).unwrap_or_default(),
+            last_date,
+        }
+    }
+}
+
+impl Vault {
+    /// Merchant history over all accounts and, with `account_id`, over the
+    /// bookings `list_transactions` shows for that account (a loan's linked
+    /// bookings included). The merchant is no SQL column, so this reads every
+    /// booking once, but only the columns `MerchantResolver` needs: no full
+    /// enrichment, no `BookingFinisher`, no tags (#591).
+    fn merchant_history_for(
+        &self,
+        merchant_key: &str,
+        account_id: Option<i64>,
+    ) -> Result<(MerchantStats, Option<MerchantStats>), CoreError> {
+        let db = self.db()?;
+        // (id, booking_date, amount_cents, merchant name) of the merchant's bookings
+        let mut matches: Vec<(i64, String, i64, String)> = Vec::new();
+        {
+            let mut stmt = db.prepare(
+                "SELECT t.id, t.booking_date, t.amount_cents, t.counterparty, t.purpose \
+                 FROM transactions t JOIN accounts a ON a.id = t.account_id \
+                 WHERE t.deleted_ms IS NULL AND a.deleted_ms IS NULL",
+            )?;
+            let mut rows = stmt.query([])?;
+            while let Some(r) = rows.next()? {
+                let (counterparty, purpose): (String, String) = (r.get(3)?, r.get(4)?);
+                let m = MerchantResolver::resolve(&counterparty, &purpose);
+                if m.key == merchant_key {
+                    matches.push((r.get(0)?, r.get(1)?, r.get(2)?, m.name));
+                }
+            }
+        }
+        let tally = |rows: &mut dyn Iterator<Item = &(i64, String, i64, String)>| {
+            let mut t = MerchantTally::default();
+            for (id, date, amount, name) in rows {
+                t.add(*id, date, *amount, name);
+            }
+            t.stats(merchant_key)
+        };
+        let all = tally(&mut matches.iter());
+        let Some(account_id) = account_id else {
+            return Ok((all, None));
+        };
+        // Own account = the booking list's account filter as its own query (with
+        // its CTE and joins); only the merchant's bookings are looked up in it.
+        let own_ids: HashSet<i64> = if matches.is_empty() {
+            HashSet::new()
+        } else {
+            let filter = BookingFilter {
+                account_ids: vec![account_id],
+                ..Default::default()
+            };
+            let (cte, where_sql, args, _) = Vault::filter_clauses(&db, &filter)?;
+            let sql = format!(
+                "{cte}SELECT t.id FROM transactions t JOIN accounts a ON a.id = t.account_id \
+                 LEFT JOIN categories cat ON cat.id = t.category_id AND cat.deleted_ms IS NULL \
+                 WHERE {where_sql}"
+            );
+            let mut stmt = db.prepare(&sql)?;
+            let rows = stmt.query_map(
+                rusqlite::params_from_iter(args.iter().map(|b| b.as_ref())),
+                |r| r.get::<_, i64>(0),
+            )?;
+            rows.collect::<Result<_, _>>()?
+        };
+        let own = tally(&mut matches.iter().filter(|m| own_ids.contains(&m.0)));
+        Ok((all, Some(own)))
     }
 }
 
@@ -522,15 +609,92 @@ mod logo_tests {
         accounts.dedup();
         let (mut count, mut sum) = (0, 0);
         for id in &accounts {
-            let s = v.merchant_stats_in_account(key.clone(), *id).unwrap();
+            let s = v.merchant_history(key.clone(), *id).unwrap().account;
             assert!(s.count >= 1 && s.count <= total.count);
             count += s.count;
             sum += s.total_cents;
         }
         assert_eq!((count, sum), (total.count, total.total_cents));
         // an account without bookings of the merchant: empty history
-        let none = v.merchant_stats_in_account(key, -1).unwrap();
+        let none = v.merchant_history(key, -1).unwrap().account;
         assert_eq!((none.count, none.total_cents), (0, 0));
+    }
+
+    #[test]
+    fn merchant_history_matches_the_booking_list() {
+        let p_dir = crate::test_support::TempDir::new("girocrab-mhist");
+        let p = p_dir.join("v.db");
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        type Expected = (String, u32, i64, String, String);
+        // what `merchant_stats` computed before #591 from the enriched list
+        // (newest first), per merchant key
+        let expected = |account_ids: Vec<i64>| {
+            let txs = v
+                .list_transactions(BookingFilter {
+                    account_ids,
+                    ..Default::default()
+                })
+                .unwrap()
+                .transactions;
+            let mut by_key: HashMap<String, Expected> = HashMap::new();
+            for t in &txs {
+                let e = by_key.entry(t.merchant.key.clone()).or_insert_with(|| {
+                    let newest = t.booking_date.clone();
+                    (t.merchant.name.clone(), 0, 0, String::new(), newest)
+                });
+                e.1 += 1;
+                e.2 += t.amount_cents;
+                e.3 = t.booking_date.clone();
+            }
+            by_key
+        };
+        let got = |s: &MerchantStats| -> Expected {
+            assert_eq!(
+                s.average_cents,
+                if s.count > 0 {
+                    s.total_cents / s.count as i64
+                } else {
+                    0
+                }
+            );
+            (
+                s.name.clone(),
+                s.count,
+                s.total_cents,
+                s.first_date.clone(),
+                s.last_date.clone(),
+            )
+        };
+        let empty = |key: &str| -> Expected {
+            let none = v.merchant_history(key.to_string(), -1).unwrap().account;
+            got(&none)
+        };
+        let total = expected(Vec::new());
+        // every account, loans included (their history pulls in linked bookings)
+        let accounts: Vec<i64> = v.list_accounts().unwrap().iter().map(|a| a.id).collect();
+        assert!(total.len() > 5 && accounts.len() > 1);
+        // the demo loan's view holds bookings of other accounts
+        assert!(accounts.iter().any(|id| {
+            let filter = BookingFilter {
+                account_ids: vec![*id],
+                ..Default::default()
+            };
+            let txs = v.list_transactions(filter).unwrap().transactions;
+            txs.iter().any(|t| t.account_id != *id)
+        }));
+        for (key, want) in &total {
+            assert_eq!(&got(&v.merchant_stats(key.clone()).unwrap()), want, "{key}");
+        }
+        for id in &accounts {
+            let own = expected(vec![*id]);
+            for (key, want) in &total {
+                let h = v.merchant_history(key.clone(), *id).unwrap();
+                assert_eq!(&got(&h.all), want, "{key}");
+                let want_own = own.get(key).cloned().unwrap_or_else(|| empty(key));
+                assert_eq!(got(&h.account), want_own, "{key} in {id}");
+            }
+        }
     }
 
     #[test]

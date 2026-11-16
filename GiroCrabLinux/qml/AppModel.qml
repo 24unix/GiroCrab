@@ -1893,7 +1893,7 @@ QtObject {
             case_sensitive: false,
             min_amount_cents: null,
             max_amount_cents: b && b.amount_cents < 0 ? 0 : null,
-            account_id: null,
+            account_ids: [],
             priority: rules.reduce((m, r) => Math.max(m, r.priority), 0) + 10,
             enabled: true,
             match_count: 0

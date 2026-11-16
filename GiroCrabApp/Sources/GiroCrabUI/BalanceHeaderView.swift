@@ -66,10 +66,12 @@ struct StreamHeaderCard: View {
 
     var body: some View {
         @Bindable var model = model
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: ViewLayout.cardSpacing) {
+            HStack(alignment: compactHeader ? .center : .top) {
+                // Minimise the header: more room for the booking list (GitHub #358).
+                CardChevron(collapsed: $compactHeader, customTitle: compactHeaderTitle)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(headerTitle).sensitive(account == nil ? .labels : .personal).appFont(compactHeader ? .headline : .title2, weight: .semibold).foregroundStyle(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
+                    Text(headerTitle).sensitive(account == nil ? .labels : .personal).appFont(compactHeader ? .subheadline : .title2, weight: .semibold).foregroundStyle(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
                     if !compactHeader {
                     Group {
                         if let a = account {
@@ -95,19 +97,10 @@ struct StreamHeaderCard: View {
                 .contextMenu {
                     if let a = account { AccountCopyMenu(account: a) }
                 }
-                // Minimise the header: more room for the booking list (GitHub #358).
-                Button {
-                    withAnimation(Motion.animation(.easeInOut(duration: 0.25))) { compactHeader.toggle() }
-                } label: {
-                    Image(systemName: compactHeader ? "chevron.down" : "chevron.up")
-                        .appFont(.caption, weight: .semibold)
-                        .foregroundStyle(Theme.secondary)
-                        .padding(4)
-                        .contentShape(Rectangle())
+                // Folded: period and status filters share the title row (GitHub #603).
+                if compactHeader && !isDepot {
+                    filterRow
                 }
-                .buttonStyle(.plain)
-                .help(compactHeaderTitle)
-                .accessibilityLabel(compactHeaderTitle)
                 #if os(iOS)
                 // long-press is invisible on iPhone/iPad: show an explicit entry too
                 if let a = account {
@@ -122,7 +115,7 @@ struct StreamHeaderCard: View {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(Money.format(hb.cents))
                             .sensitive()
-                            .appFont(compactHeader ? .title3 : .largeTitle, weight: .semibold, monospacedDigit: true)
+                            .appFont(compactHeader ? .subheadline : .largeTitle, weight: .semibold, monospacedDigit: true)
                             .foregroundStyle(account?.kind == .loan ? Theme.loan : Theme.text)
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
@@ -209,10 +202,10 @@ struct StreamHeaderCard: View {
                 #endif
                 }
 
-                filterRow
+                if !compactHeader { filterRow }
             }
         }
-        .card()
+        .card(padding: ViewLayout.cardPadding, vertical: ViewLayout.cardVerticalPadding(collapsed: compactHeader))
     }
 
     /// Depot: no cash-flow KPIs or booking filters – the period, documents and a hint.

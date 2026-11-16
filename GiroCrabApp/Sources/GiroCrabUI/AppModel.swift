@@ -155,6 +155,7 @@ public final class AppModel {
             guard statusFilter != oldValue else { return }
             listLimit = Self.defaultListLimit
             reloadBookings()
+            reloadCategories() // the sidebar sums follow the status (#621)
         }
     }
 
@@ -176,6 +177,7 @@ public final class AppModel {
             guard directionFilter != oldValue else { return }
             listLimit = Self.defaultListLimit
             reloadBookings()
+            reloadCategories() // the sidebar sums follow the direction (#621)
         }
     }
     /// Accounts whose bookings the category views show („Ohne Kategorie“ and
@@ -184,7 +186,7 @@ public final class AppModel {
         didSet {
             guard categoryAccountFilter != oldValue, showsCategoryAccountFilter else { return }
             listLimit = Self.defaultListLimit
-            reloadSelection(periodChanged: false)
+            reloadSelection(periodChanged: true) // also the sidebar sums (#621)
         }
     }
     var searchText: String = "" { didSet { scheduleSearch() } }

@@ -878,7 +878,8 @@ vault_methods! {
     ignore_recurring(series_key) reset_recurring(series_key)
     booking_date(booking_id)
     // insights / planning / recurring
-    merchant_stats(merchant_key) selection_flow(account_ids, date_from, date_to)
+    merchant_stats(merchant_key) merchant_history(merchant_key, account_id)
+    selection_flow(account_ids, date_from, date_to)
     cashflow_by_period(granularity, count)
     list_category_budget_progress(year, month)
     list_recurring(account_ids) recurring_month(account_ids, year, month)
@@ -1006,7 +1007,7 @@ mod tests {
             .clone();
         let rule = json!({ "id": 0, "name": "Test", "category_id": cat["id"], "field": "Any",
             "match_kind": "Keyword", "pattern": "REWE", "case_sensitive": false, "min_amount_cents": null,
-            "max_amount_cents": 0, "account_id": null, "priority": 999, "enabled": true, "match_count": 0 });
+            "max_amount_cents": 0, "account_ids": [], "priority": 999, "enabled": true, "match_count": 0 });
         let b = call("preview_rule", json!({ "rule": rule, "limit": 200 }))[0].clone();
         let id = call("save_rule", json!({ "rule": rule }));
         call("apply_rules", json!({ "only_uncategorized": false }));
