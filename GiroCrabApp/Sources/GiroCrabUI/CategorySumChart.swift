@@ -112,7 +112,7 @@ struct CategorySumChart: View {
                                 Text(h.start, format: Self.tooltipFormat(unit))
                                     .appFont(.caption2).foregroundStyle(Theme.secondary)
                                 Text(verbatim: Money.format(h.cents))
-                                    .sensitive()
+                                    .sensitive(.amounts)
                                     .appFont(.caption, weight: .semibold, monospacedDigit: true)
                                     .foregroundStyle(h.cents < 0 ? Theme.outflow : Theme.text)
                             }
@@ -130,7 +130,7 @@ struct CategorySumChart: View {
                     AxisValueLabel {
                         if let d = v.as(Double.self) {
                             Text(d, format: .currency(code: "EUR").precision(.fractionLength(0)))
-                                .sensitive()
+                                .sensitive(.amounts)
                                 .appFont(.caption2, monospacedDigit: true)
                                 .foregroundStyle(Theme.tertiary)
                                 .fixedSize()

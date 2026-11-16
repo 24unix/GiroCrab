@@ -387,7 +387,7 @@ struct LoanEditorSheet: View {
                     FormFooter("Gleiche Schreibweise wie bei Regeln: Wörter, „Phrasen“, name:, purpose:, AND, OR, NOT. Einzelne Buchungen ordnen Sie im Kontextmenü zu oder heben die Zuordnung dort auf.")
                 }
             }
-            Section { previewRows } header: { Text("Vorschau").appSectionHeader() }
+            Section { previewRows.sensitive(.amounts) } header: { Text("Vorschau").appSectionHeader() }
         }
         .formStyle(.grouped)
     }
@@ -616,10 +616,10 @@ struct ManualLoanDetails: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Stand \(DateText.medium(loan.setup.anchorDate)): \(Money.format(loan.setup.anchorBalanceCents))")
                 .appFont(.caption)
-                .sensitive()
+                .sensitive(.amounts)
             Text(paymentsLine(s))
                 .appFont(.caption)
-                .sensitive()
+                .sensitive(.amounts)
                 .foregroundStyle(Theme.secondary)
             if let rate = loan.setup.interestRatePpm {
                 Text("Sollzins \(PercentText.format(rate)) % · Zinsen seit Stichtag \(Money.format(s.interestCents))")
@@ -629,6 +629,7 @@ struct ManualLoanDetails: View {
             }
             if let m = s.monthsLeft, m > 0 {
                 Text("Voraussichtlich noch \(Int(m)) Monatsraten")
+                    .sensitive(.amounts)
                     .appFont(.caption)
                     .foregroundStyle(Theme.secondary)
             }

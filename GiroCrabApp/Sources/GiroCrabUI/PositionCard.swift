@@ -80,12 +80,12 @@ struct PositionRow: View {
             if !(dimmed && valueCents == 0) {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(Money.format(valueCents))
-                        .sensitive()
+                        .sensitive(.amounts)
                         .appFont(.body, weight: .medium, monospacedDigit: true)
                         .foregroundStyle(Theme.text)
                     if let gain {
                         Text("GuV (berechnet): \(Money.format(gain.cents)) (\(gain.percent.formatted(.number.precision(.fractionLength(2)))) %)")
-                            .sensitive()
+                            .sensitive(.amounts)
                             .appFont(.caption, monospacedDigit: true)
                             .foregroundStyle(gain.cents < 0 ? Color.red : Color.green)
                     }

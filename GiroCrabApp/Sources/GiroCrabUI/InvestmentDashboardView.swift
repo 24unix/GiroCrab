@@ -28,6 +28,7 @@ struct InvestmentDashboardView: View {
 
 struct PlanGrid: View {
     let dashboard: InvestmentDashboard
+    @Environment(\.reportRedaction) private var redaction
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var compact: Bool { sizeClass == .compact }
@@ -75,10 +76,10 @@ struct PlanGrid: View {
                                 }
                             }
                             .frame(width: cell)
-                            .help(e.amountCents > 0 ? "\(DateText.monthLabel(e.month)): \(Money.format(e.amountCents))" : String(localized: "nicht ausgeführt"))
+                            .help(e.amountCents > 0 ? "\(DateText.monthLabel(e.month)): \(redaction.masking(Money.format(e.amountCents), .amounts))" : String(localized: "nicht ausgeführt"))
                         }
                         Text(Money.format(plan.monthlyCents))
-                            .sensitive()
+                            .sensitive(.amounts)
                             .appFont(.callout, monospacedDigit: true)
                             .lineLimit(1).fixedSize(horizontal: true, vertical: false)
                             .frame(minWidth: compact ? 64 : nil, alignment: .trailing)
@@ -90,7 +91,7 @@ struct PlanGrid: View {
                 GridRow {
                     Text("Summe aktive Pläne").appFont(.callout, weight: .semibold).lineLimit(compact ? 2 : 1)
                     ForEach(shownMonths, id: \.self) { _ in Color.clear.frame(width: cell, height: 1) }
-                    Text(Money.format(dashboard.totalMonthlyCents)).sensitive().appFont(.callout, weight: .semibold, monospacedDigit: true).lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(minWidth: compact ? 64 : nil, alignment: .trailing)
+                    Text(Money.format(dashboard.totalMonthlyCents)).sensitive(.amounts).appFont(.callout, weight: .semibold, monospacedDigit: true).lineLimit(1).fixedSize(horizontal: true, vertical: false).frame(minWidth: compact ? 64 : nil, alignment: .trailing)
                 }
                 .padding(.top, 8)
             }
@@ -116,7 +117,7 @@ struct PerksCard: View {
             HStack {
                 Label("Trade Republic Perks", systemImage: "gift").appFont(.subheadline, weight: .semibold)
                 Spacer()
-                Text("diesen Monat \(Money.format(dashboard.perksThisMonthCents))").sensitive().appFont(.caption).foregroundStyle(Theme.secondary)
+                Text("diesen Monat \(Money.format(dashboard.perksThisMonthCents))").sensitive(.amounts).appFont(.caption).foregroundStyle(Theme.secondary)
             }
             HStack(alignment: .top, spacing: 12) {
                 perk(title: "1 % Saveback", value: dashboard.savebackEarnedCents, count: dashboard.savebackCount,
@@ -131,7 +132,7 @@ struct PerksCard: View {
     private func perk(title: LocalizedStringKey, value: Int64, count: UInt32, text: LocalizedStringKey) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).appFont(.caption, weight: .medium).foregroundStyle(Theme.secondary)
-            Text(Money.format(value)).appFont(.title3, weight: .semibold, monospacedDigit: true).foregroundStyle(Theme.invest).sensitive()
+            Text(Money.format(value)).appFont(.title3, weight: .semibold, monospacedDigit: true).foregroundStyle(Theme.invest).sensitive(.amounts)
             Text("\(count) Ausführungen").appFont(.caption2).foregroundStyle(Theme.tertiary)
             Text(text).appFont(.caption2).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
         }
@@ -170,7 +171,7 @@ struct FlowChartCard: View {
                 AxisMarks(position: .leading) { v in
                     AxisGridLine().foregroundStyle(Theme.border)
                     AxisValueLabel {
-                        if let d = v.as(Double.self) { Text(d, format: .number.precision(.fractionLength(0))).appFont(.caption2).fixedSize().sensitive() }
+                        if let d = v.as(Double.self) { Text(d, format: .number.precision(.fractionLength(0))).appFont(.caption2).fixedSize().sensitive(.amounts) }
                     }
                 }
             }

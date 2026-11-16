@@ -668,6 +668,7 @@ enum ListPurpose {
 
 /// Exactly three elements: signet · name + subtitle · amount.
 struct BookingRow: View {
+    @Environment(\.reportRedaction) private var redaction
     @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
     @Environment(\.textScale) private var textScale
     @Environment(AppModel.self) private var model
@@ -900,7 +901,7 @@ struct BookingRow: View {
                     .background(Capsule().fill(ref.isRefund ? Theme.inflowBadge : Theme.outflowBadge))
                     .lineLimit(1).fixedSize()
                     .help(ref.isRefund ? "Gutschrift (Erstattung)" : "Bestellung")
-                    .accessibilityLabel(Text(verbatim: "\(ref.isRefund ? String(localized: "Erstattung") : String(localized: "Belastung")): \(Money.format(abs(booking.amountCents)))"))
+                    .accessibilityLabel(Text(verbatim: "\(ref.isRefund ? String(localized: "Erstattung") : String(localized: "Belastung")): \(redaction.masking(Money.format(abs(booking.amountCents)), .amounts))"))
             } else {
                 AmountLabel(cents: booking.amountCents)
                     .lineLimit(1)
@@ -1096,14 +1097,14 @@ struct AmountLabel: View {
     var body: some View {
         if cents > 0 {
             Text(Money.signed(cents))
-                .sensitive()
+                .sensitive(.amounts)
                 .appFont(.body, weight: .semibold, monospacedDigit: true)
                 .foregroundStyle(negativeStyle.positiveColor)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(Capsule().fill(negativeStyle.positiveBadge))
         } else {
             Text(Money.format(cents))
-                .sensitive()
+                .sensitive(.amounts)
                 .appFont(.body, weight: .medium, monospacedDigit: true)
                 .foregroundStyle(cents < 0 ? negativeStyle.color : Theme.outflow)
         }
@@ -1148,7 +1149,7 @@ struct WindowTitle: ViewModifier {
 
     func body(content: Content) -> some View {
         #if os(macOS)
-        let title = redaction.isEmpty ? title : "GiroCrab"
+        let title = redaction.isDisjoint(with: [.personal, .labels]) ? title : "GiroCrab"
         if #available(macOS 15.0, *) {
             content.navigationTitle(title).toolbar(removing: .title)
         } else {
@@ -1166,6 +1167,7 @@ struct WindowTitle: ViewModifier {
 struct MainToolbar: ViewModifier {
     @Environment(AppModel.self) private var model
     @AppStorage(ViewLayout.inspectorKey) private var showInspector = true
+    @AppStorage(PrivacyMode.enabledKey) private var privacyMode = false
 
     func body(content: Content) -> some View {
         #if os(iOS)
@@ -1179,6 +1181,7 @@ struct MainToolbar: ViewModifier {
                     Button { model.openBookingExport() } label: { Label("Umsätze exportieren …", systemImage: "square.and.arrow.up") }
                     Button { model.showPrintSheet = true } label: { Label("Drucken …", systemImage: "printer") }
                     Button { model.openRuleEditor() } label: { Label("Regeln", systemImage: "wand.and.stars") }
+                    Toggle(isOn: $privacyMode) { Label("Privatmodus", systemImage: "eye.slash") }
                     Button { model.showSettings = true } label: { Label("Einstellungen", systemImage: "gearshape") }
                     if model.hasOwnVault {
                         Button { model.lock() } label: { Label("Tresor sperren", systemImage: "lock") }
@@ -1223,6 +1226,10 @@ struct MainToolbar: ViewModifier {
             ToolbarItem(id: "inspector", placement: .primaryAction) {
                 Button { showInspector.toggle() } label: { Label("Informationen", systemImage: "sidebar.trailing") }
                     .help(showInspector ? String(localized: "Informationen ausblenden (⌥⌘I)") : String(localized: "Informationen einblenden (⌥⌘I)"))
+            }
+            ToolbarItem(id: "privacy", placement: .primaryAction) {
+                Toggle(isOn: $privacyMode) { Label("Privatmodus", systemImage: privacyMode ? "eye.slash" : "eye") }
+                    .help(privacyMode ? String(localized: "Privatmodus beenden (⇧⌘H)") : String(localized: "Privatmodus: Beträge ausblenden (⇧⌘H)"))
             }
             ToolbarItem(id: "palette", placement: .primaryAction, showsByDefault: false) {
                 Button { model.showCommandPalette = true } label: { Label("Befehle", systemImage: "command") }

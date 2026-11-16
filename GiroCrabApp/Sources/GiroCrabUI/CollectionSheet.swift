@@ -92,7 +92,7 @@ struct CollectionSheet: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(f.fileName).fontWeight(.medium)
                             Text("\(f.scheme.title) · \(f.sequence) · \(f.count) Lastschriften · \(Money.format(f.totalCents))")
-                                .appFont(.caption).foregroundStyle(Theme.secondary).sensitive()
+                                .appFont(.caption).foregroundStyle(Theme.secondary).sensitive(.amounts)
                         }
                         Spacer()
                         Button("Sichern …", systemImage: "square.and.arrow.down") { exporting = f }
@@ -125,7 +125,7 @@ struct CollectionSheet: View {
     private var footer: some View {
         HStack {
             if model.collectionFiles.isEmpty {
-                Text("\(included.count) Lastschriften · \(Money.format(totalCents))").appFont(.callout).foregroundStyle(Theme.secondary).sensitive()
+                Text("\(included.count) Lastschriften · \(Money.format(totalCents))").appFont(.callout).foregroundStyle(Theme.secondary).sensitive(.amounts)
             }
             Spacer()
             Button("Schließen", role: .cancel) { model.showCollectionSheet = false; dismiss() }.keyboardShortcut(.cancelAction)

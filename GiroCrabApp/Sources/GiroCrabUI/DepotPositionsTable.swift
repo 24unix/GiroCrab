@@ -263,7 +263,7 @@ struct DepotPositionsTable<RowMenu: View>: View {
                     Text(Money.format(p.holding.valueCents, currency: currency)).sensitive(.amounts)
                         .appFont(.body, weight: .medium, monospacedDigit: true).foregroundStyle(Theme.text)
                     ViewThatFits(in: .horizontal) {
-                        Text([gain, share].compactMap { $0 }.joined(separator: " · ")).sensitive()
+                        Text([gain, share].compactMap { $0 }.joined(separator: " · ")).sensitive(.amounts)
                             .foregroundStyle(p.gain.map { DepotFormat.tint($0.cents) } ?? Theme.secondary)
                         VStack(alignment: .trailing, spacing: 1) {
                             if let gain { Text(gain).foregroundStyle(DepotFormat.tint(p.gain?.cents ?? 0)) }

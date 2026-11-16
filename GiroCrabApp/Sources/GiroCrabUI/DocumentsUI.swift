@@ -83,7 +83,7 @@ struct DocumentPreview: View {
             }
         }
         // statements and receipts are full of names, IBANs and amounts (#301)
-        .sensitive()
+        .sensitive([.personal, .amounts])
     }
 }
 
@@ -286,7 +286,7 @@ struct DocumentsView: View {
                                     .appFont(.caption).foregroundStyle(Theme.secondary).lineLimit(1).sensitive()
                                 Text(d.bookingLabel.isEmpty ? String(localized: "Ohne zugeordneten Umsatz") : d.bookingLabel)
                                     .appFont(.caption).foregroundStyle(d.bookingLabel.isEmpty && !d.isBankDocument ? Theme.warning : Theme.secondary).lineLimit(1)
-                                    .sensitive()
+                                    .sensitive([.personal, .amounts]) // "merchant · amount"
                             }
                             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                             .multilineTextAlignment(.leading)

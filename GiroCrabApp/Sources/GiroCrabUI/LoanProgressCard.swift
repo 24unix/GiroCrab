@@ -32,7 +32,9 @@ struct LoanProgressCard: View {
             HStack {
                 if !compact { Label("Tilgung", systemImage: "house").appFont(.headline) }
                 if let repaid {
-                    Text("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt").appFont(.callout, weight: .semibold).foregroundStyle(Theme.loan)
+                    Text("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
+                        .sensitive(.amounts)
+                        .appFont(.callout, weight: .semibold).foregroundStyle(Theme.loan)
                 } else {
                     Text("Ursprünglicher Kreditbetrag fehlt").appFont(.caption).foregroundStyle(Theme.secondary)
                 }
@@ -46,7 +48,7 @@ struct LoanProgressCard: View {
                 } else if editing {
                     TextField("z. B. \(Money.plain(28_000_000))", text: $text)
                         .textFieldStyle(.roundedBorder).frame(width: 130).onSubmit(commit)
-                        .sensitive()
+                        .sensitive(.amounts)
                     Button("Abbrechen") { editing = false }
                         .controlSize(.small).keyboardShortcut(.cancelAction)
                     Button("Speichern", action: commit)
@@ -57,12 +59,13 @@ struct LoanProgressCard: View {
                         editing = true
                     }
                     .buttonStyle(.borderless).appFont(.caption)
-                    .sensitive(initial == nil ? [] : .personal) // the original loan amount
+                    .sensitive(initial == nil ? [] : .amounts) // the original loan amount
                     .help("Ursprünglicher Kreditbetrag bearbeiten")
                 }
             }
             if let repaid {
                 ProgressView(value: repaid).progressViewStyle(.linear).tint(Theme.loan)
+                    .sensitive(.amounts)
                     .accessibilityLabel("Tilgung")
                     .accessibilityValue("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
             }

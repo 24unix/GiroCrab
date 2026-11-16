@@ -170,7 +170,7 @@ struct UserGroupHeader: View {
             }
             Spacer()
             Text(Money.format(group.balanceCents))
-                .sensitive()
+                .sensitive(.amounts)
                 .appFont(.footnote, weight: .semibold) // same size as in SectionHeader (#602)
                 .monospacedDigit()
                 .fixedSize() // the name truncates, never the balance (#343)

@@ -179,7 +179,7 @@ struct DepotDetailView: View {
             valueNote: {
                 if let diff = value.differenceCents {
                     Text("Positionen: \(Money.format(value.positionSumCents, currency: currency)) (\(Money.signed(diff, currency: currency)) Differenz)")
-                        .sensitive()
+                        .sensitive(.amounts)
                         .appFont(.caption2, monospacedDigit: true).foregroundStyle(Theme.warning)
                         .multilineTextAlignment(.trailing)
                         .help("Der gemeldete Depotwert und die Summe der Positionen weichen voneinander ab, z. B. durch unterschiedliche Bewertungszeitpunkte.")

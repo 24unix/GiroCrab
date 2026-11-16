@@ -649,7 +649,7 @@ struct SectionHeader: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
             Text(Money.format(balanceCents))
-                .sensitive()
+                .sensitive(.amounts)
                 .appFont(.footnote, weight: .semibold) // same size as the account balances
                 .monospacedDigit()
                 .fixedSize() // the name truncates, never the balance (#343)
@@ -666,6 +666,7 @@ struct AccountRow: View {
     /// macOS turns white on the accent-coloured selection (fixed theme colours
     /// stay dark there). `backgroundProminence` is not set in a macOS sidebar.
     private var onSelection: Bool { model.sidebarSelection == .account(account.id) }
+    @Environment(\.reportRedaction) private var redaction
     let account: Account
     var syncing: Bool = false
 
@@ -698,7 +699,7 @@ struct AccountRow: View {
                 HStack(spacing: 4) {
                     // the owner takes no room in the title line: tooltip only
                     Text(account.name).appFont(.callout, weight: .medium).lineLimit(1).sensitive()
-                        .help(account.owner.isEmpty ? "" : account.owner)
+                        .help(redaction.masking(account.owner))
                     if account.accessRevoked {
                         Image(systemName: "lock.slash")
                             .appFont(.caption2)
@@ -720,8 +721,10 @@ struct AccountRow: View {
                             .tint(Theme.loan.opacity(0.7))
                             .controlSize(.mini)
                             .frame(maxWidth: 44)
-                            .help("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
+                            .sensitive(.amounts)
+                            .help(redaction.masking("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt", .amounts))
                         Text("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
+                            .sensitive(.amounts)
                             .appFont(.caption2).foregroundStyle(.secondary).lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
                     } else if let date = account.archivedDate {

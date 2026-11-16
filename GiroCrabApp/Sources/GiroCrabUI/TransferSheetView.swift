@@ -223,6 +223,7 @@ struct TransferSheetView: View {
                 TextField("Name", text: draft.name, prompt: Text("Name des Empfängers"))
                     .multilineTextAlignment(.trailing)
                     .focused($nameFocused)
+                    .sensitive()
                 if !suggestions.isEmpty { suggestionRow }
                 LabeledContent("IBAN") {
                     HStack(spacing: 8) {
@@ -231,6 +232,7 @@ struct TransferSheetView: View {
                             .multilineTextAlignment(.trailing)
                             .appFont(.body, design: .monospaced)
                             .autocorrectionDisabled()
+                            .sensitive()
                         if !draft.wrappedValue.iban.isEmpty {
                             Image(systemName: ibanValid ? "checkmark.circle.fill" : "xmark.circle.fill")
                                 .foregroundStyle(ibanValid ? Color.green : Color.red)
@@ -245,6 +247,7 @@ struct TransferSheetView: View {
                             .multilineTextAlignment(.trailing)
                             .appFont(.body, design: .monospaced)
                             .autocorrectionDisabled()
+                            .sensitive()
                         if !bicText.isEmpty {
                             Image(systemName: bicValid ? "checkmark.circle.fill" : "xmark.circle.fill")
                                 .foregroundStyle(bicValid ? Color.green : Color.red)
@@ -265,11 +268,13 @@ struct TransferSheetView: View {
                             .labelsHidden()
                             .multilineTextAlignment(.trailing)
                             .appFont(.body, monospacedDigit: true)
+                            .sensitive(.amounts)
                         Text("€").foregroundStyle(Theme.secondary)
                     }
                 }
                 TextField("Verwendungszweck", text: draft.purpose, prompt: Text("Verwendungszweck"), axis: .vertical)
                     .lineLimit(1...3)
+                    .sensitive()
             } header: {
                 Text("Zahlung").appSectionHeader()
             } footer: {

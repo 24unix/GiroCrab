@@ -216,7 +216,7 @@ struct BatchTransferSheet: View {
                         .appFont(.callout).foregroundStyle(Theme.negative)
                 }
                 Text("\(rows.count) Zahlungen · \(String(localized: "Summe"))").appFont(.callout).foregroundStyle(Theme.secondary)
-                Text(Money.format(totalCents)).appFont(.title3, weight: .semibold, monospacedDigit: true).fixedSize().sensitive()
+                Text(Money.format(totalCents)).appFont(.title3, weight: .semibold, monospacedDigit: true).fixedSize().sensitive(.amounts)
             }
             .padding(.horizontal, 20).padding(.vertical, 10)
         }
@@ -229,7 +229,7 @@ struct BatchTransferSheet: View {
         HStack(alignment: .center, spacing: 20) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Summe").appFont(.caption).foregroundStyle(Theme.secondary)
-                Text(Money.format(totalCents)).appFont(.title, weight: .semibold, monospacedDigit: true).fixedSize().sensitive()
+                Text(Money.format(totalCents)).appFont(.title, weight: .semibold, monospacedDigit: true).fixedSize().sensitive(.amounts)
             }
             Divider().frame(height: 40)
             VStack(alignment: .leading, spacing: 3) {
@@ -253,7 +253,7 @@ struct BatchTransferSheet: View {
                 TableColumn("IBAN") { r in Text(r.iban).appFont(.body, design: .monospaced).sensitive() }
                     .width(min: 220 * textScale, ideal: 245 * textScale, max: 280 * textScale)
                 TableColumn("Betrag") { r in
-                    Text(Money.format(r.cents ?? 0)).appFont(.body, monospacedDigit: true).sensitive()
+                    Text(Money.format(r.cents ?? 0)).appFont(.body, monospacedDigit: true).sensitive(.amounts)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .width(min: 80, ideal: 95, max: 120)
@@ -271,7 +271,7 @@ struct BatchTransferSheet: View {
                     Text(r.iban).appFont(.caption, design: .monospaced).foregroundStyle(Theme.secondary)
                     Text(r.purpose).appFont(.caption).foregroundStyle(Theme.secondary)
                 }
-                .sensitive()
+                .sensitive([.personal, .amounts])
             }
             .listStyle(.plain)
             #endif

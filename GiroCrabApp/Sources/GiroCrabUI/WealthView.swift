@@ -495,7 +495,7 @@ struct WealthView: View {
         let label = Text(scope == .all ? LocalizedStringKey(propertyHidden ? "Nettovermögen ohne Immobilien" : "Nettovermögen") : scope.totalLabel)
             .appFont(.caption).foregroundStyle(Theme.secondary)
         let value = Text(Money.format(s.netCents(includingLiabilities: includeLiabilities)))
-            .sensitive()
+            .sensitive(.amounts)
             .appFont(.largeTitle, weight: .semibold, monospacedDigit: true)
             .minimumScaleFactor(0.6).lineLimit(1)
         let details = VStack(alignment: .leading, spacing: 14) {
@@ -750,18 +750,18 @@ struct WealthView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(p.name).sensitive(.labels).lineLimit(1)
                             Text("\(p.quantity.formatted(.number.precision(.fractionLength(0...4)))) · \(p.isin)")
-                                .sensitive()
+                                .sensitive([.personal, .amounts])
                                 .appFont(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 1) {
                             Text(Money.format(p.valueCents)).sensitive(.amounts).monospacedDigit()
                             if let d = p.dayChangeCents {
-                                Text(signed(d)).sensitive().appFont(.caption2).foregroundStyle(tone(d)).monospacedDigit()
+                                Text(signed(d)).sensitive(.amounts).appFont(.caption2).foregroundStyle(tone(d)).monospacedDigit()
                             }
                             if total > 0 {
                                 Text((Double(p.valueCents) / Double(total)).formatted(.percent.precision(.fractionLength(1))))
-                                    .sensitive()
+                                    .sensitive(.amounts)
                                     .appFont(.caption2).foregroundStyle(Theme.secondary).monospacedDigit()
                             }
                         }
@@ -1064,7 +1064,7 @@ struct WealthView: View {
     private func change(_ title: LocalizedStringKey, _ cents: Int64) -> some View {
         HStack(spacing: 6) {
             Text(title).appFont(.caption).foregroundStyle(Theme.secondary)
-            Text(signed(cents)).sensitive().appFont(.callout, weight: .medium).foregroundStyle(tone(cents)).monospacedDigit()
+            Text(signed(cents)).sensitive(.amounts).appFont(.callout, weight: .medium).foregroundStyle(tone(cents)).monospacedDigit()
         }
     }
 

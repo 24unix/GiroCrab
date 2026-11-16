@@ -249,7 +249,7 @@ private struct MandateRow: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     if m.defaultAmountCents > 0 {
                         Text(Money.format(m.defaultAmountCents))
-                            .appFont(.body, weight: .medium, monospacedDigit: true).fixedSize().sensitive()
+                            .appFont(.body, weight: .medium, monospacedDigit: true).fixedSize().sensitive(.amounts)
                     }
                     Text(m.lastCollected.map { String(localized: "zuletzt \(DateText.medium($0))") } ?? String(localized: "noch nie eingezogen"))
                         .appFont(.caption).foregroundStyle(Theme.secondary)

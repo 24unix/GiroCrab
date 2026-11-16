@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// What the bug report screenshot hides (GiroCrab/GiroCrab#301). The main
-/// window reads it from `AppModel.reportRedaction`; views mark their content
+/// What is hidden on screen: in the bug report screenshot
+/// (GiroCrab/GiroCrab#301, `AppModel.reportRedaction`) and in privacy mode
+/// (`PrivacyMode`, for showing the app to someone). Views mark their content
 /// with `.sensitive()` / `.sensitive(.amounts)` / `.sensitive(.labels)`, so
 /// the redaction is decided where the data is drawn instead of guessed
 /// afterwards (OCR).
@@ -37,6 +38,49 @@ public struct ReportRedaction: OptionSet, Sendable, Hashable {
     }
 }
 
+/// Privacy mode: hides amounts (or all personal data) in every window while
+/// the app is shown to someone. A view preference, stored in the defaults.
+public enum PrivacyMode {
+    public static let enabledKey = "privacy.enabled"
+    public static let scopeKey = "privacy.scope"
+
+    public enum Scope: String, CaseIterable, Identifiable, Sendable {
+        case amounts, personal
+        public var id: String { rawValue }
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .amounts: "Beträge"
+            case .personal: "Beträge und persönliche Angaben"
+            }
+        }
+
+        public var redaction: ReportRedaction {
+            switch self {
+            case .amounts: .amounts
+            case .personal: [.personal, .amounts]
+            }
+        }
+    }
+
+    /// What privacy mode adds to the redaction of a window.
+    public static func redaction(enabled: Bool, scope: Scope) -> ReportRedaction {
+        enabled ? scope.redaction : []
+    }
+}
+
+/// Scene root: adds privacy mode (and `--privacy` / `--redact`) to the
+/// redaction of everything below, sheets and popovers included.
+private struct PrivacyModeEnvironment: ViewModifier {
+    @AppStorage(PrivacyMode.enabledKey) private var enabled = false
+    @AppStorage(PrivacyMode.scopeKey) private var scope = PrivacyMode.Scope.amounts
+
+    func body(content: Content) -> some View {
+        let added = PrivacyMode.redaction(enabled: enabled, scope: scope).union(LaunchOptions.current.redaction)
+        content.transformEnvironment(\.reportRedaction) { $0.formUnion(added) }
+    }
+}
+
 private struct ReportRedactionKey: EnvironmentKey {
     static let defaultValue: ReportRedaction = []
 }
@@ -50,13 +94,18 @@ extension EnvironmentValues {
 }
 
 extension View {
-    /// Marks personal or financial content: replaced by a soft smudge while
-    /// the bug report screenshot is taken, and `privacySensitive` for the
+    /// Marks personal or financial content: replaced by a soft smudge in
+    /// privacy mode and while the bug report screenshot is taken, and `privacySensitive` for the
     /// system (widgets, locked screen). `kind` `.amounts` is for money,
     /// `.labels` for category and security names, which are only hidden on
     /// request.
     func sensitive(_ kind: ReportRedaction = .personal) -> some View {
         modifier(SensitiveContent(kind: kind))
+    }
+
+    /// Scene root of every window that shows vault data.
+    func privacyModeEnvironment() -> some View {
+        modifier(PrivacyModeEnvironment())
     }
 }
 

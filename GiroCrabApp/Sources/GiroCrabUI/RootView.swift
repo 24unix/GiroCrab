@@ -19,6 +19,7 @@ public struct GiroCrabScenes: Scene {
     @AppStorage(BalanceChartStyle.defaultsKey) private var chartStyle: BalanceChartStyle = .line
     @AppStorage(ViewLayout.headerChartCollapsedKey) private var chartCollapsed = false
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
+    @AppStorage(PrivacyMode.enabledKey) private var privacyMode = false
     #endif
 
     public init(options: LaunchOptions = .current) {
@@ -51,6 +52,7 @@ public struct GiroCrabScenes: Scene {
             GiroCrabRootView()
                 .environment(model)
                 .modifier(AutoLockOnBackground(model: model))
+                .privacyModeEnvironment()
                 #if os(macOS)
                 .appTextSize(textSize.effective)
                 .modifier(MenuBarBridge(model: model))
@@ -224,6 +226,9 @@ public struct GiroCrabScenes: Scene {
                     ForEach(BalanceChartStyle.allCases) { Text($0.title).tag($0) }
                 }
                 .disabled(!model.isUnlocked)
+                // Hides amounts (or all personal data, Einstellungen › Allgemein).
+                Toggle("Privatmodus", isOn: $privacyMode)
+                    .keyboardShortcut("h", modifiers: [.command, .shift])
                 Divider()
                 // Like Mail/Notes: text size of the whole app (#343).
                 Button("Größer") { textSize = textSize.larger ?? textSize }
@@ -268,6 +273,7 @@ public struct GiroCrabScenes: Scene {
         Window("Abruf-Protokoll", id: "sync-log") {
             SyncLogView()
                 .environment(model)
+                .privacyModeEnvironment()
                 .appTextSize(textSize.effective)
                 .preferredColorScheme(appearance.colorScheme)
         }
@@ -293,6 +299,7 @@ public struct GiroCrabScenes: Scene {
             // views get the same redaction and mark personal data.
             SettingsView()
                 .environment(model)
+                .privacyModeEnvironment()
                 .appTextSize(textSize.effective)
                 .preferredColorScheme(appearance.colorScheme)
                 .reportCapturable()
@@ -362,7 +369,7 @@ public struct GiroCrabRootView: View {
                     // the only window the bug report may capture; inside the
                     // redaction environment, so it can report what was built
                     .background(ReportWindowTracker(role: .main))
-                    .environment(\.reportRedaction, model.reportRedaction.union(LaunchOptions.current.redaction))
+                    .transformEnvironment(\.reportRedaction) { $0.formUnion(model.reportRedaction.union(LaunchOptions.current.redaction)) }
                     .onAppear { StartupClock.mark("MainSplitView appear") }
                     #if os(macOS)
                     // screenshots: --demo-sheet report[:<sheet>] captures the open

@@ -136,7 +136,7 @@ struct ReceiptCard: View {
                 Spacer()
             }
             Text(Money.signed(booking.amountCents))
-                .sensitive()
+                .sensitive(.amounts)
                 .font(.system(.largeTitle, design: .rounded, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Money.ink(booking.amountCents))
             HStack(spacing: 6) {
@@ -451,7 +451,7 @@ struct MerchantHistoryCard: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).appFont(.caption2).foregroundStyle(Theme.secondary)
             Text(value).appFont(.callout, weight: .semibold, monospacedDigit: true).foregroundStyle(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
-                .sensitive(sensitive ? .personal : [])
+                .sensitive(sensitive ? .amounts : [])
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -667,9 +667,9 @@ struct MultiSelectionCard: View {
             Label("\(many.count) Buchungen ausgewählt", systemImage: "checkmark.circle")
                 .appFont(.headline)
             VStack(alignment: .leading, spacing: 4) {
-                LabeledContent("Summe") { Text(Money.format(income + expense)).sensitive() }
-                if income != 0 { LabeledContent("Einnahmen") { Text(Money.format(income)).sensitive() } }
-                if expense != 0 { LabeledContent("Ausgaben") { Text(Money.format(expense)).sensitive() } }
+                LabeledContent("Summe") { Text(Money.format(income + expense)).sensitive(.amounts) }
+                if income != 0 { LabeledContent("Einnahmen") { Text(Money.format(income)).sensitive(.amounts) } }
+                if expense != 0 { LabeledContent("Ausgaben") { Text(Money.format(expense)).sensitive(.amounts) } }
             }
             .appFont(.callout, monospacedDigit: true)
             MultiSelectionTags(bookings: many)

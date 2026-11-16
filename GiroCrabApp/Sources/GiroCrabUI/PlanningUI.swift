@@ -143,7 +143,7 @@ struct BudgetProgressCard: View {
                 if collapsed {
                     if !items.isEmpty {
                         Text("\(Money.format(totalSpent)) / \(Money.format(totalBudget))")
-                            .sensitive()
+                            .sensitive(.amounts)
                             .appFont(.subheadline, weight: .semibold, monospacedDigit: true).foregroundStyle(BudgetTone.color(totalPercent))
                             .fixedSize()
                         BudgetBar(percent: totalPercent).frame(width: 60)
@@ -320,7 +320,7 @@ struct CashflowCard: View {
                     if let last = rows.last {
                         let net = last.incomeCents - last.expenseCents
                         Text("\(label(last.key)): \(Money.format(net))")
-                            .sensitive()
+                            .sensitive(.amounts)
                             .appFont(.subheadline, weight: .semibold, monospacedDigit: true)
                             .foregroundStyle(net >= 0 ? Theme.inflow : Theme.outflow)
                             .fixedSize()
@@ -359,7 +359,7 @@ struct CashflowCard: View {
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
                         .foregroundStyle(Theme.border)
                     AxisValueLabel {
-                        if let d = v.as(Double.self) { Text(d, format: .number.precision(.fractionLength(0))).appFont(.caption2).fixedSize().sensitive() }
+                        if let d = v.as(Double.self) { Text(d, format: .number.precision(.fractionLength(0))).appFont(.caption2).fixedSize().sensitive(.amounts) }
                     }
                 }
             }

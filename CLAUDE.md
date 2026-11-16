@@ -127,7 +127,8 @@ Other windows (Hilfe, Abruf-Protokoll), alerts and print output are never captur
   carry the modifier: read `@Environment(\.reportRedaction)` and substitute (see `WindowTitle`, the empty state in
   `BookingStreamView`). AppKit/UIKit-drawn search fields are handled in `BugReport` – new platform text controls
   outside SwiftUI need the same.
-- Check a view: `swift run GiroCrabMac --demo-seed --redact --screenshot /tmp/r.png` (`--redact=labels` for labels).
+- Check a view: `swift run GiroCrabMac --demo-seed --redact --screenshot /tmp/r.png` (`--redact=labels` for labels)
+  or `--privacy` / `--privacy=all` (privacy mode).
   A dialog in the picture: `--demo-seed --demo-sheet report:<sheet>` (e.g. `report:transfer`, `report:category`)
   opens the report over that demo sheet.
 - Text that goes into a public issue (log lines, messages) only via `sanitize_report_text` with the vault's known

@@ -64,6 +64,8 @@ struct GeneralSettings: View {
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
     @AppStorage(NegativeAmountStyle.defaultsKey) private var negativeAmountStyle: NegativeAmountStyle = .neutral
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
+    @AppStorage(PrivacyMode.enabledKey) private var privacyMode = false
+    @AppStorage(PrivacyMode.scopeKey) private var privacyScope = PrivacyMode.Scope.amounts
     @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
     @AppStorage(BookingDensity.defaultsKey) private var bookingDensity: BookingDensity = .standard
 
@@ -108,6 +110,12 @@ struct GeneralSettings: View {
                 Text("Vergrößert die Schrift in der ganzen App. Auch im Menü Ansicht mit ⌘+ / ⌘− / ⌘0.")
                     .appFont(.caption).foregroundStyle(.secondary)
                 #endif
+                Toggle("Privatmodus", isOn: $privacyMode)
+                Picker("Im Privatmodus ausblenden", selection: $privacyScope) {
+                    ForEach(PrivacyMode.Scope.allCases) { Text($0.title).tag($0) }
+                }
+                Text("Blendet Beträge aus, wenn du die App jemandem zeigst. Auf Wunsch auch Namen, Kontonummern und Verwendungszwecke.")
+                    .appFont(.caption).foregroundStyle(.secondary)
                 Toggle("Auswertungen in der Übersicht anzeigen", isOn: $showStatistics)
                 Text("Blendet Saldoverlauf, Cashflow und Budgets über der Buchungsliste aus. Auch im Menü Ansicht umschaltbar.")
                     .appFont(.caption).foregroundStyle(.secondary)

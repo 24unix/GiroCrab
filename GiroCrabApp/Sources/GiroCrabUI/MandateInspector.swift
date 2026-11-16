@@ -60,7 +60,7 @@ struct MandateInspector: View {
                 Label("Rücklastschrift – bitte prüfen", systemImage: "exclamationmark.triangle.fill")
                     .appFont(.headline).foregroundStyle(Theme.negative)
                 Text("\(DateText.medium(last.date)) · \(Money.format(abs(last.amountCents)))" + (last.reason.isEmpty ? "" : " · \(last.reason)"))
-                    .appFont(.callout).sensitive()
+                    .appFont(.callout).sensitive([.personal, .amounts])
                 Text("Die Bank hat einen Einzug zurückgegeben. Prüfe die Angaben des Mandats, bevor du erneut einziehst.")
                     .appFont(.callout).foregroundStyle(Theme.secondary)
                 // side by side when they fit, else stacked: the inspector is narrow
@@ -89,7 +89,7 @@ struct MandateInspector: View {
                                 .appFont(.caption).foregroundStyle(Theme.negative)
                         }
                         Spacer()
-                        Text(Money.format(b.amountCents)).appFont(.callout, monospacedDigit: true).sensitive()
+                        Text(Money.format(b.amountCents)).appFont(.callout, monospacedDigit: true).sensitive(.amounts)
                     }
                 }
             }

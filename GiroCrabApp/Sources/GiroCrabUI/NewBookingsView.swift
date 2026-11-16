@@ -67,14 +67,14 @@ private struct NewBookingsCardHeader: View {
                         Text(Money.format(a.balanceCents, currency: a.currency))
                             .appFont(.headline, monospacedDigit: true)
                             .fixedSize() // the name truncates, never the balance (#343)
-                            .sensitive()
+                            .sensitive(.amounts)
                             .foregroundStyle(a.balanceCents < 0 ? Theme.negative : Theme.text)
                     }
                     if section.pendingCents != 0 {
                         Text("Vorgemerkt: \(Money.format(section.pendingCents, currency: section.account?.currency ?? "EUR"))")
                             .appFont(.caption, monospacedDigit: true)
                             .fixedSize()
-                            .sensitive()
+                            .sensitive(.amounts)
                             .foregroundStyle(Theme.secondary)
                     }
                 }

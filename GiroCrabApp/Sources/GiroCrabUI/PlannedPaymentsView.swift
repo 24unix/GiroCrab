@@ -129,7 +129,7 @@ struct PlannedPaymentsView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label).appFont(.caption).foregroundStyle(Theme.secondary)
             Text(Money.format(cents)).appFont(.title3, weight: .semibold, monospacedDigit: true)
-                .fixedSize().sensitive()
+                .fixedSize().sensitive(.amounts)
         }
     }
 
@@ -143,7 +143,7 @@ struct PlannedPaymentsView: View {
                     .foregroundStyle(Theme.text)
                 Spacer()
                 Text(Money.signed(sum))
-                    .sensitive()
+                    .sensitive(.amounts)
                     .appFont(.subheadline, monospacedDigit: true)
                     .foregroundStyle(sum > 0 ? Theme.inflow : Theme.secondary)
             }
@@ -274,7 +274,7 @@ struct PlannedInspector: View {
                     Text(Money.format(p.amountCents))
                         .appFont(.title, weight: .semibold, monospacedDigit: true)
                         .foregroundStyle(p.amountCents < 0 ? Theme.negative : Theme.invest)
-                        .fixedSize().sensitive()
+                        .fixedSize().sensitive(.amounts)
                     Text(p.kindText).appFont(.callout).foregroundStyle(Theme.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

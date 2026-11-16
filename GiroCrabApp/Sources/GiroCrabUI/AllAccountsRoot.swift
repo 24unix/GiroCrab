@@ -78,7 +78,7 @@ struct AllAccountsRow: View {
             Spacer(minLength: 2)
             ForEach(AllAccountsTotal.totals(of: model.allAccounts), id: \.currency) { total in
                 Text(Money.format(total.cents, currency: total.currency))
-                    .sensitive()
+                    .sensitive(.amounts)
                     .appFont(.footnote, weight: .semibold, monospacedDigit: true)
                     .foregroundStyle(total.cents < 0 ? Theme.negative : Theme.secondary)
                     .lineLimit(1)

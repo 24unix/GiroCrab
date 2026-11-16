@@ -49,6 +49,8 @@ import Foundation
 ///  --window-height <pt>   (macOS, with --screenshot) window height, to see the end of long lists
 ///  --window-width <pt>    (macOS, with --screenshot) resize the main window first, to check narrow layouts
 ///  --depot-tab activities (demo) open a securities depot on its activities tab
+///  --privacy[=all]        (developer) draw every window as in privacy mode: amounts
+///                         hidden, with `=all` personal data too
 ///  --demo-menu <title>    (macOS, with --screenshot and GIROCRAB_SCREENSHOT_NATIVE=1)
 ///                         pop up that menu-bar menu over the window and capture it
 ///  --screenshot <file>    (macOS) render the main window, save a PNG, quit.
@@ -110,7 +112,8 @@ public struct LaunchOptions: Sendable {
     public var simulateSystemLanguage: String?
     /// (developer) reset TipKit and show tips in the demo vault too
     public var showTips: Bool
-    /// (developer) `--redact`: main window drawn as in the bug report screenshot
+    /// (developer) `--redact` / `--privacy`: drawn as in the bug report
+    /// screenshot or in privacy mode
     public var redaction: ReportRedaction
 
     public init(arguments: [String] = CommandLine.arguments, environment: [String: String] = ProcessInfo.processInfo.environment) {
@@ -158,7 +161,10 @@ public struct LaunchOptions: Sendable {
         keepFreshVault = arguments.contains("--keep-fresh-vault")
         freshVault = arguments.contains("--fresh-vault") || keepFreshVault
         developer = arguments.contains("--developer") || environment["GIROCRAB_DEVELOPER"] == "1"
-        redaction = arguments.contains("--redact=labels") ? [.personal, .labels] : arguments.contains("--redact") ? .personal : []
+        var redaction: ReportRedaction = arguments.contains("--redact=labels") ? [.personal, .labels] : arguments.contains("--redact") ? .personal : []
+        if arguments.contains("--privacy=all") { redaction.formUnion(PrivacyMode.Scope.personal.redaction) }
+        if arguments.contains("--privacy") { redaction.formUnion(PrivacyMode.Scope.amounts.redaction) }
+        self.redaction = redaction
         if let i = arguments.firstIndex(of: "--try-add-bank"), i + 1 < arguments.count {
             tryAddBank = arguments[i + 1].lowercased()
         } else {

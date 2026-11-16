@@ -6526,6 +6526,17 @@
         }
       }
     },
+    "Beträge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amounts"
+          }
+        }
+      }
+    },
     "Beträge in der Menüleiste verdecken" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6555,6 +6566,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Amounts and account names are hidden."
+          }
+        }
+      }
+    },
+    "Beträge und persönliche Angaben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amounts and Personal Data"
           }
         }
       }
@@ -6968,6 +6990,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Stays"
+          }
+        }
+      }
+    },
+    "Blendet Beträge aus, wenn du die App jemandem zeigst. Auf Wunsch auch Namen, Kontonummern und Verwendungszwecke." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hides amounts when showing the app to someone. Optionally also names, account numbers, and purposes."
           }
         }
       }
@@ -14628,6 +14661,17 @@
         }
       }
     },
+    "Im Privatmodus ausblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide in Privacy Mode"
+          }
+        }
+      }
+    },
     "Im gewählten Zeitraum und Filter gibt es nichts zu drucken." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21987,6 +22031,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Priority %d"
+          }
+        }
+      }
+    },
+    "Privatmodus" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy Mode"
+          }
+        }
+      }
+    },
+    "Privatmodus beenden (⇧⌘H)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exit Privacy Mode (⇧⌘H)"
+          }
+        }
+      }
+    },
+    "Privatmodus: Beträge ausblenden (⇧⌘H)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacy Mode: Hide amounts (⇧⌘H)"
           }
         }
       }

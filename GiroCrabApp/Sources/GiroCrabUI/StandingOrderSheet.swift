@@ -179,7 +179,7 @@ struct StandingOrderSheet: View {
             }
             VStack(alignment: .leading, spacing: 10) {
                 Text(Money.format(draft.cents ?? 0))
-                    .appFont(.title, weight: .semibold, monospacedDigit: true).fixedSize().sensitive()
+                    .appFont(.title, weight: .semibold, monospacedDigit: true).fixedSize().sensitive(.amounts)
                 Text("\(draft.rhythmText) · \(draft.execDayText)").appFont(.callout).foregroundStyle(Theme.secondary)
                 line("Von Konto", account.map { "\($0.name) · \(formatIBAN($0.iban))" } ?? "")
                 line("Empfänger", draft.name)

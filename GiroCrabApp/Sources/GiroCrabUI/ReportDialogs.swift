@@ -47,10 +47,16 @@ final class ReportRedactionState {
 }
 
 private struct ReportDialogContent: ViewModifier {
+    /// Privacy mode applies to dialogs too: this modifier replaces the environment of what it wraps.
+    @AppStorage(PrivacyMode.enabledKey) private var privacyEnabled = false
+    @AppStorage(PrivacyMode.scopeKey) private var privacyScope = PrivacyMode.Scope.amounts
+
     func body(content: Content) -> some View {
         content
             .background(ReportWindowTracker(role: .dialog))
-            .environment(\.reportRedaction, ReportRedactionState.shared.current.union(LaunchOptions.current.redaction))
+            .environment(\.reportRedaction, ReportRedactionState.shared.current
+                .union(LaunchOptions.current.redaction)
+                .union(PrivacyMode.redaction(enabled: privacyEnabled, scope: privacyScope)))
     }
 }
 

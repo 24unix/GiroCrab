@@ -332,7 +332,7 @@ struct AssetValueChart: View {
                 note(String(localized: "Keine Bewertungen im gewählten Zeitraum"))
             } else if points.count == 1, let only = points.first {
                 Text("Nur eine Bewertung: \(DateText.medium(only.date)) · \(Money.format(only.balanceCents, currency: currency))")
-                    .sensitive()
+                    .sensitive(.amounts)
                     .appFont(.caption).foregroundStyle(Theme.secondary)
                     .frame(maxWidth: .infinity, alignment: alignment)
             } else {

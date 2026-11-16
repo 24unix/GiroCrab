@@ -48,6 +48,7 @@ func accountHolderLine(_ a: Account) -> String? {
 
 struct StreamHeaderCard: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -86,7 +87,7 @@ struct StreamHeaderCard: View {
                                     .appFont(.caption)
                                     .foregroundStyle(Theme.secondary)
                                     .lineLimit(1)
-                                    .help(holder)
+                                    .help(redaction.masking(holder))
                             }
                             let note = model.accountNote(for: a.id)
                             if !note.isEmpty {
@@ -95,7 +96,7 @@ struct StreamHeaderCard: View {
                                     .appFont(.caption)
                                     .foregroundStyle(Theme.secondary)
                                     .lineLimit(2)
-                                    .help(note)
+                                    .help(redaction.masking(note))
                             }
                         } else {
                             Text(model.lastSyncText)
@@ -446,7 +447,7 @@ struct KPI: View {
             }
             Text(value).appFont(.title3, weight: .semibold, monospacedDigit: true).foregroundStyle(tint)
                 .lineLimit(1).minimumScaleFactor(0.75)
-                .sensitive()
+                .sensitive(.amounts)
             Spacer(minLength: 2)
             Text(subtitle).appFont(.caption2).foregroundStyle(Theme.tertiary)
                 .lineLimit(2)
@@ -837,7 +838,7 @@ struct BalanceChart: View {
                 if let d = v.as(Double.self) {
                     // fixed minimum width: changing values never shift the plot sideways
                     Text(verbatim: Self.compactEuros(d))
-                        .sensitive()
+                        .sensitive(.amounts)
                         .appFont(.caption2, monospacedDigit: true)
                         .foregroundStyle(Theme.tertiary)
                         .fixedSize()
@@ -916,7 +917,7 @@ struct BalanceChart: View {
                 .appFont(.caption2)
                 .foregroundStyle(Theme.secondary)
             Text(verbatim: prefix + Money.format(cents))
-                .sensitive()
+                .sensitive(.amounts)
                 .appFont(.caption, weight: .semibold, monospacedDigit: true)
                 .foregroundStyle(cents < 0 ? Theme.outflow : Theme.text)
         }
