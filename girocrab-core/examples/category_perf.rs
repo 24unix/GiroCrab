@@ -16,6 +16,12 @@
 //!   local_api transactions(limit 100)  ~1.2 ms (first page, cursor page, single account; 2026-11-15)
 //!   local_api summary                  ~1.2 ms per year, 2.4 ms for the three-year maximum
 //! RULE_INDEX=1 creates the covering indexes by hand on a vault that lacks them.
+//! STEP_DAYS (default 183) is the shift between copies: 7 with COPIES=600 spans ~11.5 years.
+//! PAYPAL=n adds a payment-service account with n uncategorised bookings, half of them
+//! mirroring a bank booking (the transfer pairing in `vault/transfer_pairs.rs`).
+//! COPIES=600 STEP_DAYS=7 PAYPAL=3000 (2026-11-16): category selection, period "all"
+//! ~360 ms (selection_flow 175 ms of it); local_api page 6.5 ms (did not finish in
+//! 10 minutes before the `tx_amount_date` index).
 use girocrab_core::models::{BookingFilter, BookingScope};
 use girocrab_core::vault::Vault;
 
@@ -33,10 +39,8 @@ fn time<T>(label: &str, mut f: impl FnMut() -> T) -> f32 {
 }
 
 fn main() {
-    let copies: usize = std::env::var("COPIES")
-        .ok()
-        .and_then(|x| x.parse().ok())
-        .unwrap_or(80);
+    let copies = env_usize("COPIES", 80);
+    let step = env_usize("STEP_DAYS", 183);
     let key = vec![9u8; 32];
     let tmp = std::env::temp_dir().join(format!("gc-cat-perf-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
@@ -62,7 +66,7 @@ fn main() {
             let select: Vec<String> = cols
                 .iter()
                 .map(|n| match n.as_str() {
-                    "booking_date" | "value_date" => format!("date({n}, '-{} days')", k * 183),
+                    "booking_date" | "value_date" => format!("date({n}, '-{} days')", k * step),
                     "external_id" => format!("{n} || '#{k}'"),
                     "uuid" => "lower(hex(randomblob(16)))".into(),
                     "import_fp" => "''".into(),
@@ -77,6 +81,24 @@ fn main() {
             .unwrap();
         }
         tx.commit().unwrap();
+        let paypal = env_usize("PAYPAL", 0);
+        if paypal > 0 {
+            c.execute(
+                "INSERT INTO accounts (group_id, external_ref, name, kind, iban) \
+                 SELECT group_id, 'perf-pp', 'PayPal', 'payment_service', '' FROM accounts LIMIT 1",
+                [],
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO transactions (account_id, external_id, booking_date, amount_cents, counterparty, purpose) \
+                 SELECT ?2, 'pp-' || t.id, t.booking_date, \
+                        CASE WHEN t.id % 2 = 0 THEN -t.amount_cents ELSE t.amount_cents END, \
+                        'PayPal Europe', 'PayPal Zahlung ' || t.counterparty \
+                 FROM transactions t WHERE t.amount_cents < 0 ORDER BY t.booking_date DESC LIMIT ?1",
+                [paypal as i64, c.last_insert_rowid()],
+            )
+            .unwrap();
+        }
         if std::env::var("RULE_INDEX").is_ok_and(|v| !v.is_empty()) {
             c.execute_batch("CREATE INDEX tx_rule_live ON transactions(rule_id, deleted_ms); CREATE INDEX tx_acct_live ON transactions(account_id, category_id, checked, deleted_ms); ANALYZE;").unwrap();
         }
@@ -220,5 +242,74 @@ fn main() {
     time("local_api summary (three years, the maximum)", || {
         vault.local_api_request(&three)
     });
+    category_selection(&vault, &cats);
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+fn env_usize(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|x| x.parse().ok())
+        .unwrap_or(default)
+}
+
+/// The core calls of `AppModel.startSelectionLoad` for the busiest top-level
+/// category, for the periods "all" and current year.
+fn category_selection(vault: &Vault, cats: &[girocrab_core::models::Category]) {
+    use chrono::Datelike;
+    let today = chrono::Local::now().date_naive();
+    let cat = cats
+        .iter()
+        .filter(|c| c.parent_id.is_none())
+        .max_by_key(|c| c.transaction_count)
+        .unwrap();
+    println!(
+        "\ncategory selection: {} ({} bookings)",
+        cat.name, cat.transaction_count
+    );
+    for (label, from, to, key_len) in [
+        ("all", None, None, 4u32),
+        (
+            "year",
+            Some(format!("{}-01-01", today.format("%Y"))),
+            Some(today.format("%Y-%m-%d").to_string()),
+            7,
+        ),
+    ] {
+        let mut total = 0.0;
+        total += time(&format!("[{label}] salary_cycle"), || {
+            vault.salary_cycle(vec![])
+        });
+        total += time(
+            &format!("[{label}] list_transactions(category, 300)"),
+            || {
+                vault.list_transactions(BookingFilter {
+                    category_id: Some(cat.id),
+                    include_subcategories: true,
+                    date_from: from.clone(),
+                    date_to: to.clone(),
+                    limit: 300,
+                    scope: BookingScope::All,
+                    whole_days: true,
+                    ..Default::default()
+                })
+            },
+        );
+        total += time(&format!("[{label}] selection_flow"), || {
+            vault.selection_flow(vec![], from.clone(), to.clone())
+        });
+        total += time(&format!("[{label}] recurring_snapshot"), || {
+            vault.recurring_snapshot(vec![], today.year(), today.month())
+        });
+        total += time(&format!("[{label}] list_categories(period)"), || {
+            vault.list_categories(from.clone(), to.clone())
+        });
+        total += time(&format!("[{label}] balance_history(365)"), || {
+            vault.balance_history(vec![], 365)
+        });
+        total += time(&format!("[{label}] category_history_by_unit"), || {
+            vault.category_history_by_unit(cat.id, vec![], from.clone(), to.clone(), key_len)
+        });
+        println!("{:<52} {:>8.1} ms", format!("[{label}] sum"), total);
+    }
 }
