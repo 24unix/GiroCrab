@@ -24,7 +24,16 @@ Rectangle {
         if (have !== want && have !== want + "/") return false
         return a.searchParams.has("code") || a.searchParams.has("error")
     }
-    function finish(u) { if (done) return; done = true; log("redirect caught, back to GiroCrab", u); view.stop(); popupView.stop(); popup.visible = false; finished(u) }
+    // Called from inside a navigation callback: no stop() here (Chromium aborts the process
+    // when a WebContents is stopped or destroyed from within its own navigation callback) –
+    // the rejected request already ends the load. The host closes this view afterwards.
+    function finish(u) {
+        if (done) return
+        done = true
+        log("redirect caught, back to GiroCrab", u)
+        popup.visible = false
+        Qt.callLater(() => browser.finished(u))
+    }
     /// `--debug-consent`: every page, new window and load error of the consent flow on stderr –
     /// scheme, host and path only (no query: it carries codes and states).
     readonly property bool debug: AppModel.launchArgs.indexOf("--debug-consent") >= 0
