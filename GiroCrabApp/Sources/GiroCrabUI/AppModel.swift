@@ -308,7 +308,13 @@ public final class AppModel {
     var collectionFiles: [DebitFile] = []
     var mandateExport = CSVFileDocument(data: Data())
     var showMandateExport = false
-    var expandedCategories: Set<Int64> = []
+    /// Sidebar categories whose sub-categories are shown, kept across launches (#633).
+    /// Category ids are per vault, so the demo vault keeps its own set (swapped
+    /// in by `demoActive`). Deleted categories are only soft-deleted, so a stale
+    /// id never opens another category of the same vault.
+    var expandedCategories = AppModel.storedExpandedCategories(demo: false) {
+        didSet { UserDefaults.standard.set(Array(expandedCategories), forKey: Self.expandedCategoriesKey(demo: demoActive)) }
+    }
     var showRuleEditor = false {
         didSet { if showRuleEditor, rulesStale { reloadRules() } }
     }
@@ -356,7 +362,9 @@ public final class AppModel {
     /// Connector key per login (`fints:<BLZ>`, …) for the banking policy.
     var connectionKeys: [Int64: String] = [:]
     /// Showing the throw-away demo vault (also when the own vault is still empty).
-    var demoActive = false
+    var demoActive = false {
+        didSet { if demoActive != oldValue { expandedCategories = Self.storedExpandedCategories(demo: demoActive) } }
+    }
     /// Where the own Enable Banking application is shared between devices.
     @ObservationIgnored var enableBankingKeyStore: EnableBankingKeyStore = KeychainEnableBankingKeyStore()
     /// Taken over from another device; shown once unless the user turned it off.
