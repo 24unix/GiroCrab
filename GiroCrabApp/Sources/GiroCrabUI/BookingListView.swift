@@ -191,7 +191,6 @@ struct BookingStreamView: View {
             // Drop a receipt anywhere on the stream: matched by amount/date/merchant.
             .dropDestination(for: URL.self) { urls, _ in
                 model.dropAnywhere(urls)
-                return !urls.isEmpty
             }
             .background(SelectionScroller(proxy: proxy))
             // another account, group, period or view: back to the newest day
@@ -561,9 +560,9 @@ struct DayCardRow: View {
         VStack(spacing: 0) {
                 BookingRow(booking: b, compactDetailsCollapsed: compactDetailsCollapsed)
                     .dropDestination(for: URL.self) { urls, _ in
+                        guard model.attach(urls, to: b) else { return false }
                         model.selectedBookingID = b.id
-                        model.attach(urls, to: b)
-                        return !urls.isEmpty
+                        return true
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -591,6 +590,10 @@ struct DayCardRow: View {
                     // simultaneous, so single clicks keep selecting without the double-click delay
                     .simultaneousGesture(TapGesture(count: 2).onEnded { model.editNote(for: b) })
                     .contextMenu { rowMenu(b) }
+                    #if os(macOS)
+                    // onto a sidebar category (#366); the payload is read when the drag starts
+                    .draggable(BookingDrag.payload(model.categorizeTargets(for: b).map(\.id)))
+                    #endif
             if !isLast || density == .compact {
                 Rectangle().fill(Theme.border.opacity(0.7)).frame(height: 1)
                     .padding(.leading, density == .compact ? 14 : 64)
@@ -604,7 +607,7 @@ struct DayCardRow: View {
 
     @ViewBuilder
     private func rowMenu(_ b: Booking) -> some View {
-        CategorizeMenuButton(booking: b)
+        CategoryAssignMenu(booking: b)
         Button("Regel für diesen Händler erstellen …", systemImage: "wand.and.stars") { model.openRuleEditor(from: b) }
         Button("Notiz bearbeiten …", systemImage: "note.text") { model.editNote(for: b) }
         TagsMenu(model: model, booking: b)
@@ -996,21 +999,6 @@ private struct RowSelectionBackground: View {
 
     var body: some View {
         model.selectedBookingIDs.contains(id) ? Theme.selection : Color.clear
-    }
-}
-
-/// "Kategorisieren …" of the row menu; its title follows a multiple selection.
-/// A view of its own, so the selection stays out of the day card's dependencies.
-private struct CategorizeMenuButton: View {
-    @Environment(AppModel.self) private var model
-    let booking: Booking
-
-    var body: some View {
-        Button(model.isMultiSelection && model.selectedBookingIDs.contains(booking.id)
-               ? "\(model.selectedBookingIDs.count) Buchungen kategorisieren …" : "Kategorisieren …", systemImage: "tag") {
-            if !model.selectedBookingIDs.contains(booking.id) { model.selectedBookingID = booking.id }
-            model.showCategorizer = true
-        }
     }
 }
 

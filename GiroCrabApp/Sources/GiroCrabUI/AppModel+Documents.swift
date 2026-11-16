@@ -165,9 +165,13 @@ extension AppModel {
         reloadBookings()
     }
 
-    /// Dropped onto a booking row / the inspector drop zone.
-    func attach(_ urls: [URL], to booking: Booking) {
-        guard let vault else { return }
+    /// Dropped onto a booking row / the inspector drop zone. Takes files only:
+    /// a dragged booking (`BookingDrag`) and a web link also arrive as URLs.
+    /// False when there is no file to attach.
+    @discardableResult
+    func attach(_ urls: [URL], to booking: Booking) -> Bool {
+        let urls = urls.filter(\.isFileURL)
+        guard let vault, !urls.isEmpty else { return false }
         var n = 0
         for url in urls {
             let ok = url.startAccessingSecurityScopedResource()
@@ -177,11 +181,15 @@ extension AppModel {
         }
         if n > 0 { toast = String(localized: "\(n) Belege an „\(booking.merchantName)“ angehängt") }
         documentsChanged()
+        return true
     }
 
     /// Dropped anywhere: Rust matches amount/date/merchant (with PDFKit/Vision text as hint).
-    func dropAnywhere(_ urls: [URL]) {
-        guard let vault else { return }
+    /// Files only, as in `attach`; false when there is none.
+    @discardableResult
+    func dropAnywhere(_ urls: [URL]) -> Bool {
+        let urls = urls.filter(\.isFileURL)
+        guard let vault, !urls.isEmpty else { return false }
         Task {
             var linked: [String] = []
             var unmatched = 0
@@ -207,6 +215,7 @@ extension AppModel {
             }
             documentsChanged()
         }
+        return true
     }
 
     func deleteDocument(_ doc: DocumentInfo) {

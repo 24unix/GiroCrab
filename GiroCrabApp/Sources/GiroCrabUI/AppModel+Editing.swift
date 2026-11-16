@@ -9,6 +9,24 @@ extension AppModel {
         setCategory(categoryID, for: [booking])
     }
 
+    /// What a row's category menu and drag act on: the multiple selection
+    /// when the row is part of it, otherwise the row alone (like Finder).
+    /// Looked up by ID: every selected row's menu asks, and `selectedBookings`
+    /// filters the whole list.
+    func categorizeTargets(for booking: Booking) -> [Booking] {
+        guard isMultiSelection, selectedBookingIDs.contains(booking.id) else { return [booking] }
+        return selectedBookingIDs.compactMap(self.booking(withID:))
+    }
+
+    /// Bookings dragged onto a sidebar category (#366); false when `items`
+    /// carry no loaded booking.
+    func dropBookings(_ items: [String], onCategory categoryID: Int64) -> Bool {
+        let dropped = items.flatMap(BookingDrag.ids).compactMap(booking(withID:))
+        guard !dropped.isEmpty else { return false }
+        setCategory(categoryID, for: dropped)
+        return true
+    }
+
     /// One category for several bookings (multiple selection).
     /// The write is cheap; the reloads behind it are not (~0.5 s on 30k bookings).
     /// So the rows show the new category at once and everything derived from it

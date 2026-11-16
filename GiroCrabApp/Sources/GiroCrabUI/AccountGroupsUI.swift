@@ -18,16 +18,19 @@ enum GroupDrag {
         s.hasPrefix(groupPrefix) ? String(s.dropFirst(groupPrefix.count)) : nil
     }
 
-    /// The group the drag in progress carries (nil = an account), read from
-    /// the drag pasteboard so a row knows where it shows the drop line.
-    /// iOS has no drag pasteboard: there it counts as an account.
-    static var draggedGroup: String? {
+    /// The string the drag in progress carries, so a drop target can tell
+    /// payloads apart before the drop. nil on iOS, which has no drag pasteboard.
+    static var draggedString: String? {
         #if os(macOS)
-        NSPasteboard(name: .drag).string(forType: .string).flatMap(groupUUID)
+        NSPasteboard(name: .drag).string(forType: .string)
         #else
         nil
         #endif
     }
+
+    /// The group the drag in progress carries (nil = an account), so a row
+    /// knows where it shows the drop line. On iOS every drag counts as an account.
+    static var draggedGroup: String? { draggedString.flatMap(groupUUID) }
 
     /// The drop line above (`below` false) or below row `row` as an index for
     /// `moveAccount`, which counts without the moved account. `from` is the

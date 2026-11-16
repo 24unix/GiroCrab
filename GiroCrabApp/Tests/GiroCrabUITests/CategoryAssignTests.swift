@@ -101,6 +101,44 @@ final class CategoryAssignTests: XCTestCase {
         XCTAssertNil(model.bookings.first { $0.id == b.id }?.categoryId)
     }
 
+    func testDragPayloadRoundTrips() {
+        XCTAssertEqual(BookingDrag.ids(BookingDrag.payload([3, 14, 15])), [3, 14, 15])
+        XCTAssertEqual(BookingDrag.ids(GroupDrag.account(3)), [], "an account drag carries no bookings")
+        XCTAssertEqual(BookingDrag.ids("3,14"), [])
+    }
+
+    /// The row menu and the drag act on the multiple selection only when the
+    /// row is part of it.
+    func testTargetsFollowTheMultipleSelection() {
+        let rows = Array(model.bookings.prefix(3))
+        XCTAssertEqual(rows.count, 3)
+        model.selectedBookingIDs = Set(rows.prefix(2).map(\.id))
+        XCTAssertEqual(Set(model.categorizeTargets(for: rows[1]).map(\.id)), model.selectedBookingIDs)
+        XCTAssertEqual(model.categorizeTargets(for: rows[2]).map(\.id), [rows[2].id])
+    }
+
+    /// Bookings dropped onto a sidebar category get it; foreign drags change nothing.
+    func testDroppedBookingsGetTheCategory() async throws {
+        let (b, c) = try uncategorizedBooking()
+        XCTAssertFalse(model.dropBookings([GroupDrag.account(b.accountId)], onCategory: c.id))
+        XCTAssertFalse(model.dropBookings([BookingDrag.payload([-1])], onCategory: c.id), "not a loaded booking")
+        XCTAssertNil(model.bookings.first { $0.id == b.id }?.categoryId)
+
+        XCTAssertTrue(model.dropBookings([BookingDrag.payload([b.id])], onCategory: c.id))
+        XCTAssertEqual(model.bookings.first { $0.id == b.id }?.categoryId, c.id)
+        try await awaitDerived(try expected())
+        XCTAssertNil(model.errorMessage)
+    }
+
+    /// A booking dropped onto the list also arrives as a URL; like a web link
+    /// it is no receipt to attach or match.
+    func testDraggedBookingIsNoReceipt() throws {
+        let b = try XCTUnwrap(model.bookings.first)
+        let urls = try [BookingDrag.payload([b.id]), "https://example.com/beleg.pdf"].map { try XCTUnwrap(URL(string: $0)) }
+        XCTAssertFalse(model.attach(urls, to: b))
+        XCTAssertFalse(model.dropAnywhere(urls))
+    }
+
     /// Rule counts are reloaded right away while the rule editor is open.
     func testOpenRuleEditorRefreshesRuleCounts() async throws {
         let vault = try XCTUnwrap(model.vault)

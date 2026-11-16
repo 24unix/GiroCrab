@@ -481,6 +481,12 @@ struct SidebarView: View {
                 .tag(SidebarItem.category(node.id))
             } else {
                 CategoryRow(category: node.category)
+                    #if os(macOS)
+                    // only leaves take dragged bookings, as only leaves are assigned
+                    .modifier(DropSlot(key: "c:\(node.id)", inset: 0, line: $dropLine, edge: { _ in .into }, perform: { items, _ in
+                        model.dropBookings(items, onCategory: node.id)
+                    }, takesBookings: true))
+                    #endif
                     .tag(SidebarItem.category(node.id))
                     .contextMenu { categoryMenu(node.category) }
                     .modifier(CategoryIconColorPopover(id: node.id))
@@ -777,6 +783,9 @@ private struct DropSlot: ViewModifier {
     /// Leading strip the drop zones leave free, so a button there still gets
     /// its clicks (the zones lie on top of the row).
     var freeLeading: CGFloat = 0
+    /// Mark only booking drags (category rows), else only account and group
+    /// drags. Gates just the mark: `perform` ignores foreign payloads itself.
+    var takesBookings = false
 
     /// Zones a drag is over right now. Not state: changing it must not redraw.
     @MainActor private static var hovered: Set<String> = []
@@ -827,7 +836,7 @@ private struct DropSlot: ViewModifier {
                 // zone: write only real changes and clear a tick later, unless the
                 // zone came back meanwhile, so the mark doesn't flicker.
                 let zone = key + (half == .above ? "↑" : "↓")
-                if targeted, let edge = edge(half) {
+                if targeted, let edge = edge(half), BookingDrag.isDragged == takesBookings {
                     Self.hovered.insert(zone)
                     let next = DropLine(key: edge == .into ? intoKey ?? key : key, edge: edge, zone: zone)
                     if line != next { line = next }
