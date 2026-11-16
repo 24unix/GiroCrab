@@ -212,6 +212,7 @@ struct DocumentsScopePicker: View {
 }
 
 struct DocumentsView: View {
+    @Environment(\.reportRedaction) private var redaction
     @Environment(AppModel.self) private var model
     @State private var search = ""
     @State private var unlinkedOnly = false
@@ -353,13 +354,13 @@ struct DocumentsView: View {
             }
         }
         .background(Theme.canvas)
-        .sheet(item: $previewDoc) { d in
+        .capturableSheet(item: $previewDoc) { d in
             NavigationStack {
                 Group {
                     if let data = model.documentData(d) { DocumentPreview(doc: d, data: data) }
                     else { ContentUnavailableView("Beleg nicht verfügbar", systemImage: "doc") }
                 }
-                .navigationTitle(d.title)
+                .navigationTitle(redaction.masking(d.title))
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif

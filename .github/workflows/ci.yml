@@ -99,6 +99,8 @@ jobs:
         run: scripts/lint-ios-compat.sh
       - name: No third-party software brands in user-visible texts
         run: scripts/lint-brand-names.sh
+      - name: Sheets and popovers captured by the bug report (redacted)
+        run: scripts/lint-report-dialogs.sh
       - name: String catalogs sorted (scripts/xcstrings.py format)
         run: scripts/xcstrings.py check
       - name: Test String-Catalog-Merge-Driver

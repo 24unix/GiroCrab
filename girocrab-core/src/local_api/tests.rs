@@ -30,7 +30,7 @@ fn share(v: &Vault, accounts: &[i64], edit: impl FnOnce(&mut ShareScope)) {
         ..Default::default()
     };
     edit(&mut scope);
-    v.set_local_api_scope(&scope).unwrap();
+    v.set_local_api_scope(scope).unwrap();
 }
 
 fn call(v: &Vault, method: &str, params: Value) -> Value {
@@ -639,4 +639,50 @@ fn children_of_deleted_categories_read_as_top_level() {
             None => assert_eq!(c["depth"], 0),
         }
     }
+}
+
+#[test]
+fn a_deleted_account_drops_out_of_the_scope() {
+    let (_d, v) = demo();
+    let ids: Vec<i64> = v.list_accounts().unwrap().iter().map(|a| a.id).collect();
+    share(&v, &ids, |_| {});
+    v.set_account_archived(ids[0], true).unwrap();
+    v.delete_account(ids[0]).unwrap();
+    assert_eq!(v.local_api_scope().unwrap().account_ids, ids[1..]);
+    // A save from an older copy cannot bring it back either.
+    share(&v, &ids, |_| {});
+    assert_eq!(v.local_api_scope().unwrap().account_ids, ids[1..]);
+}
+
+#[test]
+fn merchant_names_are_masked_like_the_texts_they_come_from() {
+    let (_d, v) = demo();
+    let ids: Vec<i64> = v.list_accounts().unwrap().iter().map(|a| a.id).collect();
+    share(&v, &ids, |_| {});
+    let long = regex::Regex::new(r"\d{6,}").unwrap();
+    let merchants = |v: &Vault| -> Vec<String> {
+        let mut out = Vec::new();
+        let mut cursor = Value::Null;
+        loop {
+            let r = call(v, "transactions", json!({ "limit": 500, "cursor": cursor }));
+            for t in r["result"]["transactions"].as_array().unwrap() {
+                out.push(t["merchant"].as_str().unwrap_or_default().to_string());
+            }
+            cursor = r["result"]["next_cursor"].clone();
+            if cursor.is_null() {
+                return out;
+            }
+        }
+    };
+    let masked = merchants(&v);
+    assert!(
+        masked.iter().any(|m| m.contains("[number]")),
+        "the demo data has a merchant with an account number"
+    );
+    assert!(masked.iter().all(|m| !long.is_match(m)), "{masked:?}");
+    share(&v, &ids, |s| s.share_account_numbers = true);
+    assert!(
+        merchants(&v).iter().any(|m| long.is_match(m)),
+        "shown when shared"
+    );
 }

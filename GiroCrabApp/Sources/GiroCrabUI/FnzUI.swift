@@ -170,6 +170,7 @@ enum FnzScripts {
 }
 
 struct FnzWebSheet: View {
+    @Environment(\.reportRedaction) private var redaction
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let connection: BankConnection
@@ -190,7 +191,7 @@ struct FnzWebSheet: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(connection.displayName) – FNZ Bank").appFont(.headline)
+                    Text("\(redaction.masking(connection.displayName)) – FNZ Bank").appFont(.headline)
                     if running { Text(progress).appFont(.caption) }
                     else if let notice { Text(notice).appFont(.caption).foregroundStyle(.orange) }
                     else if let blocked = browser.blockedHost {

@@ -128,7 +128,7 @@ struct StreamHeaderCard: View {
                 if let hb = headerBalance {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(Money.format(hb.cents))
-                            .sensitive()
+                            .sensitive(.amounts)
                             .appFont(compactHeader ? .subheadline : .largeTitle, weight: .semibold, monospacedDigit: true)
                             .foregroundStyle(account?.kind == .loan ? Theme.loan : Theme.text)
                             .lineLimit(1)
@@ -138,7 +138,7 @@ struct StreamHeaderCard: View {
                         }
                         if account == nil, let split = model.headerTotalSplit {
                             Text("Zusätzlich: \(split.others.map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · "))")
-                                .sensitive()
+                                .sensitive(.amounts)
                                 .appFont(.caption, monospacedDigit: true)
                                 .foregroundStyle(Theme.secondary)
                                 .lineLimit(1)
@@ -175,7 +175,7 @@ struct StreamHeaderCard: View {
                     #endif
                 }
                 depotRow
-                    .popover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
+                    .capturablePopover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
                         CustomPeriodForm()
                     }
             } else {
@@ -232,7 +232,7 @@ struct StreamHeaderCard: View {
                     Label("Dokumente", systemImage: "doc.text")
                 }
                 .buttonStyle(.borderless)
-                .sheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
+                .capturableSheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
             }
             Spacer()
             if let a = account, model.isTangible(a.id) {
@@ -341,7 +341,7 @@ struct StreamHeaderCard: View {
             }
         }
         // Outside ViewThatFits: its candidates must not each carry the popover.
-        .popover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
+        .capturablePopover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
             CustomPeriodForm()
         }
     }
@@ -458,7 +458,7 @@ struct StreamHeaderCard: View {
                             #endif
                     }
                     .buttonStyle(.borderless)
-                    .sheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
+                    .capturableSheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
                 }
                 Spacer()
                 #if os(iOS)

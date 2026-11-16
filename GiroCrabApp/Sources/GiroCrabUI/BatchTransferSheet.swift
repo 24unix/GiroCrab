@@ -7,6 +7,7 @@ import GiroCrabCore
 /// then a read-only review. The bank's TAN request is shown by `TwoFactorSheet`.
 struct BatchTransferSheet: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
     @Environment(\.dismiss) private var dismiss
     @Environment(\.textScale) private var textScale
     @Environment(\.undoManager) private var undoManager
@@ -93,11 +94,7 @@ struct BatchTransferSheet: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 16) {
                 labeled("Von Konto") {
-                    Picker("Von Konto", selection: $draft.accountID) {
-                        ForEach(model.batchAccounts) { a in
-                            Text("\(a.name) · \(formatIBAN(a.iban))").tag(Optional(a.id))
-                        }
-                    }
+                    SourceAccountPicker(selection: $draft.accountID, accounts: model.batchAccounts)
                 }
                 labeled("Buchung auf dem Kontoauszug") {
                     Picker("Buchung", selection: $draft.singleBookings) {
@@ -236,7 +233,7 @@ struct BatchTransferSheet: View {
             }
             Divider().frame(height: 40)
             VStack(alignment: .leading, spacing: 3) {
-                (Text("\(rows.count) Zahlungen") + Text(" · ") + Text(account.map { "\($0.name) · \(formatIBAN($0.iban))" } ?? "")).lineLimit(1)
+                (Text("\(rows.count) Zahlungen") + Text(" · ") + Text(account.map { "\(redaction.masking($0.name)) · \(redaction.masking(formatIBAN($0.iban)))" } ?? "")).lineLimit(1)
                 Text("\(bookingText) · \(draft.scheduled ? String(localized: "Terminüberweisung") : String(localized: "Heute (SEPA-Überweisung)"))")
                     .foregroundStyle(Theme.secondary).lineLimit(1)
             }

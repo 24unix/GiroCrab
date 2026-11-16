@@ -2463,6 +2463,17 @@
         }
       }
     },
+    "Aktiv, noch kein Konto geteilt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Active, no account shared yet"
+          }
+        }
+      }
+    },
     "Aktivieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3360,6 +3371,17 @@
         }
       }
     },
+    "Analyse" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Analysis"
+          }
+        }
+      }
+    },
     "Analysen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3389,6 +3411,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Other"
+          }
+        }
+      }
+    },
+    "Andere Ansicht aufnehmen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capture Another View …"
           }
         }
       }
@@ -4099,6 +4132,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Register an application on enablebanking.com: choose “Production”, let the browser generate the key, and enter this redirect URL:"
+          }
+        }
+      }
+    },
+    "Aufgenommen wird das Hauptfenster samt geöffnetem Dialog. Liegt das Problem woanders, wechsle dort zur betroffenen Ansicht oder öffne den Dialog und wähle dann „Neu aufnehmen“. Eine neue Aufnahme verwirft die Markierungen, weil sich der Inhalt verschoben haben kann." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The main window is captured together with the open dialog. If the problem is elsewhere, go to the affected view there or open the dialog, then choose “Retake”. A new capture discards the markings, as the content may have moved."
+          }
+        }
+      }
+    },
+    "Aufgenommen wird, was unter diesem Bericht liegt, samt geöffneter Dialoge. Liegt das Problem woanders, wechsle mit „Andere Ansicht aufnehmen …“ dorthin. Eine neue Aufnahme verwirft die Markierungen, weil sich der Inhalt verschoben haben kann." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What lies beneath this report is captured, including open dialogs. If the problem is elsewhere, go there with “Capture Another View …”. A new capture discards the markings, as the content may have moved."
           }
         }
       }
@@ -5942,6 +5997,17 @@
         }
       }
     },
+    "Beträge, Daten, Kategorien und Salden werden immer geteilt. Ohne IBANs und Kontonummern werden auch lange Ziffernfolgen in Texten unkenntlich gemacht. Die Suche steht nur zur Verfügung, wenn die ersten drei Felder geteilt sind." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amounts, dates, categories and balances are always shared. Without IBANs and account numbers, long digit sequences in texts are masked as well. Search is only available when the first three fields are shared."
+          }
+        }
+      }
+    },
     "Beträge, IBANs, Namen, Kontonamen, Verwendungszwecke und Belege werden abgedeckt; „Kategorien ausblenden“ deckt auch Kategorien, Gruppen und Wertpapiernamen ab. Im Demo-Tresor sind alle Daten erfunden, deshalb lässt sich die Schwärzung hier abschalten." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7745,6 +7811,17 @@
         }
       }
     },
+    "Der Schlüssel wird nur jetzt angezeigt. Tragen Sie ihn im Programm ein, das zugreifen soll. Kopiert bleibt er 60 Sekunden in der Zwischenablage." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The key is shown only now. Enter it in the program that should have access. Once copied, it stays on the clipboard for 60 seconds."
+          }
+        }
+      }
+    },
     "Der Sollzins muss zwischen 0 und 30 % liegen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8484,6 +8561,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Your choice applies to this tangible asset. Automatic resets only the respective field."
+          }
+        }
+      }
+    },
+    "Die externe Analyse ist nur mit Ihrem eigenen, entsperrten Tresor verfügbar – nicht mit den Demo-Daten." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "External analysis is only available with your own unlocked vault – not with the demo data."
           }
         }
       }
@@ -9413,6 +9501,17 @@
         }
       }
     },
+    "Ein geöffneter Hinweis oder Bestätigungsdialog wird nicht aufgenommen; das Bild zeigt, was darunter liegt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An open notice or confirmation dialog is not captured; the picture shows what lies beneath it."
+          }
+        }
+      }
+    },
     "Einblenden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9475,17 +9574,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "A selected transaction counts as reviewed after this time – like a read email. Never with multiple selection."
-          }
-        }
-      }
-    },
-    "Eine neue Aufnahme verwirft die Markierungen, weil sich der Inhalt verschoben haben kann." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A new capture discards the marks, since the content may have moved."
           }
         }
       }
@@ -9827,6 +9915,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Payee / Reference"
+          }
+        }
+      }
+    },
+    "Empfänger und Auftraggeber" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Payees and payers"
           }
         }
       }
@@ -10421,6 +10520,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Export…"
+          }
+        }
+      }
+    },
+    "Externe Analyse" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "External Analysis"
           }
         }
       }
@@ -11619,6 +11729,28 @@
         }
       }
     },
+    "Geteilte Felder" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shared Fields"
+          }
+        }
+      }
+    },
+    "Geteilte Konten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shared Accounts"
+          }
+        }
+      }
+    },
     "Gewerbe" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12593,6 +12725,17 @@
         }
       }
     },
+    "Hier aufnehmen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capture Here"
+          }
+        }
+      }
+    },
     "Hier die heruntergeladene .pem-Datei wählen. GiroCrab übernimmt Schlüssel und Application-ID und prüft die Anwendung." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12820,6 +12963,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Invalid IBAN (checksum/length)"
+          }
+        }
+      }
+    },
+    "IBANs und Kontonummern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "IBANs and account numbers"
           }
         }
       }
@@ -15906,6 +16060,17 @@
         }
       }
     },
+    "Lesenden Zugriff für Programme auf diesem Mac erlauben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow read-only access for programs on this Mac"
+          }
+        }
+      }
+    },
     "Letzte 12 Monate" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17469,6 +17634,17 @@
         }
       }
     },
+    "Neue Konten werden erst geteilt, wenn Sie sie hier auswählen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New accounts are only shared once you select them here."
+          }
+        }
+      }
+    },
     "Neue Konten: %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17623,6 +17799,17 @@
         }
       }
     },
+    "Neuen Schlüssel erzeugen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create New Key"
+          }
+        }
+      }
+    },
     "Neuen Tresor anlegen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17663,6 +17850,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New Asset"
+          }
+        }
+      }
+    },
+    "Neuer Schlüssel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New key"
           }
         }
       }
@@ -17883,6 +18081,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Not Found?"
+          }
+        }
+      }
+    },
+    "Nicht gestartet: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not started: %@"
           }
         }
       }
@@ -19702,6 +19911,39 @@
         }
       }
     },
+    "Programme auf diesem Mac, die Sie einrichten, können ausgewählte Konten, Buchungen, Kategorien und Summen lesen. Sie können nichts ändern, keine Zahlungen auslösen und sehen keine Zugangsdaten. Der Zugriff besteht nur, solange GiroCrab läuft und der Tresor entsperrt ist." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Programs on this Mac that you set up can read selected accounts, transactions, categories and totals. They cannot change anything, cannot initiate payments and never see login credentials. Access exists only while GiroCrab is running and the vault is unlocked."
+          }
+        }
+      }
+    },
+    "Programme mit dem bisherigen Zugangsschlüssel erhalten sofort keine Daten mehr. Für neuen Zugriff erzeugen Sie einen neuen Schlüssel." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Programs using the previous access key stop receiving data immediately. For new access, create a new key."
+          }
+        }
+      }
+    },
+    "Programme wie KI-Assistenten können die geteilten Daten an einen Cloud-Dienst übertragen. Teilen Sie nur, was dort verarbeitet werden darf." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Programs such as AI assistants may send the shared data to a cloud service. Share only what may be processed there."
+          }
+        }
+      }
+    },
     "Protokoll durchsuchen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20727,6 +20969,17 @@
         }
       }
     },
+    "Schließe zuerst den geöffneten Hinweis, dann wähle erneut „Hier aufnehmen“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close the open notice first, then choose “Capture Here” again."
+          }
+        }
+      }
+    },
     "Schließen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21296,6 +21549,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "How to set up your free Enable Banking application:"
+          }
+        }
+      }
+    },
+    "Socket" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Socket"
           }
         }
       }
@@ -23930,6 +24194,17 @@
         }
       }
     },
+    "Verwendungszweck und Buchungstext" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Purpose and booking text"
+          }
+        }
+      }
+    },
     "Viele Banken begrenzen Echtzeitüberweisungen (oft auf 100.000 € oder ein eigenes Limit). Die Bank kann den Auftrag dann ablehnen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24359,6 +24634,17 @@
         }
       }
     },
+    "Wartet auf einen Zugangsschlüssel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for an access key"
+          }
+        }
+      }
+    },
     "Was GiroCrab außerdem übernimmt und wie es künftig Umsätze abruft." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24443,6 +24729,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Website & Documentation (girocrab.de)"
+          }
+        }
+      }
+    },
+    "Wechsle zur betroffenen Ansicht oder öffne den Dialog und nimm ihn dann auf." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Go to the affected view or open the dialog, then capture it."
           }
         }
       }
@@ -24733,6 +25030,17 @@
         }
       }
     },
+    "Widerrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revoke"
+          }
+        }
+      }
+    },
     "Wie GiroCrab die Umsätze abruft. PIN und TAN fragt GiroCrab erst beim ersten Abruf ab." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24927,6 +25235,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Will be sent as %@"
+          }
+        }
+      }
+    },
+    "Wird gestartet …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starting …"
           }
         }
       }
@@ -25382,6 +25701,28 @@
         }
       }
     },
+    "Zugangsschlüssel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Access Key"
+          }
+        }
+      }
+    },
+    "Zugangsschlüssel erzeugen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create Access Key"
+          }
+        }
+      }
+    },
     "Zugriff entzogen: Die Bank liefert dieses Konto nicht mehr. Buchungen bleiben erhalten." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25389,6 +25730,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Access withdrawn: the bank no longer provides this account. Its bookings are kept."
+          }
+        }
+      }
+    },
+    "Zugriff widerrufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revoke Access"
+          }
+        }
+      }
+    },
+    "Zugriff widerrufen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revoke access?"
           }
         }
       }

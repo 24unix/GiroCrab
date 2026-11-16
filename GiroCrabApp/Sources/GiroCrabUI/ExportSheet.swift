@@ -194,6 +194,7 @@ struct ExportSheet: View {
                 Section {
                     LabeledContent("Datei") {
                         Text(suggestedName)
+                            .sensitive() // named after the account
                             .appFont(.caption, design: .monospaced)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
@@ -456,6 +457,7 @@ struct ExportSheet: View {
                     Text(account.name)
                         .foregroundStyle(usable ? .primary : .secondary)
                         .lineLimit(1)
+                        .sensitive()
                     if options.format.isCamt, !camtUsable(account) {
                         Text("Nicht für Darlehen und Depots")
                             .appFont(.caption)
@@ -468,6 +470,7 @@ struct ExportSheet: View {
                                 .appFont(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
+                                .sensitive()
                         }
                     }
                 }

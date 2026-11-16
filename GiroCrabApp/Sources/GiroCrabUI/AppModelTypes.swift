@@ -538,6 +538,12 @@ extension AccountKind {
     }
 }
 
+/// The running socket and the vault it serves (`reconcileLocalApiServer`).
+struct RunningLocalApi {
+    let server: LocalApiServer
+    weak var servedVault: Vault?
+}
+
 /// What Return in a tag field does with the typed text (#228).
 enum TagEntryIntent: Equatable {
     case none

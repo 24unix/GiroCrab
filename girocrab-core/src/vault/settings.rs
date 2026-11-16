@@ -42,6 +42,25 @@ pub const KNOWN_SETTINGS: &[(&str, &str, &str, &str, bool, &str)] = &[
 ];
 
 impl Vault {
+    /// [`Vault::set_setting`] on a connection the caller already holds (a
+    /// read-modify-write under one lock).
+    pub(crate) fn set_setting_inner(conn: &Connection, key: &str, value: &str) -> CoreResult<()> {
+        if value.trim().is_empty() {
+            conn.execute("DELETE FROM settings WHERE key = ?1", [key])?;
+        } else {
+            let secret = KNOWN_SETTINGS.iter().any(|s| s.0 == key && s.4)
+                || key.contains("secret")
+                || key.contains("private")
+                || key.starts_with("pin.");
+            conn.execute(
+                "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, is_secret = excluded.is_secret",
+                params![key, value.trim(), secret as i64],
+            )?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn setting_inner(conn: &Connection, key: &str) -> CoreResult<Option<String>> {
         let stored: Option<String> = conn
             .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
@@ -130,19 +149,6 @@ impl Vault {
     pub fn set_setting(&self, key: String, value: String) -> Result<(), CoreError> {
         let value = Zeroizing::new(value);
         let db = self.db()?;
-        if value.trim().is_empty() {
-            db.execute("DELETE FROM settings WHERE key = ?1", [&key])?;
-        } else {
-            let secret = KNOWN_SETTINGS.iter().any(|s| s.0 == key && s.4)
-                || key.contains("secret")
-                || key.contains("private")
-                || key.starts_with("pin.");
-            db.execute(
-                "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, ?3)
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value, is_secret = excluded.is_secret",
-                params![key, value.trim(), secret as i64],
-            )?;
-        }
-        Ok(())
+        Self::set_setting_inner(&db, &key, &value)
     }
 }

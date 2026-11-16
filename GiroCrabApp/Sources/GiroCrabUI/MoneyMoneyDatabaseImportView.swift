@@ -18,6 +18,7 @@ import GiroCrabCore
 /// view state afterwards.
 struct MoneyMoneyDatabaseImportView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
     @Environment(\.dismiss) private var dismiss
     /// Tells the sheet that an import is running.
     @Binding var running: Bool
@@ -332,6 +333,7 @@ struct MoneyMoneyDatabaseImportView: View {
             Text(a.name).lineLimit(1)
             Text(accountSubtitle(a)).appFont(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
         }
+        .sensitive()
         .opacity(binding(a).wrappedValue.selected ? 1 : 0.5)
     }
 
@@ -345,6 +347,7 @@ struct MoneyMoneyDatabaseImportView: View {
     private func balanceCell(_ a: MoneyMoneyDbAccount) -> some View {
         Text(Money.format(a.computedBalanceCents, currency: a.currency))
             .monospacedDigit()
+            .sensitive(.amounts)
             .frame(maxWidth: .infinity, alignment: .trailing)
             .help(a.balanceSource)
     }
@@ -468,9 +471,10 @@ struct MoneyMoneyDatabaseImportView: View {
         } label: {
             VStack(alignment: .leading, spacing: 1) {
                 Text(b.name.isEmpty ? (b.connector?.displayName ?? String(localized: "Bank")) : b.name)
+                    .sensitive(b.name.isEmpty ? [] : .personal)
                 let detail = bankDetail(b)
                 if !detail.isEmpty {
-                    Text(detail).appFont(.caption).foregroundStyle(Theme.secondary)
+                    Text(detail).appFont(.caption).foregroundStyle(Theme.secondary).sensitive() // login name
                 }
             }
         }
@@ -531,7 +535,7 @@ struct MoneyMoneyDatabaseImportView: View {
     private func progressStatus(_ p: MoneyMoneyDbImportProgress) -> String {
         if p.accountIndex == 0 { return String(localized: "Datenbank wird gelesen …") }
         if p.accountIndex > p.accountCount { return String(localized: "Bankzugänge und Gruppen werden angelegt …") }
-        return String(localized: "Konto \(p.accountIndex) von \(p.accountCount) · \(p.accountName)")
+        return String(localized: "Konto \(p.accountIndex) von \(p.accountCount) · \(redaction.masking(p.accountName))")
     }
 
     private func progressCounts(_ p: MoneyMoneyDbImportProgress) -> String {
@@ -573,6 +577,7 @@ struct MoneyMoneyDatabaseImportView: View {
                     }.joined(separator: "\n"))
                     .monospacedDigit()
                     .textSelection(.enabled)
+                    .sensitive()
                 }
             }
         } header: {
@@ -638,7 +643,7 @@ struct MoneyMoneyDatabaseImportView: View {
                     LabeledContent {
                         Text("Kein Abruf")
                     } label: {
-                        Label { Text(name) } icon: {
+                        Label { Text(name).sensitive() } icon: {
                             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning)
                         }
                     }
@@ -705,7 +710,7 @@ struct MoneyMoneyDatabaseImportView: View {
                 GridRow(alignment: .firstTextBaseline) {
                     Label {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(c.name).lineLimit(1)
+                            Text(c.name).lineLimit(1).sensitive()
                             if let note = checkNote(c) {
                                 Text(note).appFont(.caption).foregroundStyle(Theme.secondary)
                             }
@@ -718,9 +723,10 @@ struct MoneyMoneyDatabaseImportView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     Text("\(c.foundBookings + c.deletedBookings) / \(c.mmBookings)")
                         .foregroundStyle(c.foundBookings + c.deletedBookings == c.mmBookings ? Theme.text : Theme.warning)
-                    Text(Money.format(c.mmBalanceCents, currency: c.currency))
+                    Text(Money.format(c.mmBalanceCents, currency: c.currency)).sensitive(.amounts)
                     Text(Money.format(c.girocrabBalanceCents, currency: c.currency))
                         .foregroundStyle(c.balanceFromBank || c.girocrabBalanceCents == c.mmBalanceCents ? Theme.text : Theme.warning)
+                        .sensitive(.amounts)
                 }
                 .monospacedDigit()
             }

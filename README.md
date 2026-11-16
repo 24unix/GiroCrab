@@ -192,6 +192,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | Scalable Capital | REST-API | ✓ | ✓ | ✓ | – | – | – | 🧪 Test gesucht [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
 | Amazon Visa | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
 | American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
+| PayPal (DE) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
 | Weitere Banken per PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen |
 | Amazon Bestellungen | Web-Portal | ✓ | – | – | – | – | – | 🧪 Test gesucht |
@@ -399,6 +400,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | Amazon Visa | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
 | American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
 | More banks via PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Limited |
+| PayPal (DE) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
 | Amazon orders | Web-Portal | ✓ | – | – | – | – | – | 🧪 Testing wanted |
 | easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Testing wanted |
