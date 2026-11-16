@@ -140,20 +140,102 @@ pub fn period_label(key: &str) -> String {
     }
 }
 
-/// "1,2k" / "850" style label for the chart axis.
+/// German number label for the chart axis: "5.000", "2.500", "0".
 pub fn axis_label(cents: i64) -> String {
-    let euros = cents / 100;
-    if euros >= 1000 {
-        let tenth = (euros * 10 / 1000) % 10;
-        let whole = euros / 1000;
-        if tenth == 0 {
-            format!("{whole}k")
-        } else {
-            format!("{whole},{tenth}k")
+    let euros = (cents / 100).to_string();
+    let mut out = String::new();
+    for (i, c) in euros.chars().enumerate() {
+        if i > 0 && (euros.len() - i).is_multiple_of(3) && !out.ends_with('-') {
+            out.push('.');
         }
-    } else {
-        euros.to_string()
+        out.push(c);
     }
+    out
+}
+
+/// Bar colour of a budget line: green below 80 %, amber up to 100 %, red above.
+pub fn budget_color_hex(progress: f32) -> &'static str {
+    if progress > 1.0 {
+        "#f47067"
+    } else if progress >= 0.8 {
+        "#d29922"
+    } else {
+        "#3fb950"
+    }
+}
+
+/// Human-readable booking type: "KARTENZAHLUNG" -> "Kartenzahlung", "UEBERWEISUNG" -> "Überweisung".
+/// Text that already has lower-case letters is kept as the bank sent it.
+pub fn booking_type_label(text: &str) -> String {
+    let t = text.trim();
+    if t.chars().any(char::is_lowercase) {
+        return t.to_string();
+    }
+    t.split(' ')
+        .map(|w| {
+            let lower = w.to_lowercase();
+            let lower = match lower.strip_prefix("ueber") {
+                Some(rest) => format!("über{rest}"),
+                None => lower,
+            };
+            let mut cs = lower.chars();
+            cs.next().map_or_else(String::new, |f| {
+                f.to_uppercase().collect::<String>() + cs.as_str()
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Cashflow of the last `n` periods ending at `now`, summed from loaded rows (one account).
+/// `gran`: 0 month, 1 quarter, 2 year; keys match the core ("2026-03", "2026-Q1", "2026").
+pub fn cashflow_from_rows(
+    rows: &[Row],
+    gran: i32,
+    now: (i32, u32),
+    n: usize,
+) -> Vec<PeriodCashflow> {
+    let key = |y: i32, m: u32| match gran {
+        1 => format!("{y}-Q{}", (m - 1) / 3 + 1),
+        2 => format!("{y}"),
+        _ => format!("{y}-{m:02}"),
+    };
+    let step = match gran {
+        1 => 3,
+        2 => 12,
+        _ => 1,
+    };
+    let mut keys = Vec::new();
+    let (mut y, mut m) = now;
+    for _ in 0..n {
+        keys.push(key(y, m));
+        let total = y * 12 + (m as i32 - 1) - step;
+        y = total.div_euclid(12);
+        m = total.rem_euclid(12) as u32 + 1;
+    }
+    keys.reverse();
+    let mut out: Vec<PeriodCashflow> = keys
+        .into_iter()
+        .map(|k| PeriodCashflow {
+            key: k,
+            income_cents: 0,
+            expense_cents: 0,
+        })
+        .collect();
+    for r in rows {
+        let Some((y, m, _)) = parse_iso(&r.booking_date) else {
+            continue;
+        };
+        let k = key(y, m);
+        if let Some(p) = out.iter_mut().find(|p| p.key == k) {
+            if r.amount_cents >= 0 {
+                p.income_cents += r.amount_cents;
+            } else {
+                p.expense_cents += -r.amount_cents;
+            }
+        }
+    }
+    out
 }
 
 /// One bar pair of the chart: heights as a fraction (0..=1) of the axis maximum.
@@ -180,7 +262,7 @@ fn nice_max(max_cents: i64) -> i64 {
     mag * 10 * 100
 }
 
-/// Bars and the four axis labels (top to bottom, 4 grid lines) of the cashflow chart.
+/// Bars and the three axis labels (top to bottom, 3 grid lines) of the cashflow chart.
 pub fn chart(periods: &[PeriodCashflow]) -> (Vec<Bars>, Vec<String>) {
     let max = periods
         .iter()
@@ -196,7 +278,7 @@ pub fn chart(periods: &[PeriodCashflow]) -> (Vec<Bars>, Vec<String>) {
             expense: (p.expense_cents.max(0) as f32 / top as f32).min(1.0),
         })
         .collect();
-    let ticks = (0..4).map(|i| axis_label(top - top * i / 3)).collect();
+    let ticks = (0..3).map(|i| axis_label(top - top * i / 2)).collect();
     (bars, ticks)
 }
 
@@ -336,13 +418,53 @@ mod tests {
             expense_cents: e,
         };
         let (bars, ticks) = chart(&[p("2026-10", 250_000, 100_000), p("2026-11", 0, 0)]);
-        assert_eq!(ticks, ["2,5k", "1,6k", "833", "0"]);
+        assert_eq!(ticks, ["2.500", "1.250", "0"]);
         assert!((bars[0].income - 1.0).abs() < 1e-6);
         assert!((bars[0].expense - 0.4).abs() < 1e-6);
         assert_eq!(bars[1].income, 0.0);
         assert_eq!(nice_max(0), 100);
         assert_eq!(nice_max(123_400), 200_000);
-        assert_eq!(axis_label(120_000), "1,2k");
+        assert_eq!(axis_label(120_000), "1.200");
+        assert_eq!(axis_label(500_000_00), "500.000");
+        assert_eq!(axis_label(0), "0");
+    }
+
+    #[test]
+    fn cashflow_sums_rows_per_period() {
+        let rows = [
+            row("2026-11-02", -3000, "A"),
+            row("2026-11-05", 10000, "B"),
+            row("2026-10-30", -500, "A"),
+            row("2025-01-01", -999, "A"),
+        ];
+        let m = cashflow_from_rows(&rows, 0, (2026, 11), 3);
+        let keys: Vec<_> = m.iter().map(|p| p.key.as_str()).collect();
+        assert_eq!(keys, ["2026-09", "2026-10", "2026-11"]);
+        assert_eq!((m[2].income_cents, m[2].expense_cents), (10000, 3000));
+        assert_eq!(m[1].expense_cents, 500);
+        let q = cashflow_from_rows(&rows, 1, (2026, 11), 2);
+        assert_eq!(q[1].key, "2026-Q4");
+        assert_eq!(q[0].key, "2026-Q3");
+        assert_eq!(q[1].expense_cents, 3500);
+        let y = cashflow_from_rows(&rows, 2, (2026, 11), 2);
+        assert_eq!((y[0].key.as_str(), y[0].expense_cents), ("2025", 999));
+    }
+
+    #[test]
+    fn booking_types_are_title_case() {
+        assert_eq!(booking_type_label("KARTENZAHLUNG"), "Kartenzahlung");
+        assert_eq!(booking_type_label("ÜBERWEISUNG"), "Überweisung");
+        assert_eq!(booking_type_label("UEBERWEISUNG"), "Überweisung");
+        assert_eq!(booking_type_label("LASTSCHRIFT"), "Lastschrift");
+        assert_eq!(booking_type_label("Dauerauftrag"), "Dauerauftrag");
+    }
+
+    #[test]
+    fn budget_colours_follow_the_thresholds() {
+        assert_eq!(budget_color_hex(0.25), "#3fb950");
+        assert_eq!(budget_color_hex(0.8), "#d29922");
+        assert_eq!(budget_color_hex(1.0), "#d29922");
+        assert_eq!(budget_color_hex(1.01), "#f47067");
     }
 
     #[test]

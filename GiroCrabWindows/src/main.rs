@@ -285,6 +285,11 @@ fn logo_of(st: &State, r: &Row, privacy: bool) -> Option<slint::Image> {
 
 fn booking_row(st: &State, b: &Row, privacy: bool) -> BookingRow {
     let logo = logo_of(st, b, privacy);
+    let detail = if b.booking_text.is_empty() {
+        b.purpose.clone()
+    } else {
+        cockpit::booking_type_label(&b.booking_text)
+    };
     BookingRow {
         id: b.id as i32,
         counterparty: daily::mask(&b.counterparty, privacy).into(),
@@ -296,11 +301,7 @@ fn booking_row(st: &State, b: &Row, privacy: bool) -> BookingRow {
         },
         category_color: tint(&b.category_color_hex),
         detail: daily::mask(
-            if b.booking_text.is_empty() {
-                &b.purpose
-            } else {
-                &b.booking_text
-            },
+            &detail,
             privacy,
         )
         .into(),
@@ -436,9 +437,23 @@ fn refresh_dashboard(win: &MainWindow, vault: Arc<Vault>) {
         _ => PeriodGranularity::Month,
     };
     let (year, month) = cockpit::current_year_month();
+    let period = win.get_cashflow_period();
+    let account_flow = with_state(|st| match st.target {
+        Target::Account(_) => Some(cockpit::cashflow_from_rows(
+            &st.rows,
+            period,
+            (year, month),
+            6,
+        )),
+        _ => None,
+    });
     let weak = win.as_weak();
     std::thread::spawn(move || {
-        let flow = vault.cashflow_by_period(gran, 6).unwrap_or_default();
+        // One account: sum its loaded bookings; everything else: the core's all-account figures.
+        let flow = match account_flow {
+            Some(f) => f,
+            None => vault.cashflow_by_period(gran, 6).unwrap_or_default(),
+        };
         let status = vault
             .list_category_budget_progress(year, month)
             .unwrap_or_default();
@@ -487,7 +502,10 @@ fn refresh_dashboard(win: &MainWindow, vault: Arc<Vault>) {
                             },
                             progress: l.progress,
                             over: l.limit_cents.is_some() && l.progress > 1.0,
-                            color: tint(&l.color_hex),
+                            color: match l.limit_cents {
+                                Some(_) => tint(cockpit::budget_color_hex(l.progress)),
+                                None => tint(&l.color_hex),
+                            },
                         }
                     })
                     .collect::<Vec<_>>(),
@@ -505,7 +523,8 @@ fn apply_filter(win: &MainWindow) {
             status: StatusFilter::from_index(win.get_status_index()),
         };
         st.shown = daily::visible(&st.rows, &st.filter);
-        st.selected_booking = daily::keep_selection(&st.rows, &st.shown, st.selected_booking);
+        st.selected_booking = daily::keep_selection(&st.rows, &st.shown, st.selected_booking)
+            .or_else(|| st.shown.first().map(|&i| st.rows[i].id));
     });
     render_bookings(win);
 }
