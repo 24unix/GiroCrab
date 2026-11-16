@@ -736,7 +736,7 @@ mod tests {
             .is_err());
         let csv = v.export_bookings_csv(f).unwrap();
         assert!(csv.starts_with(
-            "\u{FEFF}Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Betrag;Währung\r\n"
+            "\u{FEFF}Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Betrag;Währung;Tags\r\n"
         ));
         assert!(csv.contains(";-30,00;"));
         std::fs::remove_dir_all(dir).ok();

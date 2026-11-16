@@ -244,6 +244,7 @@ mod tests {
             mandate_id: String::new(),
             creditor_id: String::new(),
             external_id: String::new(),
+            tags: Vec::new(),
         }
     }
 

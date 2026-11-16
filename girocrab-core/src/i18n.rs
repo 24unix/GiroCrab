@@ -238,6 +238,11 @@ fn default_name_en(de: &str) -> Option<&'static str> {
 fn english(de: &str) -> Option<&'static str> {
     Some(match de {
         "Zugangsbezeichnung" => "Connection label",
+        "Der Name des Tags fehlt." => "The tag name is missing.",
+        "Der Name des Tags ist länger als 64 Zeichen." => "The tag name is longer than 64 characters.",
+        "Die Farbe ist ungültig (#RRGGBB)." => "The colour is invalid (#RRGGBB).",
+        "Es gibt schon einen Tag mit diesem Namen." => "A tag with this name already exists.",
+        "Ein Tag kann nicht mit sich selbst zusammengeführt werden." => "A tag cannot be merged with itself.",
         "Der Saldo dieses Kontos kommt von der Bank. Ein Startsaldo gilt nur für Konten, deren Saldo GiroCrab aus den Umsätzen berechnet." => "This account's balance comes from the bank. An opening balance only applies to accounts whose balance GiroCrab computes from the bookings.",
         "Ungültiges Datum: {0}" => "Invalid date: {0}",
         "Die Bank lieferte die Daueraufträge nicht vollständig (zu viele Seiten)." => "The bank did not return the standing orders completely (too many pages).",

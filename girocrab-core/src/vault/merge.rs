@@ -52,7 +52,9 @@ impl Vault {
         let cat_map = crate::sync_merge::live_targets(&tx, "categories", &cat_map)?;
         let rule_map = crate::sync_merge::live_targets(&tx, "rules", &rule_map)?;
 
-        // bookings and splits (newest edit per field wins, deletions stay)
+        // tags (by uuid, newest edit wins), before the bookings that carry them
+        crate::tags::merge::merge_attached(&tx)?;
+        // bookings, splits and tag sets (newest edit per field wins, deletions stay)
         crate::sync_merge::merge_bookings(&tx, &acc_map, &cat_map, &rule_map, &mut st)?;
         crate::loans::merge_attached(&tx, &acc_map)?;
         crate::opening_balance::merge_attached(&tx, &acc_map)?;
@@ -97,7 +99,7 @@ impl Vault {
     /// ones created on both sides are combined. Missing connections, accounts
     /// and bookings are added; existing bookings (matched by account +
     /// external id, else import fingerprint) take the newest edit per field
-    /// (category, note, checked, text, splits) and stay deleted once deleted.
+    /// (category, note, checked, text, splits, tags) and stay deleted once deleted.
     pub fn merge_other_vault(
         &self,
         other_path: String,

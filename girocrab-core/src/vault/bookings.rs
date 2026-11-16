@@ -163,8 +163,25 @@ fn booking_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<(i64, Booking)> {
             mandate_id: r.get(25)?,
             creditor_id: r.get(26)?,
             external_id: r.get(27)?,
+            tags: Vec::new(),
         },
     ))
+}
+
+/// Fills the tags of `bookings` with one query per 500 rows (never per row).
+pub(crate) fn attach_tags(
+    db: &rusqlite::Connection,
+    bookings: &mut [Booking],
+) -> Result<(), CoreError> {
+    if bookings.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<i64> = bookings.iter().map(|b| b.id).collect();
+    let mut tags = crate::tags::tags_for_bookings(db, &ids)?;
+    for b in bookings {
+        b.tags = tags.remove(&b.id).unwrap_or_default();
+    }
+    Ok(())
 }
 
 /// Everything a raw booking row needs to read like the booking list: category
@@ -360,6 +377,25 @@ impl Vault {
             args.push(Box::new(to.clone()));
             wh.push(format!("t.booking_date <= ?{}", args.len()));
         }
+        // tags (#228): every listed tag must be on the booking (AND)
+        if filter.untagged_only {
+            wh.push(
+                "NOT EXISTS (SELECT 1 FROM transaction_tags x JOIN tags g ON g.id = x.tag_id \
+                 WHERE x.transaction_id = t.id AND g.deleted_ms IS NULL)"
+                    .into(),
+            );
+        } else {
+            let mut tag_ids = filter.tag_ids.clone();
+            tag_ids.sort_unstable();
+            tag_ids.dedup();
+            for tag in tag_ids {
+                args.push(Box::new(tag));
+                wh.push(format!(
+                    "EXISTS (SELECT 1 FROM transaction_tags x WHERE x.transaction_id = t.id AND x.tag_id = ?{})",
+                    args.len()
+                ));
+            }
+        }
         match filter.checked {
             None => {}
             Some(true) => wh.push("t.checked != 0".into()),
@@ -530,6 +566,7 @@ impl Vault {
             finisher.finish(&mut t);
             out.push(t);
         }
+        attach_tags(db, &mut out)?;
         Ok(out)
     }
 }
@@ -690,7 +727,9 @@ impl Vault {
                 end += 1;
             }
         }
-        let txs: Vec<Booking> = txs.drain(start..end).collect();
+        let mut txs: Vec<Booking> = txs.drain(start..end).collect();
+        // only the returned page carries its tags
+        attach_tags(&db, &mut txs)?;
         Ok(BookingPage {
             transactions: txs,
             total_count: total,
@@ -805,7 +844,7 @@ impl Vault {
     /// with BOM, semicolon-separated, for Excel.
     pub fn export_bookings_csv(&self, filter: BookingFilter) -> Result<String, CoreError> {
         let mut out = String::from(
-            "\u{FEFF}Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Betrag;Währung\r\n",
+            "\u{FEFF}Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Betrag;Währung;Tags\r\n",
         );
         let page_size = 1000u32;
         let mut offset = 0u32;
@@ -825,6 +864,14 @@ impl Vault {
                     csv_field(&b.category_path, true),
                     csv_amount(b.amount_cents),
                     csv_field(&b.currency, false),
+                    csv_field(
+                        &b.tags
+                            .iter()
+                            .map(|t| t.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        true,
+                    ),
                 ];
                 out.push_str(&row.join(";"));
                 out.push_str("\r\n");

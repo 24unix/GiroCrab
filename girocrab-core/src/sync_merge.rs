@@ -133,6 +133,12 @@ pub(crate) fn category_uuid_for_path(path: &[&str]) -> String {
     Uuid::new_v5(&NAMESPACE, format!("category{SEP}{joined}").as_bytes()).to_string()
 }
 
+/// Same tag name (case-folded, whitespace collapsed) -> same uuid (#228).
+pub(crate) fn tag_uuid_for_name(name: &str) -> String {
+    let key = crate::tags::fold(name);
+    Uuid::new_v5(&NAMESPACE, format!("tag{SEP}{key}").as_bytes()).to_string()
+}
+
 /// Same content -> same uuid. `account_key` is the sync key of the account a
 /// rule is restricted to.
 #[allow(clippy::too_many_arguments)]
@@ -1714,6 +1720,9 @@ struct BookingFields {
     text_ms: i64,
     splits: Vec<SplitLine>,
     splits_ms: i64,
+    /// tag uuids, sorted (#228)
+    tags: crate::tags::merge::TagSet,
+    tags_ms: i64,
     deleted_ms: Option<i64>,
 }
 
@@ -1771,6 +1780,14 @@ impl BookingFields {
             o.splits_ms,
             Clone::clone,
         );
+        // the tag set as a whole; equal stamps: the larger set by value
+        take_ranked(
+            &mut self.tags,
+            &mut self.tags_ms,
+            &o.tags,
+            o.tags_ms,
+            Clone::clone,
+        );
         self.deleted_ms = self.deleted_ms.max(o.deleted_ms);
     }
 }
@@ -1821,7 +1838,7 @@ const OTHER_BOOKINGS: &str = "SELECT id, account_id, external_id, import_fp,
         imported_unix, purpose_code, gvc, salary_flag,
         category_id, category_source, rule_id, category_ms, note, note_ms, checked, checked_ms,
         counterparty, purpose, text_ms, splits_ms, deleted_ms,
-        end_to_end_id, mandate_id, creditor_id, item_refs
+        end_to_end_id, mandate_id, creditor_id, item_refs, tags_ms
      FROM other.transactions ORDER BY account_id, external_id";
 
 /// The id both sides keep for one booking known under two ids: the bank's
@@ -1877,6 +1894,11 @@ pub(crate) fn merge_bookings(
     let other_uuid = |c: Option<i64>| c.and_then(|c| local_uuid(cat_map.get(&c).copied()));
     let cat_id = |u: &Option<String>| u.as_ref().and_then(|u| id_of_uuid.get(u).copied());
 
+    // tags: merged before the bookings, as uuids of live local tags
+    let tag_ids = crate::tags::merge::TagIds::load(conn)?;
+    let mut local_tags = tag_ids.sets(conn, "main")?;
+    let mut other_tags = tag_ids.sets(conn, "other")?;
+
     // local bookings, deleted ones included
     let mut local_splits = load_splits(conn, "main", local_uuid)?;
     let mut by_key: HashMap<(i64, String), i64> = HashMap::new();
@@ -1888,7 +1910,8 @@ pub(crate) fn merge_bookings(
             // includes soft-deleted rows
             "SELECT id, account_id, external_id, import_fp, category_id, category_source,
                     category_ms, note, note_ms, checked, checked_ms, counterparty, purpose,
-                    text_ms, splits_ms, deleted_ms, booking_date, amount_cents, counterparty_iban
+                    text_ms, splits_ms, deleted_ms, booking_date, amount_cents, counterparty_iban,
+                    tags_ms
              FROM main.transactions ORDER BY id",
         )?;
         let mut rows = st.query([])?;
@@ -1921,6 +1944,8 @@ pub(crate) fn merge_bookings(
                     text_ms: r.get(13)?,
                     splits: local_splits.remove(&id).unwrap_or_default(),
                     splits_ms: r.get(14)?,
+                    tags: local_tags.remove(&id).unwrap_or_default(),
+                    tags_ms: r.get(19)?,
                     deleted_ms: r.get(15)?,
                 },
             );
@@ -1966,6 +1991,8 @@ pub(crate) fn merge_bookings(
                     text_ms: r.get(24)?,
                     splits: Vec::new(),
                     splits_ms: r.get(25)?,
+                    tags: Vec::new(),
+                    tags_ms: r.get(31)?,
                     deleted_ms: r.get(26)?,
                 },
                 category_source: source,
@@ -2026,6 +2053,7 @@ pub(crate) fn merge_bookings(
             other_acc_deleted.get(&o.account_id).copied().flatten(),
         );
         o.fields.splits = other_splits.remove(&o.id).unwrap_or_default();
+        o.fields.tags = other_tags.remove(&o.id).unwrap_or_default();
         let existing = match by_key.get(&(acc, o.external_id.clone())) {
             Some(&id) => Some((id, false)),
             None => match by_fp.get_mut(&(acc, o.match_fp.clone())) {
@@ -2059,7 +2087,7 @@ pub(crate) fn merge_bookings(
                     }
                     continue;
                 }
-                write_booking(conn, id, &old, &m, &cat_id, &mut cleared)?;
+                write_booking(conn, id, &old, &m, &cat_id, &tag_ids, &mut cleared)?;
                 local.insert(id, m);
                 stats.bookings_updated += 1;
             }
@@ -2099,18 +2127,22 @@ pub(crate) fn merge_bookings(
                     f.deleted_ms.into(),
                 ]);
                 p.extend(o.sepa_refs.iter().cloned());
+                p.push(f.tags_ms.into());
                 conn.execute(
                     "INSERT INTO transactions(account_id, external_id, import_fp,
                         booking_date, value_date, amount_cents, currency, counterparty_iban, booking_text,
                         imported_unix, purpose_code, gvc, salary_flag,
                         category_id, category_source, rule_id, category_ms, note, note_ms, checked, checked_ms,
                         counterparty, purpose, text_ms, splits_ms, deleted_ms,
-                        end_to_end_id, mandate_id, creditor_id, item_refs)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30)",
+                        end_to_end_id, mandate_id, creditor_id, item_refs, tags_ms)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31)",
                     rusqlite::params_from_iter(p),
                 )?;
                 let id = conn.last_insert_rowid();
                 insert_splits(conn, id, &f.splits, &cat_id)?;
+                if !f.tags.is_empty() {
+                    tag_ids.write(conn, id, &f.tags)?;
+                }
                 by_key.insert((acc, o.external_id), id);
                 local.insert(id, o.fields);
                 if local[&id].deleted_ms.is_none() {
@@ -2161,6 +2193,7 @@ fn write_booking(
     old: &BookingFields,
     m: &BookingFields,
     cat_id: &impl Fn(&Option<String>) -> Option<i64>,
+    tag_ids: &crate::tags::merge::TagIds,
     cleared: &mut HashSet<i64>,
 ) -> CoreResult<()> {
     if m.cat != old.cat {
@@ -2186,6 +2219,9 @@ fn write_booking(
         )?;
         insert_splits(conn, id, &m.splits, cat_id)?;
     }
+    if m.tags != old.tags {
+        tag_ids.write(conn, id, &m.tags)?;
+    }
     if m.deleted_ms.is_some() && old.deleted_ms.is_none() {
         // what a deletion does besides the stamp (see soft_delete_booking)
         conn.execute("DELETE FROM loan_links WHERE transaction_id = ?1", [id])?;
@@ -2193,7 +2229,7 @@ fn write_booking(
     conn.execute(
         "UPDATE transactions SET category_ms = ?2, note = ?3, note_ms = ?4, checked = ?5,
             checked_ms = ?6, counterparty = ?7, purpose = ?8, text_ms = ?9, splits_ms = ?10,
-            deleted_ms = ?11
+            deleted_ms = ?11, tags_ms = ?12
          WHERE id = ?1",
         params![
             id,
@@ -2206,7 +2242,8 @@ fn write_booking(
             m.text.1,
             m.text_ms,
             m.splits_ms,
-            m.deleted_ms
+            m.deleted_ms,
+            m.tags_ms
         ],
     )?;
     Ok(())

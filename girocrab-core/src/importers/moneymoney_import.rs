@@ -1163,6 +1163,7 @@ fn sample(r: &MmRow, i: i64, account_id: i64) -> Booking {
         mandate_id: r.mandate_ref.clone(),
         creditor_id: r.creditor_id.clone(),
         external_id: String::new(),
+        tags: Vec::new(),
     };
     enrich(&mut b);
     b.is_salary = crate::salary::salary_signal(&b);

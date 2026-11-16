@@ -253,9 +253,14 @@ fn fold_inner(conn: &Connection, twin: i64, bank: i64) -> CoreResult<()> {
         "DROP TABLE IF EXISTS other.accounts;
          DROP TABLE IF EXISTS other.transactions;
          DROP TABLE IF EXISTS other.transaction_splits;
+         DROP TABLE IF EXISTS other.tags;
+         DROP TABLE IF EXISTS other.transaction_tags;
          CREATE TABLE other.accounts AS SELECT * FROM main.accounts WHERE id = {twin};
          CREATE TABLE other.transactions AS SELECT * FROM main.transactions WHERE account_id = {twin};
          CREATE TABLE other.transaction_splits AS SELECT * FROM main.transaction_splits
+             WHERE transaction_id IN (SELECT id FROM other.transactions);
+         CREATE TABLE other.tags AS SELECT * FROM main.tags;
+         CREATE TABLE other.transaction_tags AS SELECT * FROM main.transaction_tags
              WHERE transaction_id IN (SELECT id FROM other.transactions);"
     ))?;
     // same vault: categories and rules map onto themselves

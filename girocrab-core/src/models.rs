@@ -460,6 +460,10 @@ pub struct Booking {
     pub creditor_id: String,
     #[uniffi(default = "")]
     pub external_id: String,
+    /// Tags of the booking (#228), in tag list order.
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub tags: Vec<crate::tags::BookingTag>,
 }
 
 /// Dry-run result of a MoneyMoney import (nothing stored).
@@ -545,6 +549,14 @@ pub struct BookingFilter {
     /// Extend the page to the end of its last day, so a day is never split
     /// between two pages (the list shows a sum per day).
     pub whole_days: bool,
+    /// Only bookings carrying every one of these tags (#228); empty = any.
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub tag_ids: Vec<i64>,
+    /// Only bookings without any tag.
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub untagged_only: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
