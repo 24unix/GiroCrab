@@ -128,6 +128,17 @@ export component MainWindow inherits Window {
     callback search-changed();
     callback bank-search(string);
     callback bank-add(int, string);
+    callback tan-submit(string);
+    callback tan-cancel();
+
+    // PIN / TAN / PSD2 dialog; mode: "pin" | "code" | "redirect" | "push"
+    in property <bool> tan-open: false;
+    in property <string> tan-mode;
+    in property <string> tan-title;
+    in property <string> tan-message;
+    in property <image> tan-image;
+    in property <bool> tan-has-image: false;
+    in-out property <string> tan-text;
 
     if !unlocked: VerticalLayout {
         alignment: center;
@@ -297,7 +308,7 @@ export component MainWindow inherits Window {
                     placeholder-text: "Zugangskennung / Login (bei der Demo-Bank leer lassen)";
                 }
                 Text {
-                    text: "PIN/TAN werden nicht abgefragt oder gespeichert; der erste Abruf echter Banken folgt in einer späteren Version.";
+                    text: "PIN und TAN werden erst beim Abruf abgefragt, nur im Speicher gehalten und nie gespeichert.";
                     color: Theme.muted; font-size: 11px; wrap: word-wrap;
                 }
                 if root.add-status != "": Text { text: root.add-status; color: Theme.negative; font-size: 12px; wrap: word-wrap; }
@@ -310,6 +321,47 @@ export component MainWindow inherits Window {
                         primary: true;
                         enabled: root.bank-choice >= 0 && !root.add-busy;
                         clicked => { root.bank-add(root.bank-choice, login.text); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- PIN / TAN dialog (overlay); the input is cleared as soon as it is handed over
+    if tan-open: Rectangle {
+        background: #000000aa;
+        TouchArea { }
+        Rectangle {
+            width: min(460px, parent.width - 32px);
+            height: tan-col.preferred-height + 4px;
+            background: Theme.surface;
+            border-radius: 14px;
+            border-width: 1px;
+            border-color: Theme.border;
+            tan-col := VerticalLayout {
+                padding: 18px;
+                spacing: 10px;
+                Text { text: root.tan-title; font-size: 18px; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+                Text { text: root.tan-message; color: Theme.muted; font-size: 12px; wrap: word-wrap; }
+                if root.tan-has-image: Image { source: root.tan-image; height: 200px; image-fit: contain; }
+                if root.tan-mode == "push": Text {
+                    text: "Warte auf Freigabe in der Bank-App …";
+                    color: Theme.text; font-size: 13px; horizontal-alignment: center;
+                }
+                if root.tan-mode != "push": LineEdit {
+                    text <=> root.tan-text;
+                    input-type: root.tan-mode == "pin" ? InputType.password : InputType.text;
+                    placeholder-text: root.tan-mode == "pin" ? "PIN" : root.tan-mode == "redirect" ? "Adresse oder Code aus dem Browser einfügen" : "TAN";
+                    accepted(t) => { root.tan-submit(t); root.tan-text = ""; }
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    Button { text: "Abbrechen"; clicked => { root.tan-text = ""; root.tan-cancel(); } }
+                    if root.tan-mode != "push": Button {
+                        text: "Weiter";
+                        primary: true;
+                        clicked => { root.tan-submit(root.tan-text); root.tan-text = ""; }
                     }
                 }
             }

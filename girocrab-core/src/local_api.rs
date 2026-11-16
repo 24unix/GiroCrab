@@ -375,6 +375,8 @@ impl Vault {
     }
 
     /// The same for a request from the socket: it must carry the current token.
+    /// Only the Unix-socket server calls it (`server` is `cfg(unix)`).
+    #[cfg(unix)]
     pub(crate) fn local_api_socket_request(&self, request: &str) -> String {
         response(self.local_api_dispatch(request, true))
     }

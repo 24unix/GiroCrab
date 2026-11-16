@@ -1,16 +1,20 @@
 //! GiroCrab for Windows (MVP): Slint front end directly on `girocrab_core`.
 //! Unlock / create vault, demo mode (`GIROCRAB_DEMO_SEED=1`), accounts with balances,
-//! bookings of the selected account and a manual sync trigger.
+//! bookings of the selected account and bank sync (FinTS PIN/TAN dialog, PSD2 browser redirect).
 
 mod policy;
+mod sync_flow;
 mod vault_key;
 
 use std::path::PathBuf;
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use girocrab_core::connectors::bank_directory::{BankAccessMode, BankSearchResult};
-use girocrab_core::{BookingFilter, ConnectorKind, SyncStep, Vault};
+use girocrab_core::{BookingFilter, Challenge, ChallengeKind, ConnectorKind, SyncStep, Vault};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use zeroize::Zeroizing;
 
 slint::include_modules!();
 
@@ -101,7 +105,11 @@ fn hex_color(hex: &str) -> Option<slint::Color> {
         return None;
     }
     let v = u32::from_str_radix(h, 16).ok()?;
-    Some(slint::Color::from_rgb_u8((v >> 16) as u8, (v >> 8) as u8, v as u8))
+    Some(slint::Color::from_rgb_u8(
+        (v >> 16) as u8,
+        (v >> 8) as u8,
+        v as u8,
+    ))
 }
 
 fn account_rows(vault: &Vault) -> Result<(Vec<AccountRow>, String), String> {
@@ -127,11 +135,7 @@ fn account_rows(vault: &Vault) -> Result<(Vec<AccountRow>, String), String> {
     Ok((rows, money(total, "EUR")))
 }
 
-fn booking_rows(
-    vault: &Vault,
-    account_id: i64,
-    search: &str,
-) -> Result<Vec<BookingRow>, String> {
+fn booking_rows(vault: &Vault, account_id: i64, search: &str) -> Result<Vec<BookingRow>, String> {
     let page = vault
         .list_transactions(BookingFilter {
             account_ids: vec![account_id],
@@ -165,35 +169,195 @@ fn booking_rows(
         .collect())
 }
 
-/// Manual sync: runs every connection to the end. Demo banks are simulated without network; a
-/// real bank needs a PIN / TAN dialog, which the MVP does not have yet, so it is reported, not tried.
-fn run_sync(vault: Arc<Vault>, demo: bool) -> Result<String, String> {
-    if policy::apply(VERSION).all {
-        return Err(
-            "Abruf gesperrt: Diese Version ist durch die Sicherheitssperre gesperrt.".into(),
-        );
+/// Bridges the sync worker thread to the Slint dialog. The worker blocks on `replies` until the
+/// user answers (`Some(text)`) or cancels (`None`); PIN / TAN pass through here only.
+struct DialogBridge {
+    win: slint::Weak<MainWindow>,
+    replies: Mutex<Receiver<Option<String>>>,
+}
+
+impl DialogBridge {
+    fn show(&self, mode: &'static str, title: String, message: String, image: Option<Vec<u8>>) {
+        let _ = self.win.upgrade_in_event_loop(move |w| {
+            let img = image.as_deref().and_then(decode_image);
+            w.set_tan_has_image(img.is_some());
+            w.set_tan_image(img.unwrap_or_default());
+            w.set_tan_mode(mode.into());
+            w.set_tan_title(title.into());
+            w.set_tan_message(message.into());
+            w.set_tan_open(true);
+        });
     }
+
+    fn hide(&self) {
+        let _ = self.win.upgrade_in_event_loop(|w| {
+            w.set_tan_open(false);
+            w.set_tan_image(Default::default());
+            w.set_tan_has_image(false);
+        });
+    }
+
+    fn drain(&self) {
+        while self.replies.lock().unwrap().try_recv().is_ok() {}
+    }
+
+    fn ask(&self, mode: &'static str, c: &Challenge) -> Option<Zeroizing<String>> {
+        self.drain();
+        let title = if c.title.is_empty() {
+            "TAN eingeben".to_string()
+        } else {
+            c.title.clone()
+        };
+        self.show(mode, title, challenge_text(c), c.image.clone());
+        self.replies
+            .lock()
+            .unwrap()
+            .recv()
+            .ok()
+            .flatten()
+            .map(Zeroizing::new)
+    }
+}
+
+fn challenge_text(c: &Challenge) -> String {
+    match (c.method_name.is_empty(), c.message.is_empty()) {
+        (true, _) => c.message.clone(),
+        (false, true) => c.method_name.clone(),
+        (false, false) => format!("{}\n{}", c.method_name, c.message),
+    }
+}
+
+fn decode_image(bytes: &[u8]) -> Option<slint::Image> {
+    let rgba = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+        rgba.as_raw(),
+        rgba.width(),
+        rgba.height(),
+    );
+    Some(slint::Image::from_rgba8(buf))
+}
+
+impl sync_flow::Ui for DialogBridge {
+    fn ask_secret(&self, bank: &str) -> Option<Zeroizing<String>> {
+        self.drain();
+        self.show(
+            "pin",
+            "PIN eingeben".into(),
+            format!(
+                "PIN / Passwort für {bank}. Sie wird nur für diesen Abruf im Speicher gehalten."
+            ),
+            None,
+        );
+        self.replies
+            .lock()
+            .unwrap()
+            .recv()
+            .ok()
+            .flatten()
+            .map(Zeroizing::new)
+    }
+
+    fn ask_code(&self, c: &Challenge) -> Option<Zeroizing<String>> {
+        match c.kind {
+            ChallengeKind::Redirect => self.ask("redirect", c),
+            _ => self.ask("code", c),
+        }
+    }
+
+    fn wait_push(&self, c: &Challenge, interval: Duration) -> bool {
+        let title = if c.title.is_empty() {
+            "Freigabe in der Bank-App".to_string()
+        } else {
+            c.title.clone()
+        };
+        self.show("push", title, challenge_text(c), None);
+        match self.replies.lock().unwrap().recv_timeout(interval) {
+            Ok(None) | Err(RecvTimeoutError::Disconnected) => false,
+            Ok(Some(_)) | Err(RecvTimeoutError::Timeout) => true,
+        }
+    }
+
+    fn open_url(&self, url: &str) -> Result<(), String> {
+        sync_flow::open_in_browser(url)
+    }
+}
+
+/// `SyncSession` driven synchronously (the worker thread owns a small tokio runtime).
+struct CoreStepper {
+    session: Arc<girocrab_core::SyncSession>,
+    rt: tokio::runtime::Runtime,
+}
+
+impl sync_flow::Stepper for CoreStepper {
+    fn start(&self) -> Result<SyncStep, String> {
+        self.rt
+            .block_on(self.session.start())
+            .map_err(|e| e.to_string())
+    }
+    fn submit_code(&self, code: String) -> Result<SyncStep, String> {
+        self.rt
+            .block_on(self.session.submit_code(code))
+            .map_err(|e| e.to_string())
+    }
+    fn poll(&self) -> Result<SyncStep, String> {
+        self.rt
+            .block_on(self.session.poll())
+            .map_err(|e| e.to_string())
+    }
+    fn cancel(&self) {
+        self.rt.block_on(self.session.cancel());
+    }
+}
+
+/// Manual sync: runs every connection to the end. Demo banks are simulated without network; real
+/// banks go through the PIN / TAN / browser dialog. The signed banking policy is checked before
+/// every connection (fail-closed: an unreadable or tampered policy blocks everything), and the
+/// core enforces the same gate again inside `begin_sync`.
+fn run_sync(vault: Arc<Vault>, demo: bool, ui: &DialogBridge) -> Result<String, String> {
     let connections = vault.list_bank_connections().map_err(|e| e.to_string())?;
     if connections.is_empty() {
         return Ok("Keine Bankverbindung eingerichtet.".into());
     }
     let rt = tokio_runtime()?;
-    let (mut done, mut skipped) = (0, 0);
+    let (mut done, mut imported, mut problems) = (0u32, 0u32, vec![]);
     for c in connections.iter().filter(|c| !c.all_accounts_archived) {
+        if policy::apply(VERSION).all {
+            return Err(
+                "Abruf gesperrt: Diese Version ist durch die Sicherheitssperre gesperrt.".into(),
+            );
+        }
         if demo || girocrab_core::demo::is_magic_demo_login(&c.login_name) {
-            sync_demo_connection(&vault, &rt, c.id)?;
-            done += 1;
-        } else {
-            skipped += 1;
+            match sync_demo_connection(&vault, &rt, c.id) {
+                Ok(()) => done += 1,
+                Err(e) => problems.push(format!("{}: {e}", c.display_name)),
+            }
+            continue;
+        }
+        let result = sync_flow::sync_connection(c.connector, &c.display_name, ui, |secret| {
+            // `secret` moves into the core, which wipes it when the session ends.
+            let session = vault
+                .clone()
+                .begin_sync(c.id, secret, false)
+                .map_err(|e| e.to_string())?;
+            Ok(CoreStepper {
+                session,
+                rt: tokio_runtime()?,
+            })
+        });
+        match result {
+            Ok(s) => {
+                done += 1;
+                imported += s.transactions_imported;
+            }
+            Err(e) => problems.push(format!("{}: {e}", c.display_name)),
         }
     }
-    Ok(match (done, skipped) {
-        (_, 0) => format!("{done} Verbindung(en) abgerufen (Demo)."),
-        (0, n) => format!(
-            "{n} Bank(en) benötigen PIN/TAN: Der Bankabruf folgt in einer späteren Version der Windows-App."
-        ),
-        (d, n) => format!("{d} Demo-Verbindung(en) abgerufen, {n} Bank(en) warten auf PIN/TAN-Unterstützung."),
-    })
+    ui.hide();
+    let mut msg = format!("{done} Verbindung(en) abgerufen, {imported} neue Umsätze.");
+    if !problems.is_empty() {
+        msg.push_str(&format!(" Probleme: {}", problems.join(" · ")));
+    }
+    Ok(msg)
 }
 
 /// Simulated sync (no network): runs the demo bank to its end.
@@ -236,7 +400,8 @@ fn search_rows(query: &str) -> (Vec<BankHit>, Vec<Option<BankSearchResult>>) {
         raw.push(None);
     }
     if !q.is_empty() {
-        for r in girocrab_core::connectors::bank_directory::search_banks(q.to_string(), vec![], 12) {
+        for r in girocrab_core::connectors::bank_directory::search_banks(q.to_string(), vec![], 12)
+        {
             let blz = if r.blz.is_empty() {
                 String::new()
             } else {
@@ -253,7 +418,7 @@ fn search_rows(query: &str) -> (Vec<BankHit>, Vec<Option<BankSearchResult>>) {
 }
 
 /// Adds the chosen bank (`None` = demo bank) and, for the demo bank, syncs it right away.
-/// Real banks are stored, but their first fetch needs PIN/TAN, which the MVP does not have yet.
+/// Real banks are stored; their first fetch starts with "Jetzt abrufen" (PIN/TAN or browser dialog).
 fn add_bank(
     vault: &Arc<Vault>,
     hit: Option<&BankSearchResult>,
@@ -304,7 +469,7 @@ fn add_bank(
         }
     }
     Ok(format!(
-        "{} hinzugefügt. Der erste Abruf mit PIN/TAN folgt in einer späteren Version der Windows-App.",
+        "{} hinzugefügt. Mit „Jetzt abrufen“ starten Sie den ersten Abruf.",
         r.name
     ))
 }
@@ -329,7 +494,14 @@ fn show(win: &MainWindow, vault: &Vault, selected: Option<i64>) {
             let first = rows.first().map(|r| r.id as i64);
             let header: Vec<(i64, String, String, String)> = rows
                 .iter()
-                .map(|r| (r.id as i64, r.name.to_string(), r.balance.to_string(), r.currency.to_string()))
+                .map(|r| {
+                    (
+                        r.id as i64,
+                        r.name.to_string(),
+                        r.balance.to_string(),
+                        r.currency.to_string(),
+                    )
+                })
                 .collect();
             win.set_accounts(ModelRc::new(VecModel::from(rows)));
             win.set_total(total.into());
@@ -358,6 +530,20 @@ fn main() -> Result<(), slint::PlatformError> {
     let demo_mode = vault_key::demo_seed_requested();
     let vault: Arc<Mutex<Option<Arc<Vault>>>> = Arc::new(Mutex::new(None));
     let demo_active = Arc::new(Mutex::new(demo_mode));
+    let (reply_tx, reply_rx): (Sender<Option<String>>, _) = std::sync::mpsc::channel();
+    let bridge = Arc::new(DialogBridge {
+        win: win.as_weak(),
+        replies: Mutex::new(reply_rx),
+    });
+    {
+        let tx = reply_tx.clone();
+        win.on_tan_submit(move |text| {
+            let _ = tx.send(Some(text.to_string()));
+        });
+        win.on_tan_cancel(move || {
+            let _ = reply_tx.send(None);
+        });
+    }
     win.set_first_run(std::fs::metadata(vault_path()).map_or(true, |m| m.len() == 0));
 
     let open = {
@@ -455,18 +641,24 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
     {
-        let (weak, vault, demo_active) = (win.as_weak(), vault.clone(), demo_active.clone());
+        let (weak, vault, demo_active, bridge) = (
+            win.as_weak(),
+            vault.clone(),
+            demo_active.clone(),
+            bridge.clone(),
+        );
         win.on_sync(move || {
             let (Some(win), Some(v)) = (weak.upgrade(), vault.lock().unwrap().clone()) else {
                 return;
             };
             let demo = *demo_active.lock().unwrap();
+            let bridge = bridge.clone();
             win.set_busy(true);
             win.set_sync_status("Abruf läuft …".into());
             let weak = win.as_weak();
             // The core call blocks (vault mutex, network): never on the UI thread.
             std::thread::spawn(move || {
-                let result = run_sync(v.clone(), demo);
+                let result = run_sync(v.clone(), demo, &bridge);
                 let _ = weak.upgrade_in_event_loop(move |win| {
                     let selected = Some(win.get_selected() as i64).filter(|s| *s >= 0);
                     show(&win, &v, selected);
@@ -489,12 +681,15 @@ mod tests {
 
     #[test]
     fn demo_vault_has_accounts_and_bookings() {
-        let path = std::env::temp_dir().join(format!("girocrab-win-demo-{}.sqlite", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("girocrab-win-demo-{}.sqlite", std::process::id()));
         let vault = Vault::open(path.display().to_string(), vec![7; 32]).unwrap();
         vault.seed_demo_data().unwrap();
         let (rows, _) = account_rows(&vault).unwrap();
         assert!(!rows.is_empty());
-        assert!(!booking_rows(&vault, rows[0].id as i64, "").unwrap().is_empty());
+        assert!(!booking_rows(&vault, rows[0].id as i64, "")
+            .unwrap()
+            .is_empty());
         let _ = std::fs::remove_file(&path);
     }
 
