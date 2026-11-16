@@ -1,0 +1,238 @@
+// Account groups and account settings. The panel is the content of a `Dialog` in main.slint (which
+// owns the theme), so colours come in as properties. All state and callbacks live in the
+// `GroupsState` global; groups_ui.rs fills it and runs every vault call on a worker thread.
+import { Button, ListView, LineEdit, ComboBox, CheckBox, ScrollView } from "std-widgets.slint";
+
+export struct GroupRow { name: string, detail: string, color: color }
+export struct GroupAccountRow { name: string, detail: string, color: color }
+
+export global GroupsState {
+    in-out property <bool> open: false;
+    in property <[GroupRow]> groups;
+    in property <[GroupAccountRow]> accounts;
+    in property <[color]> palette;
+    in property <string> status;
+    in property <string> type-summary;
+    in property <bool> group-armed: false;
+    in property <bool> connection-armed: false;
+    in-out property <int> sel-group: -1;
+    in-out property <int> sel-account: -1;
+    // group form
+    in-out property <string> g-name;
+    in-out property <string> g-symbol;
+    in-out property <int> g-color: -1;
+    in-out property <bool> g-total: true;
+    in property <[string]> g-parent-names;
+    in-out property <int> g-parent: 0;
+    in property <[string]> g-merge-names;
+    in-out property <int> g-merge: 0;
+    // account form
+    in-out property <string> a-owner;
+    in-out property <string> a-symbol;
+    in property <[string]> a-kind-names;
+    in-out property <int> a-kind: 0;
+    in property <[string]> a-group-names;
+    in-out property <int> a-group: 0;
+    in-out property <string> a-initial;
+    in-out property <string> a-open-date;
+    in-out property <string> a-open-amount;
+    in-out property <string> a-target;
+    in property <bool> a-derived: false;
+    in property <bool> a-has-connection: false;
+    in property <string> a-info;
+    in property <string> a-preview;
+    callback request();
+    callback group-select(int);
+    callback group-new();
+    callback group-save();
+    callback group-delete();
+    callback group-move(int);
+    callback group-merge();
+    callback account-select(int);
+    callback account-save();
+    callback account-move(int);
+    callback account-reset-symbol();
+    callback opening-preview();
+    callback opening-save();
+    callback opening-clear();
+    callback opening-calibrate();
+    callback connection-delete();
+}
+
+component Frame inherits Rectangle {
+    in property <length> list-height: 150px;
+    in property <color> line;
+    height: list-height;
+    border-width: 1px;
+    border-color: line;
+    border-radius: 8px;
+    clip: true;
+}
+
+component Caption inherits Text {
+    in property <color> ink;
+    color: ink;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+export component GroupsPanel inherits VerticalLayout {
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> line;
+    in property <color> accent;
+    in property <color> negative;
+    callback close();
+    spacing: 10px;
+    Text { text: "Gruppen und Konten"; font-size: 18px; font-weight: 700; color: root.ink; }
+    HorizontalLayout {
+        spacing: 16px;
+        height: 500px;
+        // ---------------------------------------------------------------- groups
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                padding-right: 10px;
+                Caption { text: "Gruppen"; ink: root.ink; }
+                Frame {
+                    line: root.line;
+                    if GroupsState.groups.length == 0: Text { text: "Noch keine Gruppen"; color: root.muted; horizontal-alignment: center; vertical-alignment: center; }
+                    ListView {
+                        for g[i] in GroupsState.groups: Rectangle {
+                            height: 30px;
+                            background: GroupsState.sel-group == i ? root.accent.with-alpha(0.18) : transparent;
+                            TouchArea { clicked => { GroupsState.group-select(i); } }
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 8px;
+                                VerticalLayout { alignment: center; Rectangle { width: 10px; height: 10px; border-radius: 5px; background: g.color; } }
+                                Text { text: g.name; color: root.ink; font-size: 13px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                                Text { text: g.detail; color: root.muted; font-size: 11px; vertical-alignment: center; }
+                            }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Button { text: "Neu"; clicked => { GroupsState.group-new(); } }
+                    Button { text: "▲"; enabled: GroupsState.sel-group >= 0; clicked => { GroupsState.group-move(-1); } }
+                    Button { text: "▼"; enabled: GroupsState.sel-group >= 0; clicked => { GroupsState.group-move(1); } }
+                    Button { text: GroupsState.group-armed ? "Wirklich löschen?" : "Löschen"; enabled: GroupsState.sel-group >= 0; clicked => { GroupsState.group-delete(); } }
+                }
+                Caption { text: "Name"; ink: root.muted; }
+                LineEdit { text <=> GroupsState.g-name; placeholder-text: "Gruppenname"; accepted => { GroupsState.group-save(); } }
+                Caption { text: "Symbol"; ink: root.muted; }
+                LineEdit { text <=> GroupsState.g-symbol; placeholder-text: "folder"; }
+                Caption { text: "Farbe"; ink: root.muted; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    for c[i] in GroupsState.palette: Rectangle {
+                        width: 22px; height: 22px; border-radius: 11px; background: c;
+                        border-width: GroupsState.g-color == i ? 3px : 1px;
+                        border-color: GroupsState.g-color == i ? root.ink : root.line;
+                        TouchArea { clicked => { GroupsState.g-color = i; } }
+                    }
+                }
+                CheckBox { text: "Zählt zur Gesamtsumme"; checked <=> GroupsState.g-total; }
+                Caption { text: "Übergeordnete Gruppe"; ink: root.muted; }
+                ComboBox { model: GroupsState.g-parent-names; current-index <=> GroupsState.g-parent; enabled: GroupsState.sel-group >= 0; }
+                Button { text: "Gruppe speichern"; primary: true; clicked => { GroupsState.group-save(); } }
+                Caption { text: "Zusammenführen"; ink: root.muted; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    ComboBox { model: GroupsState.g-merge-names; current-index <=> GroupsState.g-merge; enabled: GroupsState.sel-group >= 0; horizontal-stretch: 1; }
+                    Button { text: "Zusammenführen"; enabled: GroupsState.sel-group >= 0 && GroupsState.g-merge-names.length > 0; clicked => { GroupsState.group-merge(); } }
+                }
+                Text { text: "Die gewählte Gruppe geht mit ihren Konten in der Zielgruppe auf."; font-size: 11px; color: root.muted; wrap: word-wrap; }
+            }
+        }
+        // -------------------------------------------------------------- accounts
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                spacing: 8px;
+                padding-right: 10px;
+                Caption { text: "Konten"; ink: root.ink; }
+                if GroupsState.type-summary != "": Text { text: GroupsState.type-summary; font-size: 11px; color: root.muted; wrap: word-wrap; }
+                Frame {
+                    line: root.line;
+                    if GroupsState.accounts.length == 0: Text { text: "Keine Konten"; color: root.muted; horizontal-alignment: center; vertical-alignment: center; }
+                    ListView {
+                        for a[i] in GroupsState.accounts: Rectangle {
+                            height: 30px;
+                            background: GroupsState.sel-account == i ? root.accent.with-alpha(0.18) : transparent;
+                            TouchArea { clicked => { GroupsState.account-select(i); } }
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 8px;
+                                VerticalLayout { alignment: center; Rectangle { width: 10px; height: 10px; border-radius: 5px; background: a.color; } }
+                                Text { text: a.name; color: root.ink; font-size: 13px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                                Text { text: a.detail; color: root.muted; font-size: 11px; vertical-alignment: center; overflow: elide; }
+                            }
+                        }
+                    }
+                }
+                if GroupsState.sel-account < 0: Text { text: "Konto wählen, um Typ, Gruppe, Symbol und Salden zu ändern."; font-size: 11px; color: root.muted; wrap: word-wrap; }
+                if GroupsState.sel-account >= 0: VerticalLayout {
+                    spacing: 8px;
+                    Text { text: GroupsState.a-info; font-size: 11px; color: root.muted; wrap: word-wrap; }
+                    Caption { text: "Inhaber"; ink: root.muted; }
+                    LineEdit { text <=> GroupsState.a-owner; }
+                    Caption { text: "Kontotyp"; ink: root.muted; }
+                    ComboBox { model: GroupsState.a-kind-names; current-index <=> GroupsState.a-kind; }
+                    Caption { text: "Gruppe"; ink: root.muted; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        ComboBox { model: GroupsState.a-group-names; current-index <=> GroupsState.a-group; horizontal-stretch: 1; }
+                        Button { text: "▲"; clicked => { GroupsState.account-move(-1); } }
+                        Button { text: "▼"; clicked => { GroupsState.account-move(1); } }
+                    }
+                    Caption { text: "Symbol"; ink: root.muted; }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit { text <=> GroupsState.a-symbol; horizontal-stretch: 1; }
+                        Button { text: "Zurücksetzen"; clicked => { GroupsState.account-reset-symbol(); } }
+                    }
+                    Caption { text: "Ursprünglicher Darlehensbetrag (leer = keiner)"; ink: root.muted; }
+                    LineEdit { text <=> GroupsState.a-initial; placeholder-text: "z. B. 150.000,00"; }
+                    Button { text: "Konto speichern"; primary: true; clicked => { GroupsState.account-save(); } }
+                    if GroupsState.a-derived: VerticalLayout {
+                        spacing: 8px;
+                        Caption { text: "Startsaldo"; ink: root.ink; }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            LineEdit { text <=> GroupsState.a-open-date; placeholder-text: "Datum JJJJ-MM-TT (leer = vor der ersten Buchung)"; horizontal-stretch: 1; }
+                            LineEdit { text <=> GroupsState.a-open-amount; placeholder-text: "Betrag"; width: 110px; }
+                        }
+                        if GroupsState.a-preview != "": Text { text: GroupsState.a-preview; font-size: 11px; color: root.muted; wrap: word-wrap; }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Button { text: "Vorschau"; clicked => { GroupsState.opening-preview(); } }
+                            Button { text: "Startsaldo setzen"; clicked => { GroupsState.opening-save(); } }
+                            Button { text: "Entfernen"; clicked => { GroupsState.opening-clear(); } }
+                        }
+                        Caption { text: "Kalibrieren auf Zielsaldo"; ink: root.muted; }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            LineEdit { text <=> GroupsState.a-target; placeholder-text: "Saldo laut Kontoauszug"; horizontal-stretch: 1; }
+                            Button { text: "Kalibrieren"; clicked => { GroupsState.opening-calibrate(); } }
+                        }
+                    }
+                    if GroupsState.a-has-connection: Button {
+                        text: GroupsState.connection-armed ? "Wirklich Bankzugang löschen?" : "Bankzugang löschen …";
+                        clicked => { GroupsState.connection-delete(); }
+                    }
+                }
+            }
+        }
+    }
+    if GroupsState.status != "": Text { text: GroupsState.status; color: root.negative; font-size: 12px; wrap: word-wrap; }
+    HorizontalLayout {
+        alignment: end;
+        Button { text: "Schließen"; clicked => { root.close(); } }
+    }
+}

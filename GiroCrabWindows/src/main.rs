@@ -4,6 +4,8 @@
 
 mod cockpit;
 mod daily;
+mod groups;
+mod groups_ui;
 mod lists;
 mod logos;
 mod manage;
