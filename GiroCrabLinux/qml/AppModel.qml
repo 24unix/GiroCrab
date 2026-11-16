@@ -94,6 +94,8 @@ QtObject {
     property var recurring: []
     property var recurringMonth: null
     property var merchantStats: null
+    /// The same history restricted to the booking's own account (#299): { account_id, stats }.
+    property var merchantAccountStats: null
     property var budgets: []
     property var cashflow: []
 
@@ -113,7 +115,7 @@ QtObject {
     property string searchText: ""
     property Timer searchTimer: Timer { interval: 250; onTriggered: model.reloadBookings() }
     onSearchTextChanged: searchTimer.restart()
-    /// AccountSidebarMode (byGroup | byKind): the explicit choice, else "Nach Gruppe" once a group exists.
+    /// AccountSidebarMode (byGroup | byBank | byKind): the explicit choice, else "Nach Gruppe" once a group exists.
     /// Set it with `setAccountView` (AccountGroupsModel.swift › accountView).
     readonly property string accountView: defaults.accountView !== "" ? defaults.accountView : (hasUserGroups ? "byGroup" : "byKind")
     function setAccountView(v) { defaults.accountView = v }
@@ -122,6 +124,19 @@ QtObject {
     onCollapsedGroupsChanged: sidebarDefaults.setValue("collapsedKindGroups", JSON.stringify(Object.keys(collapsedGroups).map(Number)))
     property var collapsedUserGroups: sidebarDefaults.loadSet("collapsedUserGroups")
     onCollapsedUserGroupsChanged: sidebarDefaults.setValue("collapsedUserGroups", JSON.stringify(Object.keys(collapsedUserGroups)))
+    property var collapsedBankGroups: sidebarDefaults.loadSet("collapsedBankGroups")
+    onCollapsedBankGroupsChanged: sidebarDefaults.setValue("collapsedBankGroups", JSON.stringify(Object.keys(collapsedBankGroups)))
+    /// AllAccountsRoot.swift › `sidebar.allAccountsCollapsed`
+    property bool allAccountsCollapsed: String(sidebarDefaults.value("allAccountsCollapsed", false)) === "true"
+    onAllAccountsCollapsedChanged: sidebarDefaults.setValue("allAccountsCollapsed", allAccountsCollapsed)
+    /// SidebarView.swift › CategoriesHeader: `sidebar.categoriesCollapsed`
+    property bool categoriesCollapsed: String(sidebarDefaults.value("categoriesCollapsed", false)) === "true"
+    onCategoriesCollapsedChanged: sidebarDefaults.setValue("categoriesCollapsed", categoriesCollapsed)
+    /// ViewLayout.swift › `@AppStorage("showBudgets")`: Darstellung › Budgets anzeigen
+    property bool showBudgets: uiDefaults.showBudgets
+    onShowBudgetsChanged: uiDefaults.showBudgets = showBudgets
+    /// Sidebar account search (AppModel.swift › sidebarAccountSearch, not persisted).
+    property string sidebarAccountSearch: ""
     property var expandedCategories: ({})
     property bool showArchivedAccounts: String(sidebarDefaults.value("showArchived", true)) !== "false"
     onShowArchivedAccountsChanged: sidebarDefaults.setValue("showArchived", showArchivedAccounts)
@@ -134,6 +149,12 @@ QtObject {
     property var selectedBookingIDs: ({})
     onSelectedBookingIDChanged: {
         if (stickyBooking !== null && stickyBooking.id !== selectedBookingID) stickyBooking = null
+        if (lingeringBookingID !== null && lingeringBookingID !== selectedBookingID) {
+            const gone = lingeringBookingID
+            lingeringBookingID = null
+            bookings = bookings.filter(b => b.id !== gone)
+            rebuildStream()
+        }
         const ids = {}
         if (selectedBookingID !== null) ids[selectedBookingID] = true
         if (selectedBookingID === null || !selectedBookingIDs[selectedBookingID]) selectedBookingIDs = ids
@@ -143,6 +164,10 @@ QtObject {
     /// (e.g. "Geprüft" under "Neu", "kein Gehalt" in the salary period). It stays
     /// selected and visible in the inspector until the user selects something else.
     property var stickyBooking: null
+    /// The sticky booking was checked while selected in „Neue Umsätze“ or under "Neu": its row
+    /// stays in place (shown as checked) until the user selects something else,
+    /// instead of vanishing under the cursor (#470).
+    property var lingeringBookingID: null
     /// Booking whose inspector note field should take focus (double-click / Return in the list).
     property var pendingNoteFocus: null
     /// Hands keyboard focus back to the booking list (Esc in the note field).
@@ -155,12 +180,35 @@ QtObject {
     property int listLimit: defaultListLimit
 
     // MARK: enums (titles as in the Swift extensions)
-    readonly property var periods: [
-        { id: "all", title: qsTr("Gesamter Zeitraum") }, { id: "thisMonth", title: qsTr("Dieser Monat") },
-        { id: "lastMonth", title: qsTr("Letzter Monat") }, { id: "last3Months", title: qsTr("Letzte 3 Monate") },
-        { id: "last12Months", title: qsTr("Letzte 12 Monate") }, { id: "thisQuarter", title: qsTr("Dieses Quartal") },
-        { id: "thisYear", title: qsTr("Dieses Jahr") }, { id: "lastYear", title: qsTr("Letztes Jahr") },
-        { id: "sinceSalary", title: qsTr("Seit letztem Gehalt") }]
+    // Period ids (AppModelTypes.swift › Period): "all", "days:<n>", "months12", "sinceSalary",
+    // "month:<y>:<m>", "quarter:<y>:<q>", "year:<y>", "custom".
+    /// The menu sections like MoneyMoney (GitHub #382): rolling windows, then the latest months,
+    /// quarters and years by name, counted back from today; "custom" comes from the date dialog.
+    function periodMenu(now) {
+        now = now || new Date()
+        const y = now.getFullYear(), m = now.getMonth() + 1
+        const months = [0, 1, 2].map(back => { const i = y * 12 + (m - 1) - back; return "month:" + Math.floor(i / 12) + ":" + (i % 12 + 1) })
+        const quarters = [0, 1, 2].map(back => { const i = y * 4 + Math.floor((m - 1) / 3) - back; return "quarter:" + Math.floor(i / 4) + ":" + (i % 4 + 1) })
+        return [["all"], ["days:30", "days:90", "months12", "sinceSalary"], months, quarters, [0, 1, 2].map(b => "year:" + (y - b))]
+    }
+    /// The month before the current one (default of the date dialog, demo print).
+    function previousMonthPeriod() { return periodMenu()[2][1] }
+    /// The year before the current one.
+    function previousYearPeriod() { return periodMenu()[4][1] }
+    function periodTitleOf(p) {
+        const a = p.split(":")
+        switch (a[0]) {
+        case "all": return qsTr("Gesamter Zeitraum")
+        case "days": return qsTr("%1 Tage").arg(a[1])
+        case "months12": return qsTr("12 Monate")
+        case "sinceSalary": return qsTr("Seit letztem Gehalt")
+        case "month": return new Date(Number(a[1]), Number(a[2]) - 1, 1).toLocaleDateString(Fmt.locale, "MMMM yyyy")
+        case "quarter": return qsTr("%1. Quartal %2").arg(a[2]).arg(a[1])
+        case "year": return qsTr("Jahr %1").arg(a[1])
+        case "custom": return qsTr("Benutzerdefiniert")
+        }
+        return p
+    }
     readonly property var scopes: [
         { id: "All", title: qsTr("Alle Buchungen"), shortTitle: qsTr("Alle") },
         { id: "Everyday", title: qsTr("Alltag & Konsum"), shortTitle: qsTr("Alltag") },
@@ -198,10 +246,16 @@ QtObject {
     /// Called once by the root view: decides lock vs. demo.
     function bootstrap() {
         if (vaultState !== "starting") return
+        if (appWasReset) toast = qsTr("GiroCrab wurde zurückgesetzt")
         withFreshBankingPolicy(null)
         vaultInfo = core("vault_info")
         if (optionDemoSeed) {
             openDemo()
+            if (demoSheet === "account-selection" || demoSettings === "banks:select") {
+                // a second login reaching accounts the first one delivers (#346)
+                run(() => core("seed_demo_account_selection"))
+                reloadAll()
+            }
             applyLaunchSelection()
             // --demo-sheet / --demo-settings: presentLaunchOptions() once the vault is open
             return
@@ -224,6 +278,8 @@ QtObject {
             selectedBookingID = null
             sidebarSelection = "all"
             reloadAll()
+            // Sachwerte: the demo's gold items load real prices from the API
+            refreshAssetPrices(false)
             // macOS: preselect a consumption booking with a document, else the first one.
             let pick = bookings.find(b => b.flow === "Consumption" && b.document_count > 0)
                     || bookings.find(b => b.flow === "Consumption")
@@ -248,19 +304,22 @@ QtObject {
         coreAsync("unlock_own", { allow_create: vaultInfo.size <= 0 }, r => {
             hasOwnVault = true
             vaultInfo = core("vault_info")
+            // Let the crab's unlock hop play on the lock screen before the main view replaces it.
             unlockCelebrating = true
-            celebrationTimer.restart()
-            if (r.account_count === 0 && !r.has_connections) {
-                // Nothing synced yet: show demo bookings so the UI can be judged.
-                defaults.hasRealData = "false"
-                openDemo()
-                toast = qsTr("Ihr Tresor ist noch leer – Sie sehen Demo-Daten")
-            } else {
-                // The key is there; loading the vault happens on this thread. Show
-                // "Buchungen werden geladen …" first and give it a frame to appear.
-                unlockPhase = "loading"
-                openVaultTimer.restart()
+            celebrationTimer.next = () => {
+                if (r.account_count === 0 && !r.has_connections) {
+                    // Nothing synced yet: show demo bookings so the UI can be judged.
+                    defaults.hasRealData = "false"
+                    openDemo()
+                    toast = qsTr("Ihr Tresor ist noch leer – Sie sehen Demo-Daten")
+                } else {
+                    // The key is there; loading the vault happens on this thread. Show
+                    // "Buchungen werden geladen …" first and give it a frame to appear.
+                    unlockPhase = "loading"
+                    openVaultTimer.restart()
+                }
             }
+            celebrationTimer.restart()
         }, err => {
             if (!hasOwnVault && !vaultMayHoldRealData()) {
                 // Cancelled before any real data exists: back to the demo, never a dead end.
@@ -272,7 +331,12 @@ QtObject {
             }
         })
     }
-    property Timer celebrationTimer: Timer { interval: 320; onTriggered: model.unlockCelebrating = false }
+    property Timer celebrationTimer: Timer {
+        /// what unlock() does once the hop has played
+        property var next: null
+        interval: 320
+        onTriggered: { model.unlockCelebrating = false; const f = next; next = null; if (f) f() }
+    }
     /// "keyring" while the key comes from the Secret Service, "loading" while the vault loads.
     property string unlockPhase: "keyring"
     property Timer openVaultTimer: Timer { interval: 60; onTriggered: model.useVault(false) }
@@ -286,6 +350,7 @@ QtObject {
         selectedBookingID = null
         sidebarSelection = "all"
         reloadAll()
+        refreshAssetPrices(false)
         selectedBookingID = bookings.length ? bookings[0].id : null
     }
     /// Switch to the demo data (own vault stays unlocked in the background).
@@ -309,16 +374,50 @@ QtObject {
     function lock() {
         if (!holdsRealData) return
         demoDismissedLock = true
+        releaseVaultState()
+        vaultState = "locked"
+    }
+    /// Ends every bank dialog, drops the vault and clears what it loaded (shared by `lock()` and the app reset).
+    function releaseVaultState() {
         endBankDialogsForLock()
         run(() => core("lock"))   // also cancels every bank dialog in the core (src/sessions.rs)
         hasOwnVault = false
         demoActive = false
         groups = []; userGroups = []; accountsByID = ({}); accountMarkers = ({}); bookings = []; categories = []; categoryTree = []
-        connections = []; page = null; merchantStats = null; streamItems = []; streamModel.clear(); dayGroups = []; history = []
+        connections = []; page = null; merchantStats = null; merchantAccountStats = null; streamItems = []; streamModel.clear(); dayGroups = []; history = []
         rules = []; settings = []; dashboard = null; budgets = []; recurring = []; recurringMonth = null; recurringHidden = []
         selectedBookingID = null; stickyBooking = null; salaryCycle = null
         ++loanGeneration; loans = []; loanLinks = ({}); loanEditor = null; openingBalanceRequest = null
-        vaultState = "locked"
+        tangibleAccountIDs = ({}); assetItemsByAccount = ({}); selectedAssetItemID = null; selectedAssetHistory = []
+        assetEditor = null; assetAction = null
+    }
+
+    // MARK: - App zurücksetzen (AppModel+Reset.swift, #241)
+    /// „App zurücksetzen“ is running (guards against a second start).
+    property bool isResettingApp: false
+    /// `--app-was-reset`: the new instance started after „App zurücksetzen“.
+    readonly property bool appWasReset: launchArgs.indexOf("--app-was-reset") >= 0
+    /// Deletes vault, key and settings (core `reset_app`), then starts anew. The Mac app
+    /// bootstraps again in place; here the app restarts, so no `Settings` object keeps
+    /// an old value in memory. The new instance opens the demo and says so.
+    function resetApp() {
+        if (isResettingApp) return
+        isResettingApp = true
+        releaseVaultState()
+        allAccountsCollapsed = false
+        vaultState = "starting"
+        try {
+            core("reset_app")
+        } catch (e) {
+            isResettingApp = false
+            toast = qsTr("Zurücksetzen fehlgeschlagen: %1").arg(e.message)
+            vaultInfo = run(() => core("vault_info")) || vaultInfo
+            if (vaultMayHoldRealData()) vaultState = "locked"
+            else { vaultState = "starting"; bootstrap() }
+            return
+        }
+        run(() => core("request_relaunch"))
+        Qt.quit()
     }
 
     // MARK: loading
@@ -341,8 +440,11 @@ QtObject {
             connections = core("list_bank_connections")
             if (sidebarSelection.startsWith("userGroup:") && !userGroups.some(g => "userGroup:" + g.uuid === sidebarSelection))
                 sidebarSelection = "all"
+            if (sidebarSelection.startsWith("bank:") && !bankGroup(sidebarSelection.slice(5)))
+                sidebarSelection = "all"
             rebuildAccountIndex()
         })
+        reloadAssets()
     }
     function rebuildAccountIndex() {
         reloadLoans()
@@ -404,12 +506,28 @@ QtObject {
         listGeneration++
         isLoadingMoreBookings = false
         page = p
-        bookings = p.transactions
+        bookings = keepingLingeringRow(p.transactions)
         const sticky = stickyBooking !== null && stickyBooking.id === selectedBookingID
         if (selectedBookingID !== null && !sticky && !bookings.some(b => b.id === selectedBookingID))
-            selectedBookingID = bookings.length ? bookings[0].id : null
+            // „Neue Umsätze“: no booking selected unasked, auto review would check it
+            selectedBookingID = bookings.length && sidebarSelection !== "newBookings" ? bookings[0].id : null
         pruneMultiSelection()
         rebuildStream()
+    }
+    /// The lingering booking (checked while selected) at its old place in a
+    /// new page that no longer contains it: before the row that followed it.
+    function keepingLingeringRow(rows) {
+        const id = lingeringBookingID, kept = stickyBooking
+        if (id === null || kept === null || kept.id !== id || rows.some(b => b.id === id)) return rows
+        const old = bookings.findIndex(b => b.id === id)
+        if (old < 0) return rows
+        const ids = {}
+        for (const b of rows) ids[b.id] = true
+        const next = bookings.slice(old + 1).find(b => ids[b.id])
+        const out = rows.slice()
+        const at = next ? out.findIndex(b => b.id === next.id) : -1
+        out.splice(at >= 0 ? at : out.length, 0, kept)
+        return out
     }
     /// After a reload: the multiple selection keeps only bookings the list still
     /// shows (plus the inspector's own booking, which may be sticky).
@@ -447,14 +565,44 @@ QtObject {
         }
         dayGroups = days
         const items = []
-        for (const d of days) {
-            items.push({ type: "header", day: d, key: "d" + d.date })
-            d.bookings.forEach((b, i) => items.push({ type: "row", booking: b, isLast: i === d.bookings.length - 1, key: "b" + b.id }))
+        if (sidebarSelection === "newBookings") {
+            // NewBookingsCards: one card per account instead of the day cards
+            for (const sec of newBookingSections()) {
+                items.push({ type: "account", section: sec, key: "a" + sec.accountID })
+                sec.bookings.forEach((b, i) => items.push({ type: "row", booking: b, isLast: i === sec.bookings.length - 1, key: "b" + b.id }))
+            }
+        } else {
+            for (const d of days) {
+                items.push({ type: "header", day: d, key: "d" + d.date })
+                d.bookings.forEach((b, i) => items.push({ type: "row", booking: b, isLast: i === d.bookings.length - 1, key: "b" + b.id }))
+            }
         }
         streamItems = items
         const n = items.length, have = streamModel.count
         if (n < have) streamModel.remove(n, have - n)
         else if (n > have) streamModel.append(Array.from({ length: n - have }, () => ({ s: 0 })))
+    }
+
+    /// NewBookings.sections: the loaded bookings by account, known accounts in sidebar order,
+    /// then unknown ones in order of appearance. Checked bookings are left out, except the
+    /// one the user just checked (lingeringBookingID: it stays until the selection moves).
+    function newBookingSections() {
+        const keep = lingeringBookingID
+        const list = bookings.filter(b => !b.checked || b.id === keep)
+        const by = {}
+        for (const b of list) (by[b.account_id] = by[b.account_id] || []).push(b)
+        const out = []
+        for (const a of allAccounts) if (by[a.id]) out.push(newBookingSection(a.id, a, a.name, by[a.id]))
+        const seen = {}
+        for (const b of list) if (!accountsByID[b.account_id] && !seen[b.account_id]) {
+            seen[b.account_id] = true
+            out.push(newBookingSection(b.account_id, null, b.account_name, by[b.account_id]))
+        }
+        return out
+    }
+    function newBookingSection(id, account, title, list) {
+        return { accountID: id, account: account, title: title, bookings: list,
+                 pendingCents: list.filter(b => b.is_pending).reduce((s, b) => s + b.amount_cents, 0) }
     }
 
     // MARK: paging (loadMoreBookings / loadAllBookings)
@@ -518,6 +666,9 @@ QtObject {
         else if (sel.startsWith("group:")) {
             const g = groups.find(g => "group:" + g.id === sel)
             ids = g ? g.accounts.filter(a => a.archived_unix === null).map(a => a.id) : []
+        } else if (sel.startsWith("bank:")) {
+            const g = bankGroup(sel.slice(5))
+            ids = g ? g.accounts.filter(a => a.archived_unix === null).map(a => a.id) : []
         } else if (sel.startsWith("userGroup:")) ids = userGroupBalanceAccountIDs(sel.slice(10))
         else ids = liquidAccounts.map(a => a.id)
         if (!ids.length) ids = [-1]
@@ -552,8 +703,12 @@ QtObject {
         // Not `selectedBooking`: inside onSelectedBookingIDChanged that binding may
         // not be re-evaluated yet and still answer the previous (or no) booking.
         const b = bookingByID(selectedBookingID)
-        if (!b || !b.merchant.key) { merchantStats = null; return }
-        run(() => { merchantStats = core("merchant_stats", { merchant_key: b.merchant.key }) })
+        if (!b || !b.merchant.key) { merchantStats = null; merchantAccountStats = null; return }
+        run(() => {
+            const h = core("merchant_history", { merchant_key: b.merchant.key, account_id: b.account_id })
+            merchantStats = h.all
+            merchantAccountStats = { account_id: b.account_id, stats: h.account }
+        })
     }
     function reloadSelection(periodChanged) {
         if (!isUnlocked) return
@@ -593,18 +748,19 @@ QtObject {
     function periodRange(p) {
         p = p || period
         const now = new Date()
-        const som = new Date(now.getFullYear(), now.getMonth(), 1)
-        const soy = new Date(now.getFullYear(), 0, 1)
         const I = Fmt.iso
-        switch (p) {
-        case "sinceSalary": return salaryCycle ? [salaryCycle.last_date, null] : [I(som), null]
-        case "thisMonth": return [I(som), null]
-        case "lastMonth": return [I(new Date(now.getFullYear(), now.getMonth() - 1, 1)), I(new Date(now.getFullYear(), now.getMonth(), 0))]
-        case "last3Months": return [I(new Date(now.getFullYear(), now.getMonth() - 2, 1)), null]
-        case "last12Months": return [I(new Date(now.getFullYear(), now.getMonth() - 11, 1)), null]
-        case "thisQuarter": return [I(new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)), null]
-        case "thisYear": return [I(soy), null]
-        case "lastYear": return [I(new Date(now.getFullYear() - 1, 0, 1)), I(new Date(now.getFullYear() - 1, 11, 31))]
+        // first day of a month and the day before the first of `months` later
+        const span = (y, m, months) => [I(new Date(y, m - 1, 1)), I(new Date(y, m - 1 + months, 0))]
+        const a = p.split(":").map((x, i) => i ? Number(x) : x)
+        switch (a[0]) {
+        case "days": return [I(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (a[1] - 1))), null]
+        // rolling year: from the same day a year ago (exclusive) to today
+        case "months12": return [I(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate() + 1)), null]
+        // calendar month as fallback without a detected salary
+        case "sinceSalary": return salaryCycle ? [salaryCycle.last_date, null] : [I(new Date(now.getFullYear(), now.getMonth(), 1)), null]
+        case "month": return span(a[1], a[2], 1)
+        case "quarter": return span(a[1], (a[2] - 1) * 3 + 1, 3)
+        case "year": return span(a[1], 1, 12)
         case "custom": return [customPeriodFrom || null, customPeriodTo || null]
         default: return [null, null]
         }
@@ -613,12 +769,18 @@ QtObject {
         const sel = sidebarSelection
         if (sel.startsWith("account:")) return [Number(sel.slice(8))]
         if (sel.startsWith("group:")) { const g = groups.find(g => "group:" + g.id === sel); return g ? g.accounts.map(a => a.id) : [] }
+        if (sel.startsWith("bank:")) { const g = bankGroup(sel.slice(5)); return g ? g.accounts.map(a => a.id) : [] }
         if (sel.startsWith("userGroup:")) return userGroupAccountIDs(sel.slice(10))
         return []
     }
     function currentFilter() {
         const r = periodRange()
         const sel = sidebarSelection
+        // „Neue Umsätze“: everything new, whatever the list filters say elsewhere.
+        if (sel === "newBookings")
+            return { account_ids: [], category_id: null, include_subcategories: true, uncategorized_only: false,
+                     search: null, date_from: null, date_to: null, limit: listLimit, offset: 0, scope: "All",
+                     merchant_key: null, direction: "All", checked: false, whole_days: true }
         return {
             account_ids: selectionAccountIDs(),
             category_id: sel.startsWith("category:") ? Number(sel.slice(9)) : null,
@@ -668,6 +830,115 @@ QtObject {
         if (c[uuid]) delete c[uuid]; else c[uuid] = true
         collapsedUserGroups = c
     }
+    // MARK: sidebar search and „Nach Bank“ (AccountGroupsModel.swift)
+    readonly property bool isSidebarAccountSearching: sidebarAccountSearch.trim() !== ""
+    /// AllAccountsRoot.swift › showsAccountTree: the root is open, or the search runs.
+    readonly property bool showsAccountTree: !allAccountsCollapsed || isSidebarAccountSearching
+    /// Account.compactAccountIds: IBAN and account number without spaces.
+    function compactAccountIds(a) {
+        return [a.iban || "", a.account_number || ""].map(x => x.replace(/\s/g, "").toLowerCase()).filter(x => x !== "")
+    }
+    /// Account.matchesSidebarSearch: name, Kontoinhaber, bank, IBAN or account number.
+    function matchesSidebarSearch(a, raw) {
+        const q = raw.trim()
+        if (q === "") return true
+        const ids = compactAccountIds(a)
+        const compactQ = q.replace(/\s/g, "").toLowerCase()
+        if (compactQ.length >= 3 && ids.some(x => x.includes(compactQ))) return true
+        const text = [a.name || "", a.owner || "", a.bank_name || ""].map(x => x.toLowerCase())
+        return q.split(/\s+/).map(t => t.toLowerCase()).every(term =>
+            text.some(x => x.includes(term)) || ids.some(x => x.includes(term)))
+    }
+    /// Not archived (unless shown) and matches the sidebar search.
+    function isSidebarAccountListed(a) {
+        return (showArchivedAccounts || a.archived_unix === null) && matchesSidebarSearch(a, sidebarAccountSearch)
+    }
+    /// Group title matches every whitespace-separated term.
+    function sidebarTextMatches(text, query) {
+        const q = query.trim()
+        if (q === "") return true
+        const hay = text.toLowerCase()
+        return q.split(/\s+/).every(t => hay.includes(t.toLowerCase()))
+    }
+    /// Shown while searching: its name matches, or a listed account lives in it or a subgroup.
+    function isUserGroupListed(g) {
+        if (!isSidebarAccountSearching) return isUserGroupVisible(g)
+        return userGroupSubtree(g.uuid).some(n => sidebarTextMatches(n.name, sidebarAccountSearch)
+                                                  || n.accounts.some(a => isSidebarAccountListed(a)))
+    }
+    function isKindGroupOpen(id) { return isSidebarAccountSearching || !collapsedGroups[id] }
+    function isBankGroupOpen(key) { return isSidebarAccountSearching || !collapsedBankGroups[key] }
+    function isUserGroupOpen(g) { return isSidebarAccountSearching || !collapsedUserGroups[g.uuid] }
+    /// Bank key: `bank_name`, else the connection's name.
+    function bankGroupKey(a) {
+        const name = (a.bank_name || "").trim()
+        if (name !== "") return name
+        if (a.connection_id !== null) {
+            const c = connections.find(c => c.id === a.connection_id)
+            if (c) return (c.display_name || "").trim()
+        }
+        return ""
+    }
+    /// Accounts by bank, sorted by name („Ohne Bank“ last).
+    readonly property var bankGroups: {
+        const buckets = {}
+        for (const a of allAccounts) (buckets[bankGroupKey(a)] = buckets[bankGroupKey(a)] || []).push(a)
+        return Object.keys(buckets).sort((a, b) => {
+            if ((a === "") !== (b === "")) return a === "" ? 1 : -1
+            return a.localeCompare(b, undefined, { sensitivity: "accent" })
+        }).map(key => {
+            const accounts = buckets[key]
+            const conn = accounts[0].connection_id !== null ? connections.find(c => c.id === accounts[0].connection_id) : null
+            return { id: key, name: key === "" ? qsTr("Ohne Bank") : key,
+                     sf_symbol: conn ? conn.sf_symbol : (accounts[0].sf_symbol || "building.columns"),
+                     balance_cents: accounts.filter(a => a.currency === "EUR" && a.archived_unix === null).reduce((s, a) => s + a.balance_cents, 0),
+                     accounts: accounts }
+        })
+    }
+    function bankGroup(key) { return bankGroups.find(g => g.id === key) || null }
+    /// AccountGroupsModel.swift › accountMenuSections: all accounts grouped and ordered like the
+    /// sidebar shows them in the current view; subgroups carry their path ("Familie › Kinder")
+    /// because a menu cannot indent. Empty sections are dropped.
+    readonly property var accountMenuSections: {
+        let sections
+        if (accountView === "byKind") sections = groups.map(g => ({ id: "k" + g.id, title: g.name, accounts: g.accounts }))
+        else if (accountView === "byBank") sections = bankGroups.map(g => ({ id: "b" + g.id, title: g.name, accounts: g.accounts }))
+        else {
+            let path = []
+            sections = userGroups.map(g => {
+                path = path.slice(0, g.depth).concat([g.name])
+                return { id: "g" + g.uuid, title: path.join(" › "), accounts: g.accounts }
+            })
+        }
+        return sections.filter(s => s.accounts.length > 0)
+    }
+    /// Combo box entries: "Alle Konten", then each section title and its accounts (`label(a)`).
+    function accountMenuOptions(label) {
+        const out = [{ id: null, title: qsTr("Alle Konten") }]
+        for (const s of accountMenuSections) {
+            out.push({ id: undefined, title: s.title, header: true })
+            for (const a of s.accounts) out.push({ id: a.id, title: label(a) })
+        }
+        return out
+    }
+    function toggleCollapsedBank(key) {
+        const c = Object.assign({}, collapsedBankGroups)
+        if (c[key]) delete c[key]; else c[key] = true
+        collapsedBankGroups = c
+    }
+    /// AllAccountsTotal.totals: accounts in the total, per currency; other currencies first, euro last.
+    readonly property var allAccountsTotals: {
+        const sums = {}
+        for (const a of allAccounts) if (a.in_total) {
+            const code = a.currency ? a.currency.toUpperCase() : "EUR"
+            sums[code] = (sums[code] || 0) + a.balance_cents
+        }
+        // Linux: other currencies that sum to 0 are left out (several of them pushed the euro
+        // total out of the narrow row); the euro total always stays.
+        return Object.keys(sums).filter(c => c === "EUR" || sums[c] !== 0)
+            .sort((a, b) => (a === "EUR") !== (b === "EUR") ? (a === "EUR" ? 1 : -1) : (a < b ? -1 : a > b ? 1 : 0))
+            .map(c => ({ currency: c, cents: sums[c] }))
+    }
     function toggleCollapsedGroup(id) {
         const c = Object.assign({}, collapsedGroups)
         if (c[id]) delete c[id]; else c[id] = true
@@ -699,9 +970,12 @@ QtObject {
 
     readonly property string title: {
         const sel = sidebarSelection
-        if (sel === "all") return qsTr("Übersicht")
+        if (sel === "all") return qsTr("Alle Konten")
+        if (sel === "newBookings") return qsTr("Neue Umsätze")
+        if (sel.startsWith("bank:")) { const g = bankGroup(sel.slice(5)); return g ? g.name : qsTr("Bank") }
         if (sel === "uncategorized") return qsTr("Ohne Kategorie")
         if (sel === "documents") return qsTr("Belege & PostBox")
+        if (sel === "wealth") return qsTr("Vermögen")
         if (sel.startsWith("group:")) { const g = groups.find(g => "group:" + g.id === sel); return g ? g.name : qsTr("Gruppe") }
         if (sel.startsWith("userGroup:")) { const g = userGroups.find(g => "userGroup:" + g.uuid === sel); return g ? g.name : qsTr("Gruppe") }
         if (sel.startsWith("account:")) { const a = accountsByID[Number(sel.slice(8))]; return a ? a.name : qsTr("Konto") }
@@ -711,8 +985,9 @@ QtObject {
     readonly property var headerBalance: {
         const sel = sidebarSelection
         if (sel === "all") return { label: qsTr("Verfügbar (Giro, Tagesgeld, Karten)"), cents: liquidBalance }
-        if (sel.startsWith("account:")) { const a = accountsByID[Number(sel.slice(8))]; return a ? { label: qsTr("Kontostand"), cents: a.balance_cents } : null }
+        if (sel.startsWith("account:")) { const a = accountsByID[Number(sel.slice(8))]; return a ? { label: isTangible(a.id) ? qsTr("Wert heute") : qsTr("Kontostand"), cents: a.balance_cents } : null }
         if (sel.startsWith("group:")) { const g = groups.find(g => "group:" + g.id === sel); return g ? { label: qsTr("Summe"), cents: g.balance_cents } : null }
+        if (sel.startsWith("bank:")) { const g = bankGroup(sel.slice(5)); return g ? { label: qsTr("Summe"), cents: g.balance_cents } : null }
         if (sel.startsWith("userGroup:")) { const g = userGroups.find(g => "userGroup:" + g.uuid === sel); return g ? { label: qsTr("Summe"), cents: g.balance_cents } : null }
         if (sel.startsWith("category:")) { const c = categories.find(c => "category:" + c.id === sel); return c ? { label: qsTr("Summe im Zeitraum"), cents: c.total_cents } : null }
         return null
@@ -722,7 +997,7 @@ QtObject {
         return latest ? qsTr("Aktualisiert %1").arg(Fmt.relative(latest)) : qsTr("Noch nie aktualisiert")
     }
     readonly property string periodTitle: period === "custom"
-        ? Fmt.medium(customPeriodFrom) + " – " + Fmt.medium(customPeriodTo) : titleOf(periods, period)
+        ? Fmt.medium(customPeriodFrom) + " – " + Fmt.medium(customPeriodTo) : periodTitleOf(period)
     /// Subtitle of the period-based KPI tiles.
     readonly property string periodSubtitle: period !== "sinceSalary" ? periodTitle
         : salaryCycle ? qsTr("Seit Gehalt am %1").arg(Fmt.medium(salaryCycle.last_date)) : qsTr("Monat (kein Gehalt)")
@@ -735,7 +1010,9 @@ QtObject {
         const sel = sidebarSelection
         if (sel.startsWith("account:")) return false
         if (sel.startsWith("group:")) { const g = groups.find(g => "group:" + g.id === sel); return g ? g.accounts.length > 1 : false }
+        if (sel.startsWith("bank:")) { const g = bankGroup(sel.slice(5)); return g ? g.accounts.length > 1 : false }
         if (sel.startsWith("userGroup:")) return userGroupAccountIDs(sel.slice(10)).length > 1
+        if (sel === "newBookings") return false // the card header names the account
         return Object.keys(accountMarkers).length > 1
     }
     function accountColor(id) { const m = accountMarkers[id]; return m ? m.color : Theme.tertiary }
@@ -826,8 +1103,12 @@ QtObject {
     }
     function setChecked(on, b) {
         run(() => core("set_transaction_checked", { transaction_id: b.id, checked: on }))
-        // With "Neu" / "Geprüft" active the booking leaves the list: keep it in the inspector.
-        if (statusFilter !== "all" && selectedBookingID === b.id) stickyBooking = freshBooking(b)
+        // With "Neu" / "Geprüft" or in „Neue Umsätze“ the booking leaves the list: keep it in the
+        // inspector, and a just checked row in place until the selection moves (#470).
+        if ((statusFilter !== "all" || sidebarSelection === "newBookings") && selectedBookingID === b.id) {
+            stickyBooking = freshBooking(b)
+            lingeringBookingID = on ? b.id : null
+        }
         reloadBookings(); reloadAccounts()
     }
     /// The Buchung menu entry: nothing to do without new bookings, and not in
@@ -1036,6 +1317,7 @@ QtObject {
     }
     function requestSyncBatch(batch) {
         if (syncingConnectionID !== null || !batch.length) return
+        refreshAssetPrices(false)
         withFreshBankingPolicy(() => {
             // a sync may have started while the policy was checked
             if (syncingConnectionID !== null) return
@@ -1121,8 +1403,23 @@ QtObject {
                 toast = syncNotice(connection, s)
             }
             reloadAll()
+            checkPendingAccountSelection()
             syncNextInQueue()
         }
+    }
+    /// Login with accounts that another login already delivers: asks which to fetch (#346).
+    property var accountSelectionConnection: null
+    /// Logins whose choice was put off with „Später“ in this session (not asked again).
+    property var postponedAccountSelection: ({})
+    /// Opens the account choice for the first login whose new accounts overlap with
+    /// another login (#346). No-op while a choice is already shown.
+    function checkPendingAccountSelection() {
+        if (accountSelectionConnection !== null) return
+        coreAsync("pending_account_selection_connections", {}, ids => {
+            const id = ids.find(i => !postponedAccountSelection[i])
+            if (id === undefined || accountSelectionConnection !== null) return
+            accountSelectionConnection = connections.find(c => c.id === id) || null
+        }, () => {})
     }
     function syncNotice(connection, s) {
         const parts = [qsTr("%1: %2 neue Buchungen, %3 kategorisiert").arg(connection.display_name).arg(s.transactions_imported).arg(s.transactions_categorized)]
@@ -1290,6 +1587,112 @@ QtObject {
     }
     function isDepot(a) { return a !== null && (a.kind === "Brokerage" || a.name.toLowerCase().indexOf("depot") >= 0) }
 
+    // MARK: - Vermögen (WealthView.swift) and Sachwerte (AppModel+Assets.swift)
+    /// WealthScope: segmented control of the wealth view, in the toolbar instead of the booking scope.
+    property string wealthScope: "all"
+    readonly property var wealthScopes: [
+        { id: "all", title: qsTr("Alles") }, { id: "cash", title: qsTr("Cash") },
+        { id: "securities", title: qsTr("Wertpapiere") }, { id: "tangibles", title: qsTr("Sachwerte") }
+    ]
+    /// AssetStore: ids of the Sachwerte accounts (as a set) and their items per account id.
+    property var tangibleAccountIDs: ({})
+    property var assetItemsByAccount: ({})
+    /// AppModel.reloadAssets: one core pass for all accounts (prices and points are loaded once).
+    function reloadAssets() {
+        if (!isUnlocked) return
+        run(() => {
+            const ids = {}, items = {}
+            for (const id of core("list_tangible_account_ids")) { ids[id] = true; items[id] = [] }
+            for (const it of core("list_all_asset_items")) (items[it.account_id] || (items[it.account_id] = [])).push(it)
+            tangibleAccountIDs = ids
+            assetItemsByAccount = items
+        })
+        reloadSelectedAssetHistory()
+    }
+    function isTangible(accountID) { return !!tangibleAccountIDs[accountID] }
+    function assetItems(accountID) { return assetItemsByAccount[accountID] || [] }
+    function assetItem(itemID) {
+        for (const id in assetItemsByAccount) { const it = assetItemsByAccount[id].find(x => x.id === itemID); if (it) return it }
+        return null
+    }
+    /// AssetEditorRequest { accountId, itemId (null = new item) } on screen, or null.
+    property var assetEditor: null
+    /// AssetActionRequest { itemId, kind: "values" | "quantities" | "sell" } on screen, or null.
+    property var assetAction: null
+    property bool assetRefreshing: false
+    /// The item whose own value chart the header shows, and that chart.
+    property var selectedAssetItemID: null
+    property var selectedAssetHistory: []
+    /// Click on an item: its own value chart in the header; again = back to the account.
+    function selectAssetItem(id) {
+        selectedAssetItemID = selectedAssetItemID === id ? null : id
+        reloadSelectedAssetHistory()
+    }
+    /// Back to the whole account (no-op without a selection).
+    function deselectAssetItem() {
+        if (selectedAssetItemID === null) return
+        selectedAssetItemID = null
+        reloadSelectedAssetHistory()
+    }
+    /// The selected item, if it belongs to `accountID`.
+    function selectedAssetItem(accountID) {
+        const it = selectedAssetItemID !== null ? assetItem(selectedAssetItemID) : null
+        return it && it.account_id === accountID ? it : null
+    }
+    function reloadSelectedAssetHistory() {
+        if (selectedAssetItemID === null || !isUnlocked || assetItem(selectedAssetItemID) === null) {
+            selectedAssetItemID = null
+            selectedAssetHistory = []
+            return
+        }
+        const id = selectedAssetItemID
+        run(() => { selectedAssetHistory = core("asset_item_history", { item_id: id }) })
+    }
+    /// DepotPositionsView: another account ends the item selection.
+    property Connections assetSelectionReset: Connections {
+        target: model
+        function onSidebarSelectionChanged() { if (model.selectedAssetItemID !== null) model.selectAssetItem(null) }
+    }
+    function openAssetAction(kind, itemID) { assetAction = { itemId: itemID, kind: kind } }
+    function openAssetEditor(accountID, itemID) { assetEditor = { accountId: accountID, itemId: itemID === undefined ? null : itemID } }
+    /// „Neues Sachwerte-Konto …“: creates the account and selects it; its empty view
+    /// offers „Sachwert hinzufügen …“.
+    function createTangibleAccount() {
+        const id = run(() => core("create_tangible_account", { name: "" }))
+        if (id === undefined) return
+        reloadAccounts()
+        sidebarSelection = "account:" + id
+    }
+    /// Runs a Sachwerte change (throws on a core error) and refreshes everything that shows its value.
+    function changeAssets(method, args) {
+        core(method, args)
+        reloadAccounts(); reloadHistory()
+    }
+    /// Price (EUR per troy ounce) of `symbol` on `date` or the last day before.
+    function assetPrice(symbol, date) {
+        try { const p = core("asset_price_on", { symbol: symbol, date: date }); return p ? p.value_cents : null } catch (e) { return null }
+    }
+    /// Value of one piece of an item on `date` (gold: price × fine weight).
+    function assetUnitValue(itemID, date) {
+        try { const v = core("asset_unit_value_on", { item_id: itemID, date: date }); return v === undefined ? null : v } catch (e) { return null }
+    }
+    /// Fetches missing gold prices (no request without automatic items), off the GUI thread.
+    /// `userInitiated` shows the outcome; the automatic runs stay quiet.
+    function refreshAssetPrices(userInitiated) {
+        if (!isUnlocked || assetRefreshing) return
+        assetRefreshing = true
+        coreAsync("refresh_asset_prices", { force: !!userInitiated }, r => {
+            assetRefreshing = false
+            if (r.requested) { reloadAccounts(); reloadHistory() }
+            if (!userInitiated) return
+            if (r.error !== null) toast = qsTr("Kurse konnten nicht geladen werden: %1").arg(r.error)
+            else if (r.requested) toast = qsTr("Kurse aktualisiert")
+        }, err => {
+            assetRefreshing = false
+            if (userInitiated) toast = parseCoreError(err).message
+        })
+    }
+
     // MARK: - Manual loans (ManualLoansUI.swift) and Startsaldo (OpeningBalanceUI.swift)
     // A manual loan has no account at the bank: the core keeps a Stand (balance at the
     // end of a date), an optional interest rate and a search rule; bookings are linked
@@ -1334,6 +1737,8 @@ QtObject {
     /// Manual loans that bookings can be assigned to (not archived).
     readonly property var assignableLoans: loans.filter(l => { const a = accountsByID[l.account_id]; return a ? a.archived_unix === null : false })
     function loanLink(b) { return b ? (loanLinks[b.id] || null) : null }
+    /// "Darlehen zuordnen" applies: no loan booking, and an outflow or already linked (#429).
+    function loanAssignable(b) { return !!b && b.account_kind !== "Loan" && (b.amount_cents < 0 || loanLink(b) !== null) }
     /// Links (or with `null` unlinks) a booking.
     function assignLoan(loanId, b) {
         const link = loanLink(b)
@@ -1552,6 +1957,7 @@ QtObject {
     property Settings uiDefaults: Settings {
         property bool showAccountAnalytics: false
         property string chartColorPalette: "girocrab"
+        property bool showBudgets: true
     }
     readonly property bool hasUserGroups: userGroups.some(g => !g.is_ungrouped)
     readonly property bool hasArchivedAccounts: allAccounts.some(a => a.archived_unix !== null)
@@ -1635,6 +2041,20 @@ QtObject {
     function renameAccount(id, name) {
         if (run(() => { core("rename_account", { account_id: id, name: name }); return true })) { reloadAccounts(); reloadBookings() }
     }
+    /// AccountGroupsModel.swift › setAccountOwner: empty clears it.
+    function setAccountOwner(id, owner) {
+        if (run(() => { core("set_account_owner", { account_id: id, owner: owner }); return true })) reloadAccounts()
+    }
+    /// AccountGroupsModel.swift › setAccountKind ("Kontoart ändern …").
+    function setAccountKind(id, kind) {
+        if (run(() => { core("set_account_kind", { account_id: id, kind: kind }); return true })) { reloadAccounts(); reloadDashboard() }
+    }
+    /// AccountKind.importChoices with their labels.
+    readonly property var accountKindChoices: [
+        { id: "Checking", text: qsTr("Girokonto") }, { id: "Savings", text: qsTr("Tagesgeld / Sparen") },
+        { id: "CreditCard", text: qsTr("Kreditkarte") }, { id: "PaymentService", text: qsTr("Zahlungsdienst") },
+        { id: "Brokerage", text: qsTr("Depot") }, { id: "Cash", text: qsTr("Bargeld") }, { id: "Loan", text: qsTr("Darlehen") }
+    ]
     function setAccountColor(id, hex) {
         if (run(() => { core("set_account_color", { account_id: id, color_hex: hex }); return true })) { reloadAccounts(); reloadBookings() }
     }
@@ -1792,8 +2212,44 @@ QtObject {
     readonly property var colorNames: ({
         "#2563EB": qsTr("Blau"), "#D97706": qsTr("Bernstein"), "#059669": qsTr("Grün"), "#DB2777": qsTr("Pink"),
         "#7C3AED": qsTr("Violett"), "#0891B2": qsTr("Cyan"), "#DC2626": qsTr("Rot"), "#65A30D": qsTr("Limette"),
-        "#C026D3": qsTr("Fuchsia"), "#EA580C": qsTr("Orange"), "#4F46E5": qsTr("Indigo"), "#0D9488": qsTr("Petrol")
+        "#C026D3": qsTr("Fuchsia"), "#EA580C": qsTr("Orange"), "#4F46E5": qsTr("Indigo"), "#0D9488": qsTr("Petrol"),
+        "#CA8A04": qsTr("Gelb"), "#92400E": qsTr("Braun"), "#475569": qsTr("Schiefer")
     })
+    /// ColorChoices.extras: offered in the picker only, never handed out as default colours
+    /// (the core assigns defaults by palette slot, so extending it would recolour accounts).
+    readonly property var colorExtras: ["#CA8A04", "#92400E", "#475569"]
+    /// ColorChoices.swatches: the core palette plus the extras.
+    readonly property var colorSwatches: {
+        const p = colorPalette.map(h => h.toUpperCase())
+        return p.concat(colorExtras.filter(h => p.indexOf(h) < 0))
+    }
+    /// ColorChoices.customColors: colours in use on accounts, groups and categories that are
+    /// not swatches, most used first (ties: first seen), at most 14 (two rows).
+    readonly property var customColors: {
+        const used = allAccounts.map(a => a.color_hex).concat(userGroups.map(g => g.color_hex), categories.map(c => c.color_hex))
+        const count = {}, order = []
+        for (const raw of used) {
+            const hex = (raw || "").trim().toUpperCase()
+            if (hex === "" || colorSwatches.indexOf(hex) >= 0) continue
+            if (count[hex] === undefined) { order.push(hex); count[hex] = 0 }
+            count[hex]++
+        }
+        return order.map((h, i) => ({ h: h, i: i })).sort((a, b) => count[b.h] - count[a.h] || a.i - b.i).slice(0, 14).map(x => x.h)
+    }
+    /// AppModel+Editing.swift › removeColor: accounts go back to their default colour, groups to
+    /// none, and a category (it always has a colour) takes its parent's, a main category slate grey.
+    function removeColor(old) {
+        old = old.toUpperCase()
+        const matches = hex => (hex || "").toUpperCase() === old
+        for (const a of allAccounts.slice()) if (matches(a.color_hex)) setAccountColor(a.id, null)
+        for (const g of userGroups.slice()) if (matches(g.color_hex)) setUserGroupColor(g, null)
+        const byID = {}
+        for (const c of categories) if (byID[c.id] === undefined) byID[c.id] = c
+        for (const c of categories.slice()) if (matches(c.color_hex)) {
+            const p = c.parent_id !== null && byID[c.parent_id] ? byID[c.parent_id].color_hex : ""
+            setCategoryColor(c.id, p && !matches(p) ? p : colorExtras[2])
+        }
+    }
 
     function reloadRules() {
         if (!isUnlocked) return
@@ -1891,9 +2347,11 @@ QtObject {
             match_kind: "Keyword",
             pattern: b ? (known ? b.merchant.name : b.counterparty.split(" ").filter(x => x !== "").slice(0, 2).join(" ")) : "",
             case_sensitive: false,
-            min_amount_cents: null,
+            // Direction follows the booking (#295): a rule made from an income
+            // must not also categorise the outgoing transfers to the same payee.
+            min_amount_cents: b && b.amount_cents > 0 ? 1 : null,
             max_amount_cents: b && b.amount_cents < 0 ? 0 : null,
-            account_ids: [],
+            account_ids: [],   // all accounts (#562)
             priority: rules.reduce((m, r) => Math.max(m, r.priority), 0) + 10,
             enabled: true,
             match_count: 0
@@ -1946,6 +2404,26 @@ QtObject {
     property var psd2LinkHints: []
     property bool showPrintSheet: false
     property bool showCSVExporter: false
+    // Umsatz-Export (PDF / CSV / CAMT.053): ExportSheet.qml, logic in BookingExport.qml.
+    property bool showExportSheet: false
+    /// When set, the export sheet defaults to these booking ids (context menu).
+    property var exportBookingIDs: null
+    property bool exportPreferSelection: false
+    /// A built export file waiting for the save dialog („Unter …“, Main.qml).
+    property var exportSaveRequest: null
+    /// Opens the export dialog; `selection`: use the current multi-/single selection (context menu).
+    function openBookingExport(selection) {
+        if (!isUnlocked) return
+        if (selection) {
+            exportBookingIDs = Object.keys(selectedBookingIDs).map(Number)
+            if (!exportBookingIDs.length && selectedBookingID !== null) exportBookingIDs = [selectedBookingID]
+            exportPreferSelection = exportBookingIDs.length > 0
+        } else {
+            exportBookingIDs = null
+            exportPreferSelection = false
+        }
+        showExportSheet = true
+    }
 
     /// Opens the MoneyMoney import. An import belongs in the own vault, so the
     /// demo data an empty vault starts with is left first.
@@ -2056,6 +2534,7 @@ QtObject {
         const job = printJob
         printJob = null
         if (!job) return
+        if (job.done) { job.done(ok, failure, job.path); return }   // PDF export (BookingExport.qml)
         if (!ok) {
             errorTitle = qsTr("Drucken nicht möglich")
             errorMessage = failure || qsTr("Der Bericht konnte nicht gesetzt werden.")
@@ -2448,6 +2927,22 @@ QtObject {
     function openSettings(tab) { if (tab) settingsTab = tab; showSettings = true }
     property bool showSyncLog: false
     property bool showHelp: false
+    /// Hilfe › Problem melden … (BugReportWindow, #301)
+    property bool showBugReport: false
+    /// PrivacyRedaction.swift `ReportRedaction` as bits: set while the bug report takes its
+    /// screenshot, so the main window draws `Sensitive {}` content as opaque boxes.
+    readonly property int redactPersonal: 1
+    readonly property int redactLabels: 2
+    property int reportRedaction: 0
+    /// (developer) `--redact` / `--redact=labels`: main window drawn as in the screenshot.
+    readonly property int launchRedaction: launchArgs.indexOf("--redact=labels") >= 0 ? redactPersonal | redactLabels
+        : launchArgs.indexOf("--redact") >= 0 ? redactPersonal : 0
+    readonly property int redaction: reportRedaction | launchRedaction
+    /// BugReport.searchPlaceholder: stands in for typed search text in the picture.
+    readonly property string searchPlaceholder: "•••"
+    /// `text`, or the placeholder while the screenshot hides personal data (parameter texts
+    /// such as an empty state that repeats the search).
+    function redactedSearch(text) { return (redaction & redactPersonal) !== 0 && text !== "" ? searchPlaceholder : text }
     property bool showRecurringSheet: false
     /// Booking whose custom recurrence dates are being edited (CustomDatesSheet).
     property var customRecurringBooking: null
@@ -2488,7 +2983,7 @@ QtObject {
 
     // Custom period (GitHub #53): remembered across launches.
     Component.onCompleted: {
-        const d = periodRange("lastMonth")
+        const d = periodRange(previousMonthPeriod())
         customPeriodFrom = String(defaults.value("period/customFrom", "")) || d[0]
         customPeriodTo = String(defaults.value("period/customTo", "")) || d[1]
     }
@@ -2678,6 +3173,9 @@ QtObject {
         case "alltag": scope = "Everyday"; break
         case "sparplaene": case "sparpläne": case "investments": scope = "Investments"; break
         case "belege": case "documents": sidebarSelection = "documents"; break
+        case "vermoegen": case "vermögen": case "wealth": sidebarSelection = "wealth"; break
+        case "vermoegen-wertpapiere": sidebarSelection = "wealth"; wealthScope = "securities"; break
+        case "vermoegen-sachwerte": sidebarSelection = "wealth"; wealthScope = "tangibles"; break
         }
         const q = launchValue("--select")
         const account = q ? allAccounts.find(a => a.name.toLowerCase().includes(q)) : null
@@ -2694,6 +3192,9 @@ QtObject {
         const p = launchValue("--pick")
         const pick = p ? bookings.find(b => (b.merchant_name || "").toLowerCase().includes(p) || (b.counterparty || "").toLowerCase().includes(p)) : null
         if (pick) selectedBookingID = pick.id
+        // Sachwerte (#87): --pick also selects an item by name
+        const item = p && account && isTangible(account.id) ? assetItems(account.id).find(i => i.setup.name.toLowerCase().includes(p)) : null
+        if (item) selectAssetItem(item.id)
         if (optionDemoSync) Qt.callLater(requestSyncAll)
     }
     /// `--demo-sheet` / `--demo-settings`: presented once, shortly after the vault is open.
@@ -2725,6 +3226,10 @@ QtObject {
     function presentDemoSheet(name) {
         const top = categories.find(c => c.depth === 0)
         switch (name) {
+        case "account-selection":
+            // choice of accounts another login already delivers (#346)
+            accountSelectionConnection = connections.length ? connections[connections.length - 1] : null
+            break
         case "icon-color": {
             // the "Symbol & Farbe" popover of the first account (#167)
             const a = allAccounts.length ? allAccounts[0] : null
@@ -2732,10 +3237,19 @@ QtObject {
             break
         }
         case "icon-color-category": if (top) iconColorCategoryID = top.id; break
+        // Sachwerte: asset (new item) | asset-edit | asset-values | asset-quantities (the car)
+        case "asset": case "asset-edit": case "asset-values": case "asset-quantities": {
+            const account = Object.keys(tangibleAccountIDs).map(Number)[0]
+            if (account === undefined) break
+            const car = assetItems(account).find(i => i.setup.symbol === "car.side.fill")
+            if ((name === "asset-values" || name === "asset-quantities") && car) openAssetAction(name === "asset-values" ? "values" : "quantities", car.id)
+            else openAssetEditor(account, name === "asset-edit" && car ? car.id : null)
+            break
+        }
         case "category": if (top) newCategoryRequest = { parent: top.id }; break
         case "print":
             // Print dialog (GitHub #53) on last month's demo bookings.
-            period = "lastMonth"
+            period = previousMonthPeriod()
             showPrintSheet = true
             break
         case "transfer":
@@ -2867,7 +3381,7 @@ QtObject {
                 model.errorMessage = model.bankingPolicy.message
             }
         }
-        function onVaultStateChanged() { if (model.vaultState !== "open") model.webLoginConnection = null }
+        function onVaultStateChanged() { if (model.vaultState !== "open") { model.webLoginConnection = null; model.accountSelectionConnection = null } }
     }
 
     /// Portal sheet closed after its work (Swift: `model.webLoginConnection = nil`): a batch

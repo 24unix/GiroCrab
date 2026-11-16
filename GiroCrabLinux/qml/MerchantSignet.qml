@@ -9,7 +9,9 @@ Item {
     property string categorySymbol: ""
     property int size: 36
     property bool showNewDot: false
-    width: size; height: size
+    /// Drawn size: grows with the text size like on the Mac (#343).
+    readonly property int px: Theme.scaled(size)
+    width: px; height: px
 
     readonly property bool person: merchant && merchant.is_person
     readonly property bool hasSvg: merchant && merchant.svg_path !== ""
@@ -18,7 +20,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: root.person ? width / 2 : root.size * 0.28
+        radius: root.person ? width / 2 : root.px * 0.28
         color: root.person ? Theme.personFill
              : root.useCategory ? Theme.neutralTile
              : Theme.withAlpha(root.brand, root.hasSvg ? 0.09 : 0.10)
@@ -29,27 +31,29 @@ Item {
         visible: root.person || (!root.hasSvg && !root.useCategory)
         anchors.centerIn: parent
         text: root.merchant ? root.merchant.monogram : ""
-        font.pixelSize: root.size * (root.person ? 0.36 : (text.length > 2 ? 0.30 : 0.40))
+        font.pixelSize: root.px * (root.person ? 0.36 : (text.length > 2 ? 0.30 : 0.40))
         font.weight: root.person ? Font.DemiBold : Font.Bold
         color: root.person ? Theme.personText : Theme.readable(root.merchant ? root.merchant.color_hex : "")
+        // a person's initials, or those of an unknown counterparty
+        Sensitive { when: root.person || !(root.merchant && root.merchant.known) }
     }
     SFIcon {
         visible: root.useCategory
         anchors.centerIn: parent
         symbol: root.categorySymbol
-        size: root.size * 0.5
+        size: root.px * 0.5
         color: Theme.secondary
     }
     Shape {
         visible: root.hasSvg && !root.person
         anchors.fill: parent
-        anchors.margins: root.size * 0.2
+        anchors.margins: root.px * 0.2
         preferredRendererType: Shape.CurveRenderer
         ShapePath {
             fillColor: Theme.readable(root.merchant ? root.merchant.color_hex : "")
             strokeWidth: -1
             fillRule: ShapePath.WindingFill // FillStyle(eoFill: false)
-            scale: Qt.size((root.size * 0.6) / 24, (root.size * 0.6) / 24)
+            scale: Qt.size((root.px * 0.6) / 24, (root.px * 0.6) / 24)
             PathSvg { path: root.hasSvg ? root.merchant.svg_path : "" }
         }
     }

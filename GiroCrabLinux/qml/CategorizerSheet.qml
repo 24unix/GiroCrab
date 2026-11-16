@@ -92,6 +92,7 @@ Sheet {
             onAccepted: { const g = sheet.groups; if (g.length && g[0].items.length) sheet.pick(g[0].items[0].id) }
         }
         ScrollView {
+            ScrollBar.vertical: ScrollViewBar {}
             id: scroll
             Layout.fillWidth: true
             Layout.preferredHeight: 300

@@ -31,6 +31,9 @@ RowLayout {
     property string userScript: ""
     /// PortalNavigationGuard: main frame https only.
     property bool navigationGuard: true
+    /// AccountSelectionPanel over the browser (FNZ, #346); `endAccountChoice` when done.
+    property bool choosingAccounts: false
+    function endAccountChoice() { choosingAccounts = false }
 
     /// Esc / window close.
     function cancel() { AppModel.closeWebLogin() }

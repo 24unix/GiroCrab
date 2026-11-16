@@ -13,6 +13,7 @@ Item {
         const s = AppModel.demoSettingsSheet
         AppModel.demoSettingsSheet = ""
         if (s === "edit" && AppModel.connections.length) editSheet.edit(AppModel.connections[0])
+        else if (s === "select" && AppModel.connections.length) editSheet.edit(AppModel.connections[AppModel.connections.length - 1])
         else if (s === "add") addBank.open()
         else if (s === "remove" && AppModel.connections.length) { confirmTarget = AppModel.connections[0]; confirmRemove.open() }
     }
@@ -33,6 +34,8 @@ Item {
     }
 
     ScrollView {
+
+        ScrollBar.vertical: ScrollViewBar {}
         id: scroll
         anchors.fill: parent
         contentWidth: availableWidth

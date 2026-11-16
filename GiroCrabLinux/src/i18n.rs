@@ -133,7 +133,7 @@ pub fn acknowledge_system_language() {
     unsafe { girocrab_acknowledge_system_language() };
 }
 
-/// "Neu starten": QML quits, `main` starts a new instance once the old one is gone.
+/// "Neu starten" (also after „App zurücksetzen“): QML quits, `main` starts a new instance once the old one is gone.
 pub fn request_relaunch() {
     RELAUNCH.store(true, Ordering::Relaxed);
 }
@@ -147,7 +147,15 @@ pub fn relaunch_if_requested() {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
-    let args = std::env::args_os().skip(1);
+    // After „App zurücksetzen“ the new instance says so once (Mac: toast after the reset).
+    const RESET_FLAG: &str = "--app-was-reset";
+    let mut args: Vec<_> = std::env::args_os()
+        .skip(1)
+        .filter(|a| a != RESET_FLAG)
+        .collect();
+    if crate::dispatch::app_was_reset() {
+        args.push(RESET_FLAG.into());
+    }
     let result = if std::path::Path::new("/.flatpak-info").exists() {
         std::process::Command::new("flatpak-spawn")
             .arg(exe)

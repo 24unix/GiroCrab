@@ -13,10 +13,17 @@ Dialog {
     // Always sized and centred against the window's overlay, also when the sheet is
     // created inside a Loader (whose own size is 0) – otherwise the background vanishes.
     parent: Overlay.overlay
+    // A sheet of the main window opened from the settings window (e.g. „Neu verbinden“ →
+    // consent page): bring its window to the front, or it waits hidden behind the settings.
+    onAboutToShow: {
+        const w = parent && parent.Window ? parent.Window.window : null
+        if (w) { w.raise(); w.requestActivate() }
+    }
     anchors.centerIn: Overlay.overlay
     closePolicy: Popup.CloseOnEscape
     padding: 24
-    width: Math.min(sheetWidth, parent ? parent.width - 40 : sheetWidth)
+    // macFrame: fixed sheet widths grow with the text size (#343), like the text in them
+    width: Math.min(sheetWidth * Theme.textScale, parent ? parent.width - 40 : sheetWidth * Theme.textScale)
     height: Math.min(implicitHeight, parent ? parent.height - 40 : implicitHeight)
     background: Rectangle { color: Theme.card; radius: 12; border.color: Theme.border }
     header: null
