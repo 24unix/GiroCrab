@@ -76,6 +76,7 @@ extension AppModel {
         let generation = listGeneration
         let filter = currentFilter
         let (from, to) = periodRange
+        let sums = categorySumFilter
         let listHasFlow = filter.listHasFlow
         categoryRefreshTask = Task { [weak self] in
             do {
@@ -87,7 +88,7 @@ extension AppModel {
                     return CategoryRefresh(
                         page: page,
                         flow: flow,
-                        categories: try vault.listCategories(dateFrom: from, dateTo: to),
+                        categories: try vault.listCategoriesFiltered(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction),
                         groups: try vault.listAccountGroups(),
                         userGroups: try vault.listUserGroups()
                     )
@@ -98,7 +99,8 @@ extension AppModel {
                     self.publish(r.page)
                 }
                 let (nowFrom, nowTo) = self.periodRange
-                if nowFrom == from, nowTo == to {
+                let nowSums = self.categorySumFilter
+                if nowFrom == from, nowTo == to, nowSums.accounts == sums.accounts, nowSums.checked == sums.checked, nowSums.direction == sums.direction {
                     if self.currentFilter.accountIds == filter.accountIds {
                         self.selectionFlow = (r.flow.consumptionCents, r.flow.investedCents, r.flow.incomeCents)
                     }

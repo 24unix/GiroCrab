@@ -73,17 +73,46 @@ impl Vault {
         date_from: Option<String>,
         date_to: Option<String>,
     ) -> Result<Vec<Category>, CoreError> {
+        self.list_categories_filtered(date_from, date_to, Vec::new(), None, BookingDirection::All)
+    }
+
+    /// Like `list_categories`, but the totals also follow the booking list's filters
+    /// (GitHub #621): empty `account_ids` = all accounts, `checked` = `Some(true)` only
+    /// checked, `Some(false)` only new bookings, `None` = both; `direction` keeps only
+    /// inflows / outflows by the booking's amount, like the list.
+    pub fn list_categories_filtered(
+        &self,
+        date_from: Option<String>,
+        date_to: Option<String>,
+        account_ids: Vec<i64>,
+        checked: Option<bool>,
+        direction: BookingDirection,
+    ) -> Result<Vec<Category>, CoreError> {
         let db = self.db()?;
         let rows = Self::category_rows(&db)?;
         let mut totals: HashMap<Option<i64>, (i64, u32)> = HashMap::new();
         {
+            // ids are integers, so inlining them cannot inject anything
+            let accounts = if account_ids.is_empty() {
+                String::new()
+            } else {
+                let list: Vec<String> = account_ids.iter().map(i64::to_string).collect();
+                format!(" AND t.account_id IN ({})", list.join(","))
+            };
+            let side = match direction {
+                BookingDirection::All => "",
+                BookingDirection::Income => " AND t.amount_cents > 0",
+                BookingDirection::Expense => " AND t.amount_cents < 0",
+            };
+            let condition = format!("{accounts}{side} AND (?3 IS NULL OR (t.checked != 0) = ?3)");
             let mut stmt = db.prepare(&format!(
                 "SELECT category_id, SUM(amount_cents), COUNT(*) FROM {}
                  WHERE (?1 IS NULL OR booking_date >= ?1) AND (?2 IS NULL OR booking_date <= ?2)
                  GROUP BY category_id",
-                crate::planning::effective_sql("", "")
+                crate::planning::effective_sql("", &condition)
             ))?;
-            let it = stmt.query_map(params![date_from, date_to], |r| {
+            let checked = checked.map(i64::from);
+            let it = stmt.query_map(params![date_from, date_to, checked], |r| {
                 Ok((
                     r.get::<_, Option<i64>>(0)?,
                     r.get::<_, i64>(1)?,

@@ -113,6 +113,14 @@ struct SidebarView: View {
             // header, whose small caption style can't match them)
             CategoriesHeader()
                 .padding(.top, 10)
+            if !model.categoriesCollapsed, let note = model.categorySumNote {
+                Text(note)
+                    .appFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .padding(.leading, 14)
+                    .selectionDisabled()
+            }
             if !model.categoriesCollapsed {
                 Group {
                     HStack(spacing: 8) {

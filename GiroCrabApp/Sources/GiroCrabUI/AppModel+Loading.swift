@@ -37,7 +37,8 @@ extension AppModel {
         guard let vault else { return }
         let (from, to) = periodRange
         runCore {
-            categories = try vault.listCategories(dateFrom: from, dateTo: to)
+            let sums = categorySumFilter
+            categories = try vault.listCategoriesFiltered(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction)
             categoryTree = Self.buildTree(categories)
         }
     }
@@ -224,6 +225,23 @@ extension AppModel {
         var next = Set(categoryAccountIDs)
         if !next.insert(id).inserted { next.remove(id) }
         categoryAccountFilter = next.count == allAccounts.count ? [] : next
+    }
+
+    /// What the sidebar's category sums count besides the period (#621): the same accounts
+    /// (only in the category views, where the list offers that filter) and status as the booking list.
+    var categorySumFilter: (accounts: [Int64], checked: Bool?, direction: BookingDirection) {
+        (showsCategoryAccountFilter ? categoryAccountIDs : [], statusFilter == .all ? nil : statusFilter == .checked, directionFilter)
+    }
+
+    /// Hint under the sidebar's „Kategorien“ header while a filter narrows the sums; nil = none.
+    /// Names no account (the sidebar is part of bug report screenshots).
+    var categorySumNote: String? {
+        var parts: [String] = []
+        if statusFilter != .all { parts.append(String(localized: "Status: \(statusFilter.title)")) }
+        if directionFilter != .all { parts.append(directionFilter == .income ? String(localized: "Einnahmen") : String(localized: "Ausgaben")) }
+        let chosen = categorySumFilter.accounts.count
+        if chosen > 0 { parts.append(String(localized: "Konten: \(chosen) von \(allAccounts.count)")) }
+        return parts.isEmpty ? nil : String(localized: "Summen gefiltert – \(parts.joined(separator: " · "))")
     }
 
     /// Label of the account menu; never names an account (the header is part of bug report screenshots).
