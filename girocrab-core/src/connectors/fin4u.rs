@@ -142,6 +142,9 @@ fn oaep_encrypt(key: &rsa::PublicKey, password: &str) -> CoreResult<Vec<u8>> {
 pub struct Fin4uConnector {
     /// `documentReferenceId`s already downloaded (connector state).
     known_documents: Vec<String>,
+    /// Accounts whose data GiroCrab does not store this time (switched off,
+    /// archived …): their documents are neither downloaded nor remembered.
+    skipped_accounts: std::collections::HashSet<String>,
     client: Option<reqwest::Client>,
     access_token: SecretString,
     refresh_token: SecretString,
@@ -151,6 +154,7 @@ impl Fin4uConnector {
     pub fn new() -> Self {
         Fin4uConnector {
             known_documents: Vec::new(),
+            skipped_accounts: Default::default(),
             client: None,
             access_token: SecretString::default(),
             refresh_token: SecretString::default(),
@@ -769,6 +773,11 @@ impl BankConnector for Fin4uConnector {
             .flatten()
             .filter_map(|v| v.as_str().map(str::to_string))
             .collect();
+        self.skipped_accounts = ctx
+            .settings
+            .get(super::SKIPPED_ACCOUNTS)
+            .map(|v| v.expose().lines().map(str::to_string).collect())
+            .unwrap_or_default();
         if ctx.login_name.trim().is_empty() || ctx.secret.expose().is_empty() {
             return Err(CoreError::Authentication {
                 message: tr("Benutzername (E-Mail) und Passwort für fin4u erforderlich").into(),
@@ -818,8 +827,15 @@ impl BankConnector for Fin4uConnector {
             // for its bookings. A failed refresh keeps the list data.
             if let Ok(detail) = self.get(&format!("/bankaccounts/bank-account/{id}")).await {
                 let details = parse_details(&detail);
-                // „Dokumente einsehen“: download the ones not fetched before.
-                for d in parse_documents(&detail) {
+                // „Dokumente einsehen“: download the ones not fetched before –
+                // but only for accounts that are stored now: remembered
+                // documents of a switched-off account would never come back.
+                let documents = if self.skipped_accounts.contains(&account.external_ref) {
+                    Vec::new()
+                } else {
+                    parse_documents(&detail)
+                };
+                for d in documents {
                     if self.known_documents.contains(&d.reference_id) {
                         continue;
                     }
@@ -1181,6 +1197,31 @@ mod tests {
         assert!(login_error_kind(400, &json!({"error": "invalid_grant"})).is_ok());
         assert!(login_error_kind(401, &json!({"error": "invalid_client"})).is_err());
         assert!(login_error_kind(404, &Value::Null).is_err());
+    }
+
+    #[tokio::test]
+    async fn reads_the_accounts_a_sync_does_not_store() {
+        let mut settings = std::collections::HashMap::new();
+        settings.insert(
+            super::super::SKIPPED_ACCOUNTS.to_string(),
+            SecretString::new("fin4u:a1\nfin4u:a2".into()),
+        );
+        let ctx = ConnectContext {
+            connection_id: 1,
+            login_name: String::new(),
+            secret: SecretString::default(),
+            settings,
+            state: serde_json::json!({ "documents": ["d1"] }),
+            since: "2026-01-01".into(),
+            since_by_account: Default::default(),
+        };
+        let mut c = Fin4uConnector::new();
+        // no login: begin stops before the network, after reading the context
+        assert!(c.begin(&ctx).await.is_err());
+        assert_eq!(c.known_documents, vec!["d1".to_string()]);
+        let mut skipped: Vec<&String> = c.skipped_accounts.iter().collect();
+        skipped.sort();
+        assert_eq!(skipped, vec!["fin4u:a1", "fin4u:a2"]);
     }
 
     #[test]
