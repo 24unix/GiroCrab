@@ -41,6 +41,7 @@ struct SidebarView: View {
             // the root of the account tree
             // no system badge here: it took the room of the name („All…“); „Neue Umsätze“ and the accounts show the count
             AllAccountsRow()
+                .modifier(AccountRowHeight())
                 .listRowInsets(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6))
                 .tag(SidebarItem.allAccounts)
                 .contextMenu {
@@ -281,6 +282,7 @@ struct SidebarView: View {
             let toggle = { withAnimation(Motion.animation(.easeInOut(duration: 0.15))) { model.toggleCollapsed(group) } }
             let indent = CGFloat(group.depth) * 14
             UserGroupHeader(group: group, open: open, toggle: toggle)
+                .padding(.vertical, 3) // taller hit area for the drop zones
                 // an account goes to the top of this group; a group above it
                 // (upper half) or into it as a subgroup (lower half)
                 .modifier(DropSlot(key: "g:" + group.uuid, inset: 0, line: $dropLine, edge: { half in
@@ -340,6 +342,14 @@ struct SidebarView: View {
         }
     }
 
+    /// The account a confirmation dialog is about: its row stays highlighted (#668).
+    private var dialogAccountID: Int64? {
+        switch dialog {
+        case .archiveAccount(let a), .deleteAccount(let a): a.id
+        default: nil
+        }
+    }
+
     private var emptyHint: LocalizedStringKey {
         #if os(macOS)
         "Konten hierher ziehen"
@@ -378,6 +388,11 @@ struct SidebarView: View {
     private func accountRow(_ account: Account, drop: DropSlot? = nil) -> some View {
         AccountRow(account: account, syncing: model.syncingConnectionID != nil && model.syncingConnectionID == account.connectionId)
             .dropSlot(drop)
+            .background {
+                if dialogAccountID == account.id {
+                    RoundedRectangle(cornerRadius: 6).fill(Theme.accent.opacity(0.22)).allowsHitTesting(false)
+                }
+            }
             .listRowInsets(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6))
             .tag(SidebarItem.account(account.id))
             .contextMenu { accountMenu(account) }
@@ -487,6 +502,15 @@ struct SidebarView: View {
         }
         Divider()
         Button("Kategorie löschen …", systemImage: "trash", role: .destructive) { dialog = .deleteCategory(category) }
+    }
+}
+
+/// Gives single-line rows ("Alle Konten") the height of a two-line account row,
+/// text centred vertically in the selection pill (#658).
+private struct AccountRowHeight: ViewModifier {
+    @Environment(\.textScale) private var scale
+    func body(content: Content) -> some View {
+        content.frame(minHeight: 34 * scale, alignment: .center)
     }
 }
 
