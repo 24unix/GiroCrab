@@ -11,6 +11,9 @@ ApplicationWindow {
     // appTextSize (#343): an ApplicationWindow so the controls inherit the scaled font
     font.pointSize: Theme.controlPointSize
     title: qsTr("Einstellungen")
+    // an independent window like the Mac's Settings, not a dialog pinned above the main
+    // window: bank dialogs (PIN, TAN, consent) of the main window must be able to come to front
+    transientParent: null
     // HIG: each tab has its own height and the window follows it.
     readonly property var tabs: [
         // SettingsView.swift › settingsPane(height:): "Allgemein" 600 since #343/#388 (it scrolls)
