@@ -413,11 +413,18 @@ extension AppModel {
         }
     }
 
+    /// Bar width actually used: own choice, else the global setting, else months.
+    var effectiveCategoryBarUnit: BalanceBarUnit {
+        if categoryBarUnit != .automatic { return categoryBarUnit }
+        let global = BalanceBarUnit(rawValue: UserDefaults.standard.string(forKey: BalanceBarUnit.defaultsKey) ?? "") ?? .automatic
+        return global == .automatic ? .month : global
+    }
+
     /// Request for the category chart: nil unless a category is selected.
-    var categoryHistoryRequest: (id: Int64, accounts: [Int64], from: String?, to: String?)? {
+    var categoryHistoryRequest: (id: Int64, accounts: [Int64], from: String?, to: String?, keyLength: UInt32)? {
         guard case .category(let id) = sidebarSelection else { return nil }
         let (from, to) = periodRange
-        return (id, categoryAccountIDs, from, to)
+        return (id, categoryAccountIDs, from, to, UInt32(effectiveCategoryBarUnit.keyLength))
     }
 
     /// Reloads the monthly sums of the selected category (cheap SQL aggregate).
@@ -426,7 +433,7 @@ extension AppModel {
             if !categoryHistory.isEmpty { categoryHistory = [] }
             return
         }
-        runCore { categoryHistory = try vault.categoryHistory(categoryId: r.id, accountIds: r.accounts, dateFrom: r.from, dateTo: r.to) }
+        runCore { categoryHistory = try vault.categoryHistoryByUnit(categoryId: r.id, accountIds: r.accounts, dateFrom: r.from, dateTo: r.to, keyLength: r.keyLength) }
     }
 
     func reloadHistory() {

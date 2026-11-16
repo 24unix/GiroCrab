@@ -150,7 +150,7 @@ extension AppModel {
                     try Task.checkCancellation()
                     let history = try vault.balanceHistory(accountIds: chart.ids, days: chart.days)
                     let categoryHistory = try categoryChart.map {
-                        try vault.categoryHistory(categoryId: $0.id, accountIds: $0.accounts, dateFrom: $0.from, dateTo: $0.to)
+                        try vault.categoryHistoryByUnit(categoryId: $0.id, accountIds: $0.accounts, dateFrom: $0.from, dateTo: $0.to, keyLength: $0.keyLength)
                     } ?? []
                     return (page: page, flow: flow, recurring: recurring, categories: categories, history: history, categoryHistory: categoryHistory)
                 }

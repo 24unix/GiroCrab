@@ -16727,17 +16727,6 @@
         }
       }
     },
-    "Monatssummen der Kategorie" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Monthly totals of the category"
-          }
-        }
-      }
-    },
     "Motorrad" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22024,6 +22013,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "A group’s total, transaction list and balance history include its subgroups."
+          }
+        }
+      }
+    },
+    "Summen der Kategorie" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Totals of the category"
           }
         }
       }

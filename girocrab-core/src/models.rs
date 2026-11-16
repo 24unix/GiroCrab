@@ -674,7 +674,7 @@ pub struct DailyBalance {
     pub balance_cents: i64,
 }
 
-/// Sum of one category (with subcategories) over one calendar month (`period` = `yyyy-MM`).
+/// Sum of one category (with subcategories) over one calendar day, month or year (`period` = `yyyy-MM-dd`, `yyyy-MM` or `yyyy`).
 #[derive(Debug, Clone, uniffi::Record)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CategoryPeriodSum {

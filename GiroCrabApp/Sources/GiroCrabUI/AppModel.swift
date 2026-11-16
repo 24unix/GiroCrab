@@ -60,6 +60,8 @@ public final class AppModel {
     var history: [DailyBalance] = []
     /// Monthly sums of the selected category incl. subcategories (chart above its bookings, #502).
     var categoryHistory: [CategoryPeriodSum] = []
+    /// Bar width of the category chart (#557); `.automatic` follows the global setting (months if that is automatic too).
+    var categoryBarUnit: BalanceBarUnit = .automatic
     var connections: [BankConnection] = []
     /// Login with accounts that another login already delivers: asks which to fetch (#346).
     var accountSelectionConnection: BankConnection?
