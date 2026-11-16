@@ -1,6 +1,6 @@
 import { Button, ListView, LineEdit, Palette, ComboBox, CheckBox, TextEdit } from "std-widgets.slint";
 
-export struct AccountRow { id: int, name: string, bank: string, iban: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
+export struct AccountRow { id: int, name: string, bank: string, iban: string, header: string, monogram: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
 export struct CategoryRow { id: int, name: string, depth: int, color: color }
 export struct BookingRow { id: int, checked: bool, date: string, counterparty: string, category: string, category-color: color, purpose: string, amount: string, negative: bool }
 export struct BankHit { name: string, detail: string }
@@ -8,46 +8,105 @@ export struct InspectorData { counterparty: string, iban: string, purpose: strin
 
 global Theme {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
-    out property <color> window: dark ? #1c1c1e : #f5f5f7;
-    out property <color> surface: dark ? #26262a : #ffffff;
-    out property <color> sidebar: dark ? #202023 : #ececf0;
-    out property <color> border: dark ? #3a3a3f : #dcdce1;
-    out property <color> text: dark ? #f2f2f7 : #1d1d1f;
-    out property <color> muted: dark ? #9a9aa2 : #6e6e73;
-    out property <color> accent: #3478f6;
-    out property <color> positive: dark ? #4cd17a : #1e8449;
+    out property <color> window: dark ? #0f1218 : #f5f5f7;
+    out property <color> surface: dark ? #161b22 : #ffffff;
+    out property <color> sidebar: dark ? #161b22 : #ececf0;
+    out property <color> selected: dark ? #1f2633 : #e3e8f4;
+    out property <color> border: dark ? #262c36 : #dcdce1;
+    out property <color> control-border: dark ? #2a2f3a : #d0d0d6;
+    out property <color> text: dark ? #f0f4f8 : #1d1d1f;
+    out property <color> amount: dark ? #e6edf3 : #1d1d1f;
+    out property <color> muted: dark ? #8b949e : #6e6e73;
+    out property <color> accent: #3b82f6;
+    out property <color> primary: #2563eb;
+    out property <color> positive: dark ? #3fb950 : #1e8449;
     out property <color> negative: dark ? #ff7b6e : #c0392b;
 }
 
-component AccountCard inherits Rectangle {
+// Subtle ghost button for the toolbar and headers.
+component GhostButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 30px;
+    width: label.preferred-width + 24px;
+    border-radius: 7px;
+    border-width: 1px;
+    border-color: Theme.control-border;
+    background: !enabled ? transparent : ta.pressed ? Theme.text.with-alpha(0.12) : ta.has-hover ? Theme.text.with-alpha(0.07) : Theme.surface;
+    opacity: enabled ? 1 : 0.45;
+    ta := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
+    label := Text { text: root.text; color: Theme.text; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+}
+
+// Chip toggle replacing raw checkboxes.
+component PillToggle inherits Rectangle {
+    in property <string> text;
+    in-out property <bool> checked;
+    callback toggled();
+    height: 30px;
+    width: label.preferred-width + 40px;
+    border-radius: 7px;
+    border-width: 1px;
+    border-color: checked ? Theme.accent : Theme.control-border;
+    background: checked ? Theme.accent.with-alpha(0.18) : ta.has-hover ? Theme.text.with-alpha(0.07) : Theme.surface;
+    ta := TouchArea { clicked => { root.checked = !root.checked; root.toggled(); } }
+    Rectangle { x: 12px; y: (parent.height - 8px) / 2; width: 8px; height: 8px; border-radius: 4px; background: root.checked ? Theme.accent : Theme.muted.with-alpha(0.5); }
+    label := Text { x: 26px; text: root.text; color: Theme.text; font-size: 12px; vertical-alignment: center; }
+}
+
+component AccountCard inherits VerticalLayout {
     in property <AccountRow> account;
     in property <bool> active;
     callback clicked();
-    height: 62px;
-    border-radius: 10px;
-    background: active ? Theme.accent.with-alpha(0.18) : ta.has-hover ? Theme.text.with-alpha(0.06) : transparent;
-    ta := TouchArea { clicked => { root.clicked(); } }
-    HorizontalLayout {
-        padding: 10px;
-        spacing: 10px;
-        VerticalLayout {
-            alignment: center;
-            Rectangle { height: 10px; width: 10px; border-radius: 5px; background: account.dot; }
-        }
-        VerticalLayout {
-            horizontal-stretch: 1;
-            alignment: center;
-            spacing: 2px;
-            Text { text: account.name; color: account.archived ? Theme.muted : Theme.text; font-weight: 600; font-size: 13px; overflow: elide; }
-            Text { text: (account.archived ? "archiviert  " : "") + account.bank + (account.iban == "" ? "" : "  " + account.iban); color: Theme.muted; font-size: 11px; overflow: elide; }
-        }
-        Text {
-            text: account.balance;
-            color: account.negative ? Theme.negative : Theme.text;
-            font-size: 13px;
-            font-weight: 600;
-            vertical-alignment: center;
-            horizontal-alignment: right;
+    callback edit();
+    spacing: 0px;
+    if account.header != "": Text {
+        text: account.header.to-uppercase();
+        color: Theme.muted;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        height: 26px;
+        vertical-alignment: bottom;
+        overflow: elide;
+    }
+    Rectangle {
+        height: 54px;
+        border-radius: 10px;
+        background: active ? Theme.selected : ta.has-hover ? Theme.text.with-alpha(0.05) : transparent;
+        ta := TouchArea { clicked => { root.clicked(); } }
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 10px;
+            spacing: 10px;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 7px;
+                    background: account.dot.with-alpha(0.18);
+                    border-width: 1px;
+                    border-color: account.dot.with-alpha(0.55);
+                    Text { text: account.monogram; color: Theme.dark ? account.dot.brighter(0.5) : account.dot.darker(0.3); font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 1px;
+                Text { text: account.name; color: account.archived ? Theme.muted : Theme.text; font-weight: 600; font-size: 13px; overflow: elide; }
+                Text { text: (account.archived ? "archiviert  " : "") + account.iban; color: Theme.muted; font-size: 11px; overflow: elide; }
+            }
+            Text {
+                text: account.balance;
+                color: account.negative ? Theme.negative : Theme.text;
+                font-size: 12px;
+                font-weight: 600;
+                vertical-alignment: center;
+                horizontal-alignment: right;
+            }
         }
     }
 }
@@ -56,15 +115,15 @@ component BookingLine inherits Rectangle {
     in property <BookingRow> b;
     in property <bool> active;
     callback clicked();
-    height: 56px;
-    background: active ? Theme.accent.with-alpha(0.14) : ta.has-hover ? Theme.text.with-alpha(0.04) : transparent;
+    height: 52px;
+    background: active ? Theme.selected : ta.has-hover ? Theme.text.with-alpha(0.04) : transparent;
     ta := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
         padding-left: 16px;
         padding-right: 16px;
         spacing: 12px;
         Text { text: b.checked ? "✓" : "○"; color: b.checked ? Theme.positive : Theme.muted; font-size: 12px; width: 14px; vertical-alignment: center; }
-        Text { text: b.date; color: Theme.muted; font-size: 12px; width: 84px; vertical-alignment: center; }
+        Text { text: b.date; color: Theme.muted; font-size: 12px; width: 78px; vertical-alignment: center; }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
@@ -76,8 +135,8 @@ component BookingLine inherits Rectangle {
             alignment: center;
             Rectangle {
                 height: 22px;
-                width: pill.preferred-width + 16px;
-                border-radius: 11px;
+                width: pill.preferred-width + 20px;
+                border-radius: 10px;
                 background: b.category-color.with-alpha(0.18);
                 pill := Text {
                     text: b.category;
@@ -90,15 +149,15 @@ component BookingLine inherits Rectangle {
         }
         Text {
             text: b.amount;
-            color: b.negative ? Theme.text : Theme.positive;
+            color: b.negative ? Theme.amount : Theme.positive;
             font-size: 13px;
             font-weight: 600;
-            width: 110px;
+            width: 100px;
             horizontal-alignment: right;
             vertical-alignment: center;
         }
     }
-    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border.with-alpha(0.6); }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
 }
 
 component Swatches inherits HorizontalLayout {
@@ -150,7 +209,7 @@ export component MainWindow inherits Window {
     title: "GiroCrab";
     icon: @image-url("../../docs/assets/app-icon.png");
     forward-focus: fs;
-    min-width: 960px;
+    min-width: 1040px;
     min-height: 600px;
     background: Theme.window;
 
@@ -281,23 +340,32 @@ export component MainWindow inherits Window {
     if unlocked: HorizontalLayout {
         // ---- sidebar
         Rectangle {
-            width: 260px;
+            width: 292px;
             background: Theme.sidebar;
             VerticalLayout {
                 padding: 12px;
                 spacing: 8px;
-                VerticalLayout {
-                    padding: 4px;
-                    spacing: 2px;
-                    Text { text: "GiroCrab"; font-size: 18px; font-weight: 700; color: Theme.text; }
-                    Text { text: "Tresor entsperrt  ·  " + root.total; font-size: 11px; color: Theme.muted; overflow: elide; }
-                }
+                Text { text: "GiroCrab"; font-size: 18px; font-weight: 700; color: Theme.text; x: 4px; }
                 Rectangle {
-                    height: 36px;
-                    border-radius: 10px;
-                    background: root.selected == 0 ? Theme.accent.with-alpha(0.18) : all-ta.has-hover ? Theme.text.with-alpha(0.06) : transparent;
+                    height: 56px;
+                    border-radius: 12px;
+                    background: root.selected == 0 ? Theme.selected : all-ta.has-hover ? Theme.text.with-alpha(0.05) : Theme.surface;
+                    border-width: 1px;
+                    border-color: root.selected == 0 ? Theme.accent.with-alpha(0.6) : Theme.border;
                     all-ta := TouchArea { clicked => { root.select-account(0); } }
-                    Text { x: 14px; text: "Alle Konten"; color: Theme.text; font-size: 13px; font-weight: 600; vertical-alignment: center; }
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 8px;
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            spacing: 1px;
+                            Text { text: "Alle Konten"; color: Theme.text; font-size: 13px; font-weight: 700; }
+                            Text { text: "Gesamtsaldo"; color: Theme.muted; font-size: 11px; }
+                        }
+                        Text { text: root.total; color: Theme.text; font-size: 14px; font-weight: 700; vertical-alignment: center; horizontal-alignment: right; }
+                    }
                 }
                 ListView {
                     vertical-stretch: 1;
@@ -307,23 +375,19 @@ export component MainWindow inherits Window {
                         clicked => { root.select-account(a.id); }
                     }
                 }
+                Rectangle { height: 1px; background: Theme.border; }
                 HorizontalLayout {
-                    spacing: 6px;
-                    Button { text: "Neues Konto"; clicked => { root.account-new(); } }
-                    Button { text: "Bearbeiten"; enabled: root.selected > 0; clicked => { root.account-edit(); } }
-                }
-                HorizontalLayout {
-                    spacing: 6px;
-                    Button { text: "Kategorien"; clicked => { root.categories-open(); } }
-                    Button { text: "Info"; clicked => { root.about-open = true; } }
-                }
-                Button {
-                    text: "+ Bank / Konto hinzufügen";
-                    clicked => {
-                        root.add-status = "";
-                        root.bank-search("");
-                        root.add-open = true;
+                    spacing: 8px;
+                    GhostButton {
+                        text: "+ Konto / Bank";
+                        clicked => {
+                            root.add-status = "";
+                            root.bank-search("");
+                            root.add-open = true;
+                        }
                     }
+                    GhostButton { text: "Neues Konto"; clicked => { root.account-new(); } }
+                    Rectangle { horizontal-stretch: 1; }
                 }
             }
             Rectangle { x: parent.width - 1px; width: 1px; background: Theme.border; }
@@ -336,19 +400,21 @@ export component MainWindow inherits Window {
             // toolbar
             HorizontalLayout {
                 spacing: 8px;
-                Button { text: "Importieren …"; enabled: !root.busy; clicked => { root.import-file(); } }
-                Button { text: "Überweisung …"; enabled: !root.busy && root.transfer-accounts.length > 0; clicked => { root.transfer-start(); } }
-                Button { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
+                GhostButton { text: "Importieren …"; enabled: !root.busy; clicked => { root.import-file(); } }
+                GhostButton { text: "Überweisung …"; enabled: !root.busy && root.transfer-accounts.length > 0; clicked => { root.transfer-start(); } }
+                GhostButton { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
+                GhostButton { text: "Kategorien"; clicked => { root.categories-open(); } }
+                GhostButton { text: "Info"; clicked => { root.about-open = true; } }
                 Rectangle { horizontal-stretch: 1; }
-                CheckBox {
+                PillToggle {
                     text: "Privatmodus";
                     checked <=> root.privacy;
                     toggled => { root.privacy-changed(); }
                 }
-                Button { text: "Sperren"; clicked => { root.lock(); } }
+                GhostButton { text: "Sperren"; clicked => { root.lock(); } }
             }
             Rectangle {
-                height: 96px;
+                height: 88px;
                 background: Theme.surface;
                 border-radius: 12px;
                 border-width: 1px;
@@ -362,23 +428,33 @@ export component MainWindow inherits Window {
                         spacing: 4px;
                         Text {
                             text: root.selected-name == "" ? "Keine Konten" : root.selected-name;
-                            font-size: 18px; font-weight: 700; color: Theme.text; overflow: elide;
+                            font-size: 16px; font-weight: 700; color: Theme.text; overflow: elide;
                         }
-                        HorizontalLayout {
-                            spacing: 6px;
-                            alignment: start;
-                            Text { text: root.selected-balance; font-size: 22px; font-weight: 700; color: Theme.text; }
-                            Text { text: root.selected-currency; font-size: 12px; color: Theme.muted; vertical-alignment: bottom; }
-                        }
+                        Text { text: root.selected-balance; font-size: 24px; font-weight: 700; color: Theme.text; overflow: elide; }
                     }
-                    VerticalLayout {
-                        alignment: center;
-                        width: 200px;
-                        Button {
-                            text: root.busy ? "Bitte warten …" : "Jetzt abrufen";
-                            primary: true;
-                            enabled: !root.busy;
-                            clicked => { root.sync(); }
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 8px;
+                        GhostButton {
+                            y: (parent.height - self.height) / 2;
+                            text: "Bearbeiten";
+                            enabled: root.selected > 0 && !root.busy;
+                            visible: root.selected > 0;
+                            clicked => { root.account-edit(); }
+                        }
+                        Rectangle {
+                            width: 130px;
+                            height: 34px;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: 8px;
+                            opacity: root.busy ? 0.6 : 1;
+                            background: sync-ta.pressed ? Theme.primary.darker(0.2) : sync-ta.has-hover ? Theme.accent : Theme.primary;
+                            sync-ta := TouchArea { enabled: !root.busy; clicked => { root.sync(); } }
+                            Text {
+                                text: root.busy ? "Bitte warten …" : "Jetzt abrufen";
+                                color: #ffffff; font-size: 12px; font-weight: 700;
+                                horizontal-alignment: center; vertical-alignment: center;
+                            }
                         }
                     }
                 }
@@ -401,7 +477,7 @@ export component MainWindow inherits Window {
                     current-index <=> root.status-index;
                     selected => { root.search-changed(); }
                 }
-                CheckBox {
+                PillToggle {
                     text: "Ohne Kategorie";
                     checked <=> root.uncategorized-only;
                     toggled => { root.search-changed(); }

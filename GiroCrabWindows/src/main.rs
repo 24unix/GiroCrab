@@ -73,8 +73,57 @@ fn open_vault(demo: bool) -> Result<Arc<Vault>, String> {
     Ok(vault)
 }
 
+/// German amount with a currency symbol: `-1.234,50 €`.
 fn money(cents: i64, currency: &str) -> String {
-    girocrab_core::format_cents(cents, currency.to_string())
+    let abs = cents.unsigned_abs();
+    let whole = (abs / 100).to_string();
+    let mut grouped = String::new();
+    for (i, c) in whole.chars().enumerate() {
+        if i > 0 && (whole.len() - i).is_multiple_of(3) {
+            grouped.push('.');
+        }
+        grouped.push(c);
+    }
+    let symbol = match currency {
+        "EUR" | "" => "€",
+        "USD" => "$",
+        "GBP" => "£",
+        other => other,
+    };
+    let sign = if cents < 0 { "-" } else { "" };
+    format!("{sign}{grouped},{:02} {symbol}", abs % 100)
+}
+
+/// `2026-11-13` -> `13.11.2026`; anything else is returned unchanged.
+fn german_date(iso: &str) -> String {
+    let head = iso.get(..10).unwrap_or(iso);
+    let parts: Vec<&str> = head.split('-').collect();
+    match parts.as_slice() {
+        [y, m, d]
+            if y.len() == 4
+                && m.len() == 2
+                && d.len() == 2
+                && parts.iter().all(|p| p.bytes().all(|b| b.is_ascii_digit())) =>
+        {
+            format!("{d}.{m}.{y}")
+        }
+        _ => iso.to_string(),
+    }
+}
+
+/// Up to two capital letters for the account badge: initials of the first two words, or the
+/// first two letters of a single word.
+fn monogram(name: &str) -> String {
+    let words: Vec<&str> = name
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let letters: Vec<char> = match words.as_slice() {
+        [] => return "•".into(),
+        [one] => one.chars().take(2).collect(),
+        [a, b, ..] => a.chars().take(1).chain(b.chars().take(1)).collect(),
+    };
+    letters.iter().flat_map(|c| c.to_uppercase()).collect()
 }
 
 /// "•••• 1234" from the last four characters; never the whole IBAN on screen.
@@ -129,9 +178,27 @@ fn account_rows(vault: &Vault, privacy: bool) -> Result<(Vec<AccountRow>, String
         .filter(|a| a.in_total && a.currency == "EUR")
         .map(|a| a.balance_cents)
         .sum();
-    let rows = accounts
-        .iter()
-        .map(|a| AccountRow {
+    // Accounts are grouped under their bank; the sort is stable, so the order inside a group stays.
+    let mut sorted: Vec<&_> = accounts.iter().collect();
+    sorted.sort_by_key(|a| a.bank_name.to_lowercase());
+    let mut last_group = String::new();
+    let rows = sorted
+        .into_iter()
+        .map(|a| {
+            let group = if a.bank_name.trim().is_empty() {
+                "Sonstige".to_string()
+            } else {
+                a.bank_name.clone()
+            };
+            let header = if group == last_group {
+                String::new()
+            } else {
+                last_group = group.clone();
+                group
+            };
+            AccountRow {
+                header: header.into(),
+                monogram: monogram(&a.name).into(),
             id: a.id as i32,
             name: a.name.clone().into(),
             bank: a.bank_name.clone().into(),
@@ -141,6 +208,7 @@ fn account_rows(vault: &Vault, privacy: bool) -> Result<(Vec<AccountRow>, String
             currency: a.currency.clone().into(),
             negative: a.balance_cents < 0 && !privacy,
             archived: a.archived_unix.is_some(),
+            }
         })
         .collect();
     Ok((rows, daily::mask(&money(total, "EUR"), privacy)))
@@ -201,7 +269,7 @@ fn render_bookings(win: &MainWindow) {
                 let b = &st.rows[i];
                 BookingRow {
                     id: b.id as i32,
-                    date: b.booking_date.clone().into(),
+                    date: german_date(&b.booking_date).into(),
                     counterparty: daily::mask(&b.counterparty, privacy).into(),
                     category: if b.category_name.is_empty() {
                         "Ohne Kategorie".into()
@@ -1267,6 +1335,32 @@ mod tests {
             .all(|r| r.balance == daily::MASK && r.iban != "•••• 3000"));
         assert_eq!(total, daily::MASK);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn amounts_use_euro_sign_and_german_separators() {
+        assert_eq!(money(428050, "EUR"), "4.280,50 €");
+        assert_eq!(money(-3999, "EUR"), "-39,99 €");
+        assert_eq!(money(-64280, "EUR"), "-642,80 €");
+        assert_eq!(money(5, "EUR"), "0,05 €");
+        assert_eq!(money(-123456789, "EUR"), "-1.234.567,89 €");
+        assert_eq!(money(100, "CHF"), "1,00 CHF");
+    }
+
+    #[test]
+    fn dates_are_german() {
+        assert_eq!(german_date("2026-11-13"), "13.11.2026");
+        assert_eq!(german_date("2026-11-13T10:00:00"), "13.11.2026");
+        assert_eq!(german_date("13.11.2026"), "13.11.2026");
+        assert_eq!(german_date(""), "");
+    }
+
+    #[test]
+    fn monograms() {
+        assert_eq!(monogram("Musterbank Girokonto"), "MG");
+        assert_eq!(monogram("Einzeltitel-Depot"), "ED");
+        assert_eq!(monogram("Bargeld"), "BA");
+        assert_eq!(monogram(""), "•");
     }
 
     #[test]
