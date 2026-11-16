@@ -272,6 +272,20 @@ fn display_name(a: &EbAccount) -> String {
         .to_string()
 }
 
+fn paypal_account_label<'a>(
+    aspsp: &str,
+    account_count: usize,
+    login_name: &'a str,
+) -> Option<&'a str> {
+    let label = login_name.trim();
+    (aspsp.eq_ignore_ascii_case("PayPal")
+        && account_count == 1
+        && !label.is_empty()
+        && !label.eq_ignore_ascii_case(aspsp)
+        && !crate::demo::is_magic_demo_login(label))
+    .then_some(label)
+}
+
 /// Same account in two sessions: by IBAN or identification hash, in the
 /// same currency.
 fn same_account(p: &EbAccount, n: &EbAccount) -> bool {
@@ -1413,6 +1427,15 @@ impl BankConnector for EnableBankingConnector {
                 a.history_done = true;
             }
         }
+        // The vault uses the fetched name when inserting a new account.
+        if let Some(label) =
+            paypal_account_label(&self.aspsp_default, self.st.accounts.len(), &ctx.login_name)
+        {
+            if let [account] = out.accounts.as_mut_slice() {
+                account.name = label.to_owned();
+                out.name_updates.clear();
+            }
+        }
         // Every account of the consent was looked at: the vault may mark the
         // connection's other accounts as no longer accessible.
         out.accounts_complete = !stopped_early && !out.accounts.is_empty();
@@ -2127,6 +2150,17 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(display_name(&old), "C24 Smartkonto");
+    }
+
+    #[test]
+    fn paypal_connection_label_names_only_a_single_account() {
+        assert_eq!(
+            paypal_account_label("PayPal", 1, "  Privat  "),
+            Some("Privat")
+        );
+        assert_eq!(paypal_account_label("PayPal", 1, "PayPal"), None);
+        assert_eq!(paypal_account_label("PayPal", 2, "Privat"), None);
+        assert_eq!(paypal_account_label("C24", 1, "Privat"), None);
     }
 
     #[test]

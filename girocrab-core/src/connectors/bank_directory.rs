@@ -105,6 +105,7 @@ pub fn psd2_catalog() -> Vec<Psd2Bank> {
         psd2("Tomorrow", "DE", "Tomorrow", None),
         psd2("Vivid Money", "DE", "Vivid Money", None),
         psd2("Wise", "DE", "Wise", None),
+        psd2("PayPal", "DE", "PayPal", None),
         psd2(
             "American Express",
             "DE",
@@ -672,6 +673,20 @@ mod tests {
         assert!(search("paypal", vec![], 10)
             .iter()
             .all(|b| b.id != "fints:comdirect"));
+    }
+
+    #[test]
+    fn paypal_offers_direct_api_and_psd2_without_live_catalog() {
+        let results = search("PayPal", vec![], 10);
+        assert!(results.iter().any(|bank| {
+            bank.mode == BankAccessMode::OwnApi && bank.connector == Some(ConnectorKind::PayPal)
+        }));
+        assert!(results.iter().any(|bank| {
+            bank.mode == BankAccessMode::Psd2
+                && bank.aspsp == "PayPal"
+                && bank.country == "DE"
+                && bank.connector.is_none()
+        }));
     }
 
     #[test]
