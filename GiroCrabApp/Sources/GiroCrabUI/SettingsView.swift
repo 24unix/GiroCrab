@@ -828,7 +828,6 @@ struct KeyPasteSheet: View {
 private extension View {
     /// macOS: each Settings tab has its own size and the window follows it
     /// (HIG: no large empty panes); iOS: the sheet decides.
-    @ViewBuilder
     func settingsPane(height: CGFloat) -> some View {
         // Own row under the pane: a grouped Form scrolls beneath a safe-area inset.
         let pane = VStack(spacing: 0) {
