@@ -102,6 +102,8 @@ CRITICAL=0
 CRITICAL_BELOW=""
 NIGHTLY=0
 BUILD_IOS=0
+# iOS/TestFlight marketing version: pinned, only an explicit IOS_MARKETING_VERSION changes it.
+IOS_MARKETING_VERSION="${IOS_MARKETING_VERSION:-0.7.5}"
 ROTATE_TO=""
 LOST_TO=""
 NO_SYNC=0
@@ -265,7 +267,8 @@ if [ -n "$UPLOAD_TAG" ]; then
   # One multiplatform target shares MARKETING_VERSION with iOS. With --ios the pbxproj value
   # is the iOS version: it is only rewritten when IOS_MARKETING_VERSION is passed explicitly
   # (to that value); otherwise it stays untouched. Without --ios it gets the release version.
-  if [ "$BUILD_IOS" -eq 1 ]; then PBX_MV="${IOS_MARKETING_VERSION:-}"; else PBX_MV="$CLEAN_VER"; fi
+  # The pbxproj value is pinned for every run (iOS or not) so it never drifts from the TestFlight version.
+  PBX_MV="$IOS_MARKETING_VERSION"
   if [ "$CHANNEL" = "stable" ] && [ -f "$PBXPROJ" ] && [ -n "$PBX_MV" ]; then
     echo "==> Setting MARKETING_VERSION = ${PBX_MV} in project.pbxproj"
     sed -i '' "s/MARKETING_VERSION = [^;]*;/MARKETING_VERSION = ${PBX_MV};/g" "$PBXPROJ"
@@ -374,11 +377,11 @@ fi
 # then finds a current XCFramework and skips its own build).
 if [ "$BUILD_IOS" -eq 1 ]; then
   PBXPROJ="GiroCrabApp/Xcode/GiroCrab.xcodeproj/project.pbxproj"
-  CURRENT_BUILD="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \([0-9][0-9]*\);.*/\1/p' "$PBXPROJ" | head -1)"
+  CURRENT_BUILD="$(sed -n 's/.*CURRENT_PROJECT_VERSION = \([0-9][0-9]*\);.*/\1/p' "$PBXPROJ" | sort -n | tail -1)"
   [ -n "$CURRENT_BUILD" ] || { echo "error: no numeric CURRENT_PROJECT_VERSION in $PBXPROJ" >&2; exit 1; }
   NEXT_BUILD=$((CURRENT_BUILD + 1))
   echo "==> Bumping iOS CURRENT_PROJECT_VERSION: ${CURRENT_BUILD} -> ${NEXT_BUILD}"
-  sed -i '' "s/CURRENT_PROJECT_VERSION = ${CURRENT_BUILD};/CURRENT_PROJECT_VERSION = ${NEXT_BUILD};/g" "$PBXPROJ"
+  sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = ${NEXT_BUILD};/g" "$PBXPROJ"
 
   # Release/TestFlight needs macOS + iOS device only: skip the simulator slice.
   if ./build-xcframework.sh --check --strict-env --need-ios 2>/dev/null; then
@@ -625,7 +628,6 @@ ios_pipeline() {
   # project.pbxproj; IOS_MARKETING_VERSION=x.y.z (explicit) overrides it and was
   # already written to project.pbxproj for stable releases. macOS gets the
   # release version via GIROCRAB_VERSION, independent of the pbxproj.
-  IOS_MARKETING_VERSION="${IOS_MARKETING_VERSION:-$(sed -n 's/.*MARKETING_VERSION = \([^;]*\);.*/\1/p' "$PBXPROJ" | head -1)}"
   IOS_VERSION_ARGS=()
   if [ -n "$IOS_MARKETING_VERSION" ]; then
     echo "==> Pinning iOS MARKETING_VERSION = ${IOS_MARKETING_VERSION} (Build ${NEXT_BUILD})"
@@ -643,6 +645,16 @@ ios_pipeline() {
   cp scripts/ExportOptions.plist "$IOS_PLIST"
   /usr/libexec/PlistBuddy -c "Add :destination string upload" "$IOS_PLIST" 2>/dev/null \
     || /usr/libexec/PlistBuddy -c "Set :destination upload" "$IOS_PLIST"
+
+  # Verify version/build BEFORE anything is uploaded. The export below uploads directly
+  # (destination=upload), so check the archived app, which is exactly what the .ipa contains.
+  ARCH_PLIST="$(ls -d "$IOS_ARCHIVE"/Products/Applications/*.app | head -1)/Info.plist"
+  got_short="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$ARCH_PLIST")"
+  got_build="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$ARCH_PLIST")"
+  if [ "$got_short" != "$IOS_MARKETING_VERSION" ] || [ "$got_build" != "$NEXT_BUILD" ]; then
+    echo "error: iOS archive has ${got_short} (${got_build}), expected ${IOS_MARKETING_VERSION} (${NEXT_BUILD}); aborting before upload" >&2
+    exit 1
+  fi
 
   xcodebuild -exportArchive \
     -archivePath "$IOS_ARCHIVE" \
