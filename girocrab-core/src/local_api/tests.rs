@@ -653,3 +653,36 @@ fn a_deleted_account_drops_out_of_the_scope() {
     share(&v, &ids, |_| {});
     assert_eq!(v.local_api_scope().unwrap().account_ids, ids[1..]);
 }
+
+#[test]
+fn merchant_names_are_masked_like_the_texts_they_come_from() {
+    let (_d, v) = demo();
+    let ids: Vec<i64> = v.list_accounts().unwrap().iter().map(|a| a.id).collect();
+    share(&v, &ids, |_| {});
+    let long = regex::Regex::new(r"\d{6,}").unwrap();
+    let merchants = |v: &Vault| -> Vec<String> {
+        let mut out = Vec::new();
+        let mut cursor = Value::Null;
+        loop {
+            let r = call(v, "transactions", json!({ "limit": 500, "cursor": cursor }));
+            for t in r["result"]["transactions"].as_array().unwrap() {
+                out.push(t["merchant"].as_str().unwrap_or_default().to_string());
+            }
+            cursor = r["result"]["next_cursor"].clone();
+            if cursor.is_null() {
+                return out;
+            }
+        }
+    };
+    let masked = merchants(&v);
+    assert!(
+        masked.iter().any(|m| m.contains("[number]")),
+        "the demo data has a merchant with an account number"
+    );
+    assert!(masked.iter().all(|m| !long.is_match(m)), "{masked:?}");
+    share(&v, &ids, |s| s.share_account_numbers = true);
+    assert!(
+        merchants(&v).iter().any(|m| long.is_match(m)),
+        "shown when shared"
+    );
+}

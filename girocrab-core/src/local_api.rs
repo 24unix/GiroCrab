@@ -849,12 +849,14 @@ fn api_transaction(scope: &ShareScope, t: &Booking) -> ApiTransaction {
         currency: t.currency.clone(),
         category_id: t.category_id,
         category_path: t.category_path.clone(),
-        // The merchant is read from counterparty and purpose.
-        merchant: if scope.share_counterparty && scope.share_purpose {
-            t.merchant_name.clone()
-        } else {
-            String::new()
-        },
+        // The merchant is read from counterparty and purpose, so it is masked
+        // like them ("Darlehen Kto 4009988").
+        merchant: shared_text(
+            scope,
+            scope.share_counterparty && scope.share_purpose,
+            &t.merchant_name,
+        )
+        .unwrap_or_default(),
         flow: flow_str(t.flow).into(),
         // Read from booking text and purpose.
         payment_method: if scope.share_purpose {

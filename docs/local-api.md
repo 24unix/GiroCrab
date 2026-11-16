@@ -61,7 +61,7 @@ Schlüsselprüfung beantwortet.
 | `info` | – | Version, Anzahl geteilter Konten, geteilte Felder, letzter Abruf |
 | `accounts` | – | geteilte Konten mit Saldo, Art, Währung, letztem Abruf |
 | `categories` | – | Kategorienbaum (`id`, `parent_id`, `name`, `path`, `depth`) |
-| `transactions` | `account_ids`, `date_from`, `date_to`, `category_id`, `include_subcategories`, `uncategorized_only`, `direction` (`income`/`expense`/`all`), `search`, `cursor`, `limit` (1–500, Standard 100) | Buchungen, neueste zuerst, mit `next_cursor` |
+| `transactions` | `account_ids`, `date_from`, `date_to`, `category_id`, `include_subcategories`, `uncategorized_only`, `direction` (`income`/`expense`/`all`), `search`, `cursor`, `limit` (1–500, Standard 100; größere Werte werden auf 500 begrenzt) | Buchungen, neueste zuerst, mit `next_cursor` |
 | `summary` | `date_from`, `date_to` (höchstens drei Jahre), `account_ids` | Einnahmen/Ausgaben je Währung, Netto-Summen je Kategorie |
 
 Daten im Format `YYYY-MM-DD`, Beträge in Cent (`amount_cents`, negativ = Ausgang). Buchungs-IDs bleiben
