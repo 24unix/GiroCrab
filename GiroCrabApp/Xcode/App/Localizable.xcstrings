@@ -12956,6 +12956,17 @@
         }
       }
     },
+    "Hinzufügen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add …"
+          }
+        }
+      }
+    },
     "Historie & Kategorien importieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17909,6 +17920,28 @@
         }
       }
     },
+    "Neue Kategorie …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Category …"
+          }
+        }
+      }
+    },
+    "Neue Kategoriengruppe …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Category Group …"
+          }
+        }
+      }
+    },
     "Neue Konten werden erst geteilt, wenn Sie sie hier auswählen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17927,6 +17960,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New accounts: %@"
+          }
+        }
+      }
+    },
+    "Neue Kontengruppe …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Account Group …"
           }
         }
       }
@@ -18235,6 +18279,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New account from the file"
+          }
+        }
+      }
+    },
+    "Neues Konto …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Account …"
           }
         }
       }

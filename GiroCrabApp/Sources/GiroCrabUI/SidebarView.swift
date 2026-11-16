@@ -162,12 +162,20 @@ struct SidebarView: View {
                     Text("Verschlüsselt · \(model.lastSyncText)")
                 }
                 Spacer(minLength: 0)
-                Button { model.showAddBank = true } label: {
+                Menu {
+                    Button("Neues Konto …", systemImage: "building.columns") { model.showAddBank = true }
+                    Button("Neue Kontengruppe …", systemImage: "folder.badge.plus") { model.groupDialog = .create() }
+                    Divider()
+                    Button("Neue Kategorie …", systemImage: "tag") { model.newCategoryRequest = NewCategoryRequest(parent: selectedCategoryID) }
+                    Button("Neue Kategoriengruppe …", systemImage: "tag.circle") { model.newCategoryRequest = NewCategoryRequest(parent: nil) }
+                } label: {
                     Image(systemName: "plus").frame(width: 24, height: 18).contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
-                .help("Bank hinzufügen …")
-                .accessibilityLabel("Bank hinzufügen")
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Hinzufügen …")
+                .accessibilityLabel("Hinzufügen")
                 .disabled(!model.isUnlocked)
             }
             .appFont(.caption)
@@ -203,6 +211,11 @@ struct SidebarView: View {
         }
         .capturableSheet(item: $editedAccount) { box in AccountEditSheet(accountID: box.id).environment(model) }
         .capturableSheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
+    }
+
+    /// A selected category becomes the parent of „Neue Kategorie“; otherwise a main category.
+    private var selectedCategoryID: Int64? {
+        if case .category(let id) = model.sidebarSelection { id } else { nil }
     }
 
     /// "Nach Kontoart": the fixed kind sections.
@@ -658,11 +671,14 @@ struct AccountRow: View {
                             .lineLimit(1)
                     }
                     Spacer(minLength: 4)
-                    Text(Money.format(account.balanceCents, currency: account.currency))
-                        .sensitive(.amounts)
-                        .appFont(.subheadline, monospacedDigit: true)
-                        .fixedSize() // the subtitle truncates, never the balance (#343)
-                        .foregroundStyle(onSelection ? AnyShapeStyle(.primary) : AnyShapeStyle(account.kind == .loan ? Theme.loan : (account.balanceCents < 0 ? Theme.negative : Theme.text)))
+                    // archived accounts show no balance (#667)
+                    if !account.isArchived {
+                        Text(Money.format(account.balanceCents, currency: account.currency))
+                            .sensitive(.amounts)
+                            .appFont(.subheadline, monospacedDigit: true)
+                            .fixedSize() // the subtitle truncates, never the balance (#343)
+                            .foregroundStyle(onSelection ? AnyShapeStyle(.primary) : AnyShapeStyle(account.kind == .loan ? Theme.loan : (account.balanceCents < 0 ? Theme.negative : Theme.text)))
+                    }
                 }
             }
         }
@@ -893,21 +909,12 @@ private struct CategoriesHeader: View {
             .buttonStyle(.plain)
             .accessibilityLabel(open ? "Kategorien einklappen" : "Kategorien ausklappen")
             .accessibilityValue(open ? "Ausgeklappt" : "Eingeklappt")
-            Image(systemName: "tag")
-                .appFont(.body, weight: .semibold)
-                .frame(width: 20)
-                .accessibilityHidden(true)
+            // caption style like „Konten“, „Zahlungen“ and „Dokumente“ (#676); „+“ lives in the bottom bar
             Text("Kategorien").lineLimit(1)
+                .appFont(.caption, weight: .semibold)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
-            Button { model.newCategoryRequest = NewCategoryRequest(parent: nil) } label: {
-                Image(systemName: "plus").frame(width: 24, height: 18).contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless)
-            .help("Neue Hauptkategorie …")
-            .accessibilityLabel("Neue Hauptkategorie")
-            .disabled(!model.isUnlocked)
         }
-        .appFont(.body, weight: .semibold) // as big as the group headers
         .foregroundStyle(.secondary)
         .contentShape(Rectangle())
         .onTapGesture(perform: toggle)
