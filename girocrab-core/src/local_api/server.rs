@@ -1,8 +1,9 @@
 //! Local socket for the read-only interface (#136): a Unix domain socket, no
 //! network port. One JSON request per line, one JSON response per line.
 //!
-//! - The socket lives in a directory only the user can enter (0700), the socket
-//!   itself is 0600, and a client running as another user is closed at once.
+//! - The socket lives in a directory only the user can enter (0700: created so
+//!   here, an existing one must already be private), the socket itself is 0600,
+//!   and a client running as another user is closed at once.
 //! - Every request carries the access token (`"token": "gcapi_…"`); only its
 //!   hash is stored in the vault, and the scope is read on every request.
 //! - The server holds the vault weakly: once the app drops it (locked, swapped),
@@ -25,11 +26,12 @@ use std::time::Duration;
 
 use super::{response, ApiError, ApiErrorCode};
 use crate::error::CoreError;
+use crate::i18n::{tr, trf};
 use crate::vault::Vault;
 
 const MAX_CLIENTS: usize = 4;
 const MAX_LINE: usize = 64 * 1024;
-const IDLE: Duration = Duration::from_secs(300);
+const IDLE: Duration = Duration::from_secs(60);
 /// How often blocked accepts and reads look at the stop flag.
 const TICK: Duration = Duration::from_millis(100);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -45,15 +47,14 @@ pub struct LocalApiServer {
 
 #[uniffi::export]
 impl LocalApiServer {
-    /// Listens on `socket_path` (its directory is created with mode 0700). A
-    /// stale socket there is replaced, any other file is an error.
+    /// Listens on `socket_path`. A missing directory is created with mode 0700,
+    /// an existing one must already be private to this user (it is never
+    /// chmod-ed). A stale socket there is replaced, any other file is an error.
+    /// Errors are `InvalidInput` with a localized message for the status line.
     #[uniffi::constructor]
     pub fn start(vault: Arc<Vault>, socket_path: String) -> Result<Arc<Self>, CoreError> {
         let path = PathBuf::from(&socket_path);
-        let listener = bind(&path)?;
-        let file_id = std::fs::symlink_metadata(&path)
-            .map(|m| (m.dev(), m.ino()))
-            .map_err(io_error)?;
+        let (listener, file_id) = bind(&path)?;
         let stop = Arc::new(AtomicBool::new(false));
         let vault = Arc::downgrade(&vault);
         {
@@ -93,45 +94,75 @@ impl Drop for LocalApiServer {
 }
 
 fn io_error(e: std::io::Error) -> CoreError {
-    CoreError::Database {
-        message: format!("local socket: {e}"),
-    }
+    invalid(trf("Lokaler Socket: {0}", &[&e]))
 }
 
-fn invalid(message: &str) -> CoreError {
-    CoreError::InvalidInput {
-        message: message.into(),
-    }
+fn invalid(message: String) -> CoreError {
+    CoreError::InvalidInput { message }
 }
 
-/// Creates the private directory and binds the socket (mode 0600).
-fn bind(path: &Path) -> Result<UnixListener, CoreError> {
+/// Uses or creates the private directory and binds the socket (mode 0600);
+/// returns the listener and the (device, inode) of the new socket file.
+fn bind(path: &Path) -> Result<(UnixListener, (u64, u64)), CoreError> {
     let dir = path
         .parent()
         .filter(|d| !d.as_os_str().is_empty())
-        .ok_or_else(|| invalid("socket path needs a directory"))?;
-    std::fs::create_dir_all(dir).map_err(io_error)?;
+        .ok_or_else(|| invalid(tr("Der Socket-Pfad braucht einen Ordner.").into()))?;
+    let created = match std::fs::symlink_metadata(dir) {
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            std::fs::create_dir_all(dir).map_err(io_error)?;
+            true
+        }
+        _ => false,
+    };
     let meta = std::fs::symlink_metadata(dir).map_err(io_error)?;
     // SAFETY: getuid has no preconditions.
     let uid = unsafe { libc::getuid() };
     if !meta.is_dir() || meta.uid() != uid {
-        return Err(invalid("socket directory is not a directory of this user"));
+        return Err(invalid(
+            tr("Der Socket-Ordner gehört nicht diesem Benutzer.").into(),
+        ));
     }
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(io_error)?;
+    if created {
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(io_error)?;
+    } else if meta.mode() & 0o077 != 0 {
+        // Never chmod a folder someone else chose (home, a shared folder).
+        return Err(invalid(trf(
+            "Andere Benutzer können den Socket-Ordner öffnen: {0}",
+            &[&dir.display()],
+        )));
+    }
     match std::fs::symlink_metadata(path) {
         // Someone answers there (another GiroCrab): never take its socket away.
         Ok(m) if m.file_type().is_socket() && UnixStream::connect(path).is_ok() => {
-            return Err(invalid("another GiroCrab already serves this socket"))
+            return Err(invalid(
+                tr("Eine andere GiroCrab-Instanz verwendet diesen Socket bereits.").into(),
+            ))
         }
         Ok(m) if m.file_type().is_socket() => std::fs::remove_file(path).map_err(io_error)?,
-        Ok(_) => return Err(invalid("socket path exists and is not a socket")),
+        Ok(_) => {
+            return Err(invalid(
+                tr("Am Socket-Pfad liegt bereits eine andere Datei.").into(),
+            ))
+        }
         Err(e) if e.kind() == ErrorKind::NotFound => {}
         Err(e) => return Err(io_error(e)),
     }
     let listener = UnixListener::bind(path).map_err(io_error)?;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(io_error)?;
-    listener.set_nonblocking(true).map_err(io_error)?;
-    Ok(listener)
+    // From here on the file is ours: any later error removes it again.
+    let ready = || -> std::io::Result<(u64, u64)> {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        listener.set_nonblocking(true)?;
+        let m = std::fs::symlink_metadata(path)?;
+        Ok((m.dev(), m.ino()))
+    };
+    match ready() {
+        Ok(file_id) => Ok((listener, file_id)),
+        Err(e) => {
+            let _ = std::fs::remove_file(path);
+            Err(io_error(e))
+        }
+    }
 }
 
 /// Removes the socket file only if it is still the one this server created.
@@ -158,15 +189,19 @@ fn accept_loop(listener: UnixListener, vault: Weak<Vault>, stop: Arc<AtomicBool>
         match listener.accept() {
             Ok((mut stream, _)) => {
                 // BSD hands the listener's O_NONBLOCK on to the accepted socket.
-                if stream.set_nonblocking(false).is_err()
-                    || stream.set_write_timeout(Some(WRITE_TIMEOUT)).is_err()
-                    || !same_user(&stream)
-                {
+                if stream.set_nonblocking(false).is_err() || !same_user(&stream) {
                     continue;
                 }
                 if clients.load(Ordering::SeqCst) >= MAX_CLIENTS {
-                    let busy = ApiError::new(ApiErrorCode::Busy, "too many connections, try again");
-                    let _ = writeln!(stream, "{}", response(Err(busy)));
+                    // A short timeout: this runs on the accept thread.
+                    if stream.set_write_timeout(Some(TICK)).is_ok() {
+                        let busy =
+                            ApiError::new(ApiErrorCode::Busy, "too many connections, try again");
+                        let _ = writeln!(stream, "{}", response(Err(busy)));
+                    }
+                    continue;
+                }
+                if stream.set_write_timeout(Some(WRITE_TIMEOUT)).is_err() {
                     continue;
                 }
                 clients.fetch_add(1, Ordering::SeqCst);
@@ -423,7 +458,9 @@ mod tests {
         let d = ShortDir::new();
         let (_v, vault, _) = vault();
         let path = d.socket();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let dir = path.parent().unwrap();
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).unwrap();
         std::fs::write(&path, b"keep me").unwrap();
         assert!(LocalApiServer::start(vault, path.to_string_lossy().into()).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"keep me");
@@ -544,5 +581,19 @@ mod tests {
         assert_eq!(c.call("", "info")["error"]["code"], "unauthorized");
         assert_eq!(c.call(&token, "info")["error"]["code"], "disabled");
         server.stop();
+    }
+
+    #[test]
+    fn an_existing_open_folder_is_refused_and_left_as_it_is() {
+        let d = ShortDir::new();
+        let (_v, vault, _) = vault();
+        let path = d.socket();
+        let dir = path.parent().unwrap();
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(LocalApiServer::start(vault, path.to_string_lossy().into()).is_err());
+        let mode = std::fs::metadata(dir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o755, "never chmod-ed");
+        assert!(!path.exists());
     }
 }

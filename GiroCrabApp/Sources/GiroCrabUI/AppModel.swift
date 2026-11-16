@@ -365,8 +365,10 @@ public final class AppModel {
     var localApiServer: LocalApiServer?
     /// Why the socket did not start (shown in Einstellungen › Analyse); nil = no error.
     var localApiStartError: String?
-    /// The last settings save: saves run one after another, the newest wins.
-    var localApiSaveTask: Task<Void, Never>?
+    /// The last queued settings/token call: they run one after another (AppModel+LocalApi).
+    var localApiQueue: Task<Void, Never>?
+    /// Bumped by every `refreshLocalApiServer()`; only the newest one acts.
+    var localApiRefreshGeneration = 0
     var activeChallenge: ActiveChallenge?
     var payeeCheck: PendingPayeeCheck?
     var syncingConnectionID: Int64?

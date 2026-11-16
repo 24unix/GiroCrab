@@ -25,14 +25,27 @@ extension AppModel {
 
     /// Starts or stops the socket to match the stored settings. Called when a vault
     /// opens (`useVault`) and after every settings change.
+    /// Only the newest refresh acts: an older one may have read the scope before
+    /// a later save turned access off.
     func refreshLocalApiServer() {
         #if os(macOS)
+        localApiRefreshGeneration &+= 1
+        let generation = localApiRefreshGeneration
         guard holdsRealData, let v = ownVault else { stopLocalApiServer(); return }
         Task {
-            let scope = try? await Self.offMain { try v.localApiScope() }
-            // Locked, swapped or switched to the demo meanwhile: nothing to start.
-            guard self.holdsRealData, self.ownVault === v else { return }
-            guard let scope, scope.enabled, !scope.tokenSha256.isEmpty else {
+            let read = await Task.detached { Result { try v.localApiScope() } }.value
+            // Locked, swapped, switched to the demo or a newer refresh meanwhile.
+            guard generation == self.localApiRefreshGeneration,
+                  self.holdsRealData, self.ownVault === v else { return }
+            let scope: ShareScope
+            switch read {
+            case .success(let s): scope = s
+            case .failure(let error):
+                self.stopLocalApiServer()
+                self.localApiStartError = describe(error)
+                return
+            }
+            guard scope.enabled, !scope.tokenSha256.isEmpty else {
                 self.stopLocalApiServer()
                 return
             }
@@ -45,7 +58,12 @@ extension AppModel {
                 self.localApiStartError = nil
             } catch {
                 // Kept for the status line: a toast alone would leave "starting" forever.
-                self.localApiStartError = describe(error)
+                // The core words its start errors for the user (localized).
+                if case .InvalidInput(let message)? = error as? CoreError {
+                    self.localApiStartError = message
+                } else {
+                    self.localApiStartError = describe(error)
+                }
             }
         }
         #endif
@@ -72,36 +90,43 @@ extension AppModel {
         localApiStartError = nil
     }
 
+    /// Every settings call of this feature, one after another on the own vault
+    /// as it was when the call was made: a read never overtakes a pending save,
+    /// quick toggles keep the newest, and nothing lands in the demo vault. nil
+    /// when the own vault is not shown or was locked before the call's turn; a
+    /// call that ran returns its result even if the vault was swapped since
+    /// (a committed token is still shown).
+    private func localApiCall<T: Sendable>(_ work: @escaping @Sendable (Vault) throws -> T) async throws -> T? {
+        guard holdsRealData, let v = ownVault else { return nil }
+        let previous = localApiQueue
+        let job = Task { () -> Result<T, Error>? in
+            await previous?.value
+            guard self.ownVault === v else { return nil }
+            return await Task.detached { Result { try work(v) } }.value
+        }
+        localApiQueue = Task { _ = await job.value }
+        return try await job.value?.get()
+    }
+
     func loadLocalApiScope() async -> ShareScope? {
-        guard holdsRealData else { return nil }
-        return try? await vaultOffMain { try $0.localApiScope() }
+        try? await localApiCall { try $0.localApiScope() }
     }
 
     /// Saves what is shared (the token stays) and starts or stops the socket.
-    /// Saves run in order: quick toggles must not let an older copy win.
     func saveLocalApiScope(_ scope: ShareScope) async {
-        guard holdsRealData else { return }
-        let previous = localApiSaveTask
-        let save = Task {
-            await previous?.value
-            do {
-                _ = try await self.vaultOffMain { try $0.setLocalApiScope(scope: scope) }
-            } catch {
-                self.errorMessage = describe(error)
-            }
+        do {
+            _ = try await localApiCall { try $0.setLocalApiScope(scope: scope) }
+        } catch {
+            errorMessage = describe(error)
         }
-        localApiSaveTask = save
-        await save.value
         refreshLocalApiServer()
     }
 
     /// A new access token, shown once; the previous one stops working.
     func createLocalApiToken() async -> String? {
-        guard holdsRealData else { return nil }
+        defer { refreshLocalApiServer() }
         do {
-            let token = try await vaultOffMain { try $0.createLocalApiToken() }
-            refreshLocalApiServer()
-            return token
+            return try await localApiCall { try $0.createLocalApiToken() }
         } catch {
             errorMessage = describe(error)
             return nil
@@ -109,9 +134,8 @@ extension AppModel {
     }
 
     func revokeLocalApiToken() async {
-        guard holdsRealData else { return }
         do {
-            _ = try await vaultOffMain { try $0.revokeLocalApiToken() }
+            _ = try await localApiCall { try $0.revokeLocalApiToken() }
         } catch {
             errorMessage = describe(error)
         }

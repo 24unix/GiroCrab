@@ -116,4 +116,35 @@ final class LocalApiServerTests: XCTestCase {
         let stored = await model.loadLocalApiScope()
         XCTAssertEqual(stored?.accountIds, [1, 2, 3])
     }
+
+    func testOnThenQuicklyOffLeavesTheSocketOff() async throws {
+        _ = await model.createLocalApiToken()
+        let loaded = await model.loadLocalApiScope()
+        var scope = try XCTUnwrap(loaded)
+        scope.enabled = true
+        let on = scope
+        scope.enabled = false
+        let off = scope
+        async let first: Void = model.saveLocalApiScope(on)
+        async let second: Void = model.saveLocalApiScope(off)
+        _ = await (first, second)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertFalse(model.isLocalApiRunning)
+        XCTAssertFalse(socketExists)
+    }
+
+    func testQueuedSavesLandInTheOwnVaultAcrossTheDemo() async throws {
+        let loaded = await model.loadLocalApiScope()
+        var scope = try XCTUnwrap(loaded)
+        scope.enabled = true
+        scope.accountIds = [7]
+        let save = Task { await model.saveLocalApiScope(scope) }
+        await Task.yield() // queued while the own vault is shown
+        model.showDemo()
+        XCTAssertNil(model.localApiServer)
+        await save.value
+        model.showOwnVault()
+        let stored = await model.loadLocalApiScope()
+        XCTAssertEqual(stored?.accountIds, [7])
+    }
 }

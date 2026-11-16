@@ -33,7 +33,7 @@ Wechsel zur Demo und beim Beenden wird der Socket geschlossen.
   `~/Library/Application Support/GiroCrab/local-api/girocrab.sock`
   (Ordner `0700`, Socket `0600`; Verbindungen anderer Benutzer werden sofort geschlossen).
 - Eine JSON-Anfrage pro Zeile, eine JSON-Antwort pro Zeile; mehrere Anfragen pro Verbindung.
-- Höchstens 4 Verbindungen, 64 KiB pro Anfrage, Verbindungen ohne Daten enden nach 5 Minuten.
+- Höchstens 4 Verbindungen, 64 KiB pro Anfrage, Verbindungen ohne Daten enden nach einer Minute.
 
 ```
 → {"v":1,"token":"gcapi_…","method":"transactions","params":{"date_from":"2026-01-01","limit":50}}
@@ -42,8 +42,10 @@ Wechsel zur Demo und beim Beenden wird der Socket geschlossen.
 
 Fehler: `{"v":1,"error":{"code":"…","message":"…"}}` mit `disabled`, `unauthorized`, `locked`,
 `unsupported_version`, `unknown_method`, `invalid_params`, `not_shared`, `busy` (zu viele
-Verbindungen, später erneut versuchen), `internal`. Ohne gültigen Schlüssel antwortet der Socket immer mit
-`unauthorized`, auch wenn die Freigabe ausgeschaltet ist.
+Verbindungen, später erneut versuchen), `internal`. Ohne gültigen Schlüssel verrät keine Antwort etwas über die
+Freigabe oder die Daten: Anfragen mit gültigem Format erhalten `unauthorized`, auch wenn die Freigabe
+ausgeschaltet ist. Fehlerhafte oder zu große Anfragen, eine fremde Version, `busy` und `locked` werden vor der
+Schlüsselprüfung beantwortet.
 
 ## Methoden (Version 1)
 

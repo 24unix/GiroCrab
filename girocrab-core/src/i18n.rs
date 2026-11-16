@@ -854,6 +854,12 @@ fn english(de: &str) -> Option<&'static str> {
         "bunq" => "bunq",
         "bunq-Umgebung" => "bunq environment",
         "production oder sandbox (Test-API von bunq)." => "production or sandbox (bunq's test API).",
+        "Lokaler Socket: {0}" => "Local socket: {0}",
+        "Der Socket-Pfad braucht einen Ordner." => "The socket path needs a folder.",
+        "Der Socket-Ordner gehört nicht diesem Benutzer." => "The socket folder does not belong to this user.",
+        "Andere Benutzer können den Socket-Ordner öffnen: {0}" => "Other users can open the socket folder: {0}",
+        "Eine andere GiroCrab-Instanz verwendet diesen Socket bereits." => "Another GiroCrab instance already uses this socket.",
+        "Am Socket-Pfad liegt bereits eine andere Datei." => "Another file already exists at the socket path.",
         _ => return None,
     })
 }

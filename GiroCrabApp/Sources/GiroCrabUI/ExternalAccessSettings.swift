@@ -37,7 +37,7 @@ struct ExternalAccessSettings: View {
                 Task {
                     await model.revokeLocalApiToken()
                     newToken = nil
-                    scope = await model.loadLocalApiScope()
+                    await reloadToken()
                 }
             }
             Button("Abbrechen", role: .cancel) {}
@@ -105,7 +105,7 @@ struct ExternalAccessSettings: View {
                 Button(scope.tokenSha256.isEmpty ? "Zugangsschlüssel erzeugen" : "Neuen Schlüssel erzeugen") {
                     Task {
                         newToken = await model.createLocalApiToken()
-                        self.scope = await model.loadLocalApiScope()
+                        await reloadToken()
                     }
                 }
                 if !scope.tokenSha256.isEmpty {
@@ -144,6 +144,13 @@ struct ExternalAccessSettings: View {
                 if on { s.accountIds.append(id) }
                 save(s)
             })
+    }
+
+    /// After a token change, takes only the stored token hash: the switches are
+    /// this pane's own state (saved in order), a toggle made meanwhile must stay.
+    private func reloadToken() async {
+        guard let stored = await model.loadLocalApiScope() else { return }
+        scope?.tokenSha256 = stored.tokenSha256
     }
 
     private func save(_ s: ShareScope) {
