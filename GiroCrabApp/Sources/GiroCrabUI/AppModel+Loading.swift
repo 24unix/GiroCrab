@@ -732,6 +732,13 @@ extension AppModel {
         reloadAssets()
         let accounts = allAccounts
         accountsByID = Dictionary(accounts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        if let vault {
+            accountNotes = Dictionary(accounts.compactMap { a in
+                let n = ((try? vault.getSetting(key: "account.note.\(a.id)")) ?? nil)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return n.isEmpty ? nil : (a.id, n)
+            }, uniquingKeysWith: { a, _ in a })
+        }
         // " (MoneyMoney)": suffix that earlier versions appended to accounts created by a file import.
         func base(_ a: Account) -> String {
             a.name.replacingOccurrences(of: " (Import)", with: "").replacingOccurrences(of: " (MoneyMoney)", with: "")

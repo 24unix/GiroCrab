@@ -10315,6 +10315,17 @@
         }
       }
     },
+    "Erscheint unter dem Kontonamen in der Kontoansicht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shown below the account name in the account view."
+          }
+        }
+      }
+    },
     "Erscheinungsbild" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -15587,6 +15598,28 @@
         }
       }
     },
+    "Konto bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Account"
+          }
+        }
+      }
+    },
+    "Konto bearbeiten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Account …"
+          }
+        }
+      }
+    },
     "Konto entfernen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -15660,6 +15693,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Account, bank, or IBAN"
+          }
+        }
+      }
+    },
+    "Konto-Notiz" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account Note"
           }
         }
       }
@@ -15858,6 +15902,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Account Owner …"
+          }
+        }
+      }
+    },
+    "Kontoname" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account Name"
           }
         }
       }

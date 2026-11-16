@@ -7,6 +7,7 @@ struct SidebarView: View {
     /// The one sidebar dialog on screen (group dialogs live in `model.groupDialog`).
     @State private var dialog: SidebarDialog?
     @State private var budgetCategory: IDBox?
+    @State private var editedAccount: IDBox?
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
     /// Where a drop would land: a thin line above or below one row.
     @State private var dropLine: DropLine?
@@ -200,6 +201,7 @@ struct SidebarView: View {
             default: EmptyView()
             }
         }
+        .capturableSheet(item: $editedAccount) { box in AccountEditSheet(accountID: box.id).environment(model) }
         .capturableSheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
     }
 
@@ -411,6 +413,7 @@ struct SidebarView: View {
     private func accountMenu(_ account: Account) -> some View {
         // same order as a group's menu: rename, look, place – then what only
         // accounts have – then archive / delete
+        Button("Konto bearbeiten …", systemImage: "square.and.pencil") { editedAccount = IDBox(id: account.id) }
         Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .renameAccount(account) }
         Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .account(account.id) }
         CategoryChipToggle(accountID: account.id)
@@ -428,7 +431,7 @@ struct SidebarView: View {
         ManualLoanAccountMenu(model: model, account: account)
         OpeningBalanceMenuItem(model: model, account: account)
         if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {
-            Button("\(conn.displayName) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
+            Button("\(account.name) abrufen", systemImage: "arrow.triangle.2.circlepath") { model.requestSync(conn) }
                 .disabled(model.bankingGate(for: conn) != nil)
         }
         AccountCopyMenu(account: account)

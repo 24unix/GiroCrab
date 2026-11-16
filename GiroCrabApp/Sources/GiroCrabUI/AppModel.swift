@@ -44,6 +44,8 @@ public final class AppModel {
     /// Lookups for booking rows (see `rebuildAccountIndex`).
     var accountsByID: [Int64: Account] = [:]
     var accountMarkers: [Int64: AccountMarker] = [:]
+    /// Account notes (vault setting `account.note.<id>`), loaded with the account index.
+    var accountNotes: [Int64: String] = [:]
     var categories: [GiroCrabCore.Category] = []
     /// Live tags in list order with their booking counts (#228).
     var tags: [GiroCrabCore.Tag] = []
@@ -1452,10 +1454,14 @@ extension AppModel {
 
     /// Free-text note for an account stored in vault settings (GitHub #512).
     func accountNote(for accountID: Int64) -> String {
-        settingEntry("account.note.\(accountID)")?.value.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        accountNotes[accountID] ?? ""
     }
 
+    /// `list_settings` only returns known keys, so the note is read with `getSetting`.
     func setAccountNote(_ note: String, for accountID: Int64) {
-        saveSetting("account.note.\(accountID)", note.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard let vault else { return }
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        runCore { try vault.setSetting(key: "account.note.\(accountID)", value: trimmed) }
+        accountNotes[accountID] = trimmed.isEmpty ? nil : trimmed
     }
 }
