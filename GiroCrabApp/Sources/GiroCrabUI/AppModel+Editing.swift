@@ -308,7 +308,7 @@ extension AppModel {
             // must not also categorise the outgoing transfers to the same payee.
             minAmountCents: booking.flatMap { $0.amountCents > 0 ? 1 : nil },
             maxAmountCents: booking.flatMap { $0.amountCents < 0 ? 0 : nil },
-            accountId: nil,
+            accountIds: [],
             priority: Int32((rules.map(\.priority).max() ?? 0) + 10),
             enabled: true,
             matchCount: 0

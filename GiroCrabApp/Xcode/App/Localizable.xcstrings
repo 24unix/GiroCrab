@@ -15121,6 +15121,17 @@
         }
       }
     },
+    "Konto entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove Account"
+          }
+        }
+      }
+    },
     "Konto hinzufügen" : {
       "extractionState" : "manual",
       "localizations" : {

@@ -175,7 +175,7 @@ type RuleRow = (
     bool,
     Option<i64>,
     Option<i64>,
-    Option<i64>,
+    rusqlite::types::Value,
     i64,
 );
 
@@ -228,12 +228,24 @@ pub(crate) fn fill_missing_uuids(conn: &Connection) -> CoreResult<()> {
         )?;
     }
     // rules
+    // runs during migrations too: before step 24 the column is the account set
+    let has_set: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'rule_accounts')",
+        [],
+        |r| r.get(0),
+    )?;
+    let accounts = if has_set {
+        "COALESCE((SELECT group_concat(account_id) FROM rule_accounts
+                   WHERE rule_id = rules.id), account_id)"
+    } else {
+        "account_id"
+    };
     let rules: Vec<RuleRow> = conn
-        .prepare(
+        .prepare(&format!(
             "SELECT id, field, match_kind, pattern, case_sensitive, min_amount_cents,
-                    max_amount_cents, account_id, category_id
-             FROM rules WHERE uuid IS NULL ORDER BY id",
-        )?
+                    max_amount_cents, {accounts}, category_id
+             FROM rules WHERE uuid IS NULL ORDER BY id"
+        ))?
         .query_map([], |r| {
             Ok((
                 r.get(0)?,
@@ -261,10 +273,7 @@ pub(crate) fn fill_missing_uuids(conn: &Connection) -> CoreResult<()> {
             )
             .optional()?
             .unwrap_or_default();
-        let account_key = match account {
-            Some(a) => Some(account_key(conn, a)?),
-            None => None,
-        };
+        let account_key = accounts_key(conn, &crate::rules::parse_account_ids(&account))?;
         let mut u = rule_uuid_for_content(
             &field,
             &kind,
@@ -527,6 +536,20 @@ pub(crate) fn account_key(conn: &Connection, id: i64) -> CoreResult<String> {
         None => String::new(),
     };
     Ok(format!("{prefix}|{}", unmarked(&external_ref)))
+}
+
+/// Separator between the account keys of a rule restricted to several accounts.
+const ACCOUNT_KEY_SEP: &str = "\u{1f}";
+
+/// Account keys of a rule's accounts, sorted and joined; `None` = all accounts.
+/// One account gives its plain key, so rule uuids of single-account rules stay.
+pub(crate) fn accounts_key(conn: &Connection, ids: &[i64]) -> CoreResult<Option<String>> {
+    let mut keys = ids
+        .iter()
+        .map(|a| account_key(conn, *a))
+        .collect::<CoreResult<Vec<_>>>()?;
+    keys.sort();
+    Ok((!keys.is_empty()).then(|| keys.join(ACCOUNT_KEY_SEP)))
 }
 
 /// `<account key>|external_id`
@@ -988,7 +1011,7 @@ struct MRule {
     uuid: String,
     body: RuleBody,
     category_id: i64,
-    account_id: Option<i64>,
+    account_ids: Vec<i64>,
     updated_ms: i64,
     deleted_ms: Option<i64>,
     merged_into: Option<String>,
@@ -1000,7 +1023,7 @@ impl MRule {
         {
             self.body = o.body;
             self.category_id = o.category_id;
-            self.account_id = o.account_id;
+            self.account_ids = o.account_ids;
             self.updated_ms = o.updated_ms;
         }
         merge_deletion(
@@ -1023,7 +1046,7 @@ type RawRule = (
     bool,
     Option<i64>,
     Option<i64>,
-    Option<i64>,
+    rusqlite::types::Value,
     i64,
     bool,
     i64,
@@ -1033,11 +1056,27 @@ type RawRule = (
 
 fn load_rules(conn: &Connection, schema: &str) -> CoreResult<Vec<RawRule>> {
     // includes soft-deleted rows
+    // a vault from before step 24 has no `rule_accounts`: its column is the set
+    let has_set: bool = conn.query_row(
+        &format!(
+            "SELECT EXISTS(SELECT 1 FROM {schema}.sqlite_master WHERE name = 'rule_accounts')"
+        ),
+        [],
+        |r| r.get(0),
+    )?;
+    let accounts = if has_set {
+        format!(
+            "COALESCE((SELECT group_concat(account_id) FROM {schema}.rule_accounts
+                       WHERE rule_id = r.id), r.account_id)"
+        )
+    } else {
+        "r.account_id".to_string()
+    };
     let sql = format!(
-        "SELECT id, uuid, name, category_id, field, match_kind, pattern, case_sensitive,
-                min_amount_cents, max_amount_cents, account_id, priority, enabled,
-                updated_ms, deleted_ms, merged_into
-         FROM {schema}.rules ORDER BY id"
+        "SELECT r.id, r.uuid, r.name, r.category_id, r.field, r.match_kind, r.pattern,
+                r.case_sensitive, r.min_amount_cents, r.max_amount_cents, {accounts},
+                r.priority, r.enabled, r.updated_ms, r.deleted_ms, r.merged_into
+         FROM {schema}.rules r ORDER BY r.id"
     );
     let rows = conn
         .prepare(&sql)?
@@ -1111,14 +1150,16 @@ pub(crate) fn merge_rules(
     let mut build = |conn: &Connection,
                      raw: RawRule,
                      cat: i64,
-                     acc: Option<i64>|
+                     acc: Vec<i64>|
      -> CoreResult<MRule> {
         let (id, uuid, name, _, field, kind, pattern, cs, min, max, _, prio, en, upd, del, merged) =
             raw;
-        let account = match acc {
-            Some(a) => Some(key_of(conn, a)?),
-            None => None,
-        };
+        let mut keys_of = acc
+            .iter()
+            .map(|a| key_of(conn, *a))
+            .collect::<CoreResult<Vec<_>>>()?;
+        keys_of.sort();
+        let account = (!keys_of.is_empty()).then(|| keys_of.join(ACCOUNT_KEY_SEP));
         Ok(MRule {
             id,
             uuid,
@@ -1136,7 +1177,7 @@ pub(crate) fn merge_rules(
                 enabled: en,
             },
             category_id: cat,
-            account_id: acc,
+            account_ids: acc,
             updated_ms: upd,
             deleted_ms: del,
             merged_into: merged,
@@ -1145,7 +1186,7 @@ pub(crate) fn merge_rules(
 
     let mut local = Vec::new();
     for raw in load_rules(conn, "main")? {
-        let (cat, acc) = (raw.3, raw.10);
+        let (cat, acc) = (raw.3, crate::rules::parse_account_ids(&raw.10));
         local.push(build(conn, raw, cat, acc)?);
     }
     let mut other = Vec::new();
@@ -1156,8 +1197,12 @@ pub(crate) fn merge_rules(
         if raw.6.len() > crate::rules::MAX_PATTERN_LEN {
             continue;
         }
-        let acc = raw.10.and_then(|a| acc_map.get(&a).copied());
-        if raw.10.is_some() && acc.is_none() {
+        let theirs = crate::rules::parse_account_ids(&raw.10);
+        let acc: Vec<i64> = theirs
+            .iter()
+            .filter_map(|a| acc_map.get(a).copied())
+            .collect();
+        if acc.len() != theirs.len() {
             continue;
         }
         other.push(build(conn, raw, cat, acc)?);
@@ -1291,7 +1336,7 @@ pub(crate) fn merge_rules(
                 b.case_sensitive,
                 b.min,
                 b.max,
-                r.account_id,
+                r.account_ids.iter().min(),
                 b.priority,
                 b.enabled,
                 r.updated_ms,
@@ -1299,6 +1344,7 @@ pub(crate) fn merge_rules(
                 r.merged_into
             ],
         )?;
+        crate::rules::store_rule_accounts(conn, ids[&r.uuid], &r.account_ids)?;
     }
 
     // bookings follow a combined rule; a deleted rule's bookings are
@@ -2300,14 +2346,18 @@ fn synced_state(v: &crate::vault::Vault) -> Vec<String> {
         "rule",
         rows(
             "SELECT r.uuid, r.name, c.uuid, r.field, r.match_kind, r.pattern, r.case_sensitive,
-                    r.min_amount_cents, r.max_amount_cents, r.account_id, r.priority, r.enabled,
+                    r.min_amount_cents, r.max_amount_cents,
+                    COALESCE((SELECT group_concat(account_id) FROM rule_accounts
+                              WHERE rule_id = r.id), r.account_id),
+                    r.priority, r.enabled,
                     r.updated_ms, r.deleted_ms, r.merged_into
              FROM rules r LEFT JOIN categories c ON c.id = r.category_id",
         )
         .into_iter()
         .map(|mut r| {
-            if let Value::Integer(a) = r[9] {
-                r[9] = Value::Text(account_key(&db, a).unwrap());
+            let ids = crate::rules::parse_account_ids(&r[9]);
+            if !ids.is_empty() {
+                r[9] = Value::Text(accounts_key(&db, &ids).unwrap().unwrap());
             }
             (show(&r[..1]), show(&r))
         })

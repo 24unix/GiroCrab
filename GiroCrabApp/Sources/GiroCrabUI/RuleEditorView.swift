@@ -329,16 +329,7 @@ struct RuleForm: View {
                         Text("Nur Einnahmen").tag(2)
                     }
                     .pickerStyle(.segmented)
-                    Picker("Konto", selection: $rule.accountId) {
-                        Text("Alle Konten").tag(Int64?.none)
-                        ForEach(model.accountMenuSections) { section in
-                            Section(section.title) {
-                                ForEach(section.accounts) { a in
-                                    Text("\(a.bankName) – \(a.name)").tag(Int64?.some(a.id))
-                                }
-                            }
-                        }
-                    }
+                    RuleAccountPicker(accountIds: $rule.accountIds)
                 } header: { Text("Betrag").appSectionHeader() }
                 Section {
                     if let err = preview.error {

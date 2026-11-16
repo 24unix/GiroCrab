@@ -283,6 +283,11 @@ fn fold_inner(conn: &Connection, twin: i64, bank: i64) -> CoreResult<()> {
         "UPDATE rules SET account_id = ?2, updated_ms = max(updated_ms + 1, ?3) WHERE account_id = ?1",
         params![twin, bank, crate::user_groups::now_ms()],
     )?;
+    conn.execute(
+        "UPDATE OR IGNORE rule_accounts SET account_id = ?2 WHERE account_id = ?1",
+        params![twin, bank],
+    )?;
+    conn.execute("DELETE FROM rule_accounts WHERE account_id = ?1", [twin])?;
     // documents and manual loan links follow each booking to the bank
     // account's copy (same external id, else import fingerprint)
     let counterpart = "(SELECT b.id FROM transactions b, transactions m

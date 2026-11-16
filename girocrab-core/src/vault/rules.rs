@@ -20,36 +20,55 @@ impl Vault {
     }
 
     fn load_rules(conn: &Connection) -> CoreResult<Vec<Rule>> {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT r.id, r.name, r.category_id, r.field, r.match_kind, r.pattern, r.case_sensitive,
-                    r.min_amount_cents, r.max_amount_cents, r.account_id, r.priority, r.enabled,
+                    r.min_amount_cents, r.max_amount_cents, {acc}, r.priority, r.enabled,
                     (SELECT count(*) FROM transactions t WHERE t.rule_id = r.id AND t.deleted_ms IS NULL)
              FROM rules r WHERE r.deleted_ms IS NULL
-               AND (r.account_id IS NULL OR EXISTS (SELECT 1 FROM accounts a WHERE a.id = r.account_id AND a.deleted_ms IS NULL))
              ORDER BY r.priority, r.id",
-        )?;
+            acc = crate::rules::ACCOUNT_SET_SQL
+        ))?;
+        let live: std::collections::HashSet<i64> = conn
+            .prepare("SELECT id FROM accounts WHERE deleted_ms IS NULL")?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
         let rows = stmt.query_map([], |r| {
-            Ok(Rule {
-                id: r.get(0)?,
-                name: r.get(1)?,
-                category_id: r.get(2)?,
-                field: RuleField::from_str(&r.get::<_, String>(3)?),
-                match_kind: match r.get::<_, String>(4)?.as_str() {
-                    "regex" => MatchKind::Regex,
-                    "expression" => MatchKind::Expression,
-                    _ => MatchKind::Keyword,
+            let stored = crate::rules::parse_account_ids(&r.get::<_, rusqlite::types::Value>(9)?);
+            Ok((
+                stored.clone(),
+                Rule {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    category_id: r.get(2)?,
+                    field: RuleField::from_str(&r.get::<_, String>(3)?),
+                    match_kind: match r.get::<_, String>(4)?.as_str() {
+                        "regex" => MatchKind::Regex,
+                        "expression" => MatchKind::Expression,
+                        _ => MatchKind::Keyword,
+                    },
+                    pattern: r.get(5)?,
+                    case_sensitive: r.get::<_, i64>(6)? != 0,
+                    min_amount_cents: r.get(7)?,
+                    max_amount_cents: r.get(8)?,
+                    account_ids: stored,
+                    priority: r.get(10)?,
+                    enabled: r.get::<_, i64>(11)? != 0,
+                    match_count: r.get::<_, i64>(12)? as u32,
                 },
-                pattern: r.get(5)?,
-                case_sensitive: r.get::<_, i64>(6)? != 0,
-                min_amount_cents: r.get(7)?,
-                max_amount_cents: r.get(8)?,
-                account_id: r.get(9)?,
-                priority: r.get(10)?,
-                enabled: r.get::<_, i64>(11)? != 0,
-                match_count: r.get::<_, i64>(12)? as u32,
-            })
+            ))
         })?;
-        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        let mut out = Vec::new();
+        for row in rows {
+            let (stored, mut rule) = row?;
+            // Deleted accounts drop out of the restriction; a rule whose
+            // accounts are all gone is hidden (as before).
+            rule.account_ids.retain(|a| live.contains(a));
+            if !stored.is_empty() && rule.account_ids.is_empty() {
+                continue;
+            }
+            out.push(rule);
+        }
+        Ok(out)
     }
 
     /// Re-runs rules over transactions that are not manually categorised.
@@ -204,10 +223,11 @@ impl Vault {
                 "INSERT INTO rules(name, category_id, field, match_kind, pattern, case_sensitive, min_amount_cents, max_amount_cents, account_id, priority, enabled, updated_ms)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![rule.name, rule.category_id, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
-                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64,
+                        rule.min_amount_cents, rule.max_amount_cents, rule.account_ids.iter().min(), rule.priority, rule.enabled as i64,
                         crate::user_groups::now_ms()],
             )?;
             let id = db.last_insert_rowid();
+            crate::rules::store_rule_accounts(&db, id, &rule.account_ids)?;
             crate::sync_merge::fill_missing_uuids(&db)?;
             Ok(id)
         } else {
@@ -215,9 +235,10 @@ impl Vault {
                 "UPDATE rules SET name=?1, category_id=?2, field=?3, match_kind=?4, pattern=?5, case_sensitive=?6, min_amount_cents=?7,
                         max_amount_cents=?8, account_id=?9, priority=?10, enabled=?11, updated_ms=?13 WHERE id=?12",
                 params![rule.name, rule.category_id, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
-                        rule.min_amount_cents, rule.max_amount_cents, rule.account_id, rule.priority, rule.enabled as i64, rule.id,
+                        rule.min_amount_cents, rule.max_amount_cents, rule.account_ids.iter().min(), rule.priority, rule.enabled as i64, rule.id,
                         crate::user_groups::now_ms()],
             )?;
+            crate::rules::store_rule_accounts(&db, rule.id, &rule.account_ids)?;
             Ok(rule.id)
         }
     }
@@ -335,7 +356,7 @@ mod expression_rule_tests {
             case_sensitive: false,
             min_amount_cents: None,
             max_amount_cents: None,
-            account_id: None,
+            account_ids: Vec::new(),
             priority: 0,
             enabled: true,
             match_count: 0,
@@ -362,5 +383,109 @@ mod expression_rule_tests {
         });
         assert!(err.is_err(), "unsupported field can't be saved");
         let _ = std::fs::remove_file(p);
+    }
+}
+
+#[cfg(test)]
+mod multi_account_rule_tests {
+    use super::*;
+
+    #[test]
+    fn rule_restricted_to_several_accounts_round_trips_and_applies() {
+        let dir = crate::test_support::TempDir::new("girocrab-multi-acc");
+        let p = dir.join("v.db");
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
+        let (accs, cat) = {
+            let c = v.db().unwrap();
+            c.execute(
+                "INSERT OR IGNORE INTO account_groups(name) VALUES ('G')",
+                [],
+            )
+            .unwrap();
+            let mut accs = Vec::new();
+            for r in ["A1", "A2", "A3"] {
+                c.execute(
+                    "INSERT INTO accounts(group_id, external_ref, name) \
+                     VALUES ((SELECT id FROM account_groups LIMIT 1), ?1, ?1)",
+                    [r],
+                )
+                .unwrap();
+                let id = c.last_insert_rowid();
+                c.execute(
+                    "INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty) \
+                     VALUES (?1, 'T', '2026-01-02', -100, 'REWE')",
+                    [id],
+                )
+                .unwrap();
+                accs.push(id);
+            }
+            c.execute("INSERT INTO categories(name) VALUES ('Lebensmittel')", [])
+                .unwrap();
+            (accs, c.last_insert_rowid())
+        };
+        let rule = Rule {
+            id: 0,
+            name: "REWE".into(),
+            category_id: cat,
+            field: RuleField::Any,
+            match_kind: MatchKind::Keyword,
+            pattern: "REWE".into(),
+            case_sensitive: false,
+            min_amount_cents: None,
+            max_amount_cents: None,
+            account_ids: vec![accs[1], accs[0]],
+            priority: 0,
+            enabled: true,
+            match_count: 0,
+        };
+        let id = v.save_rule(rule).unwrap();
+        let saved = v
+            .list_rules()
+            .unwrap()
+            .into_iter()
+            .find(|r| r.id == id)
+            .unwrap();
+        assert_eq!(saved.account_ids, vec![accs[0], accs[1]]);
+        v.apply_rules(true).unwrap();
+        let hit_accounts: Vec<i64> = {
+            let c = v.db().unwrap();
+            let mut st = c
+                .prepare(
+                    "SELECT account_id FROM transactions WHERE rule_id = ?1 ORDER BY account_id",
+                )
+                .unwrap();
+            st.query_map([id], |r| r.get(0))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        assert_eq!(
+            hit_accounts,
+            vec![accs[0], accs[1]],
+            "third account excluded"
+        );
+        // The column mirrors the lowest id (foreign key); the table is the truth.
+        v.save_rule(Rule {
+            id,
+            account_ids: vec![accs[2], accs[1]],
+            ..saved
+        })
+        .unwrap();
+        let raw: i64 = v
+            .db()
+            .unwrap()
+            .query_row("SELECT account_id FROM rules WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(raw, accs[1]);
+        let listed = v.list_rules().unwrap();
+        assert_eq!(listed[0].account_ids, vec![accs[1], accs[2]]);
+        v.save_rule(Rule {
+            account_ids: Vec::new(),
+            ..listed[0].clone()
+        })
+        .unwrap();
+        assert!(v.list_rules().unwrap()[0].account_ids.is_empty());
     }
 }

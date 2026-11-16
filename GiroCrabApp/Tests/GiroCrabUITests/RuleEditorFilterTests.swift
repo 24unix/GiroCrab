@@ -42,7 +42,7 @@ final class RuleEditorFilterTests: XCTestCase {
                 caseSensitive: false,
                 minAmountCents: nil,
                 maxAmountCents: nil,
-                accountId: nil,
+                accountIds: [],
                 priority: prio,
                 enabled: true,
                 matchCount: 0
@@ -58,5 +58,15 @@ final class RuleEditorFilterTests: XCTestCase {
 
         let movedBottom = RuleSearchMatcher.move(rules: rules, id: 1, to: 2)
         XCTAssertEqual(movedBottom.map(\.id), [2, 3, 1])
+    }
+
+    func testRuleAccountSelectionAddsOnceAndRemoves() {
+        var ids: [Int64] = []
+        ids = RuleAccountSelection.adding(3, to: ids)
+        ids = RuleAccountSelection.adding(1, to: ids)
+        ids = RuleAccountSelection.adding(3, to: ids)
+        XCTAssertEqual(ids, [3, 1])
+        XCTAssertEqual(RuleAccountSelection.removing(3, from: ids), [1])
+        XCTAssertEqual(RuleAccountSelection.removing(9, from: ids), [3, 1])
     }
 }

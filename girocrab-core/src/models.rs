@@ -635,7 +635,10 @@ pub struct Rule {
     pub case_sensitive: bool,
     pub min_amount_cents: Option<i64>,
     pub max_amount_cents: Option<i64>,
-    pub account_id: Option<i64>,
+    /// Accounts the rule is restricted to; empty = all accounts. Stored in the
+    /// existing `rules.account_id` column (single id as integer, several as
+    /// comma-separated text), so no schema step is needed.
+    pub account_ids: Vec<i64>,
     /// Lower number = evaluated first.
     pub priority: i32,
     pub enabled: bool,

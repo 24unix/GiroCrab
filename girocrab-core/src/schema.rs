@@ -30,6 +30,8 @@
 //! - 22: `mandates.returns_ack` (#143): returns acknowledged up to this date.
 //! - 23: tags on bookings (#228): tables `tags`, `transaction_tags` and the
 //!   edit stamp `transactions.tags_ms`.
+//! - 24: rules for several accounts (#562): table `rule_accounts`; `rules.account_id` mirrors the
+//!   lowest id of the set (foreign key / older readers), the table is the source of truth.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -69,7 +71,20 @@ const STEPS: &[Step] = &[
     Step::Hook(crate::planned::planned_kind),                  // 21
     Step::Hook(crate::mandates::mandate_return_ack),           // 22
     Step::Hook(crate::tags::tags_tables),                      // 23
+    Step::Sql(RULE_ACCOUNTS),                                  // 24
 ];
+
+/// Step 24 (#562): a rule can be restricted to several accounts.
+const RULE_ACCOUNTS: &str = "
+CREATE TABLE IF NOT EXISTS rule_accounts (
+    rule_id    INTEGER NOT NULL REFERENCES rules(id)    ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    PRIMARY KEY (rule_id, account_id)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS rule_accounts_account ON rule_accounts(account_id);
+INSERT OR IGNORE INTO rule_accounts(rule_id, account_id)
+    SELECT id, account_id FROM rules WHERE account_id IS NOT NULL;
+";
 
 /// Step 14 (#314): securities transactions (buy, sell, dividend, fee, tax …)
 /// of a depot, beside the cash bookings: they never count as cash flow and
@@ -592,7 +607,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 23);
+        assert_eq!(SCHEMA_VERSION, 24);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers

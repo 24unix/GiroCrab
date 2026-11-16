@@ -143,6 +143,11 @@ fn merge_duplicate_account(conn: &Connection, keep: i64, dup: i64) -> CoreResult
         params![keep, dup],
     )?;
     conn.execute(
+        "UPDATE OR IGNORE rule_accounts SET account_id = ?1 WHERE account_id = ?2",
+        params![keep, dup],
+    )?;
+    conn.execute("DELETE FROM rule_accounts WHERE account_id = ?1", [dup])?;
+    conn.execute(
         "UPDATE booking_documents SET account_id = ?1 WHERE account_id = ?2",
         params![keep, dup],
     )?;
