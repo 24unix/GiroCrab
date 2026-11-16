@@ -138,7 +138,7 @@ extension AppModel {
         reloadBookings(); reloadAccounts()
     }
 
-    /// "Alle als gelesen markieren" (GitHub #236): everything new in the list as
+    /// "Alle Buchungen als gelesen markieren" (GitHub #236): everything new in the list as
     /// filtered now, or – with `accountIDs`, from a sidebar entry – in those
     /// accounts regardless of period, search and scope. One SQL update off the
     /// main thread; undoable via Bearbeiten › Widerrufen.
@@ -175,7 +175,7 @@ extension AppModel {
         }
         if let um = windowUndoManager {
             um.registerUndo(withTarget: self) { m in m.setChecked(ids, to: false) }
-            um.setActionName(String(localized: "Alle als gelesen markieren"))
+            um.setActionName(String(localized: "Alle Buchungen als gelesen markieren"))
         }
         toast = String(localized: "\(ids.count) Umsätze als gelesen markiert")
         // With "Neu" / "Geprüft" active the bookings leave the list: keep the selected one in the inspector (like setChecked)
@@ -189,7 +189,7 @@ extension AppModel {
         do { try vault.setCheckedForIds(ids: ids, checked: checked) } catch { errorMessage = describe(error); return }
         if let um = windowUndoManager {
             um.registerUndo(withTarget: self) { m in m.setChecked(ids, to: !checked) }
-            um.setActionName(String(localized: "Alle als gelesen markieren"))
+            um.setActionName(String(localized: "Alle Buchungen als gelesen markieren"))
         }
         reloadBookings(); reloadAccounts()
     }

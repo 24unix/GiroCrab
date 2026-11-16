@@ -129,13 +129,14 @@ struct DocumentsCard: View {
                     }
                     Spacer()
                     Button { model.quickLook(d) } label: { Image(systemName: "eye") }
-                        .buttonStyle(.borderless).help("QuickLook (Leertaste)")
-                        .accessibilityLabel("QuickLook")
+                        .buttonStyle(.borderless).help("Vorschau (Leertaste)")
+                        .accessibilityLabel("Vorschau")
                     Menu {
                         #if os(macOS)
                         Button("Im Finder anzeigen") { model.showInFinder(d) }
                         #endif
                         Button("Zuordnung aufheben") { model.linkDocument(d, to: nil) }
+                            .disabled(d.bookingId == nil)
                         Divider()
                         Button("Beleg löschen …", role: .destructive) { docToDelete = d }
                     } label: { Label("Aktionen", systemImage: "ellipsis.circle").labelStyle(.iconOnly) }
@@ -295,11 +296,12 @@ struct DocumentsView: View {
                         .tag(d.id)
                         .contentShape(Rectangle())
                         .contextMenu {
-                            Button("QuickLook") { model.quickLook(d) }
+                            Button("Vorschau") { model.quickLook(d) }
                             #if os(macOS)
                             Button("Im Finder anzeigen") { model.showInFinder(d) }
                             #endif
                             Button("Zuordnung aufheben") { model.linkDocument(d, to: nil) }
+                            .disabled(d.bookingId == nil)
                             Divider()
                             Button("Beleg löschen …", role: .destructive) { docToDelete = d }
                         }
@@ -392,6 +394,9 @@ struct DocumentsView: View {
         // System search field in the toolbar, like the booking list: ⌘F, clear
         // button and Esc come with it.
         .searchable(text: $search, placement: .toolbar, prompt: "Belege durchsuchen")
+        // The account filter is only set on purpose ("Belege anzeigen" on an account);
+        // opening the section later starts at "Alle Konten" again (#670).
+        .onDisappear { model.documentsAccountFilter = nil }
     }
 
     private var importButton: some View {

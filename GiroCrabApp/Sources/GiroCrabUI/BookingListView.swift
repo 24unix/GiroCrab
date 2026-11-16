@@ -742,7 +742,7 @@ struct BookingRow: View {
                         Image(systemName: "doc.text.fill")
                             .appFont(.caption)
                             .foregroundStyle(Theme.accent.opacity(0.8))
-                            .help("\(booking.documentCount) Beleg(e) – Leertaste für QuickLook")
+                            .help("\(booking.documentCount) Beleg(e) – Leertaste für Vorschau")
                     }
                     if model.recurringSeries(for: booking) != nil {
                         Image(systemName: "repeat")

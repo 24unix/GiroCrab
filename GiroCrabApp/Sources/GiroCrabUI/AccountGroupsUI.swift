@@ -384,7 +384,7 @@ struct UserGroupMenu: View {
             // what only groups have – then delete
             Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .rename(group) }
             Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .group(group.uuid) }
-            Button("Alle als gelesen markieren", systemImage: "checkmark.circle") {
+            Button("Alle Buchungen als gelesen markieren", systemImage: "checkmark.circle") {
                 model.markAllChecked(accountIDs: model.userGroupAccountIDs(group.uuid))
             }
             Menu("Verschieben nach", systemImage: "arrow.turn.down.right") {

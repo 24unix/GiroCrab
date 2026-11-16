@@ -205,6 +205,17 @@ extension Mandate {
         default: String(localized: "Erster Einzug")
         }
     }
+
+    /// "Einmalmandat (EM)" / "Dauermandat (AM)": the abbreviations banks print on direct debits.
+    var typeText: String {
+        oneOff ? String(localized: "Einmalmandat (EM)") : String(localized: "Dauermandat (AM)")
+    }
+
+    var typeHelp: String {
+        oneOff
+            ? String(localized: "EM = Einmalmandat: gilt nur für eine einzelne Lastschrift.")
+            : String(localized: "AM = Dauermandat: gilt für wiederkehrende Lastschriften.")
+    }
 }
 
 private struct MandateRow: View {
@@ -223,8 +234,9 @@ private struct MandateRow: View {
                     .background(Circle().fill((m.active ? Theme.accent : Theme.tertiary).opacity(0.12)))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(m.debtorName).appFont(.body, weight: .medium).lineLimit(1).sensitive()
-                    Text("\(m.reference) · \(m.scheme.title)")
+                    Text("\(m.reference) · \(m.scheme.title) · \(m.typeText)")
                         .appFont(.callout).foregroundStyle(Theme.secondary).lineLimit(1).sensitive()
+                        .help(m.typeHelp)
                     if !model.openReturns(of: m).isEmpty {
                         Label("Rücklastschrift – bitte prüfen", systemImage: "exclamationmark.triangle.fill")
                             .appFont(.caption, weight: .semibold).foregroundStyle(Theme.negative)

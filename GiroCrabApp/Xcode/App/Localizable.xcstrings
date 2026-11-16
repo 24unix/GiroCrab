@@ -1407,7 +1407,7 @@
         }
       }
     },
-    "%u Beleg(e) – Leertaste für QuickLook" : {
+    "%u Beleg(e) – Leertaste für Vorschau" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
@@ -2177,6 +2177,17 @@
         }
       }
     },
+    "AM = Dauermandat: gilt für wiederkehrende Lastschriften." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AM = recurring mandate: valid for repeated direct debits."
+          }
+        }
+      }
+    },
     "API-Schlüssel (wird nicht gespeichert)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2705,6 +2716,17 @@
         }
       }
     },
+    "Alle Buchungen als gelesen markieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mark All Transactions as Read"
+          }
+        }
+      }
+    },
     "Alle Buchungen dieses Händlers im gewählten Zeitraum anzeigen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2976,17 +2998,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deselect all"
-          }
-        }
-      }
-    },
-    "Alle als gelesen markieren" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mark All as Read"
           }
         }
       }
@@ -7525,6 +7536,17 @@
         }
       }
     },
+    "Dauermandat (AM)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recurring mandate (AM)"
+          }
+        }
+      }
+    },
     "Deaktivieren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9270,6 +9292,28 @@
         }
       }
     },
+    "EM = Einmalmandat (eine einzelne Lastschrift), AM = Dauermandat (wiederkehrende Lastschriften)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EM = one-off mandate (a single direct debit), AM = recurring mandate (repeated direct debits)."
+          }
+        }
+      }
+    },
+    "EM = Einmalmandat: gilt nur für eine einzelne Lastschrift." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "EM = one-off mandate: valid for a single direct debit only."
+          }
+        }
+      }
+    },
     "EREF (Ende-zu-Ende-Referenz)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9827,6 +9871,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "One-off Mandate"
+          }
+        }
+      }
+    },
+    "Einmalmandat (EM)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One-off mandate (EM)"
           }
         }
       }
@@ -20428,28 +20483,6 @@
         }
       }
     },
-    "QuickLook" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quick Look"
-          }
-        }
-      }
-    },
-    "QuickLook (Leertaste)" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quick Look (Space)"
-          }
-        }
-      }
-    },
     "REWE | EDEKA | ALDI" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24931,6 +24964,17 @@
         }
       }
     },
+    "Vorschau (Leertaste)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preview (Space)"
+          }
+        }
+      }
+    },
     "Vorschau des Screenshots" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -26203,6 +26247,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Last checked"
+          }
+        }
+      }
+    },
+    "Zuordnung aufgehoben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link removed"
           }
         }
       }

@@ -23,6 +23,7 @@ struct MandateEditorSheet: View {
                         ForEach([MandateScheme.core, .cor1, .b2b], id: \.self) { Text($0.title).tag($0) }
                     }
                     Toggle("Einmaliges Mandat", isOn: $draft.oneOff)
+                        .help("EM = Einmalmandat (eine einzelne Lastschrift), AM = Dauermandat (wiederkehrende Lastschriften).")
                     Toggle("Aktiv", isOn: $draft.active)
                 } header: { Text("Mandat").appSectionHeader() }
                 Section {

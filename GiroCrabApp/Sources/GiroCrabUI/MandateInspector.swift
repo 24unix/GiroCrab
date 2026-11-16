@@ -11,8 +11,9 @@ struct MandateInspector: View {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(m.debtorName).appFont(.title3, weight: .semibold).sensitive()
-                    Text("\(m.scheme.title) · \(m.active ? m.sequenceText : String(localized: "Inaktiv"))")
+                    Text("\(m.scheme.title) · \(m.typeText) · \(m.active ? m.sequenceText : String(localized: "Inaktiv"))")
                         .appFont(.callout).foregroundStyle(Theme.secondary)
+                        .help(m.typeHelp)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .card()

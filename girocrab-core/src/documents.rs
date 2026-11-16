@@ -987,6 +987,38 @@ mod tests {
     }
 
     #[test]
+    fn unlinking_a_document_clears_its_booking() {
+        let p_dir = crate::test_support::TempDir::new("girocrab-docs-unlink");
+        let p = p_dir.join("v.db");
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![6u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let yesterday = (chrono::Local::now().date_naive() - chrono::Duration::days(1))
+            .format("%d.%m.%Y")
+            .to_string();
+        let pdf = simple_pdf(&[
+            "REWE Markt GmbH".into(),
+            format!("Datum {yesterday}"),
+            "Summe 47,82 EUR".into(),
+        ]);
+        v.auto_match_dropped_pdf("scan.pdf".into(), pdf).unwrap();
+        let doc = v
+            .list_all_documents(DocumentFilter::default())
+            .unwrap()
+            .into_iter()
+            .find(|d| d.booking_id.is_some())
+            .unwrap();
+        v.link_document(doc.id, None).unwrap();
+        let after = v
+            .list_all_documents(DocumentFilter::default())
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == doc.id)
+            .unwrap();
+        assert_eq!(after.booking_id, None);
+        assert!(after.booking_label.is_empty());
+    }
+
+    #[test]
     fn drop_matches_metro_receipt_and_stores_encrypted() {
         let p_dir = crate::test_support::TempDir::new("girocrab-docs");
         let p = p_dir.join("v.db");

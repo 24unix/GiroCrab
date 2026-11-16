@@ -217,8 +217,10 @@ extension AppModel {
 
     func linkDocument(_ doc: DocumentInfo, to booking: Booking?) {
         guard let vault else { return }
-        runCore { try vault.linkDocument(docId: doc.id, bookingId: booking?.id) }
+        var linked = false
+        runCore { try vault.linkDocument(docId: doc.id, bookingId: booking?.id); linked = true }
         documentsChanged()
+        if linked && booking == nil { toast = String(localized: "Zuordnung aufgehoben") }
     }
 
     /// Writes the document to a temp file and shows it in QuickLook.

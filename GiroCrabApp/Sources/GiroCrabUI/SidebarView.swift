@@ -26,7 +26,7 @@ struct SidebarView: View {
             .badge(model.newCount)
             .tag(SidebarItem.newBookings)
             .contextMenu {
-                Button("Alle als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
+                Button("Alle Buchungen als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
                     .disabled(model.newCount == 0)
             }
             // „Vermögen“ (#348): the counterpart of „Alle Konten“
@@ -46,7 +46,7 @@ struct SidebarView: View {
                 .listRowInsets(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6))
                 .tag(SidebarItem.allAccounts)
                 .contextMenu {
-                    Button("Alle als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
+                    Button("Alle Buchungen als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
                         .disabled(model.newCount == 0)
                 }
             if model.showsAccountTree {
@@ -440,7 +440,7 @@ struct SidebarView: View {
         Button("Kontoinhaber …", systemImage: "person.crop.circle") { model.groupDialog = .editOwner(account) }
         AccountGroupMenu(account: account)
         Divider()
-        Button("Alle als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: [account.id]) }
+        Button("Alle Buchungen als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: [account.id]) }
         ManualLoanAccountMenu(model: model, account: account)
         OpeningBalanceMenuItem(model: model, account: account)
         if !account.isArchived, let cid = account.connectionId, let conn = model.connections.first(where: { $0.id == cid }) {

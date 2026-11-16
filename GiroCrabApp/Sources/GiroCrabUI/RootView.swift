@@ -125,7 +125,7 @@ public struct GiroCrabScenes: Scene {
                 .keyboardShortcut("u", modifiers: [.command, .shift])
                 .disabled(model.selectedBooking == nil)
                 // ⌥⇧⌘U as in Mail ("Alle Nachrichten als gelesen markieren"), next to ⇧⌘U
-                Button("Alle als gelesen markieren") { model.markAllChecked() }
+                Button("Alle Buchungen als gelesen markieren") { model.markAllChecked() }
                     .keyboardShortcut("u", modifiers: [.command, .shift, .option])
                     .disabled(!model.canMarkAllChecked)
                 Button("Notiz bearbeiten") { if let b = model.selectedBooking { model.editNote(for: b) } }
