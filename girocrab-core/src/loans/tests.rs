@@ -179,6 +179,13 @@ fn rule_links_rates_and_drives_the_account_balance() {
     let preview = v.preview_manual_loan(None, s.clone(), 10).unwrap();
     assert_eq!(preview.match_count, 3);
     assert_eq!(preview.status.remaining_cents, 7_800_00);
+    // The limit cuts the listed bookings (newest first), never count or status.
+    let first = v.preview_manual_loan(None, s.clone(), 1).unwrap();
+    assert_eq!(first.match_count, 3);
+    assert_eq!(first.status, preview.status);
+    let listed: Vec<i64> = first.matches.iter().map(|b| b.id).collect();
+    assert_eq!(listed, [rates[2]]);
+    assert_eq!(first.matches[0].counterparty, "Autobank AG");
 
     let loan = v.create_manual_loan(s).unwrap();
     assert_eq!(

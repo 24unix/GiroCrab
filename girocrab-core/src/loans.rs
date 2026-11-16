@@ -18,8 +18,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::*;
-use crate::search_expr::{ExprInput, Prepared, SearchExpr};
-use crate::vault::Vault;
+use crate::rules::RuleRow;
+use crate::search_expr::SearchExpr;
+use crate::vault::{sql_int_list, Vault, LIVE_BOOKINGS_SQL};
 
 pub(crate) const LOAN_SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS loan_terms (
@@ -262,44 +263,15 @@ pub(crate) fn compute_status(setup: &LoanSetup, bookings: &[(String, i64)]) -> L
     st
 }
 
-/// One booking as the expression sees it.
-struct Candidate {
-    id: i64,
-    amount_cents: i64,
-    counterparty: String,
-    counterparty_iban: String,
-    purpose: String,
-    booking_text: String,
-    note: String,
-    currency: String,
-    account_iban: String,
-}
-
-impl Candidate {
-    fn matches(&self, expr: &SearchExpr) -> bool {
-        expr.matches_prepared(&Prepared::new(ExprInput {
-            amount_cents: self.amount_cents,
-            name: &self.counterparty,
-            purpose: &self.purpose,
-            booking_text: &self.booking_text,
-            remote_account: &self.counterparty_iban,
-            local_account: &self.account_iban,
-            comment: &self.note,
-            currency: &self.currency,
-        }))
-    }
-}
-
 /// Bookings of non-loan accounts. `unlinked_only` skips bookings that already
 /// have a link row (except exclusions, which only block their own loan).
-fn candidates(conn: &Connection, unlinked_only: bool) -> CoreResult<Vec<(Candidate, Option<i64>)>> {
+fn candidates(conn: &Connection, unlinked_only: bool) -> CoreResult<Vec<(RuleRow, Option<i64>)>> {
     let sql = format!(
-        "SELECT t.id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text,
-                t.note, t.currency, IFNULL(a.iban, ''),
-                CASE WHEN l.source = 'excluded' THEN l.loan_account_id END
+        "SELECT {}, CASE WHEN l.source = 'excluded' THEN l.loan_account_id END
            FROM transactions t JOIN accounts a ON a.id = t.account_id
            LEFT JOIN loan_links l ON l.transaction_id = t.id
           WHERE a.kind != 'loan' AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL {}",
+        RuleRow::COLUMNS,
         if unlinked_only {
             "AND (l.transaction_id IS NULL OR l.source = 'excluded')"
         } else {
@@ -308,20 +280,7 @@ fn candidates(conn: &Connection, unlinked_only: bool) -> CoreResult<Vec<(Candida
     );
     let mut st = conn.prepare(&sql)?;
     let rows = st.query_map([], |r| {
-        Ok((
-            Candidate {
-                id: r.get(0)?,
-                amount_cents: r.get(1)?,
-                counterparty: r.get(2)?,
-                counterparty_iban: r.get(3)?,
-                purpose: r.get(4)?,
-                booking_text: r.get(5)?,
-                note: r.get(6)?,
-                currency: r.get(7)?,
-                account_iban: r.get(8)?,
-            },
-            r.get::<_, Option<i64>>(9)?,
-        ))
+        Ok((RuleRow::read(r)?, r.get::<_, Option<i64>>(12)?))
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
@@ -415,7 +374,7 @@ pub(crate) fn apply_loan_rules(conn: &Connection) -> CoreResult<u32> {
             let Some((loan, _)) = loans
                 .iter()
                 .filter(|(id, _)| Some(*id) != excluded_from)
-                .find(|(_, e)| c.matches(e))
+                .find(|(_, e)| c.matches_expr(e))
             else {
                 continue;
             };
@@ -648,59 +607,65 @@ impl Vault {
         limit: u32,
     ) -> Result<LoanPreview, CoreError> {
         let expr = compile_expr(&setup.match_expr)?;
-        let (ids, taken, manual): (HashSet<i64>, HashSet<i64>, HashSet<i64>) = {
-            let db = self.db()?;
-            let mut ids = HashSet::new();
-            if let Some(expr) = &expr {
-                for (c, excluded_from) in candidates(&db, false)? {
-                    if (excluded_from.is_none() || excluded_from != account_id) && c.matches(expr) {
-                        ids.insert(c.id);
-                    }
+        let db = self.db()?;
+        let mut ids = HashSet::new();
+        if let Some(expr) = &expr {
+            for (c, excluded_from) in candidates(&db, false)? {
+                if (excluded_from.is_none() || excluded_from != account_id) && c.matches_expr(expr)
+                {
+                    ids.insert(c.id);
                 }
             }
-            let mut st =
-                db.prepare("SELECT transaction_id, loan_account_id, source FROM loan_links")?;
-            let rows: Vec<(i64, i64, String)> = st
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-                .collect::<Result<_, _>>()?;
-            let mut taken = HashSet::new();
-            let mut manual = HashSet::new();
-            for (t, loan, src) in rows {
-                if Some(loan) == account_id {
-                    match src.as_str() {
-                        "manual" => {
-                            manual.insert(t);
-                        }
-                        "excluded" => {
-                            taken.insert(t);
-                        }
-                        _ => {}
+        }
+        let mut st =
+            db.prepare("SELECT transaction_id, loan_account_id, source FROM loan_links")?;
+        let links: Vec<(i64, i64, String)> = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<_, _>>()?;
+        let mut taken = HashSet::new();
+        let mut manual = HashSet::new();
+        for (t, loan, src) in links {
+            if Some(loan) == account_id {
+                match src.as_str() {
+                    "manual" => {
+                        manual.insert(t);
                     }
-                } else if src != "excluded" {
-                    taken.insert(t);
+                    "excluded" => {
+                        taken.insert(t);
+                    }
+                    _ => {}
                 }
+            } else if src != "excluded" {
+                taken.insert(t);
             }
-            (ids, taken, manual)
-        };
-        let page = self.list_transactions(BookingFilter {
-            limit: 0,
-            ..Default::default()
-        })?;
-        let matches: Vec<Booking> = page
-            .transactions
-            .into_iter()
-            .filter(|b| manual.contains(&b.id) || (ids.contains(&b.id) && !taken.contains(&b.id)))
-            .collect();
-        let pairs: Vec<(String, i64)> = matches
+        }
+        // Status from (date, amount) of every match; only the listed ones are enriched.
+        let wanted: Vec<i64> = manual
             .iter()
-            .map(|b| (b.booking_date.clone(), b.amount_cents))
+            .chain(ids.difference(&taken))
+            .copied()
             .collect();
-        let status = compute_status(&setup, &pairs);
-        let match_count = matches.len() as u32;
+        let mut st = db.prepare(&format!(
+            "SELECT t.id, t.booking_date, t.amount_cents
+               FROM transactions t JOIN accounts a ON a.id = t.account_id
+              WHERE {LIVE_BOOKINGS_SQL} AND t.id IN ({})
+              ORDER BY t.booking_date DESC, t.id DESC",
+            sql_int_list(&wanted)
+        ))?;
+        let n = limit.max(1) as usize;
+        let mut shown = Vec::new();
+        let mut pairs: Vec<(String, i64)> = Vec::new();
+        for row in st.query_map([], |r| Ok((r.get::<_, i64>(0)?, (r.get(1)?, r.get(2)?))))? {
+            let (id, pair) = row?;
+            if shown.len() < n {
+                shown.push(id);
+            }
+            pairs.push(pair);
+        }
         Ok(LoanPreview {
-            status,
-            matches: matches.into_iter().take(limit.max(1) as usize).collect(),
-            match_count,
+            status: compute_status(&setup, &pairs),
+            matches: Self::bookings_by_ids(&db, &shown)?,
+            match_count: pairs.len() as u32,
         })
     }
 

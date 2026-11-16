@@ -420,12 +420,12 @@ pub(crate) fn cashflow_for(
     };
     // Same bookings, transfer detection and flow classification as the booking
     // list and its KPI tiles (`list_transactions` / `SelectionFlow`).
-    let page = v.list_transactions(BookingFilter {
+    let filter = BookingFilter {
         date_from: Some(from),
         ..Default::default()
-    })?;
+    };
     let mut acc: HashMap<String, (i64, i64)> = HashMap::new();
-    for b in &page.transactions {
+    Vault::visit_bookings(&*v.db()?, &filter, |_, b| {
         let (date, amt) = (&b.booking_date, b.amount_cents);
         // Non-ASCII / malformed dates are skipped instead of panicking on a slice.
         let key = match granularity {
@@ -440,7 +440,7 @@ pub(crate) fn cashflow_for(
             }
             PeriodGranularity::Year => date.get(..4).map(str::to_string),
         };
-        let Some(key) = key else { continue };
+        let Some(key) = key else { return };
         let e = acc.entry(key).or_default();
         match kpi_side(b.flow, amt) {
             KpiSide::Income => e.0 += amt,
@@ -448,7 +448,7 @@ pub(crate) fn cashflow_for(
             KpiSide::Expense => e.1 -= amt,
             KpiSide::Neutral => {}
         }
-    }
+    })?;
     Ok(keys
         .into_iter()
         .map(|k| {

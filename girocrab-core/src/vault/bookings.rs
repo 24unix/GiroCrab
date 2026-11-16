@@ -319,7 +319,7 @@ impl Vault {
         db: &rusqlite::Connection,
         filter: &BookingFilter,
     ) -> Result<(String, String, Vec<Box<dyn ToSql>>, String), CoreError> {
-        let mut wh: Vec<String> = vec!["t.deleted_ms IS NULL AND a.deleted_ms IS NULL".into()];
+        let mut wh: Vec<String> = vec![LIVE_BOOKINGS_SQL.into()];
         let mut args: Vec<Box<dyn ToSql>> = vec![];
         let mut cte = String::new();
         if !filter.account_ids.is_empty() {
@@ -579,37 +579,145 @@ impl Vault {
                 args.len()
             ));
         }
-        let limit_sql = if limit == 0 {
-            String::new()
-        } else {
-            format!(" LIMIT {limit}")
-        };
-        let sql = format!(
-            "{cte}SELECT {} {BOOKING_FROM_SQL} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC{limit_sql}",
-            booking_columns(&share_sql)
-        );
-        let finisher = BookingFinisher::load(db, Some(visible))?;
-        let mut stmt = db.prepare(&sql)?;
-        let rows = stmt.query_map(
-            params_from_iter(args.iter().map(|b| b.as_ref())),
-            booking_from_row,
-        )?;
-        let mut out = Vec::new();
-        for row in rows {
-            let (_, mut t) = row?;
-            finisher.finish(&mut t);
-            out.push(t);
+        let mut sql = booking_select(&cte, &where_sql, &share_sql);
+        if limit > 0 {
+            sql.push_str(&format!(" LIMIT {limit}"));
         }
-        attach_tags(db, &mut out)?;
+        finished_bookings(
+            db,
+            &sql,
+            params_from_iter(args.iter().map(|b| b.as_ref())),
+            Some(visible),
+        )
+    }
+
+    /// Enriched bookings (with tags) of the rows `where_sql` selects, newest
+    /// first. Only these rows are finished, so small results stay cheap
+    /// (`list_transactions` finishes every row of its filter).
+    pub(crate) fn bookings_where(
+        db: &rusqlite::Connection,
+        where_sql: &str,
+        params: impl rusqlite::Params,
+    ) -> Result<Vec<Booking>, CoreError> {
+        let sql = booking_select(
+            "",
+            &format!("{LIVE_BOOKINGS_SQL} AND ({where_sql})"),
+            "t.amount_cents",
+        );
+        finished_bookings(db, &sql, params, None)
+    }
+
+    /// `bookings_where` for explicit ids, newest first.
+    pub(crate) fn bookings_by_ids(
+        db: &rusqlite::Connection,
+        ids: &[i64],
+    ) -> Result<Vec<Booking>, CoreError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        Self::bookings_where(db, &format!("t.id IN ({})", sql_int_list(ids)), [])
+    }
+
+    /// Finishes every booking of `filter` newest first and hands it to `visit`
+    /// with its KPI share (the full amount, or with a category filter only the
+    /// split parts of that category). Applies what SQL can't: scope, merchant and
+    /// the own transfers "Ohne Kategorie" leaves out. Collects nothing and loads
+    /// no tags, so callers that count or sum skip both. `limit`, `offset` and
+    /// `whole_days` are ignored.
+    pub(crate) fn visit_bookings(
+        db: &rusqlite::Connection,
+        filter: &BookingFilter,
+        mut visit: impl FnMut(i64, Booking),
+    ) -> Result<(), CoreError> {
+        let (cte, where_sql, args, share_sql) = Self::filter_clauses(db, filter)?;
+        let sql = booking_select(&cte, &where_sql, &share_sql);
+        let args = params_from_iter(args.iter().map(|b| b.as_ref()));
+        for_each_finished(db, &sql, args, None, |share, t| {
+            let in_scope = match filter.scope {
+                BookingScope::All => true,
+                BookingScope::Everyday => !matches!(t.flow, FlowKind::Investment | FlowKind::Perk),
+                BookingScope::Investments => {
+                    matches!(t.flow, FlowKind::Investment | FlowKind::Perk)
+                }
+            };
+            let merchant_ok = filter
+                .merchant_key
+                .as_ref()
+                .is_none_or(|k| *k == t.merchant.key);
+            // Detected own transfers are no open work for "Ohne Kategorie" (#302).
+            let hidden_transfer = filter.uncategorized_only && t.flow == FlowKind::Transfer;
+            if in_scope && merchant_ok && !hidden_transfer {
+                visit(share, t);
+            }
+        })
+    }
+
+    /// Every finished booking of `filter`, without tags.
+    pub(crate) fn collect_bookings(
+        db: &rusqlite::Connection,
+        filter: &BookingFilter,
+    ) -> Result<Vec<Booking>, CoreError> {
+        let mut out = Vec::new();
+        Self::visit_bookings(db, filter, |_, b| out.push(b))?;
         Ok(out)
     }
+}
+
+/// Bookings that are neither deleted nor on a deleted account (`t`, `a`).
+pub(crate) const LIVE_BOOKINGS_SQL: &str = "t.deleted_ms IS NULL AND a.deleted_ms IS NULL";
+
+/// `values` as an inlined SQL list ("1,2,3"): integers can't inject, and one
+/// statement keeps its ORDER BY without chunking around the parameter limit.
+pub(crate) fn sql_int_list(values: &[i64]) -> String {
+    let values: Vec<String> = values.iter().map(i64::to_string).collect();
+    values.join(",")
+}
+
+/// The `booking_columns` SELECT of `where_sql` in list order, newest first.
+fn booking_select(cte: &str, where_sql: &str, share_sql: &str) -> String {
+    format!(
+        "{cte}SELECT {} {BOOKING_FROM_SQL} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC",
+        booking_columns(share_sql)
+    )
+}
+
+/// Finishes every row of a `booking_select` and hands it to `each` with its KPI share.
+fn for_each_finished(
+    db: &rusqlite::Connection,
+    sql: &str,
+    params: impl rusqlite::Params,
+    visible: Option<&[i64]>,
+    mut each: impl FnMut(i64, Booking),
+) -> Result<(), CoreError> {
+    let finisher = BookingFinisher::load(db, visible)?;
+    let mut stmt = db.prepare(sql)?;
+    let mut rows = stmt.query(params)?;
+    while let Some(row) = rows.next()? {
+        let (share, mut t) = booking_from_row(row)?;
+        finisher.finish(&mut t);
+        each(share, t);
+    }
+    Ok(())
+}
+
+/// `for_each_finished` collected, with tags.
+fn finished_bookings(
+    db: &rusqlite::Connection,
+    sql: &str,
+    params: impl rusqlite::Params,
+    visible: Option<&[i64]>,
+) -> Result<Vec<Booking>, CoreError> {
+    let mut out = Vec::new();
+    for_each_finished(db, sql, params, visible, |_, t| out.push(t))?;
+    attach_tags(db, &mut out)?;
+    Ok(out)
 }
 
 #[uniffi::export]
 impl Vault {
     /// Marks every booking matching `filter` as checked / unchecked in one
     /// SQL update (GitHub #236; with a scope or merchant filter the ids come
-    /// from the enriched list first). Returns the ids that actually changed,
+    /// from the enriched bookings first). Returns the ids that actually changed,
     /// so the caller can undo exactly those.
     pub fn set_checked_for_filter(
         &self,
@@ -617,21 +725,15 @@ impl Vault {
         checked: bool,
     ) -> Result<Vec<i64>, CoreError> {
         // Scope (Alltag / Sparpläne) and merchant depend on the enriched booking, not
-        // on SQL columns: `list_transactions` applies them after the query. Take
-        // the ids from it, so the update touches exactly what the list shows.
+        // on SQL columns: `visit_bookings` applies them after the query, like the
+        // list. Take the ids from it, so the update touches exactly what the list shows.
         if !matches!(filter.scope, BookingScope::All) || filter.merchant_key.is_some() {
-            let page = self.list_transactions(BookingFilter {
-                limit: 0,
-                offset: 0,
-                whole_days: false,
-                ..filter
+            let mut ids = Vec::new();
+            Self::visit_bookings(&*self.db()?, &filter, |_, b| {
+                if b.checked != checked {
+                    ids.push(b.id);
+                }
             })?;
-            let ids: Vec<i64> = page
-                .transactions
-                .iter()
-                .filter(|b| b.checked != checked)
-                .map(|b| b.id)
-                .collect();
             self.set_checked_for_ids(ids.clone(), checked)?;
             return Ok(ids);
         }
@@ -668,23 +770,19 @@ impl Vault {
 
     /// Number of bookings matching `filter` (`limit`/`offset` ignored) as one SQL
     /// count, without enriching every row like `list_transactions` (#266). Scope
-    /// and merchant depend on the enriched booking: those filters take the list;
-    /// so does "Ohne Kategorie", which leaves out detected own transfers (#302).
+    /// and merchant depend on the enriched booking: those filters count the
+    /// finished bookings; so does "Ohne Kategorie", which leaves out detected own
+    /// transfers (#302).
     pub fn count_transactions(&self, filter: BookingFilter) -> Result<u32, CoreError> {
+        let db = self.db()?;
         if !matches!(filter.scope, BookingScope::All)
             || filter.merchant_key.is_some()
             || filter.uncategorized_only
         {
-            return Ok(self
-                .list_transactions(BookingFilter {
-                    limit: 1,
-                    offset: 0,
-                    whole_days: false,
-                    ..filter
-                })?
-                .total_count);
+            let mut n = 0;
+            Self::visit_bookings(&db, &filter, |_, _| n += 1)?;
+            return Ok(n);
         }
-        let db = self.db()?;
         let (cte, where_sql, args, _) = Self::filter_clauses(&db, &filter)?;
         let sql = format!(
             "{cte}SELECT count(*) FROM transactions t JOIN accounts a ON a.id = t.account_id \
@@ -701,43 +799,19 @@ impl Vault {
 
     pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
         let db = self.db()?;
-        let (cte, where_sql, args, share_sql) = Self::filter_clauses(&db, &filter)?;
-        let sql = format!(
-            "{cte}SELECT {} {BOOKING_FROM_SQL} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC",
-            booking_columns(&share_sql)
-        );
-        let mut stmt = db.prepare(&sql)?;
-        let rows = stmt.query_map(
-            params_from_iter(args.iter().map(|b| b.as_ref())),
-            booking_from_row,
-        )?;
-        let mut txs = Vec::new();
-        let finisher = BookingFinisher::load(&db, None)?;
+        let start = filter.offset as usize;
+        let end = match filter.limit {
+            0 => usize::MAX,
+            limit => start.saturating_add(limit as usize),
+        };
         let (mut income, mut expense, mut consumption, mut investment, mut perk) =
             (0i64, 0i64, 0i64, 0i64, 0i64);
         let mut flow = SelectionFlow::default();
-        for row in rows {
-            let (share, mut t) = row?;
-            finisher.finish(&mut t);
-            let keep = match filter.scope {
-                BookingScope::All => true,
-                BookingScope::Everyday => !matches!(t.flow, FlowKind::Investment | FlowKind::Perk),
-                BookingScope::Investments => {
-                    matches!(t.flow, FlowKind::Investment | FlowKind::Perk)
-                }
-            } && filter
-                .merchant_key
-                .as_ref()
-                .map(|k| *k == t.merchant.key)
-                .unwrap_or(true);
-            // Detected own transfers are no open work for "Ohne Kategorie" (#302).
-            if !keep || (filter.uncategorized_only && t.flow == FlowKind::Transfer) {
-                continue;
-            }
+        let mut txs: Vec<Booking> = Vec::new();
+        let mut total = 0usize;
+        Self::visit_bookings(&db, &filter, |share, t| {
             // One KPI definition (`kpi_side`) for the page sums and `SelectionFlow`;
             // transfers between own accounts are neutral (else counted on both sides).
-            // `share` is the full amount, or with a category filter only the split
-            // parts of that category.
             match kpi_side(t.flow, share) {
                 KpiSide::Income => income += share,
                 KpiSide::Expense => expense += share,
@@ -750,28 +824,21 @@ impl Vault {
                 _ => {}
             }
             flow.add(t.flow, share);
-            txs.push(t);
-        }
-        let total = txs.len() as u32;
-        let limit = if filter.limit == 0 {
-            usize::MAX
-        } else {
-            filter.limit as usize
-        };
-        let start = (filter.offset as usize).min(txs.len());
-        let mut end = start.saturating_add(limit).min(txs.len());
-        if filter.whole_days && end > start {
-            // sorted by day: the rest of the page's last day follows directly
-            while end < txs.len() && txs[end].booking_date == txs[end - 1].booking_date {
-                end += 1;
+            // Only the page is kept. `whole_days` adds the rest of its last day:
+            // sorted by day, it follows directly.
+            let in_page = (start..end).contains(&total)
+                || (filter.whole_days
+                    && txs.last().is_some_and(|l| l.booking_date == t.booking_date));
+            if in_page {
+                txs.push(t);
             }
-        }
-        let mut txs: Vec<Booking> = txs.drain(start..end).collect();
+            total += 1;
+        })?;
         // only the returned page carries its tags
         attach_tags(&db, &mut txs)?;
         Ok(BookingPage {
             transactions: txs,
-            total_count: total,
+            total_count: total as u32,
             income_cents: income,
             expense_cents: expense,
             consumption_cents: consumption,
@@ -885,40 +952,32 @@ impl Vault {
         let mut out = String::from(
             "\u{FEFF}Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Betrag;Währung;Tags\r\n",
         );
-        let page_size = 1000u32;
-        let mut offset = 0u32;
-        loop {
-            let mut f = filter.clone();
-            f.limit = page_size;
-            f.offset = offset;
-            let page = self.list_transactions(f)?;
-            let n = page.transactions.len() as u32;
-            for b in &page.transactions {
-                let row = [
-                    csv_field(&b.booking_date, false),
-                    csv_field(&b.account_name, true),
-                    csv_field(&b.counterparty, true),
-                    csv_field(&b.counterparty_iban, false),
-                    csv_field(&b.purpose, true),
-                    csv_field(&b.category_path, true),
-                    csv_amount(b.amount_cents),
-                    csv_field(&b.currency, false),
-                    csv_field(
-                        &b.tags
-                            .iter()
-                            .map(|t| t.name.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        true,
-                    ),
-                ];
-                out.push_str(&row.join(";"));
-                out.push_str("\r\n");
-            }
-            if n < page_size {
-                break;
-            }
-            offset += n;
+        // One pass: paging through `list_transactions` would finish the whole
+        // filter again for every page.
+        let db = self.db()?;
+        let mut bookings = Self::collect_bookings(&db, &filter)?;
+        attach_tags(&db, &mut bookings)?;
+        for b in &bookings {
+            let row = [
+                csv_field(&b.booking_date, false),
+                csv_field(&b.account_name, true),
+                csv_field(&b.counterparty, true),
+                csv_field(&b.counterparty_iban, false),
+                csv_field(&b.purpose, true),
+                csv_field(&b.category_path, true),
+                csv_amount(b.amount_cents),
+                csv_field(&b.currency, false),
+                csv_field(
+                    &b.tags
+                        .iter()
+                        .map(|t| t.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    true,
+                ),
+            ];
+            out.push_str(&row.join(";"));
+            out.push_str("\r\n");
         }
         Ok(out)
     }
@@ -963,6 +1022,52 @@ mod paging_tests {
         let first = all.iter().find(|b| b.counterparty == names[0]).unwrap();
         assert_eq!(&first.booking_date, newest_date);
         assert_eq!(v.counterparty_names(3).unwrap().len(), 3);
+        let _ = std::fs::remove_file(p);
+    }
+
+    fn debug(bookings: &[Booking]) -> Vec<String> {
+        bookings.iter().map(|b| format!("{b:?}")).collect()
+    }
+
+    #[test]
+    fn a_page_is_a_slice_of_the_full_list() {
+        let (v, p) = demo();
+        let all = v.list_transactions(BookingFilter::default()).unwrap();
+        let page = |offset, whole_days| {
+            v.list_transactions(BookingFilter {
+                limit: 5,
+                offset,
+                whole_days,
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        let third = page(3, false);
+        assert_eq!(debug(&third.transactions), debug(&all.transactions[3..8]));
+        assert_eq!(third.total_count, all.total_count);
+        assert_eq!(third.income_cents, all.income_cents);
+        assert_eq!(third.expense_cents, all.expense_cents);
+        assert!(page(all.total_count + 1, true).transactions.is_empty());
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn bookings_by_ids_read_like_the_list_newest_first() {
+        let (v, p) = demo();
+        let all = v.list_transactions(BookingFilter::default()).unwrap();
+        let picked: Vec<Booking> = all.transactions.iter().step_by(3).cloned().collect();
+        let ids: Vec<i64> = picked.iter().rev().map(|b| b.id).collect();
+        let by_ids = Vault::bookings_by_ids(&v.db().unwrap(), &ids).unwrap();
+        assert_eq!(debug(&by_ids), debug(&picked));
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn selection_flow_sums_like_the_list() {
+        let (v, p) = demo();
+        let all = v.list_transactions(BookingFilter::default()).unwrap();
+        let flow = v.selection_flow(vec![], None, None).unwrap();
+        assert_eq!(format!("{flow:?}"), format!("{:?}", all.flow));
         let _ = std::fs::remove_file(p);
     }
 

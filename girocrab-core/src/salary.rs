@@ -181,16 +181,17 @@ impl Vault {
         let from = (today - Duration::days(LOOKBACK_DAYS))
             .format("%Y-%m-%d")
             .to_string();
-        let page = self.list_transactions(BookingFilter {
+        let filter = BookingFilter {
             account_ids,
             date_from: Some(from),
             ..Default::default()
+        };
+        let mut salaries = Vec::new();
+        Self::visit_bookings(&*self.db()?, &filter, |_, b| {
+            if b.is_salary {
+                salaries.push(b);
+            }
         })?;
-        let salaries: Vec<Booking> = page
-            .transactions
-            .into_iter()
-            .filter(|b| b.is_salary)
-            .collect();
         Ok(derive_cycle(&salaries, today))
     }
 }

@@ -32,7 +32,7 @@ mod rules;
 mod settings;
 mod transfer_pairs;
 
-pub(crate) use bookings::enrich;
+pub(crate) use bookings::{enrich, sql_int_list, LIVE_BOOKINGS_SQL};
 pub use merge::MergeStats;
 pub use settings::KNOWN_SETTINGS;
 

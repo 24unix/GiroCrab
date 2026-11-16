@@ -12,11 +12,11 @@ use crate::models::*;
 use crate::vault::Vault;
 
 fn all_bookings(v: &Vault, scope: BookingScope) -> Result<Vec<Booking>, CoreError> {
-    Ok(v.list_transactions(BookingFilter {
+    let filter = BookingFilter {
         scope,
         ..Default::default()
-    })?
-    .transactions)
+    };
+    Vault::collect_bookings(&*v.db()?, &filter)
 }
 
 fn month_key(date: &str) -> String {
@@ -73,14 +73,15 @@ impl Vault {
         date_from: Option<String>,
         date_to: Option<String>,
     ) -> Result<SelectionFlow, CoreError> {
-        Ok(self
-            .list_transactions(BookingFilter {
-                account_ids,
-                date_from,
-                date_to,
-                ..Default::default()
-            })?
-            .flow)
+        let filter = BookingFilter {
+            account_ids,
+            date_from,
+            date_to,
+            ..Default::default()
+        };
+        let mut flow = SelectionFlow::default();
+        Self::visit_bookings(&*self.db()?, &filter, |share, b| flow.add(b.flow, share))?;
+        Ok(flow)
     }
 
     /// "Sparpläne & Perks": recurring plans with a month grid, Saveback and

@@ -25,6 +25,65 @@ pub struct RuleInput<'a> {
     pub account_iban: &'a str,
 }
 
+/// The booking fields a rule or search expression reads, plus the current
+/// categorisation; one row of `RuleRow::COLUMNS`.
+pub(crate) struct RuleRow {
+    pub(crate) id: i64,
+    pub(crate) account_id: i64,
+    pub(crate) amount_cents: i64,
+    pub(crate) counterparty: String,
+    pub(crate) counterparty_iban: String,
+    pub(crate) purpose: String,
+    pub(crate) booking_text: String,
+    pub(crate) note: String,
+    pub(crate) currency: String,
+    pub(crate) account_iban: String,
+    pub(crate) category_id: Option<i64>,
+    pub(crate) rule_id: Option<i64>,
+}
+
+impl RuleRow {
+    /// SELECT list over `transactions t` and `accounts a`, in `read` order.
+    pub(crate) const COLUMNS: &str = "t.id, t.account_id, t.amount_cents, t.counterparty,
+        t.counterparty_iban, t.purpose, t.booking_text, t.note, t.currency, IFNULL(a.iban, ''),
+        t.category_id, t.rule_id";
+
+    pub(crate) fn read(r: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: r.get(0)?,
+            account_id: r.get(1)?,
+            amount_cents: r.get(2)?,
+            counterparty: r.get(3)?,
+            counterparty_iban: r.get(4)?,
+            purpose: r.get(5)?,
+            booking_text: r.get(6)?,
+            note: r.get(7)?,
+            currency: r.get(8)?,
+            account_iban: r.get(9)?,
+            category_id: r.get(10)?,
+            rule_id: r.get(11)?,
+        })
+    }
+
+    pub(crate) fn input(&self) -> RuleInput<'_> {
+        RuleInput {
+            account_id: self.account_id,
+            amount_cents: self.amount_cents,
+            counterparty: &self.counterparty,
+            counterparty_iban: &self.counterparty_iban,
+            purpose: &self.purpose,
+            booking_text: &self.booking_text,
+            note: &self.note,
+            currency: &self.currency,
+            account_iban: &self.account_iban,
+        }
+    }
+
+    pub(crate) fn matches_expr(&self, expr: &SearchExpr) -> bool {
+        expr.matches_prepared(&Prepared::new(expr_input(&self.input())))
+    }
+}
+
 enum Matcher {
     Regex(Regex),
     Expr(SearchExpr),

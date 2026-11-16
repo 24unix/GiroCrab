@@ -1,14 +1,14 @@
 //! Categorisation rules (pattern and expression rules): storage, preview and application.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use rusqlite::{params, Connection};
 
-use super::Vault;
+use super::{Vault, LIVE_BOOKINGS_SQL};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::*;
-use crate::rules::{RuleInput, RuleSet};
+use crate::rules::{RuleRow, RuleSet};
 
 impl Vault {
     pub(crate) fn rule_set(conn: &Connection) -> CoreResult<RuleSet> {
@@ -99,81 +99,37 @@ impl Vault {
         only: Option<&HashSet<i64>>,
     ) -> CoreResult<u32> {
         let set = Self::rule_set(conn)?;
-        let sql = if only_uncategorised {
-            "SELECT t.id, t.account_id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.rule_id,
-                    t.note, t.currency, IFNULL(a.iban, '')
-             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL AND t.category_source = 'none'"
+        let only_sql = if only_uncategorised {
+            "t.category_source = 'none'"
         } else {
-            "SELECT t.id, t.account_id, t.amount_cents, t.counterparty, t.counterparty_iban, t.purpose, t.booking_text, t.category_id, t.rule_id,
-                    t.note, t.currency, IFNULL(a.iban, '')
-             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id WHERE a.archived_unix IS NULL AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL AND t.category_source != 'manual'"
+            "t.category_source != 'manual'"
         };
-        let mut stmt = conn.prepare(sql)?;
-        // (note, currency, own account IBAN) ride along for search expressions
-        #[allow(clippy::type_complexity)]
-        let rows: Vec<(
-            (
-                i64,
-                i64,
-                i64,
-                String,
-                String,
-                String,
-                String,
-                Option<i64>,
-                Option<i64>,
-            ),
-            (String, String, String),
-        )> = stmt
-            .query_map([], |r| {
-                Ok((
-                    (
-                        r.get(0)?,
-                        r.get(1)?,
-                        r.get(2)?,
-                        r.get(3)?,
-                        r.get(4)?,
-                        r.get(5)?,
-                        r.get(6)?,
-                        r.get(7)?,
-                        r.get(8)?,
-                    ),
-                    (r.get(9)?, r.get(10)?, r.get(11)?),
-                ))
-            })?
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {}
+             FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id
+             WHERE a.archived_unix IS NULL AND a.deleted_ms IS NULL AND t.deleted_ms IS NULL AND {only_sql}",
+            RuleRow::COLUMNS
+        ))?;
+        let rows: Vec<RuleRow> = stmt
+            .query_map([], RuleRow::read)?
             .collect::<Result<_, _>>()?;
         let rows = rows
             .into_iter()
-            .filter(|r| only.is_none_or(|ids| ids.contains(&r.0 .0)));
+            .filter(|r| only.is_none_or(|ids| ids.contains(&r.id)));
         let mut changed = 0u32;
         let mut upd_rule = conn.prepare("UPDATE transactions SET category_id = ?1, rule_id = ?2, category_source = 'rule' WHERE id = ?3")?;
         let mut upd_none = conn.prepare("UPDATE transactions SET category_id = NULL, rule_id = NULL, category_source = 'none' WHERE id = ?1")?;
-        for (
-            (id, account_id, amount, cp, iban, purpose, bt, cat, rule),
-            (note, currency, own_iban),
-        ) in rows
-        {
-            let input = RuleInput {
-                account_id,
-                amount_cents: amount,
-                counterparty: &cp,
-                counterparty_iban: &iban,
-                purpose: &purpose,
-                booking_text: &bt,
-                note: &note,
-                currency: &currency,
-                account_iban: &own_iban,
-            };
-            match set.categorise(&input) {
+        for row in rows {
+            match set.categorise(&row.input()) {
                 Some((rule_id, cat_id)) => {
-                    if cat != Some(cat_id) || rule != Some(rule_id) {
-                        upd_rule.execute(params![cat_id, rule_id, id])?;
+                    if row.category_id != Some(cat_id) || row.rule_id != Some(rule_id) {
+                        upd_rule.execute(params![cat_id, rule_id, row.id])?;
                         changed += 1;
                     }
                 }
                 None => {
-                    if rule.is_some() {
-                        upd_none.execute(params![id])?;
+                    if row.rule_id.is_some() {
+                        upd_none.execute(params![row.id])?;
                         changed += 1;
                     }
                 }
@@ -255,41 +211,32 @@ impl Vault {
         Ok(())
     }
 
-    /// Transactions the (unsaved) rule would match, for the live preview in the
-    /// rule editor.
+    /// Newest transactions (at most `limit`) the (unsaved) rule would match, for
+    /// the live preview in the rule editor. Matches on the raw rows and stops at
+    /// `limit`; only the hits are enriched.
     pub fn preview_rule(&self, rule: Rule, limit: u32) -> Result<Vec<Booking>, CoreError> {
         let compiled = crate::rules::CompiledRule::compile(Rule {
             enabled: true,
             ..rule
         })?;
-        let page = self.list_transactions(BookingFilter {
-            limit: 20000,
-            ..Default::default()
-        })?;
-        let ibans: HashMap<i64, String> = {
-            let db = self.db()?;
-            let mut st = db.prepare("SELECT id, iban FROM accounts WHERE deleted_ms IS NULL")?;
-            let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
-            rows.collect::<Result<_, _>>()?
-        };
-        Ok(page
-            .transactions
-            .into_iter()
-            .filter(|t| {
-                compiled.matches(&RuleInput {
-                    account_id: t.account_id,
-                    amount_cents: t.amount_cents,
-                    counterparty: &t.counterparty,
-                    counterparty_iban: &t.counterparty_iban,
-                    purpose: &t.purpose,
-                    booking_text: &t.booking_text,
-                    note: &t.note,
-                    currency: &t.currency,
-                    account_iban: ibans.get(&t.account_id).map_or("", String::as_str),
-                })
-            })
-            .take(limit.max(1) as usize)
-            .collect())
+        let db = self.db()?;
+        let mut stmt = db.prepare(&format!(
+            "SELECT {} FROM transactions t JOIN accounts a ON a.id = t.account_id
+             WHERE {LIVE_BOOKINGS_SQL} ORDER BY t.booking_date DESC, t.id DESC",
+            RuleRow::COLUMNS
+        ))?;
+        let n = limit.max(1) as usize;
+        let mut ids = Vec::new();
+        for row in stmt.query_map([], RuleRow::read)? {
+            let row = row?;
+            if compiled.matches(&row.input()) {
+                ids.push(row.id);
+                if ids.len() == n {
+                    break;
+                }
+            }
+        }
+        Self::bookings_by_ids(&db, &ids)
     }
 
     /// Runs all rules. `only_uncategorized = false` also re-evaluates
@@ -487,5 +434,50 @@ mod multi_account_rule_tests {
         })
         .unwrap();
         assert!(v.list_rules().unwrap()[0].account_ids.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+
+    #[test]
+    fn preview_lists_the_newest_matches_up_to_the_limit() {
+        let p_dir = crate::test_support::TempDir::new("girocrab-preview");
+        let p = p_dir.join("v.db");
+        let v = Vault::open(p.to_string_lossy().to_string(), vec![5u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let rule = Rule {
+            id: 0,
+            name: "Ausgaben".into(),
+            category_id: 0,
+            field: RuleField::Any,
+            match_kind: MatchKind::Expression,
+            pattern: "amount<0".into(),
+            case_sensitive: false,
+            min_amount_cents: None,
+            max_amount_cents: None,
+            account_ids: Vec::new(),
+            priority: 0,
+            enabled: false,
+            match_count: 0,
+        };
+        // Read like the booking list, newest first.
+        let expenses: Vec<String> = v
+            .list_transactions(BookingFilter::default())
+            .unwrap()
+            .transactions
+            .iter()
+            .filter(|b| b.amount_cents < 0)
+            .map(|b| format!("{b:?}"))
+            .collect();
+        assert!(expenses.len() > 5);
+        let preview = |limit| -> Vec<String> {
+            let found = v.preview_rule(rule.clone(), limit).unwrap();
+            found.iter().map(|b| format!("{b:?}")).collect()
+        };
+        assert_eq!(preview(5), expenses[..5]);
+        assert_eq!(preview(0), expenses[..1], "limit 0 still shows one");
+        assert_eq!(preview(10_000), expenses);
     }
 }

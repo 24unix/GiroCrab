@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use chrono::{Datelike, Duration, Local, Months, NaiveDate};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
@@ -598,12 +598,12 @@ fn month_items(
 impl Vault {
     fn recurring_input(&self, account_ids: Vec<i64>) -> CoreResult<(Vec<Booking>, NaiveDate)> {
         let today = Local::now().date_naive();
-        let page = self.list_transactions(BookingFilter {
+        let filter = BookingFilter {
             account_ids,
             date_from: Some(fmt(today - Duration::days(LOOKBACK_DAYS))),
             ..Default::default()
-        })?;
-        Ok((page.transactions, today))
+        };
+        Ok((Self::collect_bookings(&*self.db()?, &filter)?, today))
     }
 }
 
@@ -711,31 +711,12 @@ impl Vault {
 
 impl Vault {
     fn booking_series_key(&self, booking_id: i64) -> CoreResult<String> {
-        let row: Option<(String, i64)> = self
-            .db()?
-            .query_row(
-                "SELECT booking_date, account_id FROM transactions WHERE id = ?1 AND deleted_ms IS NULL",
-                [booking_id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .optional()?;
-        let (day, account) = row.ok_or_else(|| CoreError::NotFound {
-            what: tr("Buchung").into(),
-        })?;
-        let page = self.list_transactions(BookingFilter {
-            account_ids: vec![account],
-            date_from: Some(day.clone()),
-            date_to: Some(day),
-            ..Default::default()
-        })?;
-        let b = page
-            .transactions
-            .iter()
-            .find(|b| b.id == booking_id)
+        let key = Self::bookings_by_ids(&*self.db()?, &[booking_id])?
+            .pop()
             .ok_or_else(|| CoreError::NotFound {
                 what: tr("Buchung").into(),
-            })?;
-        let key = series_key(b);
+            })?
+            .recurrence_key;
         if key.is_empty() {
             return Err(CoreError::InvalidInput {
                 message: tr(

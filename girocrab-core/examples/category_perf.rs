@@ -5,7 +5,7 @@
 //!
 //! Reference (M-series Mac, release build, COPIES=600 → 31,252 bookings, 2026-11-12):
 //!   set_transaction_category        0.6 ms
-//!   list_transactions(limit 3000) 150 ms   (same as without limit: the page is cut last)
+//!   list_transactions(limit 3000) 150 ms   (only ~10 % below no limit: every row is still finished)
 //!   list_categories                 35 ms
 //!   list_account_groups / _user_groups  1.8 ms each (41 ms before the covering indexes)
 //!   list_rules                      0.6 ms (84 ms before the covering indexes)
@@ -15,6 +15,10 @@
 //!   merchant_history                32 ms (total + own account; was 2 × merchant_stats)
 //!   local_api transactions(limit 100)  ~1.2 ms (first page, cursor page, single account; 2026-11-15)
 //!   local_api summary                  ~1.2 ms per year, 2.4 ms for the three-year maximum
+//!   preview_rule(limit 20)       1.3 ms, 31 ms if nothing matches (163 ms while it enriched
+//!                                  every booking; 31,853 bookings, 2026-11-16)
+//!   preview_manual_loan(limit 20)   55 ms (212 ms; the rest is the expression over every booking)
+//!   auto_match_document             10 ms (176 ms; SQL prefilter on the receipt's amounts and dates)
 //! RULE_INDEX=1 creates the covering indexes by hand on a vault that lacks them.
 //! STEP_DAYS (default 183) is the shift between copies: 7 with COPIES=600 spans ~11.5 years.
 //! PAYPAL=n adds a payment-service account with n uncategorised bookings, half of them
@@ -243,7 +247,96 @@ fn main() {
         vault.local_api_request(&three)
     });
     category_selection(&vault, &cats);
+    // Last: it writes (a document, a recurring series).
+    small_results(&vault, &all.transactions);
     let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// Calls that return a handful of bookings or only sums.
+fn small_results(vault: &Vault, all: &[girocrab_core::models::Booking]) {
+    use girocrab_core::models::{MatchKind, PeriodGranularity, Rule, RuleField};
+    // The newest booking with a plain word in its counterparty: a rule or loan
+    // expression on it hits at once, newest first.
+    let (b, word) = all
+        .iter()
+        .find_map(|b| {
+            let w = b.counterparty.split_whitespace().next()?;
+            (w.len() >= 3 && w.chars().all(char::is_alphanumeric)).then(|| (b, w.to_string()))
+        })
+        .expect("a booking with a counterparty");
+    println!();
+    time("count_transactions(uncategorized)", || {
+        vault
+            .count_transactions(BookingFilter {
+                uncategorized_only: true,
+                ..Default::default()
+            })
+            .unwrap()
+    });
+    time("cashflow_by_period(month, 12)", || {
+        vault
+            .cashflow_by_period(PeriodGranularity::Month, 12)
+            .unwrap()
+    });
+    let rule = |pattern: &str| Rule {
+        id: 0,
+        name: String::new(),
+        category_id: 0,
+        field: RuleField::Counterparty,
+        match_kind: MatchKind::Keyword,
+        pattern: pattern.into(),
+        case_sensitive: false,
+        min_amount_cents: None,
+        max_amount_cents: None,
+        account_ids: vec![],
+        priority: 0,
+        enabled: true,
+        match_count: 0,
+    };
+    time("preview_rule(limit 20), newest bookings match", || {
+        assert!(!vault.preview_rule(rule(&word), 20).unwrap().is_empty())
+    });
+    time("preview_rule(limit 20), nothing matches", || {
+        assert!(vault.preview_rule(rule("zzqx"), 20).unwrap().is_empty())
+    });
+    let loan = girocrab_core::loans::LoanSetup {
+        name: "Kredit".into(),
+        original_cents: None,
+        anchor_date: "2020-01-01".into(),
+        anchor_balance_cents: 1_000_000,
+        interest_rate_ppm: None,
+        match_expr: word.clone(),
+    };
+    time("preview_manual_loan(limit 20)", || {
+        assert!(
+            vault
+                .preview_manual_loan(None, loan.clone(), 20)
+                .unwrap()
+                .match_count
+                > 0
+        )
+    });
+    let receipt = format!(
+        "{} Datum {} Summe {}",
+        b.counterparty,
+        b.booking_date,
+        girocrab_core::money::format_cents(b.amount_cents.abs(), "EUR".into())
+    );
+    time("auto_match_document (amount + date)", || {
+        vault
+            .auto_match_document("beleg.jpg".into(), vec![0xFF, 0xD8], Some(receipt.clone()))
+            .unwrap()
+            .expect("matched")
+    });
+    time("mark_booking_recurring", || {
+        vault
+            .mark_booking_recurring(
+                b.id,
+                girocrab_core::recurring::RecurrenceInterval::Monthly,
+                vec![],
+            )
+            .unwrap()
+    });
 }
 
 fn env_usize(name: &str, default: usize) -> usize {
