@@ -289,7 +289,7 @@ impl Vault {
     /// WHERE clause (plus optional CTE, bound arguments and the KPI share
     /// expression) of a `BookingFilter`; shared by the list and bulk updates.
     #[allow(clippy::type_complexity)]
-    fn filter_clauses(
+    pub(crate) fn filter_clauses(
         db: &rusqlite::Connection,
         filter: &BookingFilter,
     ) -> Result<(String, String, Vec<Box<dyn ToSql>>, String), CoreError> {

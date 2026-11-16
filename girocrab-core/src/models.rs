@@ -699,6 +699,15 @@ pub struct MerchantStats {
     pub last_date: String,
 }
 
+/// Merchant history of a selected booking: all accounts and the booking's own
+/// account, computed in one pass (#591).
+#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MerchantHistory {
+    pub all: MerchantStats,
+    pub account: MerchantStats,
+}
+
 /// KPI tiles: flows of a selection (accounts + period), all positive.
 #[derive(Debug, Clone, Default, uniffi::Record)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

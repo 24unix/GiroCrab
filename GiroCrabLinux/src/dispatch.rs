@@ -878,7 +878,8 @@ vault_methods! {
     ignore_recurring(series_key) reset_recurring(series_key)
     booking_date(booking_id)
     // insights / planning / recurring
-    merchant_stats(merchant_key) selection_flow(account_ids, date_from, date_to)
+    merchant_stats(merchant_key) merchant_history(merchant_key, account_id)
+    selection_flow(account_ids, date_from, date_to)
     cashflow_by_period(granularity, count)
     list_category_budget_progress(year, month)
     list_recurring(account_ids) recurring_month(account_ids, year, month)

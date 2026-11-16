@@ -87,8 +87,9 @@ extension AppModel {
     }
 
     /// Merchant history of the selected booking. The core scans every booking
-    /// for it, so it runs off the main thread and is cached per merchant; the
-    /// short delay keeps arrow-key navigation from queueing one scan per row.
+    /// once for it (total and own account together), so it runs off the main
+    /// thread and is cached per merchant; the short delay keeps arrow-key
+    /// navigation from queueing one scan per row.
     /// `keepShown`: after a data change the shown history of the same merchant
     /// stays until the fresh one arrives (no flicker).
     func loadMerchantStats(keepShown: Bool = false) {
@@ -108,10 +109,9 @@ extension AppModel {
             guard !Task.isCancelled else { return }
             let stats = await Task.detached(priority: .userInitiated) {
                 Perf.interval("merchantStats") {
-                    guard let all = try? vault.merchantStats(merchantKey: key),
-                          let own = try? vault.merchantStatsInAccount(merchantKey: key, accountId: accountId)
+                    guard let h = try? vault.merchantHistory(merchantKey: key, accountId: accountId)
                     else { return nil as (MerchantStats, MerchantStats)? }
-                    return (all, own)
+                    return (h.all, h.account)
                 }
             }.value
             // A vault switch or data change in the meantime cancels this task.
