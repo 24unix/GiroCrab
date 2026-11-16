@@ -29,7 +29,12 @@ Rectangle {
         id: view
         anchors.fill: parent
         anchors.margins: 1
-        profile: WebEngineProfile { offTheRecord: true }
+        profile: WebEngineProfile {
+            offTheRecord: true
+            // Plain Chrome user agent, like WebLoginSheet: banks (e.g. Revolut) end the
+            // authorisation with an error when they see the "QtWebEngine/…" token
+            Component.onCompleted: httpUserAgent = httpUserAgent.replace(/ QtWebEngine\/\S+/, "")
+        }
         // the host sets `url` after creating this item (Loader.onLoaded): follow it
         Component.onCompleted: if (browser.url) url = browser.url
         Connections { target: browser; function onUrlChanged() { if (browser.url) view.url = browser.url } }
