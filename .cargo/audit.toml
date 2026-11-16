@@ -1,0 +1,7 @@
+[advisories]
+ignore = [
+    # basic-toml is unmaintained; it is only pulled in transitively by askama_derive
+    # (UniFFI build-time code generation) and no fixed upgrade exists yet.
+    # Re-check when UniFFI/askama is upgraded and remove this entry.
+    "RUSTSEC-2026-0374",
+]

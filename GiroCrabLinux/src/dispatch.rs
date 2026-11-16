@@ -1121,7 +1121,7 @@ vault_methods! {
     ignore_recurring(series_key) reset_recurring(series_key)
     booking_date(booking_id)
     // insights / planning / recurring
-    merchant_stats(merchant_key) merchant_stats_in_account(merchant_key, account_id)
+    merchant_stats(merchant_key) merchant_history(merchant_key, account_id)
     selection_flow(account_ids, date_from, date_to)
     cashflow_by_period(granularity, count)
     list_category_budget_progress(year, month)
@@ -1342,7 +1342,7 @@ mod tests {
 
     /// Händler-Historie (#299): the merchant's stats over all accounts and in one account.
     #[test]
-    fn merchant_stats_in_account() {
+    fn merchant_history() {
         let path =
             std::env::temp_dir().join(format!("girocrab-merchant-{}.girocrab", std::process::id()));
         let v = Vault::open(path.display().to_string(), vec![7; 32]).unwrap();
@@ -1358,11 +1358,11 @@ mod tests {
             "checked": null, "whole_days": true });
         let b = call("list_transactions", json!({ "filter": filter }))["transactions"][0].clone();
         let key = b["merchant"]["key"].clone();
-        let all = call("merchant_stats", json!({ "merchant_key": key }));
-        let own = call(
-            "merchant_stats_in_account",
+        let h = call(
+            "merchant_history",
             json!({ "merchant_key": key, "account_id": b["account_id"] }),
         );
+        let (all, own) = (h["all"].clone(), h["account"].clone());
         assert_eq!(own["key"], all["key"]);
         assert!(own["count"].as_u64().unwrap() >= 1);
         assert!(own["count"].as_u64().unwrap() <= all["count"].as_u64().unwrap());

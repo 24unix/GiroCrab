@@ -213,7 +213,14 @@ struct CustomDatesSheet: View {
 /// "Fixkosten" sheet: what is booked / still due this month, all series, hidden ones.
 struct RecurringSheet: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
     @Environment(\.dismiss) private var dismiss
+
+    /// An amount inside the footer text: masked while the report hides
+    /// amounts, so the rest of the sentence stays readable.
+    private func amount(_ cents: Int64) -> String {
+        redaction.masking(Money.format(cents), .amounts)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -238,8 +245,7 @@ struct RecurringSheet: View {
                     } header: {
                         Text("Diesen Monat")
                     } footer: {
-                        Text("Noch offen: \(Money.format(-m.openExpenseCents)) Ausgaben, \(Money.format(m.openIncomeCents)) Einnahmen · bereits gebucht: \(Money.format(-m.bookedExpenseCents))")
-                            .sensitive()
+                        Text("Noch offen: \(amount(-m.openExpenseCents)) Ausgaben, \(amount(m.openIncomeCents)) Einnahmen · bereits gebucht: \(amount(-m.bookedExpenseCents))")
                             .appFont(.caption)
                             .foregroundStyle(Theme.secondary)
                             .leadingFooter()
@@ -284,7 +290,7 @@ struct RecurringSheet: View {
                 .foregroundStyle(item.booked ? Theme.inflow : Theme.tertiary)
                 .accessibilityLabel(item.booked ? "Gebucht" : "Offen")
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.series.name).lineLimit(1)
+                Text(item.series.name).lineLimit(1).sensitive()
                 Text(item.booked ? "Gebucht am \(DateText.medium(item.dueDate))" : "Fällig am \(DateText.medium(item.dueDate))")
                     .appFont(.caption)
                     .foregroundStyle(Theme.secondary)
@@ -315,7 +321,7 @@ struct RecurringSheet: View {
                 .help(s.source == .manual ? "Manuell markiert" : "Automatisch erkannt")
                 .accessibilityLabel(s.source == .manual ? "Manuell markiert" : "Automatisch erkannt")
             VStack(alignment: .leading, spacing: 1) {
-                Text(s.name).lineLimit(1)
+                Text(s.name).lineLimit(1).sensitive()
                 Text("\(s.intervalText) · nächste am \(DateText.medium(s.nextDue))")
                     .appFont(.caption)
                     .foregroundStyle(Theme.secondary)
@@ -358,7 +364,7 @@ struct RecurringSheet: View {
                 .foregroundStyle(Theme.tertiary)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                Text(h.name).lineLimit(1).foregroundStyle(Theme.secondary)
+                Text(h.name).lineLimit(1).foregroundStyle(Theme.secondary).sensitive()
                 Text("Zuletzt am \(DateText.medium(h.lastDate))")
                     .appFont(.caption)
                     .foregroundStyle(Theme.tertiary)

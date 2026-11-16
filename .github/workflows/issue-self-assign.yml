@@ -42,7 +42,7 @@ jobs:
             exit 0
           fi
 
-          if ! printf '%s' "$text" | grep -Eq '(^|[[:space:]])(/assign-me|/assign|/take)([[:space:]]|$)|ich übernehme das|ich schaue mir das an|ich schaue es mir|gerne mir zuweisen'; then
+          if ! printf '%s' "$text" | grep -Eq '^[[:space:]]*(/assign-me|/assign|/take)([[:space:]]|$)|ich übernehme das|ich schaue mir das an|ich schaue es mir|gerne mir zuweisen'; then
             exit 0
           fi
 

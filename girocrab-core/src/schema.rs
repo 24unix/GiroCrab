@@ -32,6 +32,8 @@
 //!   edit stamp `transactions.tags_ms`.
 //! - 24: rules for several accounts (#562): table `rule_accounts`; `rules.account_id` mirrors the
 //!   lowest id of the set (foreign key / older readers), the table is the source of truth.
+//! - 25: index `tx_amount_date`: the payment-service transfer pairing
+//!   (`vault/transfer_pairs.rs`) looks up counter bookings by amount and date.
 //!
 //! Schema changes are a new step at the end of [`STEPS`]; never edit an
 //! existing step. After a bump, run
@@ -72,7 +74,14 @@ const STEPS: &[Step] = &[
     Step::Hook(crate::mandates::mandate_return_ack),           // 22
     Step::Hook(crate::tags::tags_tables),                      // 23
     Step::Sql(RULE_ACCOUNTS),                                  // 24
+    Step::Sql(TX_AMOUNT_DATE),                                 // 25
 ];
+
+/// Step 25. Not partial on `deleted_ms IS NULL`: SQLite then picked it for
+/// plain scans of live bookings (`list_categories`), six times slower.
+const TX_AMOUNT_DATE: &str = "
+CREATE INDEX IF NOT EXISTS tx_amount_date ON transactions(amount_cents, booking_date);
+";
 
 /// Step 24 (#562): a rule can be restricted to several accounts.
 const RULE_ACCOUNTS: &str = "
@@ -607,7 +616,7 @@ mod tests {
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, SCHEMA_VERSION);
-        assert_eq!(SCHEMA_VERSION, 24);
+        assert_eq!(SCHEMA_VERSION, 25);
     }
 
     /// A vault that an early draft migrated as version 15 (scheduled transfers

@@ -192,10 +192,12 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | Scalable Capital | REST-API | ✓ | ✓ | ✓ | – | – | – | 🧪 Test gesucht [#45](https://github.com/GiroCrab/GiroCrab/issues/45) |
 | Amazon Visa | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
 | American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
+| PayPal (DE) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verifiziert |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Test gesucht [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
 | Weitere Banken per PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen |
 | Amazon Bestellungen | Web-Portal | ✓ | – | – | – | – | – | 🧪 Test gesucht |
 | easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Test gesucht |
+| Volkswagen Bank | Web-Portal | ✓ | ✓ | – | – | – | – | ⚠️ Mit Einschränkungen |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Mit Einschränkungen |
@@ -397,9 +399,11 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | Amazon Visa | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
 | American Express | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
 | More banks via PSD2 (Enable Banking) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ⚠️ Limited |
+| PayPal (DE) | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | ✅ Verified |
 | Revolut | Enable Banking (PSD2) | ✓ | ✓ | – | – | – | – | 🧪 Testing wanted [#289](https://github.com/GiroCrab/GiroCrab/issues/289) |
 | Amazon orders | Web-Portal | ✓ | – | – | – | – | – | 🧪 Testing wanted |
 | easybank (ehem. Barclays) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Testing wanted |
+| Volkswagen Bank | Web-Portal | ✓ | ✓ | – | – | – | – | ⚠️ Limited |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | Trade Republic | Web-Portal | ✓ | ✓ | – | – | – | ✓ | ⚠️ Limited |
@@ -454,6 +458,22 @@ It is **not a payment initiation service and not an account information service 
 - Not investment advice; ISIN/WKN data is reference information without guarantee. Trademarks belong to their owners and are used for identification only.
 
 <sub>Names of banks and payment services are trademarks of their respective owners. GiroCrab is independent of these providers.</sub>
+
+---
+
+## FinTS-Produktregistrierung / FinTS product registration
+
+**Deutsch:** Offiziell signierte Releases enthalten GiroCrabs eigene, bei der Deutschen Kreditwirtschaft registrierte
+Produkt-ID (nur im FinTS-Segment HKVVB an die Bank, nie im Quellcode). Selbst gebaute Open-Source-Binaries enthalten
+sie **nicht**: Dort verwendet die App ausschließlich eine ID, die Sie selbst eintragen, oder beim Entwickeln per
+`GIROCRAB_FINTS_PRODUCT_ID_OVERRIDE=<ID>` setzen (nur Debug-Builds). Eigene Builds mit eingebauter ID entstehen, wenn beim
+Build `GIROCRAB_FINTS_PRODUCT_ID` gesetzt ist (siehe `docs/fints-registrierung.md`).
+
+**English:** Officially signed releases include GiroCrab's own product ID registered with the Deutsche Kreditwirtschaft
+(sent to the bank only in the FinTS HKVVB segment, never in source code). Self-built open-source binaries do **not**
+include it: they use only an ID you enter yourself, or, for development, one set via
+`GIROCRAB_FINTS_PRODUCT_ID_OVERRIDE=<ID>` (debug builds only). To build your own binary with an embedded ID, set
+`GIROCRAB_FINTS_PRODUCT_ID` at build time (see `docs/fints-registrierung.md`).
 
 ---
 

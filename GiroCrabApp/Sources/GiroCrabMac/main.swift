@@ -33,6 +33,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
         }
         observeWindowsForDockPresence()
+        MainActor.assumeIsolated { Self.applyWindowBackground() }
+        NotificationCenter.default.addObserver(forName: NSWindow.didBecomeMainNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { Self.applyWindowBackground() }
+        }
         MainActor.assumeIsolated {
             WindowScreenshot.scheduleIfRequested()
             #if canImport(Sparkle)
@@ -41,6 +45,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 updater = SparkleUpdateBackend.startIfConfigured()
             }
             #endif
+        }
+    }
+
+    /// Window background = launch background (#0B1120 dark / #F8FAFC light), so no white frame or flash around the start and lock screen.
+    @MainActor
+    static func applyWindowBackground() {
+        let canvas = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(srgbRed: 0x0F / 255, green: 0x17 / 255, blue: 0x2A / 255, alpha: 1)
+                : NSColor(srgbRed: 0xF8 / 255, green: 0xFA / 255, blue: 0xFC / 255, alpha: 1)
+        }
+        for window in NSApp.windows where window.styleMask.contains(.titled) && window.backgroundColor != canvas {
+            window.backgroundColor = canvas
         }
     }
 

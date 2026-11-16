@@ -42,6 +42,8 @@ pub enum ConnectorKind {
     Quirion,
     /// easybank (formerly Barclays Deutschland) credit cards and statements, see #209.
     Easybank,
+    /// Volkswagen Bank online banking (photoTAN / pushTAN) via the web portal.
+    VolkswagenBank,
 }
 
 impl ConnectorKind {
@@ -63,6 +65,7 @@ impl ConnectorKind {
             ConnectorKind::Ibkr => "ibkr",
             ConnectorKind::Quirion => "quirion",
             ConnectorKind::Easybank => "easybank",
+            ConnectorKind::VolkswagenBank => "volkswagenbank",
         }
     }
     pub fn from_str(s: &str) -> Option<Self> {
@@ -113,6 +116,7 @@ impl ConnectorKind {
             ConnectorKind::Ibkr,
             ConnectorKind::Quirion,
             ConnectorKind::Easybank,
+            ConnectorKind::VolkswagenBank,
         ]
     }
 }
@@ -697,6 +701,15 @@ pub struct MerchantStats {
     pub average_cents: i64,
     pub first_date: String,
     pub last_date: String,
+}
+
+/// Merchant history of a selected booking: all accounts and the booking's own
+/// account, computed in one pass (#591).
+#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MerchantHistory {
+    pub all: MerchantStats,
+    pub account: MerchantStats,
 }
 
 /// KPI tiles: flows of a selection (accounts + period), all positive.

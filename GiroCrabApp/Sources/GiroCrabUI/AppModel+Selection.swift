@@ -3,6 +3,14 @@ import SwiftUI
 import GiroCrabCore
 
 extension AppModel {
+    static func expandedCategoriesKey(demo: Bool) -> String {
+        demo ? "sidebar.expandedCategories.demo" : "sidebar.expandedCategories"
+    }
+
+    static func storedExpandedCategories(demo: Bool) -> Set<Int64> {
+        Set(UserDefaults.standard.array(forKey: expandedCategoriesKey(demo: demo)) as? [Int64] ?? [])
+    }
+
     /// Marks the selected booking as checked after `autoReviewDelay`, unless
     /// the selection moved on (or became a multiple one) in the meantime.
     func scheduleAutoReview() {
@@ -139,6 +147,7 @@ extension AppModel {
                 let (from, to) = self.periodRange
                 let chart = self.historyRequest
                 let categoryChart = self.categoryHistoryRequest
+                let sums = self.categorySumFilter
                 let listHasFlow = filter.listHasFlow
                 let loaded = try await Self.offMain {
                     let page = try Perf.interval("listTransactions") { try vault.listTransactions(filter: filter) }
@@ -146,7 +155,7 @@ extension AppModel {
                     let flow = listHasFlow ? page.flow : try vault.selectionFlow(accountIds: filter.accountIds, dateFrom: from, dateTo: to)
                     try Task.checkCancellation()
                     let recurring = try vault.recurringSnapshot(accountIds: ids, year: Int32(month.year ?? 2026), month: UInt32(month.month ?? 1))
-                    let categories = try vault.listCategories(dateFrom: from, dateTo: to)
+                    let categories = try vault.listCategoriesFiltered(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction)
                     try Task.checkCancellation()
                     let history = try vault.balanceHistory(accountIds: chart.ids, days: chart.days)
                     let categoryHistory = try categoryChart.map {

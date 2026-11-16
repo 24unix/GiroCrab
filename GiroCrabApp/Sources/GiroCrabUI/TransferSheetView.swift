@@ -119,7 +119,7 @@ struct TransferSheetView: View {
             buttons.padding(14)
         }
         .macFrame(width: 560, height: 700)
-        .task { if model.options.demoSheet == "transfer-confirm" { confirming = true } } // screenshots
+        .task { if model.options.demoSheetName == "transfer-confirm" { confirming = true } } // screenshots
         .overlay {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6]))
@@ -182,10 +182,8 @@ struct TransferSheetView: View {
     private func form(draft: Binding<TransferDraft>) -> some View {
         Form {
             Section {
-                Picker("Von Konto", selection: draft.accountID) {
-                    ForEach(model.transferFormAccounts) { a in
-                        Text("\(a.name) · \(formatIBAN(a.iban))").tag(Optional(a.id)).sensitive()
-                    }
+                LabeledContent("Von Konto") {
+                    SourceAccountPicker(selection: draft.accountID, accounts: model.transferFormAccounts)
                 }
             } footer: {
                 if account != nil && !canSend { noDirectTransferNote }
@@ -402,9 +400,11 @@ struct TransferSheetView: View {
                     }
                 }
                 .frame(width: 200, height: 200)
+                .sensitive() // the code carries name, IBAN, amount and purpose
                 VStack(alignment: .leading, spacing: 8) {
                     Text(Money.format(-(cents ?? 0)).replacingOccurrences(of: "-", with: ""))
                         .appFont(.largeTitle, weight: .semibold, monospacedDigit: true)
+                        .sensitive(.amounts)
                     summaryRow("An", d.name)
                     summaryRow("IBAN", d.iban)
                     if !bicText.isEmpty { summaryRow("BIC", bicText.uppercased()) }
@@ -430,6 +430,7 @@ struct TransferSheetView: View {
             Section {
                 Text(Money.format(-(cents ?? 0)).replacingOccurrences(of: "-", with: ""))
                     .appFont(.largeTitle, weight: .semibold, monospacedDigit: true)
+                    .sensitive(.amounts)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 6)
             }
@@ -446,7 +447,7 @@ struct TransferSheetView: View {
                 reviewRow("Ausführung", sendsInstant
                     ? String(localized: "Sofort (Echtzeitüberweisung)")
                     : d.executionDateISO.map { String(format: String(localized: "Am %@ (Terminüberweisung)"), $0) }
-                        ?? String(localized: "Heute (SEPA-Überweisung)"))
+                        ?? String(localized: "Heute (SEPA-Überweisung)"), hides: [])
             } header: {
                 Text("Zahlung").appSectionHeader()
             } footer: {
@@ -456,19 +457,22 @@ struct TransferSheetView: View {
         .formStyle(.grouped)
     }
 
-    private func reviewRow(_ label: LocalizedStringKey, _ value: String, monospaced: Bool = false) -> some View {
+    private func reviewRow(_ label: LocalizedStringKey, _ value: String, monospaced: Bool = false,
+                           hides: ReportRedaction = .personal) -> some View {
         LabeledContent(label) {
             Text(value)
                 .appFont(.body, design: monospaced ? .monospaced : .default)
                 .multilineTextAlignment(.trailing)
                 .textSelection(.enabled)
+                .sensitive(hides)
         }
     }
 
+    /// Rows of the GiroCode review: all of them are personal.
     private func summaryRow(_ k: LocalizedStringKey, _ v: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(k).foregroundStyle(Theme.secondary).frame(width: 90 * textScale, alignment: .leading)
-            Text(v).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            Text(v).textSelection(.enabled).fixedSize(horizontal: false, vertical: true).sensitive()
             Spacer(minLength: 0)
         }
     }
@@ -562,5 +566,23 @@ struct TransferSheetView: View {
         let u = Array(s.uppercased())
         guard u.count == 8 || u.count == 11 else { return false }
         return u[..<6].allSatisfy { $0.isASCII && $0.isLetter } && u[6...].allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+    }
+}
+
+/// "Von Konto" of the transfer, standing order and batch forms: the picker
+/// draws the selected account's name and IBAN itself (an iOS menu picker),
+/// so it is covered as a whole; the label beside it stays readable.
+struct SourceAccountPicker: View {
+    let selection: Binding<Int64?>
+    let accounts: [Account]
+
+    var body: some View {
+        Picker("Von Konto", selection: selection) {
+            ForEach(accounts) { a in
+                Text("\(a.name) · \(formatIBAN(a.iban))").tag(Optional(a.id))
+            }
+        }
+        .labelsHidden()
+        .sensitive()
     }
 }

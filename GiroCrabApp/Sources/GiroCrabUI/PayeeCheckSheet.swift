@@ -18,6 +18,7 @@ struct PayeeCheckSheet: View {
                         Text(title(c.result)).appFont(.title3, weight: .bold)
                         Text("Empfängerüberprüfung · \(pending.connection.displayName)")
                             .appFont(.caption).foregroundStyle(Theme.secondary)
+                            .sensitive() // the user's own name for the connection
                     }
                     Spacer()
                 }
@@ -71,7 +72,7 @@ struct PayeeCheckSheet: View {
     private func row(_ k: LocalizedStringKey, _ v: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(k).foregroundStyle(Theme.secondary).frame(width: 110, alignment: .leading)
-            Text(v).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            Text(v).textSelection(.enabled).fixedSize(horizontal: false, vertical: true).sensitive()
             Spacer(minLength: 0)
         }
     }

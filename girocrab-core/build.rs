@@ -17,6 +17,10 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     let raw = env::var("GIROCRAB_FINTS_PRODUCT_ID").unwrap_or_default();
     let raw = raw.trim();
+    assert!(
+        raw.is_empty() || raw.chars().count() == 25,
+        "GIROCRAB_FINTS_PRODUCT_ID must be exactly 25 characters"
+    );
     let masked: Vec<String> = raw
         .bytes()
         .enumerate()

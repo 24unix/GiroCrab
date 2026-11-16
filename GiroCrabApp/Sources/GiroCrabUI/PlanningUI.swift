@@ -157,7 +157,7 @@ struct BudgetProgressCard: View {
                             Text(s.name).appFont(.callout).foregroundStyle(Theme.text).sensitive(.labels)
                             Spacer()
                             Text("\(Money.format(s.spentCents)) / \(Money.format(s.budgetCents))")
-                                .sensitive()
+                                .sensitive(.amounts)
                                 .appFont(.caption, monospacedDigit: true).foregroundStyle(BudgetTone.color(s.percent))
                             // shows the row opens the editor (it looked read-only)
                             Image(systemName: "pencil")
@@ -188,7 +188,7 @@ struct BudgetProgressCard: View {
             let now = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: Date())
             if let loaded = await model.budgetProgress(year: now.year ?? 2025, month: now.month ?? 1) { items = loaded }
         }
-        .sheet(item: $editing) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
+        .capturableSheet(item: $editing) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
     }
 }
 
@@ -209,7 +209,7 @@ struct BudgetEditorSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Monatsbudget").appFont(.title3, weight: .bold)
-            Text(category?.path ?? "").foregroundStyle(Theme.secondary)
+            Text(category?.path ?? "").foregroundStyle(Theme.secondary).sensitive(.labels)
             HStack {
                 TextField(Money.plain(0), text: $text)
                     .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
@@ -430,6 +430,7 @@ enum SplitMath {
 
 struct SplitSheet: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.reportRedaction) private var redaction
     @Environment(\.dismiss) private var dismiss
     let booking: Booking
 
@@ -455,7 +456,7 @@ struct SplitSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Umsatz aufteilen").appFont(.title3, weight: .bold)
-            Text("\(booking.merchantName) · \(Money.format(booking.amountCents))").foregroundStyle(Theme.secondary)
+            Text("\(booking.merchantName) · \(Money.format(booking.amountCents))").foregroundStyle(Theme.secondary).sensitive([.personal, .amounts])
             ForEach($parts) { $p in
                 HStack(spacing: 8) {
                     Picker("Kategorie", selection: $p.categoryID) {
@@ -463,6 +464,7 @@ struct SplitSheet: View {
                         ForEach(model.categories, id: \.id) { c in Text(c.path).tag(Int64?.some(c.id)) }
                     }
                     .labelsHidden().frame(maxWidth: 190)
+                    .sensitive(.labels)
                     TextField(Money.plain(0), text: $p.amount)
                         .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
                         .appFont(.body, monospacedDigit: true).frame(width: 90)
@@ -484,7 +486,7 @@ struct SplitSheet: View {
                 Text("Restbetrag: \(Money.format(remaining))")
                     .appFont(.callout, weight: .semibold, monospacedDigit: true)
                     .foregroundStyle(remaining == 0 ? Theme.inflow : Theme.warning)
-                    .sensitive()
+                    .sensitive(.amounts)
                 if remaining != 0, let last = parts.indices.last {
                     // one click: the rest goes into the last part (#427)
                     Button("Rest zuweisen") {
@@ -497,7 +499,7 @@ struct SplitSheet: View {
             // Why "Speichern" is greyed out (#383): say so instead of leaving it silent.
             if !valid, !parts.isEmpty, error == nil {
                 Text(remaining != 0
-                    ? "Die Teilbeträge müssen zusammen \(Money.format(total)) ergeben (Restbetrag: \(Money.format(remaining))), erst dann lässt sich speichern."
+                    ? "Die Teilbeträge müssen zusammen \(redaction.masking(Money.format(total), .amounts)) ergeben (Restbetrag: \(redaction.masking(Money.format(remaining), .amounts))), erst dann lässt sich speichern."
                     : "Jeder Teil braucht einen Betrag ungleich 0.")
                     .appFont(.callout).foregroundStyle(Theme.secondary)
             }

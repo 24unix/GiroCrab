@@ -131,6 +131,9 @@ struct DocumentsCard: View {
                     Button { model.quickLook(d) } label: { Image(systemName: "eye") }
                         .buttonStyle(.borderless).help("QuickLook (Leertaste)")
                     Menu {
+                        #if os(macOS)
+                        Button("Im Finder anzeigen") { model.showInFinder(d) }
+                        #endif
                         Button("Zuordnung aufheben") { model.linkDocument(d, to: nil) }
                         Divider()
                         Button("Beleg löschen …", role: .destructive) { docToDelete = d }
@@ -209,6 +212,7 @@ struct DocumentsScopePicker: View {
 }
 
 struct DocumentsView: View {
+    @Environment(\.reportRedaction) private var redaction
     @Environment(AppModel.self) private var model
     @State private var search = ""
     @State private var unlinkedOnly = false
@@ -291,6 +295,9 @@ struct DocumentsView: View {
                         .contentShape(Rectangle())
                         .contextMenu {
                             Button("QuickLook") { model.quickLook(d) }
+                            #if os(macOS)
+                            Button("Im Finder anzeigen") { model.showInFinder(d) }
+                            #endif
                             Button("Zuordnung aufheben") { model.linkDocument(d, to: nil) }
                             Divider()
                             Button("Beleg löschen …", role: .destructive) { docToDelete = d }
@@ -347,13 +354,13 @@ struct DocumentsView: View {
             }
         }
         .background(Theme.canvas)
-        .sheet(item: $previewDoc) { d in
+        .capturableSheet(item: $previewDoc) { d in
             NavigationStack {
                 Group {
                     if let data = model.documentData(d) { DocumentPreview(doc: d, data: data) }
                     else { ContentUnavailableView("Beleg nicht verfügbar", systemImage: "doc") }
                 }
-                .navigationTitle(d.title)
+                .navigationTitle(redaction.masking(d.title))
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif

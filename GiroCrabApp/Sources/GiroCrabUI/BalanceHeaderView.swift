@@ -40,6 +40,12 @@ struct AccountCopyMenu: View {
 
 /// Header card of the stream: title, balance, calm balance chart and the
 /// monthly KPIs (consumption is always shown without ETF plans / perks).
+/// The account holder shown under the bank/IBAN line; nil when empty (#606).
+func accountHolderLine(_ a: Account) -> String? {
+    let owner = a.owner.trimmingCharacters(in: .whitespacesAndNewlines)
+    return owner.isEmpty ? nil : owner
+}
+
 struct StreamHeaderCard: View {
     @Environment(AppModel.self) private var model
     #if os(iOS)
@@ -77,6 +83,14 @@ struct StreamHeaderCard: View {
                         if let a = account {
                             Text([a.bankName, a.iban.isEmpty ? "" : formatIBAN(a.iban)].filter { !$0.isEmpty }.joined(separator: " · "))
                                 .sensitive()
+                            if let holder = accountHolderLine(a) {
+                                Text(holder)
+                                    .sensitive()
+                                    .appFont(.caption)
+                                    .foregroundStyle(Theme.secondary)
+                                    .lineLimit(1)
+                                    .help(holder)
+                            }
                             let note = model.accountNote(for: a.id)
                             if !note.isEmpty {
                                 Text(note)
@@ -114,7 +128,7 @@ struct StreamHeaderCard: View {
                 if let hb = headerBalance {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(Money.format(hb.cents))
-                            .sensitive()
+                            .sensitive(.amounts)
                             .appFont(compactHeader ? .subheadline : .largeTitle, weight: .semibold, monospacedDigit: true)
                             .foregroundStyle(account?.kind == .loan ? Theme.loan : Theme.text)
                             .lineLimit(1)
@@ -124,7 +138,7 @@ struct StreamHeaderCard: View {
                         }
                         if account == nil, let split = model.headerTotalSplit {
                             Text("Zusätzlich: \(split.others.map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · "))")
-                                .sensitive()
+                                .sensitive(.amounts)
                                 .appFont(.caption, monospacedDigit: true)
                                 .foregroundStyle(Theme.secondary)
                                 .lineLimit(1)
@@ -161,7 +175,7 @@ struct StreamHeaderCard: View {
                     #endif
                 }
                 depotRow
-                    .popover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
+                    .capturablePopover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
                         CustomPeriodForm()
                     }
             } else {
@@ -218,7 +232,7 @@ struct StreamHeaderCard: View {
                     Label("Dokumente", systemImage: "doc.text")
                 }
                 .buttonStyle(.borderless)
-                .sheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
+                .capturableSheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
             }
             Spacer()
             if let a = account, model.isTangible(a.id) {
@@ -327,7 +341,7 @@ struct StreamHeaderCard: View {
             }
         }
         // Outside ViewThatFits: its candidates must not each carry the popover.
-        .popover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
+        .capturablePopover(isPresented: $model.showCustomPeriod, arrowEdge: .bottom) {
             CustomPeriodForm()
         }
     }
@@ -444,7 +458,7 @@ struct StreamHeaderCard: View {
                             #endif
                     }
                     .buttonStyle(.borderless)
-                    .sheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
+                    .capturableSheet(isPresented: $showDocuments) { AccountDocumentsSheet(account: a) }
                 }
                 Spacer()
                 #if os(iOS)

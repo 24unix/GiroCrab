@@ -4,7 +4,7 @@ import SwiftUI
 /// The case order is the standard layout: the merchant history, whose stats load asynchronously
 /// and grow the card, comes after the interactive category and document cards (#492).
 enum InspectorSection: String, CaseIterable, Identifiable, Sendable {
-    case receipt, note, salary, recurring, categories, documents, merchantHistory, rawData
+    case receipt, note, tags, salary, recurring, categories, documents, merchantHistory, rawData
 
     var id: String { rawValue }
 
@@ -13,6 +13,7 @@ enum InspectorSection: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .receipt: "Buchung"
         case .note: "Notiz"
+        case .tags: "Tags"
         case .salary: "Gehalt / Rente"
         case .recurring: "Wiederkehrend"
         case .merchantHistory: "Händler-Historie"
@@ -26,6 +27,7 @@ enum InspectorSection: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .receipt: "doc.text"
         case .note: "note.text"
+        case .tags: "number"
         case .salary: "briefcase"
         case .recurring: "repeat"
         case .merchantHistory: "clock.arrow.circlepath"
@@ -104,8 +106,22 @@ struct InspectorLayout: Equatable, Sendable {
         order.map { hidden.contains($0) ? "-\($0.rawValue)" : $0.rawValue }.joined(separator: ",")
     }
 
+    /// What `UserDefaults` keeps: empty for the standard layout, so a card added in a
+    /// later version takes its standard place (#228) instead of landing at the bottom.
+    var persistedValue: String { isStandard ? "" : storageValue }
+
+    /// Standard layouts of earlier versions, as „Zurücksetzen“ stored them before
+    /// `persistedValue`: read as the current standard.
+    static let formerStandardValues: Set<String> = [
+        "receipt,note,salary,recurring,categories,documents,merchantHistory,rawData", // v0.7.5 (#448)
+    ]
+
     /// Unknown names are skipped; an empty or unreadable value gives the standard layout.
     init(storageValue: String) {
+        if Self.formerStandardValues.contains(storageValue) {
+            self = .standard
+            return
+        }
         var order: [InspectorSection] = []
         var hidden = Set<InspectorSection>()
         for token in storageValue.split(separator: ",") {

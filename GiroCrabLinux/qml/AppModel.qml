@@ -705,9 +705,9 @@ QtObject {
         const b = bookingByID(selectedBookingID)
         if (!b || !b.merchant.key) { merchantStats = null; merchantAccountStats = null; return }
         run(() => {
-            merchantStats = core("merchant_stats", { merchant_key: b.merchant.key })
-            merchantAccountStats = { account_id: b.account_id,
-                                     stats: core("merchant_stats_in_account", { merchant_key: b.merchant.key, account_id: b.account_id }) }
+            const h = core("merchant_history", { merchant_key: b.merchant.key, account_id: b.account_id })
+            merchantStats = h.all
+            merchantAccountStats = { account_id: b.account_id, stats: h.account }
         })
     }
     function reloadSelection(periodChanged) {

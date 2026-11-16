@@ -22,6 +22,7 @@ extension AppModel {
         }
         releaseVaultState()
         allAccountsCollapsed = false
+        expandedCategories = []
         do {
             try AppReset.perform(resources ?? .current())
         } catch {

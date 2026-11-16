@@ -27,6 +27,8 @@ struct BookingInlineDetails: View {
         }
         add("category", String(localized: "Kategorie"),
             booking.categoryPath.isEmpty ? booking.categoryName : booking.categoryPath, hides: .labels)
+        // tag names often name people: hidden like personal data (#228)
+        add("tags", String(localized: "Tags"), booking.tags.map(\.name).joined(separator: ", "))
         add("note", String(localized: "Notiz"), booking.note)
         let transactionType = booking.paymentMethod.isEmpty ? booking.bookingText : booking.paymentMethod
         add("type", String(localized: "Umsatzart"), transactionType)

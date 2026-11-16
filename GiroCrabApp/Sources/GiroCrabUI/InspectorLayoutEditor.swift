@@ -12,6 +12,7 @@ struct InspectorSectionCard: View {
         switch section {
         case .receipt: ReceiptCard(booking: booking)
         case .note: NoteCard(booking: booking).id(booking.id)
+        case .tags: TagsCard(booking: booking).id(booking.id)
         case .salary:
             if booking.amountCents > 0 {
                 SalaryCard(booking: booking)

@@ -12,6 +12,7 @@ import UIKit
 /// "Drucken …" hands the HTML report to the system print panel, which also
 /// offers "Als PDF sichern".
 struct PrintSheet: View {
+    @Environment(\.reportRedaction) private var redaction
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var options = PrintOptions.load()
@@ -153,6 +154,7 @@ struct PrintSheet: View {
                     .appFont(.headline)
                 Text("Einnahmen \(Money.format(totals.incomeCents)) · Ausgaben \(Money.format(totals.expenseCents))")
                     .appFont(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    .sensitive(.amounts)
             }
             Spacer()
             Button("Alle auswählen") { selected.formUnion(visibleRows.map(\.id)) }
@@ -169,13 +171,14 @@ struct PrintSheet: View {
         )) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(r.counterparty).lineLimit(1)
-                    Text("\(DateText.medium(r.date)) · \(r.accountName)")
+                    Text(r.counterparty).lineLimit(1).sensitive()
+                    Text("\(DateText.medium(r.date)) · \(redaction.masking(r.accountName))")
                         .appFont(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
                 Text(Money.format(r.amountCents, currency: r.currency))
                     .monospacedDigit()
+                    .sensitive(.amounts)
                     .foregroundStyle(r.amountCents > 0 ? Theme.inflow : .primary)
             }
         }

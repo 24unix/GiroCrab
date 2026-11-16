@@ -164,6 +164,58 @@ fn demo_documents(conn: &Connection, today: NaiveDate) -> CoreResult<()> {
 pub const MAGIC_DEMO_LOGIN: &str = "demo";
 pub const MAGIC_DEMO_PIN: &str = "12345";
 
+/// A few tags across categories (#228): the car, a trip, the family.
+fn demo_tags(conn: &Connection) -> CoreResult<()> {
+    const TAGS: [(&str, &str, &[&str]); 3] = [
+        (
+            "Auto",
+            "#E67E22",
+            &["Shell Station", "Aral AG", "EnBW%", "Sixt%"],
+        ),
+        ("Urlaub", "#2E86DE", &["Sixt%"]),
+        (
+            "Familie",
+            "#27AE60",
+            &["dm-drogerie markt", "Apotheke am Markt"],
+        ),
+    ];
+    let now = crate::user_groups::now_ms();
+    for (i, (name, color, counterparties)) in TAGS.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO tags(uuid, name, color_hex, sort_order, updated_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                crate::sync_merge::tag_uuid_for_name(name),
+                name,
+                color,
+                i as i64,
+                now
+            ],
+        )?;
+        let tag = conn.last_insert_rowid();
+        for c in *counterparties {
+            conn.execute(
+                "INSERT OR IGNORE INTO transaction_tags(transaction_id, tag_id)
+                 SELECT id, ?1 FROM transactions WHERE counterparty LIKE ?2",
+                params![tag, c],
+            )?;
+        }
+        // the trip: only the long-distance ticket of the train bookings
+        if *name == "Urlaub" {
+            conn.execute(
+                "INSERT OR IGNORE INTO transaction_tags(transaction_id, tag_id)
+                 SELECT id, ?1 FROM transactions WHERE purpose LIKE 'ICE Ticket%'",
+                [tag],
+            )?;
+        }
+    }
+    conn.execute(
+        "UPDATE transactions SET tags_ms = ?1
+          WHERE id IN (SELECT transaction_id FROM transaction_tags)",
+        [now],
+    )?;
+    Ok(())
+}
+
 pub fn is_magic_demo_login(login: &str) -> bool {
     login.trim().eq_ignore_ascii_case(MAGIC_DEMO_LOGIN)
 }
@@ -1909,6 +1961,7 @@ impl Vault {
         crate::opening_balance::calibrate_in(&tx, visa, card)?;
         Vault::apply_rules_inner(&tx, true)?;
         demo_documents(&tx, today)?;
+        demo_tags(&tx)?;
         tx.commit()?;
         Ok(n)
     }
@@ -2079,6 +2132,131 @@ mod tests {
             1
         );
         assert_eq!(of(AssetClass::Commodity, InstrumentKind::EtcEtn, Rule), 1);
+    }
+
+    #[test]
+    fn category_totals_follow_account_and_status_filters() {
+        let dir_dir = crate::test_support::TempDir::new("girocrab-test");
+        let dir = dir_dir.join("v.db");
+        let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let sum = |cats: &[crate::Category]| -> (i64, u32) {
+            cats.iter().filter(|c| c.depth == 0).fold((0, 0), |a, c| {
+                (a.0 + c.total_cents, a.1 + c.transaction_count)
+            })
+        };
+        let all = v.list_categories(None, None).unwrap();
+        // no filter = same as the plain listing
+        let same = v
+            .list_categories_filtered(None, None, vec![], None, crate::BookingDirection::All)
+            .unwrap();
+        assert_eq!(sum(&all), sum(&same));
+        // account filter: the parts add up to the whole
+        let accounts = v.list_accounts().unwrap();
+        let (mut total, mut count) = (0, 0);
+        for a in &accounts {
+            let part = v
+                .list_categories_filtered(
+                    None,
+                    None,
+                    vec![a.id],
+                    None,
+                    crate::BookingDirection::All,
+                )
+                .unwrap();
+            let (t, n) = sum(&part);
+            total += t;
+            count += n;
+        }
+        // uncategorised bookings are not part of the tree, so the parts never exceed the whole
+        assert_eq!((total, count), sum(&all));
+        // status filter: checked + new = everything
+        let (t1, n1) = sum(&v
+            .list_categories_filtered(None, None, vec![], Some(true), crate::BookingDirection::All)
+            .unwrap());
+        let (t0, n0) = sum(&v
+            .list_categories_filtered(
+                None,
+                None,
+                vec![],
+                Some(false),
+                crate::BookingDirection::All,
+            )
+            .unwrap());
+        assert_eq!((t1 + t0, n1 + n0), sum(&all));
+        // direction filter: income + expenses = everything (no zero-amount bookings in the demo)
+        let inc = sum(&v
+            .list_categories_filtered(None, None, vec![], None, crate::BookingDirection::Income)
+            .unwrap());
+        let exp = sum(&v
+            .list_categories_filtered(None, None, vec![], None, crate::BookingDirection::Expense)
+            .unwrap());
+        assert!(inc.0 > 0 && exp.0 < 0);
+        assert_eq!((inc.0 + exp.0, inc.1 + exp.1), sum(&all));
+        // marking everything checked moves all bookings to the "checked" side
+        let ids: Vec<i64> = v
+            .list_transactions(BookingFilter {
+                limit: 1000,
+                ..Default::default()
+            })
+            .unwrap()
+            .transactions
+            .iter()
+            .map(|b| b.id)
+            .collect();
+        v.set_checked_for_ids(ids, true).unwrap();
+        let (_, only_new) = sum(&v
+            .list_categories_filtered(
+                None,
+                None,
+                vec![],
+                Some(false),
+                crate::BookingDirection::All,
+            )
+            .unwrap());
+        assert_eq!(only_new, 0);
+        assert_eq!(
+            sum(&v
+                .list_categories_filtered(
+                    None,
+                    None,
+                    vec![],
+                    Some(true),
+                    crate::BookingDirection::All
+                )
+                .unwrap()),
+            sum(&all)
+        );
+    }
+
+    #[test]
+    fn demo_seed_tags_bookings_across_categories() {
+        let dir = crate::test_support::TempDir::new("girocrab-test");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![7u8; 32],
+        )
+        .unwrap();
+        v.seed_demo_data().unwrap();
+        let tags: Vec<(String, u32)> = v
+            .list_tags()
+            .unwrap()
+            .into_iter()
+            .map(|t| (t.name, t.booking_count))
+            .collect();
+        let names: Vec<&str> = tags.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["Auto", "Urlaub", "Familie"]);
+        assert!(tags.iter().all(|(_, n)| *n > 0), "{tags:?}");
+        // the rental car carries two tags
+        let both = v
+            .list_transactions(crate::models::BookingFilter {
+                tag_ids: v.list_tags().unwrap()[..2].iter().map(|t| t.id).collect(),
+                ..Default::default()
+            })
+            .unwrap()
+            .transactions;
+        assert!(both.iter().any(|b| b.counterparty.starts_with("Sixt")));
+        assert!(both.iter().all(|b| b.tags.len() >= 2));
     }
 
     #[test]

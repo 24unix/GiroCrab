@@ -193,6 +193,35 @@ fn bookings_carry_and_filter_by_tags() {
 }
 
 #[test]
+fn tags_survive_closing_and_reopening_the_vault() {
+    let dir = TempDir::new("tags-reopen");
+    let ids = {
+        let v = open(&dir, "a.db");
+        let ids = seed(&v, 2);
+        let t = v
+            .create_tag("Wandertour".into(), "#C0392B".into())
+            .unwrap()
+            .id;
+        v.set_booking_tags(ids[0], vec![t]).unwrap();
+        ids
+    }; // vault dropped: the file is closed
+    let v = open(&dir, "a.db");
+    let tags = v.list_tags().unwrap();
+    assert_eq!(tags.len(), 1);
+    assert_eq!(
+        (
+            tags[0].name.as_str(),
+            tags[0].color_hex.as_str(),
+            tags[0].booking_count
+        ),
+        ("Wandertour", "#C0392B", 1)
+    );
+    assert_eq!(names(&v, "T1"), ["Wandertour"]);
+    assert!(names(&v, "T2").is_empty());
+    assert_eq!(id_of(&v, "T1"), ids[0]);
+}
+
+#[test]
 fn large_and_small_pages_load_the_same_tags() {
     let dir = TempDir::new("tags-large");
     let v = open(&dir, "a.db");

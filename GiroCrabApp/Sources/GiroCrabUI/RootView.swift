@@ -128,6 +128,8 @@ public struct GiroCrabScenes: Scene {
                     .disabled(!model.canMarkAllChecked)
                 Button("Notiz bearbeiten") { if let b = model.selectedBooking { model.editNote(for: b) } }
                     .disabled(model.selectedBooking == nil)
+                Button("Tags bearbeiten") { if let b = model.selectedBooking { model.editTags(for: b) } }
+                    .disabled(model.selectedBooking == nil)
                 // like the Finder (⌘Y); Space in the list does the same
                 Button("Beleg in Quick Look anzeigen") {
                     if let b = model.selectedBooking, let d = model.documents(for: b).first { model.quickLook(d) }
@@ -178,8 +180,11 @@ public struct GiroCrabScenes: Scene {
                     Button("Mitteilungen …") { openWindow(id: "announcements") }
                     Divider()
                     // #301: redacted screenshot + scrubbed diagnostics, then a prefilled issue.
+                    // While the report window is open, its "Neu aufnehmen" is
+                    // the way to refresh the picture (markings would be lost).
                     Button("Problem melden …") { openWindow(id: "bug-report") }
                         .keyboardShortcut("b", modifiers: [.command, .option])
+                        .disabled(model.isReportOpen)
                     Divider()
                     Link("Webseite & Dokumentation (girocrab.de)", destination: HelpLinks.website)
                     Link("Fehler melden / Issue erstellen (GitHub)", destination: HelpLinks.issues)
@@ -269,10 +274,14 @@ public struct GiroCrabScenes: Scene {
         .defaultSize(width: 640, height: 720)
         Settings {
             // HIG: the Settings window fits each tab (SettingsView sizes them).
+            // `reportCapturable`: "Problem melden" draws the Settings window
+            // (a window of its own, like a sheet) over the main window, so its
+            // views get the same redaction and mark personal data.
             SettingsView()
                 .environment(model)
                 .appTextSize(textSize.effective)
                 .preferredColorScheme(appearance.colorScheme)
+                .reportCapturable()
         }
         #endif
     }
@@ -293,12 +302,17 @@ public struct GiroCrabRootView: View {
         #endif
     }()
     @Environment(\.scenePhase) private var scenePhase
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
     /// iOS cold start: keep the animated crab visible for ~1 s, even when the vault
     /// is ready earlier. Only the view is held back; `bootstrap()` runs immediately.
     #if os(iOS)
     @State private var splashHold = true
     #else
     @State private var splashHold = false
+    /// `--demo-sheet report`: the report window was opened (see `MainSplitView`).
+    @State private var demoReportShown = false
     #endif
 
     @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
@@ -333,9 +347,30 @@ public struct GiroCrabRootView: View {
                 MainSplitView()
                     // the only window the bug report may capture; inside the
                     // redaction environment, so it can report what was built
-                    .background(MainWindowTracker())
+                    .background(ReportWindowTracker(role: .main))
                     .environment(\.reportRedaction, model.reportRedaction.union(LaunchOptions.current.redaction))
                     .onAppear { StartupClock.mark("MainSplitView appear") }
+                    #if os(macOS)
+                    // screenshots: --demo-sheet report[:<sheet>] captures the open
+                    // view or demo sheet, as "Problem melden" would; once, also
+                    // after a lock/unlock brings this view back
+                    .task(id: model.options.demoSheet) {
+                        guard model.options.demoSheetOpensReport, !demoReportShown else { return }
+                        demoReportShown = true
+                        try? await Task.sleep(for: .milliseconds(2400))
+                        openWindow(id: "bug-report")
+                    }
+                    #endif
+                    #if os(iOS)
+                    .onDisappear {
+                        // #384: a pick with no scene left to pick in ends (iPad:
+                        // scenes closed). Checked after this update, once the
+                        // closed scene's views are gone.
+                        Task { @MainActor in
+                            if model.reportPick != nil, !BugReport.hasMainWindow { model.reportPick = nil }
+                        }
+                    }
+                    #endif
                     // Asked only once the vault is open, so it never competes with Touch ID.
                     .modifier(SystemLanguageChangedAlert(newLanguage: Binding(
                         get: { if case .systemChanged(let to) = languageQuestion { to } else { nil } },
@@ -400,9 +435,11 @@ struct SplashView: View {
                 BrandCrabLogo()
                 ProgressView().tint(.white).offset(y: BrandBackdrop.logoSize * 0.5 + 44)
             } else {
-                Theme.canvas.ignoresSafeArea()
-                StartLogo()
-                ProgressView().offset(y: 96)
+                MacLaunchBackground()
+                VStack(spacing: 20) {
+                    MacHeroIcon(phase: .idle)
+                    ProgressView()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -530,13 +567,16 @@ struct LockView: View {
     }
 
     private var standardBody: some View {
-        VStack(spacing: 18) {
-            AnimatedCrabLogoView(size: 120, phase: crabPhase)
+        VStack(spacing: 16) {
+            MacHeroIcon(phase: crabPhase)
+                .padding(.bottom, -22)
             Text("GiroCrab ist gesperrt")
                 .appFont(.title, weight: .bold)
             Text("Ihre Buchungen liegen in einem verschlüsselten Tresor.\nDer Schlüssel verlässt nie den Schlüsselbund dieses Geräts.")
+                .appFont(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Theme.secondary)
+                .padding(.bottom, 6)
             Button {
                 model.unlock()
             } label: {
@@ -573,7 +613,7 @@ struct LockView: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.canvas)
+        .background(MacLaunchBackground())
     }
 }
 
@@ -703,15 +743,15 @@ struct MainSplitView: View {
             openSettings()
         }
         #endif
-        .sheet(isPresented: $model.showGroupManager) {
+        .capturableSheet(isPresented: $model.showGroupManager) {
             GroupManagerSheet()
                 .environment(model)
         }
-        .sheet(isPresented: $model.showRuleEditor) {
+        .capturableSheet(isPresented: $model.showRuleEditor) {
             RuleEditorView(initialDraft: model.ruleDraft)
                 .environment(model)
         }
-        .sheet(isPresented: $model.showCommandPalette, onDismiss: {
+        .capturableSheet(isPresented: $model.showCommandPalette, onDismiss: {
             // Follow-up sheet/popover chosen in the palette: opened once the
             // palette is really gone, instead of after a guessed delay.
             let next = model.afterPaletteDismiss
@@ -721,38 +761,38 @@ struct MainSplitView: View {
             CommandPaletteView()
                 .environment(model)
         }
-        .sheet(item: $model.accountSelectionConnection) { c in
+        .capturableSheet(item: $model.accountSelectionConnection) { c in
             AccountSelectionSheet(connection: c)
                 .environment(model)
         }
-        .sheet(isPresented: $model.showAddBank) {
+        .capturableSheet(isPresented: $model.showAddBank) {
             AddBankSheet()
                 .environment(model)
         }
-        .sheet(isPresented: $model.showMoneyMoneyImport) {
+        .capturableSheet(isPresented: $model.showMoneyMoneyImport) {
             MoneyMoneyImportSheet()
                 .environment(model)
         }
-        .sheet(isPresented: $model.showRecurringSheet) {
+        .capturableSheet(isPresented: $model.showRecurringSheet) {
             RecurringSheet()
                 .environment(model)
         }
-        .sheet(item: $model.customRecurringBooking) { b in
+        .capturableSheet(item: $model.customRecurringBooking) { b in
             CustomDatesSheet(initialDates: model.recurringSeries(for: b).flatMap { $0.interval == .custom ? $0.customDates : nil } ?? []) { dates in
                 model.markRecurring(b, .custom, customDates: dates)
             }
             .environment(model)
         }
-        .sheet(isPresented: $model.showCategorizer) {
+        .capturableSheet(isPresented: $model.showCategorizer) {
             CategorizerSheet()
                 .environment(model)
         }
-        .sheet(isPresented: $model.showBatchSheet) {
+        .capturableSheet(isPresented: $model.showBatchSheet) {
             BatchTransferSheet()
                 .environment(model)
                 .interactiveDismissDisabled(model.transferBusy)
         }
-        .sheet(isPresented: $model.showStandingSheet) {
+        .capturableSheet(isPresented: $model.showStandingSheet) {
             StandingOrderSheet()
                 .environment(model)
                 .interactiveDismissDisabled(model.transferBusy)
@@ -762,25 +802,25 @@ struct MainSplitView: View {
         } message: {
             Text("Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Bitte zuerst im Online-Banking prüfen, ob der Dauerauftrag angelegt, geändert oder gelöscht wurde, bevor Sie es erneut versuchen.\n\nBank: \(model.standingUnknown ?? "")")
         }
-        .sheet(isPresented: $model.showTransferSheet) {
+        .capturableSheet(isPresented: $model.showTransferSheet) {
             TransferSheetView()
                 .environment(model)
                 .interactiveDismissDisabled(model.transferBusy)
         }
-        .sheet(isPresented: Binding(get: { model.splitBooking != nil }, set: { if !$0 { model.splitBooking = nil } })) {
+        .capturableSheet(isPresented: Binding(get: { model.splitBooking != nil }, set: { if !$0 { model.splitBooking = nil } })) {
             if let b = model.splitBooking { SplitSheet(booking: b).environment(model) }
         }
-        .sheet(item: $model.payeeCheck) { _ in
+        .capturableSheet(item: $model.payeeCheck) { _ in
             PayeeCheckSheet()
                 .environment(model)
                 .interactiveDismissDisabled()
         }
-        .sheet(item: $model.activeChallenge) { _ in
+        .capturableSheet(item: $model.activeChallenge) { _ in
             TwoFactorSheet()
                 .environment(model)
                 .interactiveDismissDisabled()
         }
-        .sheet(item: $model.webLoginConnection) { c in
+        .capturableSheet(item: $model.webLoginConnection) { c in
             Group {
                 if c.connector == .tradeRepublic { WebLoginSheet(connection: c) }
                 else if c.connector == .amazonOrders { AmazonWebSheet(connection: c) }
@@ -790,16 +830,16 @@ struct MainSplitView: View {
             }
             .environment(model)
         }
-        .sheet(item: $model.setupRequest) { req in
+        .capturableSheet(item: $model.setupRequest) { req in
             BankSetupSheet(request: req)
                 .environment(model)
         }
-        .sheet(item: $model.pendingLogin) { login in
+        .capturableSheet(item: $model.pendingLogin) { login in
             PinSheet(connection: login.connection)
                 .environment(model)
         }
         #if os(iOS)
-        .sheet(isPresented: $model.showSettings) {
+        .capturableSheet(isPresented: $model.showSettings) {
             NavigationStack { SettingsView() }
                 .environment(model)
         }
@@ -872,15 +912,45 @@ struct MainSplitView: View {
     }
 }
 
-/// Start logo in a Mac window (iOS: `BrandCrabLogo` on the brand backdrop, like `LaunchLogo`).
-private struct StartLogo: View {
+/// Full-window background of the Mac start and lock screen: soft light surface (#F8FAFC to #EEF2F6)
+/// in Light Mode, deep slate navy (#0B1120 to #162033) in Dark Mode.
+struct MacLaunchBackground: View {
+    @Environment(\.colorScheme) private var scheme
+
     var body: some View {
-        // Square #263040 (no squircle corners), crab on top.
+        LinearGradient(
+            colors: scheme == .dark
+                ? [Color(hex: 0x0B1120), Color(hex: 0x162033)]
+                : [Color(hex: 0xF8FAFC), Color(hex: 0xEEF2F6)],
+            startPoint: .top, endPoint: .bottom
+        )
+        .ignoresSafeArea()
+    }
+}
+
+/// Hero icon for start and lock screen in a Mac window: the cut-out crab (no app-icon squircle),
+/// 270 pt wide, with a soft contact shadow; in Dark Mode with a subtle ambient glow.
+struct MacHeroIcon: View {
+    var phase: AnimatedCrabLogoView.Phase
+    var size: CGFloat = 270
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let dark = scheme == .dark
         ZStack {
-            Rectangle().fill(Color(red: 0x26 / 255, green: 0x30 / 255, blue: 0x40 / 255))
-            AnimatedCrabLogoView(size: 120, phase: .idle, showBackgroundSquircle: false)
+            if dark {
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [Color(hex: 0x3B4C6B, opacity: 0.45), Color(hex: 0x3B4C6B, opacity: 0)],
+                        center: .center, startRadius: size * 0.1, endRadius: size * 0.95))
+                    .frame(width: size * 2, height: size * 2)
+                    .allowsHitTesting(false)
+            }
+            AnimatedCrabLogoView(size: size, phase: phase, showBackgroundSquircle: false)
+                .shadow(color: .black.opacity(dark ? 0.45 : 0.20), radius: size * 0.074, x: 0, y: size * 0.063)
+                .shadow(color: .black.opacity(dark ? 0.30 : 0.10), radius: size * 0.016, x: 0, y: size * 0.011)
         }
-        .frame(width: 120, height: 120)
+        .frame(width: size * 1.3, height: size * 1.3)
     }
 }
 
