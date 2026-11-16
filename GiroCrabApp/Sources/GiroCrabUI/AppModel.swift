@@ -274,6 +274,10 @@ public final class AppModel {
     var settingsRequested = false
     /// "Gruppen bearbeiten …": the account-group editor sheet (list, details, accounts).
     var showGroupManager = false
+    /// Konten › Tags verwalten … (⇧⌘T) and the tag card's „Verwalten …“: the tag sheet (#228).
+    var showTagManager = false
+    /// The tag sheet's unsaved names, colours and order.
+    var tagDraft = TagDraft()
     /// (demo, `--demo-settings banks:edit|banks:add`) sheet the bank settings open on appear.
     var demoSettingsSheet: String?
     /// The one group dialog on screen (new / rename / delete / move account).
@@ -718,6 +722,9 @@ public final class AppModel {
                     if name == "collection-files" { self.buildCollection(dueDate: Date().addingTimeInterval(5 * 86_400)) }
                 }
             }
+        case "tags":
+            // Konten › Tags verwalten … (#228)
+            showTagManager = true
         case "account-selection":
             // choice of accounts another login already delivers (#346)
             accountSelectionConnection = connections.last
@@ -1293,6 +1300,8 @@ public final class AppModel {
 
     func lock() {
         guard holdsRealData else { return }
+        // an open tag sheet keeps what it changed
+        if showTagManager { applyTagDraft() }
         demoDismissedLock = true
         releaseVaultState()
         vaultState = .locked
@@ -1319,7 +1328,7 @@ public final class AppModel {
         ownVault = nil
         demoActive = false
         vault = nil
-        groups = []; userGroups = []; accountsByID = [:]; accountMarkers = [:]; bookings = []; categories = []; categoryTree = []; rules = []; tags = []; connections = []; settings = []
+        groups = []; userGroups = []; accountsByID = [:]; accountMarkers = [:]; bookings = []; categories = []; categoryTree = []; rules = []; tags = []; showTagManager = false; tagDraft = TagDraft(); connections = []; settings = []
         page = nil; dashboard = nil; merchantStats = nil; merchantAccountStats = nil; logoCache = [:]
     }
 

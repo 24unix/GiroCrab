@@ -164,23 +164,69 @@ fn demo_documents(conn: &Connection, today: NaiveDate) -> CoreResult<()> {
 pub const MAGIC_DEMO_LOGIN: &str = "demo";
 pub const MAGIC_DEMO_PIN: &str = "12345";
 
-/// A few tags across categories (#228): the car, a trip, the family.
+/// Tags across categories (#228), enough to try the tag sheet with: the car and
+/// a trip share the rental car; two tags have no bookings (one with a long name).
+/// Each: name, colour, counterparty patterns, purpose patterns (SQL `LIKE`).
+type DemoTag = (
+    &'static str,
+    &'static str,
+    &'static [&'static str],
+    &'static [&'static str],
+);
+
+const DEMO_TAGS: [DemoTag; 12] = [
+    (
+        "Auto",
+        "#E67E22",
+        &["Shell Station", "Aral AG", "EnBW%", "Sixt%"],
+        &[],
+    ),
+    ("Urlaub", "#2E86DE", &["Sixt%"], &["ICE Ticket%"]),
+    (
+        "Familie",
+        "#27AE60",
+        &["dm-drogerie markt", "Apotheke am Markt"],
+        &[],
+    ),
+    (
+        "Abos",
+        "#8E44AD",
+        &["Spotify%", "Netflix%", "Apple Distribution%"],
+        &[],
+    ),
+    (
+        "Wohnung",
+        "#16A085",
+        &["Hausverwaltung%", "Telekom%", "IKEA%"],
+        &[],
+    ),
+    (
+        "Lebensmittel",
+        "#D4AC0D",
+        &["REWE%", "Lidl%", "EDEKA%", "Alnatura%", "Bäckerei%"],
+        &[],
+    ),
+    ("Pendeln", "#7F8C8D", &[], &["Deutschlandticket%"]),
+    ("Online bestellt", "#C0392B", &["Amazon%"], &[]),
+    (
+        "Versicherungen",
+        "#2E86DE",
+        &["Allianz%", "Techniker%"],
+        &[],
+    ),
+    ("Steuern", "#C0392B", &["Finanzamt%", "ARD ZDF%"], &[]),
+    ("Umzug 2027", "#16A085", &[], &[]),
+    (
+        "Steuererklärung 2026 – Belege für das Finanzamt sammeln",
+        "#8E44AD",
+        &[],
+        &[],
+    ),
+];
+
 fn demo_tags(conn: &Connection) -> CoreResult<()> {
-    const TAGS: [(&str, &str, &[&str]); 3] = [
-        (
-            "Auto",
-            "#E67E22",
-            &["Shell Station", "Aral AG", "EnBW%", "Sixt%"],
-        ),
-        ("Urlaub", "#2E86DE", &["Sixt%"]),
-        (
-            "Familie",
-            "#27AE60",
-            &["dm-drogerie markt", "Apotheke am Markt"],
-        ),
-    ];
     let now = crate::user_groups::now_ms();
-    for (i, (name, color, counterparties)) in TAGS.iter().enumerate() {
+    for (i, (name, color, counterparties, purposes)) in DEMO_TAGS.iter().enumerate() {
         conn.execute(
             "INSERT INTO tags(uuid, name, color_hex, sort_order, updated_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![
@@ -192,20 +238,16 @@ fn demo_tags(conn: &Connection) -> CoreResult<()> {
             ],
         )?;
         let tag = conn.last_insert_rowid();
-        for c in *counterparties {
-            conn.execute(
-                "INSERT OR IGNORE INTO transaction_tags(transaction_id, tag_id)
-                 SELECT id, ?1 FROM transactions WHERE counterparty LIKE ?2",
-                params![tag, c],
-            )?;
-        }
-        // the trip: only the long-distance ticket of the train bookings
-        if *name == "Urlaub" {
-            conn.execute(
-                "INSERT OR IGNORE INTO transaction_tags(transaction_id, tag_id)
-                 SELECT id, ?1 FROM transactions WHERE purpose LIKE 'ICE Ticket%'",
-                [tag],
-            )?;
+        for (column, patterns) in [("counterparty", counterparties), ("purpose", purposes)] {
+            for pattern in patterns.iter() {
+                conn.execute(
+                    &format!(
+                        "INSERT OR IGNORE INTO transaction_tags(transaction_id, tag_id)
+                         SELECT id, ?1 FROM transactions WHERE {column} LIKE ?2"
+                    ),
+                    params![tag, pattern],
+                )?;
+            }
         }
     }
     conn.execute(
@@ -2697,8 +2739,26 @@ mod tests {
             .map(|t| (t.name, t.booking_count))
             .collect();
         let names: Vec<&str> = tags.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(names, ["Auto", "Urlaub", "Familie"]);
-        assert!(tags.iter().all(|(_, n)| *n > 0), "{tags:?}");
+        assert_eq!(names.len(), DEMO_TAGS.len());
+        assert_eq!(names[..3], ["Auto", "Urlaub", "Familie"]);
+        // every tag with patterns finds bookings; the last two stay unused
+        for ((name, n), (_, _, cps, purposes)) in tags.iter().zip(DEMO_TAGS.iter()) {
+            assert_eq!(
+                *n > 0,
+                !cps.is_empty() || !purposes.is_empty(),
+                "{name}: {n}"
+            );
+        }
+        // only the rental car carries two tags
+        let all = v
+            .list_transactions(Default::default())
+            .unwrap()
+            .transactions;
+        let doubles: Vec<_> = all.iter().filter(|b| b.tags.len() > 1).collect();
+        assert!(
+            doubles.iter().all(|b| b.counterparty.starts_with("Sixt")),
+            "{doubles:?}"
+        );
         // the rental car carries two tags
         let both = v
             .list_transactions(crate::models::BookingFilter {

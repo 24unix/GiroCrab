@@ -977,6 +977,28 @@
         }
       }
     },
+    "%lld Tags löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete %lld Tags …"
+          }
+        }
+      }
+    },
+    "%lld Tags löschen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete %lld tags?"
+          }
+        }
+      }
+    },
     "%lld Treffer" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1259,6 +1281,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld new bookings"
+          }
+        }
+      }
+    },
+    "%lld ungenutzte Tags entfernen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove %lld unused tags?"
           }
         }
       }
@@ -2240,6 +2273,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1 week"
+          }
+        }
+      }
+    },
+    "1 ungenutzten Tag entfernen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove 1 unused tag?"
           }
         }
       }
@@ -4853,6 +4897,28 @@
         }
       }
     },
+    "Ausgewählte Tags löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Selected Tags …"
+          }
+        }
+      }
+    },
+    "Ausgewählte Tags zu einem vereinen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Combine the selected tags into one"
+          }
+        }
+      }
+    },
     "Ausgewählte Zeilen entfernen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6862,6 +6928,17 @@
         }
       }
     },
+    "Bleibt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stays"
+          }
+        }
+      }
+    },
     "Blendet Saldoverlauf, Cashflow und Budgets über der Buchungsliste aus. Auch im Menü Ansicht umschaltbar." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8563,6 +8640,39 @@
         }
       }
     },
+    "Der Tag ist %u Buchungen zugeordnet und wird bei allen entfernt. Die Buchungen bleiben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The tag is on %u bookings and will be removed from all of them. The bookings stay."
+          }
+        }
+      }
+    },
+    "Der Tag ist einer Buchung zugeordnet und wird dort entfernt. Die Buchung bleibt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The tag is on one booking and will be removed from it. The booking stays."
+          }
+        }
+      }
+    },
+    "Der Tag ist keiner Buchung zugeordnet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The tag is not on any booking."
+          }
+        }
+      }
+    },
     "Der Tagessaldo ist der Kontostand am Ende des Tages, unabhängig von der Auswahl." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9284,6 +9394,17 @@
         }
       }
     },
+    "Die Tags werden bei allen Buchungen entfernt. Die Buchungen bleiben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The tags will be removed from all bookings. The bookings stay."
+          }
+        }
+      }
+    },
     "Die Teilbeträge müssen zusammen %@ ergeben (Restbetrag: %@), erst dann lässt sich speichern." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9544,6 +9665,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "These accounts are no longer included in the consent. Their bookings are kept; delete an account yourself if you no longer need it."
+          }
+        }
+      }
+    },
+    "Diese Tags sind keiner Buchung zugeordnet." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "These tags are not on any booking."
           }
         }
       }
@@ -10381,6 +10513,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "An account belongs to at most one group. Drag accounts onto another group on the left."
+          }
+        }
+      }
+    },
+    "Ein Tag bleibt und übernimmt die Buchungen der anderen. Um einen anderen zu behalten, klicken Sie ihn an." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One tag stays and takes over the bookings of the others. To keep a different one, click it."
           }
         }
       }
@@ -11617,6 +11760,17 @@
         }
       }
     },
+    "Farbe ändern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change Colour"
+          }
+        }
+      }
+    },
     "Farbe: unrealisierte GuV" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -12608,6 +12762,34 @@
         }
       }
     },
+    "Gehen in „%@“ auf (%lld)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Gehen in „%1$@“ auf (%2$lld)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Go into “%1$@” (%2$lld)"
+          }
+        }
+      }
+    },
+    "Geht in „%@“ auf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Goes into “%@”"
+          }
+        }
+      }
+    },
     "Gelb" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13418,6 +13600,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Google"
+          }
+        }
+      }
+    },
+    "Grau" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grey"
           }
         }
       }
@@ -18210,6 +18403,17 @@
         }
       }
     },
+    "Meiste Buchungen zuerst" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Most Bookings First"
+          }
+        }
+      }
+    },
     "Melden Sie sich bei Amazon an (Passwort, Captcha, 2FA wie gewohnt)." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18382,6 +18586,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "At least %lld characters. Without this password the backup cannot be opened – not even by GiroCrab."
+          }
+        }
+      }
+    },
+    "Mindestens zwei Tags auswählen (⌘-Klick)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select at least two tags (⌘-click)"
           }
         }
       }
@@ -18855,6 +19070,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "By Account Type"
+          }
+        }
+      }
+    },
+    "Nach Name" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "By Name"
           }
         }
       }
@@ -19377,6 +19603,17 @@
         }
       }
     },
+    "Neue Namen, Farben und die Reihenfolge gelten, sobald Sie schließen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New names, colours and the order apply once you close."
+          }
+        }
+      }
+    },
     "Neue Regel" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19564,6 +19801,17 @@
         }
       }
     },
+    "Neuer Tag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Tag"
+          }
+        }
+      }
+    },
     "Neuer Tag …" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19571,6 +19819,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "New Tag …"
+          }
+        }
+      }
+    },
+    "Neuer Tag … (⌘N)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Tag … (⌘N)"
           }
         }
       }
@@ -20125,6 +20384,17 @@
         }
       }
     },
+    "Noch keine Tags" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Tags Yet"
+          }
+        }
+      }
+    },
     "Noch keine wiederkehrenden Buchungen erkannt. Sie können eine Buchung in der Detailansicht als wiederkehrend markieren." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20655,6 +20925,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Or drop an invoice here"
+          }
+        }
+      }
+    },
+    "Oder Tags in der Liste ziehen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Or drag tags in the list."
           }
         }
       }
@@ -23490,6 +23771,17 @@
         }
       }
     },
+    "Sortieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sort"
+          }
+        }
+      }
+    },
     "Sortieren nach" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -23948,6 +24240,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Statistics"
+          }
+        }
+      }
+    },
+    "Stattdessen diesen Tag behalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep this tag instead"
           }
         }
       }
@@ -24766,6 +25069,39 @@
         }
       }
     },
+    "Tag löschen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Tag"
+          }
+        }
+      }
+    },
+    "Tag löschen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Tag …"
+          }
+        }
+      }
+    },
+    "Tag umbenennen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename Tag"
+          }
+        }
+      }
+    },
     "Tage" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24872,6 +25208,61 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Edit Tags"
+          }
+        }
+      }
+    },
+    "Tags durchsuchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search Tags"
+          }
+        }
+      }
+    },
+    "Tags vergeben Sie in der rechten Seitenleiste einer Buchung oder per Rechtsklick in der Buchungsliste." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add tags in the right sidebar of a booking or by right-clicking in the booking list."
+          }
+        }
+      }
+    },
+    "Tags verwalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage Tags"
+          }
+        }
+      }
+    },
+    "Tags verwalten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage Tags …"
+          }
+        }
+      }
+    },
+    "Tags zusammenführen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merge Tags"
           }
         }
       }
@@ -25393,6 +25784,17 @@
         }
       }
     },
+    "Türkis" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turquoise"
+          }
+        }
+      }
+    },
     "Uhr" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25653,6 +26055,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unknown format"
+          }
+        }
+      }
+    },
+    "Ungenutzte entfernen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove Unused …"
           }
         }
       }
@@ -26231,6 +26644,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Contract"
+          }
+        }
+      }
+    },
+    "Verwalten …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage …"
           }
         }
       }
@@ -26972,6 +27396,17 @@
         }
       }
     },
+    "Weitere Farben aus dem Farbfenster" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More colours from the Colours window"
+          }
+        }
+      }
+    },
     "Weitere Optionen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27045,6 +27480,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Show Less"
+          }
+        }
+      }
+    },
+    "Wenigste Buchungen zuerst" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fewest Bookings First"
           }
         }
       }
@@ -28028,6 +28474,17 @@
         }
       }
     },
+    "Zum Verschieben ziehen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag to move"
+          }
+        }
+      }
+    },
     "Zuordnung aufgehoben" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28156,6 +28613,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Merge"
+          }
+        }
+      }
+    },
+    "Zusammenführen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merge …"
           }
         }
       }
@@ -29152,6 +29620,17 @@
         }
       }
     },
+    "Ähnlich wie „%@“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Similar to “%@”."
+          }
+        }
+      }
+    },
     "Ältere Abrechnungen laden" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29559,6 +30038,40 @@
         }
       }
     },
+    "„%@“ bleibt und übernimmt die Buchungen der anderen %lld Tags. Diese werden danach gelöscht. Das lässt sich nicht widerrufen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "„%1$@“ bleibt und übernimmt die Buchungen der anderen %2$lld Tags. Diese werden danach gelöscht. Das lässt sich nicht widerrufen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” stays and takes over the bookings of the other %2$lld tags. They are deleted afterwards. This cannot be undone."
+          }
+        }
+      }
+    },
+    "„%@“ bleibt und übernimmt die Buchungen von „%@“. „%@“ wird danach gelöscht. Das lässt sich nicht widerrufen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "„%1$@“ bleibt und übernimmt die Buchungen von „%2$@“. „%3$@“ wird danach gelöscht. Das lässt sich nicht widerrufen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” stays and takes over the bookings of “%2$@”. “%3$@” is deleted afterwards. This cannot be undone."
+          }
+        }
+      }
+    },
     "„%@“ dem Darlehen „%@“ zugeordnet" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29610,6 +30123,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remove “%@”?"
+          }
+        }
+      }
+    },
+    "„%@“ gibt es schon." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” already exists."
+          }
+        }
+      }
+    },
+    "„%@“ gibt es schon. Um beide zu vereinen: „Zusammenführen …“." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” already exists. To combine both: “Merge …”."
           }
         }
       }
@@ -29969,6 +30504,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "⌘A (select all transactions)"
+          }
+        }
+      }
+    },
+    "⌘N Neuer Tag · ↩ Umbenennen · ⌫ Löschen · esc Auswahl aufheben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⌘N New Tag · ↩ Rename · ⌫ Delete · esc Deselect"
           }
         }
       }

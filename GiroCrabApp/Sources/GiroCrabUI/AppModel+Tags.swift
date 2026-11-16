@@ -149,6 +149,185 @@ extension AppModel {
         if var s = stickyBooking, ids.contains(s.id) { patch(&s); stickyBooking = s }
     }
 
+    // MARK: Tag management window (#228, part 2b)
+
+    /// What „Umbenennen“ would do with `text` for tag `id` (hint below the field).
+    static func tagRenameIntent(_ text: String, tags: [GiroCrabCore.Tag], renaming id: Int64) -> TagRenameIntent {
+        let name = cleanTagName(text)
+        if name.isEmpty { return .empty }
+        if name.unicodeScalars.count > maxTagNameLength { return .tooLong }
+        let current = tags.first { $0.id == id }
+        if current?.name == name { return .unchanged }
+        let key = tagKey(name)
+        if let other = tags.first(where: { $0.id != id && tagKey($0.name) == key }) { return .taken(other.name) }
+        let loose = tagLookAlikeKey(name)
+        if current.map({ tagKey($0.name) }) != key, !loose.isEmpty,
+           let alike = tags.first(where: { $0.id != id && tagLookAlikeKey($0.name) == loose }) {
+            return .similar(new: name, existing: alike.name)
+        }
+        return .rename(name)
+    }
+
+    /// Tags without bookings („Ungenutzte entfernen“).
+    var unusedTags: [GiroCrabCore.Tag] { tags.filter { $0.bookingCount == 0 } }
+
+    /// A new tag from the window; nil when the name is empty or taken (the sheet says so first).
+    @discardableResult
+    func createTag(named name: String) -> GiroCrabCore.Tag? {
+        guard case .create = Self.tagEntryIntent(name, tags: tags, carried: []) else {
+            if case .similar = Self.tagEntryIntent(name, tags: tags, carried: []) { return tag(named: name) }
+            return nil
+        }
+        return tag(named: name)
+    }
+
+    @discardableResult
+    func renameTag(_ id: Int64, to name: String) -> Bool {
+        guard let vault else { return false }
+        do { _ = try vault.renameTag(id: id, name: Self.cleanTagName(name)) } catch {
+            errorMessage = describe(error)
+            return false
+        }
+        afterTagEdit()
+        return true
+    }
+
+    func setTagColor(_ id: Int64, hex: String) {
+        guard let vault else { return }
+        runCore { try vault.setTagColor(id: id, colorHex: hex) }
+        afterTagEdit()
+    }
+
+    /// Drag in the window: the new order of all tags.
+    /// The tag sheet's arrangement for the tags there now: `pending` without the
+    /// tags gone since, the tags new since then after it (in their stored order).
+    static func tagOrder(_ pending: [Int64], tags: [GiroCrabCore.Tag]) -> [Int64] {
+        let live = Set(tags.map(\.id)), listed = Set(pending)
+        return pending.filter(live.contains) + tags.map(\.id).filter { !listed.contains($0) }
+    }
+
+    /// „Sortieren › Nach Name“.
+    static func tagIDsByName(_ tags: [GiroCrabCore.Tag]) -> [Int64] {
+        tags.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }.map(\.id)
+    }
+
+    /// „Sortieren › Meiste / Wenigste Buchungen zuerst“; equal counts by name.
+    static func tagIDsByBookings(_ tags: [GiroCrabCore.Tag], mostFirst: Bool) -> [Int64] {
+        tags.sorted { a, b in
+            if a.bookingCount != b.bookingCount { return mostFirst ? a.bookingCount > b.bookingCount : a.bookingCount < b.bookingCount }
+            return a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }.map(\.id)
+    }
+
+    /// The tags as the tag sheet shows them: with its unsaved names and colours.
+    static func tagsDrafted(_ tags: [GiroCrabCore.Tag], _ draft: TagDraft) -> [GiroCrabCore.Tag] {
+        guard !draft.renames.isEmpty || !draft.colors.isEmpty else { return tags }
+        return tags.map { t in
+            var t = t
+            if let name = draft.renames[t.id] { t.name = name }
+            if let hex = draft.colors[t.id] { t.colorHex = hex }
+            return t
+        }
+    }
+
+    /// Stores the tag sheet's draft (on dismissing it) and clears it.
+    func applyTagDraft() {
+        let draft = tagDraft
+        tagDraft = TagDraft()
+        guard !draft.isEmpty, let vault else { return }
+        if !draft.renames.isEmpty { applyTagRenames(draft.renames) }
+        let live = Dictionary(tags.map { ($0.id, $0.colorHex) }, uniquingKeysWith: { a, _ in a })
+        let colors = draft.colors.filter { live[$0.key] != nil && live[$0.key] != $0.value }
+        if !colors.isEmpty {
+            runCore { for (id, hex) in colors { try vault.setTagColor(id: id, colorHex: hex) } }
+            afterTagEdit()
+        }
+        if let order = draft.order { applyTagOrder(order) }
+    }
+
+    /// Stores the names the tag sheet gave (on closing it). The core refuses a
+    /// name another tag still has, so a rename waits until its name is free;
+    /// names that only swap places go through a temporary name. A name held by
+    /// a tag outside the sheet's changes (synced in meanwhile) is reported.
+    @discardableResult
+    func applyTagRenames(_ renames: [Int64: String]) -> Bool {
+        guard let vault else { return false }
+        var names = Dictionary(tags.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+        var pending: [Int64: String] = [:]
+        for (id, name) in renames {
+            let clean = Self.cleanTagName(name)
+            if let stored = names[id], stored != clean, !clean.isEmpty { pending[id] = clean }
+        }
+        var ok = true
+        func rename(_ id: Int64, _ name: String) {
+            do {
+                _ = try vault.renameTag(id: id, name: name)
+                names[id] = name
+            } catch {
+                errorMessage = describe(error)
+                ok = false
+            }
+        }
+        func blockers(_ id: Int64) -> [Int64] {
+            let key = Self.tagKey(pending[id] ?? "")
+            return names.filter { $0.key != id && Self.tagKey($0.value) == key }.map(\.key)
+        }
+        while !pending.isEmpty {
+            let ids = pending.keys.sorted()
+            if let id = ids.first(where: { blockers($0).isEmpty }) {
+                rename(id, pending[id] ?? "")
+                pending[id] = nil
+            } else if let id = ids.first(where: { blockers($0).allSatisfy { pending[$0] != nil } }) {
+                // a swap: park the tag that blocks this one under a free name
+                let parked = blockers(id)[0]
+                rename(parked, "~\(parked)-\(UUID().uuidString.prefix(8))")
+                if !ok { pending[parked] = nil }
+            } else if let id = ids.first {
+                rename(id, pending[id] ?? "") // refused by the core: reports the clash
+                pending[id] = nil
+            }
+        }
+        afterTagEdit()
+        return ok
+    }
+
+    /// Stores the order the tag sheet arranged (on closing it).
+    func applyTagOrder(_ ids: [Int64]) {
+        reorderTags(Self.tagOrder(ids, tags: tags))
+    }
+
+    private func reorderTags(_ ids: [Int64]) {
+        guard let vault, ids != tags.map(\.id) else { return }
+        runCore { try vault.reorderTags(ids: ids) }
+        afterTagEdit()
+    }
+
+    /// Deletes the tags; they drop off every booking (asked for beforehand, no undo:
+    /// the core never revives a deleted tag, so other devices don't bring it back).
+    func deleteTags(_ ids: Set<Int64>) {
+        guard let vault, !ids.isEmpty else { return }
+        runCore { for id in ids { try vault.deleteTag(id: id) } }
+        afterTagEdit()
+    }
+
+    /// Every booking of `sources` carries `target` afterwards; the sources are gone.
+    func mergeTags(_ sources: Set<Int64>, into target: Int64) {
+        guard let vault else { return }
+        runCore { for s in sources where s != target { try vault.mergeTagInto(source: s, target: target) } }
+        afterTagEdit()
+    }
+
+    func removeUnusedTags() {
+        deleteTags(Set(unusedTags.map(\.id)))
+    }
+
+    /// Names, colours and order show in the rows and the inspector: reload them.
+    private func afterTagEdit() {
+        reloadTags()
+        reloadBookings()
+        if let s = stickyBooking { stickyBooking = freshBooking(s) ?? s }
+    }
+
     /// Position in the tag list (the core's order), unknown tags last.
     private func tagRank(_ t: BookingTag) -> Int {
         tags.firstIndex { $0.id == t.id } ?? Int.max

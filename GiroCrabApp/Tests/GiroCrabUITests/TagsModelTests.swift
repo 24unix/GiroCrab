@@ -35,8 +35,8 @@ final class TagsModelTests: XCTestCase {
     }
 
     func testDemoTagsAreLoadedAndShownOnTheRows() throws {
-        XCTAssertEqual(model.tags.map(\.name), ["Auto", "Urlaub", "Familie"])
-        XCTAssertTrue(model.tags.allSatisfy { $0.bookingCount > 0 })
+        XCTAssertEqual(Array(model.tags.map(\.name).prefix(3)), ["Auto", "Urlaub", "Familie"])
+        XCTAssertEqual(model.tags.filter { $0.bookingCount == 0 }.count, 2, "two demo tags stay unused")
         XCTAssertTrue(model.bookings.contains { $0.tags.map(\.name) == ["Auto", "Urlaub"] },
                       "the rental car carries two tags, in tag list order")
     }
@@ -56,8 +56,9 @@ final class TagsModelTests: XCTestCase {
 
     func testKnownNameIsReusedWhateverTheCase() throws {
         let b = try untagged(1)[0]
+        let count = model.tags.count
         model.addTag(named: "auto", to: [b])
-        XCTAssertEqual(model.tags.count, 3)
+        XCTAssertEqual(model.tags.count, count)
         XCTAssertEqual(try row(b.id).tags.map(\.name), ["Auto"])
     }
 

@@ -257,7 +257,16 @@ struct TagsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Tags", systemImage: "number").appFont(.subheadline, weight: .semibold).foregroundStyle(Theme.text)
+            HStack {
+                Label("Tags", systemImage: "number").appFont(.subheadline, weight: .semibold).foregroundStyle(Theme.text)
+                Spacer()
+                #if os(macOS)
+                // the tag sheet (rename, merge, delete); also Konten › Tags verwalten …
+                Button("Verwalten …") { model.showTagManager = true }
+                    .buttonStyle(.link)
+                    .appFont(.caption)
+                #endif
+            }
             if !booking.tags.isEmpty {
                 TagFlow {
                     ForEach(booking.tags, id: \.id) { t in

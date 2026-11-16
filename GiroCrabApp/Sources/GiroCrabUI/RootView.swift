@@ -67,7 +67,8 @@ public struct GiroCrabScenes: Scene {
             CommandGroup(replacing: .newItem) {
                 Button("Neue Überweisung …") { model.openTransfer() }
                     .keyboardShortcut("n", modifiers: .command)
-                    .disabled(!model.canTransfer)
+                    // ⌘N in the tag sheet is „Neuer Tag …“ (TagManagerView's key monitor)
+                    .disabled(!model.canTransfer || model.showTagManager)
                 Button("Neue Kontogruppe …") { model.groupDialog = .create() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                     .disabled(!model.isUnlocked)
@@ -105,6 +106,9 @@ public struct GiroCrabScenes: Scene {
                 Divider()
                 Button("Regeln …") { model.openRuleEditor() }
                     .keyboardShortcut("k", modifiers: [.command, .option])
+                    .disabled(!model.isUnlocked)
+                Button("Tags verwalten …") { model.showTagManager = true }
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
                     .disabled(!model.isUnlocked)
                 Button("Wiederkehrende Buchungen …") { model.showRecurringSheet = true }
                     .disabled(!model.isUnlocked)
@@ -197,7 +201,8 @@ public struct GiroCrabScenes: Scene {
                     Divider()
                     Button("Suchen …") { ToolbarSearch.focus() }
                         .keyboardShortcut("f", modifiers: .command)
-                        .disabled(!model.isUnlocked)
+                        // not behind the tag sheet: the search field is hidden there
+                        .disabled(!model.isUnlocked || model.showTagManager)
                 }
             }
             SidebarCommands()
@@ -770,6 +775,14 @@ struct MainSplitView: View {
             GroupManagerSheet()
                 .environment(model)
         }
+        #if os(macOS)
+        // the draft is stored once the sheet is really gone, not when another
+        // sheet opens on top of it
+        .capturableSheet(isPresented: $model.showTagManager, onDismiss: { model.applyTagDraft() }) {
+            TagManagerView()
+                .environment(model)
+        }
+        #endif
         .capturableSheet(isPresented: $model.showRuleEditor) {
             RuleEditorView(initialDraft: model.ruleDraft)
                 .environment(model)

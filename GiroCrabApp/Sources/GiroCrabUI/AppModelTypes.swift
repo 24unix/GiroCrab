@@ -581,3 +581,27 @@ enum KeyAdoptionState: Equatable {
     case idle, working, done
     case failed(String)
 }
+
+/// What the tag sheet changed but has not stored yet (#228): names, colours,
+/// order. Stored when the sheet is dismissed (`AppModel.applyTagDraft`), so the
+/// sidebar and the booking rows behind it stay as they were until then.
+struct TagDraft: Equatable {
+    var renames: [Int64: String] = [:]
+    var colors: [Int64: String] = [:]
+    /// The arrangement (drag, „Sortieren“); nil: unchanged.
+    var order: [Int64]?
+    var isEmpty: Bool { renames.isEmpty && colors.isEmpty && order == nil }
+}
+
+/// What „Umbenennen“ in the tag window does with the typed text (#228).
+enum TagRenameIntent: Equatable {
+    case empty
+    /// The same name as now: nothing to save.
+    case unchanged
+    case rename(String)
+    /// Another tag has this name (case aside): not allowed, merge instead.
+    case taken(String)
+    /// Allowed, but looks like another tag („test 1“ / „test-1“).
+    case similar(new: String, existing: String)
+    case tooLong
+}
