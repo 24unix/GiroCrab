@@ -8,7 +8,7 @@ QtObject {
 
     /// "2,5" / "2.5" -> 2.5. With both separators the last one is the decimal
     /// separator ("1.000,5" / "1,000.5"); null for anything else.
-    function double(input) {
+    function parseNumber(input) {   // not "double": reserved word in qmlcachegen ≤ Qt 6.8
         let t = String(input).replace(/[\s']/g, "")
         const c = t.lastIndexOf(","), d = t.lastIndexOf(".")
         if (c >= 0 && d >= 0) t = t.split(c > d ? "." : ",").join("")

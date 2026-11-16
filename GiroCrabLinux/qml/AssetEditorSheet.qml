@@ -47,7 +47,7 @@ Sheet {
     // MARK: validation (undefined = invalid, null = none given)
     readonly property bool automatic: source !== "manual"
     readonly property bool priceIsAuto: autoPriceText !== null && priceText === autoPriceText
-    readonly property var quantity: { const q = NumberText.double(quantityText); return q !== null && q > 0 ? q : null }
+    readonly property var quantity: { const q = NumberText.parseNumber(quantityText); return q !== null && q > 0 ? q : null }
     /// Total paid (the core stores the total).
     readonly property var purchasePrice: {
         const t = priceText.trim()
@@ -67,9 +67,9 @@ Sheet {
     /// { grams per piece, fineness ‰ } or null
     readonly property var weight: {
         if (denomination !== customDenomination) return { grams: denomination, purity: 999.9 }
-        const w = NumberText.double(weightText)
+        const w = NumberText.parseNumber(weightText)
         if (w === null || w <= 0) return null
-        const p = purityText.trim() === "" ? 1000 : NumberText.double(purityText)
+        const p = purityText.trim() === "" ? 1000 : NumberText.parseNumber(purityText)
         if (p === null || p <= 0 || p > 1000) return null
         return { grams: w * units.find(u => u.id === unit).grams, purity: p }
     }

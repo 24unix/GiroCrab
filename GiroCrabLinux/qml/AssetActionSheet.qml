@@ -51,7 +51,7 @@ Sheet {
     // sale
     /// A sale is from the day after the purchase on (the core refuses the purchase date).
     readonly property date firstSaleDay: { const d = new Date(purchaseDay); d.setDate(d.getDate() + 1); const t = new Date(); return d < t ? d : t }
-    readonly property var count: { const n = NumberText.double(entryText); return n !== null && n > 0 && n <= entryHeld + 1e-9 ? n : null }
+    readonly property var count: { const n = NumberText.parseNumber(entryText); return n !== null && n > 0 && n <= entryHeld + 1e-9 ? n : null }
     /// undefined = invalid, null = none given
     readonly property var salePrice: { const t = priceText.trim(); if (t === "") return null
                                        const c = Fmt.parseCents(t); return c !== null && c >= 0 ? c : undefined }
@@ -229,8 +229,8 @@ Sheet {
                     TextField { id: newQuantity; Layout.fillWidth: true; Layout.minimumWidth: 80; placeholderText: qsTr("Neue Anzahl") }
                     Button {
                         text: qsTr("Eintragen")
-                        enabled: { const q = NumberText.double(newQuantity.text); return q !== null && q >= 0 }
-                        onClicked: if (sheet.change("set_asset_quantity", { item_id: sheet.item.id, date: sheet.entryDay, quantity: NumberText.double(newQuantity.text) })) newQuantity.text = ""
+                        enabled: { const q = NumberText.parseNumber(newQuantity.text); return q !== null && q >= 0 }
+                        onClicked: if (sheet.change("set_asset_quantity", { item_id: sheet.item.id, date: sheet.entryDay, quantity: NumberText.parseNumber(newQuantity.text) })) newQuantity.text = ""
                     }
                 }
             }
