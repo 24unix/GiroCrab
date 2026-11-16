@@ -4,6 +4,7 @@ name = "girocrab-linux"
 version = "0.7.5"
 edition = "2021"
 license = "GPL-3.0-or-later"
+repository = "https://github.com/GiroCrab/GiroCrab"
 description = "GiroCrab for Linux: Qt6/QML front end on the GiroCrab Rust core"
 
 # Own workspace: the macOS CI (`cargo clippy --workspace`) must not need Qt.

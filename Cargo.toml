@@ -6,7 +6,7 @@ resolver = "2"
 version = "0.7.5"
 edition = "2021"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/girocrab/girocrab"
+repository = "https://github.com/GiroCrab/GiroCrab"
 
 # The root package is a small macOS launcher. `cargo build` here also builds
 # the Rust core, generates the UniFFI Swift bindings (via build-xcframework.sh
@@ -17,6 +17,7 @@ name = "girocrab"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Launcher for the GiroCrab SwiftUI app (builds core + Swift app)"
 build = "build.rs"
 
