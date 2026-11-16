@@ -416,7 +416,7 @@ component DayCard inherits Rectangle {
             HorizontalLayout {
                 padding-left: 10px;
                 padding-right: 10px;
-                Text { text: day.title; color: Theme.text; font-size: 13px; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                Text { text: day.title; color: Theme.text; font-size: 13px; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; min-width: 0px; overflow: elide; }
                 Text { text: day.sum; color: day.negative ? Theme.muted : Theme.positive; font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-alignment: right; }
             }
         }
@@ -997,6 +997,7 @@ export component MainWindow inherits Window {
                 spacing: 12px;
                 VerticalLayout {
                     horizontal-stretch: 1;
+                    min-width: 0px;
                     spacing: 12px;
             if root.view-mode == 0: Rectangle {
                 height: 88px;
@@ -1052,13 +1053,16 @@ export component MainWindow inherits Window {
                 spacing: 10px;
                 search-edit := LineEdit {
                     horizontal-stretch: 1;
+                    min-width: 0px;
                     placeholder-text: "Gegenpartei, Verwendungszweck, Notiz suchen";
                     text <=> root.search-text;
                     edited => { root.search-changed(); }
                 }
                 ChangeTrigger { width: 0px; height: 0px; tick: root.search-focus-tick; fire => { search-edit.focus(); } }
                 ComboBox {
-                    width: 150px;
+                    preferred-width: 150px;
+                    min-width: 110px;
+                    horizontal-stretch: 0;
                     model: ["Alle Umsätze", "Ungeprüft", "Geprüft", "Ausgaben", "Einnahmen"];
                     current-index <=> root.status-index;
                     selected => { root.search-changed(); }
@@ -1233,7 +1237,8 @@ export component MainWindow inherits Window {
             }
                 }
                 Rectangle {
-                    width: 320px;
+                    width: 300px;
+                    horizontal-stretch: 0;
                     if !(root.view-mode == 0 && root.has-inspector): Rectangle {
                         background: Theme.surface;
                         border-radius: 12px;
@@ -1243,6 +1248,7 @@ export component MainWindow inherits Window {
                     }
                     if root.view-mode == 0 && root.has-inspector: VerticalLayout {
                         spacing: 10px;
+                        padding-right: 2px;
                         // booking header
                         Rectangle {
                             height: 150px;
@@ -1265,13 +1271,13 @@ export component MainWindow inherits Window {
                                     VerticalLayout {
                                         horizontal-stretch: 1;
                                         alignment: center;
-                                        Text { text: root.inspector.counterparty; font-size: 14px; font-weight: 700; color: Theme.text; overflow: elide; }
-                                        Text { text: root.inspector.subtitle; font-size: 11px; color: Theme.muted; overflow: elide; }
+                                        Text { text: root.inspector.counterparty; font-size: 14px; font-weight: 700; color: Theme.text; overflow: elide; horizontal-stretch: 1; min-width: 0px; }
+                                        Text { text: root.inspector.subtitle; font-size: 11px; color: Theme.muted; overflow: elide; horizontal-stretch: 1; min-width: 0px; }
                                     }
                                 }
-                                Text { text: root.inspector.amount; font-size: 24px; font-weight: 700; color: Theme.text; overflow: elide; }
+                                Text { text: root.inspector.amount; font-size: 24px; font-weight: 700; color: Theme.text; overflow: elide; horizontal-stretch: 1; min-width: 0px; }
                                 HorizontalLayout {
-                                    Text { text: "Buchung " + root.inspector.booking-date; font-size: 11px; color: Theme.muted; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                    Text { text: "Buchung " + root.inspector.booking-date; font-size: 11px; color: Theme.muted; vertical-alignment: center; horizontal-stretch: 1; min-width: 0px; overflow: elide; }
                                     Text { text: "Geprüft"; font-size: 12px; color: Theme.text; vertical-alignment: center; }
                                     Switch {
                                         checked <=> root.inspector-checked;
@@ -1313,7 +1319,7 @@ export component MainWindow inherits Window {
                                 padding-left: 14px;
                                 padding-right: 10px;
                                 spacing: 6px;
-                                Text { text: root.inspector-tags == "" ? "Keine Tags" : root.inspector-tags; font-size: 11px; color: Theme.muted; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                Text { text: root.inspector-tags == "" ? "Keine Tags" : root.inspector-tags; font-size: 11px; color: Theme.muted; vertical-alignment: center; horizontal-stretch: 1; min-width: 0px; overflow: elide; }
                                 GhostButton { text: "Tags …"; enabled: !root.inspector.read-only; clicked => { root.tags-request(); } }
                                 GhostButton { text: "Aufteilen …"; enabled: !root.inspector.read-only; clicked => { root.splits-request(); } }
                             }
