@@ -64,9 +64,12 @@ enum Theme {
 /// Card with a 1px hairline border.
 struct CardBackground: ViewModifier {
     var padding: CGFloat = 16
+    /// Overrides the top/bottom inset only (collapsed header cards, GitHub #603).
+    var vertical: CGFloat?
     func body(content: Content) -> some View {
         content
-            .padding(padding)
+            .padding(.horizontal, padding)
+            .padding(.vertical, vertical ?? padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.card))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
@@ -74,7 +77,7 @@ struct CardBackground: ViewModifier {
 }
 
 extension View {
-    func card(padding: CGFloat = 16) -> some View { modifier(CardBackground(padding: padding)) }
+    func card(padding: CGFloat = 16, vertical: CGFloat? = nil) -> some View { modifier(CardBackground(padding: padding, vertical: vertical)) }
 }
 
 enum Money {

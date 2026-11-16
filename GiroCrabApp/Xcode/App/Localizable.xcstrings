@@ -4220,6 +4220,17 @@
         }
       }
     },
+    "Ausblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide"
+          }
+        }
+      }
+    },
     "Ausführung" : {
       "extractionState" : "manual",
       "localizations" : {
