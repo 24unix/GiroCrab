@@ -642,6 +642,7 @@ pub fn on_lock(win: &MainWindow) {
     win.set_side_query(SharedString::new());
     win.set_link_open(false);
     win.set_rules_open(false);
+    crate::tags_ui::on_lock(win);
     clear_table(win, "");
 }
 
@@ -1152,6 +1153,7 @@ pub fn wire(win: &MainWindow, vault: VaultSlot) {
 
     wire_documents(win, &vault);
     wire_rules(win, &vault);
+    crate::tags_ui::wire(win, vault.clone());
 }
 
 #[cfg(test)]

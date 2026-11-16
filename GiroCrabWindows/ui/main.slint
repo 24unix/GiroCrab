@@ -1,4 +1,6 @@
 import { Button, ListView, LineEdit, Palette, ComboBox, CheckBox, TextEdit, Switch, ScrollView } from "std-widgets.slint";
+import { TagRow, SplitRow, BudgetRow, TemplateRow, TagsPanel, SplitsPanel, BudgetsPanel, TemplatesPanel } from "tags_dialog.slint";
+export { TagRow, SplitRow, BudgetRow, TemplateRow }
 
 export struct AccountRow { id: int, name: string, bank: string, iban: string, header: string, monogram: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
 export struct CategoryRow { id: int, name: string, depth: int, color: color }
@@ -646,6 +648,73 @@ export component MainWindow inherits Window {
     in property <string> link-status;
     callback link-search(string);
     callback link-pick(int);
+    // ---- tags, splits, budgets, templates (tags_ui.rs; panels in tags_dialog.slint)
+    in-out property <bool> tags-open: false;
+    in property <[TagRow]> tg-rows;
+    in property <[color]> tg-palette;
+    in property <[string]> tg-merge-names;
+    in property <string> tg-booking-title;
+    in property <bool> tg-has-booking: false;
+    in property <string> tg-status;
+    in property <bool> tg-armed: false;
+    in-out property <int> tg-selected: -1;
+    in-out property <string> tg-name;
+    in-out property <int> tg-color: -1;
+    in-out property <int> tg-merge: 0;
+    callback tags-request();
+    callback tag-select(int);
+    callback tag-create(string, int);
+    callback tag-save(string, int);
+    callback tag-delete();
+    callback tag-move(int);
+    callback tag-merge(int);
+    callback tag-assign();
+    callback tag-unassign();
+    callback tag-clear-booking();
+    in property <string> inspector-tags;
+    in-out property <bool> splits-open: false;
+    in property <string> sp-title;
+    in property <string> sp-amount;
+    in property <string> sp-remaining;
+    in property <[string]> sp-category-names;
+    in property <[SplitRow]> sp-rows;
+    in property <string> sp-status;
+    callback splits-request();
+    callback split-amount(int, string);
+    callback split-note(int, string);
+    callback split-category(int, int);
+    callback split-add();
+    callback split-remove-row(int);
+    callback split-fill(int);
+    callback split-save();
+    callback split-clear();
+    in-out property <bool> budgets-open: false;
+    in property <string> bg-month;
+    in property <[BudgetRow]> bg-rows;
+    in property <[string]> bg-category-names;
+    in property <string> bg-status;
+    in-out property <int> bg-category: 0;
+    in-out property <string> bg-amount;
+    callback budgets-request();
+    callback budget-pick(int);
+    callback budget-set(int, string);
+    callback budget-clear(int);
+    in-out property <bool> templates-open: false;
+    in property <[TemplateRow]> tp-rows;
+    in property <string> tp-status;
+    in property <bool> tp-armed: false;
+    in-out property <int> tp-selected: -1;
+    in-out property <string> tp-name;
+    in-out property <string> tp-recipient;
+    in-out property <string> tp-iban;
+    in-out property <string> tp-bic;
+    in-out property <string> tp-amount;
+    in-out property <string> tp-purpose;
+    callback templates-request();
+    callback template-select(int);
+    callback template-new();
+    callback template-save(string, string, string, string, string, string);
+    callback template-delete();
     in-out property <bool> rules-open: false;
     in property <[RuleItem]> rule-items;
     in property <[string]> rule-category-names;
@@ -846,6 +915,9 @@ export component MainWindow inherits Window {
                 GhostButton { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
                 GhostButton { text: "Kategorien"; clicked => { root.categories-open(); } }
                 GhostButton { text: "Regeln …"; clicked => { root.rules-request(); } }
+                GhostButton { text: "Tags …"; clicked => { root.tags-request(); } }
+                GhostButton { text: "Budgets …"; clicked => { root.budgets-request(); } }
+                GhostButton { text: "Vorlagen …"; clicked => { root.templates-request(); } }
                 GhostButton { text: "Info"; clicked => { root.about-open = true; } }
                 Rectangle { horizontal-stretch: 1; }
                 PillToggle {
@@ -1156,6 +1228,22 @@ export component MainWindow inherits Window {
                                     enabled: !root.inspector.read-only;
                                     vertical-stretch: 1;
                                 }
+                            }
+                        }
+                        // tags and split
+                        Rectangle {
+                            height: 44px;
+                            background: Theme.surface;
+                            border-radius: 12px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 10px;
+                                spacing: 6px;
+                                Text { text: root.inspector-tags == "" ? "Keine Tags" : root.inspector-tags; font-size: 11px; color: Theme.muted; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                GhostButton { text: "Tags …"; enabled: !root.inspector.read-only; clicked => { root.tags-request(); } }
+                                GhostButton { text: "Aufteilen …"; enabled: !root.inspector.read-only; clicked => { root.splits-request(); } }
                             }
                         }
                         // recurring
@@ -1484,6 +1572,71 @@ export component MainWindow inherits Window {
             Button { text: root.rule-armed ? "Wirklich löschen?" : "Löschen"; enabled: root.rule-selected >= 0; clicked => { root.rule-delete(); } }
             Rectangle { horizontal-stretch: 1; }
             Button { text: "Schließen"; clicked => { root.rules-open = false; root.refocus(); } }
+        }
+    }
+
+    // ---- tags / splits / budgets / templates dialogs
+    if tags-open: Dialog {
+        dialog-width: 600px;
+        TagsPanel {
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            tags: root.tg-rows; palette: root.tg-palette; merge-names: root.tg-merge-names;
+            booking-title: root.tg-booking-title; has-booking: root.tg-has-booking;
+            status: root.tg-status; armed: root.tg-armed;
+            selected <=> root.tg-selected; name <=> root.tg-name; color-choice <=> root.tg-color; merge-index <=> root.tg-merge;
+            select(i) => { root.tag-select(i); }
+            create(n, c) => { root.tag-create(n, c); }
+            save(n, c) => { root.tag-save(n, c); }
+            remove() => { root.tag-delete(); }
+            move(d) => { root.tag-move(d); }
+            merge(i) => { root.tag-merge(i); }
+            assign() => { root.tag-assign(); }
+            unassign() => { root.tag-unassign(); }
+            clear-booking() => { root.tag-clear-booking(); }
+            close() => { root.tags-open = false; root.refocus(); }
+        }
+    }
+    if splits-open: Dialog {
+        dialog-width: 640px;
+        SplitsPanel {
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; negative: Theme.negative;
+            booking-title: root.sp-title; booking-amount: root.sp-amount; remaining: root.sp-remaining;
+            category-names: root.sp-category-names; rows: root.sp-rows; status: root.sp-status;
+            amount-edited(i, t) => { root.split-amount(i, t); }
+            note-edited(i, t) => { root.split-note(i, t); }
+            category-picked(i, c) => { root.split-category(i, c); }
+            add-row() => { root.split-add(); }
+            remove-row(i) => { root.split-remove-row(i); }
+            fill-rest(i) => { root.split-fill(i); }
+            save() => { root.split-save(); }
+            remove-split() => { root.split-clear(); }
+            close() => { root.splits-open = false; root.refocus(); }
+        }
+    }
+    if budgets-open: Dialog {
+        dialog-width: 560px;
+        BudgetsPanel {
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            month-title: root.bg-month; rows: root.bg-rows; category-names: root.bg-category-names; status: root.bg-status;
+            category <=> root.bg-category; amount <=> root.bg-amount;
+            pick(i) => { root.budget-pick(i); }
+            set(c, a) => { root.budget-set(c, a); }
+            clear(c) => { root.budget-clear(c); }
+            close() => { root.budgets-open = false; root.refocus(); }
+        }
+    }
+    if templates-open: Dialog {
+        dialog-width: 600px;
+        TemplatesPanel {
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            rows: root.tp-rows; status: root.tp-status; armed: root.tp-armed;
+            selected <=> root.tp-selected; name <=> root.tp-name; recipient <=> root.tp-recipient;
+            iban <=> root.tp-iban; bic <=> root.tp-bic; amount <=> root.tp-amount; purpose <=> root.tp-purpose;
+            select(i) => { root.template-select(i); }
+            new-template() => { root.template-new(); }
+            save(a, b, c, d, e, f) => { root.template-save(a, b, c, d, e, f); }
+            remove() => { root.template-delete(); }
+            close() => { root.templates-open = false; root.refocus(); }
         }
     }
 

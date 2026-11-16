@@ -9,9 +9,11 @@ mod logos;
 mod manage;
 mod manage_ui;
 mod nav;
+mod planning;
 mod policy;
 mod portfolio;
 mod sync_flow;
+mod tags_ui;
 mod transfer_flow;
 mod vault_key;
 mod views_ui;
@@ -393,6 +395,7 @@ fn render_bookings(win: &MainWindow) {
             });
             win.set_inspector_category(cat_index);
             win.set_has_inspector(true);
+            tags_ui::refresh_inspector_tags(win);
         }
         None => {
             win.set_selected_booking(-1);

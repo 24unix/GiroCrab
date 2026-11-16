@@ -74,6 +74,8 @@ pub struct Row {
     pub monogram: String,
     pub tint_hex: String,
     pub recurring: bool,
+    /// The tags the booking carries.
+    pub tags: Vec<girocrab_core::tags::BookingTag>,
 }
 
 impl From<&Booking> for Row {
@@ -108,6 +110,7 @@ impl From<&Booking> for Row {
             monogram: b.merchant.monogram.clone(),
             tint_hex: b.merchant.color_hex.clone(),
             recurring: !b.recurrence_key.is_empty(),
+            tags: b.tags.clone(),
         }
     }
 }
@@ -284,6 +287,7 @@ mod tests {
             monogram: String::new(),
             tint_hex: String::new(),
             recurring: false,
+            tags: Vec::new(),
         }
     }
 

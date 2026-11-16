@@ -1,0 +1,298 @@
+// Tags, split bookings, category budgets and transfer templates. The panels are the content of a
+// `Dialog` in main.slint (which owns the theme), so colours come in as properties.
+import { Button, ListView, LineEdit, ComboBox } from "std-widgets.slint";
+
+export struct TagRow { id: int, name: string, detail: string, color: color, on: bool }
+export struct SplitRow { category: int, amount: string, note: string }
+export struct BudgetRow { index: int, name: string, detail: string, progress: float, over: bool, color: color }
+export struct TemplateRow { title: string, detail: string }
+
+component PanelTitle inherits Text {
+    in property <color> ink;
+    color: ink;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+component Frame inherits Rectangle {
+    in property <length> list-height: 190px;
+    in property <color> line;
+    height: list-height;
+    border-width: 1px;
+    border-color: line;
+    border-radius: 8px;
+    clip: true;
+}
+
+// ---- tags: manage (create / rename / colour / order / merge / delete) and assign to the booking
+export component TagsPanel inherits VerticalLayout {
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> line;
+    in property <color> accent;
+    in property <color> negative;
+    in property <[TagRow]> tags;
+    in property <[color]> palette;
+    in property <[string]> merge-names;
+    in property <string> booking-title;
+    in property <bool> has-booking;
+    in property <string> status;
+    in property <bool> armed;
+    in-out property <int> selected: -1;
+    in-out property <string> name;
+    in-out property <int> color-choice: -1;
+    in-out property <int> merge-index: 0;
+    callback select(int);
+    callback create(string, int);
+    callback save(string, int);
+    callback remove();
+    callback move(int);
+    callback merge(int);
+    callback assign();
+    callback unassign();
+    callback clear-booking();
+    callback close();
+    spacing: 10px;
+    PanelTitle { text: "Tags"; ink: root.ink; }
+    Text {
+        text: root.has-booking ? "Ausgewählte Buchung: " + root.booking-title + " (✓ = trägt den Tag)" : "Keine Buchung ausgewählt – Tags lassen sich verwalten, aber nicht zuweisen.";
+        font-size: 11px; color: root.muted; wrap: word-wrap;
+    }
+    Frame {
+        line: root.line;
+        if root.tags.length == 0: Text { text: "Noch keine Tags"; color: root.muted; horizontal-alignment: center; vertical-alignment: center; }
+        ListView {
+            for t[i] in root.tags: Rectangle {
+                height: 32px;
+                background: root.selected == i ? root.accent.with-alpha(0.18) : transparent;
+                TouchArea { clicked => { root.select(i); } }
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 8px;
+                    VerticalLayout { alignment: center; Rectangle { width: 10px; height: 10px; border-radius: 5px; background: t.color; } }
+                    Text { text: t.on ? "✓" : " "; color: root.accent; font-size: 13px; vertical-alignment: center; width: 12px; }
+                    Text { text: t.name; color: root.ink; font-size: 13px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                    Text { text: t.detail; color: root.muted; font-size: 11px; vertical-alignment: center; }
+                }
+            }
+        }
+    }
+    LineEdit { placeholder-text: "Name des Tags"; text <=> root.name; }
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        for c[i] in root.palette: Rectangle {
+            width: 22px;
+            height: 22px;
+            border-radius: 11px;
+            background: c;
+            border-width: root.color-choice == i ? 3px : 1px;
+            border-color: root.color-choice == i ? root.ink : root.line;
+            TouchArea { clicked => { root.color-choice = i; } }
+        }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        Button { text: "Neu anlegen"; clicked => { root.create(root.name, root.color-choice); } }
+        Button { text: "Speichern"; enabled: root.selected >= 0; clicked => { root.save(root.name, root.color-choice); } }
+        Button { text: root.armed ? "Wirklich löschen?" : "Löschen"; enabled: root.selected >= 0; clicked => { root.remove(); } }
+        Button { text: "▲"; enabled: root.selected > 0; clicked => { root.move(-1); } }
+        Button { text: "▼"; enabled: root.selected >= 0 && root.selected < root.tags.length - 1; clicked => { root.move(1); } }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        Text { text: "Zusammenführen in"; color: root.muted; font-size: 12px; vertical-alignment: center; }
+        ComboBox { horizontal-stretch: 1; model: root.merge-names; current-index <=> root.merge-index; enabled: root.selected >= 0 && root.merge-names.length > 0; }
+        Button { text: "Zusammenführen"; enabled: root.selected >= 0 && root.merge-names.length > 0; clicked => { root.merge(root.merge-index); } }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        Button { text: "Der Buchung zuweisen"; enabled: root.has-booking && root.selected >= 0; clicked => { root.assign(); } }
+        Button { text: "Von Buchung entfernen"; enabled: root.has-booking && root.selected >= 0; clicked => { root.unassign(); } }
+        Button { text: "Alle Tags der Buchung entfernen"; enabled: root.has-booking; clicked => { root.clear-booking(); } }
+    }
+    Text { text: "Löschen entfernt den Tag von allen Buchungen; Zusammenführen überträgt ihn auf den Ziel-Tag."; color: root.muted; font-size: 11px; wrap: word-wrap; }
+    if root.status != "": Text { text: root.status; color: root.negative; font-size: 12px; wrap: word-wrap; }
+    HorizontalLayout { alignment: end; Button { text: "Schließen"; primary: true; clicked => { root.close(); } } }
+}
+
+// ---- split one booking into parts with their own categories
+export component SplitsPanel inherits VerticalLayout {
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> line;
+    in property <color> negative;
+    in property <string> booking-title;
+    in property <string> booking-amount;
+    in property <string> remaining;
+    in property <[string]> category-names;
+    in property <[SplitRow]> rows;
+    in property <string> status;
+    callback amount-edited(int, string);
+    callback note-edited(int, string);
+    callback category-picked(int, int);
+    callback add-row();
+    callback remove-row(int);
+    callback fill-rest(int);
+    callback save();
+    callback remove-split();
+    callback close();
+    spacing: 10px;
+    PanelTitle { text: "Buchung aufteilen"; ink: root.ink; }
+    Text { text: root.booking-title + " · " + root.booking-amount; font-size: 12px; color: root.ink; overflow: elide; }
+    Frame {
+        line: root.line;
+        list-height: 220px;
+        ListView {
+            for r[i] in root.rows: HorizontalLayout {
+                height: 40px;
+                padding: 4px;
+                spacing: 6px;
+                ComboBox { width: 170px; model: root.category-names; current-index: r.category; selected(_) => { root.category-picked(i, self.current-index); } }
+                LineEdit { width: 90px; placeholder-text: "Betrag"; text: r.amount; edited(t) => { root.amount-edited(i, t); } }
+                LineEdit { horizontal-stretch: 1; placeholder-text: "Notiz"; text: r.note; edited(t) => { root.note-edited(i, t); } }
+                Button { text: "Rest"; clicked => { root.fill-rest(i); } }
+                Button { text: "✕"; enabled: root.rows.length > 2; clicked => { root.remove-row(i); } }
+            }
+        }
+    }
+    Text { text: "Noch zu verteilen: " + root.remaining; color: root.muted; font-size: 12px; }
+    if root.status != "": Text { text: root.status; color: root.negative; font-size: 12px; wrap: word-wrap; }
+    HorizontalLayout {
+        spacing: 8px;
+        Button { text: "Teilbetrag hinzufügen"; clicked => { root.add-row(); } }
+        Button { text: "Aufteilung aufheben"; clicked => { root.remove-split(); } }
+        Rectangle { horizontal-stretch: 1; }
+        Button { text: "Speichern"; primary: true; clicked => { root.save(); } }
+        Button { text: "Abbrechen"; clicked => { root.close(); } }
+    }
+}
+
+// ---- monthly category budgets
+export component BudgetsPanel inherits VerticalLayout {
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> line;
+    in property <color> accent;
+    in property <color> negative;
+    in property <string> month-title;
+    in property <[BudgetRow]> rows;
+    in property <[string]> category-names;
+    in property <string> status;
+    in-out property <int> category: 0;
+    in-out property <string> amount;
+    callback pick(int);
+    callback set(int, string);
+    callback clear(int);
+    callback close();
+    spacing: 10px;
+    PanelTitle { text: "Budgets"; ink: root.ink; }
+    Text { text: "Verbrauch im " + root.month-title + " (inkl. Unterkategorien, Splitbuchungen mit ihren Teilbeträgen)"; font-size: 11px; color: root.muted; wrap: word-wrap; }
+    Frame {
+        line: root.line;
+        list-height: 200px;
+        if root.rows.length == 0: Text { text: "Noch keine Budgets"; color: root.muted; horizontal-alignment: center; vertical-alignment: center; }
+        ListView {
+            for r[i] in root.rows: Rectangle {
+                height: 46px;
+                background: root.category == r.index ? root.accent.with-alpha(0.18) : transparent;
+                TouchArea { clicked => { root.pick(i); } }
+                VerticalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    alignment: center;
+                    spacing: 4px;
+                    HorizontalLayout {
+                        Text { text: r.name; color: root.ink; font-size: 13px; overflow: elide; horizontal-stretch: 1; }
+                        Text { text: r.detail; color: r.over ? root.negative : root.muted; font-size: 11px; horizontal-alignment: right; }
+                    }
+                    Rectangle {
+                        height: 5px;
+                        border-radius: 2.5px;
+                        background: root.ink.with-alpha(0.08);
+                        Rectangle { x: 0px; width: parent.width * min(max(r.progress, 0.02), 1.0); border-radius: 2.5px; background: r.over ? root.negative : r.color; }
+                    }
+                }
+            }
+        }
+    }
+    Text { text: "Kategorie"; font-size: 11px; color: root.muted; }
+    ComboBox { model: root.category-names; current-index <=> root.category; }
+    LineEdit { placeholder-text: "Monatsbudget in € (leer = kein Budget)"; text <=> root.amount; }
+    if root.status != "": Text { text: root.status; color: root.negative; font-size: 12px; wrap: word-wrap; }
+    HorizontalLayout {
+        spacing: 8px;
+        Button { text: "Budget setzen"; primary: true; clicked => { root.set(root.category, root.amount); } }
+        Button { text: "Budget entfernen"; clicked => { root.clear(root.category); } }
+        Rectangle { horizontal-stretch: 1; }
+        Button { text: "Schließen"; clicked => { root.close(); } }
+    }
+}
+
+// ---- SEPA transfer templates
+export component TemplatesPanel inherits VerticalLayout {
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> line;
+    in property <color> accent;
+    in property <color> negative;
+    in property <[TemplateRow]> rows;
+    in property <string> status;
+    in property <bool> armed;
+    in-out property <int> selected: -1;
+    in-out property <string> name;
+    in-out property <string> recipient;
+    in-out property <string> iban;
+    in-out property <string> bic;
+    in-out property <string> amount;
+    in-out property <string> purpose;
+    callback select(int);
+    callback new-template();
+    callback save(string, string, string, string, string, string);
+    callback remove();
+    callback close();
+    spacing: 8px;
+    PanelTitle { text: "Überweisungsvorlagen"; ink: root.ink; }
+    Frame {
+        line: root.line;
+        list-height: 150px;
+        if root.rows.length == 0: Text { text: "Noch keine Vorlagen"; color: root.muted; horizontal-alignment: center; vertical-alignment: center; }
+        ListView {
+            for r[i] in root.rows: Rectangle {
+                height: 44px;
+                background: root.selected == i ? root.accent.with-alpha(0.18) : transparent;
+                TouchArea { clicked => { root.select(i); } }
+                VerticalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    alignment: center;
+                    spacing: 2px;
+                    Text { text: r.title; color: root.ink; font-size: 13px; font-weight: 600; overflow: elide; }
+                    Text { text: r.detail; color: root.muted; font-size: 11px; overflow: elide; }
+                }
+            }
+        }
+    }
+    LineEdit { placeholder-text: "Name der Vorlage"; text <=> root.name; }
+    LineEdit { placeholder-text: "Empfänger"; text <=> root.recipient; }
+    HorizontalLayout {
+        spacing: 8px;
+        LineEdit { horizontal-stretch: 2; placeholder-text: "IBAN"; text <=> root.iban; }
+        LineEdit { horizontal-stretch: 1; placeholder-text: "BIC (optional)"; text <=> root.bic; }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        LineEdit { width: 130px; placeholder-text: "Betrag (optional)"; text <=> root.amount; }
+        LineEdit { horizontal-stretch: 1; placeholder-text: "Verwendungszweck (optional)"; text <=> root.purpose; }
+    }
+    if root.status != "": Text { text: root.status; color: root.negative; font-size: 12px; wrap: word-wrap; }
+    HorizontalLayout {
+        spacing: 8px;
+        Button { text: "Neue Vorlage"; clicked => { root.new-template(); } }
+        Button { text: root.selected >= 0 ? "Speichern" : "Anlegen"; primary: true; clicked => { root.save(root.name, root.recipient, root.iban, root.bic, root.amount, root.purpose); } }
+        Button { text: root.armed ? "Wirklich löschen?" : "Löschen"; enabled: root.selected >= 0; clicked => { root.remove(); } }
+        Rectangle { horizontal-stretch: 1; }
+        Button { text: "Schließen"; clicked => { root.close(); } }
+    }
+}

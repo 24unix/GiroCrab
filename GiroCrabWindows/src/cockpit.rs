@@ -367,6 +367,7 @@ mod tests {
             monogram: String::new(),
             tint_hex: String::new(),
             recurring: false,
+            tags: Vec::new(),
         }
     }
 
