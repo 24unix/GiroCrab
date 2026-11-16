@@ -40,6 +40,12 @@ struct AccountCopyMenu: View {
 
 /// Header card of the stream: title, balance, calm balance chart and the
 /// monthly KPIs (consumption is always shown without ETF plans / perks).
+/// The account holder shown under the bank/IBAN line; nil when empty (#606).
+func accountHolderLine(_ a: Account) -> String? {
+    let owner = a.owner.trimmingCharacters(in: .whitespacesAndNewlines)
+    return owner.isEmpty ? nil : owner
+}
+
 struct StreamHeaderCard: View {
     @Environment(AppModel.self) private var model
     #if os(iOS)
@@ -77,6 +83,14 @@ struct StreamHeaderCard: View {
                         if let a = account {
                             Text([a.bankName, a.iban.isEmpty ? "" : formatIBAN(a.iban)].filter { !$0.isEmpty }.joined(separator: " · "))
                                 .sensitive()
+                            if let holder = accountHolderLine(a) {
+                                Text(holder)
+                                    .sensitive()
+                                    .appFont(.caption)
+                                    .foregroundStyle(Theme.secondary)
+                                    .lineLimit(1)
+                                    .help(holder)
+                            }
                             let note = model.accountNote(for: a.id)
                             if !note.isEmpty {
                                 Text(note)
