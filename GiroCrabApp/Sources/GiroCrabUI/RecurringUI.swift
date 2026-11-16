@@ -102,9 +102,10 @@ struct RecurringMenuItems: View {
             set: { _ in model.customRecurringBooking = booking }
         ))
         Divider()
-        if let s = series, s.source == .manual {
-            Button("Automatisch erkennen") { model.resetRecurring(s) }
-        }
+        // Always present (disabled instead of hidden): menu bar menus must not change their
+        // number of entries while open (#734).
+        Button("Automatisch erkennen") { if let s = series, s.source == .manual { model.resetRecurring(s) } }
+            .disabled(series?.source != .manual)
         Button("Nicht wiederkehrend") { if let s = series { model.ignoreRecurring(s) } }
             .disabled(series == nil)
     }
