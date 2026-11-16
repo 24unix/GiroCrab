@@ -551,6 +551,15 @@ extension AppModel {
         scrollToDay = DayJump(day: target.date)
     }
 
+    /// The stream day the chart marker points to: the hovered chart day (or the nearest earlier day
+    /// with bookings), else the day at the top of the scrolled list.
+    func updateStreamHighlight() {
+        let target = (chartHoverDay ?? scrollFocusDay).flatMap { day in
+            dayGroups.first(where: { $0.date <= day })?.date // newest first
+        }
+        if streamHighlightDay != target { streamHighlightDay = target }
+    }
+
     func rebuildBookingIndex() {
         var index: [Booking.ID: Int] = [:]
         index.reserveCapacity(bookings.count)

@@ -134,9 +134,11 @@ struct BookingStreamView: View {
                             }) { item in
                                 switch item {
                                 case .header(let day):
-                                    DayHeader(day: day).padding(.top, day.id == firstDayID ? ViewLayout.cardGap : 14).id(day.id)
+                                    DayHeader(day: day).padding(.top, day.id == firstDayID ? ViewLayout.cardGap : 14)
+                                        .trackScrollDay(day.date).id(day.id)
                                 case .row(let b, let isLast):
                                     DayCardRow(booking: b, isLast: isLast)
+                                        .trackScrollDay(b.bookingDate)
                                         .id(b.id)
                                 }
                             }
@@ -164,6 +166,7 @@ struct BookingStreamView: View {
                     }
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
                 }
+                .coordinateSpace(name: StreamDayTracker.space)
                 .frame(minHeight: 0, maxHeight: .infinity)
                 .scrollBounceBehavior(.basedOnSize)
                 #if os(iOS)
@@ -206,7 +209,22 @@ struct BookingStreamView: View {
                     }
                 }
                 // select the day's first booking so the detail pane follows
-                if let first { model.selectedBookingID = first.id }
+                if let first {
+                    // only when the selection really changes: otherwise nothing consumes the flag
+                    if model.selectedBookingID != first.id { model.jumpSelectedBookingID = first.id }
+                    model.selectedBookingID = first.id
+                    // Fallback once the day scroll has run: the booking must be on screen, also
+                    // when the day cannot reach the top edge (a short list, the lazy stack
+                    // had not built the day yet). A no-op when it is visible already.
+                    let token = jump?.token
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(350))
+                        guard model.scrollToDay?.token == token else { return }
+                        withAnimation(Motion.animation(.easeOut(duration: 0.15))) {
+                            proxy.scrollTo(first.id, anchor: density == .standard ? nil : .top)
+                        }
+                    }
+                }
             }
         }
         // Pull-to-refresh (iOS): iCloud merge + bank sync of the current selection
@@ -360,6 +378,7 @@ struct BookingStreamView: View {
 
 
     private func scrollToTop(_ proxy: ScrollViewProxy) {
+        model.scrollFocusDay = nil
         proxy.scrollTo(Self.topID, anchor: .top)
     }
 }
@@ -450,22 +469,82 @@ struct DayCardSegment: ViewModifier {
 /// Date groups bookings without repeating a daily total.
 struct DayHeader: View {
     @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(AppModel.self) private var model
     let day: DayGroup
 
     var body: some View {
+        // this day is the one the balance chart's marker points to (#593)
+        let marked = model.streamHighlightDay == day.date
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
+                if marked {
+                    Circle().fill(Theme.accent).frame(width: 7, height: 7)
+                }
                 Text(DateText.dayHeader(day.date))
                     .appFont(.subheadline, weight: .semibold)
-                    .foregroundStyle(Theme.text)
+                    .foregroundStyle(marked ? Theme.accent : Theme.text)
                 Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, density == .compact ? 4 : 10)
+            .background(marked ? Theme.accent.opacity(0.12) : Color.clear)
             Rectangle().fill(Theme.border).frame(height: 1)
         }
         .modifier(DayCardSegment(isTop: true, isBottom: false))
     }
+}
+
+/// Reports the day of the stream element that crosses a line just below the top edge of the
+/// scroll view, so the balance chart can follow the scroll position (#593). The geometry
+/// callback fires only when the Boolean flips, not on every scroll tick.
+private struct StreamDayTracker: ViewModifier {
+    static let space = "bookingStream"
+    /// Distance from the top edge of the scroll view in points.
+    private static let line: CGFloat = 24
+    @Environment(AppModel.self) private var model
+    @State private var crossing = false
+    let day: String
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: Bool.self) { proxy in
+                let f = proxy.frame(in: .named(Self.space))
+                return f.minY <= Self.line && f.maxY > Self.line
+            } action: { crosses in
+                guard crosses != crossing else { return }
+                crossing = crosses
+                if crosses {
+                    model.scrollCrossing[day, default: 0] += 1
+                    if model.scrollFocusDay != day { model.scrollFocusDay = day }
+                } else {
+                    release()
+                }
+            }
+            // the lazy stack drops rows that scrolled far away without a last callback
+            .onDisappear {
+                guard crossing else { return }
+                crossing = false
+                release()
+            }
+    }
+
+    /// A day has several elements (header, rows): the focus ends only when none of them is
+    /// left on the line. A short delay covers the hand-over to the next day's element.
+    private func release() {
+        let left = (model.scrollCrossing[day] ?? 1) - 1
+        model.scrollCrossing[day] = left > 0 ? left : nil
+        guard left <= 0, model.scrollFocusDay == day else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            if model.scrollCrossing[day] == nil, model.scrollFocusDay == day { model.scrollFocusDay = nil }
+        }
+    }
+}
+
+private extension View {
+    /// Must come before `.id(...)`: after it, the geometry modifier takes the scroll target away
+    /// from `ScrollViewProxy.scrollTo` and every jump to a day or booking does nothing.
+    func trackScrollDay(_ day: String) -> some View { modifier(StreamDayTracker(day: day)) }
 }
 
 /// One booking of a day card; the last one closes the card.
@@ -957,6 +1036,12 @@ private struct SelectionScroller: View {
         Color.clear
             .onChange(of: model.selectedBookingID) { _, id in
                 guard let id else { return }
+                // the chart marker follows the selected booking (#593)
+                if let day = model.selectedBooking?.bookingDate, model.selectedBookingID == id, model.scrollFocusDay != day {
+                    model.scrollFocusDay = day
+                }
+                // the day jump already scrolled to the day: do not override it
+                if model.jumpSelectedBookingID == id { model.jumpSelectedBookingID = nil; return }
                 // Every row is an element of the lazy stream, so the proxy finds it
                 // even while it is off-screen.
                 withAnimation(Motion.animation(.easeOut(duration: 0.15))) {

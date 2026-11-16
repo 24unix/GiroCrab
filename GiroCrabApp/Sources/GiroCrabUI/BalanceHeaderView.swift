@@ -613,6 +613,13 @@ struct BalanceChart: View {
 
     private var buckets: [BalanceBucket] { BalanceBuckets.make(points, unit: barUnit) }
 
+    /// Point of the day at the top of the scrolled booking list (#593): that day's closing
+    /// balance, or the latest earlier one when the day has no point of its own.
+    private func followedPoint(in all: [Point]) -> Point? {
+        guard let day = model.scrollFocusDay, let date = DateText.date(day) else { return nil }
+        return all.last { $0.date <= date } ?? all.first
+    }
+
     private var resolvedBarUnit: BalanceBarUnit { barUnit.resolved(dayCount: points.count) }
 
     /// What this chart draws: the header shows the pie and hides the chart itself (#634),
@@ -712,6 +719,10 @@ struct BalanceChart: View {
         .onChange(of: points.count) { _, _ in clearHover() }
         .onChange(of: style) { _, _ in clearHover() }
         .onChange(of: barUnit) { _, _ in hoveredBar = nil }
+        // the booking list highlights the day under the pointer (#593)
+        .onChange(of: hovered) { _, h in model.chartHoverDay = h.map { DateText.iso($0.date) } }
+        .onChange(of: hoveredBar) { _, b in model.chartHoverDay = b.map { DateText.iso($0.last) } }
+        .onDisappear { model.chartHoverDay = nil }
         .contextMenu { styleMenu }
         #if os(macOS)
         .focusable(interactions: .edit)
@@ -764,6 +775,18 @@ struct BalanceChart: View {
                     .foregroundStyle(Theme.accent.opacity(0.8))
                     .lineStyle(StrokeStyle(lineWidth: 1.5))
                     .interpolationMethod(.monotone)
+            }
+            // Scrolling the booking list: the marker follows the line; hovering takes precedence.
+            if hovered == nil, let f = followedPoint(in: pts) {
+                PointMark(x: .value("Tag", f.date, unit: .day), y: .value("Saldo", f.euros))
+                    .foregroundStyle(Theme.accent)
+                    .symbolSize(36)
+                RuleMark(x: .value("Tag", f.date, unit: .day))
+                    .foregroundStyle(Theme.secondary.opacity(0.45))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .annotation(position: f.id * 2 > pts.count ? .topLeading : .topTrailing, spacing: 4, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+                        readout(f.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year()), cents: f.cents)
+                    }
             }
             if let h = hovered {
                 PointMark(x: .value("Tag", h.date, unit: .day), y: .value("Saldo", h.euros))
@@ -828,7 +851,7 @@ struct BalanceChart: View {
             ForEach(bars) { b in
                 BarMark(x: .value(xLabel, b.start, unit: unit), y: .value("Ø Saldo", b.euros))
                     .foregroundStyle(b.averageCents < 0 ? Theme.outflow : Theme.accent)
-                    .opacity(hoveredBar == nil || hoveredBar?.id == b.id ? 0.85 : 0.35)
+                    .opacity((hoveredBar ?? followedBar(in: bars))?.id == b.id || (hoveredBar == nil && followedBar(in: bars) == nil) ? 0.85 : 0.35)
                     .cornerRadius(1.5)
             }
             // Plain date (no unit): the rule sits on the boundary between December and January.
@@ -836,6 +859,13 @@ struct BalanceChart: View {
                 RuleMark(x: .value("Jahr", y))
                     .foregroundStyle(Theme.tertiary.opacity(0.6))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
+            }
+            if hoveredBar == nil, let f = followedBar(in: bars) {
+                RuleMark(x: .value(xLabel, f.start, unit: unit))
+                    .foregroundStyle(.clear)
+                    .annotation(position: f.id * 2 > bars.count ? .topLeading : .topTrailing, spacing: 4, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+                        readout(barTitle(f), prefix: "Ø ", cents: f.averageCents)
+                    }
             }
             if let h = hoveredBar {
                 RuleMark(x: .value(xLabel, h.start, unit: unit))
@@ -874,6 +904,12 @@ struct BalanceChart: View {
                     }
             }
         }
+    }
+
+    /// Bar of the day at the top of the scrolled booking list (bar style, #593).
+    private func followedBar(in bars: [BalanceBucket]) -> BalanceBucket? {
+        guard let day = model.scrollFocusDay, let date = DateText.date(day) else { return nil }
+        return bar(at: date, in: bars, unit: resolvedBarUnit.calendarComponent)
     }
 
     /// The bar whose month (or day) contains `date`, else the nearest one.

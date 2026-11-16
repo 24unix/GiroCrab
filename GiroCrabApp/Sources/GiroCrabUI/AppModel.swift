@@ -543,6 +543,18 @@ public final class AppModel {
     /// Day card the stream should scroll to (set by a click in the balance chart);
     /// a fresh token per click, so clicking the same day again scrolls again.
     var scrollToDay: DayJump?
+    /// Day (`yyyy-MM-dd`) at the top edge of the booking stream while scrolling; the balance
+    /// chart moves its marker there (#593). nil = the stream is at the top or not scrolled yet.
+    var scrollFocusDay: String? { didSet { updateStreamHighlight() } }
+    /// Day under the mouse pointer or the keyboard cursor in the balance chart (#593).
+    var chartHoverDay: String? { didSet { updateStreamHighlight() } }
+    /// Day card of the stream that belongs to the chart marker; its header is highlighted.
+    var streamHighlightDay: String?
+    /// Per day: how many stream elements (header, rows) cross the tracking line right now.
+    @ObservationIgnored var scrollCrossing: [String: Int] = [:]
+    /// Booking selected by a day jump: its selection must not scroll the stream again, or the
+    /// minimal "make visible" scroll overrides the jump and leaves the row at the bottom edge.
+    @ObservationIgnored var jumpSelectedBookingID: Booking.ID?
 
     // MARK: State used by AppModel+Documents.swift
 
