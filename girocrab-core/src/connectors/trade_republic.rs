@@ -33,11 +33,12 @@ use tokio_tungstenite::tungstenite::Message;
 
 use super::{
     BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, RemoteTransaction,
+    RemoteAccount, RemoteHolding, RemoteTransaction,
 };
+use crate::asset_classification::{AssetClass, ClassificationValues, InstrumentKind};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
-use crate::models::AccountKind;
+use crate::models::{AccountKind, Holding};
 use crate::money::json_number_to_cents;
 
 const API: &str = "https://api.traderepublic.com";
@@ -177,12 +178,17 @@ struct TradeDetail {
 fn isin_of(icon: &str) -> Option<String> {
     let rest = icon.find('/').map_or(icon, |i| &icon[i + 1..]);
     let isin = rest.split('/').next().unwrap_or_default();
-    (isin.len() == 12
-        && isin[..2].chars().all(|c| c.is_ascii_uppercase())
-        && isin[2..]
-            .chars()
-            .all(|c| c.is_ascii_digit() || c.is_ascii_uppercase()))
-    .then(|| isin.to_string())
+    is_isin(isin).then(|| isin.to_string())
+}
+
+/// Shaped like an ISIN: two letters, then ten letters or digits.
+fn is_isin(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 12
+        && b[..2].iter().all(u8::is_ascii_uppercase)
+        && b[2..]
+            .iter()
+            .all(|c| c.is_ascii_digit() || c.is_ascii_uppercase())
 }
 
 fn walk_rows(v: &Value, f: &mut dyn FnMut(&str, &str)) {
@@ -334,6 +340,679 @@ fn trade_security(row: &TradeRow, detail: &Value) -> Option<super::RemoteSecurit
             ..Default::default()
         },
     })
+}
+
+// --- Depot positions (compactPortfolioByType + instrument + ticker)
+
+/// One position of the portfolio answer.
+#[derive(Debug, Default, Clone, PartialEq)]
+struct RawPosition {
+    /// Instrument id as Trade Republic reports it: an ISIN, for some assets another key.
+    isin: String,
+    name: Option<String>,
+    category: String,
+    quantity: f64,
+    /// Average purchase price per piece (bonds: see [`holding_of`]).
+    average_buy_in: Option<f64>,
+}
+
+/// A JSON number, or a number sent as text ("40.745", "1.234,56").
+fn json_as_f64(v: &Value) -> Option<f64> {
+    if let Some(f) = v.as_f64() {
+        return Some(f);
+    }
+    let text = v.as_str()?.trim();
+    // plain decimals first: "40.745" is a price, not forty thousand
+    text.parse::<f64>()
+        .ok()
+        .or_else(|| parse_decimal_text(text))
+        .filter(|f| f.is_finite())
+}
+
+fn parse_position_item(item: &Value, default_category: &str) -> Option<RawPosition> {
+    let isin = item["instrumentId"]
+        .as_str()
+        .or_else(|| item["isin"].as_str())
+        .or_else(|| item["id"].as_str())
+        .map(|s| s.trim().to_string())
+        .or_else(|| item["icon"].as_str().and_then(isin_of))
+        .filter(|s| !s.is_empty())?;
+    let quantity = ["netSize", "shares", "size", "quantity", "units"]
+        .iter()
+        .find_map(|k| json_as_f64(&item[*k]))
+        .unwrap_or(0.0);
+    if quantity <= 0.0 {
+        return None;
+    }
+    let average_buy_in = ["averageBuyIn", "buyIn", "averagePrice", "purchasePrice"]
+        .iter()
+        .find_map(|k| json_as_f64(&item[*k]));
+    let name = ["name", "title", "shortName"]
+        .iter()
+        .find_map(|k| item[*k].as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let category = ["category", "type", "instrumentType"]
+        .iter()
+        .find_map(|k| item[*k].as_str())
+        .unwrap_or(default_category)
+        .to_string();
+    Some(RawPosition {
+        isin,
+        name,
+        category,
+        quantity,
+        average_buy_in,
+    })
+}
+
+const DEFAULT_CATEGORY: &str = "stocksAndETFs";
+
+/// The positions of a portfolio answer. `None` = the answer has none of the
+/// known layouts: it says nothing about the depot (and must not empty it).
+fn portfolio_positions(val: &Value) -> Option<Vec<RawPosition>> {
+    fn category(v: &Value) -> &str {
+        v["type"]
+            .as_str()
+            .or_else(|| v["categoryType"].as_str())
+            .unwrap_or(DEFAULT_CATEGORY)
+    }
+    let mut out = Vec::new();
+    if let Some(categories) = val["categories"].as_array() {
+        for cat in categories {
+            for pos in cat["positions"].as_array().into_iter().flatten() {
+                out.extend(parse_position_item(pos, category(cat)));
+            }
+        }
+    } else if let Some(positions) = val["positions"].as_array() {
+        for pos in positions {
+            out.extend(parse_position_item(pos, DEFAULT_CATEGORY));
+        }
+    } else {
+        for item in val.as_array()? {
+            if let Some(positions) = item["positions"].as_array() {
+                for pos in positions {
+                    out.extend(parse_position_item(pos, category(item)));
+                }
+            } else {
+                out.extend(parse_position_item(item, DEFAULT_CATEGORY));
+            }
+        }
+    }
+    Some(out)
+}
+
+/// Securities account number of the session (`accountPairs`), the default product first.
+fn securities_account_number(pairs: &Value) -> Option<String> {
+    let mut accounts: Vec<&Value> = pairs["accounts"]
+        .as_array()?
+        .iter()
+        .filter(|a| {
+            a["securitiesAccountNumber"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty())
+        })
+        .collect();
+    accounts.sort_by_key(|a| a["productType"].as_str() != Some("DEFAULT"));
+    accounts
+        .first()
+        .and_then(|a| a["securitiesAccountNumber"].as_str())
+        .map(str::to_string)
+}
+
+/// What the `instrument` answer tells about a position.
+#[derive(Debug, Default, Clone, PartialEq)]
+struct InstrumentInfo {
+    name: String,
+    short_name: String,
+    wkn: String,
+    /// First exchange of `exchangeIds`: the ticker id is `<ISIN>.<exchange>`.
+    exchange: Option<String>,
+    /// `stock`, `fund`, `etf`, `crypto`, `bond`, `derivative` …
+    type_id: String,
+    /// `fundInfo.category` (`etf`).
+    fund_category: String,
+    /// `fundInfo.underlyingClass`: what the fund invests in ("Aktien", "Festverzinslich" …).
+    underlying_class: String,
+    /// `priceFactor`; only traced, to learn how bonds are quoted.
+    price_factor: Option<f64>,
+}
+
+fn instrument_info(v: &Value) -> InstrumentInfo {
+    let text = |v: &Value| v.as_str().unwrap_or_default().trim().to_string();
+    InstrumentInfo {
+        name: text(&v["name"]),
+        short_name: text(&v["shortName"]),
+        wkn: text(&v["wkn"]),
+        exchange: v["exchangeIds"]
+            .as_array()
+            .and_then(|a| a.first())
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        type_id: ["typeId", "type", "instrumentType"]
+            .iter()
+            .find_map(|k| v[*k].as_str())
+            .unwrap_or_default()
+            .trim()
+            .to_lowercase(),
+        fund_category: text(&v["fundInfo"]["category"]).to_lowercase(),
+        underlying_class: text(&v["fundInfo"]["underlyingClass"]),
+        price_factor: v["priceFactor"].as_f64(),
+    }
+}
+
+/// `word` as a whole word of `text` ("ETC", not the "etc" in "Fletcher").
+fn has_word(text: &str, word: &str) -> bool {
+    text.split(|c: char| !c.is_alphanumeric())
+        .any(|t| t.eq_ignore_ascii_case(word))
+}
+
+fn is_bond(category: &str, info: &InstrumentInfo) -> bool {
+    let cat = category.to_lowercase();
+    info.type_id == "bond" || cat.contains("bond") || cat.contains("anleihe")
+}
+
+fn is_crypto(category: &str, info: &InstrumentInfo) -> bool {
+    let cat = category.to_lowercase();
+    info.type_id == "crypto" || cat.contains("crypto") || cat.contains("krypto")
+}
+
+/// Asset class a fund invests in; an unknown label stays open for the name rules.
+fn underlying_asset_class(label: &str) -> Option<AssetClass> {
+    let l = label.trim().to_lowercase();
+    if l.is_empty() {
+        return None;
+    }
+    if let Some(known) = crate::asset_classification::from_labels(&l, "").asset_class {
+        return Some(known);
+    }
+    let has = |parts: &[&str]| parts.iter().any(|p| l.contains(p));
+    if has(&["multi", "misch"]) {
+        Some(AssetClass::MultiAsset)
+    } else if has(&["money", "geldmarkt"]) {
+        Some(AssetClass::Cash)
+    } else if has(&["bond", "anleihe", "renten", "fixed", "festverzins"]) {
+        Some(AssetClass::Bond)
+    } else if has(&["commodit", "rohstoff", "metal"]) {
+        Some(AssetClass::Commodity)
+    } else if has(&["immobil", "realestate", "real estate", "property"]) {
+        Some(AssetClass::RealEstate)
+    } else if has(&["crypto", "krypto"]) {
+        Some(AssetClass::Crypto)
+    } else if has(&["equit", "aktie", "stock"]) {
+        Some(AssetClass::Equity)
+    } else {
+        None
+    }
+}
+
+/// Classification from what Trade Republic says about the instrument, and
+/// whether it is a directly held crypto asset. Only stated facts are imported:
+/// the instrument type decides, never a substring of the name ("Netflix" is
+/// no ETF), and a fund's asset class comes from its underlying class. What
+/// stays `None` is left to the core's ISIN and name rules.
+fn classify_tr_instrument(
+    category: &str,
+    info: &InstrumentInfo,
+    name: &str,
+) -> (ClassificationValues, bool) {
+    let values = |asset_class, instrument| ClassificationValues {
+        asset_class,
+        instrument,
+    };
+    if is_crypto(category, info) {
+        return (
+            values(
+                Some(AssetClass::Crypto),
+                Some(InstrumentKind::DirectHolding),
+            ),
+            true,
+        );
+    }
+    if is_bond(category, info) {
+        return (
+            values(Some(AssetClass::Bond), Some(InstrumentKind::SingleSecurity)),
+            false,
+        );
+    }
+    let cat = category.to_lowercase();
+    if matches!(
+        info.type_id.as_str(),
+        "derivative" | "derivate" | "warrant" | "knockout" | "factor"
+    ) || cat.contains("derivat")
+    {
+        return (values(None, Some(InstrumentKind::Derivative)), false);
+    }
+    let underlying = underlying_asset_class(&info.underlying_class);
+    let named = |word: &str| has_word(name, word) || has_word(&info.name, word);
+    if named("ETC") {
+        return (
+            values(
+                underlying.or(Some(AssetClass::Commodity)),
+                Some(InstrumentKind::EtcEtn),
+            ),
+            false,
+        );
+    }
+    if named("ETN") {
+        return (values(underlying, Some(InstrumentKind::EtcEtn)), false);
+    }
+    let classification = match info.type_id.as_str() {
+        "etf" => values(underlying, Some(InstrumentKind::Etf)),
+        "fund" if info.fund_category == "etf" => values(underlying, Some(InstrumentKind::Etf)),
+        "fund" => values(underlying, Some(InstrumentKind::Fund)),
+        "stock" => values(
+            Some(AssetClass::Equity),
+            Some(InstrumentKind::SingleSecurity),
+        ),
+        _ => values(None, None),
+    };
+    (classification, false)
+}
+
+/// Euro amount to cents, half away from zero.
+fn to_cents(p: f64) -> i64 {
+    if !p.is_finite() {
+        return 0;
+    }
+    // the epsilon keeps .5 cases that binary floats store just below (40.745 * 100 = 4074.4999…)
+    let eps = if p >= 0.0 { 1e-7 } else { -1e-7 };
+    (p * 100.0 + eps).round() as i64
+}
+
+/// Prices of a `ticker` answer.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+struct Quote {
+    last: Option<f64>,
+    /// Previous close.
+    pre: Option<f64>,
+}
+
+fn quote_of(tick: &Value) -> Quote {
+    let price = |v: &Value| {
+        json_as_f64(&v["price"])
+            .or_else(|| json_as_f64(v))
+            .filter(|p| *p > 0.0)
+    };
+    Quote {
+        last: price(&tick["last"]).or_else(|| price(&tick["bid"])),
+        pre: price(&tick["pre"]),
+    }
+}
+
+/// Bonds are quoted in percent of the nominal (the quantity): 99.5 means 0.995 per unit.
+const BOND_PRICE_FACTOR: f64 = 0.01;
+
+/// The stored position. Values come from the unrounded price (quantity ×
+/// price, then cents), so the depot total matches the bank's.
+///
+/// Without a quote the position is valued at cost (price = purchase price) and
+/// reports no gain, instead of a value of zero.
+fn holding_of(
+    raw: &RawPosition,
+    info: &InstrumentInfo,
+    trade_name: Option<&str>,
+    quote: Quote,
+) -> RemoteHolding {
+    let bond = is_bond(&raw.category, info);
+    let scale = if bond { BOND_PRICE_FACTOR } else { 1.0 };
+    let last = quote.last.map(|p| p * scale);
+    let pre = quote.pre.map(|p| p * scale);
+    let buy_in = raw.average_buy_in.filter(|p| *p > 0.0).map(|p| {
+        // A bond's purchase price is in percent like its quote. Should it come per
+        // unit already, it is close to the scaled quote and stays as it is.
+        let per_unit = bond && last.is_some_and(|l| p < l * 10.0);
+        if bond && !per_unit {
+            p * BOND_PRICE_FACTOR
+        } else {
+            p
+        }
+    });
+
+    let purchase_value_cents = buy_in.map(|p| to_cents(raw.quantity * p));
+    let value_cents = last
+        .map(|p| to_cents(raw.quantity * p))
+        .or(purchase_value_cents)
+        .unwrap_or(0);
+    let prev_day_value_cents = pre.map(|p| to_cents(raw.quantity * p));
+    // gains only against a real quote
+    let gain = |base: Option<i64>| {
+        let base = base.filter(|b| *b > 0)?;
+        last?;
+        Some((
+            value_cents - base,
+            (value_cents - base) as f64 / base as f64 * 100.0,
+        ))
+    };
+    let purchase_gain = gain(purchase_value_cents);
+    let day_gain = gain(prev_day_value_cents);
+
+    let (classification, direct_crypto) =
+        classify_tr_instrument(&raw.category, info, raw.name.as_deref().unwrap_or_default());
+    // The core knows a directly held coin by its ticker in `wkn` with no ISIN.
+    let (isin, wkn) = if direct_crypto && !is_isin(&raw.isin) {
+        (String::new(), raw.isin.to_ascii_uppercase())
+    } else {
+        (raw.isin.clone(), info.wkn.clone())
+    };
+    let name = [
+        raw.name.as_deref().unwrap_or_default(),
+        &info.short_name,
+        &info.name,
+        trade_name.unwrap_or_default(),
+        &raw.isin,
+    ]
+    .into_iter()
+    .find(|s| !s.is_empty())
+    .unwrap_or_default()
+    .to_string();
+
+    RemoteHolding {
+        classification,
+        direct_crypto,
+        account_ref: DEPOT_REF.into(),
+        holding: Holding {
+            isin,
+            wkn,
+            name,
+            quantity: raw.quantity,
+            current_price_cents: last.or(buy_in).map(to_cents).unwrap_or(0),
+            purchase_price_cents: buy_in.map(to_cents).unwrap_or(0),
+            value_cents,
+            prev_day_price_cents: pre.map(to_cents),
+            prev_day_value_cents,
+            profit_loss_purchase_cents: purchase_gain.map(|g| g.0),
+            profit_loss_purchase_rel: purchase_gain.map(|g| g.1),
+            profit_loss_prev_day_cents: day_gain.map(|g| g.0),
+            profit_loss_prev_day_rel: day_gain.map(|g| g.1),
+            // Trade Republic does not report how a position is held
+            custody_type: String::new(),
+        },
+    }
+}
+
+const DEPOT_REF: &str = "tr:depot";
+
+/// Layout of an answer for the depot debug log: keys and value types only,
+/// never a value. Keys that are identifiers themselves are masked.
+fn shape(v: &Value, depth: u8) -> String {
+    match v {
+        Value::Null => "null".into(),
+        Value::Bool(_) => "bool".into(),
+        Value::Number(_) => "num".into(),
+        Value::String(_) => "str".into(),
+        Value::Array(a) if depth == 0 => format!("[{}]", a.len()),
+        Value::Array(a) => format!(
+            "[{}x {}]",
+            a.len(),
+            a.first().map(|x| shape(x, depth - 1)).unwrap_or_default()
+        ),
+        Value::Object(m) if depth == 0 => format!("{{{}}}", m.len()),
+        Value::Object(m) => {
+            let fields: Vec<String> = m
+                .iter()
+                .map(|(k, x)| {
+                    let plain = k.len() <= 32
+                        && !is_isin(k)
+                        && k.chars().all(|c| c.is_ascii_alphabetic() || c == '_');
+                    let key = if plain { k.as_str() } else { "<id>" };
+                    format!("{key}:{}", shape(x, depth - 1))
+                })
+                .collect();
+            format!("{{{}}}", fields.join(","))
+        }
+    }
+}
+
+/// A failed subscription request. `transport` = the connection itself failed
+/// (send error, closed socket); otherwise the server refused or stayed silent
+/// and the connection is still usable.
+struct RequestError {
+    transport: bool,
+    error: CoreError,
+}
+
+const REQUEST_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
+const ACCOUNT_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+const INSTRUMENT_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+/// Instruments without a quote never answer: do not hold up the sync for them.
+const TICKER_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Subscribes, waits up to `wait` for the first answer ("<id> A <json>") and unsubscribes.
+async fn request_within<S>(
+    ws: &mut S,
+    id: u32,
+    mut payload: Value,
+    token: &str,
+    wait: std::time::Duration,
+) -> Result<Value, RequestError>
+where
+    S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+        + futures_util::Sink<Message>
+        + Unpin,
+    <S as futures_util::Sink<Message>>::Error: std::fmt::Display,
+{
+    let transport = |error| RequestError {
+        transport: true,
+        error,
+    };
+    let refused = |error| RequestError {
+        transport: false,
+        error,
+    };
+    if !token.is_empty() {
+        payload["token"] = json!(token);
+    }
+    let kind = payload["type"].as_str().unwrap_or("?").to_string();
+    ws.send(Message::text(format!("sub {id} {payload}")))
+        .await
+        .map_err(|e| transport(TradeRepublicConnector::ws_err(e)))?;
+    let deadline = tokio::time::Instant::now() + wait;
+    loop {
+        let msg = match tokio::time::timeout_at(deadline, ws.next()).await {
+            Err(_) => {
+                let _ = ws.send(Message::text(format!("unsub {id}"))).await;
+                return Err(refused(CoreError::Network {
+                    message: trf("Trade Republic hat auf „{0}“ nicht geantwortet.", &[&kind]),
+                }));
+            }
+            Ok(None) => {
+                return Err(transport(CoreError::Network {
+                    message: trf("WebSocket während „{0}“ geschlossen.", &[&kind]),
+                }))
+            }
+            Ok(Some(Err(e))) => return Err(transport(TradeRepublicConnector::ws_err(e))),
+            Ok(Some(Ok(msg))) => msg,
+        };
+        let Message::Text(text) = msg else { continue };
+        let text = text.to_string();
+        let mut parts = text.splitn(3, ' ');
+        let (Some(rid), Some(code)) = (parts.next(), parts.next()) else {
+            continue;
+        };
+        if rid != id.to_string() {
+            continue;
+        }
+        let body = parts.next().unwrap_or("null");
+        let _ = ws.send(Message::text(format!("unsub {id}"))).await;
+        return match code {
+            "A" => serde_json::from_str(body).map_err(|e| refused(e.into())),
+            "E" => Err(refused(CoreError::Bank {
+                code: format!("WS {kind}"),
+                message: trf("Fehler-Frame: {0}", &[&snippet(body)]),
+            })),
+            _ => Ok(Value::Null),
+        };
+    }
+}
+
+/// [`request_within`] with the default wait; any failure is an error.
+async fn request<S>(ws: &mut S, id: u32, payload: Value, token: &str) -> CoreResult<Value>
+where
+    S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+        + futures_util::Sink<Message>
+        + Unpin,
+    <S as futures_util::Sink<Message>>::Error: std::fmt::Display,
+{
+    request_within(ws, id, payload, token, REQUEST_WAIT)
+        .await
+        .map_err(|e| e.error)
+}
+
+/// The complete depot inventory, largest position first. `None` = it could not
+/// be read reliably (no usable portfolio answer, or the connection failed on
+/// the way): the stored positions and the depot value must stay as they are.
+async fn fetch_portfolio<S>(
+    ws: &mut S,
+    sub_id: &mut u32,
+    token: &str,
+    trade_names: &std::collections::HashMap<String, String>,
+) -> Option<Vec<RemoteHolding>>
+where
+    S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+        + futures_util::Sink<Message>
+        + Unpin,
+    <S as futures_util::Sink<Message>>::Error: std::fmt::Display,
+{
+    use crate::depot_debug::log;
+    let mut next_id = || {
+        *sub_id += 2;
+        *sub_id
+    };
+
+    // The portfolio is asked per securities account; older sessions answer without it.
+    let sec_acc_no = match request_within(
+        ws,
+        next_id(),
+        json!({"type": "accountPairs"}),
+        token,
+        ACCOUNT_WAIT,
+    )
+    .await
+    {
+        Ok(pairs) => securities_account_number(&pairs),
+        Err(e) if e.transport => {
+            log("trade republic: accountPairs: connection failed, depot unchanged");
+            return None;
+        }
+        Err(_) => None,
+    };
+    let mut attempts = vec![
+        ("byType", json!({"type": "compactPortfolioByType"})),
+        ("legacy", json!({"type": "compactPortfolio"})),
+    ];
+    if let Some(number) = &sec_acc_no {
+        attempts.insert(
+            0,
+            (
+                "byType+secAccNo",
+                json!({"type": "compactPortfolioByType", "secAccNo": number}),
+            ),
+        );
+    }
+    let mut positions = None;
+    for (label, payload) in attempts {
+        match request_within(ws, next_id(), payload, token, REQUEST_WAIT).await {
+            Ok(answer) => match portfolio_positions(&answer) {
+                // only the current request may report an empty depot
+                Some(found) if !found.is_empty() || label != "legacy" => {
+                    log(&format!(
+                        "trade republic: portfolio via {label}: positions={} shape={}",
+                        found.len(),
+                        shape(&answer, 5)
+                    ));
+                    positions = Some(found);
+                    break;
+                }
+                _ => log(&format!(
+                    "trade republic: portfolio via {label}: not usable, shape={}",
+                    shape(&answer, 5)
+                )),
+            },
+            Err(e) if e.transport => {
+                log("trade republic: portfolio: connection failed, depot unchanged");
+                return None;
+            }
+            Err(_) => log(&format!("trade republic: portfolio via {label}: no answer")),
+        }
+    }
+    let positions = positions?;
+
+    let mut holdings = Vec::with_capacity(positions.len());
+    for (i, pos) in positions.iter().enumerate() {
+        let info = match request_within(
+            ws,
+            next_id(),
+            json!({"type": "instrument", "id": &pos.isin}),
+            token,
+            INSTRUMENT_WAIT,
+        )
+        .await
+        {
+            Ok(answer) => {
+                if i == 0 {
+                    log(&format!(
+                        "trade republic: instrument shape={}",
+                        shape(&answer, 2)
+                    ));
+                }
+                instrument_info(&answer)
+            }
+            Err(e) if e.transport => {
+                log("trade republic: instrument: connection failed, depot unchanged");
+                return None;
+            }
+            Err(_) => InstrumentInfo::default(),
+        };
+        let exchange = info.exchange.as_deref().unwrap_or("LSX");
+        let quote = match request_within(
+            ws,
+            next_id(),
+            json!({"type": "ticker", "id": format!("{}.{}", pos.isin, exchange)}),
+            token,
+            TICKER_WAIT,
+        )
+        .await
+        {
+            Ok(answer) => {
+                if i == 0 {
+                    log(&format!(
+                        "trade republic: ticker shape={}",
+                        shape(&answer, 2)
+                    ));
+                }
+                quote_of(&answer)
+            }
+            Err(e) if e.transport => {
+                log("trade republic: ticker: connection failed, depot unchanged");
+                return None;
+            }
+            Err(_) => Quote::default(),
+        };
+        // codes and flags only: no instrument id, name, quantity or price
+        log(&format!(
+            "trade republic: position {i}: category={} type={} fund={} underlying={} factor={:?} exchange={} isin_id={} last={} pre={} buy_in={}",
+            pos.category,
+            info.type_id,
+            info.fund_category,
+            info.underlying_class,
+            info.price_factor,
+            exchange,
+            is_isin(&pos.isin),
+            quote.last.is_some(),
+            quote.pre.is_some(),
+            pos.average_buy_in.is_some(),
+        ));
+        holdings.push(holding_of(
+            pos,
+            &info,
+            trade_names.get(&pos.isin).map(String::as_str),
+            quote,
+        ));
+    }
+    holdings.sort_by_key(|h| std::cmp::Reverse(h.holding.value_cents));
+    Some(holdings)
 }
 
 pub struct TradeRepublicConnector {
@@ -715,59 +1394,6 @@ impl BankConnector for TradeRepublicConnector {
         }
 
         let token = self.session_token.clone();
-        // Waits for the first answer ("<id> A <json>") of a subscription.
-        async fn request<S>(
-            ws: &mut S,
-            id: u32,
-            mut payload: Value,
-            token: &str,
-        ) -> CoreResult<Value>
-        where
-            S: futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
-                + futures_util::Sink<Message>
-                + Unpin,
-            <S as futures_util::Sink<Message>>::Error: std::fmt::Display,
-        {
-            if !token.is_empty() {
-                payload["token"] = json!(token);
-            }
-            let kind = payload["type"].as_str().unwrap_or("?").to_string();
-            ws.send(Message::text(format!("sub {id} {payload}")))
-                .await
-                .map_err(TradeRepublicConnector::ws_err)?;
-            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
-            loop {
-                let msg = tokio::time::timeout_at(deadline, ws.next())
-                    .await
-                    .map_err(|_| CoreError::Network {
-                        message: trf("Trade Republic hat auf „{0}“ nicht geantwortet.", &[&kind]),
-                    })?
-                    .ok_or_else(|| CoreError::Network {
-                        message: trf("WebSocket während „{0}“ geschlossen.", &[&kind]),
-                    })?
-                    .map_err(TradeRepublicConnector::ws_err)?;
-                let Message::Text(text) = msg else { continue };
-                let text = text.to_string();
-                let mut parts = text.splitn(3, ' ');
-                let (Some(rid), Some(code)) = (parts.next(), parts.next()) else {
-                    continue;
-                };
-                if rid != id.to_string() {
-                    continue;
-                }
-                let body = parts.next().unwrap_or("null");
-                let _ = ws.send(Message::text(format!("unsub {id}"))).await;
-                return match code {
-                    "A" => Ok(serde_json::from_str(body)?),
-                    "E" => Err(CoreError::Bank {
-                        code: format!("WS {kind}"),
-                        message: trf("Fehler-Frame: {0}", &[&snippet(body)]),
-                    }),
-                    _ => Ok(Value::Null),
-                };
-            }
-        }
-
         let mut out = FetchResult::default();
         let cash = match request(&mut ws, 1, json!({"type": "cash"}), &token).await {
             Ok(v) => v,
@@ -1025,11 +1651,35 @@ impl BankConnector for TradeRepublicConnector {
                 out.security_transactions.push(t);
             }
         }
-        if !out.security_transactions.is_empty() {
-            // Trade Republic reports no positions here: the depot only carries
-            // the transactions (value 0), the cash account keeps the balance.
+
+        // --- Depotpositionen: portfolio, then instrument data and a quote per position.
+        // Names of the trade rows fill in where the portfolio and the instrument have none.
+        let mut trade_names: std::collections::HashMap<String, String> = Default::default();
+        for row in &trade_rows {
+            if let Some(isin) = isin_of(&row.icon).filter(|_| !row.title.is_empty()) {
+                trade_names.entry(isin).or_insert_with(|| row.title.clone());
+            }
+        }
+        let portfolio = fetch_portfolio(&mut ws, &mut sub_id, &token, &trade_names).await;
+        let has_depot = portfolio.as_ref().is_some_and(|h| !h.is_empty())
+            || !out.security_transactions.is_empty()
+            || ctx.since_by_account.contains_key(DEPOT_REF);
+        if has_depot {
+            let balance_cents = match portfolio {
+                Some(holdings) => {
+                    let total = holdings.iter().map(|h| h.holding.value_cents).sum();
+                    out.holdings = holdings;
+                    out.holdings_fetched.push(DEPOT_REF.into());
+                    total
+                }
+                None => {
+                    // not read: the stored positions and the depot value stay
+                    out.balances_unknown.push(DEPOT_REF.into());
+                    0
+                }
+            };
             out.accounts.push(RemoteAccount {
-                external_ref: "tr:depot".into(),
+                external_ref: DEPOT_REF.into(),
                 name: "Depot".into(),
                 owner: String::new(),
                 iban: String::new(),
@@ -1037,7 +1687,7 @@ impl BankConnector for TradeRepublicConnector {
                 account_number: String::new(),
                 currency: "EUR".into(),
                 kind: AccountKind::Brokerage,
-                balance_cents: 0,
+                balance_cents,
                 balance_date: super::today(),
             });
         }
@@ -1222,5 +1872,574 @@ mod tests {
         assert_eq!(amount_cents(&json!(-4.040000000000001)), -4_04);
         assert_eq!(amount_cents(&json!(-5.78)), -5_78);
         assert_eq!(amount_cents(&json!(47.32)), 4732);
+    }
+
+    // --- Depot positions
+
+    fn position(id: &str, category: &str, quantity: f64, buy_in: Option<f64>) -> RawPosition {
+        RawPosition {
+            isin: id.into(),
+            name: None,
+            category: category.into(),
+            quantity,
+            average_buy_in: buy_in,
+        }
+    }
+
+    fn info(type_id: &str) -> InstrumentInfo {
+        InstrumentInfo {
+            type_id: type_id.into(),
+            ..Default::default()
+        }
+    }
+
+    fn quote(last: f64, pre: Option<f64>) -> Quote {
+        Quote {
+            last: Some(last),
+            pre,
+        }
+    }
+
+    #[test]
+    fn parses_compact_portfolio_by_type() {
+        let v = json!({
+            "categories": [
+                {"type": "stocksAndETFs", "positions": [
+                    {"instrumentId": "US0378331005", "name": "Apple Inc.", "netSize": "10.5", "averageBuyIn": "175.50"},
+                    {"isin": "IE00B4L5Y983", "netSize": 40.0, "averageBuyIn": 82.20},
+                    {"isin": "DE0007164600", "netSize": "0"}
+                ]},
+                {"type": "crypto", "positions": [
+                    {"instrumentId": "XF000BTC0017", "name": "Bitcoin", "netSize": "0.15", "averageBuyIn": "50000.00"}
+                ]},
+                {"type": "bonds", "positions": []}
+            ]
+        });
+        let positions = portfolio_positions(&v).unwrap();
+        assert_eq!(positions.len(), 3); // the sold-out position is no holding
+        assert_eq!(positions[0].isin, "US0378331005");
+        assert_eq!(positions[0].name.as_deref(), Some("Apple Inc."));
+        assert_eq!(positions[0].category, "stocksAndETFs");
+        assert_eq!(positions[0].quantity, 10.5);
+        assert_eq!(positions[0].average_buy_in, Some(175.50));
+        assert_eq!(positions[1].isin, "IE00B4L5Y983");
+        assert_eq!(positions[1].quantity, 40.0);
+        assert_eq!(positions[2].category, "crypto");
+    }
+
+    #[test]
+    fn portfolio_layouts_and_what_is_no_portfolio() {
+        let flat = json!({"positions": [
+            {"instrumentId": "DE0007164600", "netSize": "5", "averageBuyIn": "140,00"}
+        ]});
+        let positions = portfolio_positions(&flat).unwrap();
+        assert_eq!(positions[0].quantity, 5.0);
+        assert_eq!(positions[0].average_buy_in, Some(140.0));
+        // an empty depot is an answer …
+        assert_eq!(
+            portfolio_positions(&json!({"categories": []})),
+            Some(vec![])
+        );
+        // … an unknown layout is not: it must not empty the stored depot
+        assert_eq!(portfolio_positions(&json!({"status": "ok"})), None);
+        assert_eq!(portfolio_positions(&Value::Null), None);
+    }
+
+    #[test]
+    fn numbers_as_text_keep_three_decimals() {
+        assert_eq!(json_as_f64(&json!("40.745")), Some(40.745));
+        assert_eq!(json_as_f64(&json!("18.000")), Some(18.0));
+        assert_eq!(json_as_f64(&json!("73.256536")), Some(73.256536));
+        assert_eq!(json_as_f64(&json!(40.745)), Some(40.745));
+        assert_eq!(json_as_f64(&json!("1.234,56")), Some(1234.56));
+        assert_eq!(json_as_f64(&json!("")), None);
+    }
+
+    #[test]
+    fn securities_account_prefers_the_default_product() {
+        let pairs = json!({"accounts": [
+            {"productType": "CHILD", "securitiesAccountNumber": "222"},
+            {"productType": "DEFAULT", "securitiesAccountNumber": "111"},
+            {"productType": "DEFAULT"}
+        ]});
+        assert_eq!(securities_account_number(&pairs).as_deref(), Some("111"));
+        assert_eq!(securities_account_number(&json!({"accounts": []})), None);
+        assert_eq!(securities_account_number(&Value::Null), None);
+    }
+
+    #[test]
+    fn holding_with_price_and_performance() {
+        let mut raw = position("US0378331005", "stocksAndETFs", 10.0, Some(150.0));
+        raw.name = Some("Apple".into());
+        let mut inst = info("stock");
+        inst.wkn = "865985".into();
+        let rh = holding_of(&raw, &inst, None, quote(180.0, Some(175.0)));
+        assert_eq!(rh.account_ref, "tr:depot");
+        assert!(!rh.direct_crypto);
+        let h = rh.holding;
+        assert_eq!(h.isin, "US0378331005");
+        assert_eq!(h.wkn, "865985");
+        assert_eq!(h.name, "Apple");
+        assert_eq!(h.purchase_price_cents, 15_000);
+        assert_eq!(h.current_price_cents, 18_000);
+        assert_eq!(h.value_cents, 180_000);
+        assert_eq!(h.prev_day_price_cents, Some(17_500));
+        assert_eq!(h.prev_day_value_cents, Some(175_000));
+        assert_eq!(h.profit_loss_purchase_cents, Some(30_000));
+        assert_eq!(h.profit_loss_purchase_rel, Some(20.0));
+        assert_eq!(h.profit_loss_prev_day_cents, Some(5_000));
+        assert_eq!(h.custody_type, "");
+        assert_eq!(rh.classification.asset_class, Some(AssetClass::Equity));
+        assert_eq!(
+            rh.classification.instrument,
+            Some(InstrumentKind::SingleSecurity)
+        );
+    }
+
+    #[test]
+    fn value_comes_from_the_unrounded_price() {
+        // 73,256536 × 40,745 = 2.984,84 (rounding the price to 40,75 first gave 2.985,20)
+        let raw = position("DE000A0F5UH1", "stocksAndETFs", 73.256536, Some(27.57));
+        let h = holding_of(&raw, &info("fund"), None, quote(40.745, None)).holding;
+        assert_eq!(h.current_price_cents, 4075);
+        assert_eq!(h.value_cents, 298_484);
+        assert_eq!(h.profit_loss_purchase_cents, Some(298_484 - 201_968));
+        assert_eq!(h.prev_day_value_cents, None);
+        assert_eq!(h.profit_loss_prev_day_cents, None);
+    }
+
+    #[test]
+    fn bonds_are_quoted_in_percent_of_the_nominal() {
+        // 1.000 nominal at 99,50 % is worth 995,00, not 99.500,00
+        let raw = position("DE0001102580", "bonds", 1000.0, Some(98.5));
+        let h = holding_of(&raw, &info("bond"), None, quote(99.5, Some(99.0))).holding;
+        assert_eq!(h.value_cents, 99_500);
+        assert_eq!(h.purchase_price_cents, 99); // 0,985 per unit, shown in cents
+        assert_eq!(h.profit_loss_purchase_cents, Some(1_000));
+        assert_eq!(h.prev_day_value_cents, Some(99_000));
+        // a purchase price that already is per unit stays as it is
+        let per_unit = position("DE0001102580", "bonds", 1000.0, Some(0.985));
+        let h = holding_of(&per_unit, &info("bond"), None, quote(99.5, None)).holding;
+        assert_eq!(h.profit_loss_purchase_cents, Some(1_000));
+        // the category alone marks a bond when the instrument answer is missing
+        let h = holding_of(&raw, &InstrumentInfo::default(), None, quote(99.5, None)).holding;
+        assert_eq!(h.value_cents, 99_500);
+    }
+
+    #[test]
+    fn without_a_quote_the_position_is_valued_at_cost_and_reports_no_gain() {
+        let raw = position("US0378331005", "stocksAndETFs", 2.0, Some(150.0));
+        let h = holding_of(&raw, &info("stock"), None, Quote::default()).holding;
+        assert_eq!(h.value_cents, 30_000);
+        assert_eq!(h.current_price_cents, 15_000);
+        assert_eq!(h.profit_loss_purchase_cents, None);
+        assert_eq!(h.profit_loss_purchase_rel, None);
+        // neither quote nor purchase price: nothing to value
+        let bare = position("US0378331005", "stocksAndETFs", 2.0, None);
+        let h = holding_of(&bare, &info("stock"), None, Quote::default()).holding;
+        assert_eq!((h.value_cents, h.purchase_price_cents), (0, 0));
+    }
+
+    #[test]
+    fn name_falls_back_from_portfolio_to_instrument_to_trade_row() {
+        let raw = position("US0378331005", "stocksAndETFs", 1.0, None);
+        let mut inst = info("stock");
+        let q = Quote::default();
+        assert_eq!(
+            holding_of(&raw, &inst, None, q).holding.name,
+            "US0378331005"
+        );
+        assert_eq!(
+            holding_of(&raw, &inst, Some("Apple (Kauf)"), q)
+                .holding
+                .name,
+            "Apple (Kauf)"
+        );
+        inst.name = "Apple Inc.".into();
+        assert_eq!(
+            holding_of(&raw, &inst, Some("x"), q).holding.name,
+            "Apple Inc."
+        );
+        inst.short_name = "Apple".into();
+        assert_eq!(holding_of(&raw, &inst, Some("x"), q).holding.name, "Apple");
+    }
+
+    #[test]
+    fn classification_follows_the_instrument_type_not_the_name() {
+        let class = |category: &str, inst: &InstrumentInfo, name: &str| {
+            let (c, crypto) = classify_tr_instrument(category, inst, name);
+            (c.asset_class, c.instrument, crypto)
+        };
+        // "Netflix" contains "etf"
+        assert_eq!(
+            class("stocksAndETFs", &info("stock"), "Netflix"),
+            (
+                Some(AssetClass::Equity),
+                Some(InstrumentKind::SingleSecurity),
+                false
+            )
+        );
+        // an ETF's asset class is its underlying class; unknown stays open for the name rules
+        let mut etf = info("fund");
+        etf.fund_category = "etf".into();
+        assert_eq!(
+            class("stocksAndETFs", &etf, "Core Euro Govt Bond"),
+            (None, Some(InstrumentKind::Etf), false)
+        );
+        etf.underlying_class = "Bonds".into();
+        assert_eq!(
+            class("stocksAndETFs", &etf, "Core Euro Govt Bond"),
+            (Some(AssetClass::Bond), Some(InstrumentKind::Etf), false)
+        );
+        // the labels Trade Republic sends
+        etf.underlying_class = "Festverzinslich".into();
+        assert_eq!(class("stocksAndETFs", &etf, "x").0, Some(AssetClass::Bond));
+        etf.underlying_class = "Aktien".into();
+        assert_eq!(
+            class("stocksAndETFs", &etf, "x").0,
+            Some(AssetClass::Equity)
+        );
+        etf.underlying_class = "equity".into();
+        assert_eq!(
+            class("stocksAndETFs", &etf, "MSCI World").0,
+            Some(AssetClass::Equity)
+        );
+        assert_eq!(
+            class("stocksAndETFs", &info("fund"), "Mischfonds").1,
+            Some(InstrumentKind::Fund)
+        );
+        assert_eq!(
+            class("stocksAndETFs", &info("fund"), "Physical Gold ETC"),
+            (
+                Some(AssetClass::Commodity),
+                Some(InstrumentKind::EtcEtn),
+                false
+            )
+        );
+        assert_eq!(
+            class("derivatives", &info("derivative"), "Call"),
+            (None, Some(InstrumentKind::Derivative), false)
+        );
+        assert_eq!(
+            class("bonds", &InstrumentInfo::default(), "Bund"),
+            (
+                Some(AssetClass::Bond),
+                Some(InstrumentKind::SingleSecurity),
+                false
+            )
+        );
+        // nothing stated: nothing imported
+        assert_eq!(
+            class("stocksAndETFs", &InstrumentInfo::default(), "Netflix"),
+            (None, None, false)
+        );
+    }
+
+    #[test]
+    fn direct_crypto_keeps_an_isin_and_moves_a_ticker_to_the_wkn() {
+        let coin = position("BTC", "crypto", 0.5, Some(60_000.0));
+        let rh = holding_of(&coin, &info("crypto"), None, quote(65_000.0, None));
+        assert!(rh.direct_crypto);
+        assert_eq!(rh.classification.asset_class, Some(AssetClass::Crypto));
+        assert_eq!(
+            rh.classification.instrument,
+            Some(InstrumentKind::DirectHolding)
+        );
+        assert_eq!(
+            (rh.holding.isin.as_str(), rh.holding.wkn.as_str()),
+            ("", "BTC")
+        );
+        // the core recognises it as a direct holding with a stable key
+        let class = crate::asset_classification::classify_asset(
+            rh.holding.clone(),
+            rh.classification.clone(),
+            Default::default(),
+            true,
+        );
+        assert_eq!(class.security_key.as_deref(), Some("crypto:BTC"));
+
+        let with_isin = position("XF000BTC0017", "crypto", 0.5, None);
+        let rh = holding_of(&with_isin, &info("crypto"), None, quote(65_000.0, None));
+        assert_eq!(rh.holding.isin, "XF000BTC0017");
+    }
+
+    #[test]
+    fn shape_shows_keys_and_types_but_no_values() {
+        let v = json!({
+            "categories": [{"type": "crypto", "positions": [
+                {"isin": "US0378331005", "netSize": "10.5", "averageBuyIn": 175.5}
+            ]}],
+            "US0378331005": {"name": "Apple Inc."}
+        });
+        let s = shape(&v, 5);
+        assert!(s.contains(
+            "categories:[1x {positions:[1x {averageBuyIn:num,isin:str,netSize:str}],type:str}]"
+        ));
+        assert!(s.contains("<id>:{name:str}"));
+        for secret in ["US0378331005", "Apple", "10.5", "175", "crypto"] {
+            assert!(!s.contains(secret), "{secret} leaked into {s}");
+        }
+    }
+
+    // --- Depot fetch against a scripted WebSocket
+
+    use std::collections::VecDeque;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    enum Reply {
+        Answer(Value),
+        Refuse,
+        /// No answer at all (the request runs into its timeout).
+        Silent,
+        /// The connection ends.
+        Close,
+    }
+
+    struct FakeWs<F: FnMut(&Value) -> Reply + Unpin> {
+        script: F,
+        inbox: VecDeque<Message>,
+        closed: bool,
+        /// Request types in the order they were sent.
+        sent: Vec<String>,
+    }
+
+    impl<F: FnMut(&Value) -> Reply + Unpin> FakeWs<F> {
+        fn new(script: F) -> Self {
+            Self {
+                script,
+                inbox: VecDeque::new(),
+                closed: false,
+                sent: Vec::new(),
+            }
+        }
+    }
+
+    impl<F: FnMut(&Value) -> Reply + Unpin> futures_util::Stream for FakeWs<F> {
+        type Item = Result<Message, tokio_tungstenite::tungstenite::Error>;
+        fn poll_next(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            match self.inbox.pop_front() {
+                Some(msg) => Poll::Ready(Some(Ok(msg))),
+                None if self.closed => Poll::Ready(None),
+                // nothing will come: the request's timeout wakes the task
+                None => Poll::Pending,
+            }
+        }
+    }
+
+    impl<F: FnMut(&Value) -> Reply + Unpin> futures_util::Sink<Message> for FakeWs<F> {
+        type Error = std::io::Error;
+        fn poll_ready(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn start_send(mut self: Pin<&mut Self>, item: Message) -> Result<(), Self::Error> {
+            let text = item.to_text().unwrap_or_default().to_string();
+            let mut parts = text.splitn(3, ' ');
+            if parts.next() != Some("sub") {
+                return Ok(());
+            }
+            let id = parts.next().unwrap_or_default().to_string();
+            let payload: Value = serde_json::from_str(parts.next().unwrap_or("null")).unwrap();
+            self.sent
+                .push(payload["type"].as_str().unwrap_or_default().to_string());
+            match (self.script)(&payload) {
+                Reply::Answer(v) => self.inbox.push_back(Message::text(format!("{id} A {v}"))),
+                Reply::Refuse => self.inbox.push_back(Message::text(format!("{id} E {{}}"))),
+                Reply::Silent => {}
+                Reply::Close => self.closed = true,
+            }
+            Ok(())
+        }
+        fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    /// Two positions: a share with a quote and a fund.
+    fn portfolio_answer() -> Value {
+        json!({"categories": [{"type": "stocksAndETFs", "positions": [
+            {"isin": "US0378331005", "netSize": "2", "averageBuyIn": "150.00"},
+            {"isin": "IE00B4L5Y983", "netSize": "10", "averageBuyIn": "80.00"}
+        ]}]})
+    }
+
+    /// A server that knows the account, the portfolio and every instrument and quote.
+    fn healthy(payload: &Value) -> Reply {
+        let id = payload["id"].as_str().unwrap_or_default();
+        match payload["type"].as_str().unwrap_or_default() {
+            "accountPairs" => Reply::Answer(json!({"accounts": [
+                {"productType": "DEFAULT", "securitiesAccountNumber": "111"}
+            ]})),
+            "compactPortfolioByType" if payload["secAccNo"] == "111" => {
+                Reply::Answer(portfolio_answer())
+            }
+            "instrument" if id == "US0378331005" => Reply::Answer(json!({
+                "typeId": "stock", "shortName": "Apple", "wkn": "865985", "exchangeIds": ["LSX"]
+            })),
+            "instrument" => Reply::Answer(json!({
+                "typeId": "fund", "shortName": "Core MSCI World", "exchangeIds": ["TDG"],
+                "fundInfo": {"category": "etf", "underlyingClass": "equity"}
+            })),
+            "ticker" if id == "US0378331005.LSX" => {
+                Reply::Answer(json!({"last": {"price": "180.00"}, "pre": {"price": "175.00"}}))
+            }
+            "ticker" if id == "IE00B4L5Y983.TDG" => {
+                Reply::Answer(json!({"last": {"price": "90.555"}}))
+            }
+            _ => Reply::Refuse,
+        }
+    }
+
+    async fn run<F: FnMut(&Value) -> Reply + Unpin>(
+        script: F,
+    ) -> (Option<Vec<RemoteHolding>>, Vec<String>) {
+        let mut ws = FakeWs::new(script);
+        let mut sub_id = 100;
+        let names = std::collections::HashMap::new();
+        let holdings = fetch_portfolio(&mut ws, &mut sub_id, "", &names).await;
+        (holdings, ws.sent)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn depot_fetch_reads_positions_with_instrument_and_quote() {
+        let (holdings, sent) = run(healthy).await;
+        let holdings = holdings.unwrap();
+        assert_eq!(
+            sent,
+            [
+                "accountPairs",
+                "compactPortfolioByType",
+                "instrument",
+                "ticker",
+                "instrument",
+                "ticker"
+            ]
+        );
+        // largest value first: 10 × 90,555 = 905,55 before 2 × 180,00 = 360,00
+        let fund = &holdings[0];
+        assert_eq!(fund.holding.name, "Core MSCI World");
+        assert_eq!(fund.holding.value_cents, 90_555);
+        assert_eq!(fund.classification.instrument, Some(InstrumentKind::Etf));
+        assert_eq!(fund.classification.asset_class, Some(AssetClass::Equity));
+        let share = &holdings[1];
+        assert_eq!(share.holding.wkn, "865985");
+        assert_eq!(share.holding.value_cents, 36_000);
+        assert_eq!(share.holding.profit_loss_prev_day_cents, Some(1_000));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn depot_fetch_falls_back_when_the_account_number_is_unknown_or_refused() {
+        // no account pairs: the portfolio is asked without the number
+        let (holdings, sent) = run(|p: &Value| match p["type"].as_str().unwrap() {
+            "accountPairs" => Reply::Refuse,
+            "compactPortfolioByType" if p["secAccNo"].is_null() => {
+                Reply::Answer(portfolio_answer())
+            }
+            _ => healthy(p),
+        })
+        .await;
+        assert_eq!(holdings.unwrap().len(), 2);
+        assert_eq!(sent[..2], ["accountPairs", "compactPortfolioByType"]);
+
+        // the current request refused twice: the old one still lists the positions
+        let (holdings, sent) = run(|p: &Value| match p["type"].as_str().unwrap() {
+            "compactPortfolioByType" => Reply::Refuse,
+            "compactPortfolio" => Reply::Answer(json!({"positions": [
+                {"instrumentId": "US0378331005", "netSize": "2", "averageBuyIn": "150.00"}
+            ]})),
+            _ => healthy(p),
+        })
+        .await;
+        assert_eq!(holdings.unwrap().len(), 1);
+        assert_eq!(
+            sent[..4],
+            [
+                "accountPairs",
+                "compactPortfolioByType",
+                "compactPortfolioByType",
+                "compactPortfolio"
+            ]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn depot_fetch_reports_an_empty_depot_only_from_the_current_request() {
+        let (holdings, _) = run(|p: &Value| match p["type"].as_str().unwrap() {
+            "compactPortfolioByType" => Reply::Answer(json!({"categories": []})),
+            _ => healthy(p),
+        })
+        .await;
+        assert_eq!(holdings.map(|h| h.len()), Some(0));
+
+        // an unknown layout, then an empty answer of the old request: not a statement
+        let (holdings, _) = run(|p: &Value| match p["type"].as_str().unwrap() {
+            "compactPortfolioByType" => Reply::Answer(json!({"status": "ok"})),
+            "compactPortfolio" => Reply::Answer(json!({"positions": []})),
+            _ => healthy(p),
+        })
+        .await;
+        assert!(holdings.is_none());
+
+        // nothing answers at all
+        let (holdings, _) = run(|p: &Value| match p["type"].as_str().unwrap() {
+            "compactPortfolioByType" | "compactPortfolio" => Reply::Silent,
+            _ => healthy(p),
+        })
+        .await;
+        assert!(holdings.is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_silent_ticker_costs_its_timeout_and_values_the_position_at_cost() {
+        let started = tokio::time::Instant::now();
+        let (holdings, _) = run(|p: &Value| match p["type"].as_str().unwrap() {
+            "ticker" if p["id"] == "US0378331005.LSX" => Reply::Silent,
+            "instrument" if p["id"] == "IE00B4L5Y983" => Reply::Refuse,
+            _ => healthy(p),
+        })
+        .await;
+        assert_eq!(started.elapsed(), TICKER_WAIT);
+        let holdings = holdings.unwrap();
+        let share = holdings
+            .iter()
+            .find(|h| h.holding.isin == "US0378331005")
+            .unwrap();
+        assert_eq!(share.holding.value_cents, 30_000);
+        assert_eq!(share.holding.profit_loss_purchase_cents, None);
+        // the refused instrument: default exchange, no quote there, still listed
+        let fund = holdings
+            .iter()
+            .find(|h| h.holding.isin == "IE00B4L5Y983")
+            .unwrap();
+        assert_eq!(fund.holding.value_cents, 80_000);
+        assert_eq!(fund.classification, ClassificationValues::default());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_lost_connection_leaves_the_depot_untouched() {
+        // at any step: no partial inventory with made-up prices
+        for lost in [
+            "accountPairs",
+            "compactPortfolioByType",
+            "instrument",
+            "ticker",
+        ] {
+            let mut seen = 0;
+            let (holdings, _) = run(|p: &Value| {
+                if p["type"] == lost {
+                    seen += 1;
+                    // the second position's requests, where there are two
+                    if seen == 2 || matches!(lost, "accountPairs" | "compactPortfolioByType") {
+                        return Reply::Close;
+                    }
+                }
+                healthy(p)
+            })
+            .await;
+            assert!(holdings.is_none(), "connection lost during {lost}");
+        }
     }
 }

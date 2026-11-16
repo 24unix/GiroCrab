@@ -330,8 +330,10 @@ pub struct RemoteAccount {
 }
 
 /// Securities position delivered by a connector for a depot account.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RemoteHolding {
+    pub classification: crate::asset_classification::ClassificationValues,
+    pub direct_crypto: bool,
     pub account_ref: String,
     pub holding: crate::models::Holding,
 }
@@ -438,9 +440,18 @@ pub struct FetchResult {
     pub holdings: Vec<RemoteHolding>,
     /// Explicitly fetched complete inventories, including empty depots.
     pub holdings_fetched: Vec<String>,
+    /// Accounts (external refs) whose balance could not be read this time: the
+    /// reported `balance_cents` is a placeholder and the stored balance stays.
+    pub balances_unknown: Vec<String>,
     /// Securities transactions (buy, sell, dividend …) of depots; added or
     /// refreshed by `(account, external_id)`, never removed.
     pub security_transactions: Vec<RemoteSecurityTransaction>,
+    /// Standing orders (Daueraufträge, #239) the bank reported; they replace the
+    /// stored ones of each account in `standing_orders_fetched`.
+    pub standing_orders: Vec<RemoteStandingOrder>,
+    /// Accounts (external refs) whose standing orders were fetched completely,
+    /// including the ones that have none.
+    pub standing_orders_fetched: Vec<String>,
     /// Updated connector state to persist.
     pub state: Option<serde_json::Value>,
     /// Keep stored balances and add newly imported bookings to them
@@ -506,6 +517,39 @@ pub trait BankConnector: Send {
             message: tr("Für diese Bank werden Überweisungen nicht unterstützt.").into(),
         })
     }
+    /// Submit a batch transfer (Sammelüberweisung, HKCCM). Same session rules
+    /// as `send_transfer`.
+    async fn send_batch_transfer(
+        &mut self,
+        _ctx: &ConnectContext,
+        _job: &BatchTransferJob,
+    ) -> CoreResult<Phase> {
+        Err(CoreError::InvalidInput {
+            message: tr("Für diese Bank werden Sammelüberweisungen nicht unterstützt.").into(),
+        })
+    }
+    /// Create, change or delete a standing order (HKCDE/HKCDN/HKCDL). Same
+    /// session rules as `send_transfer`.
+    async fn send_standing_order(
+        &mut self,
+        _ctx: &ConnectContext,
+        _job: &StandingOrderJob,
+    ) -> CoreResult<Phase> {
+        Err(CoreError::InvalidInput {
+            message: tr("Für diese Bank werden Daueraufträge nicht unterstützt.").into(),
+        })
+    }
+    /// Submit a direct debit collection (SEPA-Lastschrift, HKDSE/HKDME/…).
+    /// Same session rules as `send_transfer`.
+    async fn send_direct_debit(
+        &mut self,
+        _ctx: &ConnectContext,
+        _job: &DebitJob,
+    ) -> CoreResult<Phase> {
+        Err(CoreError::InvalidInput {
+            message: tr("Für diese Bank werden Lastschriften nicht unterstützt.").into(),
+        })
+    }
     /// After `send_transfer` reached `Ready`: executed (instant or regular),
     /// instant declined before any approval, or result unknown.
     /// Default: executed as a regular transfer.
@@ -522,6 +566,80 @@ pub trait BankConnector: Send {
     fn has_open_order(&self) -> bool {
         false
     }
+}
+
+/// Batch transfer (Sammelüberweisung): one debit account, many payments.
+#[derive(Debug, Clone)]
+pub struct BatchTransferJob {
+    pub source_iban: String,
+    pub source_owner: String,
+    pub payments: Vec<crate::connectors::fints::sepa::BatchPayment>,
+    /// true = the bank books one sum, false = one booking per payment
+    /// (only if the bank allows it, see `BatchParams`).
+    pub batch_booking: bool,
+    pub execution_date: Option<String>,
+}
+
+/// One collection (Einzug) to hand to the bank: all lines share scheme,
+/// sequence type and due date, as in one pain.008 message.
+#[derive(Debug, Clone)]
+pub struct DebitJob {
+    pub source_iban: String,
+    pub creditor_name: String,
+    pub creditor_id: String,
+    pub scheme: crate::connectors::fints::pain008::DebitScheme,
+    pub sequence: crate::connectors::fints::pain008::SequenceType,
+    /// Due date, `YYYY-MM-DD`.
+    pub collection_date: String,
+    pub collections: Vec<crate::connectors::fints::pain008::Collection>,
+    /// true = the bank books one sum, false = one booking per collection.
+    pub batch_booking: bool,
+}
+
+/// A standing order (Dauerauftrag) held by the bank, read-only (#239).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RemoteStandingOrder {
+    pub account_ref: String,
+    /// The bank's order id; may be empty (then the content identifies it).
+    pub order_id: String,
+    pub recipient_name: String,
+    pub recipient_iban: String,
+    /// Positive = outgoing amount.
+    pub amount_cents: i64,
+    pub purpose: String,
+    /// `YYYY-MM-DD`.
+    pub first_date: String,
+    pub last_date: Option<String>,
+    /// `M` (months) or `W` (weeks).
+    pub time_unit: String,
+    /// Every n-th month / week.
+    pub interval: u32,
+    /// Day of the month (1–31, 31 = last day) or weekday (1 = Monday … 7).
+    pub exec_day: u32,
+    pub can_change: bool,
+    pub can_delete: bool,
+}
+
+/// A standing order to create, change or delete at the bank (#496). The data
+/// is what goes into the order: new values for `Create`/`Change`, the stored
+/// ones for `Delete`.
+#[derive(Debug, Clone)]
+pub struct StandingOrderJob {
+    pub action: crate::models::StandingOrderAction,
+    pub source_iban: String,
+    pub source_owner: String,
+    /// The bank's order id (`Change`/`Delete`), else empty.
+    pub order_id: String,
+    pub recipient_name: String,
+    pub recipient_iban: String,
+    pub recipient_bic: Option<String>,
+    pub amount_cents: i64,
+    pub purpose: String,
+    pub first_date: String,
+    pub last_date: Option<String>,
+    pub time_unit: String,
+    pub interval: u32,
+    pub exec_day: u32,
 }
 
 /// Transfer request plus the source account data resolved from the vault.

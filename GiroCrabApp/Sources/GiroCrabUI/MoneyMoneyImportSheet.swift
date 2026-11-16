@@ -9,33 +9,52 @@ import GiroCrabCore
 struct MoneyMoneyImportSheet: View {
     @Environment(AppModel.self) private var model
 
-    enum Source: Hashable { case database, export }
-    #if os(macOS)
-    @State private var source: Source = .database
-    #else
-    // MoneyMoney's database only exists on macOS; iOS offers the file export only.
+    enum Source: Hashable {
+        /// GiroCrab's own backup („Tresor sichern …“); replaces the vault.
+        case backup
+        /// MoneyMoney's database (macOS only).
+        case database
+        case export
+        /// Listed under „Datenbank“: the backup or the other app's database.
+        var isDatabase: Bool { self != .export }
+    }
+
+    /// A new device (empty vault) most likely brings a backup; otherwise
+    /// the sources that add data, as before.
+    static func defaultSource(vaultEmpty: Bool, mac: Bool) -> Source {
+        if vaultEmpty { return .backup }
+        return mac ? .database : .export
+    }
+
     @State private var source: Source = .export
-    #endif
 
     /// An import is running in the view below.
     @State private var importRunning = false
 
     var body: some View {
         Group {
-            #if os(macOS)
             switch source {
+            case .backup: BackupImportView(running: $importRunning, source: $source)
+            #if os(macOS)
             case .database: MoneyMoneyDatabaseImportView(running: $importRunning, source: $source)
+            #else
+            case .database: BackupImportView(running: $importRunning, source: $source) // not offered on iOS
+            #endif
             case .export: MoneyMoneyExportImportView(running: $importRunning, source: $source)
             }
-            #else
-            MoneyMoneyExportImportView(running: $importRunning, source: nil)
-            #endif
         }
         .padding(20)
         .macFrame(width: 860)
         // the system sheet background: grouped forms then sit on it like in
         // System Settings instead of forming a box inside a coloured card
         .onAppear {
+            #if os(macOS)
+            let mac = true
+            #else
+            let mac = false
+            #endif
+            let empty = !model.hasOwnVault || model.demoActive || model.allAccounts.isEmpty
+            source = Self.defaultSource(vaultEmpty: empty, mac: mac)
             if model.demoImportPreview != nil { source = .export }
             #if os(macOS)
             if model.demoDbPreview != nil { source = .database }
@@ -96,13 +115,14 @@ struct ImportSourceSection: View {
 
     var body: some View {
         Section {
-            Picker("Quelle", selection: $source) {
+            Picker("Quelle", selection: Binding(get: { source.isDatabase },
+                                                set: { source = $0 ? .backup : .export })) {
                 option("Datenbank",
-                       "Alle Konten mit Kategorien, Regeln, Bankzugängen und Kontoauszügen – empfohlen beim Umstieg.")
-                    .tag(MoneyMoneyImportSheet.Source.database)
+                       "Der ganze Datenbestand auf einmal: eine Sicherung aus GiroCrab oder die Datenbank einer anderen App.")
+                    .tag(true)
                 option("Exportdatei eines Kontos",
                        "CSV, camt.053 oder MT940 – um einzelne Konten zu ergänzen.")
-                    .tag(MoneyMoneyImportSheet.Source.export)
+                    .tag(false)
             }
             #if os(macOS)
             .pickerStyle(.radioGroup)
@@ -110,6 +130,22 @@ struct ImportSourceSection: View {
             .pickerStyle(.inline)
             #endif
             .labelsHidden()
+            if source.isDatabase {
+                // product names, not translated (and not in the String Catalog)
+                #if os(macOS)
+                Picker("Art", selection: $source) {
+                    Text(verbatim: "GiroCrab").tag(MoneyMoneyImportSheet.Source.backup)
+                    Text(verbatim: "MoneyMoney").tag(MoneyMoneyImportSheet.Source.database)
+                }
+                #else
+                LabeledContent("Art") { Text(verbatim: "GiroCrab") }
+                #endif
+                Text(source == .backup
+                     ? "Eine Sicherung aus „Tresor sichern …“, geöffnet mit ihrem Passwort. Ersetzt den Tresor."
+                     : "Alle Konten mit Kategorien, Regeln, Bankzugängen und Kontoauszügen – empfohlen beim Umstieg.")
+                    .appFont(.caption).foregroundStyle(Theme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         } header: {
             Text("Quelle").appSectionHeader()
         }

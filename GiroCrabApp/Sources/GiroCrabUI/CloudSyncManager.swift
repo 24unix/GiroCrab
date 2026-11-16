@@ -16,6 +16,7 @@ public final class CloudSyncManager {
         static let enabled = "girocrab.sync.enabled"
         static let location = "girocrab.sync.location"
         static let bookmark = "girocrab.sync.bookmark"
+        static let chosen = "girocrab.sync.folderChosen"
         static let last = "girocrab.sync.last"
         static let stats = "girocrab.sync.stats"
         static let seen = "girocrab.sync.seen"
@@ -62,9 +63,16 @@ public final class CloudSyncManager {
     public private(set) var isSyncing = false
     public private(set) var lastError: String?
     public private(set) var keyMismatch = false
+    /// The user picked the sync folder („Ordner wählen …“): it beats the app's
+    /// own iCloud container, so a device with a container can join a device
+    /// without one, e.g. the iPhone a Mac that syncs via iCloud Drive (#484).
+    public private(set) var folderChosen = false
+    /// The sync folder can't be read (macOS: no permission for iCloud Drive yet).
+    public private(set) var folderAccessDenied = false
 
     private init() {
         isEnabled = defaults.bool(forKey: K.enabled)
+        folderChosen = defaults.bool(forKey: K.chosen)
         location = .folder
         lastSync = defaults.object(forKey: K.last) as? Date
         lastStats = defaults.string(forKey: K.stats)
@@ -145,10 +153,17 @@ public final class CloudSyncManager {
         return ICloudFolderMigration.hasMovedMarker(in: url)
     }
 
-    public func setFolder(_ url: URL) throws {
+    /// `chosen`: picked by the user, see `folderChosen`.
+    public func setFolder(_ url: URL, chosen: Bool = false) throws {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        if let data = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
+        #if os(macOS)
+        // A folder picked in the open panel: keep the user's grant across launches.
+        let scopedData = try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil)
+        #else
+        let scopedData: Data? = nil
+        #endif
+        if let data = scopedData ?? (try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)) {
             defaults.set(data, forKey: K.bookmark)
         }
         folderName = ICloudFolderMigration.displayName(for: url)
@@ -159,6 +174,22 @@ public final class CloudSyncManager {
         #endif
         location = .folder
         lastError = nil
+        folderAccessDenied = false
+        if chosen {
+            folderChosen = true
+            defaults.set(true, forKey: K.chosen)
+        }
+    }
+
+    /// Back from a chosen folder to the app's own iCloud container (or, without
+    /// one, to the default folder).
+    public func useContainerAgain() {
+        folderChosen = false
+        defaults.removeObject(forKey: K.chosen)
+        defaults.removeObject(forKey: K.bookmark)
+        folderName = nil
+        lastError = nil
+        folderAccessDenied = false
     }
 
     /// Merges the other devices' snapshots into `vault`, then writes this
@@ -168,8 +199,10 @@ public final class CloudSyncManager {
     ///     vault's key doesn't open.
     ///   - mergeOnly: merge but don't write (used while adopting a pasted key).
     public func sync(vault: Vault, remoteKey: Data? = nil, mergeOnly: Bool = false) async {
+        // Dev bypass (`tresor-dev.girocrab`, throw-away key): never write into the user's iCloud folder.
+        guard !VaultKeyManager.keychainBypassed else { return }
         guard !isSyncing else { return }
-        isSyncing = true; lastError = nil; keyMismatch = false
+        isSyncing = true; lastError = nil; keyMismatch = false; folderAccessDenied = false
         defer { isSyncing = false }
         do {
             let (dir, release) = try await syncDirectory()
@@ -194,6 +227,7 @@ public final class CloudSyncManager {
             #endif
         } catch {
             lastError = error.localizedDescription
+            folderAccessDenied = Self.isFolderAccessError(error)
         }
     }
 
@@ -209,7 +243,7 @@ public final class CloudSyncManager {
         lastSync = Date()
         defaults.set(lastSync, forKey: K.last)
         if result.stats.isEmpty {
-            lastStats = String(localized: "Tresor in iCloud Drive aktualisiert")
+            lastStats = Self.writtenText(location)
         } else {
             let added = result.stats.reduce(UInt32(0)) { $0 + $1.bookingsAdded }
             let updated = result.stats.reduce(UInt32(0)) { $0 + $1.bookingsUpdated }
@@ -272,7 +306,7 @@ public final class CloudSyncManager {
     /// when they change. `onMerged` runs after a merge that brought changes.
     public func startAutoSync(vault: Vault, onMerged: @escaping @MainActor () -> Void) {
         stopAutoSync()
-        guard isEnabled else { return }
+        guard isEnabled, !VaultKeyManager.keychainBypassed else { return }
         autoVault = vault
         self.onMerged = onMerged
         autoState = AutoSyncState()
@@ -378,8 +412,10 @@ public final class CloudSyncManager {
         let folder = SyncFolder(dir: dir, deviceID: deviceID)
         if let e = await Task.detached(operation: { folder.accessError() }).value {
             lastError = Self.folderAccessError(dir, e).localizedDescription
+            folderAccessDenied = true
             return
         }
+        folderAccessDenied = false
         let seen = self.seen
         let skip = seen.merging(failed) { $1 }
         let count = vault.changeCount()
@@ -432,11 +468,16 @@ public final class CloudSyncManager {
     nonisolated private static func folderAccessError(_ dir: URL, _ underlying: Error) -> NSError {
         let name = dir.lastPathComponent
         #if os(macOS)
-        let message = String(localized: "GiroCrab darf den Sync-Ordner „\(name)“ nicht lesen. Erlauben Sie den Zugriff in den Systemeinstellungen unter Datenschutz & Sicherheit › Dateien und Ordner (iCloud Drive).")
+        let message = String(localized: "GiroCrab darf den Sync-Ordner „\(name)“ nicht lesen. Wählen Sie ihn mit „Ordner wählen …“ aus oder erlauben Sie den Zugriff in den Systemeinstellungen unter Datenschutz & Sicherheit › Dateien und Ordner (iCloud Drive).")
         #else
         let message = String(localized: "GiroCrab kann den Sync-Ordner „\(name)“ nicht lesen. Wählen Sie den Ordner in den Einstellungen unter iCloud Sync neu aus.")
         #endif
         return NSError(domain: "CloudSync", code: 4, userInfo: [NSLocalizedDescriptionKey: message, NSUnderlyingErrorKey: underlying])
+    }
+
+    nonisolated private static func isFolderAccessError(_ error: Error) -> Bool {
+        let e = error as NSError
+        return e.domain == "CloudSync" && e.code == 4
     }
 
     nonisolated private static var keyMismatchError: NSError {
@@ -446,6 +487,11 @@ public final class CloudSyncManager {
     private func resolveBookmark() throws -> URL? {
         guard let data = defaults.data(forKey: K.bookmark) else { return nil }
         var stale = false
+        #if os(macOS)
+        if let url = try? URL(resolvingBookmarkData: data, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &stale) {
+            return url
+        }
+        #endif
         if let url = try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale) {
             return url
         }
@@ -453,11 +499,20 @@ public final class CloudSyncManager {
         return nil
     }
 
-    /// Where to sync, in this order: a test folder; the app's own iCloud
-    /// container (needs no permission and is the same on every device with
-    /// this app); a folder the user chose; the default folder in iCloud Drive.
-    nonisolated static func syncLocation(override: URL?, container: URL?, bookmark: URL?, fallback: URL?) -> (url: URL, location: Location)? {
+    /// Status after writing, naming the place that was written.
+    nonisolated static func writtenText(_ location: Location) -> String {
+        location == .container
+            ? String(localized: "Tresor in iCloud aktualisiert")
+            : String(localized: "Tresor in iCloud Drive aktualisiert")
+    }
+
+    /// Where to sync, in this order: a test folder; a folder the user picked
+    /// (`folderChosen`); the app's own iCloud container (needs no permission
+    /// and is the same on every device with this app); a folder set up before;
+    /// the default folder in iCloud Drive.
+    nonisolated static func syncLocation(override: URL?, chosen: URL? = nil, container: URL?, bookmark: URL?, fallback: URL?) -> (url: URL, location: Location)? {
         if let override { return (override, .folder) }
+        if let chosen { return (chosen, .folder) }
         if let container { return (container, .container) }
         if let bookmark { return (bookmark, .folder) }
         if let fallback { return (fallback, .folder) }
@@ -485,7 +540,7 @@ public final class CloudSyncManager {
         let container = folderOverride == nil ? await ubiquityContainer() : nil
         var bookmark: URL?
         var release: () -> Void = {}
-        if folderOverride == nil, container == nil, let url = try resolveBookmark() {
+        if folderOverride == nil, container == nil || folderChosen, let url = try resolveBookmark() {
             let ok = url.startAccessingSecurityScopedResource()
             bookmark = url
             release = { if ok { url.stopAccessingSecurityScopedResource() } }
@@ -501,7 +556,7 @@ public final class CloudSyncManager {
         #if os(macOS)
         if folderOverride == nil, container == nil, bookmark == nil { fallback = defaultMacICloudURL }
         #endif
-        guard let choice = Self.syncLocation(override: folderOverride, container: container, bookmark: bookmark, fallback: fallback) else {
+        guard let choice = Self.syncLocation(override: folderOverride, chosen: folderChosen ? bookmark : nil, container: container, bookmark: bookmark, fallback: fallback) else {
             throw NSError(domain: "CloudSync", code: 2, userInfo: [NSLocalizedDescriptionKey: String(localized: "Bitte einmalig den Ordner „GiroCrab“ in iCloud Drive auswählen.")])
         }
         location = choice.location

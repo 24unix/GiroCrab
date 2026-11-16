@@ -162,6 +162,9 @@ fn holdings(
             return Err(incomplete());
         }
         result.push(RemoteHolding {
+            classification: Default::default(),
+            direct_crypto: false,
+
             account_ref: account_ref.into(),
             holding: Holding {
                 isin: isin.into(),

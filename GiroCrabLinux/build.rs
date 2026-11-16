@@ -184,10 +184,12 @@ fn english_strings(manifest: &std::path::Path) {
     };
     let mut map: BTreeMap<String, String> = BTreeMap::new();
     for (key, entry) in strings {
-        let localizations = entry["localizations"].as_object().unwrap_or_else(|| {
-            panic!("Localizable.xcstrings: {key:?} has no `localizations`, extend build.rs")
-        });
-        // Not translated yet: Qt shows the German source (scripts/i18n-report.py lists it).
+        // No `localizations` at all: marked `"shouldTranslate": false` (placeholders
+        // such as „DE00 …“) or not translated yet – Qt shows the German source
+        // either way (scripts/i18n-report.py lists the Linux texts among them).
+        let Some(localizations) = entry.get("localizations").and_then(Value::as_object) else {
+            continue;
+        };
         let Some(en) = localizations.get("en") else {
             continue;
         };

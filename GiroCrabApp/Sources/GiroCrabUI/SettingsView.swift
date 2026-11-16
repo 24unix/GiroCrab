@@ -57,8 +57,18 @@ struct GeneralSettings: View {
     @State private var showHelp = false
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
+    @AppStorage(NegativeAmountStyle.defaultsKey) private var negativeAmountStyle: NegativeAmountStyle = .neutral
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
     @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
+    @AppStorage(BookingDensity.defaultsKey) private var bookingDensity: BookingDensity = .standard
+
+    /// Core setting `sync.days_back`: how far the first fetch of a new account reaches back.
+    private var firstFetchDays: Binding<Int> {
+        Binding(
+            get: { Int(model.settingEntry("sync.days_back")?.value ?? "") ?? 90 },
+            set: { model.saveSetting("sync.days_back", String($0)) }
+        )
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -80,6 +90,11 @@ struct GeneralSettings: View {
                 }
                 Text("Hell oder Dunkel gilt nur für GiroCrab; „System“ folgt der Einstellung des Systems.")
                     .appFont(.caption).foregroundStyle(.secondary)
+                Picker("Buchungsdichte", selection: $bookingDensity) {
+                    ForEach(BookingDensity.allCases) { Text($0.title).appFont(.body).tag($0) }
+                }
+                Text("Kompakt öffnet die aktive Buchung mit allen Details. Standard zeigt einen kurzen Verwendungszweck. Großzügig zeigt alle Buchungen ausführlich.")
+                    .appFont(.caption).foregroundStyle(.secondary)
                 #if os(macOS)
                 // iOS: the system's Dynamic Type setting (Einstellungen › Anzeige & Helligkeit).
                 Picker("Schriftgröße", selection: $textSize) {
@@ -94,6 +109,11 @@ struct GeneralSettings: View {
                 Toggle("Budgets anzeigen", isOn: $showBudgets)
                 Text("Wer keine Monatsbudgets nutzt, blendet die Budget-Karte und „Monatsbudget festlegen …“ ganz aus. Auch im Menü Ansicht umschaltbar.")
                     .appFont(.caption).foregroundStyle(.secondary)
+                Picker("Negative Beträge", selection: $negativeAmountStyle) {
+                    ForEach(NegativeAmountStyle.allCases) { Text($0.title).tag($0) }
+                }
+                Text("Farbe von Abbuchungen in der Buchungsliste: neutral wie der übrige Text oder rot wie negative Salden in der Seitenleiste. Das Minuszeichen bleibt immer sichtbar.")
+                    .appFont(.caption).foregroundStyle(.secondary)
             } header: { Text("Ansicht").appSectionHeader() }
             Section {
                 Picker("Als geprüft markieren", selection: $model.autoReviewDelay) {
@@ -101,9 +121,24 @@ struct GeneralSettings: View {
                 }
                 Text("Eine ausgewählte Buchung gilt nach dieser Zeit als geprüft – wie eine gelesene E-Mail. Bei Mehrfachauswahl nie.")
                     .appFont(.caption).foregroundStyle(.secondary)
+                Picker("Zeitraum beim ersten Abruf", selection: firstFetchDays) {
+                    Text("90 Tage").tag(90)
+                    Text("1 Jahr").tag(365)
+                    Text("2 Jahre").tag(730)
+                    // a value set elsewhere (e.g. synced from another device) stays selectable
+                    if ![90, 365, 730].contains(firstFetchDays.wrappedValue) {
+                        Text("\(firstFetchDays.wrappedValue) Tage").tag(firstFetchDays.wrappedValue)
+                    }
+                }
+                Text("Wie weit GiroCrab beim ersten Abruf eines neuen Kontos zurückgeht. Viele Banken liefern nur 90 Tage oder verlangen für mehr eine TAN. Bereits abgerufene Konten betrifft das nicht.")
+                    .appFont(.caption).foregroundStyle(.secondary)
             } header: { Text("Buchungen").appSectionHeader() }
             BalanceChartSettingsSection()
             MerchantLogoSettingsSection()
+            #if os(macOS)
+            AutoSyncSettingsSection()
+            MenuBarSettingsSection()
+            #endif
             #if os(iOS)
             Section {
                 Button {
@@ -421,6 +456,7 @@ struct SecuritySettings: View {
                 LabeledContent("Version", value: AppVersionDisplay.current(core: coreVersion()))
                     .textSelection(.enabled)
             } header: { Text("Tresor").appSectionHeader() }
+            if model.hasOwnVault { VaultBackupSection() }
             ICloudSyncSection()
             BankingPolicySection()
             Section {
@@ -557,10 +593,8 @@ struct ICloudSyncSection: View {
     @Environment(AppModel.self) private var model
     @State private var sync = CloudSyncManager.shared
     @State private var picking = false
-    #if os(iOS)
     @State private var pendingFolder: URL?
     @State private var wrongFolderHint: String?
-    #endif
     @State private var keychainSync = VaultKeyManager.shared.syncViaICloudKeychain
     @State private var showKeySheet = false
     @State private var keyCopied = false
@@ -596,14 +630,24 @@ struct ICloudSyncSection: View {
                     Label("Die Daten wurden in den Ordner „GiroCrab“ in iCloud Drive verschoben. Bitte wechseln Sie über „Ordner wählen …“ zu diesem Ordner, damit alle Geräte denselben Ordner nutzen.", systemImage: "exclamationmark.triangle.fill")
                         .appFont(.callout).foregroundStyle(.orange)
                 }
-                // The app's own iCloud container is neither visible in Finder nor
-                // chosen by the user: only a plain folder gets these buttons.
                 if sync.location == .folder {
-                    #if os(macOS)
-                    Button("Im Finder zeigen", systemImage: "folder") { revealFolder() }
-                    #else
-                    Button("Ordner wählen …", systemImage: "folder") { picking = true }
-                    #endif
+                    HStack {
+                        Button("Ordner wählen …", systemImage: "folder.badge.gearshape") { picking = true }
+                        #if os(macOS)
+                        Button("Im Finder zeigen", systemImage: "folder") { revealFolder() }
+                        #endif
+                    }
+                    if sync.folderChosen && sync.containerAvailable {
+                        Button("Wieder über iCloud synchronisieren", systemImage: "icloud") {
+                            sync.useContainerAgain(); model.syncNow()
+                        }
+                    }
+                } else {
+                    // The app's own container is invisible in iCloud Drive: a device
+                    // without one (e.g. a Mac) syncs via the folder "GiroCrab" instead (#484).
+                    Button("Ordner wählen …", systemImage: "folder.badge.gearshape") { picking = true }
+                    Text("Nutzt ein anderes Gerät (etwa die Mac-App) den Ordner „GiroCrab“ in iCloud Drive, wählen Sie diesen Ordner, damit beide denselben Tresor sehen.")
+                        .appFont(.caption).foregroundStyle(.secondary)
                 }
                 Button(sync.isSyncing ? LocalizedStringKey("Synchronisiere …") : LocalizedStringKey("Jetzt synchronisieren"), systemImage: "arrow.triangle.2.circlepath") {
                     model.syncNow()
@@ -615,6 +659,12 @@ struct ICloudSyncSection: View {
                 }
                 if let s = sync.lastStats { Text(s).appFont(.caption).foregroundStyle(.secondary) }
                 if let e = sync.lastError { Text(e).appFont(.caption).foregroundStyle(.red) }
+                #if os(macOS)
+                // „Ordner wählen …“ above grants access as well, without the system settings.
+                if sync.folderAccessDenied {
+                    Button("Systemeinstellungen öffnen", systemImage: "gearshape") { openFilesAndFoldersSettings() }
+                }
+                #endif
                 Toggle("Tresor-Schlüssel über iCloud-Schlüsselbund teilen", isOn: $keychainSync)
                     .onChange(of: keychainSync) { _, on in
                         guard on != VaultKeyManager.shared.syncViaICloudKeychain else { return }
@@ -648,7 +698,6 @@ struct ICloudSyncSection: View {
         .sheet(isPresented: $showKeySheet) {
             KeyPasteSheet().environment(model)
         }
-        #if os(iOS)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { r in
             if case .success(let url) = r {
                 Task {
@@ -662,7 +711,7 @@ struct ICloudSyncSection: View {
                     } else if !hasVault {
                         pendingFolder = url
                     } else {
-                        do { try sync.setFolder(url); model.syncNow() } catch { }
+                        do { try sync.setFolder(url, chosen: true); model.syncNow() } catch { }
                     }
                 }
             }
@@ -674,25 +723,45 @@ struct ICloudSyncSection: View {
         }
         .alert("Neuen Tresor in diesem Ordner anlegen?", isPresented: Binding(get: { pendingFolder != nil }, set: { if !$0 { pendingFolder = nil } })) {
             Button("Neuen Tresor anlegen") {
-                if let url = pendingFolder { do { try sync.setFolder(url); model.syncNow() } catch { } }
+                if let url = pendingFolder { do { try sync.setFolder(url, chosen: true); model.syncNow() } catch { } }
                 pendingFolder = nil
             }
             Button("Abbrechen", role: .cancel) { pendingFolder = nil }
         } message: {
             Text("Der gewählte Ordner enthält noch keinen GiroCrab-Tresor. Dort wird ein neuer Tresor angelegt. Erwarten Sie Ihre Daten in einem anderen Ordner, brechen Sie ab und wählen Sie diesen.")
         }
+        #if os(macOS)
+        .fileDialogDefaultDirectory(Self.syncFolderOrCloudDocs)
         #endif
     }
 
     #if os(macOS)
-    private func revealFolder() {
-        let cloudDocs = FileManager.default.homeDirectoryForCurrentUser
+    private static var cloudDocs: URL {
+        FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+    }
+
+    /// The sync folder in iCloud Drive ("GiroCrab"), or nil before it exists.
+    private static var syncFolder: URL? {
         let url = ICloudFolderMigration.resolve(cloudDocs: cloudDocs, create: false, migratedByThisApp: CloudSyncManager.migratedByThisApp).url
-        if FileManager.default.fileExists(atPath: url.path) {
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// „Ordner wählen …“ opens inside the sync folder: „Öffnen“ alone picks it.
+    private static var syncFolderOrCloudDocs: URL { syncFolder ?? cloudDocs }
+
+    private func revealFolder() {
+        if let url = Self.syncFolder {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } else {
-            NSWorkspace.shared.open(cloudDocs)
+            NSWorkspace.shared.open(Self.cloudDocs)
+        }
+    }
+
+    /// Datenschutz & Sicherheit › Dateien und Ordner.
+    private func openFilesAndFoldersSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders") {
+            NSWorkspace.shared.open(url)
         }
     }
     #endif
@@ -739,11 +808,16 @@ private extension View {
     /// (HIG: no large empty panes); iOS: the sheet decides.
     @ViewBuilder
     func settingsPane(height: CGFloat) -> some View {
+        // Own row under the pane: a grouped Form scrolls beneath a safe-area inset.
+        let pane = VStack(spacing: 0) {
+            self
+            AppVersionFooter()
+        }
         #if os(macOS)
         // wider with larger text (#343); the panes scroll, so the height stays
-        modifier(SettingsPaneFrame(height: height))
+        return pane.modifier(SettingsPaneFrame(height: height))
         #else
-        self
+        return pane
         #endif
     }
 }

@@ -180,8 +180,8 @@ Item {
                             Layout.fillWidth: true
                             model: form.accountOptions
                             textRole: "title"
-                            currentIndex: form.rule ? Math.max(0, form.accountOptions.findIndex(o => o.id === form.rule.account_id && !o.header)) : 0
-                            onActivated: i => { if (!form.accountOptions[i].header) form.set("account_id", form.accountOptions[i].id) }
+                            currentIndex: form.rule ? Math.max(0, form.accountOptions.findIndex(o => !o.header && o.id === (form.rule.account_ids && form.rule.account_ids.length ? form.rule.account_ids[0] : null))) : 0
+                            onActivated: i => { const o = form.accountOptions[i]; if (!o.header) form.set("account_ids", o.id === null || o.id === undefined ? [] : [o.id]) }
                         }
                     }
                 }

@@ -4,30 +4,47 @@ import GiroCrabCore
 /// Column 3: permanent context & receipt inspector.
 struct InspectorView: View {
     @Environment(AppModel.self) private var model
+    /// Order and hidden cards (#448), see `InspectorLayout`.
+    @AppStorage(InspectorLayout.defaultsKey) private var layoutValue = ""
+    @State private var editingLayout = LaunchOptions.current.inspectorEdit
 
-    private func belowHistoryKey(_ b: Booking) -> [Int64] {
-        [b.id, model.merchantStats?.key == b.merchant.key ? 1 : 0, model.merchantAccountStats?.accountId == b.accountId ? 1 : 0]
+    private var layout: InspectorLayout { InspectorLayout(storageValue: layoutValue) }
+
+    private func updateLayout(_ change: (inout InspectorLayout) -> Void) {
+        var next = layout
+        change(&next)
+        withAnimation(.snappy(duration: 0.2)) { layoutValue = next.storageValue }
     }
 
     var body: some View {
+        // The bar sits above the scroll view instead of in a `safeAreaInset` or as its first row:
+        // there it got no clicks, and clicks below it landed a row too low (macOS 27, #448, #492).
+        VStack(spacing: 0) {
+            if showsBookingCards {
+                InspectorLayoutBar(editing: $editingLayout, canReset: !layout.isStandard) {
+                    updateLayout { $0 = .standard }
+                }
+            }
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                if model.sidebarSelection == .planned {
+                    PlannedInspector()
+                } else if model.sidebarSelection == .directDebits {
+                    MandateInspector()
+                } else {
                 if case .account(let id) = model.sidebarSelection, let a = model.account(for: id), a.kind == .loan {
                     LoanProgressCard(account: a)
                 }
                 if model.isMultiSelection {
                     MultiSelectionCard()
                 } else if let b = model.selectedBooking {
-                    ReceiptCard(booking: b)
-                    NoteCard(booking: b).id(b.id)
-                    if b.amountCents > 0 { SalaryCard(booking: b) }
-                    RecurringCard(booking: b)
-                    MerchantHistoryCard(booking: b)
-                    // The history card above changes height when its stats arrive; the cards below
-                    // then kept stale hit-test geometry (#454). A new identity re-lays them out.
-                    CategoryGridCard(booking: b).id(belowHistoryKey(b))
-                    DocumentsCard(booking: b).id(belowHistoryKey(b))
-                    RawDataCard(booking: b)
+                    if editingLayout {
+                        InspectorLayoutEditor(booking: b, layout: layout, update: updateLayout)
+                    } else {
+                        ForEach(layout.visible) { section in
+                            InspectorSectionCard(section: section, booking: b)
+                        }
+                    }
                 } else {
                     VStack(alignment: .leading, spacing: 10) {
                         Label("Keine Buchung ausgewählt", systemImage: "doc.text.magnifyingglass")
@@ -38,10 +55,18 @@ struct InspectorView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .card()
                 }
+                }
             }
             .padding(16)
         }
+        }
         .background(Theme.canvas)
+    }
+
+    /// The single-booking cards are shown, so their layout can be edited.
+    private var showsBookingCards: Bool {
+        model.sidebarSelection != .planned && model.sidebarSelection != .directDebits
+            && !model.isMultiSelection && model.selectedBooking != nil
     }
 }
 
@@ -95,6 +120,17 @@ struct ReceiptCard: View {
                     Text("\(booking.accountName) · \(booking.paymentMethod)")
                         .sensitive()
                         .appFont(.caption).foregroundStyle(Theme.secondary)
+                    if let counter = model.counterAccount(for: booking) {
+                        Text("⇄ \(counter.name) (\(formatIBAN(booking.counterpartyIban)))")
+                            .sensitive()
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
+                            .textSelection(.enabled)
+                    } else if !booking.counterpartyIban.isEmpty {
+                        Text(formatIBAN(booking.counterpartyIban))
+                            .sensitive()
+                            .appFont(.caption, design: .monospaced).foregroundStyle(Theme.secondary)
+                            .textSelection(.enabled)
+                    }
                     MerchantDomainRow(merchant: booking.merchant)
                 }
                 Spacer()
@@ -352,7 +388,20 @@ struct MerchantHistoryCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Händler-Historie").appFont(.subheadline, weight: .semibold)
+            // The heading opens the list of this merchant's bookings (#495).
+            Button { model.focusMerchant(of: booking) } label: {
+                HStack(spacing: 4) {
+                    Text("Händler-Historie").appFont(.subheadline, weight: .semibold)
+                    Image(systemName: "chevron.right")
+                        .appFont(.caption, weight: .semibold)
+                        .foregroundStyle(Theme.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(booking.merchant.key.isEmpty)
+            .help("Alle Buchungen dieses Händlers im gewählten Zeitraum anzeigen")
+            .accessibilityHint("Alle Buchungen dieses Händlers im gewählten Zeitraum anzeigen")
             if let s = model.merchantStats, s.key == booking.merchant.key {
                 // The merchant also occurs on other accounts (#299): show the
                 // total and the booking's own account side by side.
@@ -521,6 +570,7 @@ struct CategoryChip: View {
             .fontWeight(selected ? .semibold : nil)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(selected ? Theme.selection : (filled ? Theme.canvas : Theme.card)))
             .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(selected ? Theme.accent : Theme.border, lineWidth: selected ? 1.5 : 1))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])

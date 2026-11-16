@@ -23,8 +23,10 @@
 
 uniffi::setup_scaffolding!();
 
+pub mod asset_classification;
 pub mod assets;
 pub mod banking_gate;
+pub mod batch_csv;
 pub mod connections;
 pub mod connectors;
 mod data_tables;
@@ -37,10 +39,13 @@ pub mod i18n;
 pub mod importers;
 pub mod insights;
 pub mod loans;
+pub mod local_api;
+pub mod mandates;
 pub mod merchants;
 pub mod models;
 pub mod money;
 pub mod opening_balance;
+pub mod planned;
 pub mod planning;
 pub mod recurring;
 pub mod report_sanitizer;
@@ -50,8 +55,10 @@ mod schema;
 pub mod search_expr;
 pub mod secret;
 pub mod security_transactions;
+pub mod standing_orders;
 pub mod sync_log;
 mod sync_merge;
+pub mod tags;
 pub mod text;
 pub mod user_groups;
 pub mod vault;

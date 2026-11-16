@@ -6,6 +6,7 @@ extension AppModel {
     // MARK: - Loading
 
     func reloadAll() {
+        assetClassificationVersion += 1
         let all = Perf.signposter.beginInterval("reloadAll")
         defer { Perf.signposter.endInterval("reloadAll", all) }
         reloadAccounts()
@@ -204,6 +205,35 @@ extension AppModel {
         reloadBookings()
     }
 
+    /// The category views („Ohne Kategorie“, a category) can be narrowed to accounts (#406).
+    var showsCategoryAccountFilter: Bool {
+        switch sidebarSelection {
+        case .category, .uncategorized: true
+        default: false
+        }
+    }
+
+    /// The chosen accounts that still exist, in sidebar order; empty = all accounts.
+    var categoryAccountIDs: [Int64] {
+        guard !categoryAccountFilter.isEmpty else { return [] }
+        return allAccounts.map(\.id).filter(categoryAccountFilter.contains)
+    }
+
+    /// Adds or removes one account; choosing every account is the same as no filter.
+    func toggleCategoryAccount(_ id: Int64) {
+        var next = Set(categoryAccountIDs)
+        if !next.insert(id).inserted { next.remove(id) }
+        categoryAccountFilter = next.count == allAccounts.count ? [] : next
+    }
+
+    /// Label of the account menu; never names an account (the header is part of bug report screenshots).
+    var categoryAccountFilterTitle: String {
+        let chosen = categoryAccountIDs.count
+        return chosen == 0
+            ? String(localized: "Konten: Alle")
+            : String(localized: "Konten: \(chosen) von \(allAccounts.count)")
+    }
+
     var currentFilter: BookingFilter {
         let (from, to) = periodRange
         var accountIDs: [Int64] = []
@@ -214,9 +244,9 @@ extension AppModel {
         case .group(let gid): accountIDs = groups.first(where: { $0.id == gid })?.accounts.map(\.id) ?? []
         case .bank(let key): accountIDs = bankGroup(for: key)?.accounts.map(\.id) ?? []
         case .userGroup(let uuid): accountIDs = userGroupAccountIDs(uuid)
-        case .category(let id): category = id
-        case .uncategorized: uncategorized = true
-        case .allAccounts, .documents, .newBookings, .wealth, .none: break
+        case .category(let id): category = id; accountIDs = categoryAccountIDs
+        case .uncategorized: uncategorized = true; accountIDs = categoryAccountIDs
+        case .allAccounts, .documents, .newBookings, .planned, .directDebits, .wealth, .none: break
         }
         // Everything new, whatever the list filters say elsewhere.
         if sidebarSelection == .newBookings {
@@ -237,7 +267,7 @@ extension AppModel {
             limit: listLimit,
             offset: 0,
             scope: scope,
-            merchantKey: nil,
+            merchantKey: merchantFocus?.key,
             direction: directionFilter,
             checked: statusFilter == .all ? nil : statusFilter == .checked,
             wholeDays: true
@@ -289,6 +319,7 @@ extension AppModel {
             Perf.interval("publishBookings") { publish(p) }
         }
         reloadSelectionKPIs()
+        reloadCategoryHistory()
         // Every edit, sync and import ends up here: cached merchant histories may be
         // stale, and so may a scan still running from before the change. Restart it,
         // also when a history is on screen (it would otherwise keep the old numbers).
@@ -382,7 +413,31 @@ extension AppModel {
         }
     }
 
+    /// Bar width actually used: own choice, else the global setting, else months.
+    var effectiveCategoryBarUnit: BalanceBarUnit {
+        if categoryBarUnit != .automatic { return categoryBarUnit }
+        let global = BalanceBarUnit(rawValue: UserDefaults.standard.string(forKey: BalanceBarUnit.defaultsKey) ?? "") ?? .automatic
+        return global == .automatic ? .month : global
+    }
+
+    /// Request for the category chart: nil unless a category is selected.
+    var categoryHistoryRequest: (id: Int64, accounts: [Int64], from: String?, to: String?, keyLength: UInt32)? {
+        guard case .category(let id) = sidebarSelection else { return nil }
+        let (from, to) = periodRange
+        return (id, categoryAccountIDs, from, to, UInt32(effectiveCategoryBarUnit.keyLength))
+    }
+
+    /// Reloads the monthly sums of the selected category (cheap SQL aggregate).
+    func reloadCategoryHistory() {
+        guard let vault, let r = categoryHistoryRequest else {
+            if !categoryHistory.isEmpty { categoryHistory = [] }
+            return
+        }
+        runCore { categoryHistory = try vault.categoryHistoryByUnit(categoryId: r.id, accountIds: r.accounts, dateFrom: r.from, dateTo: r.to, keyLength: r.keyLength) }
+    }
+
     func reloadHistory() {
+        reloadCategoryHistory()
         settlePendingSelectionLoad()
         guard let vault else { return }
         let (ids, days) = historyRequest
@@ -523,19 +578,45 @@ extension AppModel {
         case .uncategorized: return String(localized: "Ohne Kategorie")
         case .documents: return String(localized: "Belege & PostBox")
         case .newBookings: return String(localized: "Neue Umsätze")
+        case .planned: return String(localized: "Geplant")
+        case .directDebits: return String(localized: "Lastschriften")
         case .wealth: return String(localized: "Vermögen")
         }
     }
 
+    /// Accounts behind the header total of the current selection (nil: single account / not a total).
+    private var headerTotalAccounts: [Account]? {
+        switch sidebarSelection {
+        case .allAccounts, .none: return liquidAccounts
+        case .group(let id): return groups.first { $0.id == id }?.accounts
+        case .bank(let key): return bankGroup(for: key)?.accounts
+        case .userGroup(let uuid): let ids = Set(userGroupAccountIDs(uuid)); return allAccounts.filter { ids.contains($0.id) }
+        default: return nil
+        }
+    }
+
+    /// The header total split into base currency + further currencies (#569).
+    var headerTotalSplit: HeaderTotal.Split? {
+        guard let accounts = headerTotalAccounts else { return nil }
+        let split = HeaderTotal.split(accounts.map { ($0.currency, $0.balanceCents) })
+        return split.others.isEmpty ? nil : split
+    }
+
     var headerBalance: (label: String, cents: Int64)? {
+        if let split = headerTotalSplit, let hb = headerBalanceUnsplit { return (hb.label, split.cents) }
+        return headerBalanceUnsplit
+    }
+
+    private var headerBalanceUnsplit: (label: String, cents: Int64)? {
         switch sidebarSelection {
         case .account(let id): return allAccounts.first { $0.id == id }.map { (isTangible(id) ? String(localized: "Wert heute") : String(localized: "Kontostand"), $0.balanceCents) }
         case .group(let id): return groups.first { $0.id == id }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .bank(let key): return bankGroup(for: key).map { (String(localized: "Summe"), $0.balanceCents) }
         case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }.map { (String(localized: "Summe"), $0.balanceCents) }
         case .allAccounts, .none: return (String(localized: "Verfügbar (Giro, Tagesgeld, Karten)"), liquidBalance)
-        case .category(let id): return categories.first { $0.id == id }.map { (String(localized: "Summe im Zeitraum"), $0.totalCents) }
-        case .uncategorized, .documents, .newBookings, .wealth: return nil
+        // The category total covers all accounts: no figure while accounts are filtered (#406).
+        case .category(let id): return categoryAccountIDs.isEmpty ? categories.first { $0.id == id }.map { (String(localized: "Summe im Zeitraum"), $0.totalCents) } : nil
+        case .uncategorized, .documents, .newBookings, .planned, .directDebits, .wealth: return nil
         }
     }
 

@@ -5,7 +5,7 @@ import QtCore
 // BookingExport.swift + AppModel+Printing.swift (Umsatz-Export, GitHub #53 / #372 / #401):
 // formats, period presets, remembered options, file names, the white-label Umsatzliste
 // (PrintReport.qml with `statement_style`) and saving. CSV and CAMT.053 are written by the
-// core (`export_csv`, `camt053_statement`); the PDF is laid out by QtWebEngine
+// core (`export_csv`, `camt053_export`); the PDF is laid out by QtWebEngine
 // (WebPrinter.qml via AppModel.printJob), with the Mac's stylesheet and paginator.
 QtObject {
     id: ex
@@ -175,10 +175,6 @@ QtObject {
     }
     /// Opening balance at the start of `firstDate` (= end of the previous day); `null` when the
     /// history has no value for that day: a CAMT file must not invent a 0 opening balance.
-    function camtOpeningBalance(endOfDay, firstDate) {
-        const prev = previousISODate(firstDate)
-        return prev !== null && endOfDay[prev] !== undefined ? endOfDay[prev] : null
-    }
 
     /// Excel CSV with optional Tagessaldo column; formatting and formula guard live in the core.
     function csv(report, o) {
@@ -282,7 +278,8 @@ QtObject {
                 let report = exportReport(bookings, accountIDs, preset, bookingIDs, o)
                 report.generated_at = new Date()
                 report = prepareStatement(report)
-                const needsDaily = o.format === "pdf" || camt || o.showDailyBalance
+                // CAMT.053: the core reads the booked balances itself (#483)
+                const needsDaily = o.format === "pdf" || (o.showDailyBalance && !camt)
                 if (needsDaily && report.rows.length) {
                     const earliest = report.rows.map(r => r.date).reduce((a, b) => (a < b ? a : b))
                     const ids = Object.keys(report.rows.reduce((m, r) => { m[r.account_id] = true; return m }, {}))
@@ -294,8 +291,7 @@ QtObject {
                 if (o.format === "csv") {
                     done({ format: o.format, filename: filename, text: csv(report, o) })
                 } else if (camt) {
-                    if (bookingIDs) throw new Error(qsTr("CAMT.053 nur für einen Zeitraum: Ein Kontoauszug braucht alle Buchungen, sonst stimmt der Endsaldo nicht."))
-                    done({ format: o.format, filename: filename, text: camtXML(bookings, report.daily_balances, o) })
+                    done({ format: o.format, filename: filename, text: camtXML(accountIDs, preset, bookingIDs, o) })
                 } else {
                     renderPdf(report, o, path => done({ format: o.format, filename: filename, from_path: path }), failed)
                 }
@@ -305,20 +301,25 @@ QtObject {
         }, failed)
     }
 
-    function camtXML(bookings, dailyBalances, o) {
-        const ids = {}
-        for (const b of bookings) ids[b.account_id] = true
-        const keys = Object.keys(ids)
-        const account = keys.length === 1 ? AppModel.account(Number(keys[0])) : null
-        if (!account) throw new Error(qsTr("CAMT.053 nur für ein einzelnes Konto (#372)."))
-        const first = bookings.map(b => b.booking_date).reduce((a, b) => (a < b ? a : b))
-        const opening = camtOpeningBalance(dailyBalances[account.id] || {}, first)
-        if (opening === null)
-            throw new Error(qsTr("Für dieses Konto gibt es keinen Tagessaldo zum Beginn des Zeitraums, daher fehlt der Anfangssaldo für CAMT.053. Bitte das Konto synchronisieren oder einen anderen Zeitraum wählen."))
-        return AppModel.core("camt053_statement", {
-            account: account, bookings: bookings, version: o.format === "camt053v02" ? "V02" : "V08",
-            opening_cents: opening, opening_date: first,
-            created_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z") })
+    /// ExportSheet.swift › camtRange: a period export uses the list's bounds (without its
+    /// search/category filters), the end capped at today; marked bookings bring their own period.
+    function camtRange(accountIDs, preset, bookingIDs, o) {
+        if (bookingIDs) return null
+        const f = exportFilter(accountIDs, preset, o, true)
+        const today = Qt.formatDate(new Date(), "yyyy-MM-dd")
+        return { from: f.date_from, to: f.date_to ? (f.date_to < today ? f.date_to : today) : null }
+    }
+    /// The core's CAMT.053 export (#483): it reads the entries and the booked balances from the
+    /// vault itself; account, period and marked bookings only narrow the statement.
+    function camtXML(accountIDs, preset, bookingIDs, o) {
+        if (accountIDs.length !== 1) throw new Error(qsTr("CAMT.053 nur für ein einzelnes Konto (#372)."))
+        const range = camtRange(accountIDs, preset, bookingIDs, o)
+        return AppModel.core("camt053_export", { request: {
+            account_id: accountIDs[0],
+            date_from: range ? range.from : null, date_to: range ? range.to : null,
+            booking_ids: bookingIDs ? bookingIDs.slice().sort((a, b) => a - b) : null,
+            version: o.format === "camt053v02" ? "V02" : "V08",
+            created_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z") } })
     }
 
     /// HTMLPDFRenderer: the Umsatzliste through WebPrinter.qml (QtWebEngine, A4 portrait) into a temp file.

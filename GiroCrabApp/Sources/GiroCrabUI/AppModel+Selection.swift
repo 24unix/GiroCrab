@@ -101,6 +101,7 @@ extension AppModel {
         page = nil
         bookings = []
         history = []
+        categoryHistory = []
     }
 
     /// Everything a selection change needs, loaded off the main thread and
@@ -137,6 +138,7 @@ extension AppModel {
                 let filter = self.currentFilter
                 let (from, to) = self.periodRange
                 let chart = self.historyRequest
+                let categoryChart = self.categoryHistoryRequest
                 let listHasFlow = filter.listHasFlow
                 let loaded = try await Self.offMain {
                     let page = try Perf.interval("listTransactions") { try vault.listTransactions(filter: filter) }
@@ -147,7 +149,10 @@ extension AppModel {
                     let categories = try vault.listCategories(dateFrom: from, dateTo: to)
                     try Task.checkCancellation()
                     let history = try vault.balanceHistory(accountIds: chart.ids, days: chart.days)
-                    return (page: page, flow: flow, recurring: recurring, categories: categories, history: history)
+                    let categoryHistory = try categoryChart.map {
+                        try vault.categoryHistoryByUnit(categoryId: $0.id, accountIds: $0.accounts, dateFrom: $0.from, dateTo: $0.to, keyLength: $0.keyLength)
+                    } ?? []
+                    return (page: page, flow: flow, recurring: recurring, categories: categories, history: history, categoryHistory: categoryHistory)
                 }
                 // A newer selection or a synchronous reload cancelled this request.
                 guard !Task.isCancelled else { return }
@@ -162,6 +167,7 @@ extension AppModel {
                 self.categories = loaded.categories
                 self.categoryTree = Self.buildTree(loaded.categories)
                 self.history = Self.trimmedHistory(loaded.history, from: from, to: to)
+                self.categoryHistory = loaded.categoryHistory
                 Perf.signposter.endInterval("publishSelection", publish)
             } catch {
                 guard !Task.isCancelled, let self else { return }
@@ -171,6 +177,52 @@ extension AppModel {
             }
         }
         selectionLoadTask = task
+    }
+
+    // MARK: - Merchant list (GitHub #495)
+
+    /// Shows every booking of the booking's merchant in the current period: all
+    /// accounts, no category, status, direction, scope or search filter. The
+    /// merchant key covers differing counterparty spellings of one merchant.
+    func focusMerchant(of booking: Booking) {
+        let key = booking.merchant.key
+        guard !key.isEmpty else { return }
+        // A second merchant from within a merchant list still returns to the original view.
+        let back = merchantFocusReturn ?? MerchantFocusReturn(
+            selection: sidebarSelection, scope: scope, status: statusFilter,
+            direction: directionFilter, search: searchText)
+        // Filters first: their reloads still run on the old, cheaper selection.
+        scope = .all
+        statusFilter = .all
+        directionFilter = .all
+        if !searchText.isEmpty { searchText = "" }
+        searchTask?.cancel()
+        merchantFocus = MerchantFocus(key: key, name: booking.merchantName)
+        merchantFocusReturn = back
+        applyMerchantFocusSelection(.allAccounts)
+        #if os(iOS)
+        showBookingSheet = false
+        #endif
+    }
+
+    /// Back to the sidebar selection and filters from before `focusMerchant`.
+    func leaveMerchantFocus() {
+        guard merchantFocus != nil else { return }
+        let back = merchantFocusReturn
+        merchantFocus = nil
+        merchantFocusReturn = nil
+        guard let back else { reloadBookings(); return }
+        applyMerchantFocusSelection(back.selection)
+        scope = back.scope
+        statusFilter = back.status
+        directionFilter = back.direction
+        if searchText != back.search { searchText = back.search }
+    }
+
+    private func applyMerchantFocusSelection(_ selection: SidebarItem?) {
+        appliesMerchantFocus = true
+        defer { appliesMerchantFocus = false }
+        interactiveSidebarSelection = selection
     }
 
     func scheduleSearch() {
@@ -222,6 +274,21 @@ extension AppModel {
         UserDefaults.standard.set(customPeriodFrom, forKey: "period.customFrom")
         UserDefaults.standard.set(customPeriodTo, forKey: "period.customTo")
         if period == .custom { periodDidChange() } else { period = .custom }
+    }
+
+    private static let categoryPeriodsKey = "period.byCategory"
+
+    /// The period the user last chose for this category (#425); `nil` = follows the current one.
+    func categoryPeriod(_ id: Int64) -> Period? {
+        let map = UserDefaults.standard.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String]
+        return map?[String(id)].flatMap { Period(storageKey: $0) }
+    }
+
+    func setCategoryPeriod(_ period: Period, for id: Int64) {
+        guard let key = period.storageKey() else { return }
+        var map = UserDefaults.standard.dictionary(forKey: Self.categoryPeriodsKey) as? [String: String] ?? [:]
+        map[String(id)] = key
+        UserDefaults.standard.set(map, forKey: Self.categoryPeriodsKey)
     }
 
     func periodDidChange() {

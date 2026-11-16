@@ -93,10 +93,8 @@ impl CompiledRule {
         if !r.enabled {
             return false;
         }
-        if let Some(acc) = r.account_id {
-            if acc != t.account_id {
-                return false;
-            }
+        if !r.account_ids.is_empty() && !r.account_ids.contains(&t.account_id) {
+            return false;
         }
         if let Some(min) = r.min_amount_cents {
             if t.amount_cents < min {
@@ -170,6 +168,49 @@ impl RuleSet {
     }
 }
 
+/// Reads an account set: NULL = no restriction, integer = one account,
+/// text = comma-separated ids (`group_concat`). Sorted and deduplicated.
+pub(crate) fn parse_account_ids(v: &rusqlite::types::Value) -> Vec<i64> {
+    use rusqlite::types::Value;
+    let mut ids: Vec<i64> = match v {
+        Value::Integer(i) => vec![*i],
+        Value::Text(t) => t.split(',').filter_map(|p| p.trim().parse().ok()).collect(),
+        _ => Vec::new(),
+    };
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
+/// Writes a rule's account set (empty = all accounts). `rules.account_id`
+/// mirrors the lowest id so the foreign key and older readers keep working.
+pub(crate) fn store_rule_accounts(
+    conn: &rusqlite::Connection,
+    rule_id: i64,
+    ids: &[i64],
+) -> CoreResult<()> {
+    let mut ids = ids.to_vec();
+    ids.sort_unstable();
+    ids.dedup();
+    conn.execute(
+        "UPDATE rules SET account_id = ?2 WHERE id = ?1",
+        rusqlite::params![rule_id, ids.first()],
+    )?;
+    conn.execute("DELETE FROM rule_accounts WHERE rule_id = ?1", [rule_id])?;
+    for id in ids {
+        conn.execute(
+            "INSERT INTO rule_accounts(rule_id, account_id) VALUES (?1, ?2)",
+            rusqlite::params![rule_id, id],
+        )?;
+    }
+    Ok(())
+}
+
+/// SQL expression for a rule's account set (`rules` aliased `r`), readable by
+/// [`parse_account_ids`].
+pub(crate) const ACCOUNT_SET_SQL: &str =
+    "(SELECT group_concat(account_id) FROM rule_accounts WHERE rule_id = r.id)";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,11 +226,32 @@ mod tests {
             case_sensitive: false,
             min_amount_cents: None,
             max_amount_cents: Some(0),
-            account_id: None,
+            account_ids: Vec::new(),
             priority: 0,
             enabled: true,
             match_count: 0,
         }
+    }
+
+    #[test]
+    fn account_restriction_accepts_any_listed_account() {
+        let mut r = rule("x", MatchKind::Keyword);
+        r.max_amount_cents = None;
+        let mut t = input("x", -1);
+        r.account_ids = vec![2, 3];
+        assert!(!CompiledRule::compile(r.clone()).unwrap().matches(&t));
+        t.account_id = 3;
+        assert!(CompiledRule::compile(r.clone()).unwrap().matches(&t));
+        r.account_ids.clear();
+        assert!(CompiledRule::compile(r.clone()).unwrap().matches(&t));
+    }
+
+    #[test]
+    fn account_id_sets_parse() {
+        use rusqlite::types::Value;
+        assert_eq!(parse_account_ids(&Value::Null), Vec::<i64>::new());
+        assert_eq!(parse_account_ids(&Value::Integer(4)), vec![4]);
+        assert_eq!(parse_account_ids(&Value::Text("5, 2,5".into())), vec![2, 5]);
     }
 
     fn input<'a>(cp: &'a str, amount: i64) -> RuleInput<'a> {

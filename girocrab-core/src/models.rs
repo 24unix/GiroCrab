@@ -87,7 +87,8 @@ impl ConnectorKind {
     }
     /// BLZ of a `fints:<8 digits>` connector key (any FinTS bank).
     pub fn fints_blz(key: &str) -> Option<&str> {
-        let blz = key.strip_prefix("fints:")?;
+        let rest = key.strip_prefix("fints:")?;
+        let blz = rest.strip_suffix(":rah10").unwrap_or(rest);
         (blz.len() == 8 && blz.bytes().all(|b| b.is_ascii_digit())).then_some(blz)
     }
     /// Connector key stored in the DB for a generic FinTS bank.
@@ -452,6 +453,18 @@ pub struct Booking {
     /// Product ids (Amazon ASIN) of an order's items, comma separated, one
     /// entry per item in purpose order ("" entry = unknown); "" = none (#354).
     pub item_refs: String,
+    #[uniffi(default = "")]
+    pub end_to_end_id: String,
+    #[uniffi(default = "")]
+    pub mandate_id: String,
+    #[uniffi(default = "")]
+    pub creditor_id: String,
+    #[uniffi(default = "")]
+    pub external_id: String,
+    /// Tags of the booking (#228), in tag list order.
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub tags: Vec<crate::tags::BookingTag>,
 }
 
 /// Dry-run result of a MoneyMoney import (nothing stored).
@@ -537,6 +550,14 @@ pub struct BookingFilter {
     /// Extend the page to the end of its last day, so a day is never split
     /// between two pages (the list shows a sum per day).
     pub whole_days: bool,
+    /// Only bookings carrying every one of these tags (#228); empty = any.
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub tag_ids: Vec<i64>,
+    /// Only bookings without any tag.
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub untagged_only: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -615,7 +636,10 @@ pub struct Rule {
     pub case_sensitive: bool,
     pub min_amount_cents: Option<i64>,
     pub max_amount_cents: Option<i64>,
-    pub account_id: Option<i64>,
+    /// Accounts the rule is restricted to; empty = all accounts. Stored in the
+    /// existing `rules.account_id` column (single id as integer, several as
+    /// comma-separated text), so no schema step is needed.
+    pub account_ids: Vec<i64>,
     /// Lower number = evaluated first.
     pub priority: i32,
     pub enabled: bool,
@@ -652,6 +676,14 @@ pub struct PeriodSummary {
 pub struct DailyBalance {
     pub date: String,
     pub balance_cents: i64,
+}
+
+/// Sum of one category (with subcategories) over one calendar day, month or year (`period` = `yyyy-MM-dd`, `yyyy-MM` or `yyyy`).
+#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CategoryPeriodSum {
+    pub period: String,
+    pub cents: i64,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -804,6 +836,90 @@ pub struct SepaTransferRequest {
     pub instant: bool,
     /// Optional future execution date `YYYY-MM-DD` (Terminüberweisung, HKCSE). FinTS only.
     pub execution_date: Option<String>,
+}
+
+/// One payment of a batch transfer.
+#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct BatchPaymentInput {
+    pub name: String,
+    pub iban: String,
+    pub bic: Option<String>,
+    /// Must be > 0.
+    pub amount_cents: i64,
+    /// Verwendungszweck, max. 140 characters.
+    pub purpose: String,
+}
+
+/// Batch transfer (Sammelüberweisung, HKCCM): one debit account, many payments.
+#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct BatchTransferRequest {
+    pub account_id: i64,
+    pub payments: Vec<BatchPaymentInput>,
+    /// true = one booking for the sum, false = one booking per payment (if the
+    /// bank allows it).
+    pub batch_booking: bool,
+    /// Optional future execution date `YYYY-MM-DD`.
+    pub execution_date: Option<String>,
+}
+
+/// What to do with a standing order at the bank (#496).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum StandingOrderAction {
+    /// New order (HKCDE).
+    Create,
+    /// Replace the data of the order `order_row_id` (HKCDN).
+    Change,
+    /// Delete the order `order_row_id` (HKCDL). Only the account and the id count.
+    Delete,
+}
+
+/// Create, change or delete a standing order (Dauerauftrag, HKCDE/HKCDN/HKCDL).
+/// For `Change` and `Delete` the order is the stored one (`order_row_id`, from
+/// `list_standing_orders`); the bank's order id and, for a deletion, the data
+/// to send come from the vault, not from the caller.
+#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct StandingOrderRequest {
+    pub account_id: i64,
+    pub action: StandingOrderAction,
+    /// `standing_orders.id` of the order to change or delete.
+    pub order_row_id: Option<i64>,
+    pub recipient_name: String,
+    pub recipient_iban: String,
+    pub recipient_bic: Option<String>,
+    /// Must be > 0.
+    pub amount_cents: i64,
+    /// Verwendungszweck, max. 140 characters.
+    pub purpose: String,
+    /// First execution `YYYY-MM-DD`, in the future.
+    pub first_date: String,
+    /// Last execution `YYYY-MM-DD`; `None` = until cancelled.
+    pub last_date: Option<String>,
+    /// `M` (months) or `W` (weeks).
+    pub time_unit: String,
+    /// Every n-th month / week (1–99).
+    pub interval: u32,
+    /// Day of the month (1–31, 31 = last day) or weekday (1 = Monday … 7).
+    pub exec_day: u32,
+}
+
+/// What the bank allows when creating or changing a standing order, as far as its
+/// parameters (BPD) say. An empty list means "no restriction" or "not known".
+#[derive(Debug, Clone, Default, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct StandingOrderLimits {
+    /// The first execution must lie at least / at most this many days ahead (0 = no limit).
+    pub min_days_ahead: u32,
+    pub max_days_ahead: u32,
+    /// Allowed intervals in months / weeks.
+    pub months: Vec<u32>,
+    pub weeks: Vec<u32>,
+    /// Allowed days of the month (31 = last day) / weekdays (1 = Monday … 7).
+    pub days_of_month: Vec<u32>,
+    pub weekdays: Vec<u32>,
 }
 
 /// Recipient suggested from past bookings (auto-completion).

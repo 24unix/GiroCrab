@@ -10,75 +10,149 @@ use crate::error::CoreResult;
 use crate::models::{AccountKind, ConnectorKind};
 use crate::vault::Vault;
 
-/// Minimal single-page PDF with one line of text (valid enough for PDFKit).
-fn demo_pdf(line: &str) -> Vec<u8> {
-    let stream = format!("BT /F1 18 Tf 72 720 Td ({line}) Tj ET");
-    let objs = [
-        "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>".to_string(),
-        format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
-    ];
-    let mut out = b"%PDF-1.4\n".to_vec();
-    let mut offsets = Vec::new();
-    for (i, o) in objs.iter().enumerate() {
-        offsets.push(out.len());
-        out.extend(format!("{} 0 obj\n{o}\nendobj\n", i + 1).into_bytes());
-    }
-    let xref = out.len();
-    out.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).into_bytes());
-    for off in offsets {
-        out.extend(format!("{off:010} 00000 n \n").into_bytes());
-    }
-    out.extend(
-        format!(
-            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
-            objs.len() + 1
-        )
-        .into_bytes(),
-    );
-    out
-}
-
-/// Three unlinked PostBox documents so the documents view has rows in demo mode.
-fn demo_documents(conn: &Connection, today: NaiveDate, account_id: i64) -> CoreResult<()> {
-    let _ = today;
+/// Documents across three accounts, with origin and booking link varied independently.
+fn demo_documents(conn: &Connection, today: NaiveDate) -> CoreResult<()> {
+    // account, title, document type, days ago, bank document, linked counterparty
     let docs = [
         (
-            "BioMarkt Sonnenberg – Kassenbeleg",
+            "demo-giro",
+            "REWE – Kassenbeleg",
             "beleg",
-            "biomarkt_kassenbeleg.pdf",
-            "BioMarkt Sonnenberg - Kassenbeleg - 47,85 EUR",
-            "2026-11-04",
+            2,
+            false,
+            Some("REWE Markt GmbH"),
         ),
         (
-            "Stadtwerke Energie – Stromabschlag",
-            "abrechnung",
-            "stadtwerke_stromabschlag.pdf",
-            "Stadtwerke Energie - Stromabschlag - 78,00 EUR",
-            "2026-11-01",
+            "demo-giro",
+            "Elektro Weber – Handwerkerrechnung",
+            "beleg",
+            1,
+            false,
+            None,
         ),
         (
-            "ConnectMobile – Monatsrechnung",
+            "demo-giro",
+            "Musterbank – Kontoauszug",
+            "kontoauszug",
+            5,
+            true,
+            None,
+        ),
+        (
+            "demo-giro",
+            "Musterbank – Lastschriftbestätigung Strom",
+            "postbox",
+            20,
+            true,
+            Some("EnBW Energie Baden-Württemberg AG"),
+        ),
+        (
+            "demo-visa",
+            "IKEA – Rechnung Regal",
+            "beleg",
+            29,
+            false,
+            Some("IKEA Deutschland GmbH"),
+        ),
+        (
+            "demo-visa",
+            "Hotel Seeblick – Hotelrechnung",
+            "beleg",
+            3,
+            false,
+            None,
+        ),
+        (
+            "demo-visa",
+            "Visa Gold – Kreditkartenabrechnung",
+            "kontoauszug",
+            4,
+            true,
+            None,
+        ),
+        (
+            "demo-depot",
+            "MSCI World – Wertpapierabrechnung",
             "abrechnung",
-            "connectmobile_monatsrechnung.pdf",
-            "ConnectMobile - Monatsrechnung - 19,99 EUR",
-            "2026-10-28",
+            3,
+            true,
+            None,
+        ),
+        (
+            "demo-depot",
+            "Musterbank – Depotübersicht",
+            "postbox",
+            6,
+            true,
+            None,
         ),
     ];
-    for (i, (title, ty, file, text, date)) in docs.into_iter().enumerate() {
+    for (i, (account_ref, title, doc_type, days_ago, bank, counterparty)) in
+        docs.into_iter().enumerate()
+    {
+        let (account_id, account_name): (i64, String) = conn.query_row(
+            "SELECT id, name FROM accounts WHERE external_ref = ?1",
+            [account_ref],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let mut date = (today - Duration::days(days_ago))
+            .format("%Y-%m-%d")
+            .to_string();
+        let mut lines = vec![
+            title.replace('–', "-"),
+            "GiroCrab Demo - frei erfundene Beispieldaten".into(),
+            format!("Konto: {account_name}"),
+        ];
+        let booking_id = if let Some(cp) = counterparty {
+            let (id, booking_date, amount): (i64, String, i64) = conn.query_row(
+                "SELECT id, booking_date, amount_cents FROM transactions
+                 WHERE account_id = ?1 AND counterparty = ?2
+                 ORDER BY booking_date DESC, id DESC LIMIT 1",
+                params![account_id, cp],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )?;
+            date = booking_date;
+            lines.push(format!(
+                "Betrag: {}",
+                crate::money::format_cents(amount, "EUR".into())
+            ));
+            Some(id)
+        } else {
+            None
+        };
+        lines.push(format!("Datum: {date}"));
+        lines.push(
+            if bank {
+                "Bankdokument aus der PostBox"
+            } else {
+                "Selbst hinzugefuegter Beleg"
+            }
+            .into(),
+        );
+        lines.push(
+            if booking_id.is_some() {
+                "Mit einer Buchung verknuepft"
+            } else {
+                "Ohne Buchungsverknuepfung"
+            }
+            .into(),
+        );
+        let source = if bank {
+            format!("demo-bank:{account_ref}:{i}")
+        } else {
+            String::new()
+        };
         crate::documents::insert_doc(
             conn,
-            None,
+            booking_id,
             Some(account_id),
             title,
-            ty,
+            doc_type,
             "application/pdf",
-            file,
-            &demo_pdf(text),
-            &format!("demo-doc-{i}"),
-            date,
+            &format!("demo_dokument_{i}.pdf"),
+            &crate::documents::simple_pdf(&lines),
+            &source,
+            &date,
         )?;
     }
     Ok(())
@@ -140,7 +214,7 @@ pub const DEMO_ACCOUNTS: &[DemoAccountSpec] = &[
         kind: AccountKind::Brokerage,
         iban: "",
         account_number: "",
-        opening_cents: 28_450_00,
+        opening_cents: 31_380_00,
         bank_name: "Musterbank",
         principal_cents: None,
     },
@@ -174,6 +248,18 @@ pub const DEMO_ACCOUNTS: &[DemoAccountSpec] = &[
         iban: "",
         account_number: "",
         opening_cents: 6_200_00,
+        bank_name: "Musterbank",
+        principal_cents: None,
+    },
+    // appended: the demo bookings address the accounts above by their index
+    DemoAccountSpec {
+        connector: ConnectorKind::TradeRepublic,
+        external_ref: "demo-einzeltitel",
+        name: "Einzeltitel-Depot",
+        kind: AccountKind::Brokerage,
+        iban: "",
+        account_number: "",
+        opening_cents: 16_590_00,
         bank_name: "Musterbank",
         principal_cents: None,
     },
@@ -1262,7 +1348,7 @@ impl Vault {
             tx.execute(
                 "INSERT INTO accounts(connection_id, group_id, external_ref, name, bank_name, owner, iban, account_number, currency, kind,
                                       balance_cents, balance_date, sf_symbol, sort_order, initial_balance_cents)
-                 VALUES (?1, ?2, ?3, ?4, ?5, 'Erika Mustermann', ?6, ?7, 'EUR', ?8, ?9, ?10, ?11, ?12, ?13)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?14, ?6, ?7, 'EUR', ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     conn_ids[&spec.connector],
                     gid,
@@ -1276,13 +1362,217 @@ impl Vault {
                     today.format("%Y-%m-%d").to_string(),
                     spec.kind.sf_symbol(),
                     i as i32,
-                    spec.principal_cents
+                    spec.principal_cents,
+                    // a second owner, so the wealth view has people to tell apart (#280, #351)
+                    if matches!(spec.external_ref, "demo-einzeltitel" | "demo-krypto") {
+                        "Anton Mustermann"
+                    } else {
+                        "Erika Mustermann"
+                    }
                 ],
             )?;
             acc_ids.insert(spec.external_ref, tx.last_insert_rowid());
         }
-        // Depot positions: the two savings plans, summing to the depot balance
-        // (28.450,00 EUR), so the "Positionen" card is not empty in the demo.
+        // Scheduled transfers for the "Geplant" page (#240): fictional, relative to today.
+        for (n, (days, name, iban, cents, purpose)) in [
+            (
+                6,
+                "Hausverwaltung Nord",
+                "DE02120300000000202051",
+                85_000,
+                "Miete Dezember",
+            ),
+            (
+                12,
+                "Stadtwerke München",
+                "DE89370400440532013000",
+                8_500,
+                "Abschlag Strom Kd-Nr 482910",
+            ),
+            (
+                23,
+                "Finanzamt Musterstadt",
+                "DE75512108001245126199",
+                62_000,
+                "Einkommensteuer Vorauszahlung Q4",
+            ),
+            (
+                41,
+                "Anna Becker",
+                "DE44500105175407324931",
+                15_000,
+                "Anteil Weihnachtsgeschenk",
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            tx.execute(
+                "INSERT INTO planned_transfers(account_id, end_to_end_id, execution_date, recipient_name,
+                        recipient_iban, amount_cents, purpose, created_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)",
+                params![
+                    acc_ids["demo-giro"],
+                    format!("DEMOPLAN{n}"),
+                    (today + chrono::Duration::days(days)).format("%Y-%m-%d").to_string(),
+                    name,
+                    iban,
+                    cents,
+                    purpose
+                ],
+            )?;
+        }
+        // A submitted direct debit collection (#143): two member fees due soon.
+        for (n, (name, iban, purpose)) in [
+            ("Mia Beispiel", "DE89370400440532013000", "Mitgliedsbeitrag"),
+            ("Jan Muster", "DE02120300000000202051", "Mitgliedsbeitrag"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            tx.execute(
+                "INSERT INTO planned_transfers(account_id, end_to_end_id, execution_date, recipient_name,
+                        recipient_iban, amount_cents, purpose, created_ms, kind)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1250, ?6, 0, 'debit')",
+                params![
+                    acc_ids["demo-giro"],
+                    format!("DEMODEBIT{n}"),
+                    (today + chrono::Duration::days(9)).format("%Y-%m-%d").to_string(),
+                    name,
+                    iban,
+                    purpose
+                ],
+            )?;
+        }
+        // Standing orders as the bank reports them (#239): rent monthly, a savings
+        // transfer quarterly and a weekly payment. The monthly ones are changeable and
+        // deletable (#496), the weekly one is read-only.
+        for (name, iban, cents, purpose, unit, interval, day, last) in [
+            (
+                "Hausverwaltung Nord",
+                "DE02120300000000202051",
+                85_000,
+                "Miete",
+                "M",
+                1,
+                1,
+                None,
+            ),
+            (
+                "Sparverein Nord",
+                "DE89370400440532013000",
+                30_000,
+                "Quartalssparen",
+                "M",
+                3,
+                15,
+                None,
+            ),
+            (
+                "Fitnessstudio Mitte",
+                "DE44500105175407324931",
+                1_250,
+                "Beitrag Kursgebühr",
+                "W",
+                1,
+                5,
+                Some("2027-06-30"),
+            ),
+        ] {
+            tx.execute(
+                "INSERT INTO standing_orders(account_id, key, order_id, recipient_name, recipient_iban,
+                        amount_cents, purpose, first_date, last_date, time_unit, interval, exec_day,
+                        can_change, can_delete, fetched_ms)
+                 VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, '2025-01-01', ?7, ?8, ?9, ?10, ?11, ?11, 0)",
+                params![
+                    acc_ids["demo-giro"],
+                    format!("DEMO-{purpose}"),
+                    name,
+                    iban,
+                    cents,
+                    purpose,
+                    last,
+                    unit,
+                    interval,
+                    day,
+                    // Rent and savings can be changed (as with a bank that allows it); the weekly one cannot.
+                    i64::from(unit == "M"),
+                ],
+            )?;
+        }
+        // Direct debit demo (#143): creditor ID and a few member mandates.
+        tx.execute(
+            "INSERT INTO creditor_ids(account_id, creditor_id, updated_ms) VALUES (?1, 'DE98ZZZ09999999999', 0)",
+            params![acc_ids["demo-giro"]],
+        )?;
+        for (name, iban, reference, signed, scheme, cents, purpose, active, last) in [
+            (
+                "Mia Beispiel",
+                "DE89370400440532013000",
+                "M-2024-001",
+                "2024-03-01",
+                "CORE",
+                1_250,
+                "Mitgliedsbeitrag",
+                1,
+                Some("2026-10-01"),
+            ),
+            (
+                "Jan Muster",
+                "DE02120300000000202051",
+                "M-2025-014",
+                "2025-01-15",
+                "CORE",
+                1_250,
+                "Mitgliedsbeitrag",
+                1,
+                None,
+            ),
+            (
+                "Muster Bau GmbH",
+                "DE44500105175407324931",
+                "M-2025-020",
+                "2025-06-02",
+                "B2B",
+                25_000,
+                "Wartungsvertrag",
+                1,
+                Some("2026-10-15"),
+            ),
+            (
+                "Eva Probe",
+                "DE89370400440532013000",
+                "M-2023-007",
+                "2023-09-10",
+                "CORE",
+                1_250,
+                "Mitgliedsbeitrag",
+                0,
+                Some("2025-12-01"),
+            ),
+        ] {
+            tx.execute(
+                "INSERT INTO mandates(account_id, debtor_name, debtor_iban, reference, signed_date, scheme,
+                        default_amount_cents, default_purpose, active, last_collected, created_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0)",
+                params![
+                    acc_ids["demo-giro"],
+                    name,
+                    iban,
+                    reference,
+                    signed,
+                    scheme,
+                    cents,
+                    purpose,
+                    active,
+                    last
+                ],
+            )?;
+        }
+        // Depot positions: the two savings plans and a money market ETF, summing to the balance
+        // of the ETF depot (31.380,00 EUR), and single securities in a depot of their own (16.590,00 EUR): five
+        // stocks, a federal bond and a gold ETC. So the "Positionen" cards are not empty in the
+        // demo and the wealth view has several asset classes and instruments to tell apart (#351).
         for (isin, wkn, name, quantity, current, purchase, prev_day) in [
             (
                 "IE00B4L5Y983",
@@ -1302,6 +1592,78 @@ impl Vault {
                 98_10,
                 107_45,
             ),
+            (
+                "LU0290358497",
+                "DBX0AN",
+                "Xtrackers II EUR Overnight Rate Swap UCITS ETF",
+                20.0,
+                146_50,
+                141_20,
+                146_48,
+            ),
+            (
+                "DE0007236101",
+                "723610",
+                "Siemens AG",
+                15.0,
+                180_00,
+                148_00,
+                181_30,
+            ),
+            (
+                "US0378331005",
+                "865985",
+                "Apple Inc.",
+                12.0,
+                210_00,
+                165_00,
+                208_40,
+            ),
+            (
+                "DE0007164600",
+                "716460",
+                "SAP SE",
+                10.0,
+                240_00,
+                131_00,
+                238_20,
+            ),
+            (
+                "US5949181045",
+                "870747",
+                "Microsoft Corp.",
+                6.0,
+                400_00,
+                310_00,
+                397_50,
+            ),
+            (
+                "DE0008404005",
+                "840400",
+                "Allianz SE",
+                8.0,
+                285_00,
+                232_50,
+                286_10,
+            ),
+            (
+                "DE0001102580",
+                "110258",
+                "Bundesrepublik Deutschland Anleihe 2032",
+                20.0,
+                97_50,
+                99_20,
+                97_35,
+            ),
+            (
+                "DE000A0S9GB0",
+                "A0S9GB",
+                "Xetra-Gold",
+                30.0,
+                78_00,
+                52_40,
+                77_60,
+            ),
         ] {
             let value = (quantity * current as f64).round() as i64;
             let day = ((current - prev_day) as f64 * quantity).round() as i64;
@@ -1313,7 +1675,11 @@ impl Vault {
                         profit_loss_prev_day_cents, profit_loss_prev_day_rel)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
-                    acc_ids["demo-depot"],
+                    acc_ids[if name.contains("ETF") {
+                        "demo-depot"
+                    } else {
+                        "demo-einzeltitel"
+                    }],
                     isin,
                     wkn,
                     name,
@@ -1330,6 +1696,14 @@ impl Vault {
                 ],
             )?;
         }
+        // The demo broker reports the type of its stocks, as a connector with explicit labels
+        // does; the ETFs, the bond and the gold ETC are left to the local rules.
+        tx.execute(
+            "INSERT INTO holding_classifications(holding_id, asset_class, instrument)
+             SELECT id, 'equity', 'single' FROM holdings
+             WHERE account_id = ?1 AND isin NOT IN ('DE0001102580', 'DE000A0S9GB0')",
+            [acc_ids["demo-einzeltitel"]],
+        )?;
         // Crypto depot: no ISIN, the ticker stands in the WKN column; BTC 0,05 × 88.000 € and
         // ETH 0,8 × 2.250 € add up to the account balance (6.200,00 EUR).
         for (wkn, name, quantity, current, purchase, prev_day) in [
@@ -1369,6 +1743,9 @@ impl Vault {
                 ],
             )?;
         }
+        // The fixture explicitly models direct BTC/ETH custody; do not infer this from
+        // an arbitrary WKN in real accounts.
+        tx.execute("INSERT OR REPLACE INTO holding_classifications(holding_id,direct_crypto) SELECT id,1 FROM holdings WHERE account_id=?1", [acc_ids["demo-krypto"]])?;
         // Securities transactions of the depot (#314): the two savings plans of the last
         // twelve months, two distributions and one custody fee.
         {
@@ -1466,6 +1843,7 @@ impl Vault {
                 &[
                     "demo-tagesgeld",
                     "demo-depot",
+                    "demo-einzeltitel",
                     "demo-krypto",
                     "demo-sachwerte",
                 ][..],
@@ -1500,6 +1878,19 @@ impl Vault {
                 ])?;
                 n += 1;
             }
+            // A returned direct debit (#143): Jan Muster's account was closed. Matches
+            // his mandate, so the mandate list and inspector show the return hint.
+            tx.execute(
+                "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents, currency, counterparty,
+                                          counterparty_iban, purpose, booking_text, checked, mandate_id, end_to_end_id)
+                 VALUES (?1, 'demo-return', ?2, ?2, -1250, 'EUR', 'Jan Muster', 'DE02120300000000202051',
+                         'Rücklastschrift AC04 Mitgliedsbeitrag', 'RÜCKLASTSCHRIFT', 0, 'M-2025-014', 'M-2025-014-20261001')",
+                params![
+                    acc_ids["demo-giro"],
+                    (today - Duration::days(5)).format("%Y-%m-%d").to_string()
+                ],
+            )?;
+            n += 1;
         }
         // Startsaldo (#212): the card reports no balance; it is computed from the
         // bookings, starting with the statement balance at the start of the
@@ -1517,7 +1908,7 @@ impl Vault {
             .map_or(0, |s| s.opening_cents);
         crate::opening_balance::calibrate_in(&tx, visa, card)?;
         Vault::apply_rules_inner(&tx, true)?;
-        demo_documents(&tx, today, acc_ids["demo-giro"])?;
+        demo_documents(&tx, today)?;
         tx.commit()?;
         Ok(n)
     }
@@ -1528,6 +1919,55 @@ mod tests {
     use super::*;
     use crate::merchants::FlowKind;
     use crate::models::BookingFilter;
+
+    #[test]
+    fn demo_documents_cover_accounts_origins_and_links_with_readable_pdfs() {
+        let dir = crate::test_support::TempDir::new("demo-documents");
+        let v = Vault::open(dir.join("v.db").to_string_lossy().into(), vec![7u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let docs = v
+            .list_all_documents(crate::documents::DocumentFilter::default())
+            .unwrap();
+        assert_eq!(docs.len(), 9);
+        let accounts: std::collections::HashSet<_> = docs.iter().map(|d| d.account_id).collect();
+        assert_eq!(accounts.len(), 3);
+        for bank in [false, true] {
+            for linked in [false, true] {
+                assert!(docs
+                    .iter()
+                    .any(|d| !d.source_url.is_empty() == bank && d.booking_id.is_some() == linked));
+            }
+        }
+        let today = Local::now().date_naive();
+        for d in &docs {
+            let date = NaiveDate::parse_from_str(&d.doc_date, "%Y-%m-%d").unwrap();
+            assert!((0..=30).contains(&(today - date).num_days()));
+            let bytes = v.get_document_bytes(d.id).unwrap();
+            assert!(bytes.starts_with(b"%PDF"));
+            let text = crate::documents::extract_pdf_text(&bytes);
+            assert!(text.contains(&d.account_name) && text.contains(&d.doc_date));
+            if let Some(booking) = d.booking_id {
+                let account: i64 = v
+                    .db()
+                    .unwrap()
+                    .query_row(
+                        "SELECT account_id FROM transactions WHERE id = ?1",
+                        [booking],
+                        |r| r.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(d.account_id, Some(account));
+            }
+        }
+        // Reopening / seeding an existing demo must not duplicate uploads.
+        v.seed_demo_data().unwrap();
+        assert_eq!(
+            v.list_all_documents(crate::documents::DocumentFilter::default())
+                .unwrap()
+                .len(),
+            9
+        );
+    }
 
     #[test]
     fn direction_filter_splits_income_and_expenses() {
@@ -1589,18 +2029,65 @@ mod tests {
             .find(|a| a.name == "Welt-Depot ETF")
             .unwrap();
         let holdings = v.list_holdings(depot.id).unwrap();
-        assert_eq!(holdings.len(), 2);
+        assert_eq!(holdings.len(), 3);
         let sum: i64 = holdings.iter().map(|h| h.value_cents).sum();
         assert_eq!(sum, depot.balance_cents);
+        // the ETFs by rule, the single stocks of the second depot as its broker reports them (#351)
+        use crate::asset_classification::{AssetClass, ClassificationSource, InstrumentKind};
+        let etfs = v.classified_assets(depot.id).unwrap();
+        assert!(etfs
+            .iter()
+            .all(|a| a.classification.instrument == InstrumentKind::Etf));
+        // same wrapper, different exposure: two equity ETFs and one money market ETF
+        let classes = |class: AssetClass| {
+            etfs.iter()
+                .filter(|a| a.classification.asset_class == class)
+                .count()
+        };
+        assert_eq!(classes(AssetClass::Equity), 2);
+        assert_eq!(classes(AssetClass::Cash), 1);
+        let stocks = v
+            .list_accounts()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.name == "Einzeltitel-Depot")
+            .unwrap();
+        let singles = v.classified_assets(stocks.id).unwrap();
+        assert_eq!(singles.len(), 7);
+        let sum: i64 = singles.iter().map(|a| a.holding.value_cents).sum();
+        assert_eq!(sum, stocks.balance_cents);
+        assert!(singles
+            .iter()
+            .all(|a| a.classification.security_key.is_some()));
+        let of = |class: AssetClass, instrument: InstrumentKind, source: ClassificationSource| {
+            singles
+                .iter()
+                .filter(|a| {
+                    a.classification.asset_class == class
+                        && a.classification.instrument == instrument
+                        && a.classification.asset_class_source == source
+                })
+                .count()
+        };
+        use ClassificationSource::{Import, Rule};
+        assert_eq!(
+            of(AssetClass::Equity, InstrumentKind::SingleSecurity, Import),
+            5
+        );
+        assert_eq!(
+            of(AssetClass::Bond, InstrumentKind::SingleSecurity, Rule),
+            1
+        );
+        assert_eq!(of(AssetClass::Commodity, InstrumentKind::EtcEtn, Rule), 1);
     }
 
     #[test]
-    fn demo_seed_has_eight_accounts_and_exactly_fifty_two_bookings() {
+    fn demo_seed_has_nine_accounts_and_exactly_fifty_three_bookings() {
         let dir_dir = crate::test_support::TempDir::new("girocrab-test");
         let dir = dir_dir.join("v.db");
         let v = Vault::open(dir.to_string_lossy().to_string(), vec![7u8; 32]).unwrap();
-        assert_eq!(v.seed_demo_data().unwrap(), 52);
-        assert_eq!(v.account_count().unwrap(), 8);
+        assert_eq!(v.seed_demo_data().unwrap(), 53);
+        assert_eq!(v.account_count().unwrap(), 9);
         let car = v.list_manual_loans().unwrap();
         assert_eq!(car.len(), 1);
         assert_eq!(car[0].status.payment_count, 2);

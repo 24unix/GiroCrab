@@ -1253,6 +1253,8 @@ QtObject {
         forgetWebCookies(id)
         run(() => core("delete_bank_connection", { connection_id: id })); reloadAll()
     }
+    /// comdirect: switch the login between FinTS and comdirect's own API (keeps accounts, categories, notes).
+    function switchComdirectAccess(id) { run(() => core("switch_comdirect_access", { connection_id: id })); reloadAll() }
     function updateConnection(id, name, login) { run(() => core("update_bank_connection", { connection_id: id, display_name: name, login_name: login })); reloadAccounts() }
     function setConnectionPin(id, pin) { run(() => core("set_connection_pin", { connection_id: id, pin: pin })) }
 
@@ -2346,7 +2348,7 @@ QtObject {
             // must not also categorise the outgoing transfers to the same payee.
             min_amount_cents: b && b.amount_cents > 0 ? 1 : null,
             max_amount_cents: b && b.amount_cents < 0 ? 0 : null,
-            account_id: null,
+            account_ids: [],   // all accounts (#562)
             priority: rules.reduce((m, r) => Math.max(m, r.priority), 0) + 10,
             enabled: true,
             match_count: 0

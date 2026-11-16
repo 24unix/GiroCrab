@@ -254,6 +254,7 @@ struct MoneyMoneyDatabaseImportView: View {
             Section {
                 ImportFileRow(title: "Importdaten", url: fileURL, name: fileURL?.lastPathComponent ?? "") { pickFile() }
                 SecureField("Datenbank-Passwort", text: $password, prompt: Text("Erforderlich"))
+                    .visibleInsertionPoint()
             } header: {
                 Text("Datenbank").appSectionHeader()
             } footer: {
@@ -1017,22 +1018,6 @@ final class ImportProgressRelay: MoneyMoneyImportObserver, @unchecked Sendable {
             Task { @MainActor in state.value = progress }
         }
         return go
-    }
-}
-
-extension AccountKind {
-    static let importChoices: [AccountKind] = [.checking, .savings, .creditCard, .paymentService, .brokerage, .cash, .loan]
-
-    var label: String {
-        switch self {
-        case .checking: return String(localized: "Girokonto")
-        case .savings: return String(localized: "Tagesgeld / Sparen")
-        case .creditCard: return String(localized: "Kreditkarte")
-        case .paymentService: return String(localized: "Zahlungsdienst")
-        case .brokerage: return String(localized: "Depot")
-        case .cash: return String(localized: "Bargeld")
-        case .loan: return String(localized: "Darlehen")
-        }
     }
 }
 

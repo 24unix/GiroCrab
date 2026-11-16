@@ -131,7 +131,7 @@ struct DocumentsCard: View {
                     Button { model.quickLook(d) } label: { Image(systemName: "eye") }
                         .buttonStyle(.borderless).help("QuickLook (Leertaste)")
                     Menu {
-                        Button("In PostBox verschieben (Verknüpfung lösen)") { model.linkDocument(d, to: nil) }
+                        Button("Zuordnung aufheben") { model.linkDocument(d, to: nil) }
                         Divider()
                         Button("Beleg löschen …", role: .destructive) { docToDelete = d }
                     } label: { Label("Aktionen", systemImage: "ellipsis.circle").labelStyle(.iconOnly) }
@@ -187,11 +187,33 @@ struct DocumentsCard: View {
 
 // MARK: - "Belege & PostBox" view (center column)
 
+struct DocumentsScopePicker: View {
+    var compact = false
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        Picker("Dokumente", selection: $model.documentsScope) {
+            ForEach(DocumentsScope.allCases) { scope in
+                Text(compact && scope == .all ? String(localized: "Alle") : scope.title)
+                    .accessibilityLabel(scope.title).tag(scope)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        #if os(macOS)
+        .fixedSize()
+        #endif
+        .help("Alle Dokumente, eigene Belege oder Bankdokumente anzeigen")
+    }
+}
+
 struct DocumentsView: View {
     @Environment(AppModel.self) private var model
     @State private var search = ""
     @State private var unlinkedOnly = false
     @State private var selected: Int64?
+    @State private var importing = false
     @State private var exporting = false
     @State private var targeted = false
     @State private var docToDelete: DocumentInfo?
@@ -205,38 +227,47 @@ struct DocumentsView: View {
 
     var body: some View {
         @Bindable var model = model
-        let docs = model.allDocuments(search: search, unlinkedOnly: unlinkedOnly, accountId: model.documentsAccountFilter)
+        let docs = model.allDocuments(search: search, unlinkedOnly: unlinkedOnly, accountId: model.documentsAccountFilter, scope: model.documentsScope)
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Belege & PostBox").appFont(.title2, weight: .semibold)
-                    Text("Wertpapierabrechnungen, Kontoauszüge, Kassenbons – verschlüsselt im Tresor. PDF oder Foto hierher ziehen: GiroCrab ordnet es dem passenden Umsatz zu.")
+                    Text(model.documentsScope.heading).appFont(.title2, weight: .semibold)
+                    Text(model.documentsScope.description)
                         .appFont(.caption).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
                 }
+                #if os(iOS)
+                DocumentsScopePicker(compact: isCompact)
+                #endif
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 12) {
-                        // filter by account (#172)
-                        Picker("Konto", selection: $model.documentsAccountFilter) {
-                            Text("Alle Konten").tag(Int64?.none)
-                            Divider()
-                            // same order and groups as the sidebar (#412)
-                            ForEach(model.accountMenuSections) { section in
-                                Section(section.title) {
-                                    ForEach(section.accounts) { a in
-                                        Label(a.name, systemImage: a.sfSymbol).tag(Int64?.some(a.id))
-                                    }
-                                }
+                    if isCompact {
+                        VStack(alignment: .leading, spacing: 8) {
+                            accountPicker
+                            unlinkedToggle
+                        }
+                    } else {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 12) {
+                                accountPicker
+                                Spacer(minLength: 0)
+                                unlinkedToggle
+                            }
+                            VStack(alignment: .leading, spacing: 8) {
+                                accountPicker
+                                unlinkedToggle
                             }
                         }
-                        .pickerStyle(.menu)
-                        .sensitive(model.documentsAccountFilter == nil ? [] : .personal) // the selected account's name
-                        .labelsHidden()
-                        .frame(minWidth: 150, maxWidth: 240)
-                        .help("Belege eines Kontos anzeigen")
-                        Toggle("Nur ohne Buchung", isOn: $unlinkedOnly).toggleStyle(.switch).controlSize(.small)
-                            .lineLimit(1).fixedSize()
-                        Spacer(minLength: 0)
-                        Button { chooseExportFolder(model: model, fallback: $exporting) } label: { Label("Alle exportieren …", systemImage: "square.and.arrow.up").lineLimit(1).fixedSize() }
+                    }
+                    Text("\(docs.count) Dokumente").appFont(.caption).foregroundStyle(Theme.secondary)
+                    ViewThatFits(in: .horizontal) {
+                        HStack {
+                            importButton
+                            Spacer(minLength: 12)
+                            exportButton
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            importButton
+                            exportButton
+                        }
                     }
                 }
                 List(selection: $selected) {
@@ -244,19 +275,23 @@ struct DocumentsView: View {
                         HStack(spacing: 10) {
                             Image(systemName: docSymbol(d)).foregroundStyle(Theme.accent).frame(width: 22)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(d.title).fontWeight(.medium).lineLimit(2).sensitive()
-                                Text(d.bookingLabel.isEmpty ? "PostBox · \(d.accountName)" : d.bookingLabel)
-                                    .appFont(.caption).foregroundStyle(d.bookingLabel.isEmpty ? Theme.warning : Theme.secondary).lineLimit(1)
+                                Text(d.title).fontWeight(.medium).lineLimit(2)
+                                    .frame(maxWidth: .infinity, alignment: .leading).sensitive()
+                                Text("\(d.originTitle) · \(d.accountName.isEmpty ? String(localized: "Ohne Konto") : d.accountName)")
+                                    .appFont(.caption).foregroundStyle(Theme.secondary).lineLimit(1).sensitive()
+                                Text(d.bookingLabel.isEmpty ? String(localized: "Ohne zugeordneten Umsatz") : d.bookingLabel)
+                                    .appFont(.caption).foregroundStyle(d.bookingLabel.isEmpty && !d.isBankDocument ? Theme.warning : Theme.secondary).lineLimit(1)
                                     .sensitive()
                             }
-                            Spacer()
+                            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.leading)
                             Text(DateText.medium(d.docDate)).appFont(.caption, monospacedDigit: true).foregroundStyle(Theme.secondary)
                         }
                         .tag(d.id)
                         .contentShape(Rectangle())
                         .contextMenu {
                             Button("QuickLook") { model.quickLook(d) }
-                            Button("Verknüpfung lösen") { model.linkDocument(d, to: nil) }
+                            Button("Zuordnung aufheben") { model.linkDocument(d, to: nil) }
                             Divider()
                             Button("Beleg löschen …", role: .destructive) { docToDelete = d }
                         }
@@ -274,29 +309,37 @@ struct DocumentsView: View {
                     selected = nil
                 }
                 .overlay {
-                    if docs.isEmpty, let id = model.documentsAccountFilter,
-                       let account = model.allAccounts.first(where: { $0.id == id }) {
-                        // filtered to one account (#172): say so, offer the way back
-                        ContentUnavailableView {
-                            Label("Keine Belege für „\(account.name)“", systemImage: "doc.on.doc")
-                                .sensitive()
-                        } actions: {
-                            Button("Alle Konten anzeigen") { model.documentsAccountFilter = nil }
-                        }
-                    } else if docs.isEmpty {
+                    if docs.isEmpty && model.documentsScope == .all && model.documentsAccountFilter == nil && !unlinkedOnly && search.isEmpty {
                         ContentUnavailableView("Keine Belege", systemImage: "doc.on.doc", description: Text("Belege kommen beim Abruf (Trade Republic, comdirect-PostBox, FinTS-Kontoauszug) oder per Drag & Drop."))
+                    } else if docs.isEmpty {
+                        ContentUnavailableView {
+                            Label("Keine passenden Dokumente", systemImage: "doc.on.doc")
+                        } description: {
+                            Text("Für diese Auswahl wurden keine Dokumente gefunden.")
+                        } actions: {
+                            Button("Alle Dokumente anzeigen") {
+                                model.documentsScope = .all
+                                model.documentsAccountFilter = nil
+                                unlinkedOnly = false
+                                search = ""
+                            }
+                        }
                     }
+                }
+                .onChange(of: docs.map(\.id)) { _, ids in
+                    if let selected, !ids.contains(selected) { self.selected = nil }
+                    if let previewDoc, !ids.contains(previewDoc.id) { self.previewDoc = nil }
                 }
             }
             .padding(isCompact ? 12 : 18)
-            .frame(maxWidth: isCompact ? .infinity : 520)
+            .frame(minWidth: 0, maxWidth: isCompact ? .infinity : 520, alignment: .leading)
             if !isCompact {
             Divider()
             Group {
                 if let id = selected, let d = docs.first(where: { $0.id == id }), let data = model.documentData(d) {
                     DocumentPreview(doc: d, data: data)
                 } else {
-                    ContentUnavailableView("Beleg auswählen", systemImage: "doc.richtext", description: Text("Vorschau mit PDFKit"))
+                    ContentUnavailableView("Dokument auswählen", systemImage: "doc.richtext", description: Text("Ein Dokument aus der Liste auswählen, um die Vorschau zu öffnen."))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -342,6 +385,64 @@ struct DocumentsView: View {
         // button and Esc come with it.
         .searchable(text: $search, placement: .toolbar, prompt: "Belege durchsuchen")
     }
+
+    private var importButton: some View {
+        Button { importing = true } label: {
+            Label("Beleg hinzufügen …", systemImage: "plus.circle")
+                .lineLimit(isCompact ? nil : 1).fixedSize(horizontal: !isCompact, vertical: true)
+        }
+        .help("PDFs oder Fotos auswählen und einem passenden Umsatz zuordnen")
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.pdf, .png, .jpeg, .heic], allowsMultipleSelection: true) { result in
+            switch result {
+            case .success(let urls):
+                guard !urls.isEmpty else { return }
+                // An unmatched upload has no account. Make it visible even when
+                // the dialog was opened from PostBox or a filtered account.
+                model.documentsScope = .receipts
+                model.documentsAccountFilter = nil
+                search = ""
+                unlinkedOnly = false
+                model.dropAnywhere(urls)
+            case .failure(let error):
+                guard (error as NSError).code != NSUserCancelledError else { return }
+                model.showError(String(localized: "Beleg konnte nicht importiert werden"), error.localizedDescription)
+            }
+        }
+    }
+
+    private var exportButton: some View {
+        Button { chooseExportFolder(model: model, fallback: $exporting) } label: {
+            Label("Alle exportieren …", systemImage: "square.and.arrow.up")
+                .lineLimit(isCompact ? nil : 1).fixedSize(horizontal: !isCompact, vertical: true)
+        }
+        .help("Die gesamte Dokumentensammlung exportieren, unabhängig von den Filtern")
+    }
+
+    private var accountPicker: some View {
+        @Bindable var model = model
+        return Picker("Konto", selection: $model.documentsAccountFilter) {
+            Text("Alle Konten").tag(Int64?.none)
+            Divider()
+            ForEach(model.accountMenuSections) { section in
+                Section(section.title) {
+                    ForEach(section.accounts) { a in
+                        Label(a.name, systemImage: a.sfSymbol).tag(Int64?.some(a.id))
+                    }
+                }
+            }
+        }
+        .pickerStyle(.menu)
+        .sensitive(model.documentsAccountFilter == nil ? [] : .personal)
+        .frame(minWidth: isCompact ? 0 : 150, maxWidth: isCompact ? .infinity : 270)
+        .help("Dokumente eines Kontos anzeigen")
+    }
+
+    private var unlinkedToggle: some View {
+        Toggle("Nur ohne zugeordneten Umsatz", isOn: $unlinkedOnly)
+            .toggleStyle(.switch).controlSize(.small)
+            .lineLimit(isCompact ? nil : 1).fixedSize(horizontal: !isCompact, vertical: true)
+    }
+
 }
 
 extension View {

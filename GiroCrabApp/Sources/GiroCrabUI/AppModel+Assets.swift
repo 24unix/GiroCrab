@@ -71,13 +71,15 @@ extension AppModel {
     /// "Neues Sachwerte-Konto …": creates the account and selects it; its
     /// empty view offers "Sachwert hinzufügen …".
     func createTangibleAccount() {
-        guard let vault else { return }
-        do {
-            let id = try vault.createTangibleAccount(name: "")
-            reloadAccounts()
-            sidebarSelection = .account(id)
-        } catch {
-            errorMessage = describe(error)
+        runInOwnVault { [self] in
+            guard let vault else { return }
+            do {
+                let id = try vault.createTangibleAccount(name: "")
+                reloadAccounts()
+                sidebarSelection = .account(id)
+            } catch {
+                errorMessage = describe(error)
+            }
         }
     }
 

@@ -7,8 +7,10 @@ import GiroCrabCore
 extension AppModel {
     /// Checking accounts that are connected via FinTS (HKCCS-capable banks).
     var transferAccounts: [Account] {
-        allAccounts.filter {
+        let readOnly = Set(connections.filter { usesRah10($0) }.map(\.id))
+        return allAccounts.filter {
             $0.kind == .checking && !$0.iban.isEmpty && !$0.isArchived
+                && !($0.connectionId.map { readOnly.contains($0) } ?? false)
                 && [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .bunq].contains($0.connector)
         }
     }
@@ -144,11 +146,21 @@ extension AppModel {
             }
             schedulePoll(connection: connection, interval: c.pollIntervalSeconds)
         case .finished(let outcome):
+            if activeTransferIsDebit {
+                finishDebitGroup(connection: connection)
+                return
+            }
+            if activeTransferIsStanding {
+                finishStandingOrder()
+                return
+            }
+            plannedVersion += 1 // a scheduled transfer now shows under „Geplant“
             pollTask?.cancel()
             activeChallenge = nil
             activeTransfer = nil
             transferBusy = false
             transferDraft = TransferDraft(accountID: transferDraft.accountID, instant: false)
+            if activeTransferIsBatch { resetBatchDraft() }
             if outcome.instant {
                 toast = String(localized: "Echtzeitüberweisung freigegeben und vorgemerkt")
             } else {
@@ -165,6 +177,14 @@ extension AppModel {
             transferInstantDeclined = reason
             showTransferSheet = true
         case .outcomeUnknown(let reason, let endToEndId):
+            if activeTransferIsDebit {
+                debitOutcomeUnknown(reason: reason)
+                return
+            }
+            if activeTransferIsStanding {
+                standingOrderOutcomeUnknown(reason: reason)
+                return
+            }
             // May have been executed: no retry button, clear the draft so it
             // cannot be resent with one click, and say so clearly.
             pollTask?.cancel()
@@ -172,6 +192,7 @@ extension AppModel {
             activeTransfer = nil
             transferBusy = false
             transferDraft = TransferDraft(accountID: transferDraft.accountID, instant: false)
+            if activeTransferIsBatch { resetBatchDraft() }
             transferUnknown = TransferUnknownNotice(reason: reason, endToEndId: endToEndId)
             reloadAll()
         }
@@ -253,6 +274,24 @@ extension AppModel {
         transferBusy = false
         transferDraft.pin = ""
         transferError = describe(error)
-        showTransferSheet = true
+        if activeTransferIsDebit {
+            failDebitRun(error)
+        } else if activeTransferIsStanding {
+            failStandingOrder()
+        } else if activeTransferIsBatch {
+            batchDraft.pin = ""
+            activeTransferIsBatch = false
+            showBatchSheet = true  // nothing is lost: the rows are still there
+        } else {
+            showTransferSheet = true
+        }
+    }
+
+    /// After a batch was sent: empty form, same account.
+    func resetBatchDraft() {
+        let account = batchDraft.accountID
+        batchDraft = BatchDraft()
+        batchDraft.accountID = account
+        activeTransferIsBatch = false
     }
 }

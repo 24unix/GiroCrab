@@ -36,11 +36,19 @@
 //! The registration-bound product ID is never hardcoded; it comes from
 //! Settings (`fints.product_id`).
 
+pub mod bank_keys;
 pub mod camt;
+pub mod keyfile;
+pub mod kku;
 pub mod mt535;
 pub mod mt940;
+pub mod pain008;
 pub mod product_id;
+pub(crate) mod rah10;
 pub mod sepa;
+mod standing;
+mod standing_order;
+pub(crate) use standing_order::limits_from_state as standing_limits_from_state;
 pub mod syntax;
 
 use std::collections::{HashMap, HashSet};
@@ -51,8 +59,9 @@ use serde::{Deserialize, Serialize};
 
 use self::syntax::{escape, parse_response, Segment, SegmentBuilder};
 use super::{
-    BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult,
-    PayeeCheck, PayeeMatch, Phase, RemoteAccount, TransferJob, TransferResult,
+    BankConnector, BatchTransferJob, Challenge, ChallengeKind, ChallengeResponse, ConnectContext,
+    DebitJob, FetchResult, PayeeCheck, PayeeMatch, Phase, RemoteAccount, StandingOrderJob,
+    TransferJob, TransferResult,
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
@@ -76,10 +85,36 @@ struct FinTsState {
     /// camt descriptors from HICAZS, best first.
     #[serde(default)]
     camt_formats: Vec<String>,
+    /// Receipt codes (hex) of statements stored with this state; acknowledged
+    /// with HKQTG at the next statements fetch, so the bank stops re-sending
+    /// them. Saved in the same transaction as the PDFs (`store_fetch`).
+    #[serde(default)]
+    pending_receipts: Vec<String>,
+    /// The bank accepted the TAN medium only as `SO:<name>` (BestSign security
+    /// object); the user enters the plain device name.
+    #[serde(default)]
+    tan_medium_so: bool,
+    /// HIKKUS (card transactions): the bank takes no date range / no account.
+    #[serde(default)]
+    kku_no_date_range: bool,
+    #[serde(default)]
+    kku_no_account: bool,
+    /// HIKKUS: days of card history the bank keeps (0 = unknown).
+    #[serde(default)]
+    kku_storage_days: i64,
     /// pain.001 descriptors per transfer transaction (HKCCS/HKIPZ/HKCSE) from the BPD
     /// parameter segments HICCSS / HIIPZS / HICSES.
     #[serde(default)]
     pain_formats: HashMap<String, Vec<String>>,
+    /// Batch transfer parameters from HICCMS; `None` = not offered.
+    #[serde(default)]
+    batch_params: Option<BatchParams>,
+    /// Limits for creating and changing standing orders (HICDES / HICDNS).
+    #[serde(default)]
+    standing_params: standing_order::StandingParams,
+    /// Collection parameters per HKDME/HKDMC/HKBME from the BPD (HIDMES, …).
+    #[serde(default)]
+    debit_params: HashMap<String, DebitParams>,
     /// Payment status report format for the name check (HIVPPS), "" = none.
     #[serde(default)]
     vop_format: String,
@@ -99,14 +134,127 @@ const IMPLEMENTED: &[(&str, &[u32])] = &[
     ("HKCCS", &[1]),
     ("HKIPZ", &[1]),
     ("HKCSE", &[1]),
+    ("HKCCM", &[1]),
+    ("HKCDB", &[1, 2]),
+    ("HKCDE", &[1]),
+    ("HKCDN", &[1]),
+    ("HKCDL", &[1, 2]),
+    ("HKDSE", &[1]),
+    ("HKDME", &[1]),
+    ("HKDSC", &[1]),
+    ("HKDMC", &[1]),
+    ("HKBSE", &[1]),
+    ("HKBME", &[1]),
     ("HKVPP", &[1]),
     ("HKKAZ", &[5, 6, 7]),
     ("HKTAN", &[6, 7]),
     ("HKSPA", &[1, 2, 3]),
     ("HKTAB", &[4, 5]),
     ("HKEKA", &[3, 4, 5]),
+    ("HKEKP", &[1, 2]),
+    ("HKQTG", &[1]),
     ("HKWPD", &[5, 6]),
+    ("HKKKU", &[1]),
 ];
+
+/// What the bank allows for batch transfers (BPD HICCMS).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct BatchParams {
+    /// Most payments in one order, 0 = not stated.
+    max_count: u32,
+    /// The order must carry the control sum (Summenfeld).
+    sum_required: bool,
+    /// The bank accepts "one booking per payment".
+    single_booking_allowed: bool,
+}
+
+/// HICCMS: header, max. orders, signatures, security class, then the
+/// parameter DEG: max. payments, Summenfeld required, single booking
+/// allowed, pain descriptors. Tolerates missing fields (stricter reading
+/// is only possible against a real BPD).
+fn parse_batch_params(seg: &Segment) -> BatchParams {
+    let flag = |s: &str| s == "J";
+    BatchParams {
+        max_count: seg.get(4, 0).parse().unwrap_or(0),
+        sum_required: flag(seg.get(4, 1)),
+        single_booking_allowed: flag(seg.get(4, 2)),
+    }
+}
+
+/// What the bank allows for batch direct debits (BPD HIDMES/HIDMCS/HIBMES).
+/// Lead times in calendar days before the due date.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct DebitParams {
+    min_days_recurring: u32,
+    max_days_recurring: u32,
+    min_days_first: u32,
+    max_days_first: u32,
+    max_count: u32,
+    /// The order must carry the control sum.
+    sum_required: bool,
+    /// The order states "one booking per collection".
+    single_booking_allowed: bool,
+}
+
+/// HIDMES-like segment: header, max. orders, signatures, security class, then the
+/// parameter DEG: lead times (FNAL/RCUR min/max, FRST/OOFF min/max), max.
+/// collections, Summenfeld required, single booking allowed. Untested
+/// against a real BPD: callers must treat implausible values as "unknown".
+fn parse_debit_params(seg: &Segment) -> DebitParams {
+    let num = |i: usize| seg.get(4, i).parse().unwrap_or(0);
+    let flag = |i: usize| seg.get(4, i) == "J";
+    DebitParams {
+        min_days_recurring: num(0),
+        max_days_recurring: num(1),
+        min_days_first: num(2),
+        max_days_first: num(3),
+        max_count: num(4),
+        sum_required: flag(5),
+        single_booking_allowed: flag(6),
+    }
+}
+
+/// Checks the due date against the bank's lead times. `Ok` when the
+/// parameters are unusable (nothing is invented), otherwise the error names the
+/// earliest/latest date. `today` and `due` are `YYYY-MM-DD`.
+fn check_debit_lead_time(
+    p: &DebitParams,
+    sequence: pain008::SequenceType,
+    today: chrono::NaiveDate,
+    due: chrono::NaiveDate,
+) -> CoreResult<()> {
+    use pain008::SequenceType::*;
+    let (min, max) = match sequence {
+        First | OneOff => (p.min_days_first, p.max_days_first),
+        Recurring | Final => (p.min_days_recurring, p.max_days_recurring),
+    };
+    if max == 0 || min > max || max > 400 {
+        return Ok(());
+    }
+    // The unit (calendar vs. TARGET days) is not certain: the minimum is only
+    // enforced where it is too early in either unit; the maximum gets the
+    // longer reading (TARGET days are at most 7/5 calendar days) plus a margin.
+    // The bank has the last word.
+    let earliest = today + chrono::Duration::days(i64::from(min));
+    let latest = today + chrono::Duration::days(i64::from(max) * 7 / 5 + 3);
+    if due < earliest {
+        return Err(CoreError::InvalidInput {
+            message: trf(
+                "Die Bank braucht für diese Lastschrift mindestens {0} Tage Vorlauf; frühestens möglich: {1}.",
+                &[&min, &earliest.format("%d.%m.%Y").to_string()],
+            ),
+        });
+    }
+    if due > latest {
+        return Err(CoreError::InvalidInput {
+            message: trf(
+                "Die Bank nimmt diese Lastschrift höchstens {0} Tage im Voraus an; spätestens möglich: {1}.",
+                &[&max, &today.checked_add_signed(chrono::Duration::days(i64::from(max))).unwrap_or(latest).format("%d.%m.%Y").to_string()],
+            ),
+        });
+    }
+    Ok(())
+}
 
 /// Account from the user parameter data (HIUPD).
 #[derive(Debug, Clone, Default)]
@@ -121,6 +269,34 @@ struct UpdAccount {
     product: String,
     /// Business transactions allowed for this account (empty = unknown, all).
     allowed: HashSet<String>,
+}
+
+/// Start date of a card statement request: `since`, but not further back than the
+/// bank's storage period (`storage_days`, 0 = unknown). Dates are `YYYY-MM-DD`.
+fn card_since(since: &str, today: &str, storage_days: i64) -> String {
+    let parse = |d: &str| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok();
+    match (parse(since), parse(today)) {
+        (Some(s), Some(t)) if storage_days > 0 => {
+            let oldest = t - chrono::Duration::days(storage_days);
+            s.max(oldest).format("%Y-%m-%d").to_string()
+        }
+        _ => since.to_string(),
+    }
+}
+
+/// Reply to a decoupled status poll (HKTAN process S): the approval in the app
+/// is still outstanding. Standard is 3956; Deutsche Bank answers with warnings
+/// only (3060, no success code) until the user has confirmed.
+fn approval_pending(reply: &BankReply) -> bool {
+    reply.errors().is_empty()
+        && (reply.has("3956") || !reply.codes.iter().any(|c| c.0.starts_with('0')))
+}
+
+/// Whether a TAN medium name already carries the "SO:" (security object) prefix.
+fn has_so_prefix(medium: &str) -> bool {
+    medium
+        .get(..3)
+        .is_some_and(|p| p.eq_ignore_ascii_case("SO:"))
 }
 
 /// Consorsbank (BNP Paribas): see `docs/consorsbank-connector.md`.
@@ -146,6 +322,138 @@ fn fints_date(d: &str) -> Option<String> {
         return None;
     }
     Some(format!("{}-{}-{}", &d[..4], &d[4..6], &d[6..]))
+}
+
+/// Label, period and date of a HIEKP statement. DKB (v2): PDF, period
+/// `von:bis`, creation date, year, number, IBAN, BIC, …, file name, receipt
+/// code. Label = `number/year (period)` when both are there, else the period.
+fn hiekp_details(s: &syntax::Segment) -> (String, String, String) {
+    let (period, date) = match (fints_date(s.get(2, 0)), fints_date(s.get(2, 1))) {
+        // DKB puts the issue date in both fields: show it once
+        (Some(from), Some(to)) if from == to => (to.clone(), to),
+        (Some(from), Some(to)) => (format!("{from}–{to}"), to),
+        _ => statement_period(s),
+    };
+    let (year, number) = (s.get(4, 0), s.get(5, 0).trim_start_matches('0'));
+    let label = if year.len() == 4
+        && year.bytes().all(|b| b.is_ascii_digit())
+        && !number.is_empty()
+        && number.len() <= 4
+        && number.bytes().all(|b| b.is_ascii_digit())
+    {
+        format!("{number}/{year} ({period})")
+    } else {
+        period.clone()
+    };
+    (label, period, date)
+}
+
+/// Period and date from the FinTS dates (`YYYYMMDD`) anywhere in a segment,
+/// earliest to latest; today when it carries none (fallback for other banks).
+fn statement_period(s: &syntax::Segment) -> (String, String) {
+    let mut dates: Vec<String> = s
+        .elements
+        .iter()
+        .flatten()
+        .filter_map(|v| fints_date(v.text()))
+        .collect();
+    dates.sort();
+    dates.dedup();
+    match (dates.first(), dates.last()) {
+        (Some(a), Some(b)) if a != b => (format!("{a}–{b}"), b.clone()),
+        (Some(a), _) => (a.clone(), a.clone()),
+        _ => {
+            let today = super::today();
+            (today.clone(), today)
+        }
+    }
+}
+
+/// File name the bank sends with a statement: the text field ending in `.pdf`,
+/// reduced to its last path component without control characters.
+fn statement_file_name(s: &syntax::Segment) -> Option<String> {
+    s.elements.iter().flatten().find_map(|v| {
+        let syntax::Value::Text(t) = v else {
+            return None;
+        };
+        let name: String = t
+            .rsplit(['/', '\\'])
+            .next()?
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect();
+        let name = name.trim();
+        (name.len() > 4 && name.len() <= 200 && name.to_lowercase().ends_with(".pdf"))
+            .then(|| name.to_string())
+    })
+}
+
+/// Display title from a bank file name: without `.pdf`, `_` as spaces
+/// (`Kontoauszug_10_2026_vom_05.10.2026.pdf` → `Kontoauszug 10 2026 vom 05.10.2026`).
+fn statement_title(file_name: &str) -> String {
+    let stem = &file_name[..file_name.len().saturating_sub(4)];
+    stem.replace('_', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Shape of a reply segment for the debug log: kind and length of each field,
+/// never its content (`bin(48211) date8 num4 pdfname(31) text(12)`).
+fn segment_layout(s: &syntax::Segment) -> String {
+    s.elements
+        .iter()
+        .skip(1)
+        .map(|el| {
+            el.iter()
+                .map(|v| match v {
+                    syntax::Value::Binary(b) => format!("bin({})", b.len()),
+                    syntax::Value::Text(t) if t.is_empty() => "-".into(),
+                    syntax::Value::Text(t) if fints_date(t).is_some() => "date8".into(),
+                    syntax::Value::Text(t) if t.bytes().all(|b| b.is_ascii_digit()) => {
+                        format!("num{}", t.len())
+                    }
+                    syntax::Value::Text(t) if t.to_lowercase().ends_with(".pdf") => {
+                        format!("pdfname({})", t.chars().count())
+                    }
+                    syntax::Value::Text(t) => format!("text({})", t.chars().count()),
+                })
+                .collect::<Vec<_>>()
+                .join(":")
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Receipt code of a statement (HIEKP/HIEKA): the binary field that is not the
+/// PDF (DKB: the last field, 36 bytes), as hex for the persisted state.
+fn receipt_code(s: &syntax::Segment) -> Option<String> {
+    s.elements
+        .iter()
+        .flatten()
+        .filter_map(|v| match v {
+            syntax::Value::Binary(b) if !b.is_empty() && !b.starts_with(b"%PDF") => Some(b),
+            _ => None,
+        })
+        .next_back()
+        .map(|b| b.iter().map(|x| format!("{x:02x}")).collect())
+}
+
+fn hex_decode(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
+        .collect()
+}
+
+/// FNV-1a 64 over raw bytes (stable id for a statement PDF).
+fn fnv1a64_bytes(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+        (h ^ u64::from(*b)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 fn is_segment_code(s: &str) -> bool {
@@ -276,6 +584,9 @@ pub struct FinTsConnector {
     blz: String,
     url: String,
     client: Option<reqwest::Client>,
+    rah: Option<rah10::Rah10>,
+    requires_rah10: bool,
+    rah_stream: Option<tokio::net::TcpStream>,
     dialog_id: String,
     msg_no: u32,
     st: FinTsState,
@@ -321,6 +632,13 @@ struct PreparedOrder {
     instant: bool,
     recipient_name: String,
     recipient_iban: String,
+    /// HKCCM only: control sum in cents and "one booking per payment".
+    batch: Option<(i64, bool)>,
+    /// Direct debit batches: (send Summenfeld, send single-booking flag),
+    /// from the BPD; `None` = read the transfer `batch_params`.
+    debit_layout: Option<(bool, bool)>,
+    /// Standing orders (HKCDE/HKCDN/HKCDL): order id and schedule after the pain.001.
+    standing: Option<standing_order::StandingTail>,
 }
 
 /// Longest wait between two name-check polls, and in total.
@@ -363,6 +681,9 @@ impl FinTsConnector {
             blz: blz.to_string(),
             url: String::new(),
             client: None,
+            rah: None,
+            requires_rah10: false,
+            rah_stream: None,
             dialog_id: "0".into(),
             msg_no: 1,
             st: FinTsState::default(),
@@ -383,6 +704,12 @@ impl FinTsConnector {
             vop_with_tan: false,
             vop_pending: None,
         }
+    }
+
+    pub fn for_key(key: &str) -> Self {
+        let mut connector = Self::new(crate::models::ConnectorKind::fints_blz(key).unwrap_or(""));
+        connector.requires_rah10 = key.ends_with(":rah10");
+        connector
     }
 
     fn now() -> (String, String) {
@@ -537,36 +864,52 @@ impl FinTsConnector {
             }
         }
         sent.insert(3 + payload.len() as u32, "HNSHA".to_string());
-        let msg = self.build_message(ctx, &payload, sec_func, tan);
-        super::ensure_secure_fints_url(&self.url)?;
-        let client = match &self.client {
-            Some(c) => c.clone(),
-            None => {
-                let c = super::http_client_no_redirect()?;
-                self.client = Some(c.clone());
-                c
+        let raw = if let Some(rah) = &mut self.rah {
+            let message = rah.build(
+                &payload,
+                if self.st.system_id.is_empty() {
+                    "0"
+                } else {
+                    &self.st.system_id
+                },
+                &self.dialog_id,
+                self.msg_no,
+            )?;
+            let raw = rah10::exchange(&mut self.rah_stream, &message).await?;
+            rah.unwrap(&raw, self.msg_no, &self.dialog_id)?
+        } else {
+            let msg = self.build_message(ctx, &payload, sec_func, tan);
+            super::ensure_secure_fints_url(&self.url)?;
+            let client = match &self.client {
+                Some(c) => c.clone(),
+                None => {
+                    let c = super::http_client_no_redirect()?;
+                    self.client = Some(c.clone());
+                    c
+                }
+            };
+            let body = base64::engine::general_purpose::STANDARD.encode(&msg);
+            let resp = client
+                .post(&self.url)
+                .header("Content-Type", "text/plain")
+                .body(body)
+                .send()
+                .await?;
+            if !resp.status().is_success() {
+                return Err(CoreError::Network {
+                    message: format!("FinTS server answered HTTP {}", resp.status()),
+                });
             }
+            let text = super::read_text_limited(resp).await?;
+            let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+            let raw = base64::engine::general_purpose::STANDARD
+                .decode(cleaned.as_bytes())
+                .map_err(|e| CoreError::Protocol {
+                    message: format!("base64: {e}"),
+                })?;
+            parse_response(&raw)?
         };
-        let body = base64::engine::general_purpose::STANDARD.encode(&msg);
-        let resp = client
-            .post(&self.url)
-            .header("Content-Type", "text/plain")
-            .body(body)
-            .send()
-            .await?;
-        if !resp.status().is_success() {
-            return Err(CoreError::Network {
-                message: format!("FinTS server answered HTTP {}", resp.status()),
-            });
-        }
-        let text = super::read_text_limited(resp).await?;
-        let cleaned: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-        let raw = base64::engine::general_purpose::STANDARD
-            .decode(cleaned.as_bytes())
-            .map_err(|e| CoreError::Protocol {
-                message: format!("base64: {e}"),
-            })?;
-        let segments = parse_response(&raw)?;
+        let segments = raw;
         self.msg_no += 1;
         let mut codes = Vec::new();
         for s in &segments {
@@ -612,7 +955,9 @@ impl FinTsConnector {
             for c in codes.iter().filter(|c| {
                 c.0.starts_with('9')
                     || (c.0.starts_with('3')
-                        && !matches!(c.0.as_str(), "3050" | "3060" | "3076" | "3920"))
+                        && (!matches!(c.0.as_str(), "3050" | "3060" | "3076" | "3920")
+                            // 3060 on a segment: e.g. "approval still pending" at some banks
+                            || (c.0 == "3060" && c.1.is_some())))
             }) {
                 crate::depot_debug::log(&format!(
                     "fints {} {}: {} (params: {})",
@@ -641,11 +986,32 @@ impl FinTsConnector {
     }
 
     fn reset_dialog(&mut self) {
+        self.rah_stream = None;
         self.dialog_id = "0".into();
         self.msg_no = 1;
     }
 
     fn learn_bpd(&mut self, reply: &BankReply) {
+        if crate::depot_debug::enabled() {
+            // Which business transactions the bank offers at all (segment names and
+            // versions only), incl. bank-specific ones such as DIKKUS (card statements).
+            let mut offered: Vec<String> = reply
+                .segments
+                .iter()
+                .filter(|s| {
+                    let id = s.id();
+                    id.len() == 6
+                        && id.ends_with('S')
+                        && (id.starts_with("HI") || id.starts_with("DI"))
+                })
+                .map(|s| format!("{}:{}", s.id(), s.version()))
+                .collect();
+            if offered.len() > 5 {
+                offered.sort();
+                offered.dedup();
+                crate::depot_debug::log(&format!("fints BPD offers: {}", offered.join(" ")));
+            }
+        }
         for s in &reply.segments {
             let id = s.id();
             if id.starts_with("HI") && id.ends_with('S') && id.len() == 6 {
@@ -654,7 +1020,7 @@ impl FinTsConnector {
                 if !v.contains(&s.version()) {
                     v.push(s.version());
                 }
-                if id == "HIKAZS" {
+                if id == "HIKAZS" || id == "HIKKUS" || id == "HIKKSS" {
                     // bank parameters only: storage period (days), flags
                     let params: Vec<String> = s
                         .elements
@@ -663,7 +1029,7 @@ impl FinTsConnector {
                         .map(|el| el.iter().map(|v| v.text()).collect::<Vec<_>>().join(":"))
                         .collect();
                     crate::depot_debug::log(&format!(
-                        "fints BPD HIKAZS v{} params={}",
+                        "fints BPD {id} v{} params={}",
                         s.version(),
                         params.join("+")
                     ));
@@ -700,6 +1066,12 @@ impl FinTsConnector {
                 }
             }
         }
+        // HIKKUS: storage days : max entries allowed : date range allowed : account required
+        if let Some(p) = reply.all("HIKKUS").last() {
+            self.st.kku_storage_days = p.get(4, 0).parse().unwrap_or(0);
+            self.st.kku_no_date_range = p.get(4, 2) == "N";
+            self.st.kku_no_account = p.get(4, 3) == "N";
+        }
         for cazs in reply.all("HICAZS") {
             for el in &cazs.elements {
                 for v in el {
@@ -716,6 +1088,17 @@ impl FinTsConnector {
             ("HICCSS", "HKCCS"),
             ("HIIPZS", "HKIPZ"),
             ("HICSES", "HKCSE"),
+            ("HICCMS", "HKCCM"),
+            ("HICDBS", "HKCDB"),
+            ("HICDES", "HKCDE"),
+            ("HICDNS", "HKCDN"),
+            ("HICDLS", "HKCDL"),
+            ("HIDSES", "HKDSE"),
+            ("HIDMES", "HKDME"),
+            ("HIDSCS", "HKDSC"),
+            ("HIDMCS", "HKDMC"),
+            ("HIBSES", "HKBSE"),
+            ("HIBMES", "HKBME"),
         ] {
             // Merge across BPD messages (anonymous and authenticated dialog).
             for f in pain_formats(reply, seg) {
@@ -723,6 +1106,26 @@ impl FinTsConnector {
                 if !list.contains(&f) {
                     list.push(f);
                 }
+            }
+        }
+        if let Some(seg) = reply.first("HICCMS") {
+            self.st.batch_params = Some(parse_batch_params(seg));
+        }
+        if let Some(seg) = reply.first("HICDES") {
+            self.st.standing_params.create = Some(standing_order::parse_create_rules(seg));
+        }
+        if let Some(seg) = reply.first("HICDNS") {
+            self.st.standing_params.change = Some(standing_order::parse_change_rules(seg));
+        }
+        for (seg, tx) in [
+            ("HIDMES", "HKDME"),
+            ("HIDMCS", "HKDMC"),
+            ("HIBMES", "HKBME"),
+        ] {
+            if let Some(s) = reply.first(seg) {
+                self.st
+                    .debit_params
+                    .insert(tx.to_string(), parse_debit_params(s));
             }
         }
         if let Some(vpps) = reply.first("HIVPPS") {
@@ -802,9 +1205,15 @@ impl FinTsConnector {
     }
 
     fn hkidn(&self, ctx: &ConnectContext, n: u32) -> Vec<u8> {
+        let customer = self
+            .rah
+            .as_ref()
+            .map(|r| r.identity.customer_id.as_str())
+            .filter(|c| !c.is_empty())
+            .unwrap_or(&ctx.login_name);
         SegmentBuilder::new("HKIDN", n, 2)
             .raw(&format!("{COUNTRY}:{}", self.blz))
-            .de(&[&ctx.login_name])
+            .de(&[customer])
             .de(&[self.system_id()])
             .raw("1")
             .build()
@@ -977,6 +1386,7 @@ impl FinTsConnector {
                 .ok_or_else(|| CoreError::Protocol {
                     message: trf("{0}: Freigabe ohne Auftragsreferenz", &[&seg_id]),
                 })?;
+            let mut approved = false;
             for _ in 0..60 {
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                 let seg = SegmentBuilder::new("HKTAN", 3, self.version("HKTAN"))
@@ -988,10 +1398,20 @@ impl FinTsConnector {
                     .raw("N")
                     .build();
                 let r = self.send(ctx, vec![seg], &sec, None).await?;
-                if !r.has("3956") {
+                if !approval_pending(&r) {
                     reply = r;
+                    approved = true;
                     break;
                 }
+            }
+            if !approved {
+                return Err(CoreError::Bank {
+                    code: "3956".into(),
+                    message: trf(
+                        "{0}: Die Freigabe in der Banking-App ist nicht rechtzeitig erfolgt. Bitte erneut abrufen und in der App bestätigen.",
+                        &[&seg_id],
+                    ),
+                });
             }
         } else if reply.has("0030") {
             return Err(CoreError::Bank {
@@ -1041,9 +1461,19 @@ impl FinTsConnector {
         for u in self.upd.clone() {
             // Only accounts of this bank with at least one usable transaction
             let usable = u.allowed.is_empty()
-                || ["HKSAL", "HKCAZ", "HKKAZ", "HKWPD"]
+                || ["HKSAL", "HKCAZ", "HKKAZ", "HKWPD", "HKKKU"]
                     .iter()
                     .any(|t| u.allowed.contains(*t));
+            if crate::depot_debug::enabled() {
+                let mut allowed: Vec<&str> = u.allowed.iter().map(String::as_str).collect();
+                allowed.sort_unstable();
+                crate::depot_debug::log(&format!(
+                    "fints UPD account: kind_code={} has_iban={} usable={usable} allowed=[{}]",
+                    u.kind_code,
+                    !u.iban.is_empty(),
+                    allowed.join(",")
+                ));
+            }
             if !usable {
                 continue;
             }
@@ -1106,6 +1536,48 @@ impl FinTsConnector {
             let date = fints_date(d).unwrap_or_else(super::today);
             Some((sign * c, cur, date))
         }))
+    }
+
+    /// HKCDB: the standing orders of an account (all pages). Orders the client
+    /// cannot read (no payment in the pain.001) are left out.
+    async fn standing_orders(
+        &mut self,
+        ctx: &ConnectContext,
+        acc: &SepaAccount,
+        label: &str,
+    ) -> CoreResult<Vec<super::RemoteStandingOrder>> {
+        let v = self.version("HKCDB");
+        let descriptor = self
+            .pain_version("HKCDB")
+            .unwrap_or(sepa::PainVersion::V03)
+            .descriptor();
+        let mut out = Vec::new();
+        let mut touchdown: Option<String> = None;
+        for _ in 0..20 {
+            let mut seg = SegmentBuilder::new("HKCDB", 3, v)
+                .raw(&Self::kti(acc))
+                .de(&[descriptor]);
+            if let Some(t) = &touchdown {
+                // order id and max. entries empty, then the touchdown
+                seg = seg.raw("").raw("").de(&[t]);
+            }
+            let r = self.request(ctx, "HKCDB", seg.build()).await?;
+            for s in r.all("HICDB") {
+                if let Some(o) = standing::parse_hicdb(s, label) {
+                    out.push(o);
+                }
+            }
+            touchdown = r.code("3040").and_then(|c| c.3.first().cloned());
+            if touchdown.is_none() {
+                return Ok(out);
+            }
+        }
+        // 20 pages and the bank still has more: not complete, so the caller keeps the stored list
+        Err(CoreError::Bank {
+            code: "HKCDB".into(),
+            message: tr("Die Bank lieferte die Daueraufträge nicht vollständig (zu viele Seiten).")
+                .into(),
+        })
     }
 
     /// HKWPD: holdings statement of a depot (MT535), all pages.
@@ -1212,6 +1684,15 @@ impl FinTsConnector {
         let mut touchdown: Option<String> = None;
         let mut txs = Vec::new();
         let mut closing = None;
+        // Not yet booked entries ("vorgemerkt"); a page may repeat them.
+        let mut pending: Vec<super::RemoteTransaction> = Vec::new();
+        let mut add_pending = |p: Vec<super::RemoteTransaction>| {
+            for t in p {
+                if !pending.iter().any(|q| q.external_id == t.external_id) {
+                    pending.push(t);
+                }
+            }
+        };
         for _page in 0..50 {
             let seg = self.hkcaz(acc, &format, &from, &to, touchdown.as_deref());
             let r = self.request(ctx, "HKCAZ", seg).await?;
@@ -1222,9 +1703,19 @@ impl FinTsConnector {
                         // raw @len@ slice, decoded as the XML's own encoding (UTF-8) – never via the Latin-1 envelope
                         let (t, rep) = camt::parse(&crate::text::decode_xml_bytes(xml), label);
                         txs.extend(t);
+                        add_pending(rep.pending);
                         if rep.closing_balance_cents.is_some() {
                             closing = rep.closing_balance_cents;
                         }
+                    }
+                }
+                // element 4: not yet booked entries (one camt document)
+                for v in s.element(4) {
+                    if let syntax::Value::Binary(xml) = v {
+                        add_pending(camt::parse_notbooked(
+                            &crate::text::decode_xml_bytes(xml),
+                            label,
+                        ));
                     }
                 }
             }
@@ -1233,7 +1724,66 @@ impl FinTsConnector {
                 break;
             }
         }
+        txs.extend(pending);
         Ok((txs, closing))
+    }
+
+    /// HKKKU: bookings and balance of a credit card account, all pages.
+    async fn statements_card(
+        &mut self,
+        ctx: &ConnectContext,
+        acc: &SepaAccount,
+        label: &str,
+        currency: &str,
+    ) -> CoreResult<(Vec<super::RemoteTransaction>, Option<kku::CardBalance>)> {
+        let v = self.version("HKKKU");
+        let (from, to) = if self.st.kku_no_date_range {
+            (String::new(), String::new())
+        } else {
+            // Never ask for more than the bank keeps: an older start date is an error.
+            let since = card_since(&ctx.since, &super::today(), self.st.kku_storage_days);
+            (since.replace('-', ""), super::today().replace('-', ""))
+        };
+        let account = if self.st.kku_no_account {
+            String::new()
+        } else {
+            Self::kti(acc)
+        };
+        let mut touchdown: Option<String> = None;
+        let mut txs = Vec::new();
+        let mut balance = None;
+        for page in 0..50 {
+            let mut b = SegmentBuilder::new("HKKKU", 3, v)
+                .raw(&account)
+                .de(&[&acc.account_number])
+                .de(&[&acc.sub_account])
+                .raw(&from)
+                .raw(&to)
+                .raw("");
+            if let Some(t) = &touchdown {
+                b = b.de(&[t]);
+            }
+            let r = self.request(ctx, "HKKKU", b.build()).await?;
+            let (t, bal) = kku::parse(r.all("HIKKU"), label, currency);
+            crate::depot_debug::log(&format!(
+                "fints HKKKU page {page}: HIKKU segments={} groups={:?} parsed={} balance={}",
+                r.all("HIKKU").count(),
+                r.all("HIKKU")
+                    .map(|s| s.elements.len().saturating_sub(6))
+                    .collect::<Vec<_>>(),
+                t.len(),
+                bal.is_some()
+            ));
+            txs.extend(t);
+            if balance.is_none() {
+                balance = bal;
+            }
+            touchdown = r.code("3040").and_then(|c| c.3.first().cloned());
+            if touchdown.is_none() {
+                break;
+            }
+        }
+        Ok((txs, balance))
     }
 
     async fn statements_mt940(
@@ -1283,49 +1833,127 @@ impl FinTsConnector {
     }
 
     /// HKEKA: electronic statement as PDF (format 3). Optional – any error is ignored by the caller.
+    /// The statement transaction the bank offers: HKEKA (statement in a chosen
+    /// format) or HKEKP (statement as PDF, e.g. DKB, #449).
+    fn statement_tx(&self) -> Option<&'static str> {
+        ["HKEKA", "HKEKP"]
+            .into_iter()
+            .find(|tx| self.bank_supports(tx))
+    }
+
+    /// Acknowledges the statements stored by earlier fetches (HKQTG). A receipt
+    /// the bank rejects is dropped (it would fail again); one lost to a network
+    /// error stays for the next fetch. Never fails the statements fetch.
+    async fn send_pending_receipts(&mut self, ctx: &ConnectContext) {
+        if self.st.pending_receipts.is_empty() || !self.bank_supports("HKQTG") {
+            return;
+        }
+        let v = self.version("HKQTG");
+        let mut kept = Vec::new();
+        let mut sent = 0;
+        for code in std::mem::take(&mut self.st.pending_receipts) {
+            let Some(bytes) = hex_decode(&code) else {
+                continue;
+            };
+            let seg = SegmentBuilder::new("HKQTG", 3, v).binary(&bytes).build();
+            match self.request(ctx, "HKQTG", seg).await {
+                Ok(_) => sent += 1,
+                Err(CoreError::Bank { code: c, .. }) => {
+                    crate::depot_debug::log(&format!("statements: HKQTG rejected ({c}), dropped"));
+                }
+                Err(_) => kept.push(code),
+            }
+        }
+        self.st.pending_receipts = kept;
+        crate::depot_debug::log(&format!(
+            "statements: HKQTG sent {sent} receipt(s), {} pending",
+            self.st.pending_receipts.len()
+        ));
+    }
+
     async fn statements_pdf(
         &mut self,
         ctx: &ConnectContext,
         acc: &SepaAccount,
         label: &str,
     ) -> CoreResult<Vec<crate::documents::RemoteDocument>> {
-        let v = self.version("HKEKA");
-        let acct = if v >= 5 {
+        self.send_pending_receipts(ctx).await;
+        let tx = self.statement_tx().unwrap_or("HKEKA");
+        let v = self.version(tx);
+        let pdf_only = tx == "HKEKP";
+        // HKEKA from v5 and HKEKP from v2 address the account by IBAN (KTI).
+        let acct = if (pdf_only && v >= 2) || (!pdf_only && v >= 5) {
             Self::kti(acc)
         } else {
             Self::ktv(acc)
         };
+        let reply_id = format!("HI{}", &tx[2..]);
         let mut docs = Vec::new();
         let mut touchdown: Option<String> = None;
         for _page in 0..12 {
-            let mut b = SegmentBuilder::new("HKEKA", 3, v)
-                .raw(&acct)
-                .raw("3")
-                .raw("")
-                .raw("")
-                .raw("");
+            // HKEKA: account, format 3 (PDF), number, year, max entries.
+            // HKEKP: account, number, year, max entries (always PDF).
+            let mut b = SegmentBuilder::new(tx, 3, v).raw(&acct);
+            if !pdf_only {
+                b = b.raw("3");
+            }
+            b = b.raw("").raw("").raw("");
             if let Some(t) = &touchdown {
                 b = b.de(&[t]);
             }
-            let r = self.request(ctx, "HKEKA", b.build()).await?;
-            for s in r.all("HIEKA") {
-                let period = format!("{}–{}", s.get(2, 0), s.get(2, 1));
+            let r = self.request(ctx, tx, b.build()).await?;
+            for s in r.all(&reply_id) {
+                crate::depot_debug::log(&format!(
+                    "statements: {reply_id} v{} layout: {}",
+                    s.version(),
+                    segment_layout(s)
+                ));
+                // the bank's own file name (e.g. DKB), else one of ours
+                let bank_file_name = statement_file_name(s);
+                if let Some(code) = receipt_code(s) {
+                    if !self.st.pending_receipts.contains(&code) {
+                        self.st.pending_receipts.push(code);
+                    }
+                }
+                let (stmt_label, period, date) = if pdf_only {
+                    hiekp_details(s)
+                } else {
+                    let to = s.get(2, 1);
+                    let period = format!("{}–{}", s.get(2, 0), to);
+                    (
+                        period.clone(),
+                        period,
+                        fints_date(to).unwrap_or_else(super::today),
+                    )
+                };
                 for el in &s.elements {
                     for val in el {
                         if let syntax::Value::Binary(pdf) = val {
                             if pdf.starts_with(b"%PDF") {
-                                let to = s.get(2, 1);
-                                let date = fints_date(to).unwrap_or_else(super::today);
+                                // HKEKP periods are not reliable enough for an
+                                // id; the bank re-sends unacknowledged statements,
+                                // so the content keeps them from being stored twice.
+                                let source_url = if pdf_only {
+                                    format!("fints:hkekp:{label}:{:016x}", fnv1a64_bytes(pdf))
+                                } else {
+                                    format!("fints:hkeka:{label}:{period}")
+                                };
                                 docs.push(crate::documents::RemoteDocument {
                                     account_ref: label.to_string(),
                                     booking_external_id: None,
-                                    title: trf("Kontoauszug {0}", &[&period]),
+                                    // like MoneyMoney: the bank's file name, readable
+                                    title: bank_file_name
+                                        .as_deref()
+                                        .map(statement_title)
+                                        .unwrap_or_else(|| trf("Kontoauszug {0}", &[&stmt_label])),
                                     doc_type: "kontoauszug".into(),
                                     mime_type: "application/pdf".into(),
-                                    file_name: format!("Kontoauszug_{}_{}.pdf", label, date),
-                                    source_url: format!("fints:hkeka:{label}:{period}"),
+                                    file_name: bank_file_name.clone().unwrap_or_else(|| {
+                                        format!("Kontoauszug_{}_{}.pdf", label, date)
+                                    }),
+                                    source_url,
                                     bytes: pdf.clone(),
-                                    date,
+                                    date: date.clone(),
                                 });
                             }
                         }
@@ -1337,6 +1965,10 @@ impl FinTsConnector {
                 break;
             }
         }
+        crate::depot_debug::log(&format!(
+            "statements: {tx} v{v} delivered {} PDF(s)",
+            docs.len()
+        ));
         Ok(docs)
     }
 
@@ -1344,11 +1976,14 @@ impl FinTsConnector {
     /// to check banks like ING (GitHub #57). No account data is logged.
     fn log_statement_support(&self, upd_allows: Option<bool>) {
         crate::depot_debug::log(&format!(
-            "statements: HIEKAS versions={:?} negotiated={:?} upd_allows={:?} tan_required={:?}",
+            "statements: blz={} HKEKA={:?} HKEKP={:?} using={:?} upd_allows={:?} tan_required={:?}",
+            self.blz,
             self.st.versions.get("HKEKA"),
-            self.negotiated("HKEKA"),
+            self.st.versions.get("HKEKP"),
+            self.statement_tx(),
             upd_allows,
-            self.st.tan_required.get("HKEKA"),
+            self.statement_tx()
+                .and_then(|tx| self.st.tan_required.get(tx)),
         ));
     }
 
@@ -1484,6 +2119,9 @@ impl FinTsConnector {
             instant,
             recipient_name: job.recipient_name.clone(),
             recipient_iban: job.recipient_iban.clone(),
+            batch: None,
+            debit_layout: None,
+            standing: None,
         });
         self.vop_id = None;
         self.vop_with_tan = false;
@@ -1513,6 +2151,276 @@ impl FinTsConnector {
         // confirms (`confirm_payee`); cancelling ends the dialog instead.
         self.vop_pending = Some(check.result);
         Ok(Phase::ConfirmPayee(check))
+    }
+
+    /// Sends HKCCM + HKTAN process 4. No name check for batches: the bank
+    /// answers with what it requires.
+    async fn start_batch(
+        &mut self,
+        ctx: &ConnectContext,
+        job: &BatchTransferJob,
+    ) -> CoreResult<Phase> {
+        let seg_id: &'static str = "HKCCM";
+        let not_allowed = || {
+            CoreError::Bank {
+            code: seg_id.into(),
+            message: tr("Dieses Konto oder diese Bank erlaubt keine Sammelüberweisungen per FinTS (HKCCM). Bitte in der Banking-App überweisen.").into(),
+        }
+        };
+        let Some(params) = self
+            .st
+            .batch_params
+            .clone()
+            .filter(|_| self.bank_supports(seg_id))
+        else {
+            return Err(not_allowed());
+        };
+        if params.max_count > 0 && job.payments.len() > params.max_count as usize {
+            return Err(CoreError::InvalidInput {
+                message: trf(
+                    "Die Bank erlaubt höchstens {0} Zahlungen pro Sammelüberweisung.",
+                    &[&params.max_count],
+                ),
+            });
+        }
+        if !job.batch_booking && !params.single_booking_allowed {
+            return Err(CoreError::InvalidInput {
+                message: tr("Die Bank bucht Sammelüberweisungen nur als Sammelbuchung.").into(),
+            });
+        }
+        if self.sec() == "999" {
+            return Err(CoreError::Bank {
+                code: "HKTAN".into(),
+                message: tr("Für Überweisungen ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen.").into(),
+            });
+        }
+        let mut errors = Vec::new();
+        let accounts = self.account_list(ctx, &mut errors).await;
+        let want = sepa::normalize_iban(&job.source_iban);
+        let (acc, upd) = accounts
+            .into_iter()
+            .find(|(a, _)| sepa::normalize_iban(&a.iban) == want)
+            .ok_or_else(|| CoreError::NotFound {
+                what: trf(
+                    "Konto {0} bei der Bank{1}",
+                    &[&job.source_iban, &String::new()],
+                ),
+            })?;
+        if let Some(u) = &upd {
+            if !u.allowed.is_empty() && !u.allowed.contains(seg_id) {
+                return Err(not_allowed());
+            }
+        }
+        let version = self.pain_version(seg_id).unwrap_or(sepa::PainVersion::V03);
+        let (date, time) = Self::now();
+        let created = format!(
+            "{}-{}-{}T{}:{}:{}",
+            &date[..4],
+            &date[4..6],
+            &date[6..],
+            &time[..2],
+            &time[2..4],
+            &time[4..]
+        );
+        let exec = job
+            .execution_date
+            .clone()
+            .unwrap_or_else(|| format!("{}-{}-{}", &date[..4], &date[4..6], &date[6..]));
+        let msg_id = format!("GC{date}{time}{:08X}", rand::random::<u32>());
+        let owner = if job.source_owner.trim().is_empty() {
+            "Kontoinhaber"
+        } else {
+            job.source_owner.trim()
+        };
+        let xml = sepa::build_pain001_batch(&sepa::Pain001Batch {
+            message_id: &msg_id,
+            created: &created,
+            execution_date: &exec,
+            debtor_name: owner,
+            debtor_iban: &acc.iban,
+            debtor_bic: &acc.bic,
+            payments: &job.payments,
+            version,
+            batch_booking: job.batch_booking,
+        })?;
+        let total =
+            sepa::batch_total_cents(&job.payments).ok_or_else(|| CoreError::InvalidInput {
+                message: tr("Die Summe der Sammelüberweisung ist zu groß.").into(),
+            })?;
+        self.order = Some(PreparedOrder {
+            seg_id,
+            kti: Self::kti(&acc),
+            descriptor: version.descriptor(),
+            xml,
+            instant: false,
+            recipient_name: String::new(),
+            recipient_iban: String::new(),
+            batch: Some((total, !job.batch_booking)),
+            debit_layout: None,
+            standing: None,
+        });
+        self.vop_id = None;
+        self.vop_with_tan = false;
+        self.vop_pending = None;
+        let reply = self.send_order(ctx, Vop::None).await?;
+        self.finish_submit(&reply)
+    }
+
+    /// Sends a direct debit collection (HKDME/HKDSE and the COR1/B2B
+    /// variants) + HKTAN process 4. The bank checks mandate and
+    /// creditor ID itself; here only the due date and size limits are checked.
+    async fn start_direct_debit(
+        &mut self,
+        ctx: &ConnectContext,
+        job: &DebitJob,
+    ) -> CoreResult<Phase> {
+        use pain008::DebitScheme::*;
+        let (batch_id, single_id): (&'static str, &'static str) = match job.scheme {
+            Core => ("HKDME", "HKDSE"),
+            Cor1 => ("HKDMC", "HKDSC"),
+            B2b => ("HKBME", "HKBSE"),
+        };
+        let scheme_name = job.scheme.code();
+        let not_allowed = || {
+            CoreError::Bank {
+            code: batch_id.into(),
+            message: trf(
+                "Dieses Konto oder diese Bank erlaubt keine Lastschrift-Einreichung ({0}) per FinTS. Bitte die Datei im Online-Banking hochladen.",
+                &[&scheme_name],
+            ),
+        }
+        };
+        let seg_id = if self.bank_supports(batch_id) {
+            batch_id
+        } else if job.collections.len() == 1 && self.bank_supports(single_id) {
+            single_id
+        } else {
+            return Err(not_allowed());
+        };
+        let params = self.st.debit_params.get(batch_id).cloned();
+        if seg_id == batch_id {
+            if let Some(p) = &params {
+                if p.max_count > 0 && job.collections.len() > p.max_count as usize {
+                    return Err(CoreError::InvalidInput {
+                        message: trf(
+                            "Die Bank erlaubt höchstens {0} Lastschriften pro Einreichung.",
+                            &[&p.max_count],
+                        ),
+                    });
+                }
+                if !job.batch_booking && !p.single_booking_allowed {
+                    return Err(CoreError::InvalidInput {
+                        message: tr("Die Bank bucht Lastschriften nur als Sammelbuchung.").into(),
+                    });
+                }
+            }
+        }
+        if let (Some(p), Ok(due)) = (
+            &params,
+            chrono::NaiveDate::parse_from_str(&job.collection_date, "%Y-%m-%d"),
+        ) {
+            check_debit_lead_time(p, job.sequence, chrono::Local::now().date_naive(), due)?;
+        }
+        if self.sec() == "999" {
+            return Err(CoreError::Bank {
+                code: "HKTAN".into(),
+                message: tr("Für Lastschriften ist ein TAN-Verfahren nötig; es wurde keines gefunden. Bitte zuerst eine Synchronisation mit TAN-Verfahren durchführen.").into(),
+            });
+        }
+        let mut errors = Vec::new();
+        let accounts = self.account_list(ctx, &mut errors).await;
+        let want = sepa::normalize_iban(&job.source_iban);
+        let (acc, upd) = accounts
+            .into_iter()
+            .find(|(a, _)| sepa::normalize_iban(&a.iban) == want)
+            .ok_or_else(|| CoreError::NotFound {
+                what: trf(
+                    "Konto {0} bei der Bank{1}",
+                    &[&job.source_iban, &String::new()],
+                ),
+            })?;
+        if let Some(u) = &upd {
+            if !u.allowed.is_empty() && !u.allowed.contains(seg_id) {
+                return Err(not_allowed());
+            }
+        }
+        let version = pain008::DebitVersion::pick(
+            self.st
+                .pain_formats
+                .get(seg_id)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]),
+        )
+        .ok_or_else(|| CoreError::Bank {
+            code: seg_id.into(),
+            message: tr("Die Bank akzeptiert keines der unterstützten pain.008-Formate.").into(),
+        })?;
+        let (date, time) = Self::now();
+        let created = format!(
+            "{}-{}-{}T{}:{}:{}",
+            &date[..4],
+            &date[4..6],
+            &date[6..],
+            &time[..2],
+            &time[2..4],
+            &time[4..]
+        );
+        let msg_id = format!("GC{date}{time}{:08X}", rand::random::<u32>());
+        let owner = if job.creditor_name.trim().is_empty() {
+            "Kontoinhaber"
+        } else {
+            job.creditor_name.trim()
+        };
+        let xml = pain008::build_pain008(&pain008::Pain008 {
+            message_id: &msg_id,
+            created: &created,
+            collection_date: &job.collection_date,
+            creditor_name: owner,
+            creditor_iban: &acc.iban,
+            creditor_bic: &acc.bic,
+            creditor_id: &job.creditor_id,
+            scheme: job.scheme,
+            sequence: job.sequence,
+            collections: &job.collections,
+            version,
+            batch_booking: job.batch_booking,
+        })?;
+        let total: i64 = job.collections.iter().map(|c| c.amount_cents).sum();
+        let batch = seg_id == batch_id;
+        let p = params.unwrap_or_default();
+        self.order = Some(PreparedOrder {
+            seg_id,
+            kti: Self::kti(&acc),
+            descriptor: version.descriptor(),
+            xml,
+            instant: false,
+            recipient_name: String::new(),
+            recipient_iban: String::new(),
+            batch: batch.then_some((total, !job.batch_booking)),
+            debit_layout: Some((p.sum_required, p.single_booking_allowed)),
+            standing: None,
+        });
+        self.vop_id = None;
+        self.vop_with_tan = false;
+        self.vop_pending = None;
+        let reply = self.send_order(ctx, Vop::None).await?;
+        // The bank lists HKCCM among the orders that need a name check (VoP): batches are
+        // sent without one, so a refusal most likely means exactly that. Say so instead
+        // of showing a bare bank code.
+        let needs_vop =
+            !self.st.vop_format.is_empty() && self.st.vop_orders.iter().any(|o| o == seg_id);
+        match self.finish_submit(&reply) {
+            Err(CoreError::Bank { code, message }) if needs_vop && !is_auth_error(&code) => {
+                Err(CoreError::Bank {
+                    code,
+                    message: format!(
+                        "{message} {}",
+                        tr("Die Bank verlangt für diesen Auftrag eine Empfängerprüfung (Verification of Payee), die GiroCrab für Sammelüberweisungen noch nicht unterstützt. Bitte in der Banking-App überweisen.")
+                    ),
+                })
+            }
+            other => other,
+        }
     }
 
     /// Instant not possible before anything was sent: nothing to approve.
@@ -1559,13 +2467,30 @@ impl FinTsConnector {
             }
         }
         self.order_seg_no = n;
-        payload.push(
-            SegmentBuilder::new(order.seg_id, n, self.version(order.seg_id))
-                .raw(&order.kti)
-                .de(&[order.descriptor])
-                .binary(order.xml.as_bytes())
-                .build(),
-        );
+        let mut seg =
+            SegmentBuilder::new(order.seg_id, n, self.version(order.seg_id)).raw(&order.kti);
+        if let Some((total, single)) = order.batch {
+            // HKCCM: Summenfeld, Einzelbuchung gewünscht (only what the BPD asks for).
+            let (sum_required, single_allowed) = order.debit_layout.unwrap_or_else(|| {
+                let p = self.st.batch_params.clone().unwrap_or_default();
+                (p.sum_required, p.single_booking_allowed)
+            });
+            seg = if sum_required {
+                seg.de(&[&sepa::format_amount(total).replace('.', ","), "EUR"])
+            } else {
+                seg.raw("")
+            };
+            seg = if single_allowed {
+                seg.de(&[if single { "J" } else { "N" }])
+            } else {
+                seg.raw("")
+            };
+        }
+        seg = seg.de(&[order.descriptor]).binary(order.xml.as_bytes());
+        if let Some(tail) = &order.standing {
+            seg = tail.append(seg);
+        }
+        payload.push(seg.build());
         payload.push(self.hktan_process4(n + 1, order.seg_id));
         Ok(payload)
     }
@@ -1761,6 +2686,32 @@ impl FinTsConnector {
             }
         }
         self.learn_bpd(&reply);
+        // The bank wants the TAN device name in every HKTAN and offered no way to
+        // look it up (Deutsche Bank BestSign rejects HKTAB without it): say what to do.
+        // The name was sent but not accepted: some banks (BestSign) list the device as
+        // "SO:<name>". Try that once so the user only has to enter the device name.
+        if reply.has("9210")
+            && !self.st.tan_medium.is_empty()
+            && !has_so_prefix(&self.st.tan_medium)
+        {
+            let plain = std::mem::take(&mut self.st.tan_medium);
+            self.st.tan_medium = format!("SO:{plain}");
+            self.end_dialog(ctx, &sec).await;
+            let retry = self.send_dialog_init(ctx, &sec).await?;
+            self.learn_bpd(&retry);
+            if retry.has("9210") {
+                self.st.tan_medium = plain;
+            } else {
+                self.st.tan_medium_so = true;
+            }
+            reply = retry;
+        }
+        if reply.has("9210") && self.st.tan_medium.is_empty() {
+            return Err(CoreError::Bank {
+                code: "9210".into(),
+                message: tr("Die Bank verlangt den Namen Ihres TAN-Mediums (z. B. den Gerätenamen aus der BestSign-Verwaltung). Tragen Sie ihn im Bankzugang unter „TAN-Medium“ ein und rufen Sie erneut ab.").into(),
+            });
+        }
         if let Err(e) = reply.check() {
             // Stale system ID / TAN method -> force re-sync next time.
             if reply.has("9931") || reply.has("9942") || reply.has("9010") {
@@ -1800,7 +2751,7 @@ impl FinTsConnector {
     }
 
     fn sec(&self) -> String {
-        if self.st.single_step || self.st.sec_func.is_empty() {
+        if self.rah.is_some() || self.st.single_step || self.st.sec_func.is_empty() {
             "999".into()
         } else {
             self.st.sec_func.clone()
@@ -2010,7 +2961,7 @@ fn pain_formats(reply: &BankReply, seg_id: &str) -> Vec<String> {
         for el in &seg.elements {
             for v in el {
                 let t = v.text();
-                if t.starts_with("urn:iso:std:iso:20022:tech:xsd:pain.001")
+                if t.starts_with("urn:iso:std:iso:20022:tech:xsd:pain.00")
                     && !t.ends_with(".xsd")
                     && !out.iter().any(|f| f == t)
                 {
@@ -2112,7 +3063,47 @@ fn strip_mime_header(b: Vec<u8>) -> Vec<u8> {
 #[async_trait]
 impl BankConnector for FinTsConnector {
     async fn begin(&mut self, ctx: &ConnectContext) -> CoreResult<Phase> {
-        self.url = ctx.setting(&format!("fints.url.{}", self.blz))?.to_string();
+        let keyfile_setting = format!("fints.rah10.private.{}", ctx.connection_id);
+        let keyfile = ctx.setting_or(&keyfile_setting, "");
+        if self.requires_rah10 && keyfile.is_empty() {
+            return Err(CoreError::MissingSetting {
+                key: "RAH-10-Schlüsseldatei fehlt auf diesem Gerät; Zugang hier neu importieren."
+                    .into(),
+            });
+        }
+        if self.requires_rah10 {
+            let bytes = zeroize::Zeroizing::new(
+                base64::engine::general_purpose::STANDARD
+                    .decode(keyfile)
+                    .map_err(|_| CoreError::InvalidInput {
+                        message: "Ungültige gespeicherte Schlüsseldatei.".into(),
+                    })?,
+            );
+            let mut file = keyfile::KeyFile::open(&bytes, ctx.secret.expose().as_bytes())?;
+            let saved = ctx.setting_or(&format!("fints.rah10.bank_keys.{}", ctx.connection_id), "");
+            if !saved.is_empty() {
+                let keys: bank_keys::SavedBankKeys = serde_json::from_str(saved)?;
+                let verified =
+                    bank_keys::confirmed_keys(&self.blz, &keys.candidates, &keys.expected)?;
+                file.bank_keys.retain(|key| key.blz != self.blz);
+                file.bank_keys.extend(verified);
+            }
+            let first: u64 = ctx
+                .setting("fints.rah10.counter_start")?
+                .parse()
+                .map_err(|_| CoreError::SessionClosed)?;
+            self.rah = Some(rah10::Rah10::new(
+                file,
+                &ctx.login_name,
+                first,
+                first + 10_000,
+            )?);
+            if self.rah.as_ref().is_none_or(|r| r.identity.blz != self.blz) {
+                return Err(CoreError::SessionClosed);
+            }
+        } else {
+            self.url = ctx.setting(&format!("fints.url.{}", self.blz))?.to_string();
+        }
         self.product_id = ctx.setting("fints.product_id")?.to_string();
         self.product_version = ctx.setting_or("fints.product_version", "0.1").to_string();
         if ctx.secret.is_empty() {
@@ -2123,12 +3114,23 @@ impl BankConnector for FinTsConnector {
         if let Ok(st) = serde_json::from_value::<FinTsState>(ctx.state.clone()) {
             self.st = st;
         }
+        if let Some(rah) = &self.rah {
+            if self.st.system_id.is_empty() {
+                self.st.system_id = rah.identity.system_id.clone();
+            }
+            self.st.sec_func = "999".into();
+        }
         self.tan_medium_override = ctx
             .setting_or(&format!("fints.tan_medium.{}", ctx.connection_id), "")
             .trim()
             .to_string();
         if !self.tan_medium_override.is_empty() {
-            self.st.tan_medium = self.tan_medium_override.clone();
+            self.st.tan_medium =
+                if self.st.tan_medium_so && !has_so_prefix(&self.tan_medium_override) {
+                    format!("SO:{}", self.tan_medium_override)
+                } else {
+                    self.tan_medium_override.clone()
+                };
         }
         if self.st.system_id.is_empty() || self.st.sec_func.is_empty() {
             self.sync_dialog(ctx).await?;
@@ -2172,7 +3174,7 @@ impl BankConnector for FinTsConnector {
                     .build();
                 payload.push(seg);
                 let reply = self.send(ctx, payload, &sec, None).await?;
-                if reply.has("3956") && reply.errors().is_empty() {
+                if approval_pending(&reply) {
                     let c = self.challenge.clone().ok_or(CoreError::SessionClosed)?;
                     return Ok(Phase::Pending(c));
                 }
@@ -2200,6 +3202,8 @@ impl BankConnector for FinTsConnector {
         let accounts = self.account_list(ctx, &mut errors).await;
         let mut result = FetchResult::default();
         let mut ok_any = false;
+        // not yet booked entries ("vorgemerkt"), see `camt::HOLD_PREFIX`
+        let (mut holds_listed, mut holds_complete) = (false, true);
         // Explicit statements fetch (Vault::fetch_account_statements): HKEKA of one account only.
         let auto_statements: Vec<String> = ctx
             .settings
@@ -2213,24 +3217,21 @@ impl BankConnector for FinTsConnector {
                     what: trf("Konto {0}", &[&wanted]),
                 });
             };
-            let supported = self.bank_supports("HKEKA")
-                && upd
-                    .as_ref()
-                    .map(|u| u.allowed.is_empty() || u.allowed.contains("HKEKA"))
-                    .unwrap_or(true);
-            self.log_statement_support(
-                upd.as_ref()
-                    .map(|u| u.allowed.is_empty() || u.allowed.contains("HKEKA")),
-            );
+            // HKEKA, or HKEKP when the bank offers only that (DKB, #449)
+            let tx = self.statement_tx();
+            let upd_allows = upd
+                .as_ref()
+                .map(|u| u.allowed.is_empty() || u.allowed.contains(tx.unwrap_or("HKEKA")));
+            self.log_statement_support(upd_allows);
             // Not an error (#449): the app reports "no new statements" with a hint.
-            if !supported {
-                crate::depot_debug::log("statements: HKEKA not offered by the bank");
+            let Some(tx) = tx.filter(|_| upd_allows.unwrap_or(true)) else {
+                crate::depot_debug::log("statements: no PDF statements offered for this account");
                 return Ok(result);
-            }
+            };
             result.documents = match self.statements_pdf(ctx, acc, &wanted).await {
                 Ok(d) => d,
                 Err(CoreError::Bank { code, .. }) if matches!(code.as_str(), "9130" | "9140") => {
-                    crate::depot_debug::log(&format!("statements: HKEKA unsupported ({code})"));
+                    crate::depot_debug::log(&format!("statements: {tx} unsupported ({code})"));
                     return Ok(result);
                 }
                 Err(e) => return Err(e),
@@ -2259,8 +3260,15 @@ impl BankConnector for FinTsConnector {
                 kind = AccountKind::Brokerage;
             }
             crate::depot_debug::log(&format!(
-                "fints account: kind={kind:?} kind_code={:?} is_depot={} upd_found={} hkwpd_allowed={} bank_supports_hkwpd={}",
+                "fints account: kind={kind:?} kind_code={:?} allowed=[{}] is_depot={} upd_found={} hkwpd_allowed={} bank_supports_hkwpd={}",
                 upd.as_ref().map(|u| u.kind_code),
+                upd.as_ref()
+                    .map(|u| {
+                        let mut a: Vec<&str> = u.allowed.iter().map(String::as_str).collect();
+                        a.sort_unstable();
+                        a.join(",")
+                    })
+                    .unwrap_or_default(),
                 kind == AccountKind::Brokerage,
                 upd.is_some(),
                 allowed("HKWPD"),
@@ -2310,6 +3318,9 @@ impl BankConnector for FinTsConnector {
                         }
                         for h in &st.holdings {
                             result.holdings.push(super::RemoteHolding {
+                                classification: Default::default(),
+                                direct_crypto: false,
+
                                 account_ref: label.clone(),
                                 holding: h.to_model(),
                             });
@@ -2341,7 +3352,30 @@ impl BankConnector for FinTsConnector {
             // included only when HIUPD permits it (or lists nothing); every request is
             // its own FinTS message, so a 9050 on one loan is just collected in `errors`.
             let mut txs = Vec::new();
-            {
+            // Credit cards the bank serves through HKKKU (explicitly allowed in HIUPD).
+            let can_card = self.bank_supports("HKKKU")
+                && upd.as_ref().is_some_and(|u| u.allowed.contains("HKKKU"));
+            if can_card {
+                if kind == AccountKind::Checking {
+                    kind = AccountKind::CreditCard;
+                }
+                match self.statements_card(ctx, acc, &label, &currency).await {
+                    Ok((t, bal)) => {
+                        txs = t;
+                        if let Some(b) = bal {
+                            balance = Some(b.cents);
+                            if !b.currency.is_empty() {
+                                currency = b.currency;
+                            }
+                            if !b.date.is_empty() {
+                                balance_date = b.date;
+                            }
+                        }
+                        ok_any = true;
+                    }
+                    Err(e) => errors.push(trf("{0}: Kartenumsätze (HKKKU) – {1}", &[&label, &e])),
+                }
+            } else {
                 let can_camt = self.bank_supports("HKCAZ")
                     && allowed("HKCAZ")
                     && !self.st.camt_formats.is_empty();
@@ -2350,6 +3384,7 @@ impl BankConnector for FinTsConnector {
                 if can_camt {
                     match self.statements_camt(ctx, acc, &label).await {
                         Ok((t, closing)) => {
+                            holds_listed = true;
                             // Loan sub-accounts ("Darlehen") often answer camt with an empty
                             // list; then MT940 is tried before giving up.
                             let empty_loan = kind == AccountKind::Loan && t.is_empty() && can_mt940;
@@ -2361,6 +3396,8 @@ impl BankConnector for FinTsConnector {
                             ok_any = true;
                         }
                         Err(e) => {
+                            // the stored holds of this login stay as they are
+                            holds_complete = false;
                             errors.push(trf("{0}: Umsätze (HKCAZ/camt.052) – {1}", &[&label, &e]))
                         }
                     }
@@ -2390,11 +3427,26 @@ impl BankConnector for FinTsConnector {
             }
             result.transactions.extend(txs);
 
+            // --- Standing orders (HKCDB), read-only. Sent right after the statements,
+            // in the same dialog: a bank that wants SCA for it usually accepts the
+            // approval just given. A decoupled (push) approval is handled by `request`.
+            if kind == AccountKind::Checking && self.bank_supports("HKCDB") && allowed("HKCDB") {
+                match self.standing_orders(ctx, acc, &label).await {
+                    Ok(orders) => {
+                        result.standing_orders.extend(orders);
+                        result.standing_orders_fetched.push(label.clone());
+                    }
+                    Err(e) => errors.push(trf("{0}: Daueraufträge – {1}", &[&label, &e])),
+                }
+            }
+
             // Opt-in (GitHub #57): PDF statements, at most weekly per account. A failure
             // never fails the sync; the explicit fetch reports errors instead.
             if auto_statements.contains(&label) {
-                self.log_statement_support(Some(allowed("HKEKA")));
-                if allowed("HKEKA") && self.bank_supports("HKEKA") {
+                let tx = self.statement_tx();
+                let upd_ok = tx.is_some_and(allowed);
+                self.log_statement_support(Some(upd_ok));
+                if upd_ok {
                     match self.statements_pdf(ctx, acc, &label).await {
                         Ok(docs) => {
                             crate::depot_debug::log(&format!(
@@ -2440,6 +3492,10 @@ impl BankConnector for FinTsConnector {
                 message: errors.join(" / "),
             });
         }
+        // Claim the hold list as complete only when every camt request worked.
+        if holds_listed && holds_complete {
+            result.hold_prefix = Some(camt::HOLD_PREFIX.into());
+        }
         result.state = Some(serde_json::to_value(&self.st)?);
         Ok(result)
     }
@@ -2454,11 +3510,64 @@ impl BankConnector for FinTsConnector {
         ctx: &ConnectContext,
         job: &TransferJob,
     ) -> CoreResult<Phase> {
+        if self.rah.is_some() {
+            return Err(CoreError::InvalidInput {
+                message: "RAH-10 unterstützt zunächst nur Kontoabrufe.".into(),
+            });
+        }
         self.transferring = true;
         self.result = TransferResult::default();
         self.order_submitted = false;
         self.order = None;
         let r = self.start_transfer(ctx, job).await;
+        if r.is_err() {
+            self.transferring = false;
+        }
+        r
+    }
+
+    async fn send_batch_transfer(
+        &mut self,
+        ctx: &ConnectContext,
+        job: &BatchTransferJob,
+    ) -> CoreResult<Phase> {
+        self.transferring = true;
+        self.result = TransferResult::default();
+        self.order_submitted = false;
+        self.order = None;
+        let r = self.start_batch(ctx, job).await;
+        if r.is_err() {
+            self.transferring = false;
+        }
+        r
+    }
+
+    async fn send_standing_order(
+        &mut self,
+        ctx: &ConnectContext,
+        job: &StandingOrderJob,
+    ) -> CoreResult<Phase> {
+        self.transferring = true;
+        self.result = TransferResult::default();
+        self.order_submitted = false;
+        self.order = None;
+        let r = self.start_standing_order(ctx, job).await;
+        if r.is_err() {
+            self.transferring = false;
+        }
+        r
+    }
+
+    async fn send_direct_debit(
+        &mut self,
+        ctx: &ConnectContext,
+        job: &DebitJob,
+    ) -> CoreResult<Phase> {
+        self.transferring = true;
+        self.result = TransferResult::default();
+        self.order_submitted = false;
+        self.order = None;
+        let r = self.start_direct_debit(ctx, job).await;
         if r.is_err() {
             self.transferring = false;
         }
@@ -2478,6 +3587,31 @@ impl BankConnector for FinTsConnector {
 mod tests {
     use super::*;
     use crate::secret::SecretString;
+
+    #[tokio::test]
+    async fn rah10_without_keyfile_never_falls_back_to_pin_tan() {
+        let mut connector = FinTsConnector::for_key("fints:12345678:rah10");
+        let mut ctx = test_ctx();
+        // Even a valid-looking PIN/TAN URL must not enable a downgrade.
+        ctx.settings.insert(
+            "fints.url.12345678".into(),
+            SecretString::new("https://example.invalid/fints".into()),
+        );
+        assert!(matches!(
+            connector.begin(&ctx).await,
+            Err(CoreError::MissingSetting { .. })
+        ));
+        assert!(connector.client.is_none());
+        assert!(connector.rah_stream.is_none());
+        assert_eq!(
+            crate::models::ConnectorKind::fints_blz("fints:12345678:rah10"),
+            Some("12345678")
+        );
+        assert_eq!(
+            crate::models::ConnectorKind::fints_blz("fints:12345678:unknown"),
+            None
+        );
+    }
 
     fn test_ctx() -> ConnectContext {
         ConnectContext {
@@ -2589,6 +3723,36 @@ mod tests {
         let seen2 = seen2.lock().unwrap();
         assert_eq!(seen2.len(), 1);
         assert!(!has_hktan(&seen2[0]), "{:?}", seen2[0]);
+    }
+
+    #[tokio::test]
+    async fn pending_receipts_are_sent_once_and_rejected_ones_dropped() {
+        let state = serde_json::json!({"system_id": "123", "sec_func": "999", "tan_method_name": "", "tan_medium": "", "versions": {"HKQTG": [1]}, "tan_required": {}, "pending_receipts": ["0102", "0304"]});
+        const REJECT: &str = "HNHBK:1:3+000000000000+300+DIALOG1+1'HIRMG:2:2+9050::Teilweise fehlerhaft.'HIRMS:3:2:3+9210::Quittung unbekannt.'";
+        let (url, seen) = mock_bank(vec![ACCEPT, REJECT]);
+        let mut c = two_step_connector(&url, state);
+        c.send_pending_receipts(&test_ctx()).await;
+        assert!(
+            c.st.pending_receipts.is_empty(),
+            "{:?}",
+            c.st.pending_receipts
+        );
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        assert!(
+            seen.iter().all(|ids| ids.iter().any(|i| i == "HKQTG")),
+            "{seen:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn receipts_wait_when_the_bank_offers_no_hkqtg() {
+        let state = serde_json::json!({"system_id": "123", "sec_func": "999", "tan_method_name": "", "tan_medium": "", "versions": {}, "tan_required": {}, "pending_receipts": ["0102"]});
+        let (url, seen) = mock_bank(vec![ACCEPT]);
+        let mut c = two_step_connector(&url, state);
+        c.send_pending_receipts(&test_ctx()).await;
+        assert_eq!(c.st.pending_receipts, vec!["0102".to_string()]);
+        assert!(seen.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -2705,6 +3869,41 @@ mod tests {
     }
 
     #[test]
+    fn card_request_starts_within_the_storage_period() {
+        // 775 days kept: two years back is fine, three years is cut to the limit
+        assert_eq!(card_since("2024-11-15", "2026-11-15", 775), "2024-11-15");
+        assert_eq!(card_since("2023-11-15", "2026-11-15", 775), "2024-10-01");
+        // unknown storage period: unchanged
+        assert_eq!(card_since("2020-01-01", "2026-11-15", 0), "2020-01-01");
+    }
+
+    #[test]
+    fn decoupled_poll_recognises_a_pending_approval() {
+        // standard: 3956
+        assert!(approval_pending(&reply(
+            b"HIRMG:2:2+3060::Bitte beachten Sie die enthaltenen Warnungen.'HIRMS:3:2:3+3956::Starke Kundenauthentifizierung noch ausstehend.'"
+        )));
+        // warnings only, no success code (Deutsche Bank)
+        assert!(approval_pending(&reply(
+            b"HIRMG:2:2+3060::Teilweise liegen Warnungen vor.'HIRMS:3:2:3+3060::Hinweis.'"
+        )));
+        // approved: success code
+        assert!(!approval_pending(&reply(
+            b"HIRMG:2:2+0010::Nachricht entgegengenommen.'HIRMS:3:2:3+0020::Auftrag ausgef\xfchrt.'"
+        )));
+        // rejected: an error ends the wait
+        assert!(!approval_pending(&reply(
+            b"HIRMG:2:2+9050::Teilweise fehlerhaft.'HIRMS:3:2:3+9210::Keine Daten.'"
+        )));
+    }
+
+    #[test]
+    fn so_prefix_of_a_tan_medium_is_recognised() {
+        assert!(has_so_prefix("SO:Mein Gerät") && has_so_prefix("so:x"));
+        assert!(!has_so_prefix("MH AIR") && !has_so_prefix("SO") && !has_so_prefix("Ää"));
+    }
+
+    #[test]
     fn consorsbank_statements_always_carry_hktan() {
         let mut c = FinTsConnector::new("76030080");
         c.st.tan_required.insert("HKKAZ".into(), false);
@@ -2715,6 +3914,104 @@ mod tests {
         c.st.tan_required.insert("HKKAZ".into(), false);
         c.st.tan_required.insert("HKSAL".into(), true);
         assert!(!c.needs_hktan("HKKAZ") && c.needs_hktan("HKSAL"));
+    }
+
+    #[test]
+    fn dkb_statements_go_through_hkekp_when_hkeka_is_missing() {
+        // DKB (#449): the BPD offer HKEKP v1/v2 (PDF statement) but no HKEKA.
+        let mut c = FinTsConnector::new("12030000");
+        assert_eq!(c.statement_tx(), None);
+        c.learn_bpd(&reply(
+            b"HIEKPS:30:1:3+1+1+0+J:J:N'HIEKPS:31:2:3+1+1+0+J:J:N'",
+        ));
+        assert_eq!(c.statement_tx(), Some("HKEKP"));
+        assert_eq!(c.version("HKEKP"), 2);
+        // A bank offering both keeps the format-based HKEKA.
+        c.learn_bpd(&reply(b"HIEKAS:32:5:3+1+1+0+J:J:N:3'"));
+        assert_eq!(c.statement_tx(), Some("HKEKA"));
+    }
+
+    #[test]
+    fn hiekp_file_name_is_taken_from_the_bank() {
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261031+Kontoauszug_10_2026.pdf+7'");
+        let s = r.all("HIEKP").next().unwrap();
+        assert_eq!(
+            statement_file_name(s).as_deref(),
+            Some("Kontoauszug_10_2026.pdf")
+        );
+        assert_eq!(
+            statement_title("Kontoauszug_10_2026_vom_05.10.2026_zu_Konto_1234.pdf"),
+            "Kontoauszug 10 2026 vom 05.10.2026 zu Konto 1234"
+        );
+        // the debug layout shows kinds and lengths only, no content
+        assert_eq!(segment_layout(s), "bin(8) date8 pdfname(23) num1");
+        let none = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261031'");
+        assert_eq!(statement_file_name(none.all("HIEKP").next().unwrap()), None);
+        let path = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+x/y/Auszug.PDF'");
+        assert_eq!(
+            statement_file_name(path.all("HIEKP").next().unwrap()).as_deref(),
+            Some("Auszug.PDF")
+        );
+    }
+
+    #[test]
+    fn receipt_code_is_the_non_pdf_binary_field() {
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261105:20261105+20261105+2026+11+DE02+BIC++++Auszug.pdf+@4@\x01\xab\x00Z'");
+        let s = r.all("HIEKP").next().unwrap();
+        let code = receipt_code(s).unwrap();
+        assert_eq!(code, "01ab005a");
+        assert_eq!(hex_decode(&code).unwrap(), vec![0x01, 0xab, 0x00, 0x5a]);
+        // no receipt field: nothing to acknowledge
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261105:20261105'");
+        assert_eq!(receipt_code(r.all("HIEKP").next().unwrap()), None);
+        assert_eq!(hex_decode("abc"), None);
+        // state saved by an older version (no field) still loads
+        let st: FinTsState = serde_json::from_value(serde_json::json!({"system_id": "1", "sec_func": "999", "tan_method_name": "", "tan_medium": "", "versions": {}, "tan_required": {}})).unwrap();
+        assert!(st.pending_receipts.is_empty());
+    }
+
+    #[test]
+    fn hiekp_details_follow_the_dkb_layout() {
+        // DKB HIEKP v2: PDF, period, creation date, year, number, IBAN, BIC, …, name, receipt
+        let r = reply(
+            b"HIEKP:5:2:4+@8@%PDF-1.7+20261001:20261031+20261103+2026+10+DE02120300000000202051+BYLADEM1001++++Kontoauszug_10_2026.pdf+@4@abcd'",
+        );
+        let s = r.all("HIEKP").next().unwrap();
+        assert_eq!(
+            hiekp_details(s),
+            (
+                "10/2026 (2026-10-01–2026-10-31)".to_string(),
+                "2026-10-01–2026-10-31".to_string(),
+                "2026-10-31".to_string()
+            )
+        );
+        // the same date twice (DKB) is shown once
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261105:20261105+20261105+2026+11'");
+        assert_eq!(
+            hiekp_details(r.all("HIEKP").next().unwrap()).0,
+            "11/2026 (2026-11-05)"
+        );
+        // a leading zero in the number is dropped, the creation date never widens the period
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20260101:20260131+20260203+2026+01'");
+        assert_eq!(
+            hiekp_details(r.all("HIEKP").next().unwrap()).0,
+            "1/2026 (2026-01-01–2026-01-31)"
+        );
+    }
+
+    #[test]
+    fn hiekp_period_comes_from_its_dates_and_pdf_ids_are_stable() {
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261001:20261031+20261102'");
+        let s = r.all("HIEKP").next().unwrap();
+        assert_eq!(
+            statement_period(s),
+            (
+                "2026-10-01–2026-11-02".to_string(),
+                "2026-11-02".to_string()
+            )
+        );
+        assert_eq!(fnv1a64_bytes(b"%PDF-1.7"), fnv1a64_bytes(b"%PDF-1.7"));
+        assert_ne!(fnv1a64_bytes(b"%PDF-1.7"), fnv1a64_bytes(b"%PDF-1.6"));
     }
 
     fn reply(raw: &[u8]) -> BankReply {
@@ -2955,6 +4252,9 @@ mod tests {
             instant: false,
             recipient_name: "Erika Musterfrau".into(),
             recipient_iban: "DE89370400440532013000".into(),
+            batch: None,
+            debit_layout: None,
+            standing: None,
         });
     }
 
@@ -2970,6 +4270,204 @@ mod tests {
         // Consorsbank sends no HIVPPS: no name check.
         let c = FinTsConnector::new("76030080");
         assert!(c.st.vop_format.is_empty());
+    }
+
+    #[test]
+    fn reads_batch_parameters_and_builds_hkccm() {
+        let raw =
+            b"HICCMS:12:1:3+1+1+0+500:J:J:urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.001.001.09'";
+        let mut c = FinTsConnector::new("20041111");
+        c.learn_bpd(&reply(raw));
+        assert_eq!(
+            c.st.batch_params,
+            Some(BatchParams {
+                max_count: 500,
+                sum_required: true,
+                single_booking_allowed: true
+            })
+        );
+        assert_eq!(
+            c.st.pain_formats["HKCCM"],
+            vec![sepa::PAIN_09_DESCRIPTOR.to_string()]
+        );
+        order_for(&mut c);
+        if let Some(o) = c.order.as_mut() {
+            o.seg_id = "HKCCM";
+            o.batch = Some((123_450, true));
+        }
+        let text =
+            String::from_utf8_lossy(&c.order_payload(Vop::None).unwrap().concat()).to_string();
+        assert!(text.contains("HKCCM:3:"), "{text}");
+        assert!(text.contains("+1234,50:EUR+J+"), "{text}");
+        // Without the BPD flags neither optional field is sent.
+        c.st.batch_params = Some(BatchParams::default());
+        let text =
+            String::from_utf8_lossy(&c.order_payload(Vop::None).unwrap().concat()).to_string();
+        assert!(!text.contains("EUR+"), "{text}");
+    }
+
+    #[test]
+    fn standing_order_limits_come_from_the_stored_state() {
+        use crate::models::StandingOrderAction as A;
+        let raw = b"HICDES:12:1:3+1+1+0+1:2:90:010203:00:00:0'\
+                    HICDNS:13:1:3+1+1+0+1:2:90:J:J:J:J:J:J:J:J:J:010612:010515:00:135'";
+        let mut c = FinTsConnector::new("20041111");
+        c.learn_bpd(&reply(raw));
+        let state = serde_json::to_value(&c.st).unwrap();
+        let create = standing_limits_from_state(&state, A::Create).unwrap();
+        assert_eq!((create.min_days_ahead, create.max_days_ahead), (2, 90));
+        assert_eq!(create.months, [1, 2, 3]);
+        assert!(create.days_of_month.is_empty() && create.weeks.is_empty());
+        assert!(create.weekdays.is_empty(), "0 = every weekday");
+        let change = standing_limits_from_state(&state, A::Change).unwrap();
+        assert_eq!(change.months, [1, 6, 12]);
+        assert_eq!(change.days_of_month, [1, 5, 15]);
+        assert_eq!(change.weekdays, [1, 3, 5]);
+        assert!(standing_limits_from_state(&state, A::Delete).is_none());
+        // Not a FinTS state, or none of the parameters seen yet.
+        assert!(standing_limits_from_state(&serde_json::json!({}), A::Create).is_none());
+    }
+
+    #[test]
+    fn reads_standing_order_parameters_and_builds_the_three_orders() {
+        let raw = b"HICDES:12:1:3+1+1+0+1:2:90:010203:00:00:0'\
+                    HICDNS:13:1:3+1+1+0+1:2:90:J:J:J:J:J:J:J:J:J:010203:00:00:0'\
+                    HICDLS:14:2:3+1+1+0+1:90:J:J'";
+        let mut c = FinTsConnector::new("20041111");
+        c.learn_bpd(&reply(raw));
+        assert!(c.bank_supports("HKCDE") && c.bank_supports("HKCDN") && c.bank_supports("HKCDL"));
+        assert_eq!(c.version("HKCDL"), 2);
+        let create = c.st.standing_params.create.clone().unwrap();
+        assert_eq!(
+            create,
+            standing_order::parse_create_rules(
+                &syntax::parse_response(b"HICDES:12:1:3+1+1+0+1:2:90:010203:00:00:0'").unwrap()[0]
+            )
+        );
+        let change = c.st.standing_params.change.clone().unwrap();
+        assert!(format!("{change:?}").contains("010203"));
+
+        let job =
+            |action, order_id: &str, last: Option<&str>| crate::connectors::StandingOrderJob {
+                action,
+                source_iban: "DE02120300000000202051".into(),
+                source_owner: "A".into(),
+                order_id: order_id.into(),
+                recipient_name: "Vermieter".into(),
+                recipient_iban: "DE89370400440532013000".into(),
+                recipient_bic: None,
+                amount_cents: 85_000,
+                purpose: "Miete".into(),
+                first_date: "2026-12-01".into(),
+                last_date: last.map(str::to_string),
+                time_unit: "M".into(),
+                interval: 1,
+                exec_day: 1,
+            };
+        let payload = |c: &mut FinTsConnector,
+                       seg: &'static str,
+                       j: &crate::connectors::StandingOrderJob,
+                       v: u32| {
+            order_for(c);
+            let with_time = seg == "HKCDL" && v >= 2;
+            let o = c.order.as_mut().unwrap();
+            o.seg_id = seg;
+            o.xml = "<x/>".into();
+            o.standing = Some(standing_order::StandingTail {
+                order_id: (j.action != crate::models::StandingOrderAction::Create)
+                    .then(|| j.order_id.clone()),
+                schedule: standing_order::schedule_components(j, with_time),
+            });
+            String::from_utf8_lossy(&c.order_payload(Vop::None).unwrap().concat()).to_string()
+        };
+        use crate::models::StandingOrderAction as A;
+        let text = payload(&mut c, "HKCDE", &job(A::Create, "", None), 1);
+        assert!(text.contains("+@4@<x/>+20261201:M:1:1'"), "{text}");
+        let text = payload(
+            &mut c,
+            "HKCDN",
+            &job(A::Change, "A1", Some("2027-11-01")),
+            1,
+        );
+        assert!(
+            text.contains("+@4@<x/>++A1+20261201:M:1:1:20271101'"),
+            "{text}"
+        );
+        let text = payload(&mut c, "HKCDL", &job(A::Delete, "A1", None), 2);
+        assert!(text.contains("+@4@<x/>++A1+20261201:M:1:1'"), "{text}");
+        let text = payload(
+            &mut c,
+            "HKCDL",
+            &job(A::Delete, "A1", Some("2027-11-01")),
+            2,
+        );
+        assert!(text.contains("++A1+20261201:M:1:1::20271101'"), "{text}");
+    }
+
+    #[test]
+    fn reads_direct_debit_parameters_and_formats() {
+        let raw = b"HIDMES:12:1:3+1+1+0+2:30:5:30:360:J:N:urn?:iso?:std?:iso?:20022?:tech?:xsd?:pain.008.003.02'";
+        let mut c = FinTsConnector::new("20041111");
+        c.learn_bpd(&reply(raw));
+        assert_eq!(
+            c.st.debit_params["HKDME"],
+            DebitParams {
+                min_days_recurring: 2,
+                max_days_recurring: 30,
+                min_days_first: 5,
+                max_days_first: 30,
+                max_count: 360,
+                sum_required: true,
+                single_booking_allowed: false,
+            }
+        );
+        assert_eq!(
+            c.st.pain_formats["HKDME"],
+            vec![pain008::PAIN008_02_DESCRIPTOR.to_string()]
+        );
+    }
+
+    #[test]
+    fn debit_lead_time_is_checked_per_sequence() {
+        use pain008::SequenceType::*;
+        let p = DebitParams {
+            min_days_recurring: 2,
+            max_days_recurring: 30,
+            min_days_first: 5,
+            max_days_first: 30,
+            ..Default::default()
+        };
+        let d = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let today = d("2026-11-02");
+        assert!(check_debit_lead_time(&p, Recurring, today, d("2026-11-04")).is_ok());
+        assert!(check_debit_lead_time(&p, First, today, d("2026-11-04")).is_err());
+        let e = check_debit_lead_time(&p, First, today, d("2026-11-04")).unwrap_err();
+        assert!(e.to_string().contains("07.11.2026"), "{e}");
+        assert!(check_debit_lead_time(&p, OneOff, today, d("2027-03-01")).is_err());
+        // 30 days may be TARGET days (about 42 calendar days): not rejected
+        assert!(check_debit_lead_time(&p, OneOff, today, d("2026-12-10")).is_ok());
+        // unusable parameters never block
+        let junk = DebitParams::default();
+        assert!(check_debit_lead_time(&junk, First, today, d("2026-11-02")).is_ok());
+    }
+
+    #[test]
+    fn builds_hkdme_with_the_banks_layout() {
+        let mut c = FinTsConnector::new("20041111");
+        order_for(&mut c);
+        if let Some(o) = c.order.as_mut() {
+            o.seg_id = "HKDME";
+            o.batch = Some((5_000, false));
+            o.debit_layout = Some((true, false));
+        }
+        let text =
+            String::from_utf8_lossy(&c.order_payload(Vop::None).unwrap().concat()).to_string();
+        assert!(text.contains("HKDME:3:"), "{text}");
+        assert!(text.contains("+50,00:EUR+"), "{text}");
+        assert!(
+            !text.contains(":EUR+J") && !text.contains(":EUR+N"),
+            "{text}"
+        );
     }
 
     #[test]

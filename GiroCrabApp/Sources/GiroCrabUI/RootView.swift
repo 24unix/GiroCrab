@@ -1,6 +1,9 @@
 import SwiftUI
 import QuickLook
 import GiroCrabCore
+#if os(macOS)
+import AppKit
+#endif
 
 /// The app's scenes, shared by the macOS executable and the Xcode
 /// multiplatform target.
@@ -12,6 +15,7 @@ public struct GiroCrabScenes: Scene {
     @AppStorage(ViewLayout.inspectorKey) private var showInspector = true
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
+    @AppStorage(ViewLayout.compactHeaderKey) private var compactHeader = false
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
     #endif
 
@@ -40,12 +44,14 @@ public struct GiroCrabScenes: Scene {
 
     public var body: some Scene {
         WindowGroup("GiroCrab", id: "main") {
+            // `GiroCrabRootView` sets the preferred colour scheme itself (dark on the
+            // brand start/lock screen, otherwise the chosen appearance).
             GiroCrabRootView()
                 .environment(model)
                 .modifier(AutoLockOnBackground(model: model))
-                .preferredColorScheme(appearance.colorScheme)
                 #if os(macOS)
                 .appTextSize(textSize.effective)
+                .modifier(MenuBarBridge(model: model))
                 // Keep the minimum independent of the split columns' ideal heights.
                 .frame(minHeight: 480, maxHeight: .infinity)
                 #endif
@@ -197,6 +203,8 @@ public struct GiroCrabScenes: Scene {
                     .disabled(!model.isUnlocked)
                 Toggle("Budgets anzeigen", isOn: $showBudgets)
                     .disabled(!model.isUnlocked)
+                Toggle("Kopfbereich minimieren", isOn: $compactHeader)
+                    .disabled(!model.isUnlocked)
                 Divider()
                 // Like Mail/Notes: text size of the whole app (#343).
                 Button("Größer") { textSize = textSize.larger ?? textSize }
@@ -293,14 +301,19 @@ public struct GiroCrabRootView: View {
     @State private var splashHold = false
     #endif
 
+    @AppStorage(AppAppearance.defaultsKey) private var appearance: AppAppearance = .system
+
     public init() {}
 
-    private var splash: some View {
-        ZStack {
-            Theme.canvas.ignoresSafeArea()
-            StartLogo()
-            ProgressView().offset(y: 96)
-        }
+    private var splash: some View { SplashView() }
+
+    /// Colour scheme of the window. The brand start and lock screen (iOS, #505)
+    /// are always dark, so the status bar (time, battery) stays white on the
+    /// dark backdrop even when the device or the app runs in light mode. Set
+    /// here in one place: a second `.preferredColorScheme` further out would
+    /// override one on the screens themselves.
+    static func preferredScheme(brand: Bool, splashHold: Bool, vaultOpen: Bool, appearance: ColorScheme?) -> ColorScheme? {
+        brand && (splashHold || !vaultOpen) ? .dark : appearance
     }
 
     public var body: some View {
@@ -335,6 +348,10 @@ public struct GiroCrabRootView: View {
             }
             }
         }
+        .preferredColorScheme(Self.preferredScheme(
+            brand: BrandBackdrop.isPlatformDefault, splashHold: splashHold,
+            vaultOpen: model.vaultState == .open, appearance: appearance.colorScheme
+        ))
         .animation(.easeOut(duration: 0.35), value: splashHold)
         .task {
             guard splashHold else { return }
@@ -371,9 +388,36 @@ struct AutoLockOnBackground: ViewModifier {
     }
 }
 
+/// Start screen: the system launch screen (LaunchInfo.plist) continued, so there is no jump.
+struct SplashView: View {
+    /// Dark brand backdrop with the large crab (iOS, #505) instead of the canvas.
+    var brand = BrandBackdrop.isPlatformDefault
+
+    var body: some View {
+        ZStack {
+            if brand {
+                BrandBackdrop.color.ignoresSafeArea()
+                BrandCrabLogo()
+                ProgressView().tint(.white).offset(y: BrandBackdrop.logoSize * 0.5 + 44)
+            } else {
+                Theme.canvas.ignoresSafeArea()
+                StartLogo()
+                ProgressView().offset(y: 96)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .environment(\.colorScheme, brand ? .dark : scheme)
+    }
+
+    @Environment(\.colorScheme) private var scheme
+}
+
 struct LockView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var scheme
     var error: String?
+    /// Dark brand backdrop, large crab and one unlock control (iOS, #505).
+    var brand = BrandBackdrop.isPlatformDefault
     /// The unlock has been waiting for a while: most likely a Touch ID or
     /// Keychain prompt the user hasn't noticed (behind the window, other screen).
     @State private var waitingLong = false
@@ -393,7 +437,99 @@ struct LockView: View {
         return .idle
     }
 
+    /// One control for both states (#505): the unlock button turns into the
+    /// waiting status instead of a greyed-out button with a second line below.
+    private var brandUnlockControl: some View {
+        let waiting = model.vaultState == .unlocking
+        let name = VaultKeyManager.shared.biometryName
+        let title: LocalizedStringKey = waiting ? "Warten auf \(name) …" : "Mit \(name) entsperren"
+        return Button {
+            model.unlock()
+        } label: {
+            HStack(spacing: 10) {
+                if waiting {
+                    ProgressView().controlSize(.small).tint(.white)
+                } else {
+                    Image(systemName: VaultKeyManager.shared.biometrySymbol)
+                }
+                Text(title)
+            }
+            .appFont(.headline)
+            .foregroundStyle(Color.white.opacity(waiting ? 0.8 : 1))
+            .padding(.horizontal, 20)
+            .frame(maxWidth: 340, minHeight: 54)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(waiting ? AnyShapeStyle(Color.white.opacity(0.1)) : AnyShapeStyle(Theme.accent))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.white.opacity(waiting ? 0.22 : 0))
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(waiting)
+        .animation(Motion.animation(.easeInOut(duration: 0.2)), value: waiting)
+    }
+
+    private var brandBody: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            BrandCrabLogo(phase: crabPhase)
+            Text("GiroCrab ist gesperrt")
+                .appFont(.title, weight: .bold)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+            Text("Ihre Buchungen liegen in einem verschlüsselten Tresor.\nDer Schlüssel verlässt nie den Schlüsselbund dieses Geräts.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Color.white.opacity(0.7))
+                .padding(.top, 10)
+            Spacer(minLength: 24)
+            VStack(spacing: 14) {
+                if let error {
+                    Text(error).appFont(.callout).foregroundStyle(Theme.charge).multilineTextAlignment(.center)
+                }
+                if waitingLong && model.vaultState == .unlocking {
+                    Label(waitingHint, systemImage: "exclamationmark.bubble")
+                        .appFont(.callout)
+                        .foregroundStyle(Theme.warning)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 460)
+                }
+                brandUnlockControl
+                if model.lockPreview && !AppModel.vaultMayHoldRealData && model.vaultState != .unlocking {
+                    Button("Zurück zur Demo") { model.endLockPreview() }
+                        .buttonStyle(.borderless)
+                        .tint(.white)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(BrandBackdrop.color.ignoresSafeArea())
+    }
+
     var body: some View {
+        Group {
+            if brand { brandBody } else { standardBody }
+        }
+        // Theme colours on the dark backdrop resolve to their dark variants.
+        .environment(\.colorScheme, brand ? .dark : scheme)
+        .task {
+            if model.vaultState == .locked && error == nil && !model.demoDismissedLock { model.unlock() }
+        }
+        .task(id: model.vaultState == .unlocking) {
+            waitingLong = false
+            guard model.vaultState == .unlocking else { return }
+            try? await Task.sleep(for: .seconds(5))
+            if !Task.isCancelled && model.vaultState == .unlocking { waitingLong = true }
+        }
+    }
+
+    private var standardBody: some View {
         VStack(spacing: 18) {
             AnimatedCrabLogoView(size: 120, phase: crabPhase)
             Text("GiroCrab ist gesperrt")
@@ -438,15 +574,6 @@ struct LockView: View {
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.canvas)
-        .task {
-            if model.vaultState == .locked && error == nil && !model.demoDismissedLock { model.unlock() }
-        }
-        .task(id: model.vaultState == .unlocking) {
-            waitingLong = false
-            guard model.vaultState == .unlocking else { return }
-            try? await Task.sleep(for: .seconds(5))
-            if !Task.isCancelled && model.vaultState == .unlocking { waitingLong = true }
-        }
     }
 }
 
@@ -457,6 +584,8 @@ struct MainSplitView: View {
     #if os(macOS)
     @State private var columns: NavigationSplitViewVisibility = .all
     @AppStorage(ViewLayout.inspectorKey) private var showInspector = true
+    @State private var inspectorWidth: CGFloat = 320
+    @State private var inspectorDragStart: CGFloat?
     @Environment(\.openSettings) private var openSettings
     #else
     @State private var columns: NavigationSplitViewVisibility = .automatic
@@ -473,6 +602,10 @@ struct MainSplitView: View {
         Group {
             if model.sidebarSelection == .documents {
                 DocumentsView()
+            } else if model.sidebarSelection == .planned {
+                PlannedPaymentsView()
+            } else if model.sidebarSelection == .directDebits {
+                DirectDebitsView()
             } else if model.sidebarSelection == .wealth {
                 WealthView()
             } else {
@@ -492,21 +625,52 @@ struct MainSplitView: View {
     }
 
     #if os(macOS)
-    /// macOS: the detail column is a system inspector (HIG "Inspectors"), toggled
-    /// from the toolbar and View menu; the state is remembered (GitHub #234).
+    /// macOS: the right pane sits next to the booking column in the `detail`
+    /// column instead of the system `.inspector`. On macOS 27 the inspector
+    /// renders its content a few points below where it hit-tests, so clicks in
+    /// it land one row off (#492); a plain view does not have that offset.
     private var splitView: some View {
         NavigationSplitView(columnVisibility: $columns) {
             sidebar
         } detail: {
+            HStack(spacing: 0) {
+                bookingColumn
+                if showInspector {
+                    inspectorSplitter
+                    InspectorView()
+                        .frame(width: inspectorWidth * textScale)
+                        .frame(minHeight: 0, maxHeight: .infinity)
+                }
+            }
+            .frame(minHeight: 0, maxHeight: .infinity)
             // min widths: 240 (sidebar) + 560 + 280 (inspector) keep the minimum window size
-            bookingColumn
-                .macColumnWidth(min: 560, ideal: 700)
+            .macColumnWidth(min: showInspector ? 560 + inspectorWidth : 560,
+                            ideal: showInspector ? 700 + inspectorWidth : 700)
         }
         .navigationSplitViewStyle(.balanced)
-        .inspector(isPresented: $showInspector) {
-            InspectorView()
-                .inspectorColumnWidth(min: 280, ideal: 320, max: 380)
+    }
+
+    /// Draggable grip between the booking column and the inspector; the system
+    /// `.inspector` provided one, so the replacement HStack re-implements it.
+    private var inspectorSplitter: some View {
+        ZStack {
+            Color.clear.frame(width: 10)
+            Color(nsColor: .separatorColor).frame(width: 1).frame(maxHeight: .infinity)
         }
+        .contentShape(Rectangle())
+        .frame(width: 10)
+        .onHover { inside in
+            if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if inspectorDragStart == nil { inspectorDragStart = inspectorWidth }
+                    let proposed = (inspectorDragStart ?? inspectorWidth) - value.translation.width
+                    inspectorWidth = min(380, max(280, proposed))
+                }
+                .onEnded { _ in inspectorDragStart = nil }
+        )
     }
     #else
     private var splitView: some View {
@@ -582,6 +746,21 @@ struct MainSplitView: View {
         .sheet(isPresented: $model.showCategorizer) {
             CategorizerSheet()
                 .environment(model)
+        }
+        .sheet(isPresented: $model.showBatchSheet) {
+            BatchTransferSheet()
+                .environment(model)
+                .interactiveDismissDisabled(model.transferBusy)
+        }
+        .sheet(isPresented: $model.showStandingSheet) {
+            StandingOrderSheet()
+                .environment(model)
+                .interactiveDismissDisabled(model.transferBusy)
+        }
+        .alert("Status des Dauerauftrags unklar", isPresented: Binding(get: { model.standingUnknown != nil }, set: { if !$0 { model.standingUnknown = nil } })) {
+            Button("Verstanden", role: .cancel) { model.standingUnknown = nil }
+        } message: {
+            Text("Der Auftrag hat die Bank erreicht, aber die Antwort ist nicht eindeutig. Bitte zuerst im Online-Banking prüfen, ob der Dauerauftrag angelegt, geändert oder gelöscht wurde, bevor Sie es erneut versuchen.\n\nBank: \(model.standingUnknown ?? "")")
         }
         .sheet(isPresented: $model.showTransferSheet) {
             TransferSheetView()
@@ -693,11 +872,10 @@ struct MainSplitView: View {
     }
 }
 
-/// The launch-screen logo (asset `LaunchLogo`, 120 pt, centred), continued as the animated crab.
-/// Same 360-pt artwork grid and backdrop as the launch image, so the hand-off has no jump.
+/// Start logo in a Mac window (iOS: `BrandCrabLogo` on the brand backdrop, like `LaunchLogo`).
 private struct StartLogo: View {
     var body: some View {
-        // Square #263040 like the launch image (no squircle corners), crab on top.
+        // Square #263040 (no squircle corners), crab on top.
         ZStack {
             Rectangle().fill(Color(red: 0x26 / 255, green: 0x30 / 255, blue: 0x40 / 255))
             AnimatedCrabLogoView(size: 120, phase: .idle, showBackgroundSquircle: false)

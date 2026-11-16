@@ -160,7 +160,13 @@ extension AppModel {
     }
 
     func openLoanEditor(_ mode: LoanEditorRequest.Mode, accountId: Int64? = nil, draft: LoanSetup? = nil) {
-        loanStore.editor = LoanEditorRequest(mode: mode, accountId: accountId, draft: draft)
+        let request = LoanEditorRequest(mode: mode, accountId: accountId, draft: draft)
+        // A new loan is an account: it belongs in the own vault, not the demo (#487).
+        if case .create = mode {
+            runInOwnVault { [self] in loanStore.editor = request }
+        } else {
+            loanStore.editor = request
+        }
     }
 
     /// "Neues Darlehen aus Buchung …": name and rule taken from the counterparty.

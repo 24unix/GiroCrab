@@ -454,7 +454,7 @@ fn rule_assignment_does_not_stamp() {
         case_sensitive: false,
         min_amount_cents: None,
         max_amount_cents: None,
-        account_id: None,
+        account_ids: Vec::new(),
         priority: 0,
         enabled: true,
         match_count: 0,
@@ -490,7 +490,7 @@ fn manual_clear_stamps_and_lets_rules_refill() {
         case_sensitive: false,
         min_amount_cents: None,
         max_amount_cents: None,
-        account_id: None,
+        account_ids: Vec::new(),
         priority: 0,
         enabled: true,
         match_count: 0,
@@ -536,7 +536,7 @@ fn plain_rule(category_id: i64, pattern: &str) -> crate::models::Rule {
         case_sensitive: false,
         min_amount_cents: None,
         max_amount_cents: None,
-        account_id: None,
+        account_ids: Vec::new(),
         priority: 10,
         enabled: true,
         match_count: 0,
@@ -1722,7 +1722,7 @@ fn soft_deleted_rows_appear_in_no_public_api() {
         case_sensitive: false,
         min_amount_cents: None,
         max_amount_cents: None,
-        account_id: None,
+        account_ids: Vec::new(),
         priority: 100,
         enabled: true,
         match_count: 0,
@@ -3986,6 +3986,47 @@ fn empty_depot_without_account_number_stays() {
 
 /// Rules, documents and loan links of the twin go with it to the bank
 /// account; the moved rule is stamped, so a merge does not move it back.
+#[test]
+fn rule_account_set_merges_across_vaults() {
+    let dir = temp_dir("rule-accounts-merge");
+    let (a, b) = (open(&dir, "a.db"), open(&dir, "b.db"));
+    exec(
+        &a,
+        "INSERT INTO account_groups(id, name) VALUES (1, 'G');
+         INSERT INTO accounts(group_id, external_ref, name) VALUES (1, 'A1', 'Eins'), (1, 'A2', 'Zwei'), (1, 'A3', 'Drei');",
+    );
+    let cat = a
+        .create_category("Food".into(), None, "tag".into(), "#111111".into())
+        .unwrap();
+    let ids: Vec<i64> = (1..=3)
+        .map(|i| {
+            n(
+                &a,
+                &format!("SELECT id FROM accounts WHERE external_ref = 'A{i}'"),
+            )
+        })
+        .collect();
+    let mut r = plain_rule(cat, "lidl");
+    r.account_ids = vec![ids[2], ids[0]];
+    a.save_rule(r).unwrap();
+    merge(&b, &a);
+    let theirs = b.list_rules().unwrap();
+    assert_eq!(theirs.len(), 1);
+    let refs: Vec<String> = theirs[0]
+        .account_ids
+        .iter()
+        .map(|id| {
+            text(
+                &b,
+                &format!("SELECT external_ref FROM accounts WHERE id = {id}"),
+            )
+        })
+        .collect();
+    assert_eq!(refs, vec!["A1", "A3"]);
+    both_ways(&a, &b);
+    assert_eq!(a.list_rules().unwrap()[0].account_ids, vec![ids[0], ids[2]]);
+}
+
 #[test]
 fn folded_twin_hands_over_rules_documents_and_loan_links() {
     let dir = temp_dir("twin-extras");

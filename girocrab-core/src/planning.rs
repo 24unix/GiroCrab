@@ -32,16 +32,23 @@ CREATE TABLE IF NOT EXISTS transfer_templates (
 
 /// Bookings as (category_id, amount_cents, booking_date) rows where a split
 /// booking contributes its split amounts instead of the parent category.
-pub(crate) const EFFECTIVE_SQL: &str = "(
-    SELECT t.category_id AS category_id, t.amount_cents AS amount_cents, t.booking_date AS booking_date
+/// `extra`: more columns of `t` (e.g. ", t.currency AS currency"); `condition`:
+/// more conditions on `t` (e.g. " AND t.account_id = ?1"). Both appear in both
+/// halves of the UNION, so `condition` must use numbered parameters.
+pub(crate) fn effective_sql(extra: &str, condition: &str) -> String {
+    format!(
+        "(
+    SELECT t.category_id AS category_id, t.amount_cents AS amount_cents, t.booking_date AS booking_date{extra}
       FROM transactions t
-     WHERE t.deleted_ms IS NULL
+     WHERE t.deleted_ms IS NULL{condition}
        AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)
     UNION ALL
-    SELECT s.category_id, s.amount_cents, t.booking_date
+    SELECT s.category_id, s.amount_cents, t.booking_date{extra}
       FROM transaction_splits s JOIN transactions t ON t.id = s.transaction_id
-     WHERE t.deleted_ms IS NULL
-)";
+     WHERE t.deleted_ms IS NULL{condition}
+)"
+    )
+}
 
 fn month_range(year: i32, month: u32) -> Result<(String, String), CoreError> {
     if !(1..=12).contains(&month) {
@@ -96,8 +103,9 @@ impl Vault {
         let mut own: HashMap<Option<i64>, i64> = HashMap::new();
         {
             let mut stmt = db.prepare(&format!(
-                "SELECT category_id, SUM(amount_cents) FROM {EFFECTIVE_SQL}
-                 WHERE booking_date >= ?1 AND booking_date <= ?2 GROUP BY category_id"
+                "SELECT category_id, SUM(amount_cents) FROM {}
+                 WHERE booking_date >= ?1 AND booking_date <= ?2 GROUP BY category_id",
+                effective_sql("", "")
             ))?;
             for row in stmt.query_map(params![from, to], |r| {
                 Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, i64>(1)?))
@@ -518,6 +526,30 @@ mod tests {
     }
 
     #[test]
+    fn category_history_sums_per_month_with_subcategories() {
+        let (v, dir) = vault();
+        let ins = cat(&v, "Test-Versicherung", None);
+        let sub = cat(&v, "Test-BU", Some(ins));
+        let other = cat(&v, "Test-Anderes", None);
+        tx(&v, "1", "2025-01-05", -1_000, Some(ins));
+        tx(&v, "2", "2025-01-20", -500, Some(sub));
+        tx(&v, "3", "2025-03-01", -2_000, Some(sub));
+        tx(&v, "4", "2025-03-02", -9_999, Some(other));
+        let h = v.category_history(ins, vec![], None, None).unwrap();
+        let got: Vec<(&str, i64)> = h.iter().map(|p| (p.period.as_str(), p.cents)).collect();
+        assert_eq!(got, vec![("2025-01", -1_500), ("2025-03", -2_000)]);
+        let h = v
+            .category_history(ins, vec![], Some("2025-02-01".into()), None)
+            .unwrap();
+        assert_eq!(h.len(), 1);
+        assert!(v
+            .category_history(ins, vec![-1], None, None)
+            .unwrap()
+            .is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn splits_validate_and_drive_category_totals() {
         let (v, dir) = vault();
         let a = cat(&v, "Test-A", None);
@@ -704,7 +736,7 @@ mod tests {
             .is_err());
         let csv = v.export_bookings_csv(f).unwrap();
         assert!(csv.starts_with(
-            "\u{FEFF}Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Betrag;Währung\r\n"
+            "\u{FEFF}Datum;Konto;Name;IBAN;Verwendungszweck;Kategorie;Betrag;Währung;Tags\r\n"
         ));
         assert!(csv.contains(";-30,00;"));
         std::fs::remove_dir_all(dir).ok();

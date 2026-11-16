@@ -328,6 +328,15 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         issues: &[],
     },
     MatrixEntry {
+        name: "Miles & More Kreditkarte (Deutsche Bank)",
+        kind: None,
+        interface: Interface::Fints,
+        official: Some(true),
+        capabilities: &[Capability::Transactions, Capability::Balances],
+        status: Status::Verified,
+        issues: &[],
+    },
+    MatrixEntry {
         name: "comdirect",
         kind: Some(ConnectorKind::Comdirect),
         interface: Interface::RestApi,
@@ -447,6 +456,7 @@ pub const BANK_MATRIX: &[MatrixEntry] = &[
         capabilities: &[
             Capability::Transactions,
             Capability::Balances,
+            Capability::Securities,
             Capability::Documents,
         ],
         status: Status::Limited,
@@ -502,9 +512,7 @@ pub fn make_connector_for(kind: ConnectorKind, key: &str, demo: bool) -> Box<dyn
         return Box::new(demo::DemoConnector::new(kind));
     }
     match kind {
-        ConnectorKind::FinTsGeneric => Box::new(fints::FinTsConnector::new(
-            ConnectorKind::fints_blz(key).unwrap_or(""),
-        )),
+        ConnectorKind::FinTsGeneric => Box::new(fints::FinTsConnector::for_key(key)),
         ConnectorKind::VolksbankKasselGoettingen => {
             Box::new(fints::FinTsConnector::new("52090000"))
         }

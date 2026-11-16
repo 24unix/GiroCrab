@@ -26,6 +26,30 @@ enum AllAccountsTotal {
     }
 }
 
+/// Header total of the stream: one primary amount in the base currency, the
+/// other currencies listed separately (#569) – never mixed into one number.
+enum HeaderTotal {
+    struct Split: Equatable {
+        var currency: String
+        var cents: Int64
+        var others: [Other]
+        struct Other: Equatable { var currency: String; var cents: Int64 }
+    }
+
+    /// Primary = EUR, or the single shared currency when no EUR account is
+    /// there; others = every further currency (alphabetical).
+    static func split(_ items: [(currency: String, cents: Int64)]) -> Split {
+        var sums: [String: Int64] = [:]
+        for i in items { sums[i.currency.isEmpty ? "EUR" : i.currency.uppercased(), default: 0] += i.cents }
+        let primary = sums["EUR"] != nil || sums.count != 1 ? "EUR" : sums.keys.first!
+        return Split(
+            currency: primary,
+            cents: sums[primary] ?? 0,
+            others: sums.filter { $0.key != primary }.sorted { $0.key < $1.key }.map { .init(currency: $0.key, cents: $0.value) }
+        )
+    }
+}
+
 /// Root row of the account tree: opens the overview of all accounts, folds
 /// every group away and shows the total per currency.
 struct AllAccountsRow: View {

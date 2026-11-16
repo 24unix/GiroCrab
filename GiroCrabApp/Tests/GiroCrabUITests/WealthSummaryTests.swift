@@ -98,6 +98,80 @@ final class WealthSummaryTests: XCTestCase {
         XCTAssertEqual(debt.netCents(includingLiabilities: false), 0)
     }
 
+    // MARK: Sachwerte in the wealth view
+
+    private func tangible(source: String = "manual", quantity: Double = 1, bought: Double? = nil, paid: Int64? = nil,
+                          unitCost: Int64 = 0, unit: Int64 = 0, value: Int64, symbol: String = "", sold: Bool = false) -> AssetItem {
+        AssetItem(id: 7, accountId: 3,
+                  setup: AssetItemSetup(name: "Item", priceSource: source, weightGrams: 0, purityPermille: 1000,
+                                        interpolation: .step, purchaseDate: "2024-01-01", quantity: bought ?? quantity,
+                                        purchasePriceCents: paid, startValueCents: nil, note: "", symbol: symbol),
+                  holding: Holding(isin: "", wkn: "", name: "Item", quantity: quantity, currentPriceCents: unit,
+                                   purchasePriceCents: unitCost, valueCents: value),
+                  quantities: [], values: [], valueDate: "2026-11-14", missingPriceDate: nil, sold: sold)
+    }
+
+    func testTangibleGainUsesTheTotalPaidWhileTheQuantityIsUnchanged() throws {
+        // 3 pieces for 1000,00 in total: 333,33 per piece would lose a cent
+        let item = tangible(quantity: 3, paid: 100_000, unitCost: 33_333, unit: 40_000, value: 120_000)
+        let gain = try XCTUnwrap(WealthView.tangibleGain(item))
+        XCTAssertEqual(gain.cents, 20_000)
+        XCTAssertEqual(gain.percent, 20, accuracy: 0.0001)
+        // one piece sold: the per-piece purchase price of the holding applies
+        let rest = tangible(quantity: 2, bought: 3, paid: 100_000, unitCost: 33_333, unit: 40_000, value: 80_000)
+        XCTAssertEqual(WealthView.tangibleGain(rest)?.cents, 80_000 - 66_666)
+        // no purchase price at all: unknown, not zero
+        XCTAssertNil(WealthView.tangibleGain(tangible(value: 5_000)))
+        let loss = try XCTUnwrap(WealthView.tangibleGain(tangible(paid: 10_000, unitCost: 10_000, value: 7_500)))
+        XCTAssertEqual(loss.cents, -2_500)
+        XCTAssertEqual(loss.percent, -25, accuracy: 0.0001)
+    }
+
+    func testTangibleDayChangeOnlyForAutomaticPrices() {
+        let gold = tangible(source: "XAU", quantity: 2, unit: 250_000, value: 500_000)
+        XCTAssertEqual(WealthView.tangibleDayChange(gold, previousUnitCents: 248_000), 4_000)
+        XCTAssertEqual(WealthView.tangibleDayChange(gold, previousUnitCents: 250_000), 0) // no new price
+        XCTAssertNil(WealthView.tangibleDayChange(gold, previousUnitCents: nil))
+        let car = tangible(unit: 1_500_000, value: 1_500_000)
+        XCTAssertNil(WealthView.tangibleDayChange(car, previousUnitCents: 1_400_000))
+    }
+
+    func testTangibleRowCarriesSymbolGainAndItem() {
+        let car = tangible(paid: 2_000_000, unitCost: 2_000_000, unit: 1_500_000, value: 1_500_000, symbol: "car.side.fill")
+        let row = WealthView.TangibleRow(item: car)
+        XCTAssertEqual(row.id, "i7")
+        XCTAssertEqual(row.symbol, "car.side.fill")
+        XCTAssertEqual(row.item.accountId, 3)
+        XCTAssertEqual(row.gainCents, -500_000)
+        XCTAssertNil(row.dayChangeCents)
+        XCTAssertFalse(row.automatic)
+        // without an own icon: the default of the price source
+        XCTAssertEqual(WealthView.TangibleRow(item: tangible(source: "XAU", value: 1)).symbol,
+                       AssetSymbols.defaultSymbol(source: "XAU"))
+        XCTAssertEqual(WealthView.TangibleRow(item: tangible(value: 1)).symbol, AssetSymbols.defaultSymbol(source: "manual"))
+    }
+
+    func testGainTextIsSignedOnBothFigures() {
+        XCTAssertTrue(WealthView.gainText(cents: 12_345, percent: 5.5).hasPrefix("+"))
+        XCTAssertTrue(WealthView.gainText(cents: 12_345, percent: 5.5).contains("(+"))
+        XCTAssertFalse(WealthView.gainText(cents: -12_345, percent: -5.5).contains("+"))
+        XCTAssertFalse(WealthView.gainText(cents: 0, percent: 0).contains("+"))
+    }
+
+    func testDemoTangiblesOpenTheirAccountWithTheItemSelected() throws {
+        let model = AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))
+        let account = try XCTUnwrap(model.allAccounts.first { model.isTangible($0.id) })
+        let item = try XCTUnwrap(model.assetItems(account.id).first { !$0.sold })
+        // the demo items carry a purchase price: the wealth rows show a gain
+        XCTAssertNotNil(WealthView.TangibleRow(item: item).gainCents)
+        model.interactiveSidebarSelection = .account(item.accountId)
+        if model.assetStore.selected != item.id { model.selectAssetItem(item.id) }
+        XCTAssertEqual(model.sidebarSelection, .account(account.id))
+        XCTAssertEqual(model.selectedAssetItem(in: account.id)?.id, item.id)
+        model.openAssetEditor(accountId: item.accountId, itemId: item.id)
+        XCTAssertEqual(model.assetStore.editor?.itemId, item.id)
+    }
+
     func testCoverageIsCountedBeforePositionsAreMerged() {
         func h(_ gain: Int64?, prev: Int64?) -> Holding {
             Holding(isin: "A", wkn: "", name: "A", quantity: 1, currentPriceCents: 0, purchasePriceCents: 0, valueCents: 100,

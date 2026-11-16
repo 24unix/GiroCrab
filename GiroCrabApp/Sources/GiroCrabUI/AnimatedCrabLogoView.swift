@@ -3,6 +3,48 @@ import SwiftUI
 import UIKit
 #endif
 
+/// Start and lock screen on the brand backdrop (iOS, GitHub #505): the dark tone
+/// behind the crab fills the whole screen, so the logo has no visible box.
+public enum BrandBackdrop {
+    /// Same value as the asset colour `LaunchBackground` of the system launch screen.
+    public static let color = Color(hex: 0x1C2331)
+    /// Artwork size on those screens (the crab itself fills about 70 % of it); `LaunchLogo` is rendered from `BrandCrabLogo` at this size.
+    public static let logoSize: CGFloat = 200
+    /// iOS shows start and lock screen on the backdrop; a Mac window keeps the canvas.
+    public static var isPlatformDefault: Bool {
+        #if os(iOS)
+        true
+        #else
+        false
+        #endif
+    }
+}
+
+/// The animated crab without its squircle, on a soft glow that fades into `BrandBackdrop.color`.
+/// Frame = glow = `size × glowFactor`: exactly the artwork of the launch image `LaunchLogo`.
+public struct BrandCrabLogo: View {
+    public static let glowFactor: CGFloat = 1.4
+    public var size: CGFloat
+    public var phase: AnimatedCrabLogoView.Phase
+
+    public init(size: CGFloat = BrandBackdrop.logoSize, phase: AnimatedCrabLogoView.Phase = .idle) {
+        self.size = size
+        self.phase = phase
+    }
+
+    public var body: some View {
+        let frame = size * Self.glowFactor
+        ZStack {
+            RadialGradient(
+                colors: [Color(hex: 0x3B4C6B, opacity: 0.6), Color(hex: 0x3B4C6B, opacity: 0.22), Color(hex: 0x3B4C6B, opacity: 0)],
+                center: .center, startRadius: 0, endRadius: frame / 2
+            )
+            AnimatedCrabLogoView(size: size, phase: phase, showBackgroundSquircle: false)
+        }
+        .frame(width: frame, height: frame)
+    }
+}
+
 /// Animierte Vektor-Krabbe auf Basis von `girocrab-icon.svg` (1024x1024 Koordinatenraum).
 /// Unterstützt:
 /// - Initialen Münzwurf (3D-Flip) & diagonalen Glanz-Schimmer auf der Kreditkarte
@@ -55,9 +97,18 @@ public struct AnimatedCrabLogoView: View {
         return -14 * CGFloat(0.5 - 0.5 * cos(2 * .pi * t / 4.2))
     }
 
+    /// Idle waving in degrees for time `t`: the coin claw and the card sway gently and
+    /// out of step. Time-driven like the hover, so it runs from the first frame on
+    /// (start and lock screen) and needs no `onAppear`.
+    static func idleWave(at date: Date) -> (claw: Double, card: Double) {
+        let t = date.timeIntervalSinceReferenceDate
+        return (5 * sin(2 * .pi * t / 2.4), 3.5 * sin(2 * .pi * t / 3.1 + 1.3))
+    }
+
     public var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { context in
-            crab(hoverOffsetY: hoverOffset(at: context.date))
+            let wave = reduceMotion ? (claw: 0, card: 0) : Self.idleWave(at: context.date)
+            crab(hoverOffsetY: hoverOffset(at: context.date), idleClawDegrees: wave.claw, idleCardDegrees: wave.card)
         }
         .frame(width: size, height: size)
         .contentShape(Rectangle())
@@ -79,7 +130,7 @@ public struct AnimatedCrabLogoView: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    private func crab(hoverOffsetY: CGFloat) -> some View {
+    private func crab(hoverOffsetY: CGFloat, idleClawDegrees: Double, idleCardDegrees: Double) -> some View {
         let scale = size / 1024.0
         let totalLift = -(hoverOffsetY + hopOffsetY)
         let clamped = max(-40, min(60, totalLift))
@@ -108,7 +159,7 @@ public struct AnimatedCrabLogoView: View {
                     CrabLeftArmAndCardLayer(shimmerProgress: shimmerProgress)
                 }
                 .rotationEffect(
-                    .degrees(cardTiltDegrees),
+                    .degrees(cardTiltDegrees + idleCardDegrees),
                     anchor: UnitPoint(x: 275.0 / 1024.0, y: 470.0 / 1024.0)
                 )
 
@@ -127,7 +178,7 @@ public struct AnimatedCrabLogoView: View {
                     CrabRightClawFrontLayer()
                 }
                 .rotationEffect(
-                    .degrees(rightClawDegrees),
+                    .degrees(rightClawDegrees + idleClawDegrees),
                     anchor: UnitPoint(x: 715.0 / 1024.0, y: 485.0 / 1024.0)
                 )
 
@@ -159,8 +210,11 @@ public struct AnimatedCrabLogoView: View {
         // Periodisches Blinzeln im Ruhemodus
         idleTask?.cancel()
         idleTask = Task { @MainActor in
+            // the first blink comes early, so even a short start screen shows one
+            var pause = 900
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(3400))
+                try? await Task.sleep(for: .milliseconds(pause))
+                pause = 3400
                 guard !Task.isCancelled, !reduceMotion else { break }
                 await performBlink()
             }

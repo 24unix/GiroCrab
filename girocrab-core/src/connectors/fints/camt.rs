@@ -5,6 +5,11 @@
 //! well-formed XML, so no external XML dependency is needed.
 
 use crate::connectors::RemoteTransaction;
+
+/// `external_id` prefix of not yet booked FinTS entries ("vorgemerkt").
+/// Persist keeps exactly the ones the latest fetch reports (`hold_prefix`);
+/// `Booking.is_pending` relies on the `pending-` start.
+pub const HOLD_PREFIX: &str = "pending-hold-fints-";
 use crate::money::parse_cents;
 
 #[derive(Debug, PartialEq)]
@@ -152,6 +157,9 @@ pub struct CamtReport {
     pub closing_balance_cents: Option<i64>,
     pub closing_date: Option<String>,
     pub currency: Option<String>,
+    /// Not yet booked entries of this document (`Sts` PDNG/INFO …), with
+    /// [`HOLD_PREFIX`] ids.
+    pub pending: Vec<RemoteTransaction>,
 }
 
 /// Geschäftsvorfallcode from a DK proprietary bank transaction code
@@ -177,8 +185,40 @@ fn has(stack: &[String], name: &str) -> bool {
     stack.iter().any(|s| s == name)
 }
 
-/// Parses one camt.052 document into booked transactions for `account_ref`.
+/// Date of a card payment timestamp in a booking text (`2026-11-14T18:56:47`),
+/// also when the bank wrapped the text inside it (`20 26-11-14T18:56:47`).
+fn card_timestamp_date(text: &str) -> Option<String> {
+    let s: Vec<char> = text.chars().filter(|c| !c.is_whitespace()).collect();
+    let digit = |i: usize| s.get(i).is_some_and(|c| c.is_ascii_digit());
+    for i in 10..s.len() {
+        if s[i] != 'T' || !(digit(i + 1) && digit(i + 2)) || s.get(i + 3) != Some(&':') {
+            continue;
+        }
+        let d: String = s[i - 10..i].iter().collect();
+        if chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").is_ok() {
+            return Some(d);
+        }
+    }
+    None
+}
+
+/// Parses one camt.052 document into booked transactions for `account_ref`;
+/// not yet booked entries go to [`CamtReport::pending`].
 pub fn parse(xml: &str, account_ref: &str) -> (Vec<RemoteTransaction>, CamtReport) {
+    parse_doc(xml, account_ref, false)
+}
+
+/// Parses a camt.052 document of not yet booked entries (`HICAZ` element 4):
+/// every entry is pending, whatever its `Sts` says.
+pub fn parse_notbooked(xml: &str, account_ref: &str) -> Vec<RemoteTransaction> {
+    parse_doc(xml, account_ref, true).1.pending
+}
+
+fn parse_doc(
+    xml: &str,
+    account_ref: &str,
+    all_pending: bool,
+) -> (Vec<RemoteTransaction>, CamtReport) {
     let mut stack: Vec<String> = Vec::new();
     let mut entries: Vec<Entry> = Vec::new();
     let mut cur: Option<Entry> = None;
@@ -276,7 +316,8 @@ pub fn parse(xml: &str, account_ref: &str) -> (Vec<RemoteTransaction>, CamtRepor
                     e.end_to_end = text;
                 } else if ends_with(&stack, &["Refs", "MndtId"]) {
                     e.mandate = text;
-                } else if has(&stack, "CdtrSchmeId")
+                } else if (has(&stack, "CdtrSchmeId")
+                    || (has(&stack, "Cdtr") && has(&stack, "PrvtId") && has(&stack, "Othr")))
                     && stack.last().map(|s| s == "Id").unwrap_or(false)
                 {
                     if e.creditor_id.is_empty() {
@@ -319,11 +360,10 @@ pub fn parse(xml: &str, account_ref: &str) -> (Vec<RemoteTransaction>, CamtRepor
     // Some banks (ING) reuse one `AcctSvcrRef` for several entries: it is an
     // id only on its first occurrence in the document (#445).
     let mut seen_refs: std::collections::HashSet<String> = Default::default();
+    let mut seen_pending: std::collections::HashMap<String, u32> = Default::default();
     for e in entries {
         let status = e.status.trim();
-        if !(status.is_empty() || status.eq_ignore_ascii_case("BOOK")) {
-            continue;
-        }
+        let pending = all_pending || !(status.is_empty() || status.eq_ignore_ascii_case("BOOK"));
         let Ok(abs) = parse_cents(&e.amount) else {
             continue;
         };
@@ -381,6 +421,28 @@ pub fn parse(xml: &str, account_ref: &str) -> (Vec<RemoteTransaction>, CamtRepor
             creditor_id: e.creditor_id.clone(),
             ..Default::default()
         };
+        if pending {
+            // Not booked yet: banks give holds no stable reference, and often no
+            // date (comdirect). The id is content-based and leaves a missing date
+            // out, so it stays the same from day to day; the date comes from the
+            // card timestamp in the text, else today.
+            if t.booking_text.is_empty() {
+                t.booking_text = crate::i18n::tr("Vorgemerkt").into();
+            }
+            let key = format!(
+                "{}{}{}{}",
+                t.booking_date, t.amount_cents, t.counterparty, t.purpose
+            );
+            let n = seen_pending.entry(key).or_insert(0);
+            t.external_id = format!("{HOLD_PREFIX}{}", t.content_id(*n));
+            *n += 1;
+            if t.booking_date.is_empty() {
+                t.booking_date =
+                    card_timestamp_date(&t.purpose).unwrap_or_else(crate::connectors::today);
+            }
+            report.pending.push(t);
+            continue;
+        }
         let key = format!(
             "{}{}{}{}",
             t.booking_date, t.amount_cents, t.counterparty, t.purpose
@@ -461,9 +523,81 @@ mod tests {
     }
 
     #[test]
+    fn hold_without_date_takes_the_card_timestamp_and_keeps_its_id() {
+        assert_eq!(
+            card_timestamp_date("Lidl sagt Danke Koeln DEU 20 26-11-14T18:56:47").as_deref(),
+            Some("2026-11-14")
+        );
+        assert_eq!(
+            card_timestamp_date("REWE 2026-11-12T15:04:37").as_deref(),
+            Some("2026-11-12")
+        );
+        assert_eq!(card_timestamp_date("Miete November"), None);
+        assert_eq!(card_timestamp_date("2026-13-40T10:00:00"), None);
+        let xml = r#"<Document><BkToCstmrAcctRpt><Rpt>
+          <Ntry><Amt Ccy="EUR">54.50</Amt><CdtDbtInd>DBIT</CdtDbtInd>
+            <NtryDtls><TxDtls><RltdPties><Cdtr><Nm>Lidl</Nm></Cdtr></RltdPties>
+            <RmtInf><Ustrd>Lidl sagt Danke Koeln DEU 20</Ustrd><Ustrd>26-11-14T18:56:47</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+          <Ntry><Amt Ccy="EUR">9.00</Amt><CdtDbtInd>DBIT</CdtDbtInd>
+            <NtryDtls><TxDtls><RmtInf><Ustrd>ohne Zeitstempel</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+        </Rpt></BkToCstmrAcctRpt></Document>"#;
+        let p = parse_notbooked(xml, "acc");
+        assert_eq!(p[0].booking_date, "2026-11-14");
+        assert_eq!(p[1].booking_date, crate::connectors::today());
+        // the id leaves the missing date out: the same hold tomorrow keeps it
+        let mut again = p[1].clone();
+        again.booking_date = String::new();
+        again.external_id = String::new();
+        assert_eq!(
+            p[1].external_id,
+            format!("{HOLD_PREFIX}{}", again.content_id(0))
+        );
+    }
+
+    #[test]
+    fn notbooked_document_is_all_pending() {
+        let xml = r#"<Document><BkToCstmrAcctRpt><Rpt>
+          <Ntry><Amt Ccy="EUR">12.50</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts>
+            <ValDt><Dt>2026-11-14</Dt></ValDt><AcctSvcrRef>X1</AcctSvcrRef>
+            <NtryDtls><TxDtls><RltdPties><Cdtr><Nm>Bäckerei Schmitz</Nm></Cdtr></RltdPties>
+            <RmtInf><Ustrd>Kartenzahlung</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+          <Ntry><Amt Ccy="EUR">12.50</Amt><CdtDbtInd>DBIT</CdtDbtInd>
+            <ValDt><Dt>2026-11-14</Dt></ValDt>
+            <NtryDtls><TxDtls><RltdPties><Cdtr><Nm>Bäckerei Schmitz</Nm></Cdtr></RltdPties>
+            <RmtInf><Ustrd>Kartenzahlung</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+        </Rpt></BkToCstmrAcctRpt></Document>"#;
+        let p = parse_notbooked(xml, "acc");
+        assert_eq!(p.len(), 2);
+        assert!(p.iter().all(|t| t.external_id.starts_with(HOLD_PREFIX)));
+        assert_ne!(
+            p[0].external_id, p[1].external_id,
+            "two equal holds stay two"
+        );
+        assert_eq!(
+            p[0].booking_date, "2026-11-14",
+            "value date when not booked"
+        );
+        assert_eq!(p[0].counterparty, "Bäckerei Schmitz");
+    }
+
+    #[test]
     fn parses_camt_052() {
         let (txs, rep) = parse(SAMPLE_08, "acc");
-        assert_eq!(txs.len(), 2, "pending entries are skipped");
+        assert_eq!(txs.len(), 2, "pending entries are not booked ones");
+        assert_eq!(rep.pending.len(), 1, "PDNG entry is reported as pending");
+        let p = &rep.pending[0];
+        assert!(p.external_id.starts_with(HOLD_PREFIX), "{}", p.external_id);
+        assert!(p.external_id.starts_with("pending-"), "Booking.is_pending");
+        assert_eq!(
+            (p.amount_cents, p.booking_date.as_str()),
+            (-9_99, "2026-11-09")
+        );
+        assert_eq!(p.booking_text, "Vorgemerkt");
+        // stable across fetches, so persist can keep or drop it
+        assert_eq!(
+            parse(SAMPLE_08, "acc").1.pending[0].external_id,
+            p.external_id
+        );
         assert_eq!(txs[0].amount_cents, -31_96);
         assert_eq!(txs[0].counterparty, "Lidl Dienstleistung & Co. KG");
         assert_eq!(txs[0].counterparty_iban, "DE12300700100123456700");

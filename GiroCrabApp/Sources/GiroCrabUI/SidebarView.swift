@@ -14,10 +14,31 @@ struct SidebarView: View {
     var body: some View {
         @Bindable var model = model
         List(selection: $model.interactiveSidebarSelection) {
+            // Pages across all accounts that are opened daily or as a starting point stay above the
+            // account tree: with many accounts they must not end up below the visible part.
+            // „Neue Umsätze“ (#352)
+            HStack(spacing: 8) {
+                Image(systemName: "tray.full").foregroundStyle(Theme.secondary).frame(width: 20)
+                Text("Neue Umsätze").fontWeight(.medium).appDefaultFont()
+                Spacer()
+            }
+            .badge(model.newCount)
+            .tag(SidebarItem.newBookings)
+            .contextMenu {
+                Button("Alle als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
+                    .disabled(model.newCount == 0)
+            }
+            // „Vermögen“ (#348): the counterpart of „Alle Konten“
+            HStack(spacing: 8) {
+                Image(systemName: "chart.pie").foregroundStyle(Theme.secondary).frame(width: 20)
+                Text("Vermögen").fontWeight(.medium).appDefaultFont()
+                Spacer()
+            }
+            .tag(SidebarItem.wealth)
             if !model.allAccounts.isEmpty {
                 AccountsSectionHeader()
             }
-            // the root of the account tree, like MoneyMoney's „Alle Konten“
+            // the root of the account tree
             AllAccountsRow()
                 .badge(model.newCount) // system sidebar badge (hidden at 0)
                 .tag(SidebarItem.allAccounts)
@@ -36,24 +57,23 @@ struct SidebarView: View {
                 // one step right of „Alle Konten“
                 .padding(.leading, 14)
             }
-            // „Neue Umsätze“ (#352): a page across all accounts, like „Belege & PostBox“
+            // payments and documents are used less often: below the accounts, each under its heading
+            SidebarCaption("Zahlungen")
+            // „Geplant“ (#240): ordered at the bank, not booked yet
             HStack(spacing: 8) {
-                Image(systemName: "tray.full").foregroundStyle(Theme.secondary).frame(width: 20)
-                Text("Neue Umsätze").fontWeight(.medium).appDefaultFont()
+                Image(systemName: "calendar.badge.clock").foregroundStyle(Theme.secondary).frame(width: 20)
+                Text("Geplant").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
-            .badge(model.newCount)
-            .tag(SidebarItem.newBookings)
-            .contextMenu {
-                Button("Alle als gelesen markieren", systemImage: "checkmark.circle") { model.markAllChecked(accountIDs: model.allAccounts.map(\.id)) }
-                    .disabled(model.newCount == 0)
-            }
+            .tag(SidebarItem.planned)
+            // „Lastschriften“ (#143): mandates and collections
             HStack(spacing: 8) {
-                Image(systemName: "chart.pie").foregroundStyle(Theme.secondary).frame(width: 20)
-                Text("Vermögen").fontWeight(.medium).appDefaultFont()
+                Image(systemName: "arrow.down.left.arrow.up.right.square").foregroundStyle(Theme.secondary).frame(width: 20)
+                Text("Lastschriften").fontWeight(.medium).appDefaultFont()
                 Spacer()
             }
-            .tag(SidebarItem.wealth)
+            .tag(SidebarItem.directDebits)
+            SidebarCaption("Dokumente")
             HStack(spacing: 8) {
                 Image(systemName: "doc.on.doc").foregroundStyle(Theme.secondary).frame(width: 20)
                 Text("Belege & PostBox").fontWeight(.medium).appDefaultFont()
@@ -365,6 +385,12 @@ struct SidebarView: View {
         // accounts have – then archive / delete
         Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .renameAccount(account) }
         Button("Symbol & Farbe …", systemImage: "paintpalette") { model.iconColorTarget = .account(account.id) }
+        Toggle(isOn: Binding(
+            get: { ViewLayout.showsCategoryChip(for: account.id) },
+            set: { ViewLayout.setShowsCategoryChip($0, for: account.id) }
+        )) {
+            Label("Kategorie in der Buchungszeile anzeigen", systemImage: "tag")
+        }
         Menu("Kontoart ändern …", systemImage: "list.bullet.rectangle") {
             ForEach(AccountKind.importChoices, id: \.self) { k in
                 Button { model.setAccountKind(account.id, to: k) } label: {
@@ -445,6 +471,7 @@ struct SidebarView: View {
                 }
             }
         }
+        Button("Duplizieren", systemImage: "plus.square.on.square") { model.duplicateCategory(category.id) }
         Divider()
         Button("Neue Unterkategorie …", systemImage: "plus") { model.newCategoryRequest = NewCategoryRequest(parent: category.id) }
         if showBudgets {
@@ -781,6 +808,21 @@ private struct CategoryIconColorPopover: ViewModifier {
 
 /// Header of the category tree: chevron, symbol and name like a group header
 /// (`UserGroupHeader`), the „+“ for a new main category on the right.
+/// Heading of a group of sidebar pages, in the style of the „Konten“ heading. Not selectable.
+private struct SidebarCaption: View {
+    let title: LocalizedStringKey
+    init(_ title: LocalizedStringKey) { self.title = title }
+
+    var body: some View {
+        Text(title)
+            .appFont(.caption, weight: .semibold)
+            .foregroundStyle(Theme.secondary)
+            .padding(.top, 10)
+            .selectionDisabled()
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
 private struct CategoriesHeader: View {
     @Environment(AppModel.self) private var model
 

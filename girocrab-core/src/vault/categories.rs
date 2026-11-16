@@ -30,7 +30,7 @@ impl Vault {
         Ok(rows)
     }
 
-    pub(super) fn category_paths(
+    pub(crate) fn category_paths(
         conn: &Connection,
     ) -> CoreResult<HashMap<i64, (String, String, String, String)>> {
         // id -> (name, path, color, symbol)
@@ -81,7 +81,7 @@ impl Vault {
                 "SELECT category_id, SUM(amount_cents), COUNT(*) FROM {}
                  WHERE (?1 IS NULL OR booking_date >= ?1) AND (?2 IS NULL OR booking_date <= ?2)
                  GROUP BY category_id",
-                crate::planning::EFFECTIVE_SQL
+                crate::planning::effective_sql("", "")
             ))?;
             let it = stmt.query_map(params![date_from, date_to], |r| {
                 Ok((
@@ -174,6 +174,73 @@ impl Vault {
             }
         }
         walk(None, 0, "", &children, &totals, &mut out);
+        Ok(out)
+    }
+
+    /// Monthly sums of one category including its subcategories (GitHub #502), for the
+    /// chart above a category's bookings. Splits count with their split amounts; empty
+    /// `account_ids` = all accounts. Months without bookings are left out.
+    pub fn category_history(
+        &self,
+        category_id: i64,
+        account_ids: Vec<i64>,
+        date_from: Option<String>,
+        date_to: Option<String>,
+    ) -> Result<Vec<CategoryPeriodSum>, CoreError> {
+        self.category_history_by_unit(category_id, account_ids, date_from, date_to, 7)
+    }
+
+    /// Like `category_history`, with the bar width chosen by `key_length` (GitHub #557):
+    /// 4 = years (`yyyy`), 7 = months (`yyyy-MM`), 10 = days (`yyyy-MM-dd`); other values mean months.
+    pub fn category_history_by_unit(
+        &self,
+        category_id: i64,
+        account_ids: Vec<i64>,
+        date_from: Option<String>,
+        date_to: Option<String>,
+        key_length: u32,
+    ) -> Result<Vec<CategoryPeriodSum>, CoreError> {
+        let key_length = if matches!(key_length, 4 | 10) {
+            key_length
+        } else {
+            7
+        };
+        let db = self.db()?;
+        let rows = Self::category_rows(&db)?;
+        let mut ids = vec![category_id];
+        let mut i = 0;
+        while i < ids.len() && ids.len() < 4096 {
+            let cur = ids[i];
+            for r in rows.iter().filter(|r| r.1 == Some(cur)) {
+                if !ids.contains(&r.0) {
+                    ids.push(r.0);
+                }
+            }
+            i += 1;
+        }
+        let in_list = |v: &[i64]| v.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+        let account_clause = if account_ids.is_empty() {
+            String::new()
+        } else {
+            format!(" AND account_id IN ({})", in_list(&account_ids))
+        };
+        let sql = format!(
+            "SELECT substr(booking_date, 1, {key_length}) AS m, SUM(amount_cents) FROM {}
+             WHERE category_id IN ({}){account_clause}
+               AND (?1 IS NULL OR booking_date >= ?1) AND (?2 IS NULL OR booking_date <= ?2)
+             GROUP BY m ORDER BY m",
+            crate::planning::effective_sql(", t.account_id AS account_id", ""),
+            in_list(&ids)
+        );
+        let mut stmt = db.prepare(&sql)?;
+        let out = stmt
+            .query_map(params![date_from, date_to], |r| {
+                Ok(CategoryPeriodSum {
+                    period: r.get(0)?,
+                    cents: r.get(1)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(out)
     }
 

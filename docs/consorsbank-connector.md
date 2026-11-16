@@ -191,7 +191,7 @@ the typed-TAN-on-fetch case.
 - 2026-11-14: Phase 3 and 4. No dedicated `ConnectorKind`: FinTS banks are generic
   `fints:<blz>` connections today (a test pins `fints:76030080` to `FinTsGeneric`), so the
   entry is data on top of that: preset note and add-form hint for the user ID
-  (`<10-digit account number>001`), "tested" note in the bank search, search words
+  (`<10-digit account number>001`), search words
   `dab` / `bnp paribas`, tint and monogram "CB" by BLZ (`BankConnection.tint` /
   `.monogram`). `BANK_MATRIX` lists Consorsbank as verified (README DE/EN regenerated
   with `scripts/sync_docs.py`).

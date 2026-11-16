@@ -308,7 +308,7 @@ extension AppModel {
             // must not also categorise the outgoing transfers to the same payee.
             minAmountCents: booking.flatMap { $0.amountCents > 0 ? 1 : nil },
             maxAmountCents: booking.flatMap { $0.amountCents < 0 ? 0 : nil },
-            accountId: nil,
+            accountIds: [],
             priority: Int32((rules.map(\.priority).max() ?? 0) + 10),
             enabled: true,
             matchCount: 0
@@ -338,6 +338,25 @@ extension AppModel {
         guard let vault else { return }
         runCore { try vault.deleteRule(ruleId: id) }
         reloadAll()
+    }
+
+    /// Reassigns sequential priorities (10, 20, 30, ...) matching the given rule order
+    /// and re-applies rules once (#434).
+    func reorderRules(_ ordered: [Rule]) {
+        guard let vault else { return }
+        do {
+            for (idx, var rule) in ordered.enumerated() {
+                let newPriority = Int32((idx + 1) * 10)
+                if rule.priority != newPriority {
+                    rule.priority = newPriority
+                    _ = try vault.saveRule(rule: rule)
+                }
+            }
+            _ = try vault.applyRules(onlyUncategorized: false)
+            reloadAll()
+        } catch {
+            showError(String(localized: "Regel konnte nicht gespeichert werden"), describe(error))
+        }
     }
 
     func preview(_ rule: Rule) -> (matches: [Booking], error: String?) {

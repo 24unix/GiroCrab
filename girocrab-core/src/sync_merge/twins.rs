@@ -253,9 +253,14 @@ fn fold_inner(conn: &Connection, twin: i64, bank: i64) -> CoreResult<()> {
         "DROP TABLE IF EXISTS other.accounts;
          DROP TABLE IF EXISTS other.transactions;
          DROP TABLE IF EXISTS other.transaction_splits;
+         DROP TABLE IF EXISTS other.tags;
+         DROP TABLE IF EXISTS other.transaction_tags;
          CREATE TABLE other.accounts AS SELECT * FROM main.accounts WHERE id = {twin};
          CREATE TABLE other.transactions AS SELECT * FROM main.transactions WHERE account_id = {twin};
          CREATE TABLE other.transaction_splits AS SELECT * FROM main.transaction_splits
+             WHERE transaction_id IN (SELECT id FROM other.transactions);
+         CREATE TABLE other.tags AS SELECT * FROM main.tags;
+         CREATE TABLE other.transaction_tags AS SELECT * FROM main.transaction_tags
              WHERE transaction_id IN (SELECT id FROM other.transactions);"
     ))?;
     // same vault: categories and rules map onto themselves
@@ -278,6 +283,11 @@ fn fold_inner(conn: &Connection, twin: i64, bank: i64) -> CoreResult<()> {
         "UPDATE rules SET account_id = ?2, updated_ms = max(updated_ms + 1, ?3) WHERE account_id = ?1",
         params![twin, bank, crate::user_groups::now_ms()],
     )?;
+    conn.execute(
+        "UPDATE OR IGNORE rule_accounts SET account_id = ?2 WHERE account_id = ?1",
+        params![twin, bank],
+    )?;
+    conn.execute("DELETE FROM rule_accounts WHERE account_id = ?1", [twin])?;
     // documents and manual loan links follow each booking to the bank
     // account's copy (same external id, else import fingerprint)
     let counterpart = "(SELECT b.id FROM transactions b, transactions m

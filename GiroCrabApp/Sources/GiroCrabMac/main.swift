@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if LaunchOptions.current.screenshotPath == nil {
             NSApp.activate(ignoringOtherApps: true)
         }
+        observeWindowsForDockPresence()
         MainActor.assumeIsolated {
             WindowScreenshot.scheduleIfRequested()
             #if canImport(Sparkle)
@@ -64,7 +65,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return nil
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    private var windowObservers: [NSObjectProtocol] = []
+
+    /// With the menu bar item on (GitHub #546) and every window closed, only the
+    /// crab in the menu bar stays: no Dock icon (accessory app). The first window
+    /// that opens again brings the Dock icon back.
+    private func observeWindowsForDockPresence() {
+        let center = NotificationCenter.default
+        for name in [NSWindow.willCloseNotification, NSWindow.didBecomeKeyNotification, NSWindow.didMiniaturizeNotification] {
+            windowObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                // after the close has finished: the window is no longer visible then
+                DispatchQueue.main.async { MainActor.assumeIsolated { self?.updateDockPresence() } }
+            })
+        }
+    }
+
+    @MainActor
+    private func updateDockPresence() {
+        // titled = real windows (main, settings, help); the popover and status item are not
+        let hasWindow = NSApp.windows.contains { $0.styleMask.contains(.titled) && ($0.isVisible || $0.isMiniaturized) }
+        let target: NSApplication.ActivationPolicy = (MenuBarKeepAlive.isEnabled && !hasWindow) ? .accessory : .regular
+        guard NSApp.activationPolicy() != target else { return }
+        NSApp.setActivationPolicy(target)
+        if target == .regular { NSApp.activate(ignoringOtherApps: true) }
+    }
+
+    /// Closing the window quits the app, unless the menu bar item is on: it stays
+    /// (GitHub #546), and "GiroCrab öffnen" in its popover or the Dock icon bring the window back.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        !MenuBarKeepAlive.isEnabled
+    }
 }
 
 struct GiroCrabMacApp: App {

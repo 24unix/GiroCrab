@@ -47,10 +47,15 @@ struct StreamHeaderCard: View {
     #endif
     @State private var showDocuments = false
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics: Bool = true
+    @AppStorage(ViewLayout.compactHeaderKey) private var compactHeader: Bool = false
 
     private var account: Account? {
         if case .account(let id) = model.sidebarSelection { return model.account(for: id) }
         return nil
+    }
+
+    private var compactHeaderTitle: LocalizedStringKey {
+        compactHeader ? "Kopfbereich einblenden" : "Kopfbereich minimieren"
     }
 
     /// Depots show positions; bookings (buys, sells) live on the clearing account.
@@ -61,23 +66,40 @@ struct StreamHeaderCard: View {
 
     var body: some View {
         @Bindable var model = model
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: ViewLayout.cardSpacing) {
+            HStack(alignment: compactHeader ? .center : .top) {
+                // Minimise the header: more room for the booking list (GitHub #358).
+                CardChevron(collapsed: $compactHeader, customTitle: compactHeaderTitle)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(headerTitle).sensitive(account == nil ? .labels : .personal).appFont(.title2, weight: .semibold).foregroundStyle(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
+                    Text(headerTitle).sensitive(account == nil ? .labels : .personal).appFont(compactHeader ? .subheadline : .title2, weight: .semibold).foregroundStyle(Theme.text).lineLimit(1).minimumScaleFactor(0.7)
+                    if !compactHeader {
                     Group {
                         if let a = account {
                             Text([a.bankName, a.iban.isEmpty ? "" : formatIBAN(a.iban)].filter { !$0.isEmpty }.joined(separator: " · "))
                                 .sensitive()
+                            let note = model.accountNote(for: a.id)
+                            if !note.isEmpty {
+                                Text(note)
+                                    .sensitive()
+                                    .appFont(.caption)
+                                    .foregroundStyle(Theme.secondary)
+                                    .lineLimit(2)
+                                    .help(note)
+                            }
                         } else {
                             Text(model.lastSyncText)
                         }
                     }
                     .appFont(.caption)
                     .foregroundStyle(Theme.secondary)
+                    }
                 }
                 .contextMenu {
                     if let a = account { AccountCopyMenu(account: a) }
+                }
+                // Folded: period and status filters share the title row (GitHub #603).
+                if compactHeader && !isDepot {
+                    filterRow
                 }
                 #if os(iOS)
                 // long-press is invisible on iPhone/iPad: show an explicit entry too
@@ -93,11 +115,21 @@ struct StreamHeaderCard: View {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(Money.format(hb.cents))
                             .sensitive()
-                            .appFont(.largeTitle, weight: .semibold, monospacedDigit: true)
+                            .appFont(compactHeader ? .subheadline : .largeTitle, weight: .semibold, monospacedDigit: true)
                             .foregroundStyle(account?.kind == .loan ? Theme.loan : Theme.text)
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
-                        Text(hb.label).appFont(.caption).foregroundStyle(Theme.secondary)
+                        if !compactHeader {
+                            Text(hb.label).appFont(.caption).foregroundStyle(Theme.secondary)
+                        }
+                        if account == nil, let split = model.headerTotalSplit {
+                            Text("Zusätzlich: \(split.others.map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · "))")
+                                .sensitive()
+                                .appFont(.caption, monospacedDigit: true)
+                                .foregroundStyle(Theme.secondary)
+                                .lineLimit(1)
+                                .help("Weitere Währungen werden nicht umgerechnet und nicht in die Summe einbezogen.")
+                        }
                     }
                     .contextMenu {
                         Button("\(hb.label) kopieren", systemImage: "doc.on.doc") { copyToPasteboard(Money.clipboard(hb.cents)) }
@@ -105,14 +137,16 @@ struct StreamHeaderCard: View {
                 }
             }
 
-            if let a = account, a.kind == .loan {
+            if !compactHeader, let a = account, a.kind == .loan {
                 LoanProgressCard(account: a, compact: true)
             }
 
             if isDepot {
                 // positions are cards below; the chart shows the value history
                 // (Sachwerte: of the selected item, if one is selected)
-                if let hint = depotSinglePointHint {
+                if compactHeader {
+                    EmptyView()
+                } else if let hint = depotSinglePointHint {
                     Text(hint)
                         .appFont(.caption)
                         .foregroundStyle(Theme.secondary)
@@ -131,9 +165,16 @@ struct StreamHeaderCard: View {
                         CustomPeriodForm()
                     }
             } else {
-                if showStatistics && model.scope != .investments {
+                if !compactHeader && showStatistics && model.scope != .investments {
                     // iOS: 44 pt = HIG minimum hit region (the chart is tappable);
                     // macOS: room for the min/max/0 axis labels (GitHub #203).
+                    if case .category = model.sidebarSelection {
+                        #if os(iOS)
+                        CategorySumChart(sums: model.categoryHistory).frame(height: 44)
+                        #else
+                        CategorySumChart(sums: model.categoryHistory).frame(height: 72)
+                        #endif
+                    } else {
                     #if os(iOS)
                     BalanceChart(points: model.history) { model.jumpToDay($0) }
                         .frame(height: 44)
@@ -141,8 +182,10 @@ struct StreamHeaderCard: View {
                     BalanceChart(points: model.history) { model.jumpToDay($0) }
                         .frame(height: 72)
                     #endif
+                    }
                 }
 
+                if !compactHeader {
                 #if os(iOS)
                 HStack(spacing: 10) {
                     Text("Konsum \(kpiValue(-model.consumptionThisMonth))").foregroundStyle(Theme.outflow).sensitive()
@@ -157,11 +200,12 @@ struct StreamHeaderCard: View {
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
                 #endif
+                }
 
-                filterRow
+                if !compactHeader { filterRow }
             }
         }
-        .card()
+        .card(padding: ViewLayout.cardPadding, vertical: ViewLayout.cardVerticalPadding(collapsed: compactHeader))
     }
 
     /// Depot: no cash-flow KPIs or booking filters – the period, documents and a hint.
@@ -321,6 +365,32 @@ struct StreamHeaderCard: View {
         }
     }
 
+    /// Category views: only the bookings of the chosen accounts (GitHub #406).
+    private var categoryAccountMenu: some View {
+        Menu {
+            Toggle("Alle Konten", isOn: Binding(
+                get: { model.categoryAccountIDs.isEmpty },
+                set: { _ in model.categoryAccountFilter = [] }
+            ))
+            Divider()
+            ForEach(model.allAccounts, id: \.id) { a in
+                Toggle(isOn: Binding(
+                    get: { model.categoryAccountIDs.contains(a.id) },
+                    set: { _ in model.toggleCategoryAccount(a.id) }
+                )) {
+                    Text(verbatim: a.bankName.isEmpty || a.name.localizedCaseInsensitiveContains(a.bankName) ? a.name : "\(a.name) · \(a.bankName)")
+                }
+            }
+        } label: {
+            Label(model.categoryAccountFilterTitle,
+                  systemImage: model.categoryAccountIDs.isEmpty ? "building.columns" : "building.columns.fill")
+                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Nur Buchungen ausgewählter Konten anzeigen")
+    }
+
     @ViewBuilder
     private var filterContent: some View {
         @Bindable var model = model
@@ -362,6 +432,9 @@ struct StreamHeaderCard: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 .help("Nach Status oder nach Einnahmen und Ausgaben filtern")
+                if model.showsCategoryAccountFilter && model.allAccounts.count > 1 {
+                    categoryAccountMenu
+                }
                 if let a = account {
                     Button { showDocuments = true } label: {
                         Label("Dokumente", systemImage: "doc.text")

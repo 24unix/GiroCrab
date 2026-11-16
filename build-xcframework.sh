@@ -34,6 +34,22 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 export PATH="$HOME/.cargo/bin:$PATH"
+CARGO="${CARGO:-}"
+
+# Homebrew can install standalone Rust alongside rustup. Targets added by
+# rustup belong to its toolchain, not Homebrew's rustc. Select the compiler
+# explicitly too: merely choosing rustup's cargo still finds rustc via PATH.
+if command -v rustup >/dev/null 2>&1; then
+  if RUSTUP_CARGO="$(rustup which cargo 2>/dev/null)" && \
+     RUSTUP_RUSTC="$(rustup which rustc 2>/dev/null)"; then
+    CARGO="${CARGO:-$RUSTUP_CARGO}"
+    export RUSTC="${RUSTC:-$RUSTUP_RUSTC}"
+    if RUSTUP_RUSTDOC="$(rustup which rustdoc 2>/dev/null)"; then
+      export RUSTDOC="${RUSTDOC:-$RUSTUP_RUSTDOC}"
+    fi
+  fi
+fi
+
 CARGO="${CARGO:-cargo}"
 
 MACOS_ONLY=0
@@ -150,7 +166,13 @@ BUILD_FLAGS=()
 export MACOSX_DEPLOYMENT_TARGET=14.0
 export IPHONEOS_DEPLOYMENT_TARGET=17.0
 
-TARGETS=(aarch64-apple-darwin)
+HOST_ARCH="$(uname -m)"
+if [[ "$HOST_ARCH" == "x86_64" ]]; then
+  MAC_TARGET="x86_64-apple-darwin"
+else
+  MAC_TARGET="aarch64-apple-darwin"
+fi
+TARGETS=($MAC_TARGET)
 if [[ $MACOS_ONLY -eq 0 || $FORCE_IOS -eq 1 ]]; then
   TARGETS+=(aarch64-apple-ios)
   [[ $NO_SIM -eq 1 ]] || TARGETS+=(aarch64-apple-ios-sim)
@@ -167,7 +189,17 @@ export PATH="$SHIM_DIR:$PATH"
 trap 'rm -rf "$SHIM_DIR"' EXIT
 
 if command -v rustup >/dev/null 2>&1; then
-  rustup target add "${TARGETS[@]}" >/dev/null 2>&1 || true
+  # Already installed targets need no network access (including offline builds).
+  installed_targets="$(rustup target list --installed)"
+  missing_targets=()
+  for t in "${TARGETS[@]}"; do
+    if ! printf '%s\n' "$installed_targets" | /usr/bin/grep -Fxq "$t"; then
+      missing_targets+=("$t")
+    fi
+  done
+  if (( ${#missing_targets[@]} )); then
+    rustup target add "${missing_targets[@]}"
+  fi
 fi
 
 echo "==> Building $CRATE ($PROFILE) for: ${TARGETS[*]}"
@@ -181,7 +213,7 @@ echo "==> Building uniffi-bindgen-swift"
 BINDGEN="$TARGET_DIR/release/uniffi-bindgen-swift"
 FINGERPRINT="$(combine_fingerprint "$SOURCES_FP" "$(lock_fingerprint)")"
 
-MAC_LIB="$TARGET_DIR/aarch64-apple-darwin/$PROFILE/lib$CRATE.a"
+MAC_LIB="$TARGET_DIR/$MAC_TARGET/$PROFILE/lib$CRATE.a"
 GEN="$TARGET_DIR/swift-gen"
 rm -rf "$GEN"
 mkdir -p "$GEN/Headers" "$GEN/Sources"

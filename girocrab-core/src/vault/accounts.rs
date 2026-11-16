@@ -116,9 +116,21 @@ impl Vault {
                     .eq_ignore_ascii_case(&login_name)
         }) {
             if !display_name.trim().is_empty() {
+                let old_name: String = conn.query_row(
+                    "SELECT display_name FROM bank_connections WHERE id = ?1",
+                    [id],
+                    |r| r.get(0),
+                )?;
                 conn.execute(
                     "UPDATE bank_connections SET display_name = ?1 WHERE id = ?2",
                     params![display_name.trim(), id],
+                )?;
+                // Accounts kept from the earlier login show `accounts.bank_name`: it
+                // follows the new name like on a rename (`update_bank_connection`).
+                conn.execute(
+                    "UPDATE accounts SET bank_name = ?1
+                     WHERE connection_id = ?2 AND bank_name IN (?3, ?4, '') AND bank_name <> ?1",
+                    params![display_name.trim(), id, old_name, info.name],
                 )?;
             }
             if *deleted {
@@ -147,6 +159,14 @@ impl Vault {
 
     fn purge_connection(db: &Connection, connection_id: i64) -> Result<(), CoreError> {
         crate::sync_merge::soft_delete_connection(db, connection_id)?;
+        db.execute(
+            "DELETE FROM settings WHERE key IN (?1, ?2, ?3)",
+            params![
+                format!("fints.rah10.private.{connection_id}"),
+                format!("fints.rah10.counter.{connection_id}"),
+                format!("fints.rah10.bank_keys.{connection_id}")
+            ],
+        )?;
         // stored secrets of this connection (PIN); the soft delete blanked the session (state_json)
         db.execute(
             "DELETE FROM settings WHERE key = ?1",
@@ -387,38 +407,7 @@ impl Vault {
     // ---------------------------------------------------------------- holdings
 
     pub fn list_holdings(&self, account_id: i64) -> Result<Vec<Holding>, CoreError> {
-        let db = self.db()?;
-        // Sachwerte (#87): the items, valued today, in the same shape
-        if crate::assets::is_tangible(&db, account_id)? {
-            return crate::assets::holdings(&db, account_id);
-        }
-        let mut q = db.prepare(
-            "SELECT isin, wkn, name, quantity, current_price_cents, purchase_price_cents, value_cents,
-                    prev_day_price_cents, prev_day_value_cents, profit_loss_purchase_cents, profit_loss_purchase_rel,
-                    profit_loss_prev_day_cents, profit_loss_prev_day_rel, custody_type
-             FROM holdings h WHERE account_id = ?1
-               AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = h.account_id AND a.deleted_ms IS NULL)
-             ORDER BY value_cents DESC, name",
-        )?;
-        let rows = q.query_map([account_id], |r| {
-            Ok(Holding {
-                isin: r.get(0)?,
-                wkn: r.get(1)?,
-                name: r.get(2)?,
-                quantity: r.get(3)?,
-                current_price_cents: r.get(4)?,
-                purchase_price_cents: r.get(5)?,
-                value_cents: r.get(6)?,
-                prev_day_price_cents: r.get(7)?,
-                prev_day_value_cents: r.get(8)?,
-                profit_loss_purchase_cents: r.get(9)?,
-                profit_loss_purchase_rel: r.get(10)?,
-                profit_loss_prev_day_cents: r.get(11)?,
-                profit_loss_prev_day_rel: r.get(12)?,
-                custody_type: r.get(13)?,
-            })
-        })?;
-        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        holdings_from_db(&*self.db()?, account_id)
     }
 
     /// Securities transactions of a depot (#314), newest first.
@@ -599,10 +588,11 @@ impl Vault {
         days: u32,
     ) -> Result<Vec<DailyBalance>, CoreError> {
         let accounts = self.list_accounts()?;
+        let single_account = account_ids.len() == 1;
         let chosen: Vec<&Account> = accounts
             .iter()
             .filter(|a| {
-                a.currency == "EUR"
+                (single_account || a.currency == "EUR")
                     && if account_ids.is_empty() {
                         a.in_total
                     } else {
@@ -617,12 +607,25 @@ impl Vault {
         let mut per_day: HashMap<String, i64> = HashMap::new();
         if !ids.is_empty() {
             let db = self.db()?;
+            for a in &chosen {
+                let bdate = a.balance_date.trim();
+                if !a.balance_derived && bdate.len() == 10 {
+                    let after: i64 = db
+                        .query_row(
+                            "SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE account_id = ?1 AND booking_date > ?2 AND deleted_ms IS NULL AND external_id NOT LIKE 'pending-%'",
+                            params![a.id, bdate],
+                            |r| r.get(0),
+                        )
+                        .unwrap_or(0);
+                    balance += after;
+                }
+            }
             let list = (0..ids.len())
                 .map(|n| format!("?{}", n + 2))
                 .collect::<Vec<_>>()
                 .join(",");
             let mut stmt = db.prepare(&format!(
-                "SELECT booking_date, SUM(amount_cents) FROM transactions WHERE account_id IN ({list}) AND booking_date > ?1 AND deleted_ms IS NULL GROUP BY booking_date"
+                "SELECT booking_date, SUM(amount_cents) FROM transactions WHERE account_id IN ({list}) AND booking_date > ?1 AND deleted_ms IS NULL AND external_id NOT LIKE 'pending-%' GROUP BY booking_date"
             ))?;
             let date = start.format("%Y-%m-%d").to_string();
             let args: Vec<rusqlite::types::Value> = std::iter::once(date.into())
@@ -679,9 +682,14 @@ impl Vault {
 
     /// Changes the account type (Kontoart), e.g. a checking account that is really a card.
     pub fn set_account_kind(&self, account_id: i64, kind: AccountKind) -> Result<(), CoreError> {
-        let n = self.db()?.execute(
-            "UPDATE accounts SET kind = ?1 WHERE id = ?2",
-            params![kind.as_str(), account_id],
+        let db = self.db()?;
+        // The "by kind" sidebar sections are the `account_groups`: move the
+        // account into the section of its new kind (#575).
+        let (group, sym, order) = crate::connectors::group_for(kind);
+        let gid = Self::ensure_group(&db, group, sym, order)?;
+        let n = db.execute(
+            "UPDATE accounts SET kind = ?1, group_id = ?2 WHERE id = ?3",
+            params![kind.as_str(), gid, account_id],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
@@ -725,9 +733,92 @@ impl Vault {
     }
 }
 
+/// Columns of a securities position, in the order [`holding_from_row`] reads them.
+pub(crate) const HOLDING_COLUMNS: &str =
+    "h.isin, h.wkn, h.name, h.quantity, h.current_price_cents, h.purchase_price_cents, h.value_cents,
+     h.prev_day_price_cents, h.prev_day_value_cents, h.profit_loss_purchase_cents, h.profit_loss_purchase_rel,
+     h.profit_loss_prev_day_cents, h.profit_loss_prev_day_rel, h.custody_type";
+
+/// Restricts `holdings h` to one active account, largest position first.
+pub(crate) const HOLDING_FILTER: &str = "h.account_id = ?1
+     AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = h.account_id AND a.deleted_ms IS NULL)
+     ORDER BY h.value_cents DESC, h.name, h.id";
+
+pub(crate) fn holding_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Holding> {
+    Ok(Holding {
+        isin: r.get(0)?,
+        wkn: r.get(1)?,
+        name: r.get(2)?,
+        quantity: r.get(3)?,
+        current_price_cents: r.get(4)?,
+        purchase_price_cents: r.get(5)?,
+        value_cents: r.get(6)?,
+        prev_day_price_cents: r.get(7)?,
+        prev_day_value_cents: r.get(8)?,
+        profit_loss_purchase_cents: r.get(9)?,
+        profit_loss_purchase_rel: r.get(10)?,
+        profit_loss_prev_day_cents: r.get(11)?,
+        profit_loss_prev_day_rel: r.get(12)?,
+        custody_type: r.get(13)?,
+    })
+}
+
+pub(crate) fn holdings_from_db(
+    db: &rusqlite::Connection,
+    account_id: i64,
+) -> Result<Vec<Holding>, CoreError> {
+    // Sachwerte (#87): the items, valued today, in the same shape
+    if crate::assets::is_tangible(db, account_id)? {
+        return crate::assets::holdings(db, account_id);
+    }
+    let mut q = db.prepare(&format!(
+        "SELECT {HOLDING_COLUMNS} FROM holdings h WHERE {HOLDING_FILTER}"
+    ))?;
+    let rows = q.query_map([account_id], holding_from_row)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
 #[cfg(test)]
 mod kind_owner_tests {
     use super::*;
+
+    #[test]
+    fn set_kind_moves_account_to_kind_section_and_persists() {
+        let dir = std::env::temp_dir().join(format!("gc-kind-move-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path: String = dir.join("v.db").to_string_lossy().into();
+        let section_of = |v: &Vault, id: i64| {
+            let groups = v.list_account_groups().unwrap();
+            let hits: Vec<_> = groups
+                .iter()
+                .filter(|g| g.accounts.iter().any(|a| a.id == id))
+                .map(|g| g.name.clone())
+                .collect();
+            assert_eq!(hits.len(), 1);
+            hits[0].clone()
+        };
+        let v = Vault::open(path.clone(), vec![7u8; 32]).unwrap();
+        let id = {
+            let db = v.db().unwrap();
+            let (g, s, o) = crate::connectors::group_for(AccountKind::Checking);
+            let gid = Vault::ensure_group(&db, g, s, o).unwrap();
+            db.execute(
+                "INSERT INTO accounts(group_id, external_ref, name) VALUES (?1, 'X', 'Konto')",
+                [gid],
+            )
+            .unwrap();
+            db.last_insert_rowid()
+        };
+        let before = section_of(&v, id);
+        v.set_account_kind(id, AccountKind::CreditCard).unwrap();
+        let after = section_of(&v, id);
+        assert_ne!(before, after);
+        drop(v);
+        let v = Vault::open(path, vec![7u8; 32]).unwrap();
+        assert_eq!(section_of(&v, id), after);
+        drop(v);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn set_kind_and_owner() {

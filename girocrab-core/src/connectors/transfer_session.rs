@@ -11,10 +11,31 @@ use crate::vault::Vault;
 
 use super::*;
 
+/// A direct debit collection handed to the bank by this session.
+pub(crate) struct DebitSubmission {
+    pub job: DebitJob,
+    pub mandate_ids: Vec<i64>,
+}
+
+/// The kinds of order besides a single transfer; at most one is set.
+#[derive(Default)]
+struct Extras {
+    batch: Option<BatchTransferJob>,
+    debit: Option<DebitSubmission>,
+    standing: Option<StandingOrderJob>,
+}
+
 struct TransferState {
     connector: Box<dyn BankConnector>,
     ctx: ConnectContext,
     job: TransferJob,
+    /// Set for a batch transfer; `job` then describes the sum (see
+    /// `Vault::begin_batch_transfer`).
+    batch: Option<BatchTransferJob>,
+    /// Set for a direct debit collection; `job` then describes the sum.
+    debit: Option<DebitSubmission>,
+    /// Set for a standing order change; `job` is then a placeholder.
+    standing: Option<StandingOrderJob>,
     account_id: i64,
     /// false = still logging in, true = transfer submitted (waiting for TAN).
     submitted: bool,
@@ -54,12 +75,26 @@ impl TransferSession {
         job: TransferJob,
         account_id: i64,
     ) -> Self {
+        Self::with_parts(vault, connector, ctx, job, Extras::default(), account_id)
+    }
+
+    fn with_parts(
+        vault: Arc<Vault>,
+        connector: Box<dyn BankConnector>,
+        ctx: ConnectContext,
+        job: TransferJob,
+        extras: Extras,
+        account_id: i64,
+    ) -> Self {
         Self {
             vault,
             state: AsyncMutex::new(TransferState {
                 connector,
                 ctx,
                 job,
+                batch: extras.batch,
+                debit: extras.debit,
+                standing: extras.standing,
                 account_id,
                 submitted: false,
                 done: false,
@@ -67,6 +102,69 @@ impl TransferSession {
                 executed: false,
             }),
         }
+    }
+
+    pub(super) fn new_batch(
+        vault: Arc<Vault>,
+        connector: Box<dyn BankConnector>,
+        ctx: ConnectContext,
+        batch: BatchTransferJob,
+        summary: TransferJob,
+        account_id: i64,
+    ) -> Self {
+        Self::with_parts(
+            vault,
+            connector,
+            ctx,
+            summary,
+            Extras {
+                batch: Some(batch),
+                ..Default::default()
+            },
+            account_id,
+        )
+    }
+
+    pub(crate) fn new_debit(
+        vault: Arc<Vault>,
+        connector: Box<dyn BankConnector>,
+        ctx: ConnectContext,
+        debit: DebitSubmission,
+        summary: TransferJob,
+        account_id: i64,
+    ) -> Self {
+        Self::with_parts(
+            vault,
+            connector,
+            ctx,
+            summary,
+            Extras {
+                debit: Some(debit),
+                ..Default::default()
+            },
+            account_id,
+        )
+    }
+
+    pub(crate) fn new_standing(
+        vault: Arc<Vault>,
+        connector: Box<dyn BankConnector>,
+        ctx: ConnectContext,
+        order: StandingOrderJob,
+        summary: TransferJob,
+        account_id: i64,
+    ) -> Self {
+        Self::with_parts(
+            vault,
+            connector,
+            ctx,
+            summary,
+            Extras {
+                standing: Some(order),
+                ..Default::default()
+            },
+            account_id,
+        )
     }
 
     async fn advance(
@@ -99,7 +197,12 @@ impl TransferSession {
                 }
                 Ok(Phase::Ready) if !st.submitted => {
                     st.submitted = true;
-                    phase = st.connector.send_transfer(&st.ctx, &st.job).await;
+                    phase = match (&st.standing, &st.debit, &st.batch) {
+                        (Some(o), _, _) => st.connector.send_standing_order(&st.ctx, o).await,
+                        (None, Some(d), _) => st.connector.send_direct_debit(&st.ctx, &d.job).await,
+                        (None, None, Some(b)) => st.connector.send_batch_transfer(&st.ctx, b).await,
+                        (None, None, None) => st.connector.send_transfer(&st.ctx, &st.job).await,
+                    };
                 }
                 Ok(Phase::Ready) => {
                     st.connector.finish(&st.ctx).await;
@@ -107,15 +210,28 @@ impl TransferSession {
                     return match st.connector.transfer_result() {
                         TransferResult::Executed { instant } => {
                             st.executed = true;
-                            self.vault.record_pending_transfer(
-                                st.account_id,
-                                &st.job,
-                                if instant {
-                                    "Echtzeitüberweisung (vorgemerkt)"
-                                } else {
-                                    "Überweisung (vorgemerkt)"
-                                },
-                            )?;
+                            if let Some(o) = &st.standing {
+                                self.vault.record_standing_order(st.account_id, o)?;
+                            } else if let Some(d) = &st.debit {
+                                self.vault.record_direct_debit(st.account_id, d)?;
+                            } else if let Some(b) = &st.batch {
+                                self.vault
+                                    .record_batch_transfer(st.account_id, b, &st.job)?;
+                            } else if st.job.execution_date.is_some() {
+                                // scheduled: shown under "Geplant" until the
+                                // bank books it, not as a booking dated today
+                                self.vault.record_planned_transfer(st.account_id, &st.job)?;
+                            } else {
+                                self.vault.record_pending_transfer(
+                                    st.account_id,
+                                    &st.job,
+                                    if instant {
+                                        "Echtzeitüberweisung (vorgemerkt)"
+                                    } else {
+                                        "Überweisung (vorgemerkt)"
+                                    },
+                                )?;
+                            }
                             Ok(TransferStep::Finished {
                                 outcome: TransferOutcome {
                                     instant,
@@ -136,6 +252,30 @@ impl TransferSession {
     /// Stores a booking marked "Status unklar" so the possibly executed order
     /// stays visible (until the bank's booking arrives or 14 days pass).
     fn outcome_unknown(&self, st: &TransferState, reason: String) -> CoreResult<TransferStep> {
+        if st.standing.is_some() {
+            // A standing order is no booking: nothing to show until the next fetch,
+            // where it appears (or does not). The user checks with the bank first.
+            return Ok(TransferStep::OutcomeUnknown {
+                reason,
+                end_to_end_id: st.job.end_to_end_id.clone(),
+            });
+        }
+        if st.debit.is_some() {
+            // A collection is incoming money: no optimistic booking and no
+            // mandate update. The user checks with the bank first.
+            return Ok(TransferStep::OutcomeUnknown {
+                reason,
+                end_to_end_id: st.job.end_to_end_id.clone(),
+            });
+        }
+        if let Some(b) = &st.batch {
+            self.vault
+                .record_batch_pending(st.account_id, b, &st.job, "(Status unklar)")?;
+            return Ok(TransferStep::OutcomeUnknown {
+                reason,
+                end_to_end_id: st.job.end_to_end_id.clone(),
+            });
+        }
         self.vault.record_pending_transfer(
             st.account_id,
             &st.job,

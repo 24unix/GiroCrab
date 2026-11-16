@@ -515,14 +515,6 @@ fn call(method: &str, a: &Value) -> R {
             arg(a, "columns")?,
             arg(a, "balance_lines")?,
         )),
-        "camt053_statement" => ok(girocrab_core::export::camt053_statement(
-            arg(a, "account")?,
-            arg(a, "bookings")?,
-            arg(a, "version")?,
-            arg(a, "opening_cents")?,
-            arg(a, "opening_date")?,
-            arg(a, "created_at")?,
-        )),
         "save_export_file" => save_export_file(a),
         "print_pdf" => print_pdf(a),
         "print_web_assets" => print_web_assets(),
@@ -1058,6 +1050,7 @@ vault_methods! {
     update_bank_connection(connection_id, display_name, login_name)
     set_connection_pin(connection_id, pin) connection_status(connection_id)
     clear_connection_session(connection_id) set_connection_session(connection_id, cookies)
+    switch_comdirect_access(connection_id)
     fints_product_id_mode() set_fints_product_id_mode(mode) fints_product_id_source()
     list_holdings(account_id) balance_history(account_ids, days)
     rename_account(account_id, name)
@@ -1095,6 +1088,8 @@ vault_methods! {
     set_account_archived(account_id, archived) set_account_color(account_id, color_hex)
     set_account_symbol(account_id, sf_symbol) reset_account_symbol(account_id)
     set_account_kind(account_id, kind) set_account_owner(account_id, owner)
+    // --- Umsatz-Export: CAMT.053 straight from the vault (#483) ---
+    camt053_export(request)
     // categories
     list_categories(date_from, date_to)
     create_category(name, parent_id, sf_symbol, color_hex)
@@ -1287,7 +1282,7 @@ mod tests {
             .clone();
         let rule = json!({ "id": 0, "name": "Test", "category_id": cat["id"], "field": "Any",
             "match_kind": "Keyword", "pattern": "REWE", "case_sensitive": false, "min_amount_cents": null,
-            "max_amount_cents": 0, "account_id": null, "priority": 999, "enabled": true, "match_count": 0 });
+            "max_amount_cents": 0, "account_ids": [], "priority": 999, "enabled": true, "match_count": 0 });
         let b = call("preview_rule", json!({ "rule": rule, "limit": 200 }))[0].clone();
         let id = call("save_rule", json!({ "rule": rule }));
         call("apply_rules", json!({ "only_uncategorized": false }));
@@ -1760,11 +1755,11 @@ mod tests {
             "\u{FEFF}Datum;Konto;Name;Verwendungszweck;Kategorie;Betrag;Währung;Tagessaldo\r\n"
         ));
         assert!(csv.contains(";'=SUMME(A1);\"Miete; März\";Wohnen;-1234,56;EUR;0,50\r\n"));
-        let camt = call_ok(
-            "camt053_statement",
-            json!({ "account": account, "bookings": bookings, "version": "V08",
-                    "opening_cents": 100000, "opening_date": "2026-01-01",
-                    "created_at": "2026-11-15T12:00:00+01:00" }),
+        // CAMT.053 straight from the vault: account and period only (#483)
+        let camt = call(
+            "camt053_export",
+            json!({ "request": { "account_id": account["id"], "date_from": null, "date_to": null,
+                    "booking_ids": null, "version": "V08", "created_at": "2026-11-15T12:00:00+01:00" } }),
         );
         let camt = camt.as_str().unwrap();
         assert!(camt.contains("urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"));

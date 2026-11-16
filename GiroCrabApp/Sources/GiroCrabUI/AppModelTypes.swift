@@ -17,8 +17,59 @@ enum SidebarItem: Hashable {
     case documents
     /// „Neue Umsätze“ (GitHub #352): unreviewed bookings of all accounts.
     case newBookings
+    /// „Geplant“ (GitHub #240): future payments with an order at the bank.
+    case planned
+    /// „Lastschriften“ (GitHub #143): mandates and collections.
+    case directDebits
     /// "Vermögen": cash and assets (depots) minus liabilities
     case wealth
+}
+
+/// Document origin is independent of its booking link. Bank connectors and
+/// statement imports store a source key; user uploads leave it empty.
+enum DocumentsScope: String, CaseIterable, Identifiable {
+    case all, receipts, postbox
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .all: return String(localized: "Alle Dokumente")
+        case .receipts: return String(localized: "Belege")
+        case .postbox: return String(localized: "PostBox")
+        }
+    }
+
+    var heading: String {
+        self == .all ? String(localized: "Belege & PostBox") : title
+    }
+
+    var description: String {
+        switch self {
+        case .all:
+            return String(localized: "Eigene Belege und Bankdokumente – verschlüsselt im Tresor. Die Auswahl eines Kontos grenzt die Sammlung ein.")
+        case .receipts:
+            return String(localized: "Selbst hinzugefügte Rechnungen, Kassenbons und Fotos. PDF oder Foto hierher ziehen: GiroCrab sucht den passenden Umsatz.")
+        case .postbox:
+            return String(localized: "Von der Bank bereitgestellte Kontoauszüge, Wertpapierabrechnungen und Mitteilungen. Sie gehören zum Konto und können einem Umsatz zugeordnet sein.")
+        }
+    }
+
+    func includes(_ document: DocumentInfo) -> Bool {
+        switch self {
+        case .all: return true
+        case .receipts: return !document.isBankDocument
+        case .postbox: return document.isBankDocument
+        }
+    }
+}
+
+extension DocumentInfo {
+    var isBankDocument: Bool {
+        // Old demo vaults used synthetic source keys for their uploaded receipts.
+        !sourceUrl.isEmpty && !sourceUrl.hasPrefix("demo-doc-")
+    }
+    var originTitle: String {
+        isBankDocument ? String(localized: "PostBox") : String(localized: "Beleg")
+    }
 }
 
 /// Period of the booking list and its sums. The menu follows MoneyMoney
@@ -111,6 +162,40 @@ enum Period: Hashable, Identifiable {
     }
 }
 
+extension Period {
+    /// Relative, launch-independent form for per-category defaults (#425):
+    /// "this year" stays "this year" next January. `nil` for `.custom`.
+    func storageKey(now: Date = Date()) -> String? {
+        let menu = Period.menu(now: now)
+        switch self {
+        case .all: return "all"
+        case .days(let n): return "days:\(n)"
+        case .months12: return "months12"
+        case .sinceSalary: return "sinceSalary"
+        case .custom: return nil
+        case .month: return menu[2].firstIndex(of: self).map { "month:\($0)" }
+        case .quarter: return menu[3].firstIndex(of: self).map { "quarter:\($0)" }
+        case .year: return menu[4].firstIndex(of: self).map { "year:\($0)" }
+        }
+    }
+
+    init?(storageKey: String, now: Date = Date()) {
+        let menu = Period.menu(now: now)
+        let parts = storageKey.split(separator: ":")
+        let n = parts.count == 2 ? Int(parts[1]) : nil
+        switch (parts.first.map(String.init), n) {
+        case ("all", _): self = .all
+        case ("months12", _): self = .months12
+        case ("sinceSalary", _): self = .sinceSalary
+        case ("days", let n?) where n > 0: self = .days(n)
+        case ("month", let i?) where menu[2].indices.contains(i): self = menu[2][i]
+        case ("quarter", let i?) where menu[3].indices.contains(i): self = menu[3][i]
+        case ("year", let i?) where menu[4].indices.contains(i): self = menu[4][i]
+        default: return nil
+        }
+    }
+}
+
 extension BookingDirection: @retroactive Identifiable {
     public var id: Self { self }
 
@@ -157,6 +242,21 @@ extension BookingScope {
         }
     }
     static let ordered: [BookingScope] = [.all, .everyday, .investments]
+}
+
+/// The merchant a merchant-centred booking list is narrowed to (#495).
+struct MerchantFocus: Equatable {
+    let key: String
+    let name: String
+}
+
+/// What `leaveMerchantFocus()` restores.
+struct MerchantFocusReturn {
+    let selection: SidebarItem?
+    let scope: BookingScope
+    let status: StatusFilter
+    let direction: BookingDirection
+    let search: String
 }
 
 struct DayJump: Equatable {
@@ -246,6 +346,14 @@ struct TransferDraft {
     var scheduled = false
     var executionDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
 
+    var executionMode: ExecutionMode {
+        get { instant ? .instant : (scheduled ? .scheduled : .regular) }
+        set {
+            instant = newValue == .instant
+            scheduled = newValue == .scheduled
+        }
+    }
+
     /// `YYYY-MM-DD` for the core, or nil when not scheduled.
     var executionDateISO: String? {
         guard scheduled && !instant else { return nil }
@@ -255,6 +363,11 @@ struct TransferDraft {
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: executionDate)
     }
+}
+
+/// How a transfer is executed; exactly one applies.
+enum ExecutionMode: Hashable {
+    case regular, scheduled, instant
 }
 
 /// A transfer whose result is unclear: it may have been executed.
@@ -405,5 +518,22 @@ extension Result where Failure == Error {
     /// Async counterpart of `Result(catching:)`.
     init(catchingAsync body: () async throws -> Success) async {
         do { self = .success(try await body()) } catch { self = .failure(error) }
+    }
+}
+
+/// Account kinds the user can pick (import, „Kontoart ändern …“), on Mac and iPhone.
+extension AccountKind {
+    static let importChoices: [AccountKind] = [.checking, .savings, .creditCard, .paymentService, .brokerage, .cash, .loan]
+
+    var label: String {
+        switch self {
+        case .checking: return String(localized: "Girokonto")
+        case .savings: return String(localized: "Tagesgeld / Sparen")
+        case .creditCard: return String(localized: "Kreditkarte")
+        case .paymentService: return String(localized: "Zahlungsdienst")
+        case .brokerage: return String(localized: "Depot")
+        case .cash: return String(localized: "Bargeld")
+        case .loan: return String(localized: "Darlehen")
+        }
     }
 }

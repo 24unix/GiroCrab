@@ -42,7 +42,8 @@ def unit(v):
 def catalog_english():
     out = {}
     for key, entry in json.loads(CATALOG.read_text())["strings"].items():
-        en = entry["localizations"].get("en")
+        # no `localizations`: "shouldTranslate": false or not translated yet (as build.rs)
+        en = entry.get("localizations", {}).get("en")
         if en is None:
             continue
         value = unit(en)

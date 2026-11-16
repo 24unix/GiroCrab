@@ -6,7 +6,7 @@ import Foundation
 ///  GIROCRAB_DEMO_SEED=1   same, via environment (works for Xcode schemes / iOS)
 ///  --demo-sync            (with demo data) start "Sync All" right away, to
 ///                         see the push-TAN / code / redirect 2FA sheets
-///  --view alltag|sparplaene|belege|vermoegen|vermoegen-wertpapiere|vermoegen-sachwerte  start in "Alltag & Konsum" / "Sparpläne & Perks" / "Belege & PostBox" / "Vermögen"
+///  --view alltag|sparplaene|belege|vermoegen|vermoegen-wertpapiere|vermoegen-sachwerte|geplant  start in "Alltag & Konsum" / "Sparpläne & Perks" / "Belege & PostBox" / "Vermögen"
 ///  --fresh-vault          (developer) empty personal vault in a temp folder,
 ///                         fixed key, no Keychain – to try onboarding/setup
 ///  --keep-fresh-vault     (developer) like --fresh-vault, but reopen the temp vault
@@ -16,9 +16,10 @@ import Foundation
 ///  --try-add-bank <name>  (developer, with --fresh-vault) add a bank on start,
 ///                         e.g. 1822direkt, to see the setup form
 ///  --select <text>        (demo) preselect the account whose name contains <text>
+///  --demo-inspector-edit (demo) open the right-hand inspector in its edit mode (#448)
 ///  --demo-sheet account-selection|transfer|moneymoney|moneymoney-db|recurring|print|rules|palette|
 ///               categorizer|payee-match|payee-close|payee-nomatch|error|rule-edit|icon-color|category|icon-color-category|
-///               asset|asset-edit|asset-values|asset-quantities
+///               asset|asset-edit|asset-values|asset-quantities|mandate|collection|collection-files|mandate-select
 ///                         (demo) open that sheet pre-filled with fictional data,
 ///                         for README / PR screenshots
 ///  --demo-settings general|banks|groups|documents|security[:edit|:add|:remove|:select]
@@ -66,6 +67,10 @@ public struct LaunchOptions: Sendable {
     public var selectAccount: String?
     /// (demo) preselect the booking whose merchant/counterparty contains this text
     public var pickBooking: String?
+    /// (demo) with `--pick`: open the list of that booking's merchant (#495)
+    public var merchantList = false
+    /// (demo) open the inspector in its edit mode (#448), for PR screenshots
+    public var inspectorEdit = false
     /// (demo) "transfer", "moneymoney", "moneymoney-db" or "print": open that sheet with fictional data
     public var demoSheet: String?
     /// (demo) "income" or "expense": start with that booking list filter
@@ -100,6 +105,8 @@ public struct LaunchOptions: Sendable {
         } else {
             pickBooking = nil
         }
+        merchantList = arguments.contains("--merchant-list")
+        inspectorEdit = arguments.contains("--demo-inspector-edit")
         if let i = arguments.firstIndex(of: "--demo-sheet"), i + 1 < arguments.count {
             demoSheet = arguments[i + 1].lowercased()
         } else {

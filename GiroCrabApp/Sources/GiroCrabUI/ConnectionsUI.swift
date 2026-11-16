@@ -15,6 +15,9 @@ struct PinSheet: View {
     @State private var secret = ""
     @State private var savePin = false
 
+    private var isRah10: Bool { model.usesRah10(connection) }
+    private var secretLabel: String { isRah10 ? "Passwort der Schlüsseldatei" : (bankCatalog().first { $0.kind == connection.connector }?.secretLabel ?? String(localized: "PIN")) }
+
     private var isTR: Bool { connection.connector == .tradeRepublic }
 
     var body: some View {
@@ -33,6 +36,7 @@ struct PinSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(d?.loginLabel ?? String(localized: "Anmeldung")).appFont(.caption).foregroundStyle(Theme.secondary)
                 TextField(d?.loginLabel ?? String(localized: "Anmeldung"), text: $login)
+                    .disabled(isRah10)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     #if os(iOS)
@@ -45,15 +49,17 @@ struct PinSheet: View {
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(d?.secretLabel ?? String(localized: "PIN")).appFont(.caption).foregroundStyle(Theme.secondary)
-                SecureField(d?.secretLabel ?? String(localized: "PIN"), text: $secret)
+                Text(secretLabel).appFont(.caption).foregroundStyle(Theme.secondary)
+                SecureField(secretLabel, text: $secret)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(start)
-                Toggle("PIN im Tresor speichern", isOn: $savePin)
+                Toggle(isRah10 ? "Passwort im Tresor speichern" : "PIN im Tresor speichern", isOn: $savePin)
                     .appFont(.caption)
                     .help("Verschlüsselt in der SQLCipher-Datenbank; beim nächsten Abruf wird nicht mehr gefragt.")
             }
-            Text(savePin ? "Die PIN wird verschlüsselt im Tresor gespeichert." : "Die PIN wird nur für diesen Abruf verwendet und nie gespeichert.")
+            Text(isRah10
+                 ? (savePin ? "Das Passwort wird verschlüsselt im Tresor gespeichert." : "Das Passwort wird nur für diesen Abruf verwendet.")
+                 : (savePin ? "Die PIN wird verschlüsselt im Tresor gespeichert." : "Die PIN wird nur für diesen Abruf verwendet und nie gespeichert."))
                 .appFont(.caption).foregroundStyle(Theme.secondary)
             if isTR {
                 Divider()
@@ -122,6 +128,9 @@ struct ConnectionEditSheet: View {
     @State private var login = ""
     @State private var pin = ""
     @State private var storePin = false
+    @State private var tanMedium = ""
+    private var isFinTs: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric].contains(connection.connector) }
+    private var tanMediumKey: String { "fints.tan_medium.\(connection.id)" }
     @State private var values: [String: String] = [:]
     @State private var revealed: Set<String> = []
     @State private var importingKey = false
@@ -134,6 +143,8 @@ struct ConnectionEditSheet: View {
         case portal, tradeRepublic
         var id: Self { self }
     }
+
+    private var isRah10: Bool { model.usesRah10(connection) }
 
     private var descriptor: BankDescriptor? { bankCatalog().first { $0.kind == connection.connector } }
 
@@ -148,7 +159,7 @@ struct ConnectionEditSheet: View {
         switch connection.connector {
         case .volksbankKasselGoettingen: return ["fints.url.52090000", "fints.product_id", "fints.product_version"]
         case .direkt1822: return ["fints.url.50050201", "fints.product_id", "fints.product_version"]
-        case .finTsGeneric: return ["fints.url.\(connection.bankCode)", "fints.product_id", "fints.product_version"]
+        case .finTsGeneric: return isRah10 ? ["fints.product_id", "fints.product_version"] : ["fints.url.\(connection.bankCode)", "fints.product_id", "fints.product_version"]
         case .comdirect: return ["comdirect.client_id", "comdirect.client_secret"]
         case .payPal: return ["paypal.client_id", "paypal.client_secret", "paypal.environment"]
         case .tradeRepublic: return []
@@ -211,6 +222,12 @@ struct ConnectionEditSheet: View {
 
     private var isPortal: Bool { connection.connector == .americanExpress || connection.connector == .amazonVisa }
     @State private var importingStatement = false
+    @State private var confirmSwitch = false
+    /// comdirect logins can switch between FinTS and comdirect's own API.
+    private var isComdirect: Bool {
+        connection.connector == .comdirect
+            || (connection.connector == .finTsGeneric && ["20041111", "20041133", "20041144", "20041155"].contains(connection.bankCode))
+    }
     @State private var showAdvanced = false
 
     private var usesPin: Bool { [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .comdirect, .tradeRepublic, .bunq, .ibkr, .easybank].contains(connection.connector) }
@@ -232,6 +249,7 @@ struct ConnectionEditSheet: View {
                 Section {
                     TextField("Anzeigename", text: $name)
                     TextField(descriptor?.loginLabel ?? String(localized: "Benutzerkennung"), text: $login)
+                        .disabled(isRah10)
                         .autocorrectionDisabled()
                     if isTR && !login.isEmpty {
                         LabeledContent("Gespeichert als", value: normalizePhoneNumber(input: login))
@@ -241,10 +259,16 @@ struct ConnectionEditSheet: View {
                         LabeledContent("BLZ", value: blz)
                     }
                     if usesPin {
-                        Toggle(connection.connector == .bunq ? "API-Schlüssel im Tresor speichern" : connection.connector == .ibkr ? "Flex-Query-ID im Tresor speichern" : connection.connector == .easybank ? "Passwort im Tresor speichern" : "PIN im Tresor speichern", isOn: $storePin)
+                        Toggle(isRah10 ? "Passwort im Tresor speichern" : connection.connector == .bunq ? "API-Schlüssel im Tresor speichern" : connection.connector == .ibkr ? "Flex-Query-ID im Tresor speichern" : connection.connector == .easybank ? "Passwort im Tresor speichern" : "PIN im Tresor speichern", isOn: $storePin)
                         if storePin {
-                            SecureField(status?.hasPin == true ? "Gespeicherte PIN (leer = unverändert)" : (connection.connector == .ibkr ? "Flex-Query-ID" : connection.connector == .easybank ? "Passwort" : "PIN"), text: $pin)
+                            SecureField(isRah10 ? "Passwort der Schlüsseldatei (leer = unverändert)" : status?.hasPin == true ? "Gespeicherte PIN (leer = unverändert)" : (connection.connector == .ibkr ? "Flex-Query-ID" : connection.connector == .easybank ? "Passwort" : "PIN"), text: $pin)
                         }
+                    }
+                    if isFinTs {
+                        // Name of the TAN device some banks require in every TAN request
+                        // (Deutsche Bank / Postbank BestSign, error 9210).
+                        TextField("TAN-Medium", text: $tanMedium, prompt: Text("Optional"))
+                            .autocorrectionDisabled()
                     }
                 } header: { Text("Zugang").appSectionHeader() }
                 if !keys.isEmpty {
@@ -279,6 +303,21 @@ struct ConnectionEditSheet: View {
                                 .appFont(.caption).foregroundStyle(Theme.secondary)
                             ForEach(advancedKeys, id: \.self) { key in field(key) }
                         }
+                    }
+                }
+                if isComdirect {
+                    Section {
+                        LabeledContent("Abrufweg", value: connection.connector == .comdirect
+                            ? String(localized: "Schnittstelle der Bank") : String(localized: "Online-Banking (FinTS)"))
+                        Button(connection.connector == .comdirect ? "Auf FinTS umstellen …" : "Auf die Schnittstelle der Bank umstellen …") {
+                            confirmSwitch = true
+                        }
+                    } header: {
+                        Text("Abrufweg").appSectionHeader()
+                    } footer: {
+                        Text("Konten, Kategorien und Notizen bleiben erhalten. Beim nächsten Abruf ordnet GiroCrab Konten und Buchungen dem neuen Weg zu.")
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
+                            .leadingFooter()
                     }
                 }
                 Section {
@@ -326,6 +365,17 @@ struct ConnectionEditSheet: View {
         .macFrame(minWidth: 560, minHeight: 560)
         .onAppear(perform: load)
         .confirmRemoveConnection($confirmRemove) { dismiss() }
+        .confirmationDialog("Abrufweg umstellen?", isPresented: $confirmSwitch, titleVisibility: .visible) {
+            Button("Umstellen") {
+                model.switchComdirectAccess(connection.id)
+                dismiss()
+            }
+            Button("Abbrechen", role: .cancel) {}
+        } message: {
+            Text(connection.connector == .comdirect
+                ? "GiroCrab ruft comdirect danach per FinTS ab. Die Bankleitzahl kommt aus der IBAN Ihrer Konten. Beim ersten Abruf werden PIN und Freigabe in der App erneut abgefragt."
+                : "GiroCrab ruft comdirect danach über die Schnittstelle der Bank ab. Dafür sind Client-ID und Client-Secret nötig.")
+        }
         .confirmationDialog("Sitzung löschen?", isPresented: Binding(get: { confirmClear != nil }, set: { if !$0 { confirmClear = nil } }),
                             titleVisibility: .visible, presenting: confirmClear) { kind in
             Button("Sitzung löschen", role: .destructive) {
@@ -457,6 +507,7 @@ struct ConnectionEditSheet: View {
         login = connection.loginName
         status = model.connectionStatus(connection.id)
         storePin = status?.hasPin ?? false
+        if isFinTs { tanMedium = model.revealSetting(tanMediumKey) }
         for key in keys + advancedKeys {
             let e = model.settingEntry(key)
             if e?.isSecret == true {
@@ -483,6 +534,10 @@ struct ConnectionEditSheet: View {
             if v != current {
                 model.saveSetting(key, v)
             }
+        }
+        if isFinTs {
+            let medium = tanMedium.trimmingCharacters(in: .whitespaces)
+            if medium != model.revealSetting(tanMediumKey) { model.saveSetting(tanMediumKey, medium) }
         }
         pin = ""
     }

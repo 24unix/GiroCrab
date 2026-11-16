@@ -76,16 +76,15 @@ extension AppModel {
     }
 
     private func addConnectionChecked(_ kind: ConnectorKind, login: String) {
-        if demoActive, let ov = ownVault {
-            useVault(ov, demo: false)
-        }
-        guard let vault else { return }
-        var newID: Int64?
-        runCore { newID = try vault.addBankConnection(connector: kind, displayName: "", loginName: login) }
-        reloadAccounts()
-        if let id = newID, let conn = connections.first(where: { $0.id == id }) {
-            toast = String(localized: "\(conn.displayName) hinzugefügt")
-            requestSync(conn)
+        runInOwnVault(allowDemo: Self.isMagicDemoLogin(login)) { [self] in
+            guard let vault else { return }
+            var newID: Int64?
+            runCore { newID = try vault.addBankConnection(connector: kind, displayName: "", loginName: login) }
+            reloadAccounts()
+            if let id = newID, let conn = connections.first(where: { $0.id == id }) {
+                toast = String(localized: "\(conn.displayName) hinzugefügt")
+                requestSync(conn)
+            }
         }
     }
 
@@ -98,17 +97,16 @@ extension AppModel {
     }
 
     private func addFinTsConnectionChecked(name: String, blz: String, url: String, login: String, tanMedium: String) {
-        if demoActive, let ov = ownVault {
-            useVault(ov, demo: false)
-        }
-        guard let vault else { return }
-        var newID: Int64?
-        runCore { newID = try vault.addFintsConnection(blz: blz, url: url, displayName: name, loginName: login, tanMedium: tanMedium) }
-        reloadSettings()
-        reloadAccounts()
-        if let id = newID, let conn = connections.first(where: { $0.id == id }) {
-            toast = String(localized: "\(conn.displayName) hinzugefügt")
-            requestSync(conn)
+        runInOwnVault(allowDemo: Self.isMagicDemoLogin(login)) { [self] in
+            guard let vault else { return }
+            var newID: Int64?
+            runCore { newID = try vault.addFintsConnection(blz: blz, url: url, displayName: name, loginName: login, tanMedium: tanMedium) }
+            reloadSettings()
+            reloadAccounts()
+            if let id = newID, let conn = connections.first(where: { $0.id == id }) {
+                toast = String(localized: "\(conn.displayName) hinzugefügt")
+                requestSync(conn)
+            }
         }
     }
 
@@ -122,16 +120,15 @@ extension AppModel {
     }
 
     private func addEnableBankingConnectionChecked(aspsp: String, country: String, name: String, label: String) {
-        if demoActive, let ov = ownVault {
-            useVault(ov, demo: false)
-        }
-        guard let vault else { return }
-        var newID: Int64?
-        runCore { newID = try vault.addEnableBankingConnection(aspsp: aspsp, country: country, displayName: name, loginName: label) }
-        reloadAccounts()
-        if let id = newID, let conn = connections.first(where: { $0.id == id }) {
-            toast = String(localized: "\(conn.displayName) hinzugefügt")
-            requestSync(conn)
+        runInOwnVault(allowDemo: Self.isMagicDemoLogin(label)) { [self] in
+            guard let vault else { return }
+            var newID: Int64?
+            runCore { newID = try vault.addEnableBankingConnection(aspsp: aspsp, country: country, displayName: name, loginName: label) }
+            reloadAccounts()
+            if let id = newID, let conn = connections.first(where: { $0.id == id }) {
+                toast = String(localized: "\(conn.displayName) hinzugefügt")
+                requestSync(conn)
+            }
         }
     }
 
@@ -268,6 +265,14 @@ extension AppModel {
         guard let vault else { return }
         runCore { try vault.updateBankConnection(connectionId: id, displayName: name, loginName: login) }
         reloadAccounts()
+    }
+
+    /// comdirect: switches the login between FinTS and comdirect's own API,
+    /// keeping accounts, categories and notes (see `Vault.switchComdirectAccess`).
+    func switchComdirectAccess(_ id: Int64) {
+        guard let vault else { return }
+        runCore { _ = try vault.switchComdirectAccess(connectionId: id) }
+        reloadAll()
     }
 
     func setConnectionPin(_ id: Int64, _ pin: String?) {
