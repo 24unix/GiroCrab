@@ -82,6 +82,11 @@ struct FinTsState {
     /// camt descriptors from HICAZS, best first.
     #[serde(default)]
     camt_formats: Vec<String>,
+    /// Receipt codes (hex) of statements stored with this state; acknowledged
+    /// with HKQTG at the next statements fetch, so the bank stops re-sending
+    /// them. Saved in the same transaction as the PDFs (`store_fetch`).
+    #[serde(default)]
+    pending_receipts: Vec<String>,
     /// The bank accepted the TAN medium only as `SO:<name>` (BestSign security
     /// object); the user enters the plain device name.
     #[serde(default)]
@@ -143,6 +148,8 @@ const IMPLEMENTED: &[(&str, &[u32])] = &[
     ("HKSPA", &[1, 2, 3]),
     ("HKTAB", &[4, 5]),
     ("HKEKA", &[3, 4, 5]),
+    ("HKEKP", &[1, 2]),
+    ("HKQTG", &[1]),
     ("HKWPD", &[5, 6]),
     ("HKKKU", &[1]),
 ];
@@ -312,6 +319,138 @@ fn fints_date(d: &str) -> Option<String> {
         return None;
     }
     Some(format!("{}-{}-{}", &d[..4], &d[4..6], &d[6..]))
+}
+
+/// Label, period and date of a HIEKP statement. DKB (v2): PDF, period
+/// `von:bis`, creation date, year, number, IBAN, BIC, …, file name, receipt
+/// code. Label = `number/year (period)` when both are there, else the period.
+fn hiekp_details(s: &syntax::Segment) -> (String, String, String) {
+    let (period, date) = match (fints_date(s.get(2, 0)), fints_date(s.get(2, 1))) {
+        // DKB puts the issue date in both fields: show it once
+        (Some(from), Some(to)) if from == to => (to.clone(), to),
+        (Some(from), Some(to)) => (format!("{from}–{to}"), to),
+        _ => statement_period(s),
+    };
+    let (year, number) = (s.get(4, 0), s.get(5, 0).trim_start_matches('0'));
+    let label = if year.len() == 4
+        && year.bytes().all(|b| b.is_ascii_digit())
+        && !number.is_empty()
+        && number.len() <= 4
+        && number.bytes().all(|b| b.is_ascii_digit())
+    {
+        format!("{number}/{year} ({period})")
+    } else {
+        period.clone()
+    };
+    (label, period, date)
+}
+
+/// Period and date from the FinTS dates (`YYYYMMDD`) anywhere in a segment,
+/// earliest to latest; today when it carries none (fallback for other banks).
+fn statement_period(s: &syntax::Segment) -> (String, String) {
+    let mut dates: Vec<String> = s
+        .elements
+        .iter()
+        .flatten()
+        .filter_map(|v| fints_date(v.text()))
+        .collect();
+    dates.sort();
+    dates.dedup();
+    match (dates.first(), dates.last()) {
+        (Some(a), Some(b)) if a != b => (format!("{a}–{b}"), b.clone()),
+        (Some(a), _) => (a.clone(), a.clone()),
+        _ => {
+            let today = super::today();
+            (today.clone(), today)
+        }
+    }
+}
+
+/// File name the bank sends with a statement: the text field ending in `.pdf`,
+/// reduced to its last path component without control characters.
+fn statement_file_name(s: &syntax::Segment) -> Option<String> {
+    s.elements.iter().flatten().find_map(|v| {
+        let syntax::Value::Text(t) = v else {
+            return None;
+        };
+        let name: String = t
+            .rsplit(['/', '\\'])
+            .next()?
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect();
+        let name = name.trim();
+        (name.len() > 4 && name.len() <= 200 && name.to_lowercase().ends_with(".pdf"))
+            .then(|| name.to_string())
+    })
+}
+
+/// Display title from a bank file name: without `.pdf`, `_` as spaces
+/// (`Kontoauszug_10_2026_vom_05.10.2026.pdf` → `Kontoauszug 10 2026 vom 05.10.2026`).
+fn statement_title(file_name: &str) -> String {
+    let stem = &file_name[..file_name.len().saturating_sub(4)];
+    stem.replace('_', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Shape of a reply segment for the debug log: kind and length of each field,
+/// never its content (`bin(48211) date8 num4 pdfname(31) text(12)`).
+fn segment_layout(s: &syntax::Segment) -> String {
+    s.elements
+        .iter()
+        .skip(1)
+        .map(|el| {
+            el.iter()
+                .map(|v| match v {
+                    syntax::Value::Binary(b) => format!("bin({})", b.len()),
+                    syntax::Value::Text(t) if t.is_empty() => "-".into(),
+                    syntax::Value::Text(t) if fints_date(t).is_some() => "date8".into(),
+                    syntax::Value::Text(t) if t.bytes().all(|b| b.is_ascii_digit()) => {
+                        format!("num{}", t.len())
+                    }
+                    syntax::Value::Text(t) if t.to_lowercase().ends_with(".pdf") => {
+                        format!("pdfname({})", t.chars().count())
+                    }
+                    syntax::Value::Text(t) => format!("text({})", t.chars().count()),
+                })
+                .collect::<Vec<_>>()
+                .join(":")
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Receipt code of a statement (HIEKP/HIEKA): the binary field that is not the
+/// PDF (DKB: the last field, 36 bytes), as hex for the persisted state.
+fn receipt_code(s: &syntax::Segment) -> Option<String> {
+    s.elements
+        .iter()
+        .flatten()
+        .filter_map(|v| match v {
+            syntax::Value::Binary(b) if !b.is_empty() && !b.starts_with(b"%PDF") => Some(b),
+            _ => None,
+        })
+        .next_back()
+        .map(|b| b.iter().map(|x| format!("{x:02x}")).collect())
+}
+
+fn hex_decode(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
+        .collect()
+}
+
+/// FNV-1a 64 over raw bytes (stable id for a statement PDF).
+fn fnv1a64_bytes(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+        (h ^ u64::from(*b)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 fn is_segment_code(s: &str) -> bool {
@@ -1656,49 +1795,127 @@ impl FinTsConnector {
     }
 
     /// HKEKA: electronic statement as PDF (format 3). Optional – any error is ignored by the caller.
+    /// The statement transaction the bank offers: HKEKA (statement in a chosen
+    /// format) or HKEKP (statement as PDF, e.g. DKB, #449).
+    fn statement_tx(&self) -> Option<&'static str> {
+        ["HKEKA", "HKEKP"]
+            .into_iter()
+            .find(|tx| self.bank_supports(tx))
+    }
+
+    /// Acknowledges the statements stored by earlier fetches (HKQTG). A receipt
+    /// the bank rejects is dropped (it would fail again); one lost to a network
+    /// error stays for the next fetch. Never fails the statements fetch.
+    async fn send_pending_receipts(&mut self, ctx: &ConnectContext) {
+        if self.st.pending_receipts.is_empty() || !self.bank_supports("HKQTG") {
+            return;
+        }
+        let v = self.version("HKQTG");
+        let mut kept = Vec::new();
+        let mut sent = 0;
+        for code in std::mem::take(&mut self.st.pending_receipts) {
+            let Some(bytes) = hex_decode(&code) else {
+                continue;
+            };
+            let seg = SegmentBuilder::new("HKQTG", 3, v).binary(&bytes).build();
+            match self.request(ctx, "HKQTG", seg).await {
+                Ok(_) => sent += 1,
+                Err(CoreError::Bank { code: c, .. }) => {
+                    crate::depot_debug::log(&format!("statements: HKQTG rejected ({c}), dropped"));
+                }
+                Err(_) => kept.push(code),
+            }
+        }
+        self.st.pending_receipts = kept;
+        crate::depot_debug::log(&format!(
+            "statements: HKQTG sent {sent} receipt(s), {} pending",
+            self.st.pending_receipts.len()
+        ));
+    }
+
     async fn statements_pdf(
         &mut self,
         ctx: &ConnectContext,
         acc: &SepaAccount,
         label: &str,
     ) -> CoreResult<Vec<crate::documents::RemoteDocument>> {
-        let v = self.version("HKEKA");
-        let acct = if v >= 5 {
+        self.send_pending_receipts(ctx).await;
+        let tx = self.statement_tx().unwrap_or("HKEKA");
+        let v = self.version(tx);
+        let pdf_only = tx == "HKEKP";
+        // HKEKA from v5 and HKEKP from v2 address the account by IBAN (KTI).
+        let acct = if (pdf_only && v >= 2) || (!pdf_only && v >= 5) {
             Self::kti(acc)
         } else {
             Self::ktv(acc)
         };
+        let reply_id = format!("HI{}", &tx[2..]);
         let mut docs = Vec::new();
         let mut touchdown: Option<String> = None;
         for _page in 0..12 {
-            let mut b = SegmentBuilder::new("HKEKA", 3, v)
-                .raw(&acct)
-                .raw("3")
-                .raw("")
-                .raw("")
-                .raw("");
+            // HKEKA: account, format 3 (PDF), number, year, max entries.
+            // HKEKP: account, number, year, max entries (always PDF).
+            let mut b = SegmentBuilder::new(tx, 3, v).raw(&acct);
+            if !pdf_only {
+                b = b.raw("3");
+            }
+            b = b.raw("").raw("").raw("");
             if let Some(t) = &touchdown {
                 b = b.de(&[t]);
             }
-            let r = self.request(ctx, "HKEKA", b.build()).await?;
-            for s in r.all("HIEKA") {
-                let period = format!("{}–{}", s.get(2, 0), s.get(2, 1));
+            let r = self.request(ctx, tx, b.build()).await?;
+            for s in r.all(&reply_id) {
+                crate::depot_debug::log(&format!(
+                    "statements: {reply_id} v{} layout: {}",
+                    s.version(),
+                    segment_layout(s)
+                ));
+                // the bank's own file name (e.g. DKB), else one of ours
+                let bank_file_name = statement_file_name(s);
+                if let Some(code) = receipt_code(s) {
+                    if !self.st.pending_receipts.contains(&code) {
+                        self.st.pending_receipts.push(code);
+                    }
+                }
+                let (stmt_label, period, date) = if pdf_only {
+                    hiekp_details(s)
+                } else {
+                    let to = s.get(2, 1);
+                    let period = format!("{}–{}", s.get(2, 0), to);
+                    (
+                        period.clone(),
+                        period,
+                        fints_date(to).unwrap_or_else(super::today),
+                    )
+                };
                 for el in &s.elements {
                     for val in el {
                         if let syntax::Value::Binary(pdf) = val {
                             if pdf.starts_with(b"%PDF") {
-                                let to = s.get(2, 1);
-                                let date = fints_date(to).unwrap_or_else(super::today);
+                                // HKEKP periods are not reliable enough for an
+                                // id; the bank re-sends unacknowledged statements,
+                                // so the content keeps them from being stored twice.
+                                let source_url = if pdf_only {
+                                    format!("fints:hkekp:{label}:{:016x}", fnv1a64_bytes(pdf))
+                                } else {
+                                    format!("fints:hkeka:{label}:{period}")
+                                };
                                 docs.push(crate::documents::RemoteDocument {
                                     account_ref: label.to_string(),
                                     booking_external_id: None,
-                                    title: trf("Kontoauszug {0}", &[&period]),
+                                    // like MoneyMoney: the bank's file name, readable
+                                    title: bank_file_name
+                                        .as_deref()
+                                        .map(statement_title)
+                                        .unwrap_or_else(|| trf("Kontoauszug {0}", &[&stmt_label])),
                                     doc_type: "kontoauszug".into(),
                                     mime_type: "application/pdf".into(),
-                                    file_name: format!("Kontoauszug_{}_{}.pdf", label, date),
-                                    source_url: format!("fints:hkeka:{label}:{period}"),
+                                    file_name: bank_file_name.clone().unwrap_or_else(|| {
+                                        format!("Kontoauszug_{}_{}.pdf", label, date)
+                                    }),
+                                    source_url,
                                     bytes: pdf.clone(),
-                                    date,
+                                    date: date.clone(),
                                 });
                             }
                         }
@@ -1710,6 +1927,10 @@ impl FinTsConnector {
                 break;
             }
         }
+        crate::depot_debug::log(&format!(
+            "statements: {tx} v{v} delivered {} PDF(s)",
+            docs.len()
+        ));
         Ok(docs)
     }
 
@@ -1717,11 +1938,14 @@ impl FinTsConnector {
     /// to check banks like ING (GitHub #57). No account data is logged.
     fn log_statement_support(&self, upd_allows: Option<bool>) {
         crate::depot_debug::log(&format!(
-            "statements: HIEKAS versions={:?} negotiated={:?} upd_allows={:?} tan_required={:?}",
+            "statements: blz={} HKEKA={:?} HKEKP={:?} using={:?} upd_allows={:?} tan_required={:?}",
+            self.blz,
             self.st.versions.get("HKEKA"),
-            self.negotiated("HKEKA"),
+            self.st.versions.get("HKEKP"),
+            self.statement_tx(),
             upd_allows,
-            self.st.tan_required.get("HKEKA"),
+            self.statement_tx()
+                .and_then(|tx| self.st.tan_required.get(tx)),
         ));
     }
 
@@ -2909,24 +3133,21 @@ impl BankConnector for FinTsConnector {
                     what: trf("Konto {0}", &[&wanted]),
                 });
             };
-            let supported = self.bank_supports("HKEKA")
-                && upd
-                    .as_ref()
-                    .map(|u| u.allowed.is_empty() || u.allowed.contains("HKEKA"))
-                    .unwrap_or(true);
-            self.log_statement_support(
-                upd.as_ref()
-                    .map(|u| u.allowed.is_empty() || u.allowed.contains("HKEKA")),
-            );
+            // HKEKA, or HKEKP when the bank offers only that (DKB, #449)
+            let tx = self.statement_tx();
+            let upd_allows = upd
+                .as_ref()
+                .map(|u| u.allowed.is_empty() || u.allowed.contains(tx.unwrap_or("HKEKA")));
+            self.log_statement_support(upd_allows);
             // Not an error (#449): the app reports "no new statements" with a hint.
-            if !supported {
-                crate::depot_debug::log("statements: HKEKA not offered by the bank");
+            let Some(tx) = tx.filter(|_| upd_allows.unwrap_or(true)) else {
+                crate::depot_debug::log("statements: no PDF statements offered for this account");
                 return Ok(result);
-            }
+            };
             result.documents = match self.statements_pdf(ctx, acc, &wanted).await {
                 Ok(d) => d,
                 Err(CoreError::Bank { code, .. }) if matches!(code.as_str(), "9130" | "9140") => {
-                    crate::depot_debug::log(&format!("statements: HKEKA unsupported ({code})"));
+                    crate::depot_debug::log(&format!("statements: {tx} unsupported ({code})"));
                     return Ok(result);
                 }
                 Err(e) => return Err(e),
@@ -3138,8 +3359,10 @@ impl BankConnector for FinTsConnector {
             // Opt-in (GitHub #57): PDF statements, at most weekly per account. A failure
             // never fails the sync; the explicit fetch reports errors instead.
             if auto_statements.contains(&label) {
-                self.log_statement_support(Some(allowed("HKEKA")));
-                if allowed("HKEKA") && self.bank_supports("HKEKA") {
+                let tx = self.statement_tx();
+                let upd_ok = tx.is_some_and(allowed);
+                self.log_statement_support(Some(upd_ok));
+                if upd_ok {
                     match self.statements_pdf(ctx, acc, &label).await {
                         Ok(docs) => {
                             crate::depot_debug::log(&format!(
@@ -3389,6 +3612,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pending_receipts_are_sent_once_and_rejected_ones_dropped() {
+        let state = serde_json::json!({"system_id": "123", "sec_func": "999", "tan_method_name": "", "tan_medium": "", "versions": {"HKQTG": [1]}, "tan_required": {}, "pending_receipts": ["0102", "0304"]});
+        const REJECT: &str = "HNHBK:1:3+000000000000+300+DIALOG1+1'HIRMG:2:2+9050::Teilweise fehlerhaft.'HIRMS:3:2:3+9210::Quittung unbekannt.'";
+        let (url, seen) = mock_bank(vec![ACCEPT, REJECT]);
+        let mut c = two_step_connector(&url, state);
+        c.send_pending_receipts(&test_ctx()).await;
+        assert!(
+            c.st.pending_receipts.is_empty(),
+            "{:?}",
+            c.st.pending_receipts
+        );
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2);
+        assert!(
+            seen.iter().all(|ids| ids.iter().any(|i| i == "HKQTG")),
+            "{seen:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn receipts_wait_when_the_bank_offers_no_hkqtg() {
+        let state = serde_json::json!({"system_id": "123", "sec_func": "999", "tan_method_name": "", "tan_medium": "", "versions": {}, "tan_required": {}, "pending_receipts": ["0102"]});
+        let (url, seen) = mock_bank(vec![ACCEPT]);
+        let mut c = two_step_connector(&url, state);
+        c.send_pending_receipts(&test_ctx()).await;
+        assert_eq!(c.st.pending_receipts, vec!["0102".to_string()]);
+        assert!(seen.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn dialog_init_9010_with_stale_system_id_does_not_fall_back() {
         let (url, seen) = mock_bank(vec![STALE_SYSTEM_ID]);
         let state = serde_json::json!({"system_id": "123", "sec_func": "946", "tan_method_name": "", "tan_medium": "", "versions": {}, "tan_required": {}});
@@ -3547,6 +3800,104 @@ mod tests {
         c.st.tan_required.insert("HKKAZ".into(), false);
         c.st.tan_required.insert("HKSAL".into(), true);
         assert!(!c.needs_hktan("HKKAZ") && c.needs_hktan("HKSAL"));
+    }
+
+    #[test]
+    fn dkb_statements_go_through_hkekp_when_hkeka_is_missing() {
+        // DKB (#449): the BPD offer HKEKP v1/v2 (PDF statement) but no HKEKA.
+        let mut c = FinTsConnector::new("12030000");
+        assert_eq!(c.statement_tx(), None);
+        c.learn_bpd(&reply(
+            b"HIEKPS:30:1:3+1+1+0+J:J:N'HIEKPS:31:2:3+1+1+0+J:J:N'",
+        ));
+        assert_eq!(c.statement_tx(), Some("HKEKP"));
+        assert_eq!(c.version("HKEKP"), 2);
+        // A bank offering both keeps the format-based HKEKA.
+        c.learn_bpd(&reply(b"HIEKAS:32:5:3+1+1+0+J:J:N:3'"));
+        assert_eq!(c.statement_tx(), Some("HKEKA"));
+    }
+
+    #[test]
+    fn hiekp_file_name_is_taken_from_the_bank() {
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261031+Kontoauszug_10_2026.pdf+7'");
+        let s = r.all("HIEKP").next().unwrap();
+        assert_eq!(
+            statement_file_name(s).as_deref(),
+            Some("Kontoauszug_10_2026.pdf")
+        );
+        assert_eq!(
+            statement_title("Kontoauszug_10_2026_vom_05.10.2026_zu_Konto_1234.pdf"),
+            "Kontoauszug 10 2026 vom 05.10.2026 zu Konto 1234"
+        );
+        // the debug layout shows kinds and lengths only, no content
+        assert_eq!(segment_layout(s), "bin(8) date8 pdfname(23) num1");
+        let none = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261031'");
+        assert_eq!(statement_file_name(none.all("HIEKP").next().unwrap()), None);
+        let path = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+x/y/Auszug.PDF'");
+        assert_eq!(
+            statement_file_name(path.all("HIEKP").next().unwrap()).as_deref(),
+            Some("Auszug.PDF")
+        );
+    }
+
+    #[test]
+    fn receipt_code_is_the_non_pdf_binary_field() {
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261105:20261105+20261105+2026+11+DE02+BIC++++Auszug.pdf+@4@\x01\xab\x00Z'");
+        let s = r.all("HIEKP").next().unwrap();
+        let code = receipt_code(s).unwrap();
+        assert_eq!(code, "01ab005a");
+        assert_eq!(hex_decode(&code).unwrap(), vec![0x01, 0xab, 0x00, 0x5a]);
+        // no receipt field: nothing to acknowledge
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261105:20261105'");
+        assert_eq!(receipt_code(r.all("HIEKP").next().unwrap()), None);
+        assert_eq!(hex_decode("abc"), None);
+        // state saved by an older version (no field) still loads
+        let st: FinTsState = serde_json::from_value(serde_json::json!({"system_id": "1", "sec_func": "999", "tan_method_name": "", "tan_medium": "", "versions": {}, "tan_required": {}})).unwrap();
+        assert!(st.pending_receipts.is_empty());
+    }
+
+    #[test]
+    fn hiekp_details_follow_the_dkb_layout() {
+        // DKB HIEKP v2: PDF, period, creation date, year, number, IBAN, BIC, …, name, receipt
+        let r = reply(
+            b"HIEKP:5:2:4+@8@%PDF-1.7+20261001:20261031+20261103+2026+10+DE02120300000000202051+BYLADEM1001++++Kontoauszug_10_2026.pdf+@4@abcd'",
+        );
+        let s = r.all("HIEKP").next().unwrap();
+        assert_eq!(
+            hiekp_details(s),
+            (
+                "10/2026 (2026-10-01–2026-10-31)".to_string(),
+                "2026-10-01–2026-10-31".to_string(),
+                "2026-10-31".to_string()
+            )
+        );
+        // the same date twice (DKB) is shown once
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261105:20261105+20261105+2026+11'");
+        assert_eq!(
+            hiekp_details(r.all("HIEKP").next().unwrap()).0,
+            "11/2026 (2026-11-05)"
+        );
+        // a leading zero in the number is dropped, the creation date never widens the period
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20260101:20260131+20260203+2026+01'");
+        assert_eq!(
+            hiekp_details(r.all("HIEKP").next().unwrap()).0,
+            "1/2026 (2026-01-01–2026-01-31)"
+        );
+    }
+
+    #[test]
+    fn hiekp_period_comes_from_its_dates_and_pdf_ids_are_stable() {
+        let r = reply(b"HIEKP:5:2:4+@8@%PDF-1.7+20261001:20261031+20261102'");
+        let s = r.all("HIEKP").next().unwrap();
+        assert_eq!(
+            statement_period(s),
+            (
+                "2026-10-01–2026-11-02".to_string(),
+                "2026-11-02".to_string()
+            )
+        );
+        assert_eq!(fnv1a64_bytes(b"%PDF-1.7"), fnv1a64_bytes(b"%PDF-1.7"));
+        assert_ne!(fnv1a64_bytes(b"%PDF-1.7"), fnv1a64_bytes(b"%PDF-1.6"));
     }
 
     fn reply(raw: &[u8]) -> BankReply {
