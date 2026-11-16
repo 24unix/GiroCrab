@@ -1,15 +1,19 @@
-import { Button, ListView, LineEdit, Palette, ComboBox, CheckBox, TextEdit } from "std-widgets.slint";
+import { Button, ListView, LineEdit, Palette, ComboBox, CheckBox, TextEdit, Switch, ScrollView } from "std-widgets.slint";
 
 export struct AccountRow { id: int, name: string, bank: string, iban: string, header: string, monogram: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
 export struct CategoryRow { id: int, name: string, depth: int, color: color }
-export struct BookingRow { id: int, checked: bool, date: string, counterparty: string, category: string, category-color: color, purpose: string, amount: string, negative: bool }
+export struct BookingRow { id: int, checked: bool, counterparty: string, account: string, category: string, category-color: color, detail: string, amount: string, negative: bool, monogram: string, tint: color, logo: image, has-logo: bool }
+export struct DayGroup { title: string, sum: string, negative: bool, rows: [BookingRow] }
+export struct BarGroup { label: string, income: float, expense: float }
+export struct BudgetLine { name: string, amount: string, progress: float, color: color, over: bool }
+export struct TileRow { index: int, name: string, color: color }
 export struct SideRow { kind: int, key: string, label: string, detail: string, badge: string, amount: string, negative: bool, progress: float, dot: color, has-dot: bool, icon: string, depth: int, fold: int }
 export struct TableRow { id: int, c0: string, c1: string, c2: string, c3: string, c4: string, negative: bool }
 export struct KpiTile { label: string, value: string, negative: bool }
 export struct ShareBar { label: string, value: string, share: float, color: color }
 export struct RuleItem { title: string, detail: string }
 export struct BankHit { name: string, detail: string }
-export struct InspectorData { counterparty: string, iban: string, purpose: string, booking-date: string, value-date: string, account: string, amount: string, note: string, read-only: bool }
+export struct InspectorData { counterparty: string, iban: string, purpose: string, booking-date: string, value-date: string, account: string, amount: string, note: string, read-only: bool, monogram: string, tint: color, logo: image, has-logo: bool, subtitle: string, recurring: bool }
 
 global Theme {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
@@ -141,10 +145,22 @@ component SideLine inherits Rectangle {
             height: 26px;
             y: (parent.height - self.height) / 2;
             border-radius: 6px;
-            background: r.dot.with-alpha(0.12);
+            background: #161b22;
             border-width: 1px;
             border-color: r.dot.with-alpha(0.22);
-            Icon { name: r.icon; tint: r.dot; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+            Rectangle { border-radius: 6px; background: r.dot.with-alpha(0.10); }
+            Icon { name: r.icon; tint: r.dot.brighter(0.3); x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+            if r.badge != "": Rectangle {
+                width: max(badge-over.preferred-width + 8px, 16px);
+                height: 16px;
+                x: parent.width - self.width + 6px;
+                y: -6px;
+                border-radius: 8px;
+                background: Theme.primary;
+                border-width: 1px;
+                border-color: Theme.sidebar;
+                badge-over := Text { text: r.badge; color: #ffffff; font-size: 9px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            }
         }
         if r.icon != "" && (r.kind == 0 || r.kind == 2): Icon {
             name: r.icon;
@@ -181,7 +197,7 @@ component SideLine inherits Rectangle {
             }
             if subtitle: Text { text: r.detail; color: Theme.muted; font-size: r.progress >= 0 ? 10px : 11px; overflow: elide; }
         }
-        if r.badge != "": Rectangle {
+        if r.badge != "" && r.kind != 3: Rectangle {
             width: max(badge-text.preferred-width + 12px, 20px);
             height: 18px;
             y: (parent.height - self.height) / 2;
@@ -290,40 +306,74 @@ component TableHeader inherits Rectangle {
     }
 }
 
+// Real merchant logo (rounded) or, without one, the two-letter monogram on a tinted tile.
+component MerchantAvatar inherits Rectangle {
+    in property <length> size: 34px;
+    in property <image> logo;
+    in property <bool> has-logo;
+    in property <string> monogram;
+    in property <color> tint;
+    width: size;
+    height: size;
+    border-radius: 8px;
+    clip: true;
+    background: has-logo ? #ffffff : tint.with-alpha(0.18);
+    if has-logo: Image {
+        source: root.logo;
+        width: root.size - 6px;
+        height: root.size - 6px;
+        x: 3px;
+        y: 3px;
+        image-fit: contain;
+    }
+    if !has-logo: Text {
+        text: root.monogram;
+        color: Theme.dark ? root.tint.brighter(0.5) : root.tint.darker(0.3);
+        font-size: root.size * 0.36;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
 component BookingLine inherits Rectangle {
     in property <BookingRow> b;
     in property <bool> active;
     callback clicked();
-    height: 52px;
-    background: active ? Theme.selected : ta.has-hover ? Theme.text.with-alpha(0.04) : transparent;
+    height: 56px;
+    background: active ? #1d3557.with-alpha(Theme.dark ? 1.0 : 0.16) : ta.has-hover ? Theme.text.with-alpha(0.04) : transparent;
+    border-radius: 8px;
+    if active: Rectangle { x: 0px; width: 3px; height: parent.height - 16px; y: 8px; border-radius: 1.5px; background: #2563eb; }
     ta := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 16px;
+        padding-left: 12px;
+        padding-right: 12px;
         spacing: 12px;
-        Text { text: b.checked ? "✓" : "○"; color: b.checked ? Theme.positive : Theme.muted; font-size: 12px; width: 14px; vertical-alignment: center; }
-        Text { text: b.date; color: Theme.muted; font-size: 12px; width: 78px; vertical-alignment: center; }
+        MerchantAvatar {
+            y: (parent.height - self.height) / 2;
+            logo: b.logo;
+            has-logo: b.has-logo;
+            monogram: b.monogram;
+            tint: b.tint;
+        }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            spacing: 2px;
-            Text { text: b.counterparty; color: Theme.text; font-size: 13px; font-weight: 600; overflow: elide; }
-            Text { text: b.purpose; color: Theme.muted; font-size: 11px; overflow: elide; }
-        }
-        VerticalLayout {
-            alignment: center;
-            Rectangle {
-                height: 22px;
-                width: pill.preferred-width + 20px;
-                border-radius: 10px;
-                background: b.category-color.with-alpha(0.18);
-                pill := Text {
-                    text: b.category;
-                    color: Theme.dark ? b.category-color.brighter(0.4) : b.category-color.darker(0.3);
-                    font-size: 11px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            spacing: 3px;
+            HorizontalLayout {
+                spacing: 6px;
+                Text { text: b.checked ? "✓" : ""; color: Theme.positive; font-size: 11px; width: b.checked ? 12px : 0px; }
+                Text { text: b.counterparty; color: Theme.text; font-size: 13px; font-weight: 700; overflow: elide; horizontal-stretch: 1; }
+            }
+            HorizontalLayout {
+                spacing: 5px;
+                alignment: start;
+                Text { text: b.account; color: Theme.muted; font-size: 11px; overflow: elide; max-width: 140px; }
+                Text { text: "·"; color: Theme.muted; font-size: 11px; }
+                Text { text: b.category; color: Theme.dark ? b.category-color.brighter(0.4) : b.category-color.darker(0.3); font-size: 11px; font-weight: 600; overflow: elide; max-width: 160px; }
+                if b.detail != "": Text { text: "·"; color: Theme.muted; font-size: 11px; }
+                if b.detail != "": Text { text: b.detail; color: Theme.muted; font-size: 11px; overflow: elide; horizontal-stretch: 1; }
+                if b.detail == "": Rectangle { horizontal-stretch: 1; }
             }
         }
         Text {
@@ -331,12 +381,132 @@ component BookingLine inherits Rectangle {
             color: b.negative ? Theme.amount : Theme.positive;
             font-size: 13px;
             font-weight: 600;
-            width: 100px;
             horizontal-alignment: right;
             vertical-alignment: center;
         }
     }
-    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.border; }
+}
+
+// One day of bookings: rounded card with the weekday/date and the day's net sum in its header.
+component DayCard inherits Rectangle {
+    in property <DayGroup> day;
+    in property <int> selected-booking;
+    callback select(int);
+    background: Theme.surface;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: Theme.border;
+    VerticalLayout {
+        padding: 6px;
+        spacing: 0px;
+        Rectangle {
+            height: 34px;
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                Text { text: day.title; color: Theme.text; font-size: 13px; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                Text { text: day.sum; color: day.negative ? Theme.muted : Theme.positive; font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-alignment: right; }
+            }
+        }
+        for b in day.rows: BookingLine {
+            b: b;
+            active: root.selected-booking == b.id;
+            clicked => { root.select(b.id); }
+        }
+    }
+}
+
+component BudgetBar inherits Rectangle {
+    in property <BudgetLine> l;
+    height: 30px;
+    VerticalLayout {
+        spacing: 4px;
+        alignment: center;
+        HorizontalLayout {
+            Text { text: l.name; color: Theme.text; font-size: 12px; overflow: elide; horizontal-stretch: 1; }
+            Text { text: l.amount; color: l.over ? Theme.negative : Theme.muted; font-size: 11px; horizontal-alignment: right; }
+        }
+        Rectangle {
+            height: 5px;
+            border-radius: 2.5px;
+            background: Theme.text.with-alpha(0.08);
+            Rectangle { x: 0px; width: parent.width * min(max(l.progress, 0.02), 1.0); border-radius: 2.5px; background: l.over ? Theme.negative : l.color; }
+        }
+    }
+}
+
+// Cashflow card: period switch, legend and a dual-bar chart (income blue, expenses orange).
+component CashflowCard inherits Rectangle {
+    in property <[BarGroup]> bars;
+    in property <[string]> ticks;
+    in-out property <int> period: 0;
+    callback changed();
+    background: Theme.surface;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: Theme.border;
+    VerticalLayout {
+        padding: 14px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 10px;
+            Text { text: "Cashflow"; color: Theme.text; font-size: 14px; font-weight: 700; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            Text { text: "●"; color: #388bfd; font-size: 9px; vertical-alignment: center; }
+            Text { text: "Einnahmen"; color: Theme.muted; font-size: 11px; vertical-alignment: center; }
+            Text { text: "●"; color: #d97706; font-size: 9px; vertical-alignment: center; }
+            Text { text: "Ausgaben"; color: Theme.muted; font-size: 11px; vertical-alignment: center; }
+            for label[i] in ["Monat", "Quartal", "Jahr"]: SegButton {
+                text: label;
+                checked: root.period == i;
+                width: 62px;
+                horizontal-stretch: 0;
+                clicked => { root.period = i; root.changed(); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            vertical-stretch: 1;
+            Rectangle {
+                width: 46px;
+                for t[i] in root.ticks: Text {
+                    y: i * (parent.height - 16px) / max(root.ticks.length - 1, 1) - 7px;
+                    width: parent.width;
+                    text: t;
+                    color: Theme.muted;
+                    font-size: 9px;
+                    horizontal-alignment: right;
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                for t[i] in root.ticks: Rectangle {
+                    y: i * (parent.height - 16px) / max(root.ticks.length - 1, 1);
+                    height: 1px;
+                    background: Theme.text.with-alpha(0.07);
+                }
+                HorizontalLayout {
+                    padding-bottom: 0px;
+                    for g in root.bars: Rectangle {
+                        property <length> plot: parent.height - 16px;
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 3px;
+                            Rectangle {
+                                width: 12px;
+                                Rectangle { y: plot - plot * g.income; height: plot * g.income; border-radius: 2px; background: #388bfd; }
+                            }
+                            Rectangle {
+                                width: 12px;
+                                Rectangle { y: plot - plot * g.expense; height: plot * g.expense; border-radius: 2px; background: #d97706; }
+                            }
+                        }
+                        Text { y: parent.height - 12px; width: parent.width; text: g.label; color: Theme.muted; font-size: 10px; horizontal-alignment: center; }
+                    }
+                }
+            }
+        }
+    }
 }
 
 component Swatches inherits HorizontalLayout {
@@ -399,7 +569,14 @@ export component MainWindow inherits Window {
     in property <string> total;
     in property <bool> busy: false;
     in property <[AccountRow]> accounts;
-    in property <[BookingRow]> bookings;
+    in property <[DayGroup]> days;
+    in property <[BarGroup]> cashflow-bars;
+    in property <[string]> cashflow-ticks;
+    in-out property <int> cashflow-period: 0;
+    in property <[BudgetLine]> budget-lines;
+    in property <string> budget-title: "Monatsbudgets";
+    in property <[TileRow]> category-tiles;
+    callback cashflow-changed();
     in property <string> selected-name;
     in property <string> selected-balance;
     in property <string> selected-currency;
@@ -749,69 +926,175 @@ export component MainWindow inherits Window {
                     toggled => { root.search-changed(); }
                 }
             }
+            // dashboard cards above the bookings: cashflow chart and budgets
             if root.view-mode == 0: HorizontalLayout {
                 spacing: 12px;
+                height: 190px;
+                CashflowCard {
+                    horizontal-stretch: 3;
+                    bars: root.cashflow-bars;
+                    ticks: root.cashflow-ticks;
+                    period <=> root.cashflow-period;
+                    changed => { root.cashflow-changed(); }
+                }
                 Rectangle {
-                    horizontal-stretch: 1;
+                    horizontal-stretch: 2;
                     background: Theme.surface;
                     border-radius: 12px;
                     border-width: 1px;
                     border-color: Theme.border;
-                    clip: true;
-                    if root.bookings.length == 0: Text {
+                    VerticalLayout {
+                        padding: 14px;
+                        spacing: 6px;
+                        Text { text: root.budget-title; color: Theme.text; font-size: 14px; font-weight: 700; }
+                        if root.budget-lines.length == 0: Text { text: "Keine Ausgaben in diesem Monat"; color: Theme.muted; font-size: 11px; }
+                        for l[i] in root.budget-lines: BudgetBar { l: l; visible: i < 4; height: i < 4 ? 30px : 0px; }
+                        Rectangle { vertical-stretch: 1; }
+                    }
+                }
+            }
+            if root.view-mode == 0: HorizontalLayout {
+                spacing: 12px;
+                Rectangle {
+                    horizontal-stretch: 1;
+                    if root.days.length == 0: Text {
                         text: (root.search-text == "" && !root.uncategorized-only && root.status-index == 0) ? "Keine Umsätze" : "Keine Treffer";
                         color: Theme.muted;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                     }
                     ListView {
-                        for b in root.bookings: BookingLine {
-                            b: b;
-                            active: root.selected-booking == b.id;
-                            clicked => { root.select-booking(b.id); }
+                        for d in root.days: DayCard {
+                            day: d;
+                            selected-booking: root.selected-booking;
+                            select(id) => { root.select-booking(id); }
                         }
                     }
                 }
-                if root.has-inspector: Rectangle {
-                    width: 330px;
-                    background: Theme.surface;
-                    border-radius: 12px;
-                    border-width: 1px;
-                    border-color: Theme.border;
-                    VerticalLayout {
-                        padding: 16px;
-                        spacing: 8px;
-                        Text { text: root.inspector.counterparty; font-size: 16px; font-weight: 700; color: Theme.text; wrap: word-wrap; }
-                        Text { text: root.inspector.amount; font-size: 20px; font-weight: 700; color: Theme.text; }
-                        Text { text: "IBAN: " + root.inspector.iban; font-size: 11px; color: Theme.muted; wrap: word-wrap; visible: root.inspector.iban != ""; }
-                        Text { text: "Buchung " + root.inspector.booking-date + " · Wert " + root.inspector.value-date; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
-                        Text { text: "Konto: " + root.inspector.account; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
-                        Text { text: root.inspector.purpose; font-size: 12px; color: Theme.text; wrap: word-wrap; }
-                        Text { text: "Kategorie"; font-size: 11px; color: Theme.muted; }
-                        ComboBox {
-                            model: root.category-names;
-                            current-index <=> root.inspector-category;
-                            enabled: !root.inspector.read-only;
-                            selected => { root.set-category(root.inspector-category); }
+                Rectangle {
+                    width: 300px;
+                    if !root.has-inspector: Rectangle {
+                        background: Theme.surface;
+                        border-radius: 12px;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        Text { text: "Keine Buchung ausgewählt"; color: Theme.muted; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+                    }
+                    if root.has-inspector: VerticalLayout {
+                        spacing: 10px;
+                        // booking header
+                        Rectangle {
+                            height: 150px;
+                            background: Theme.surface;
+                            border-radius: 12px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            VerticalLayout {
+                                padding: 14px;
+                                spacing: 6px;
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    MerchantAvatar {
+                                        size: 38px;
+                                        logo: root.inspector.logo;
+                                        has-logo: root.inspector.has-logo;
+                                        monogram: root.inspector.monogram;
+                                        tint: root.inspector.tint;
+                                    }
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: center;
+                                        Text { text: root.inspector.counterparty; font-size: 14px; font-weight: 700; color: Theme.text; overflow: elide; }
+                                        Text { text: root.inspector.subtitle; font-size: 11px; color: Theme.muted; overflow: elide; }
+                                    }
+                                }
+                                Text { text: root.inspector.amount; font-size: 24px; font-weight: 700; color: Theme.text; overflow: elide; }
+                                HorizontalLayout {
+                                    Text { text: "Buchung " + root.inspector.booking-date; font-size: 11px; color: Theme.muted; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                    Text { text: "Geprüft"; font-size: 12px; color: Theme.text; vertical-alignment: center; }
+                                    Switch {
+                                        checked <=> root.inspector-checked;
+                                        enabled: !root.inspector.read-only;
+                                        toggled => { root.set-checked(root.inspector-checked); }
+                                    }
+                                }
+                            }
                         }
-                        CheckBox {
-                            text: "Geprüft";
-                            checked <=> root.inspector-checked;
-                            enabled: !root.inspector.read-only;
-                            toggled => { root.set-checked(root.inspector-checked); }
+                        // note
+                        Rectangle {
+                            height: 138px;
+                            background: Theme.surface;
+                            border-radius: 12px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            VerticalLayout {
+                                padding: 12px;
+                                spacing: 6px;
+                                HorizontalLayout {
+                                    Text { text: "Notiz"; font-size: 12px; font-weight: 700; color: Theme.text; horizontal-stretch: 1; }
+                                    GhostButton { text: "Speichern"; enabled: !root.inspector.read-only; clicked => { root.save-note(root.note-text); } }
+                                }
+                                TextEdit {
+                                    text <=> root.note-text;
+                                    enabled: !root.inspector.read-only;
+                                    vertical-stretch: 1;
+                                }
+                            }
                         }
-                        Text { text: "Notiz"; font-size: 11px; color: Theme.muted; }
-                        TextEdit {
-                            text <=> root.note-text;
-                            enabled: !root.inspector.read-only;
-                            height: 90px;
+                        // recurring
+                        Rectangle {
+                            height: 44px;
+                            background: Theme.surface;
+                            border-radius: 12px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                Text { text: "Wiederkehrend"; font-size: 12px; font-weight: 700; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                                Text { text: root.inspector.recurring ? "Erkannt" : "Nicht erkannt"; font-size: 11px; color: root.inspector.recurring ? Theme.positive : Theme.muted; vertical-alignment: center; }
+                            }
                         }
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Button { text: "Notiz speichern"; enabled: !root.inspector.read-only; clicked => { root.save-note(root.note-text); } }
-                            Button { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
+                        // category tiles
+                        Rectangle {
+                            vertical-stretch: 1;
+                            background: Theme.surface;
+                            border-radius: 12px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            VerticalLayout {
+                                padding: 12px;
+                                spacing: 8px;
+                                Text { text: "Kategorie"; font-size: 12px; font-weight: 700; color: Theme.text; }
+                                ScrollView {
+                                    vertical-stretch: 1;
+                                    viewport-height: ceil(root.category-tiles.length / 2) * 38px;
+                                    for t[i] in root.category-tiles: Rectangle {
+                                        x: mod(i, 2) * (parent.width / 2);
+                                        y: floor(i / 2) * 38px;
+                                        width: parent.width / 2 - 4px;
+                                        height: 32px;
+                                        property <bool> on: root.inspector-category == t.index;
+                                        border-radius: 7px;
+                                        border-width: 1px;
+                                        border-color: on ? t.color : Theme.border;
+                                        background: on ? t.color.with-alpha(0.2) : tile-ta.has-hover ? Theme.text.with-alpha(0.05) : transparent;
+                                        tile-ta := TouchArea {
+                                            enabled: !root.inspector.read-only;
+                                            clicked => { root.inspector-category = t.index; root.set-category(t.index); }
+                                        }
+                                        HorizontalLayout {
+                                            padding-left: 8px;
+                                            padding-right: 6px;
+                                            spacing: 6px;
+                                            Rectangle { width: 8px; height: 8px; y: (parent.height - self.height) / 2; border-radius: 4px; background: t.color; }
+                                            Text { text: t.name; font-size: 11px; color: Theme.text; overflow: elide; vertical-alignment: center; horizontal-stretch: 1; }
+                                        }
+                                    }
+                                }
+                                GhostButton { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
+                            }
                         }
-                        Rectangle { vertical-stretch: 1; }
                     }
                 }
             }

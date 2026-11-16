@@ -67,6 +67,13 @@ pub struct Row {
     pub currency: String,
     pub checked: bool,
     pub note: String,
+    /// Bank booking type ("Lastschrift", "Kartenzahlung"); the list shows it before the purpose.
+    pub booking_text: String,
+    /// Domains to try for the logo, best first (empty for private persons and unknown names).
+    pub logo_domains: Vec<String>,
+    pub monogram: String,
+    pub tint_hex: String,
+    pub recurring: bool,
 }
 
 impl From<&Booking> for Row {
@@ -90,6 +97,17 @@ impl From<&Booking> for Row {
             currency: b.currency.clone(),
             checked: b.checked,
             note: b.note.clone(),
+            booking_text: b.booking_text.clone(),
+            logo_domains: if b.merchant.is_person {
+                Vec::new()
+            } else if b.merchant.domain_candidates.is_empty() && !b.merchant.domain.is_empty() {
+                vec![b.merchant.domain.clone()]
+            } else {
+                b.merchant.domain_candidates.clone()
+            },
+            monogram: b.merchant.monogram.clone(),
+            tint_hex: b.merchant.color_hex.clone(),
+            recurring: !b.recurrence_key.is_empty(),
         }
     }
 }
@@ -152,6 +170,7 @@ pub struct Inspector {
     pub category_id: Option<i64>,
     /// Personal data hidden: the inspector is read-only.
     pub read_only: bool,
+    pub recurring: bool,
 }
 
 pub fn inspect(r: &Row, privacy: bool, money: impl Fn(i64, &str) -> String) -> Inspector {
@@ -172,6 +191,7 @@ pub fn inspect(r: &Row, privacy: bool, money: impl Fn(i64, &str) -> String) -> I
         checked: r.checked,
         category_id: r.category_id,
         read_only: privacy,
+        recurring: r.recurring,
     }
 }
 
@@ -259,6 +279,11 @@ mod tests {
             currency: "EUR".into(),
             checked,
             note: String::new(),
+            booking_text: String::new(),
+            logo_domains: Vec::new(),
+            monogram: String::new(),
+            tint_hex: String::new(),
+            recurring: false,
         }
     }
 

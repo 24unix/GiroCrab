@@ -2,8 +2,10 @@
 //! Unlock / create vault, demo mode (`GIROCRAB_DEMO_SEED=1`), accounts with balances,
 //! bookings of the selected account and bank sync (FinTS PIN/TAN dialog, PSD2 browser redirect).
 
+mod cockpit;
 mod daily;
 mod lists;
+mod logos;
 mod manage;
 mod manage_ui;
 mod nav;
@@ -23,7 +25,8 @@ use std::time::Duration;
 use girocrab_core::connectors::bank_directory::{BankAccessMode, BankSearchResult};
 use girocrab_core::connectors::PayeeCheck;
 use girocrab_core::{
-    BookingFilter, Category, Challenge, ChallengeKind, ConnectorKind, SyncStep, TransferStep, Vault,
+    BookingFilter, Category, Challenge, ChallengeKind, ConnectorKind, PeriodGranularity, SyncStep,
+    TransferStep, Vault,
 };
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use zeroize::Zeroizing;
@@ -247,6 +250,10 @@ struct State {
     transfer_sources: Vec<(i64, String, String)>,
     /// What the sidebar selected; decides which bookings `reload` loads.
     target: Target,
+    /// Decoded merchant logos by candidate key (`logos::key`); lives for the session.
+    logos: std::collections::HashMap<String, slint::Image>,
+    /// Keys already requested this session (hit or miss), so a miss is not retried on every redraw.
+    logos_requested: std::collections::HashSet<String>,
 }
 
 /// One-booking edit run against the vault for the selected booking id.
@@ -264,63 +271,124 @@ fn privacy_on(win: &MainWindow) -> bool {
     daily::effective_privacy(win.get_privacy(), win.get_unlocked())
 }
 
-/// Builds the visible rows and the inspector from the cached rows; never touches the vault.
+fn tint(hex: &str) -> slint::Color {
+    hex_color(hex).unwrap_or_else(|| slint::Color::from_rgb_u8(0x8e, 0x8e, 0x93))
+}
+
+/// Logo of a row, if loaded. Never in privacy mode: the logo would give the counterparty away.
+fn logo_of(st: &State, r: &Row, privacy: bool) -> Option<slint::Image> {
+    if privacy || r.logo_domains.is_empty() {
+        return None;
+    }
+    st.logos.get(&logos::key(&r.logo_domains)).cloned()
+}
+
+fn booking_row(st: &State, b: &Row, privacy: bool) -> BookingRow {
+    let logo = logo_of(st, b, privacy);
+    BookingRow {
+        id: b.id as i32,
+        counterparty: daily::mask(&b.counterparty, privacy).into(),
+        account: b.account_name.clone().into(),
+        category: if b.category_name.is_empty() {
+            "Ohne Kategorie".into()
+        } else {
+            b.category_name.clone().into()
+        },
+        category_color: tint(&b.category_color_hex),
+        detail: daily::mask(
+            if b.booking_text.is_empty() {
+                &b.purpose
+            } else {
+                &b.booking_text
+            },
+            privacy,
+        )
+        .into(),
+        amount: daily::mask(&money(b.amount_cents, &b.currency), privacy).into(),
+        negative: b.amount_cents < 0 && !privacy,
+        checked: b.checked,
+        monogram: if privacy {
+            "•".into()
+        } else if b.monogram.is_empty() {
+            monogram(&b.counterparty).into()
+        } else {
+            b.monogram.clone().into()
+        },
+        tint: tint(&b.tint_hex),
+        has_logo: logo.is_some(),
+        logo: logo.unwrap_or_default(),
+    }
+}
+
+/// Builds the day cards and the inspector from the cached rows; never touches the vault.
 fn render_bookings(win: &MainWindow) {
     let privacy = privacy_on(win);
-    let (rows, inspector, cat_index) = with_state(|st| {
-        let rows: Vec<BookingRow> = st
-            .shown
-            .iter()
-            .map(|&i| {
-                let b = &st.rows[i];
-                BookingRow {
-                    id: b.id as i32,
-                    date: german_date(&b.booking_date).into(),
-                    counterparty: daily::mask(&b.counterparty, privacy).into(),
-                    category: if b.category_name.is_empty() {
-                        "Ohne Kategorie".into()
-                    } else {
-                        b.category_name.clone().into()
-                    },
-                    category_color: hex_color(&b.category_color_hex)
-                        .unwrap_or_else(|| slint::Color::from_rgb_u8(0x8e, 0x8e, 0x93)),
-                    purpose: daily::mask(&b.purpose, privacy).into(),
-                    amount: daily::mask(&money(b.amount_cents, &b.currency), privacy).into(),
-                    negative: b.amount_cents < 0 && !privacy,
-                    checked: b.checked,
-                }
+    let (days, inspector, cat_index) = with_state(|st| {
+        let shown: Vec<&Row> = st.shown.iter().map(|&i| &st.rows[i]).collect();
+        let days: Vec<DayGroup> = cockpit::group_by_day(&shown)
+            .into_iter()
+            .map(|d| DayGroup {
+                title: cockpit::day_title(&d.date).into(),
+                sum: daily::mask(
+                    &cockpit::day_sum_text(d.sum_cents, &money, &d.currency),
+                    privacy,
+                )
+                .into(),
+                negative: d.sum_cents < 0 || privacy,
+                rows: ModelRc::new(VecModel::from(
+                    d.indices
+                        .iter()
+                        .map(|&i| booking_row(st, shown[i], privacy))
+                        .collect::<Vec<_>>(),
+                )),
             })
             .collect();
         let insp = st
             .selected_booking
             .and_then(|id| st.rows.iter().find(|r| r.id == id))
-            .map(|r| daily::inspect(r, privacy, money));
+            .map(|r| {
+                let logo = logo_of(st, r, privacy);
+                let row = booking_row(st, r, privacy);
+                (daily::inspect(r, privacy, money), row, logo, r.recurring)
+            });
         let idx = insp
             .as_ref()
-            .and_then(|i| i.category_id)
+            .and_then(|i| i.0.category_id)
             .and_then(|cid| st.categories.iter().position(|c| c.id == cid))
             .map_or(0, |p| p as i32 + 1);
-        (rows, insp, idx)
+        (days, insp, idx)
     });
-    win.set_bookings(ModelRc::new(VecModel::from(rows)));
+    win.set_days(ModelRc::new(VecModel::from(days)));
     match inspector {
-        Some(i) => {
+        Some((i, row, logo, recurring)) => {
             // The note box keeps unsaved typing while the same booking stays selected.
             if win.get_selected_booking() != i.id as i32 {
                 win.set_note_text(i.note.clone().into());
             }
             win.set_selected_booking(i.id as i32);
             win.set_inspector_checked(i.checked);
+            let subtitle = [i.account.as_str(), i.purpose.as_str()]
+                .iter()
+                .filter(|t| !t.is_empty())
+                .copied()
+                .collect::<Vec<_>>()
+                .join(" · ");
             win.set_inspector(InspectorData {
                 counterparty: i.counterparty.into(),
                 iban: i.iban.into(),
                 purpose: i.purpose.into(),
-                booking_date: i.booking_date.into(),
+                booking_date: german_date(&i.booking_date).into(),
                 value_date: i.value_date.into(),
                 account: i.account.into(),
                 amount: i.amount.into(),
                 note: i.note.into(),
                 read_only: i.read_only,
+                monogram: row.monogram,
+                tint: row.tint,
+                has_logo: logo.is_some(),
+                logo: logo.unwrap_or_default(),
+                subtitle: subtitle.into(),
+                recurring,
             });
             win.set_inspector_category(cat_index);
             win.set_has_inspector(true);
@@ -330,6 +398,102 @@ fn render_bookings(win: &MainWindow) {
             win.set_has_inspector(false);
         }
     }
+}
+
+/// Starts loading the logos of the loaded rows that are not known yet (off the UI thread).
+fn request_logos(win: &MainWindow, vault: Arc<Vault>) {
+    let wanted: Vec<Vec<String>> = with_state(|st| {
+        let mut out: Vec<Vec<String>> = Vec::new();
+        for r in st.rows.iter().filter(|r| !r.logo_domains.is_empty()) {
+            let key = logos::key(&r.logo_domains);
+            if out.len() < logos::MAX_PER_LOAD && st.logos_requested.insert(key) {
+                out.push(r.logo_domains.clone());
+            }
+        }
+        out
+    });
+    if wanted.is_empty() {
+        return;
+    }
+    let weak = win.as_weak();
+    logos::load(vault, wanted, move |batch| {
+        let _ = weak.upgrade_in_event_loop(move |win| {
+            with_state(|st| {
+                for (key, buf) in batch {
+                    st.logos.insert(key, slint::Image::from_rgba8(buf));
+                }
+            });
+            render_bookings(&win);
+        });
+    });
+}
+
+/// Fills the cashflow chart and the budget card. The core calls run on a worker thread.
+fn refresh_dashboard(win: &MainWindow, vault: Arc<Vault>) {
+    let gran = match win.get_cashflow_period() {
+        1 => PeriodGranularity::Quarter,
+        2 => PeriodGranularity::Year,
+        _ => PeriodGranularity::Month,
+    };
+    let (year, month) = cockpit::current_year_month();
+    let weak = win.as_weak();
+    std::thread::spawn(move || {
+        let flow = vault.cashflow_by_period(gran, 6).unwrap_or_default();
+        let status = vault
+            .list_category_budget_progress(year, month)
+            .unwrap_or_default();
+        let _ = weak.upgrade_in_event_loop(move |win| {
+            let privacy = privacy_on(&win);
+            let (bars, ticks) = cockpit::chart(&flow);
+            win.set_cashflow_bars(ModelRc::new(VecModel::from(
+                bars.into_iter()
+                    .map(|b| BarGroup {
+                        label: b.label.into(),
+                        income: if privacy { 0.0 } else { b.income },
+                        expense: if privacy { 0.0 } else { b.expense },
+                    })
+                    .collect::<Vec<_>>(),
+            )));
+            let ticks: Vec<SharedString> = ticks
+                .into_iter()
+                .map(|t| if privacy { "•".into() } else { t.into() })
+                .collect();
+            win.set_cashflow_ticks(ModelRc::new(VecModel::from(ticks)));
+            let mut lines = cockpit::budgets(&status);
+            let has_budgets = !lines.is_empty();
+            if !has_budgets {
+                lines = with_state(|st| cockpit::top_spending(&st.rows, year, month, 4));
+            }
+            win.set_budget_title(if has_budgets {
+                "Monatsbudgets".into()
+            } else {
+                "Größte Ausgaben".into()
+            });
+            win.set_budget_lines(ModelRc::new(VecModel::from(
+                lines
+                    .into_iter()
+                    .map(|l| {
+                        let spent = daily::mask(&money(l.spent_cents, "EUR"), privacy);
+                        BudgetLine {
+                            name: daily::mask(&l.name, false).into(),
+                            amount: match l.limit_cents {
+                                Some(limit) if !privacy => format!(
+                                    "{} / {}",
+                                    money(l.spent_cents, "EUR"),
+                                    money(limit, "EUR")
+                                )
+                                .into(),
+                                _ => spent.into(),
+                            },
+                            progress: l.progress,
+                            over: l.limit_cents.is_some() && l.progress > 1.0,
+                            color: tint(&l.color_hex),
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )));
+        });
+    });
 }
 
 /// Re-applies the filter bar to the cached rows (no vault access) and redraws.
@@ -358,6 +522,7 @@ fn reload(win: &MainWindow, vault: Arc<Vault>) {
         let rows = load_rows(&vault, target);
         let cats = vault.list_categories(None, None).map_err(|e| e.to_string());
         let _ = weak.upgrade_in_event_loop(move |win| {
+            let vault = vault.clone();
             if with_state(|st| st.generation) != generation {
                 return;
             }
@@ -366,11 +531,24 @@ fn reload(win: &MainWindow, vault: Arc<Vault>) {
                     let mut names = vec![SharedString::from("Ohne Kategorie")];
                     names.extend(cats.iter().map(|c| SharedString::from(c.path.as_str())));
                     win.set_category_names(ModelRc::new(VecModel::from(names)));
+                    let mut tiles = vec![TileRow {
+                        index: 0,
+                        name: "Ohne Kategorie".into(),
+                        color: tint(""),
+                    }];
+                    tiles.extend(cats.iter().enumerate().map(|(i, c)| TileRow {
+                        index: i as i32 + 1,
+                        name: c.name.clone().into(),
+                        color: tint(&c.color_hex),
+                    }));
+                    win.set_category_tiles(ModelRc::new(VecModel::from(tiles)));
                     with_state(|st| {
                         st.rows = rows;
                         st.categories = cats;
                     });
                     apply_filter(&win);
+                    request_logos(&win, vault.clone());
+                    refresh_dashboard(&win, vault);
                 }
                 (Err(e), _) | (_, Err(e)) => win.set_sync_status(e.into()),
             }
@@ -1104,6 +1282,15 @@ fn main() -> Result<(), slint::PlatformError> {
     }
 
     {
+        let (weak, vault) = (win.as_weak(), vault.clone());
+        win.on_cashflow_changed(move || {
+            let (Some(win), Some(v)) = (weak.upgrade(), vault.lock().unwrap().clone()) else {
+                return;
+            };
+            refresh_dashboard(&win, v);
+        });
+    }
+    {
         let weak = win.as_weak();
         win.on_select_booking(move |id| {
             let Some(win) = weak.upgrade() else { return };
@@ -1131,7 +1318,7 @@ fn main() -> Result<(), slint::PlatformError> {
             *vault.lock().unwrap() = None;
             with_state(|st| *st = State::default());
             win.set_unlocked(false);
-            win.set_bookings(ModelRc::new(VecModel::from(Vec::<BookingRow>::new())));
+            win.set_days(ModelRc::new(VecModel::from(Vec::<DayGroup>::new())));
             win.set_accounts(ModelRc::new(VecModel::from(Vec::<AccountRow>::new())));
             win.set_has_inspector(false);
             views_ui::on_lock(&win);
