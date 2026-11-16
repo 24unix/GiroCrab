@@ -53,7 +53,8 @@ struct Ui {
     user_groups: Vec<UserGroup>,
     categories: Vec<Category>,
     tangible_ids: Vec<i64>,
-    planned_count: usize,
+    /// Cached "Geplant" count; `None` = recompute on the next sidebar refresh.
+    planned_count: Option<usize>,
     mandate_count: u32,
     folded: HashSet<String>,
     side_rows: Vec<nav::SideRow>,
@@ -144,7 +145,7 @@ pub fn render_sidebar(win: &MainWindow) {
                 accounts: &u.accounts,
                 user_groups: &u.user_groups,
                 categories: &u.categories,
-                planned_count: u.planned_count,
+                planned_count: u.planned_count.unwrap_or(0),
                 mandate_count: u.mandate_count,
                 mode,
                 query: &query,
@@ -161,15 +162,21 @@ pub fn render_sidebar(win: &MainWindow) {
     }
 }
 
+/// Marks the cached "Geplant" count stale (unlock, sync, import, transfer, recurring edit).
+pub fn invalidate_planned_count() {
+    with_ui(|u| u.planned_count = None);
+}
+
 /// Reloads accounts, groups, categories and counts for the sidebar on a worker thread.
 pub fn refresh_sidebar(win: &MainWindow, vault: &Arc<Vault>) {
     let (weak, v) = (win.as_weak(), vault.clone());
+    let cached = with_ui(|u| u.planned_count);
     std::thread::spawn(move || {
         let accounts = v.list_accounts().unwrap_or_default();
         let user_groups = v.list_user_groups().unwrap_or_default();
         let categories = v.list_categories(None, None).unwrap_or_default();
         let tangible_ids = v.list_tangible_account_ids().unwrap_or_default();
-        let planned_count = v.list_recurring(Vec::new()).map_or(0, |s| s.len());
+        let planned_count = cached.or_else(|| v.list_recurring(Vec::new()).ok().map(|s| s.len()));
         let mandate_count = v.count_active_mandates().unwrap_or(0);
         let v2 = v.clone();
         let _ = weak.upgrade_in_event_loop(move |win| {
@@ -647,6 +654,11 @@ fn docs_dir() -> PathBuf {
 /// Removes the decrypted copies written for "Öffnen".
 pub fn clear_opened_documents() {
     let _ = std::fs::remove_dir_all(docs_dir());
+}
+
+/// Startup cleanup: a hard kill can leave decrypted receipt copies behind.
+pub fn purge_stale_documents() {
+    clear_opened_documents();
 }
 
 fn open_external(path: &Path) -> Result<(), String> {

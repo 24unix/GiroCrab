@@ -538,7 +538,9 @@ export component MainWindow inherits Window {
                             Rectangle {
                                 height: 28px;
                                 border-radius: 7px;
-                                background: #161b22;
+                                border-width: 1px;
+                                border-color: Theme.border;
+                                background: Theme.surface;
                                 HorizontalLayout {
                                     spacing: 0px;
                                     SegButton { text: "Gruppen"; checked: root.group-mode == 0; clicked => { root.group-mode = 0; root.side-controls-changed(); } }

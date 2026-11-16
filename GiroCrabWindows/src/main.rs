@@ -950,6 +950,7 @@ fn run_transfer(
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    views_ui::purge_stale_documents();
     let win = MainWindow::new()?;
     let demo_mode = vault_key::demo_seed_requested();
     let vault: Arc<Mutex<Option<Arc<Vault>>>> = Arc::new(Mutex::new(None));
@@ -978,6 +979,7 @@ fn main() -> Result<(), slint::PlatformError> {
             match open_vault(demo) {
                 Ok(v) => {
                     *demo_active.lock().unwrap() = demo;
+                    views_ui::invalidate_planned_count();
                     show(&win, &v, None);
                     *vault.lock().unwrap() = Some(v);
                     win.set_message(SharedString::new());
@@ -1060,6 +1062,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     match result {
                         Ok(msg) => {
                             let sel = Some(win.get_selected() as i64).filter(|s| *s >= 0);
+                            views_ui::invalidate_planned_count();
                             show(&win, &v, sel);
                             win.set_sync_status(msg.into());
                             win.set_add_open(false);
@@ -1091,6 +1094,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 let result = run_sync(v.clone(), demo, &bridge);
                 let _ = weak.upgrade_in_event_loop(move |win| {
                     let selected = Some(win.get_selected() as i64).filter(|s| *s >= 0);
+                    views_ui::invalidate_planned_count();
                     show(&win, &v, selected);
                     win.set_busy(false);
                     win.set_sync_status(result.unwrap_or_else(|e| e).into());
@@ -1260,6 +1264,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     let ok = result.is_ok();
                     let sel = Some(win.get_selected() as i64).filter(|s| *s >= 0);
                     if ok {
+                        views_ui::invalidate_planned_count();
                         show(&win, &v, sel);
                     }
                     win.set_sync_status(result.unwrap_or_else(|e| e).into());
@@ -1312,6 +1317,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 bridge.hide();
                 let _ = weak.upgrade_in_event_loop(move |win| {
                     let sel = Some(win.get_selected() as i64).filter(|s| *s >= 0);
+                    views_ui::invalidate_planned_count();
                     show(&win, &v, sel);
                     win.set_busy(false);
                     win.set_sync_status(result.unwrap_or_else(|e| e).into());
