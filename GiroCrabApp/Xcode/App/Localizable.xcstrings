@@ -27022,6 +27022,17 @@
         }
       }
     },
+    "Vom Tagesgeldkonto sind nur Umbuchungen auf eigene Girokonten möglich." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From a savings account, only internal transfers to your own checking accounts are possible."
+          }
+        }
+      }
+    },
     "Von" : {
       "extractionState" : "manual",
       "localizations" : {

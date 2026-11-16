@@ -6,12 +6,33 @@ import GiroCrabCore
 
 extension AppModel {
     /// Checking accounts that are connected via FinTS (HKCCS-capable banks).
-    var transferAccounts: [Account] {
+    var transferAccounts: [Account] { sendableAccounts(of: .checking) }
+
+    /// Savings accounts (Tagesgeld) the bank lets us book from, but only as an
+    /// internal transfer (Umbuchung) to an own account (GitHub #582). Kept apart
+    /// from `transferAccounts` so standing orders, batches and direct debits
+    /// do not offer them.
+    var savingsTransferSources: [Account] { sendableAccounts(of: .savings) }
+
+    /// Accounts of `kind` with an IBAN that a connected, write-capable bank can send from.
+    private func sendableAccounts(of kind: AccountKind) -> [Account] {
         let readOnly = Set(connections.filter { usesRah10($0) }.map(\.id))
         return allAccounts.filter {
-            $0.kind == .checking && !$0.iban.isEmpty && !$0.isArchived
+            $0.kind == kind && !$0.iban.isEmpty && !$0.isArchived
                 && !($0.connectionId.map { readOnly.contains($0) } ?? false)
                 && [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .bunq].contains($0.connector)
+        }
+    }
+
+    /// Own accounts a savings account may transfer to: checking accounts only,
+    /// the bank's own reference account first (same connection).
+    func internalTransferTargets(from source: Account) -> [Account] {
+        allAccounts.filter {
+            $0.kind == .checking && !$0.iban.isEmpty && !$0.isArchived && $0.id != source.id
+        }.sorted { a, b in
+            let aSame = a.connectionId != nil && a.connectionId == source.connectionId
+            let bSame = b.connectionId != nil && b.connectionId == source.connectionId
+            return aSame && !bSame
         }
     }
 
@@ -28,10 +49,10 @@ extension AppModel {
     }
 
     /// Accounts offered in the transfer form: sending ones first.
-    var transferFormAccounts: [Account] { transferAccounts + giroCodeAccounts }
+    var transferFormAccounts: [Account] { transferAccounts + savingsTransferSources + giroCodeAccounts }
 
     func canSendTransfer(from accountID: Int64?) -> Bool {
-        transferAccounts.contains { $0.id == accountID } && bankingGate(forAccount: accountID) == nil
+        (transferAccounts + savingsTransferSources).contains { $0.id == accountID } && bankingGate(forAccount: accountID) == nil
     }
 
     var canTransfer: Bool { vault != nil && !transferFormAccounts.isEmpty && syncingConnectionID == nil && activeTransfer == nil }

@@ -24,7 +24,9 @@ struct TransferSheetView: View {
 
     /// Own accounts that can receive a transfer: any kind, but with an IBAN, not archived, not the sender.
     private var ownTargets: [Account] {
-        model.allAccounts.filter {
+        // Tagesgeld books only to own checking accounts (#582).
+        if let a = account, a.kind == .savings { return model.internalTransferTargets(from: a) }
+        return model.allAccounts.filter {
             !$0.iban.isEmpty && !$0.isArchived && $0.id != model.transferDraft.accountID
         }
     }
@@ -49,6 +51,9 @@ struct TransferSheetView: View {
             model.transferDraft.bic = ""
         }
     }
+
+    /// Savings account as sender: the bank allows only an internal transfer (#582).
+    private var internalOnly: Bool { account?.kind == .savings }
 
     private var account: Account? {
         model.transferFormAccounts.first { $0.id == model.transferDraft.accountID }
@@ -138,7 +143,10 @@ struct TransferSheetView: View {
 #if os(macOS)
         .onPasteCommand(of: [.plainText]) { _ in pasteFromClipboard() }
 #endif
+        .onAppear { if internalOnly && !ownTransfer { setOwnTransfer(true) } }
         .onChange(of: model.transferDraft.accountID) { _, _ in
+            if internalOnly && !ownTransfer { setOwnTransfer(true); return }
+            if !internalOnly && ownTransfer && ownTargets.isEmpty { setOwnTransfer(false); return }
             guard ownTransfer else { return }
             if !ownTargets.contains(where: { $0.id == ownTargetID }) { ownTargetID = ownTargets.first?.id }
             applyOwnTarget(ownTargetID)
@@ -189,7 +197,12 @@ struct TransferSheetView: View {
                 if account != nil && !canSend { noDirectTransferNote }
             }
 
-            if !ownTargets.isEmpty || ownTransfer {
+            if internalOnly {
+                Section {
+                    Label("Vom Tagesgeldkonto sind nur Umbuchungen auf eigene Girokonten möglich.", systemImage: "arrow.left.arrow.right")
+                        .appFont(.callout)
+                }
+            } else if !ownTargets.isEmpty || ownTransfer {
                 Section {
                     Picker("Art der Zahlung", selection: Binding(get: { ownTransfer }, set: { setOwnTransfer($0) })) {
                         Text("Überweisung").tag(false)
