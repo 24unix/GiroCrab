@@ -5,6 +5,7 @@ import GiroCrabCore
 /// inspector, bookings grouped into white day cards
 /// with the daily sum in the card header.
 struct BookingStreamView: View {
+    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
     /// The empty state repeats the search text, which is drawn as a parameter
     /// `Text` and cannot carry `.sensitive()`.
     @Environment(\.reportRedaction) private var redaction
@@ -126,12 +127,13 @@ struct BookingStreamView: View {
                         if isNewBookings {
                             NewBookingsCards()
                         } else {
-                            ForEach(model.streamItems) { item in
+                            ForEach(model.streamItems.filter { item in
+                                if density == .compact, case .header = item { return false }
+                                return true
+                            }) { item in
                                 switch item {
                                 case .header(let day):
-                                    DayHeader(day: day)
-                                        .padding(.top, 14)
-                                        .id(day.id)
+                                    DayHeader(day: day).padding(.top, 14).id(day.id)
                                 case .row(let b, let isLast):
                                     DayCardRow(booking: b, isLast: isLast)
                                         .id(b.id)
@@ -194,11 +196,16 @@ struct BookingStreamView: View {
             .onChange(of: model.scope) { _, _ in scrollToTop(proxy) }
             .onChange(of: model.scrollToDay) { _, jump in
                 guard let day = jump?.day else { return }
-                withAnimation(Motion.animation(.easeOut(duration: 0.25))) { proxy.scrollTo(day, anchor: .top) }
-                // select the day's first booking so the detail pane follows
-                if let first = model.dayGroups.first(where: { $0.date == day })?.bookings.first {
-                    model.selectedBookingID = first.id
+                let first = model.dayGroups.first(where: { $0.date == day })?.bookings.first
+                withAnimation(Motion.animation(.easeOut(duration: 0.25))) {
+                    if density == .compact, let first {
+                        proxy.scrollTo(first.id, anchor: .top)
+                    } else {
+                        proxy.scrollTo(day, anchor: .top)
+                    }
                 }
+                // select the day's first booking so the detail pane follows
+                if let first { model.selectedBookingID = first.id }
             }
         }
         // Pull-to-refresh (iOS): iCloud merge + bank sync of the current selection
@@ -402,6 +409,7 @@ struct MerchantFocusBar: View {
 }
 
 struct DayCardSegment: ViewModifier {
+    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
     let isTop: Bool
     let isBottom: Bool
 
@@ -411,26 +419,31 @@ struct DayCardSegment: ViewModifier {
             topLeadingRadius: isTop ? r : 0, bottomLeadingRadius: isBottom ? r : 0,
             bottomTrailingRadius: isBottom ? r : 0, topTrailingRadius: isTop ? r : 0,
             style: .continuous)
-        content
-            .frame(maxWidth: .infinity)
-            .background(shape.fill(Theme.card))
-            .clipShape(shape)
-            .overlay {
-                // The border of the whole card: stroke a shape that reaches 1 pt past
-                // an open edge and clip it, so only top/bottom slices draw that edge.
-                Color.clear.overlay {
-                    shape.strokeBorder(Theme.border, lineWidth: 1)
-                        .padding(.top, isTop ? 0 : -1)
-                        .padding(.bottom, isBottom ? 0 : -1)
+        if density == .compact {
+            content.frame(maxWidth: .infinity)
+        } else {
+            content
+                .frame(maxWidth: .infinity)
+                .background(shape.fill(Theme.card))
+                .clipShape(shape)
+                .overlay {
+                    // The border of the whole card: stroke a shape that reaches 1 pt past
+                    // an open edge and clip it, so only top/bottom slices draw that edge.
+                    Color.clear.overlay {
+                        shape.strokeBorder(Theme.border, lineWidth: 1)
+                            .padding(.top, isTop ? 0 : -1)
+                            .padding(.bottom, isBottom ? 0 : -1)
+                    }
+                    .clipped()
+                    .allowsHitTesting(false)
                 }
-                .clipped()
-                .allowsHitTesting(false)
-            }
+        }
     }
 }
 
-/// Top of a day card: date and the day's sum.
+/// Date groups bookings without repeating a daily total.
 struct DayHeader: View {
+    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
     let day: DayGroup
 
     var body: some View {
@@ -440,13 +453,9 @@ struct DayHeader: View {
                     .appFont(.subheadline, weight: .semibold)
                     .foregroundStyle(Theme.text)
                 Spacer()
-                Text(Money.signed(day.sum))
-                    .sensitive()
-                    .appFont(.subheadline, monospacedDigit: true)
-                    .foregroundStyle(day.sum > 0 ? Theme.inflow : Theme.secondary)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, density == .compact ? 4 : 10)
             Rectangle().fill(Theme.border).frame(height: 1)
         }
         .modifier(DayCardSegment(isTop: true, isBottom: false))
@@ -455,14 +464,17 @@ struct DayHeader: View {
 
 /// One booking of a day card; the last one closes the card.
 struct DayCardRow: View {
+    @Environment(\.textScale) private var textScale
+    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
     @Environment(AppModel.self) private var model
     let booking: Booking
     let isLast: Bool
+    @State private var compactDetailsCollapsed = false
 
     var body: some View {
         let b = booking
         VStack(spacing: 0) {
-                BookingRow(booking: b)
+                BookingRow(booking: b, compactDetailsCollapsed: compactDetailsCollapsed)
                     .dropDestination(for: URL.self) { urls, _ in
                         model.selectedBookingID = b.id
                         model.attach(urls, to: b)
@@ -473,8 +485,19 @@ struct DayCardRow: View {
                         #if os(macOS)
                         // Finder-style: ⌘-click adds/removes, ⇧-click selects a range.
                         let flags = ClickModifiers.atLastMouseDown
+                        if density == .compact, model.selectedBookingID == b.id,
+                           !flags.contains(.command), !flags.contains(.shift) {
+                            compactDetailsCollapsed.toggle()
+                        } else {
+                            compactDetailsCollapsed = false
+                        }
                         model.selectBooking(b.id, toggle: flags.contains(.command), extend: flags.contains(.shift))
                         #else
+                        if density == .compact, model.selectedBookingID == b.id {
+                            compactDetailsCollapsed.toggle()
+                        } else {
+                            compactDetailsCollapsed = false
+                        }
                         model.selectBooking(b.id)
                         #endif
                         model.showBookingSheet = true
@@ -483,11 +506,15 @@ struct DayCardRow: View {
                     // simultaneous, so single clicks keep selecting without the double-click delay
                     .simultaneousGesture(TapGesture(count: 2).onEnded { model.editNote(for: b) })
                     .contextMenu { rowMenu(b) }
-            if !isLast {
-                Rectangle().fill(Theme.border.opacity(0.7)).frame(height: 1).padding(.leading, 64)
+            if !isLast || density == .compact {
+                Rectangle().fill(Theme.border.opacity(0.7)).frame(height: 1)
+                    .padding(.leading, density == .compact ? 14 : 64)
             }
         }
         .modifier(DayCardSegment(isTop: false, isBottom: isLast))
+        .onChange(of: model.selectedBookingID) { _, id in
+            if id != booking.id { compactDetailsCollapsed = false }
+        }
     }
 
     @ViewBuilder
@@ -558,12 +585,31 @@ enum ListPurpose {
 
 /// Exactly three elements: signet · name + subtitle · amount.
 struct BookingRow: View {
+    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.textScale) private var textScale
     @Environment(AppModel.self) private var model
     let booking: Booking
+    var compactDetailsCollapsed = false
     /// Amazon orders: drill-down of all items (and the refunded order's items)
     /// below the row; collapsed rows keep the uniform list height.
     @State private var amazonExpanded = false
     @AppStorage(ViewLayout.hiddenCategoryChipAccountsKey) private var hiddenCategoryChipAccountsRaw = ""
+
+    private var showsCategoryChip: Bool {
+        !hiddenCategoryChipAccountsRaw.split(separator: ",").compactMap { Int64($0) }.contains(booking.accountId)
+    }
+
+    private var showsDetails: Bool {
+        density.showsDetails(isActive: density == .compact && model.selectedBookingID == booking.id && !compactDetailsCollapsed)
+    }
+
+    private var effectiveDensity: BookingDensity { showsDetails ? .spacious : density }
+    private var detailInset: CGFloat { 36 * textScale + 12 + (density == .compact ? 80 * textScale + 4 : 0) }
+    private var isSingleLine: Bool { density == .compact && !showsDetails }
+
+    private var visiblePurpose: String {
+        showsDetails ? BookingInlineDetails.fullPurpose(for: booking) : density.purpose(for: booking)
+    }
 
     private var amazonRef: AmazonOrderRef? {
         AmazonOrderRef.parse(purpose: booking.purpose, merchantDomain: booking.merchantDomain,
@@ -574,18 +620,26 @@ struct BookingRow: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var compactChip: Bool { sizeClass == .compact }
     #else
-    private let compactChip = false
+    private var compactChip: Bool { density == .compact }
     #endif
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-            MerchantSignet(merchant: booking.merchant, categorySymbol: booking.categorySymbol, showNewDot: !booking.checked)
+            HStack(alignment: isSingleLine ? .center : .top, spacing: density == .compact ? 8 : 12) {
+            if density == .compact {
+                Text(DateText.medium(booking.bookingDate))
+                    .appFont(.callout, monospacedDigit: true)
+                    .foregroundStyle(Theme.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .frame(width: 80 * textScale, alignment: .leading)
+            }
+            MerchantSignet(merchant: booking.merchant, categorySymbol: booking.categorySymbol, size: isSingleLine ? 26 : 36, showNewDot: !booking.checked)
                 .opacity(booking.isPending ? 0.7 : 1)
                 .overlay {
                     // not booked yet: dashed outline instead of a solid tile
                     if booking.isPending {
-                        RoundedRectangle(cornerRadius: 36 * 0.28, style: .continuous)
+                        RoundedRectangle(cornerRadius: (isSingleLine ? 26 : 36) * 0.28, style: .continuous)
                             .strokeBorder(Theme.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
                     }
                 }
@@ -595,20 +649,9 @@ struct BookingRow: View {
                         .sensitive()
                         .appFont(.body, weight: .semibold)
                         .foregroundStyle(Theme.text)
-                        .lineLimit(1)
+                        .lineLimit(showsDetails ? nil : 1)
+                        .fixedSize(horizontal: false, vertical: true)
                         .layoutPriority(1)
-                    // Purpose behind the name (#497): takes the space the name leaves and
-                    // is cut off first; the tooltip has the whole text.
-                    if amazonRef == nil, let purpose = ListPurpose.text(for: booking) {
-                        Text(purpose)
-                            .sensitive()
-                            .appFont(.callout)
-                            .foregroundStyle(Theme.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .layoutPriority(-1)
-                            .help(purpose)
-                    }
                     if booking.documentCount > 0 {
                         Image(systemName: "doc.text.fill")
                             .appFont(.caption)
@@ -622,91 +665,122 @@ struct BookingRow: View {
                             .help("Wiederkehrende Buchung")
                             .accessibilityLabel("Wiederkehrend")
                     }
+                    if isSingleLine && showsCategoryChip {
+                        // Keep the name and amount first. Show the category only
+                        // when its complete label fits; the purpose yields first.
+                        ViewThatFits(in: .horizontal) {
+                            BookingCategoryLabel(booking: booking).fixedSize()
+                            Color.clear.frame(width: 0, height: 0)
+                        }
+                        .layoutPriority(-1)
+                    }
+                    if isSingleLine, !visiblePurpose.isEmpty {
+                        Text(visiblePurpose)
+                            .sensitive()
+                            .appFont(.callout)
+                            .foregroundStyle(Theme.secondary)
+                            .lineLimit(1)
+                            .layoutPriority(-2)
+                    }
                 }
-                HStack(spacing: 6) {
-                    #if !os(iOS)
-                    if model.showsAccountMarkers {
-                        AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId),
-                                    symbol: model.accountSymbol(booking.accountId), compact: compactChip)
-                    }
-                    #endif
-                    // category with the sidebar's icon and colour (unless hidden for this account, #336)
-                    if !hiddenCategoryChipAccountsRaw.split(separator: ",").compactMap({ Int64($0) }).contains(booking.accountId) {
-                        BookingCategoryLabel(booking: booking)
-                            .layoutPriority(1)
-                    }
-                    if let ref = amazonRef {
-                        // Amazon order: what was ordered beats the "Bestellung" kind label.
-                        // Refunds show the refunded order's items (joined via the order code).
-                        let refundSource = ref.isRefund ? model.amazonRefundSource(booking) : nil
-                        // Refund rows start flush like every other row ("· item…");
-                        // the ↩ marker goes at the end of the item text.
-                        let itemsText = refundSource.map { "· \($0.items)  ↩" }
-                            ?? (ref.items.isEmpty ? nil : "· \(ref.items)")
-                        if let itemsText {
-                            Text(itemsText)
+                if !showsDetails && !isSingleLine {
+                    HStack(spacing: 6) {
+                        #if !os(iOS)
+                        if model.showsAccountMarkers {
+                            ViewThatFits(in: .horizontal) {
+                                AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId),
+                                            symbol: model.accountSymbol(booking.accountId), compact: compactChip)
+                                AccountChip(label: model.accountShortLabel(booking.accountId), color: model.accountColor(booking.accountId),
+                                            symbol: model.accountSymbol(booking.accountId), compact: true)
+                            }
+                        }
+                        #endif
+                        // category with the sidebar's icon and colour, then the payment method
+                        if showsCategoryChip {
+                            BookingCategoryLabel(booking: booking)
+                                .layoutPriority(1)
+                        }
+                        if let ref = amazonRef {
+                            // Amazon order: what was ordered beats the "Bestellung" kind label.
+                            // Refunds show the refunded order's items (joined via the order code).
+                            let refundSource = ref.isRefund ? model.amazonRefundSource(booking) : nil
+                            // Refund rows start flush like every other row ("· item…");
+                            // the ↩ marker goes at the end of the item text.
+                            let itemsText = refundSource.map { "· \($0.items)  ↩" }
+                                ?? (ref.items.isEmpty ? nil : "· \(ref.items)")
+                            if let itemsText {
+                                Text(itemsText)
+                                    .sensitive()
+                                    .appFont(.callout)
+                                    .foregroundStyle(Theme.secondary)
+                                    .lineLimit(1)
+                                    .layoutPriority(-1)
+                                    .help(ref.isRefund
+                                          ? "Erstattung für Bestellung #\(ref.code)"
+                                          : ref.itemList.joined(separator: "\n"))
+                            }
+                            if ref.moreCount > 0 {
+                                // items beyond the two shown; the drill-down lists everything
+                                Text("+\(ref.moreCount) weitere")
+                                    .appFont(.caption2, weight: .medium)
+                                    .foregroundStyle(Theme.tertiary)
+                                    .lineLimit(1)
+                                    .help(ref.itemList.dropFirst(2).joined(separator: "\n"))
+                            }
+                            if ref.isSubscription {
+                                // "D01-…" charges are the recurring Spar-Abo, plain orders are one-off
+                                Label("Abo", systemImage: "arrow.triangle.2.circlepath")
+                                    .labelStyle(.titleAndIcon)
+                                    .appFont(.caption2, weight: .medium)
+                                    .foregroundStyle(Theme.tertiary)
+                                    .help("Abonnement (Spar-Abo) – wiederkehrende Abbuchung")
+                            }
+                            Text("· #\(ref.code)")
+                                .sensitive()
+                                .appFont(.callout, monospacedDigit: true)
+                                .foregroundStyle(Theme.tertiary)
+                                .lineLimit(1)
+                                .fixedSize()
+                                .layoutPriority(-1)
+                            // drill-down when there is more than the head can show
+                            if ref.itemList.count > 1 || refundSource != nil {
+                                Button { amazonExpanded.toggle() } label: {
+                                    Image(systemName: amazonExpanded ? "chevron.down" : "chevron.right")
+                                        .appFont(.caption2, weight: .semibold)
+                                        .foregroundStyle(Theme.tertiary)
+                                }
+                                .buttonStyle(.borderless)
+                                .help(amazonExpanded ? "Artikel einklappen" : "Alle Artikel anzeigen")
+                            }
+                        } else if density == .compact, !density.purpose(for: booking).isEmpty {
+                            Text(density.purpose(for: booking))
                                 .sensitive()
                                 .appFont(.callout)
                                 .foregroundStyle(Theme.secondary)
                                 .lineLimit(1)
                                 .layoutPriority(-1)
-                                .help(ref.isRefund
-                                      ? "Erstattung für Bestellung #\(ref.code)"
-                                      : ref.itemList.joined(separator: "\n"))
-                        }
-                        if ref.moreCount > 0 {
-                            // items beyond the two shown; the drill-down lists everything
-                            Text("+\(ref.moreCount) weitere")
-                                .appFont(.caption2, weight: .medium)
-                                .foregroundStyle(Theme.tertiary)
+                        } else if let counter = model.counterAccount(for: booking) {
+                            Text("· ⇄ \(counter.name)")
+                                .sensitive()
+                                .appFont(.callout)
+                                .foregroundStyle(Theme.secondary)
                                 .lineLimit(1)
-                                .help(ref.itemList.dropFirst(2).joined(separator: "\n"))
+                                .layoutPriority(-1)
+                        } else if !booking.paymentMethod.isEmpty {
+                            Text("· \(booking.paymentMethod)")
+                                .appFont(.callout)
+                                .foregroundStyle(Theme.secondary)
+                                .lineLimit(1)
+                                .layoutPriority(-1)
                         }
-                        if ref.isSubscription {
-                            // "D01-…" charges are the recurring Spar-Abo, plain orders are one-off
-                            Label("Abo", systemImage: "arrow.triangle.2.circlepath")
-                                .labelStyle(.titleAndIcon)
-                                .appFont(.caption2, weight: .medium)
-                                .foregroundStyle(Theme.tertiary)
-                                .help("Abonnement (Spar-Abo) – wiederkehrende Abbuchung")
-                        }
-                        Text("· #\(ref.code)")
-                            .sensitive()
-                            .appFont(.callout, monospacedDigit: true)
-                            .foregroundStyle(Theme.tertiary)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .layoutPriority(-1)
-                        // drill-down when there is more than the head can show
-                        if ref.itemList.count > 1 || refundSource != nil {
-                            Button { amazonExpanded.toggle() } label: {
-                                Image(systemName: amazonExpanded ? "chevron.down" : "chevron.right")
-                                    .appFont(.caption2, weight: .semibold)
-                                    .foregroundStyle(Theme.tertiary)
-                            }
-                            .buttonStyle(.borderless)
-                            .help(amazonExpanded ? "Artikel einklappen" : "Alle Artikel anzeigen")
-                        }
-                    } else if let counter = model.counterAccount(for: booking) {
-                        Text("· ⇄ \(counter.name)")
-                            .sensitive()
-                            .appFont(.callout)
-                            .foregroundStyle(Theme.secondary)
-                            .lineLimit(1)
-                            .layoutPriority(-1)
-                    } else if !booking.paymentMethod.isEmpty {
-                        Text("· \(booking.paymentMethod)")
-                            .appFont(.callout)
-                            .foregroundStyle(Theme.secondary)
-                            .lineLimit(1)
-                            .layoutPriority(-1)
                     }
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    .clipped()
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .clipped()
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .layoutPriority(0)
-            Spacer(minLength: 8)
+            Spacer(minLength: isSingleLine ? 0 : 8)
             // the row just checked in a list of new bookings stays without a mark until it leaves
             if booking.checked, model.lingeringBookingID != booking.id {
                 Image(systemName: "checkmark")
@@ -745,7 +819,21 @@ struct BookingRow: View {
                     }
             }
         }
-        if amazonExpanded, let ref = amazonRef {
+        if (showsDetails || density == .standard), amazonRef == nil, !visiblePurpose.isEmpty {
+            Text(visiblePurpose)
+                .sensitive()
+                .appFont(.callout)
+                .foregroundStyle(Theme.secondary)
+                .lineLimit(showsDetails ? nil : 1)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, detailInset)
+        }
+        if showsDetails {
+            BookingInlineDetails(booking: booking)
+                .padding(.top, 4)
+                .padding(.leading, detailInset)
+        }
+        if (amazonExpanded && density != .compact) || showsDetails, let ref = amazonRef {
             // drill-down: every item on its own line, indented under the signet
             VStack(alignment: .leading, spacing: 2) {
                 if let source = model.amazonRefundSource(booking) {
@@ -761,13 +849,17 @@ struct BookingRow: View {
                     }
                 }
             }
-            .padding(.leading, 48)
+            .padding(.leading, detailInset)
             .padding(.bottom, 4)
         }
         }
+        #if os(macOS)
+        .frame(minHeight: (effectiveDensity == .compact ? 28 : 44) * textScale, alignment: .top)
+        #else
         .frame(minHeight: 44, alignment: .top)
+        #endif
         .padding(.horizontal, 14)
-        .padding(.vertical, 5)
+        .padding(.vertical, effectiveDensity.verticalPadding * textScale)
         .background {
             ZStack {
                 // not booked yet: light diagonal hatching under the whole row
@@ -798,9 +890,8 @@ struct PendingHatch: View {
     }
 }
 
-/// Selection highlight of one row. It reads the selection in its own body, so
-/// selecting a booking re-evaluates these backgrounds only and not every day
-/// card and row built so far.
+/// Selection highlight reads selection locally instead of invalidating day cards.
+/// Compact booking rows also observe the active selection to expand their details.
 private struct RowSelectionBackground: View {
     @Environment(AppModel.self) private var model
     let id: Booking.ID
@@ -839,6 +930,7 @@ private struct RowSelectionTraits: ViewModifier {
 /// Scrolls the stream to the selected booking. A view of its own, so the
 /// selection is not a dependency of the whole list.
 private struct SelectionScroller: View {
+    @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
     @Environment(AppModel.self) private var model
     let proxy: ScrollViewProxy
 
@@ -848,7 +940,10 @@ private struct SelectionScroller: View {
                 guard let id else { return }
                 // Every row is an element of the lazy stream, so the proxy finds it
                 // even while it is off-screen.
-                withAnimation(Motion.animation(.easeOut(duration: 0.15))) { proxy.scrollTo(id) }
+                withAnimation(Motion.animation(.easeOut(duration: 0.15))) {
+                    // Expanded rows can exceed the viewport: keep their title visible.
+                    proxy.scrollTo(id, anchor: density == .standard ? nil : .top)
+                }
             }
     }
 }
