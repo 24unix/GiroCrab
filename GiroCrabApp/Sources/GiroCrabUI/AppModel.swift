@@ -42,6 +42,8 @@ public final class AppModel {
     var accountsByID: [Int64: Account] = [:]
     var accountMarkers: [Int64: AccountMarker] = [:]
     var categories: [GiroCrabCore.Category] = []
+    /// Live tags in list order with their booking counts (#228).
+    var tags: [GiroCrabCore.Tag] = []
     var categoryTree: [CategoryNode] = []
     var bookings: [Booking] = [] { didSet { rebuildBookingIndex() } }
     /// Derived from `bookings` once per reload instead of on every view access.
@@ -337,6 +339,8 @@ public final class AppModel {
     /// Booking whose inspector note field should take focus (double-click / Return in the list).
     /// Carries the id because the NoteCard is recreated per booking and claims it on appear.
     var pendingNoteFocus: Booking.ID?
+    /// Booking whose tag field (inspector) should take the focus once shown (#228).
+    var pendingTagFocus: Booking.ID?
     /// Bumped to hand keyboard focus back to the booking list (e.g. Esc in the note field).
     var focusListToken = 0
     var showMoneyMoneyImport = false
@@ -1115,6 +1119,7 @@ public final class AppModel {
         // cheap, indexed calls; everything that scans bookings goes off the main thread
         reloadAccounts()
         reloadRules()
+        reloadTags()
         reloadSettings()
         mirrorDocumentsIfEnabled()
         startSelectionLoad()
@@ -1221,7 +1226,7 @@ public final class AppModel {
         ownVault = nil
         demoActive = false
         vault = nil
-        groups = []; userGroups = []; accountsByID = [:]; accountMarkers = [:]; bookings = []; categories = []; categoryTree = []; rules = []; connections = []; settings = []
+        groups = []; userGroups = []; accountsByID = [:]; accountMarkers = [:]; bookings = []; categories = []; categoryTree = []; rules = []; tags = []; connections = []; settings = []
         page = nil; dashboard = nil; merchantStats = nil; merchantAccountStats = nil; logoCache = [:]
     }
 

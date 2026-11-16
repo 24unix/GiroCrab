@@ -13,7 +13,7 @@ struct InspectorView: View {
     private func updateLayout(_ change: (inout InspectorLayout) -> Void) {
         var next = layout
         change(&next)
-        withAnimation(.snappy(duration: 0.2)) { layoutValue = next.storageValue }
+        withAnimation(.snappy(duration: 0.2)) { layoutValue = next.persistedValue }
     }
 
     var body: some View {
@@ -672,6 +672,7 @@ struct MultiSelectionCard: View {
                 if expense != 0 { LabeledContent("Ausgaben") { Text(Money.format(expense)).sensitive() } }
             }
             .appFont(.callout, monospacedDigit: true)
+            MultiSelectionTags(bookings: many)
             Button {
                 model.showCategorizer = true
             } label: {

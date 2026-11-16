@@ -27,7 +27,7 @@ final class InspectorLayoutTests: XCTestCase {
         var layout = InspectorLayout.standard
         // Receipt (index 0) dropped into the gap below note (gap 2) lands right after note.
         layout.insert(.receipt, atGap: 2)
-        XCTAssertEqual(Array(layout.visible.prefix(3)), [.note, .receipt, .salary])
+        XCTAssertEqual(Array(layout.visible.prefix(3)), [.note, .receipt, .tags])
 
         // Raw data (last) dropped above the first card.
         layout.insert(.rawData, atGap: 0)
@@ -79,5 +79,29 @@ final class InspectorLayoutTests: XCTestCase {
         XCTAssertEqual(InspectorSection(dragPayload: InspectorSection.note.dragPayload), .note)
         XCTAssertNil(InspectorSection(dragPayload: "note"))
         XCTAssertNil(InspectorSection(dragPayload: InspectorSection.dragPrefix + "unknown"))
+    }
+
+    /// Reset (or moving everything back) stores „standard“, not a fixed list:
+    /// a card added later then takes its standard place (#228).
+    func testStandardLayoutIsStoredEmpty() {
+        var layout = InspectorLayout.standard
+        XCTAssertEqual(layout.persistedValue, "")
+        layout.hide(.rawData)
+        XCTAssertFalse(layout.persistedValue.isEmpty)
+        layout.show(.rawData)
+        XCTAssertTrue(layout.isStandard)
+        XCTAssertEqual(layout.persistedValue, "")
+    }
+
+    /// v0.7.5 stored the standard as a list without the tag card: read as standard,
+    /// so the tag card sits below the note.
+    func testFormerStandardReadsAsCurrentStandard() {
+        let old = InspectorLayout(storageValue: "receipt,note,salary,recurring,categories,documents,merchantHistory,rawData")
+        XCTAssertTrue(old.isStandard)
+        XCTAssertEqual(Array(old.visible.prefix(3)), [.receipt, .note, .tags])
+        // a layout the user changed keeps its order; the new card goes to the bottom
+        let own = InspectorLayout(storageValue: "note,receipt,salary,recurring,categories,documents,merchantHistory,rawData")
+        XCTAssertEqual(own.visible.first, .note)
+        XCTAssertEqual(own.visible.last, .tags)
     }
 }

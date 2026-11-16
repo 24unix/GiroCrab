@@ -128,6 +128,8 @@ public struct GiroCrabScenes: Scene {
                     .disabled(!model.canMarkAllChecked)
                 Button("Notiz bearbeiten") { if let b = model.selectedBooking { model.editNote(for: b) } }
                     .disabled(model.selectedBooking == nil)
+                Button("Tags bearbeiten") { if let b = model.selectedBooking { model.editTags(for: b) } }
+                    .disabled(model.selectedBooking == nil)
                 // like the Finder (⌘Y); Space in the list does the same
                 Button("Beleg in Quick Look anzeigen") {
                     if let b = model.selectedBooking, let d = model.documents(for: b).first { model.quickLook(d) }

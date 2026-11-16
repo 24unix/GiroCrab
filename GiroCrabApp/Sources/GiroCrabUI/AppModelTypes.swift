@@ -537,3 +537,19 @@ extension AccountKind {
         }
     }
 }
+
+/// What Return in a tag field does with the typed text (#228).
+enum TagEntryIntent: Equatable {
+    case none
+    /// A new tag with this (cleaned) name.
+    case create(String)
+    /// The existing tag, not yet on (every one of) the bookings.
+    case add(Int64, String)
+    /// The existing tag is already on every booking: Return does nothing.
+    case already(String)
+    /// A new name that looks like an existing tag („test 1“ / „test-1“, #228):
+    /// Return still creates it; the hint names the look-alike.
+    case similar(new: String, existingID: Int64, existing: String)
+    /// Longer than the core accepts: Return does nothing.
+    case tooLong
+}

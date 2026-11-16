@@ -527,6 +527,7 @@ struct DayCardRow: View {
         CategorizeMenuButton(booking: b)
         Button("Regel für diesen Händler erstellen …", systemImage: "wand.and.stars") { model.openRuleEditor(from: b) }
         Button("Notiz bearbeiten …", systemImage: "note.text") { model.editNote(for: b) }
+        TagsMenu(model: model, booking: b)
         Button("Umsatz aufteilen (Splitbuchung) …", systemImage: "arrow.triangle.branch") { model.splitBooking = b }
         LoanAssignMenu(model: model, booking: b, hidesWhenUnavailable: true)
         Divider()
@@ -679,6 +680,14 @@ struct BookingRow: View {
                         }
                         .layoutPriority(-1)
                     }
+                    if isSingleLine, !booking.tags.isEmpty {
+                        // like the category: only when the markers fit, the purpose yields first
+                        ViewThatFits(in: .horizontal) {
+                            BookingTagMarkers(tags: booking.tags)
+                            Color.clear.frame(width: 0, height: 0)
+                        }
+                        .layoutPriority(-1)
+                    }
                     if isSingleLine, !visiblePurpose.isEmpty {
                         Text(visiblePurpose)
                             .sensitive()
@@ -705,6 +714,7 @@ struct BookingRow: View {
                             BookingCategoryLabel(booking: booking)
                                 .layoutPriority(1)
                         }
+                        BookingTagMarkers(tags: booking.tags)
                         if let ref = amazonRef {
                             // Amazon order: what was ordered beats the "Bestellung" kind label.
                             // Refunds show the refunded order's items (joined via the order code).

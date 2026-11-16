@@ -1883,6 +1883,10 @@
         }
       }
     },
+    "+%lld" : {
+      "extractionState" : "manual",
+      "shouldTranslate" : false
+    },
     "+%lld weitere" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5202,6 +5206,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Command Palette…"
+          }
+        }
+      }
+    },
+    "Bei allen ausgewählten Buchungen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On all selected bookings"
           }
         }
       }
@@ -12732,6 +12747,17 @@
         }
       }
     },
+    "Höchstens %lld Zeichen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "At most %lld characters"
+          }
+        }
+      }
+    },
     "Höchstens einmal pro Woche. Je nach Bank ist dafür eine zusätzliche TAN nötig. Ist ein Dokumentenordner eingestellt, landen die PDFs auch dort." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17641,6 +17667,17 @@
         }
       }
     },
+    "Neuer Tag …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Tag …"
+          }
+        }
+      }
+    },
     "Neues Archivkonto „%@“ – der Saldo ist die Summe der Umsätze." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18429,6 +18466,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Only shown for income"
+          }
+        }
+      }
+    },
+    "Nur bei einigen – klicken, um ihn allen zu geben" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only on some – click to add it to all"
           }
         }
       }
@@ -22424,6 +22472,39 @@
         }
       }
     },
+    "Tag entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove Tag"
+          }
+        }
+      }
+    },
+    "Tag hinzufügen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Tag"
+          }
+        }
+      }
+    },
+    "Tag hinzufügen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add tag …"
+          }
+        }
+      }
+    },
     "Tage" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22486,6 +22567,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Daily balance column"
+          }
+        }
+      }
+    },
+    "Tags" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tags"
+          }
+        }
+      }
+    },
+    "Tags (%lld Buchungen)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tags (%lld bookings)"
+          }
+        }
+      }
+    },
+    "Tags bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit Tags"
+          }
+        }
+      }
+    },
+    "Tags: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tags: %@"
           }
         }
       }
@@ -24454,6 +24579,17 @@
         }
       }
     },
+    "Weniger" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Less"
+          }
+        }
+      }
+    },
     "Wer keine Monatsbudgets nutzt, blendet die Budget-Karte und „Monatsbudget festlegen …“ ganz aus. Auch im Menü Ansicht umschaltbar." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -26281,6 +26417,17 @@
         }
       }
     },
+    "Ähnlich wie „%@“ – ↩ legt trotzdem neu an" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Similar to “%@” – ↩ creates it anyway"
+          }
+        }
+      }
+    },
     "Ältere Buchungen (nicht gezählt)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -26688,6 +26835,17 @@
         }
       }
     },
+    "„%@“ entfernen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove “%@”"
+          }
+        }
+      }
+    },
     "„%@“ entfernen?" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -26706,6 +26864,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Import “%@”"
+          }
+        }
+      }
+    },
+    "„%@“ ist schon bei allen gesetzt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” is already set on all"
+          }
+        }
+      }
+    },
+    "„%@“ ist schon gesetzt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” is already set"
           }
         }
       }
@@ -26960,6 +27140,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "€ per month"
+          }
+        }
+      }
+    },
+    "↩ fügt „%@“ hinzu" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "↩ adds “%@”"
+          }
+        }
+      }
+    },
+    "↩ legt „%@“ neu an" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "↩ creates “%@”"
           }
         }
       }

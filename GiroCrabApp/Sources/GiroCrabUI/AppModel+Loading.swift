@@ -18,6 +18,7 @@ extension AppModel {
         reloadCategories()
         reloadBookings()
         reloadRules()
+        reloadTags()
         reloadSettings()
         reloadDashboard()
     }
