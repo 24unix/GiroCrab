@@ -472,7 +472,10 @@ struct SidebarView: View {
     /// The category tree at any depth (#101): a node with sub-categories is a
     /// disclosure group whose content recurses into its children.
     private func categoryRows(_ nodes: [CategoryNode]) -> AnyView {
-        AnyView(ForEach(nodes) { node in
+        // a childless sibling has no chevron: shift its icon into the column of the
+        // folders' icons so a level reads as one icon axis under the parent title (#597)
+        let leafInset: CGFloat = nodes.contains { $0.children != nil } ? DisclosureChevron.iconInset : 0
+        return AnyView(ForEach(nodes) { node in
             if let kids = node.children {
                 DisclosureGroup(isExpanded: Binding(
                     get: { model.expandedCategories.contains(node.id) },
@@ -487,6 +490,7 @@ struct SidebarView: View {
                 .tag(SidebarItem.category(node.id))
             } else {
                 CategoryRow(category: node.category)
+                    .padding(.leading, leafInset)
                     #if os(macOS)
                     // only leaves take dragged bookings, as only leaves are assigned
                     .modifier(DropSlot(key: "c:\(node.id)", inset: 0, line: $dropLine, edge: { _ in .into }, perform: { items, _ in

@@ -1209,6 +1209,7 @@ struct MainToolbar: ViewModifier {
                     }
                 }
             }
+            .defaultCustomization(.visible, options: .alwaysAvailable) // pinned: not draggable/removable, so the others keep their slots (#609)
             ToolbarItem(id: "transfer", placement: .primaryAction) {
                 Button { model.openTransfer() } label: { Label("Überweisen", systemImage: "paperplane") }
                     .help("Neue Überweisung (⌘N)")

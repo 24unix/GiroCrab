@@ -352,6 +352,14 @@ struct RecurringSheet: View {
 
     @ViewBuilder
     private func seriesActions(_ s: RecurringSeries) -> some View {
+        Menu("Wiederkehrend") {
+            ForEach(RecurrenceInterval.fixed, id: \.self) { i in
+                Toggle(i.label, isOn: Binding(
+                    get: { s.interval == i },
+                    set: { _ in model.setRecurringInterval(s, i) }
+                ))
+            }
+        }
         if s.source == .manual {
             Button("Automatisch erkennen") { model.resetRecurring(s) }
         }

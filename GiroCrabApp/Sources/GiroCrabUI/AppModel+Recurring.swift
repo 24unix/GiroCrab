@@ -32,6 +32,14 @@ extension AppModel {
         refreshRecurring()
     }
 
+    /// Changes the interval of a whole series (row context menu in the recurring list);
+    /// the series' latest booking carries the manual mark.
+    func setRecurringInterval(_ s: RecurringSeries, _ interval: RecurrenceInterval) {
+        guard let vault, s.interval != interval else { return }
+        runCore { try vault.markBookingRecurring(bookingId: s.lastBookingId, interval: interval, customDates: []) }
+        refreshRecurring()
+    }
+
     /// "Nicht wiederkehrend" for a detected or marked series.
     func ignoreRecurring(_ s: RecurringSeries) {
         guard let vault else { return }
