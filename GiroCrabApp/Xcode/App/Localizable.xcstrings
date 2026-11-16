@@ -4445,6 +4445,17 @@
         }
       }
     },
+    "Ausgaben je Quartal" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expenses per quarter"
+          }
+        }
+      }
+    },
     "Ausgaben je Tag" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22930,6 +22941,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sum per month"
+          }
+        }
+      }
+    },
+    "Summe je Quartal" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sum per quarter"
           }
         }
       }

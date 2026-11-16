@@ -170,6 +170,8 @@ struct CategorySumChart: View {
             case (.day, true): String(localized: "Ausgaben je Tag")
             case (.year, false): String(localized: "Summe je Jahr")
             case (.year, true): String(localized: "Ausgaben je Jahr")
+            case (.quarter, false): String(localized: "Summe je Quartal")
+            case (.quarter, true): String(localized: "Ausgaben je Quartal")
             case (_, false): String(localized: "Summe je Monat")
             case (_, true): String(localized: "Ausgaben je Monat")
             }
