@@ -372,8 +372,9 @@ extension AppModel {
                     toast = syncNotice(connection, s) + Self.skippedArchivedNote(s)
                 }
             }
+            let wasQuiet = quietSyncConnectionID == connection.id
             quietSyncConnectionID = nil
-            reloadAll()
+            if wasQuiet { reloadAllInBackground() } else { reloadAll() }
             checkPendingAccountSelection()
             syncNextInQueue()
         }

@@ -798,7 +798,205 @@ impl Vault {
     }
 
     pub fn list_transactions(&self, filter: BookingFilter) -> Result<BookingPage, CoreError> {
+        self.list_page(filter, true)
+    }
+}
+
+type FlowMap = std::sync::Arc<std::collections::HashMap<i64, FlowKind>>;
+
+/// Flow kind of every live booking, valid while `total_changes` of the vault's connection
+/// still equals the stored count. The vault has one connection that is never replaced and
+/// every write (rules, settings, merges, imports) goes through it, so any change that can
+/// move a flow bumps the count; a restored snapshot is a new `Vault` with an empty cache.
+#[derive(Default)]
+pub(crate) struct FlowCache(std::sync::Mutex<Option<(u64, FlowMap)>>);
+
+impl Vault {
+    /// Flow kind of every live booking. Built once with the full enrichment (the cost
+    /// `list_transactions` used to pay on every call) and reused until a write changes the
+    /// vault: switching account, period, filter or scrolling then reads ids and amounts only.
+    fn flow_map(&self, db: &rusqlite::Connection) -> Result<FlowMap, CoreError> {
+        let changes = db.total_changes();
+        if let Ok(cache) = self.flow_cache.0.lock() {
+            if let Some((at, map)) = cache.as_ref() {
+                if *at == changes {
+                    return Ok(map.clone());
+                }
+            }
+        }
+        let (cte, where_sql, args, share_sql) =
+            Self::filter_clauses(db, &BookingFilter::default())?;
+        let sql = format!(
+            "{cte}SELECT {} {BOOKING_FROM_SQL} WHERE {where_sql}",
+            booking_columns(&share_sql)
+        );
+        let finisher = BookingFinisher::load(db, None)?;
+        let mut stmt = db.prepare(&sql)?;
+        let rows = stmt.query_map(
+            params_from_iter(args.iter().map(|b| b.as_ref())),
+            booking_from_row,
+        )?;
+        let mut map = std::collections::HashMap::new();
+        for row in rows {
+            let (_, mut t) = row?;
+            finisher.finish(&mut t);
+            map.insert(t.id, t.flow);
+        }
+        let map = std::sync::Arc::new(map);
+        if let Ok(mut cache) = self.flow_cache.0.lock() {
+            *cache = Some((changes, map.clone()));
+        }
+        Ok(map)
+    }
+
+    /// `list_transactions`; `with_rows: false` returns the sums and counts without rows
+    /// (`selection_flow`). Without a merchant filter the sums come from `flow_map` and an
+    /// id/amount query, and only the returned page is read in full and enriched.
+    pub(crate) fn list_page(
+        &self,
+        filter: BookingFilter,
+        with_rows: bool,
+    ) -> Result<BookingPage, CoreError> {
         let db = self.db()?;
+        // Exports and other (almost) unlimited lists read every row anyway.
+        let big_page = with_rows && (filter.limit == 0 || filter.limit > 5_000);
+        if filter.merchant_key.is_none() && !big_page {
+            if let Some(page) = self.list_page_cached(&db, &filter, with_rows)? {
+                return Ok(page);
+            }
+        }
+        Self::list_page_full(&db, &filter)
+    }
+
+    /// The light path of `list_page`; `None` when the full one has to answer (a booking the
+    /// flow map does not know).
+    fn list_page_cached(
+        &self,
+        db: &rusqlite::Connection,
+        filter: &BookingFilter,
+        with_rows: bool,
+    ) -> Result<Option<BookingPage>, CoreError> {
+        let flows = self.flow_map(db)?;
+        let (cte, where_sql, args, share_sql) = Self::filter_clauses(db, filter)?;
+        let order = if with_rows {
+            " ORDER BY t.booking_date DESC, t.id DESC"
+        } else {
+            ""
+        };
+        let sql = format!(
+            "{cte}SELECT t.id, t.booking_date, {share_sql} {BOOKING_FROM_SQL} WHERE {where_sql}{order}"
+        );
+        let mut stmt = db.prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(args.iter().map(|b| b.as_ref())), |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
+        })?;
+        let (mut income, mut expense, mut consumption, mut investment, mut perk) =
+            (0i64, 0i64, 0i64, 0i64, 0i64);
+        let mut flow = SelectionFlow::default();
+        let mut kept: Vec<(i64, String)> = Vec::new();
+        let mut total = 0u32;
+        for row in rows {
+            let (id, date, share) = row?;
+            let Some(&kind) = flows.get(&id) else {
+                return Ok(None);
+            };
+            let keep = match filter.scope {
+                BookingScope::All => true,
+                BookingScope::Everyday => !matches!(kind, FlowKind::Investment | FlowKind::Perk),
+                BookingScope::Investments => matches!(kind, FlowKind::Investment | FlowKind::Perk),
+            };
+            // Detected own transfers are no open work for "Ohne Kategorie" (#302).
+            if !keep || (filter.uncategorized_only && kind == FlowKind::Transfer) {
+                continue;
+            }
+            match kpi_side(kind, share) {
+                KpiSide::Income => income += share,
+                KpiSide::Expense => expense += share,
+                KpiSide::Neutral => {}
+            }
+            match kind {
+                FlowKind::Consumption => consumption += share,
+                FlowKind::Investment => investment += share,
+                FlowKind::Perk => perk += share,
+                _ => {}
+            }
+            flow.add(kind, share);
+            total += 1;
+            if with_rows {
+                kept.push((id, date));
+            }
+        }
+        let mut txs: Vec<Booking> = Vec::new();
+        if with_rows {
+            let limit = if filter.limit == 0 {
+                usize::MAX
+            } else {
+                filter.limit as usize
+            };
+            let start = (filter.offset as usize).min(kept.len());
+            let mut end = start.saturating_add(limit).min(kept.len());
+            if filter.whole_days && end > start {
+                // sorted by day: the rest of the page's last day follows directly
+                while end < kept.len() && kept[end].1 == kept[end - 1].1 {
+                    end += 1;
+                }
+            }
+            let page_ids: Vec<i64> = kept[start..end].iter().map(|(id, _)| *id).collect();
+            if !page_ids.is_empty() {
+                let (cte, mut where_sql, mut args, share_sql) = Self::filter_clauses(db, filter)?;
+                // One JSON parameter instead of one per id: no variable limit to hit.
+                let json = format!(
+                    "[{}]",
+                    page_ids
+                        .iter()
+                        .map(i64::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+                args.push(Box::new(json));
+                where_sql.push_str(&format!(
+                    " AND t.id IN (SELECT value FROM json_each(?{}))",
+                    args.len()
+                ));
+                let sql = format!(
+                    "{cte}SELECT {} {BOOKING_FROM_SQL} WHERE {where_sql} ORDER BY t.booking_date DESC, t.id DESC",
+                    booking_columns(&share_sql)
+                );
+                let finisher = BookingFinisher::load(db, None)?;
+                let mut stmt = db.prepare(&sql)?;
+                let rows = stmt.query_map(
+                    params_from_iter(args.iter().map(|b| b.as_ref())),
+                    booking_from_row,
+                )?;
+                for row in rows {
+                    let (_, mut t) = row?;
+                    finisher.finish(&mut t);
+                    txs.push(t);
+                }
+                attach_tags(db, &mut txs)?;
+            }
+        }
+        Ok(Some(BookingPage {
+            transactions: txs,
+            total_count: total,
+            income_cents: income,
+            expense_cents: expense,
+            consumption_cents: consumption,
+            investment_cents: investment,
+            perk_cents: perk,
+            flow,
+        }))
+    }
+
+    /// Every row of the filter read and enriched; the reference the light path must match.
+    fn list_page_full(
+        db: &rusqlite::Connection,
+        filter: &BookingFilter,
+    ) -> Result<BookingPage, CoreError> {
         let start = filter.offset as usize;
         let end = match filter.limit {
             0 => usize::MAX,
@@ -809,7 +1007,7 @@ impl Vault {
         let mut flow = SelectionFlow::default();
         let mut txs: Vec<Booking> = Vec::new();
         let mut total = 0usize;
-        Self::visit_bookings(&db, &filter, |share, t| {
+        Self::visit_bookings(db, filter, |share, t| {
             // One KPI definition (`kpi_side`) for the page sums and `SelectionFlow`;
             // transfers between own accounts are neutral (else counted on both sides).
             match kpi_side(t.flow, share) {
@@ -835,7 +1033,7 @@ impl Vault {
             total += 1;
         })?;
         // only the returned page carries its tags
-        attach_tags(&db, &mut txs)?;
+        attach_tags(db, &mut txs)?;
         Ok(BookingPage {
             transactions: txs,
             total_count: total as u32,
@@ -847,7 +1045,10 @@ impl Vault {
             flow,
         })
     }
+}
 
+#[uniffi::export]
+impl Vault {
     /// Manual categorisation (wins over rules). `None` = uncategorised.
     pub fn set_transaction_category(
         &self,
@@ -1614,5 +1815,139 @@ mod own_transfer_tests {
         assert_eq!(flow_of(&v, ids[1]), FlowKind::Income);
         let page = v.list_transactions(BookingFilter::default()).unwrap();
         assert_eq!(page.income_cents, 2 * 4254_94);
+    }
+}
+
+/// The light path of `list_page` (flow cache + id/amount query) must answer exactly like the
+/// full one that enriches every row.
+#[cfg(test)]
+mod flow_cache_tests {
+    use super::*;
+    use crate::test_support::TempDir;
+
+    fn same(v: &Vault, filter: BookingFilter) {
+        let light = v.list_transactions(filter.clone()).unwrap();
+        let full = {
+            let db = v.db().unwrap();
+            Vault::list_page_full(&db, &filter).unwrap()
+        };
+        let ids = |p: &BookingPage| p.transactions.iter().map(|b| b.id).collect::<Vec<_>>();
+        assert_eq!(ids(&light), ids(&full), "{filter:?}");
+        assert_eq!(light.total_count, full.total_count, "{filter:?}");
+        assert_eq!(light.income_cents, full.income_cents, "{filter:?}");
+        assert_eq!(light.expense_cents, full.expense_cents, "{filter:?}");
+        assert_eq!(
+            light.consumption_cents, full.consumption_cents,
+            "{filter:?}"
+        );
+        assert_eq!(light.investment_cents, full.investment_cents, "{filter:?}");
+        assert_eq!(light.perk_cents, full.perk_cents, "{filter:?}");
+        let flows = |p: &BookingPage| p.transactions.iter().map(|b| b.flow).collect::<Vec<_>>();
+        assert_eq!(flows(&light), flows(&full), "{filter:?}");
+        let cats = |p: &BookingPage| {
+            p.transactions
+                .iter()
+                .map(|b| b.category_path.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(cats(&light), cats(&full), "{filter:?}");
+    }
+
+    #[test]
+    fn light_path_matches_the_full_list() {
+        let dir = TempDir::new("flow-cache");
+        let v = Vault::open(dir.join("v.db").to_string_lossy().into(), vec![7u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let first_cat = v.list_categories(None, None).unwrap()[3].id;
+        let accounts: Vec<i64> = v
+            .list_account_groups()
+            .unwrap()
+            .iter()
+            .flat_map(|g| g.accounts.iter().map(|a| a.id))
+            .collect();
+        for scope in [
+            BookingScope::All,
+            BookingScope::Everyday,
+            BookingScope::Investments,
+        ] {
+            for (limit, offset, whole_days) in [
+                (0, 0, false),
+                (10, 0, false),
+                (10, 7, true),
+                (3, 100, false),
+            ] {
+                same(
+                    &v,
+                    BookingFilter {
+                        scope,
+                        limit,
+                        offset,
+                        whole_days,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+        same(
+            &v,
+            BookingFilter {
+                uncategorized_only: true,
+                limit: 20,
+                ..Default::default()
+            },
+        );
+        same(
+            &v,
+            BookingFilter {
+                category_id: Some(first_cat),
+                include_subcategories: true,
+                ..Default::default()
+            },
+        );
+        same(
+            &v,
+            BookingFilter {
+                account_ids: vec![accounts[0]],
+                direction: BookingDirection::Expense,
+                ..Default::default()
+            },
+        );
+        same(
+            &v,
+            BookingFilter {
+                checked: Some(false),
+                search: Some("rewe".into()),
+                ..Default::default()
+            },
+        );
+        same(
+            &v,
+            BookingFilter {
+                date_from: Some("2000-01-01".into()),
+                date_to: Some("2100-01-01".into()),
+                limit: 5,
+                ..Default::default()
+            },
+        );
+    }
+
+    #[test]
+    fn a_write_invalidates_the_flow_cache() {
+        let dir = TempDir::new("flow-cache-write");
+        let v = Vault::open(dir.join("v.db").to_string_lossy().into(), vec![7u8; 32]).unwrap();
+        v.seed_demo_data().unwrap();
+        let before = v.list_transactions(BookingFilter::default()).unwrap();
+        let cat = v.list_categories(None, None).unwrap();
+        let target = before
+            .transactions
+            .iter()
+            .find(|b| b.category_id.is_none())
+            .unwrap()
+            .id;
+        v.set_transaction_category(target, Some(cat[3].id)).unwrap();
+        same(&v, BookingFilter::default());
+        let after = v.list_transactions(BookingFilter::default()).unwrap();
+        let b = after.transactions.iter().find(|b| b.id == target).unwrap();
+        assert_eq!(b.category_id, Some(cat[3].id));
     }
 }

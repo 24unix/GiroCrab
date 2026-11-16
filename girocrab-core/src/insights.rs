@@ -73,15 +73,17 @@ impl Vault {
         date_from: Option<String>,
         date_to: Option<String>,
     ) -> Result<SelectionFlow, CoreError> {
-        let filter = BookingFilter {
-            account_ids,
-            date_from,
-            date_to,
-            ..Default::default()
-        };
-        let mut flow = SelectionFlow::default();
-        Self::visit_bookings(&*self.db()?, &filter, |share, b| flow.add(b.flow, share))?;
-        Ok(flow)
+        Ok(self
+            .list_page(
+                BookingFilter {
+                    account_ids,
+                    date_from,
+                    date_to,
+                    ..Default::default()
+                },
+                false,
+            )?
+            .flow)
     }
 
     /// "Sparpläne & Perks": recurring plans with a month grid, Saveback and

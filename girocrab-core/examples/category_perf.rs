@@ -19,6 +19,13 @@
 //!                                  every booking; 31,853 bookings, 2026-11-16)
 //!   preview_manual_loan(limit 20)   55 ms (212 ms; the rest is the expression over every booking)
 //!   auto_match_document             10 ms (176 ms; SQL prefilter on the receipt's amounts and dates)
+//! After the flow cache (`Vault::flow_map`, 2026-11-16, COPIES=600 STEP_DAYS=7):
+//!   list_transactions(limit 3000)    44 ms (was 172), selection_flow 14 ms (was 290),
+//!   category selection, period "all" 102 ms (was 446), list_categories_filtered with the
+//!   expense filter 32 ms (was 336: `tx_amount_date` range scan). The first list after any
+//!   write still enriches every booking once (~155 ms) to refill the cache.
+//! OUT=<file> writes the vault with the app's demo key and stops (open it with
+//! GIROCRAB_DEMO_VAULT=<file> .build/debug/GiroCrabMac --demo-seed).
 //! RULE_INDEX=1 creates the covering indexes by hand on a vault that lacks them.
 //! STEP_DAYS (default 183) is the shift between copies: 7 with COPIES=600 spans ~11.5 years.
 //! PAYPAL=n adds a payment-service account with n uncategorised bookings, half of them
@@ -26,7 +33,7 @@
 //! COPIES=600 STEP_DAYS=7 PAYPAL=3000 (2026-11-16): category selection, period "all"
 //! ~360 ms (selection_flow 175 ms of it); local_api page 6.5 ms (did not finish in
 //! 10 minutes before the `tx_amount_date` index).
-use girocrab_core::models::{BookingFilter, BookingScope};
+use girocrab_core::models::{BookingDirection, BookingFilter, BookingScope};
 use girocrab_core::vault::Vault;
 
 fn time<T>(label: &str, mut f: impl FnMut() -> T) -> f32 {
@@ -45,10 +52,24 @@ fn time<T>(label: &str, mut f: impl FnMut() -> T) -> f32 {
 fn main() {
     let copies = env_usize("COPIES", 80);
     let step = env_usize("STEP_DAYS", 183);
-    let key = vec![9u8; 32];
+    // OUT=file writes the vault with the app's demo key and stops, so the app can open it:
+    // GIROCRAB_DEMO_VAULT=file .build/debug/GiroCrabMac --demo-seed
+    let out = std::env::var("OUT").ok().filter(|v| !v.is_empty());
+    let key: Vec<u8> = if out.is_some() {
+        (0..32u32).map(|i| ((i * 7 + 3) & 0xFF) as u8).collect()
+    } else {
+        vec![9u8; 32]
+    };
     let tmp = std::env::temp_dir().join(format!("gc-cat-perf-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).unwrap();
-    let path = tmp.join("vault.db").to_string_lossy().to_string();
+    let path = out
+        .clone()
+        .unwrap_or_else(|| tmp.join("vault.db").to_string_lossy().to_string());
+    if out.is_some() {
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{path}{suffix}"));
+        }
+    }
     {
         let v = Vault::open(path.clone(), key.clone()).unwrap();
         v.seed_demo_data().unwrap();
@@ -106,6 +127,12 @@ fn main() {
         if std::env::var("RULE_INDEX").is_ok_and(|v| !v.is_empty()) {
             c.execute_batch("CREATE INDEX tx_rule_live ON transactions(rule_id, deleted_ms); CREATE INDEX tx_acct_live ON transactions(account_id, category_id, checked, deleted_ms); ANALYZE;").unwrap();
         }
+    }
+    if let Some(out) = out {
+        // Open once so WAL data is checkpointed into the file.
+        Vault::open(out.clone(), key).unwrap().checkpoint().unwrap();
+        println!("vault written: {out}");
+        return;
     }
     let vault = Vault::open(path, key).unwrap();
     let all = vault
@@ -189,6 +216,24 @@ fn main() {
         "'Ohne Kategorie': + selection_flow (reloadSelectionKPIs)",
         || vault.selection_flow(vec![], None, None),
     );
+    // Header filter "Ausgaben" / "Neu": list, totals and sidebar sums behind it.
+    time("direction expense: list_transactions(3000)", || {
+        vault.list_transactions(BookingFilter {
+            direction: BookingDirection::Expense,
+            limit: 3000,
+            ..Default::default()
+        })
+    });
+    time("direction expense: list_categories_filtered", || {
+        vault.list_categories_filtered(None, None, vec![], None, BookingDirection::Expense)
+    });
+    time("status new: list_transactions(3000)", || {
+        vault.list_transactions(BookingFilter {
+            checked: Some(false),
+            limit: 3000,
+            ..Default::default()
+        })
+    });
     // Local read-only interface (#136): keyset pages enrich only their rows.
     let accounts: Vec<i64> = vault
         .list_accounts()

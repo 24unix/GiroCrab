@@ -319,14 +319,14 @@ struct StreamHeaderCard: View {
                 Menu {
                     // Inline pickers show no title in a menu: name each group with a section header.
                     Section("Status") {
-                        Picker("Status", selection: $model.statusFilter) {
+                        Picker("Status", selection: $model.interactiveStatusFilter) {
                             ForEach(StatusFilter.allCases) { Text($0.title).tag($0) }
                         }
                         .pickerStyle(.inline)
                         .labelsHidden()
                     }
                     Section("Buchungsart") {
-                        Picker("Buchungsart", selection: $model.directionFilter) {
+                        Picker("Buchungsart", selection: $model.interactiveDirectionFilter) {
                             ForEach(BookingDirection.ordered) { Text($0.title).tag($0) }
                         }
                         .pickerStyle(.inline)
@@ -505,13 +505,74 @@ struct BalanceChart: View {
         }
     }
 
-    private var pts: [Point] {
-        points.enumerated().compactMap { i, p in
-            DateText.date(p.date).map { Point(id: i, date: $0, cents: p.balanceCents) }
-        }
+    /// Prepared once per data change, not on every redraw: a scroll or hover step only moves the
+    /// marker, and parsing thousands of days each time made it stutter. Filled while the body
+    /// is evaluated (a reference type, so no state change), keyed on the data it was built
+    /// from: a frame never pairs new `points` with arrays of the old ones.
+    private final class Prepared {
+        var key = 0
+        var unit: BalanceBarUnit?
+        var pts: [Point] = []
+        /// `pts` thinned to what the chart width can show (extremes of each stretch kept).
+        var drawn: [Point] = []
+        var buckets: [BalanceBucket] = []
+    }
+    @State private var prepared = Prepared()
+
+    /// More points than this are thinned; ~2 pixels per point at the usual chart width.
+    private static let maxDrawnPoints = 900
+
+    /// "Mo. 9. Nov. 2026": the marker readout and the day bar's title.
+    private static let dayFormat = Date.FormatStyle.dateTime.weekday(.abbreviated).day().month(.abbreviated).year()
+
+    /// Cheap fingerprint of `points`: length, ends and the sum of all balances.
+    private var dataKey: Int {
+        var h = Hasher()
+        h.combine(points.count)
+        h.combine(points.first?.date)
+        h.combine(points.last?.date)
+        h.combine(points.reduce(Int64(0)) { $0 &+ $1.balanceCents })
+        return h.finalize()
     }
 
-    private var buckets: [BalanceBucket] { BalanceBuckets.make(points, unit: barUnit) }
+    private var current: Prepared {
+        let key = dataKey
+        if prepared.key != key || prepared.unit == nil {
+            let all: [Point] = points.enumerated().compactMap { i, p in
+                DateText.date(p.date).map { Point(id: i, date: $0, cents: p.balanceCents) }
+            }
+            prepared.pts = all
+            prepared.drawn = Self.thinned(all, to: Self.maxDrawnPoints)
+            prepared.key = key
+            prepared.unit = nil
+        }
+        if prepared.unit != barUnit {
+            prepared.buckets = BalanceBuckets.make(points, unit: barUnit)
+            prepared.unit = barUnit
+        }
+        return prepared
+    }
+
+    private var pts: [Point] { current.pts }
+    private var drawPts: [Point] { current.drawn }
+    private var buckets: [BalanceBucket] { current.buckets }
+
+    /// Keeps first, lowest, highest and last point of each stretch, so peaks and dips survive.
+    private static func thinned(_ all: [Point], to limit: Int) -> [Point] {
+        guard all.count > limit else { return all }
+        let stretches = limit / 4
+        let size = Double(all.count) / Double(stretches)
+        var out: [Point] = []
+        out.reserveCapacity(limit + 8)
+        for k in 0..<stretches {
+            let s = Int(Double(k) * size), e = min(all.count, Int(Double(k + 1) * size))
+            guard s < e else { continue }
+            let slice = all[s..<e]
+            guard let lo = slice.min(by: { $0.cents < $1.cents }), let hi = slice.max(by: { $0.cents < $1.cents }) else { continue }
+            for p in [slice[s], lo, hi, slice[e - 1]].sorted(by: { $0.id < $1.id }) where out.last?.id != p.id { out.append(p) }
+        }
+        return out
+    }
 
     /// Point of the day at the top of the scrolled booking list (#593): that day's closing
     /// balance, or the latest earlier one when the day has no point of its own.
@@ -567,7 +628,7 @@ struct BalanceChart: View {
         case .year: b.start.formatted(.dateTime.year())
         case .quarter: b.start.formatted(.dateTime.quarter().year())
         case .month: b.start.formatted(.dateTime.month(.wide).year())
-        case .day, .automatic: b.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year())
+        case .day, .automatic: b.start.formatted(Self.dayFormat)
         }
     }
 
@@ -656,8 +717,33 @@ struct BalanceChart: View {
 
     // MARK: line
 
+    /// Marker for the hovered day, else the day at the top of the scrolled list. Drawn in the
+    /// overlay, outside the chart's marks, so moving it does not rebuild the line.
+    @ViewBuilder private func marker(in all: [Point], proxy: ChartProxy, geo: GeometryProxy) -> some View {
+        if let m = hovered ?? followedPoint(in: all), let plot = proxy.plotFrame,
+           let x = proxy.position(forX: m.date), let y = proxy.position(forY: m.euros) {
+            let frame = geo[plot]
+            let left = m.id * 2 > all.count
+            ZStack(alignment: .topLeading) {
+                Rectangle().fill(Theme.secondary.opacity(0.45))
+                    .frame(width: 1, height: frame.height)
+                    .offset(x: frame.minX + x, y: frame.minY)
+                Circle().fill(Theme.accent).frame(width: 6, height: 6)
+                    .offset(x: frame.minX + x - 3, y: frame.minY + y - 3)
+                readout(m.date.formatted(Self.dayFormat), cents: m.cents)
+                    .fixedSize()
+                    .frame(width: max(0, left ? x - 4 : frame.width - x - 4), alignment: left ? .trailing : .leading)
+                    .offset(x: left ? frame.minX : frame.minX + x + 4, y: frame.minY)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .allowsHitTesting(false)
+        }
+    }
+
     @ViewBuilder private var lineChart: some View {
-        let pts = self.pts
+        let cur = current
+        let pts = cur.pts
+        let drawn = cur.drawn
         let minV = pts.map(\.euros).min() ?? 0
         let maxV = pts.map(\.euros).max() ?? 1
         let pad = max((maxV - minV) * 0.15, 1)
@@ -668,7 +754,7 @@ struct BalanceChart: View {
                     .foregroundStyle(Theme.tertiary.opacity(0.5))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
             }
-            ForEach(pts) { p in
+            ForEach(drawn) { p in
                 AreaMark(x: .value("Tag", p.date, unit: .day), yStart: .value("Min", minV - pad), yEnd: .value("Saldo", p.euros))
                     .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.14), Theme.accent.opacity(0.01)], startPoint: .top, endPoint: .bottom))
                     .interpolationMethod(.monotone)
@@ -677,35 +763,13 @@ struct BalanceChart: View {
                     .lineStyle(StrokeStyle(lineWidth: 1.5))
                     .interpolationMethod(.monotone)
             }
-            // Scrolling the booking list: the marker follows the line; hovering takes precedence.
-            if hovered == nil, let f = followedPoint(in: pts) {
-                PointMark(x: .value("Tag", f.date, unit: .day), y: .value("Saldo", f.euros))
-                    .foregroundStyle(Theme.accent)
-                    .symbolSize(36)
-                RuleMark(x: .value("Tag", f.date, unit: .day))
-                    .foregroundStyle(Theme.secondary.opacity(0.45))
-                    .lineStyle(StrokeStyle(lineWidth: 1))
-                    .annotation(position: f.id * 2 > pts.count ? .topLeading : .topTrailing, spacing: 4, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
-                        readout(f.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year()), cents: f.cents)
-                    }
-            }
-            if let h = hovered {
-                PointMark(x: .value("Tag", h.date, unit: .day), y: .value("Saldo", h.euros))
-                    .foregroundStyle(Theme.accent)
-                    .symbolSize(36)
-                RuleMark(x: .value("Tag", h.date, unit: .day))
-                    .foregroundStyle(Theme.secondary.opacity(0.45))
-                    .lineStyle(StrokeStyle(lineWidth: 1))
-                    .annotation(position: h.id * 2 > pts.count ? .topLeading : .topTrailing, spacing: 4, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
-                        readout(h.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year()), cents: h.cents)
-                    }
-            }
         }
         .chartYScale(domain: (minV - pad)...(maxV + pad))
         .chartYAxis { yAxis(min: minV, max: maxV, domain: (minV - pad)...(maxV + pad)) }
         .chartXAxis { xAxis(span: spanDays(pts.first?.date, pts.last?.date)) }
         .chartOverlay { proxy in
             GeometryReader { geo in
+                marker(in: pts, proxy: proxy, geo: geo)
                 Rectangle().fill(.clear).contentShape(Rectangle())
                     .onContinuousHover { phase in
                         switch phase {
@@ -733,7 +797,7 @@ struct BalanceChart: View {
     // MARK: bars
 
     @ViewBuilder private var barChart: some View {
-        let bars = self.buckets
+        let bars = current.buckets
         let barUnit = resolvedBarUnit
         let unit = barUnit.calendarComponent
         let xLabel: LocalizedStringKey = switch barUnit {
@@ -748,11 +812,13 @@ struct BalanceChart: View {
         // yearly bars: every gap is already a turn of the year
         let years = barUnit == .year ? []
             : bars.first.flatMap { f in bars.last.map { BalanceBuckets.yearStarts(from: f.start, to: $0.last) } } ?? []
+        let followed = followedBar(in: bars)
+        let active = hoveredBar ?? followed
         Chart {
             ForEach(bars) { b in
                 BarMark(x: .value(xLabel, b.start, unit: unit), y: .value("Ø Saldo", b.euros))
                     .foregroundStyle(b.averageCents < 0 ? Theme.outflow : Theme.accent)
-                    .opacity((hoveredBar ?? followedBar(in: bars))?.id == b.id || (hoveredBar == nil && followedBar(in: bars) == nil) ? 0.85 : 0.35)
+                    .opacity(active?.id == b.id || active == nil ? 0.85 : 0.35)
                     .cornerRadius(1.5)
             }
             // Plain date (no unit): the rule sits on the boundary between December and January.
@@ -761,7 +827,7 @@ struct BalanceChart: View {
                     .foregroundStyle(Theme.tertiary.opacity(0.6))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
             }
-            if hoveredBar == nil, let f = followedBar(in: bars) {
+            if hoveredBar == nil, let f = followed {
                 RuleMark(x: .value(xLabel, f.start, unit: unit))
                     .foregroundStyle(.clear)
                     .annotation(position: f.id * 2 > bars.count ? .topLeading : .topTrailing, spacing: 4, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {

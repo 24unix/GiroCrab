@@ -42,6 +42,14 @@ Other UI files live in the same `GiroCrabUI/` dir. Ignore `cashcrab-core/` and `
 - Before every push run `cargo fmt --all`: CI fails on `cargo fmt --check` and then skips the Swift job. Enable the hook once: `git config core.hooksPath .githooks`.
 - Always pass `-q`/`--quiet` to `cargo check`, `cargo test`, `xcodebuild`. If output is still long, pipe through `tail -n 40`.
 - Before pushing a PR (also Swift-only ones; CI runs these on every PR): `cargo fmt --all -- --check` and `cargo clippy -q --workspace --all-targets -- -D warnings`. After pushing, check `gh pr checks`.
+- **CI runs `linux.yml` for any change under `girocrab-core/**` or to `Localizable.xcstrings`**, not only for Linux files.
+  Before pushing such a change: `python3 -I GiroCrabLinux/scripts/i18n-report.py` (every Linux UI text needs English, step
+  "English UI texts") and `(cd GiroCrabLinux && cargo fmt -- --check)`. Its clippy/test steps need Qt: leave those to CI.
+- **A red check on code the PR does not touch is usually inherited from `main`.** Before debugging it: run the failing step
+  locally, check `git diff --quiet origin/main HEAD -- <dir>` (silent = same as main) and `gh run list -R GiroCrab/GiroCrab
+  --workflow <name>` (other open PRs red on the same job = main's fault). Report it in the PR instead of "fixing" it there.
+  Logs of a run that is still going: `gh api repos/GiroCrab/GiroCrab/actions/jobs/<job id>/logs --allow-escape-sequences`
+  (`gh run view --log-failed` waits for the whole run).
 - Every `uniffi::Record` / `uniffi::Enum` in `girocrab-core` carries `#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]` right below its `#[derive(…)]` (front ends without UniFFI, e.g. Linux, exchange JSON). `scripts/lint-serde-feature.sh` checks it (CI) and `cargo check -q -p girocrab-core --features serde` must build; run both before pushing Rust changes.
 
 ## User-visible texts (no third-party brands)

@@ -115,7 +115,9 @@ extension AppModel {
     /// Everything a selection change needs, loaded off the main thread and
     /// published in one go. The previous data stays until then, at most for
     /// `selectionPlaceholderDelay`; after that list and chart show the placeholder.
-    func startSelectionLoad() {
+    /// `keepingShown`: the data changed under the same selection (sync, merge), so the old
+    /// list stays until the new one arrives instead of showing the placeholder.
+    func startSelectionLoad(keepingShown: Bool = false) {
         selectionPlaceholderTask?.cancel()
         selectionPlaceholderTask = nil
         selectionLoadTask?.cancel()
@@ -124,7 +126,9 @@ extension AppModel {
         guard let vault else { return }
         let ids = selectionAccountIDs
         let month = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: Date())
-        if selectionPlaceholderDelay <= .zero || isLoadingSelection {
+        if keepingShown && !isLoadingSelection {
+            // the old data stays until the new one arrives
+        } else if selectionPlaceholderDelay <= .zero || isLoadingSelection {
             showSelectionPlaceholder()
         } else {
             let delay = selectionPlaceholderDelay
@@ -239,7 +243,7 @@ extension AppModel {
         searchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 150_000_000)
             guard !Task.isCancelled else { return }
-            self?.reloadBookings()
+            self?.reloadListInBackground()
         }
     }
 

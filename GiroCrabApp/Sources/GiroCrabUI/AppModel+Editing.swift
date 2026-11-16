@@ -48,8 +48,8 @@ extension AppModel {
         // Rule counts and the investment dashboard: reload only when on screen,
         // otherwise when the rule editor opens / the Investments scope is shown.
         if showRuleEditor { reloadRules() } else { rulesStale = true }
-        if scope == .investments { loadDashboard() } else { dashboardStale = true }
-        refreshAfterCategoryChange()
+        reloadDashboard()
+        refreshAfterEdit()
     }
 
     /// Optimistic update: the new category on the loaded rows (and a sticky
@@ -64,10 +64,17 @@ extension AppModel {
             b.categorySymbol = c?.sfSymbol ?? ""
             b.categorySource = c == nil ? .none : .manual
         }
+        patchLoadedRows(ids, patch)
+    }
+
+    /// Shows an edit on the loaded rows (and a sticky inspector booking) before the background
+    /// refresh brings the real data; derived fields (merchant, flow) follow from the refresh.
+    private func patchLoadedRows(_ ids: Set<Booking.ID>, _ change: (inout Booking) -> Void) {
         var rows = bookings
-        for i in rows.indices where ids.contains(rows[i].id) { patch(&rows[i]) }
-        bookings = rows
-        if var s = stickyBooking, ids.contains(s.id) { patch(&s); stickyBooking = s }
+        var touched = false
+        for i in rows.indices where ids.contains(rows[i].id) { change(&rows[i]); touched = true }
+        if touched { bookings = rows }
+        if var sticky = stickyBooking, ids.contains(sticky.id) { change(&sticky); stickyBooking = sticky }
     }
 
     /// The synchronous reloads a category change needs (fallback when the write
@@ -77,13 +84,13 @@ extension AppModel {
         reloadBookings(); reloadCategories(); reloadAccounts()
     }
 
-    /// Everything a category change affects, loaded off the main thread:
+    /// Everything a category change (or another edit of a booking: checked, text, note) affects, loaded off the main thread:
     /// - the list page, published unless another list load started meanwhile
     ///   (`listGeneration`; that load already reads the new category),
     /// - KPIs and category totals, published if the accounts / period are unchanged,
     /// - the account counters ("ohne Kategorie"), published always.
     /// Quick successive assignments only publish the last result.
-    private func refreshAfterCategoryChange() {
+    private func refreshAfterEdit() {
         // A selection still loading publishes everything itself.
         if selectionLoadTask != nil { settlePendingSelectionLoad(); reloadAccounts(); return }
         categoryRefreshTask?.cancel()
@@ -153,7 +160,8 @@ extension AppModel {
             stickyBooking = freshBooking(booking)
             lingeringBookingID = checked ? booking.id : nil
         }
-        reloadBookings(); reloadAccounts()
+        patchLoadedRows([booking.id]) { $0.checked = checked }
+        refreshAfterEdit()
     }
 
     /// "Alle Buchungen als gelesen markieren" (GitHub #236): everything new in the list as
@@ -198,7 +206,8 @@ extension AppModel {
         toast = String(localized: "\(ids.count) Umsätze als gelesen markiert")
         // With "Neu" / "Geprüft" active the bookings leave the list: keep the selected one in the inspector (like setChecked)
         if leavesListWhenChecked, let b = selectedBooking, ids.contains(b.id) { stickyBooking = freshBooking(b) }
-        reloadBookings(); reloadAccounts()
+        patchLoadedRows(Set(ids)) { $0.checked = true }
+        refreshAfterEdit()
     }
 
     /// Undo / redo of `markAllChecked` for exactly the bookings it changed.
@@ -209,13 +218,15 @@ extension AppModel {
             um.registerUndo(withTarget: self) { m in m.setChecked(ids, to: !checked) }
             um.setActionName(String(localized: "Alle Buchungen als gelesen markieren"))
         }
-        reloadBookings(); reloadAccounts()
+        patchLoadedRows(Set(ids)) { $0.checked = checked }
+        refreshAfterEdit()
     }
 
     func updateText(counterparty: String, purpose: String, for booking: Booking) {
         guard let vault else { return }
         runCore { try vault.updateTransactionText(transactionId: booking.id, counterparty: counterparty, purpose: purpose) }
-        reloadBookings(); reloadMerchantStats()
+        patchLoadedRows([booking.id]) { $0.counterparty = counterparty; $0.purpose = purpose }
+        refreshAfterEdit(); reloadMerchantStats()
     }
 
     /// Select the booking and put the cursor into its note field in the inspector.
@@ -231,7 +242,8 @@ extension AppModel {
     func updateNote(_ note: String, for booking: Booking) {
         guard let vault else { return }
         runCore { try vault.updateTransactionNote(transactionId: booking.id, note: note) }
-        reloadBookings()
+        // Search, flow and sums ignore the note: showing it on the rows is the whole refresh.
+        patchLoadedRows([booking.id]) { $0.note = note }
     }
 
     func createCategory(name: String, parent: Int64?, symbol: String, color: String) {

@@ -99,10 +99,12 @@ impl Vault {
                 let list: Vec<String> = account_ids.iter().map(i64::to_string).collect();
                 format!(" AND t.account_id IN ({})", list.join(","))
             };
+            // `+`: no `tx_amount_date` range scan here (a row lookup per match, 10x slower
+            // than the plain pass that sums every booking anyway).
             let side = match direction {
                 BookingDirection::All => "",
-                BookingDirection::Income => " AND t.amount_cents > 0",
-                BookingDirection::Expense => " AND t.amount_cents < 0",
+                BookingDirection::Income => " AND +t.amount_cents > 0",
+                BookingDirection::Expense => " AND +t.amount_cents < 0",
             };
             let condition = format!("{accounts}{side} AND (?3 IS NULL OR (t.checked != 0) = ?3)");
             let mut stmt = db.prepare(&format!(

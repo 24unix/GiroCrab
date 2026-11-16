@@ -23,6 +23,24 @@ extension AppModel {
         reloadDashboard()
     }
 
+    /// `reloadAll` for changes nobody asked for in the UI (iCloud merge, scheduled sync): the
+    /// small lookups reload at once, everything that scans the bookings loads in the
+    /// background and replaces the shown data in one go.
+    func reloadAllInBackground() {
+        guard isUnlocked else { return }
+        assetClassificationVersion += 1
+        reloadAccounts()
+        refreshSidebarCounts()
+        mirrorDocumentsIfEnabled()
+        reloadRules()
+        reloadTags()
+        reloadSettings()
+        reloadDashboard()
+        merchantStatsCache = [:]
+        loadMerchantStats(keepShown: true)
+        startSelectionLoad(keepingShown: true)
+    }
+
     func reloadAccounts() {
         guard let vault else { return }
         runCore {
@@ -72,10 +90,11 @@ extension AppModel {
     }
 
     func reloadDashboard() {
-        guard let vault else { return }
-        dashboardTask?.cancel()
-        dashboardStale = false
-        runCore { dashboard = try vault.investmentDashboard(months: 6) }
+        guard vault != nil else { return }
+        // Only the Investments scope shows it (~180 ms on 30k bookings): load it in
+        // the background there, otherwise when the scope is opened (`dashboardStale`).
+        // The KPI tiles fall back to it while `selectionFlow` is nil, so a first load is not skipped.
+        if scope == .investments || dashboard == nil { loadDashboard() } else { dashboardTask?.cancel(); dashboardStale = true }
     }
 
     /// The investment dashboard reads every booking (~150 ms on 30k): off the
@@ -393,6 +412,24 @@ extension AppModel {
         var out = rows
         out.insert(kept, at: next.flatMap { n in out.firstIndex { $0.id == n.id } } ?? out.endIndex)
         return out
+    }
+
+    /// A status / direction change: from a header menu the list, KPIs and sidebar sums load in
+    /// the background (the menu closes at once, the old list stays until the new one is in);
+    /// set from code it stays synchronous, callers read the list right after.
+    func reloadAfterFilterChange() {
+        if loadsFilterInBackground, vault != nil {
+            startSelectionLoad(keepingShown: true)
+        } else {
+            reloadBookings()
+            reloadCategories()
+        }
+    }
+
+    /// The search text only narrows the list: the KPIs, history and merchant data do not
+    /// depend on it, so just the page reloads, in the background.
+    func reloadListInBackground() {
+        if selectionLoadTask != nil { startSelectionLoad() } else { reloadScopeBookings() }
     }
 
     /// Let the segmented control finish updating immediately. Database work

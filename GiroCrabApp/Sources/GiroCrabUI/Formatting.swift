@@ -239,9 +239,35 @@ enum DateText {
         return cache
     }()
 
+    /// Midnight of an ISO day in the current time zone (what `iso` yields) without a
+    /// `DateFormatter`: ~10x faster, which matters for the first render of a long history.
+    static func parseISODay(_ s: String) -> Date? {
+        let b = Array(s.utf8)
+        guard b.count == 10, b[4] == 0x2D, b[7] == 0x2D else { return nil }
+        func num(_ r: Range<Int>) -> Int? {
+            var n = 0
+            for i in r { guard (0x30...0x39).contains(b[i]) else { return nil }; n = n * 10 + Int(b[i] - 0x30) }
+            return n
+        }
+        guard let y = num(0..<4), let m = num(5..<7), let d = num(8..<10), (1...12).contains(m), d >= 1 else { return nil }
+        let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+        guard d <= (m == 2 && leap ? 29 : daysInMonth[m - 1]) else { return nil }
+        return isoCalendar.date(from: DateComponents(year: y, month: m, day: d))
+    }
+
+    private static let daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+    /// Follows the system time zone like the `iso` formatter does.
+    private static let isoCalendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = .autoupdatingCurrent
+        return cal
+    }()
+
     static func date(_ s: String) -> Date? {
         if let hit = parsed.withLock({ $0[s] }) { return hit }
-        guard let d = iso.date(from: s) else { return nil }
+        // anything but plain `yyyy-MM-dd` keeps the formatter's (lenient) reading
+        guard let d = parseISODay(s) ?? iso.date(from: s) else { return nil }
         parsed.withLock { cache in
             if cache.count >= 50_000 { cache = [:] }
             cache[s] = d
