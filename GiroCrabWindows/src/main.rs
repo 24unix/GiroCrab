@@ -3,12 +3,16 @@
 //! bookings of the selected account and bank sync (FinTS PIN/TAN dialog, PSD2 browser redirect).
 
 mod daily;
+mod lists;
 mod manage;
 mod manage_ui;
+mod nav;
 mod policy;
+mod portfolio;
 mod sync_flow;
 mod transfer_flow;
 mod vault_key;
+mod views_ui;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -25,6 +29,7 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use zeroize::Zeroizing;
 
 use daily::{Filter, Row, StatusFilter};
+use nav::Target;
 
 slint::include_modules!();
 
@@ -199,15 +204,15 @@ fn account_rows(vault: &Vault, privacy: bool) -> Result<(Vec<AccountRow>, String
             AccountRow {
                 header: header.into(),
                 monogram: monogram(&a.name).into(),
-            id: a.id as i32,
-            name: a.name.clone().into(),
-            bank: a.bank_name.clone().into(),
-            iban: daily::mask(&mask_iban(&a.iban, &a.account_number), privacy).into(),
-            dot: hex_color(&a.color_hex).unwrap_or_else(|| dot_color(&a.bank_name)),
-            balance: daily::mask(&money(a.balance_cents, &a.currency), privacy).into(),
-            currency: a.currency.clone().into(),
-            negative: a.balance_cents < 0 && !privacy,
-            archived: a.archived_unix.is_some(),
+                id: a.id as i32,
+                name: a.name.clone().into(),
+                bank: a.bank_name.clone().into(),
+                iban: daily::mask(&mask_iban(&a.iban, &a.account_number), privacy).into(),
+                dot: hex_color(&a.color_hex).unwrap_or_else(|| dot_color(&a.bank_name)),
+                balance: daily::mask(&money(a.balance_cents, &a.currency), privacy).into(),
+                currency: a.currency.clone().into(),
+                negative: a.balance_cents < 0 && !privacy,
+                archived: a.archived_unix.is_some(),
             }
         })
         .collect();
@@ -217,13 +222,12 @@ fn account_rows(vault: &Vault, privacy: bool) -> Result<(Vec<AccountRow>, String
 /// Most bookings the list keeps in memory per account scope; filters run on these without the vault.
 const ROW_LIMIT: u32 = 2000;
 
-/// `scope` > 0 = one account, otherwise all accounts.
-fn load_rows(vault: &Vault, scope: i64) -> Result<Vec<Row>, String> {
+/// Bookings of a listing target (one account, all, unchecked, uncategorized or one category).
+fn load_rows(vault: &Vault, target: Target) -> Result<Vec<Row>, String> {
     let page = vault
         .list_transactions(BookingFilter {
-            account_ids: if scope > 0 { vec![scope] } else { vec![] },
             limit: ROW_LIMIT,
-            ..Default::default()
+            ..nav::booking_filter(target)
         })
         .map_err(|e| e.to_string())?;
     Ok(page.transactions.iter().map(Row::from).collect())
@@ -241,6 +245,8 @@ struct State {
     generation: u64,
     /// (account id, label, bank name) of the accounts a transfer can start from.
     transfer_sources: Vec<(i64, String, String)>,
+    /// What the sidebar selected; decides which bookings `reload` loads.
+    target: Target,
 }
 
 /// One-booking edit run against the vault for the selected booking id.
@@ -342,14 +348,14 @@ fn apply_filter(win: &MainWindow) {
 
 /// Loads the bookings of the current account scope on a worker thread, then redraws.
 fn reload(win: &MainWindow, vault: Arc<Vault>) {
-    let scope = win.get_selected().max(0) as i64;
+    let target = with_state(|st| st.target);
     let generation = with_state(|st| {
         st.generation += 1;
         st.generation
     });
     let weak = win.as_weak();
     std::thread::spawn(move || {
-        let rows = load_rows(&vault, scope);
+        let rows = load_rows(&vault, target);
         let cats = vault.list_categories(None, None).map_err(|e| e.to_string());
         let _ = weak.upgrade_in_event_loop(move |win| {
             if with_state(|st| st.generation) != generation {
@@ -741,13 +747,14 @@ fn render_header(
     Ok(sel)
 }
 
-/// Header plus a reload of the bookings of the selected scope.
+/// Header plus the view of the selected target (bookings reload, or the depot / list view).
 fn show(win: &MainWindow, vault: &Arc<Vault>, selected: Option<i64>) {
     match render_header(win, vault, selected) {
         Ok(sel) => {
             refresh_transfer_sources(win, vault);
+            views_ui::sync_target(sel);
             if sel.is_some() {
-                reload(win, vault.clone());
+                views_ui::apply_view(win, vault);
             } else {
                 with_state(|st| {
                     st.rows.clear();
@@ -756,6 +763,7 @@ fn show(win: &MainWindow, vault: &Arc<Vault>, selected: Option<i64>) {
                 });
                 render_bookings(win);
             }
+            views_ui::refresh_sidebar(win, vault);
             win.set_unlocked(true);
             manage_ui::refocus_later(win);
         }
@@ -996,7 +1004,15 @@ fn main() -> Result<(), slint::PlatformError> {
             let (Some(win), Some(v)) = (weak.upgrade(), vault.lock().unwrap().clone()) else {
                 return;
             };
-            show(&win, &v, Some(id as i64));
+            views_ui::select_target(
+                &win,
+                &v,
+                if id > 0 {
+                    Target::Account(id as i64)
+                } else {
+                    Target::AllAccounts
+                },
+            );
         });
     }
     {
@@ -1101,6 +1117,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let sel = Some(win.get_selected() as i64).filter(|s| *s >= 0);
             let _ = render_header(&win, &v, sel);
             render_bookings(&win);
+            views_ui::rerender(&win);
         });
     }
     {
@@ -1113,6 +1130,7 @@ fn main() -> Result<(), slint::PlatformError> {
             win.set_bookings(ModelRc::new(VecModel::from(Vec::<BookingRow>::new())));
             win.set_accounts(ModelRc::new(VecModel::from(Vec::<AccountRow>::new())));
             win.set_has_inspector(false);
+            views_ui::on_lock(&win);
             win.set_first_run(false);
         });
     }
@@ -1303,6 +1321,7 @@ fn main() -> Result<(), slint::PlatformError> {
     }
 
     manage_ui::wire(&win, vault.clone());
+    views_ui::wire(&win, vault.clone());
 
     if demo_mode {
         open(true);
@@ -1322,11 +1341,12 @@ mod tests {
         vault.seed_demo_data().unwrap();
         let (rows, _) = account_rows(&vault, false).unwrap();
         assert!(!rows.is_empty());
-        assert!(!load_rows(&vault, rows[0].id as i64).unwrap().is_empty());
+        let first = Target::Account(rows[0].id as i64);
+        assert!(!load_rows(&vault, first).unwrap().is_empty());
         // All accounts (scope 0) holds at least as many rows as one account.
         assert!(
-            load_rows(&vault, 0).unwrap().len()
-                >= load_rows(&vault, rows[0].id as i64).unwrap().len()
+            load_rows(&vault, Target::AllAccounts).unwrap().len()
+                >= load_rows(&vault, first).unwrap().len()
         );
         // Privacy hides balances and the IBAN tail.
         let (hidden, total) = account_rows(&vault, true).unwrap();

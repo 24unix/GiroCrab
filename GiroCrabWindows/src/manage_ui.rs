@@ -65,6 +65,8 @@ fn modals(win: &MainWindow) -> Modals {
         add_bank: win.get_add_open(),
         account: win.get_acct_open(),
         categories: win.get_cat_open(),
+        rules: win.get_rules_open(),
+        link: win.get_link_open(),
         about: win.get_about_open(),
     }
 }
@@ -85,6 +87,8 @@ fn close_modal(win: &MainWindow, m: Modal) {
             with_ui(|u| u.category_gate.reset());
             win.set_cat_open(false);
         }
+        Modal::Rules => crate::views_ui::close_rules(win),
+        Modal::Link => win.set_link_open(false),
         Modal::About => win.set_about_open(false),
     }
 }

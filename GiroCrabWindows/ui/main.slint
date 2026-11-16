@@ -3,6 +3,11 @@ import { Button, ListView, LineEdit, Palette, ComboBox, CheckBox, TextEdit } fro
 export struct AccountRow { id: int, name: string, bank: string, iban: string, header: string, monogram: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
 export struct CategoryRow { id: int, name: string, depth: int, color: color }
 export struct BookingRow { id: int, checked: bool, date: string, counterparty: string, category: string, category-color: color, purpose: string, amount: string, negative: bool }
+export struct SideRow { kind: int, key: string, label: string, detail: string, badge: string, amount: string, negative: bool, progress: float, dot: color, has-dot: bool, depth: int, fold: int }
+export struct TableRow { id: int, c0: string, c1: string, c2: string, c3: string, c4: string, negative: bool }
+export struct KpiTile { label: string, value: string, negative: bool }
+export struct ShareBar { label: string, value: string, share: float, color: color }
+export struct RuleItem { title: string, detail: string }
 export struct BankHit { name: string, detail: string }
 export struct InspectorData { counterparty: string, iban: string, purpose: string, booking-date: string, value-date: string, account: string, amount: string, note: string, read-only: bool }
 
@@ -55,59 +60,156 @@ component PillToggle inherits Rectangle {
     label := Text { x: 26px; text: root.text; color: Theme.text; font-size: 12px; vertical-alignment: center; }
 }
 
-component AccountCard inherits VerticalLayout {
-    in property <AccountRow> account;
+// One sidebar line: top item, section header, group header, account or category.
+component SideLine inherits Rectangle {
+    in property <SideRow> r;
     in property <bool> active;
     callback clicked();
-    callback edit();
-    spacing: 0px;
-    if account.header != "": Text {
-        text: account.header.to-uppercase();
-        color: Theme.muted;
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.8px;
-        height: 26px;
-        vertical-alignment: bottom;
-        overflow: elide;
-    }
-    Rectangle {
-        height: 54px;
-        border-radius: 10px;
-        background: active ? Theme.selected : ta.has-hover ? Theme.text.with-alpha(0.05) : transparent;
-        ta := TouchArea { clicked => { root.clicked(); } }
-        HorizontalLayout {
-            padding-left: 8px;
-            padding-right: 10px;
-            spacing: 10px;
-            VerticalLayout {
-                alignment: center;
-                Rectangle {
-                    width: 28px;
-                    height: 28px;
-                    border-radius: 7px;
-                    background: account.dot.with-alpha(0.18);
-                    border-width: 1px;
-                    border-color: account.dot.with-alpha(0.55);
-                    Text { text: account.monogram; color: Theme.dark ? account.dot.brighter(0.5) : account.dot.darker(0.3); font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-                }
-            }
-            VerticalLayout {
-                horizontal-stretch: 1;
-                alignment: center;
-                spacing: 1px;
-                Text { text: account.name; color: account.archived ? Theme.muted : Theme.text; font-weight: 600; font-size: 13px; overflow: elide; }
-                Text { text: (account.archived ? "archiviert  " : "") + account.iban; color: Theme.muted; font-size: 11px; overflow: elide; }
-            }
-            Text {
-                text: account.balance;
-                color: account.negative ? Theme.negative : Theme.text;
-                font-size: 12px;
-                font-weight: 600;
-                vertical-alignment: center;
-                horizontal-alignment: right;
-            }
+    callback fold();
+    height: r.kind == 1 ? 30px : r.kind == 2 ? 24px : r.progress >= 0 ? 50px : 32px;
+    border-radius: 8px;
+    background: active ? Theme.selected : (ta.has-hover && r.kind != 1 && r.kind != 2) ? Theme.text.with-alpha(0.05) : transparent;
+    ta := TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: 6px + max(r.depth - 1, 0) * 14px;
+        padding-right: 8px;
+        spacing: 6px;
+        if r.fold != 0: Rectangle {
+            width: 16px;
+            Text { text: r.fold == 2 ? "▸" : "▾"; color: Theme.muted; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
+            if r.kind == 4: TouchArea { clicked => { root.fold(); } }
         }
+        if r.fold == 0 && (r.kind == 3 || r.kind == 4): Rectangle {
+            width: 16px;
+            if r.has-dot: Rectangle { width: 9px; height: 9px; border-radius: 4.5px; background: r.dot; }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: r.kind == 1 || r.kind == 2 ? r.label.to-uppercase() : r.label;
+                color: r.kind == 1 || r.kind == 2 ? Theme.muted : Theme.text;
+                font-size: r.kind == 1 || r.kind == 2 ? 10px : 13px;
+                font-weight: r.kind == 0 || r.kind == 1 || r.kind == 2 ? 700 : 500;
+                letter-spacing: r.kind == 1 || r.kind == 2 ? 0.8px : 0px;
+                overflow: elide;
+            }
+            if r.progress >= 0: Rectangle {
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.text.with-alpha(0.12);
+                Rectangle { x: 0px; width: parent.width * r.progress; border-radius: 2px; background: Theme.positive; }
+            }
+            if r.progress >= 0: Text { text: r.detail; color: Theme.muted; font-size: 10px; overflow: elide; }
+        }
+        if r.badge != "": Rectangle {
+            width: max(badge-text.preferred-width + 12px, 20px);
+            height: 18px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 9px;
+            background: Theme.accent.with-alpha(0.2);
+            badge-text := Text { text: r.badge; color: Theme.accent; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        if r.amount != "": Text {
+            text: r.amount;
+            color: r.negative ? Theme.negative : Theme.muted;
+            font-size: 11px;
+            font-weight: 600;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+        }
+    }
+}
+
+// Simple segmented button used by the sidebar mode switcher and the data pane tabs.
+component SegButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> checked;
+    callback clicked();
+    height: 28px;
+    border-radius: 7px;
+    border-width: 1px;
+    border-color: checked ? Theme.accent : Theme.control-border;
+    background: checked ? Theme.accent.with-alpha(0.18) : ta.has-hover ? Theme.text.with-alpha(0.07) : Theme.surface;
+    horizontal-stretch: 1;
+    ta := TouchArea { clicked => { root.clicked(); } }
+    Text { text: root.text; color: Theme.text; font-size: 11px; font-weight: checked ? 700 : 500; horizontal-alignment: center; vertical-alignment: center; overflow: elide; }
+}
+
+component KpiCard inherits Rectangle {
+    in property <KpiTile> k;
+    horizontal-stretch: 1;
+    height: 68px;
+    background: Theme.surface;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: Theme.border;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 4px;
+        alignment: center;
+        Text { text: k.label; color: Theme.muted; font-size: 11px; overflow: elide; }
+        Text {
+            text: k.value;
+            color: k.value == "Nicht verfügbar" ? Theme.muted : k.negative ? Theme.negative : Theme.text;
+            font-size: k.value == "Nicht verfügbar" ? 13px : 16px;
+            font-weight: 700;
+            overflow: elide;
+        }
+    }
+}
+
+component ShareBarLine inherits HorizontalLayout {
+    in property <ShareBar> s;
+    spacing: 10px;
+    height: 22px;
+    Text { text: s.label; color: Theme.text; font-size: 12px; width: 130px; vertical-alignment: center; overflow: elide; }
+    Rectangle {
+        horizontal-stretch: 1;
+        height: 8px;
+        y: (parent.height - self.height) / 2;
+        border-radius: 4px;
+        background: Theme.text.with-alpha(0.1);
+        Rectangle { x: 0px; width: max(parent.width * s.share, 3px); border-radius: 4px; background: s.color; }
+    }
+    Text { text: round(s.share * 1000) / 10 + " %"; color: Theme.muted; font-size: 11px; width: 52px; horizontal-alignment: right; vertical-alignment: center; }
+    Text { text: s.value; color: Theme.text; font-size: 12px; font-weight: 600; width: 110px; horizontal-alignment: right; vertical-alignment: center; }
+}
+
+component TableLine inherits Rectangle {
+    in property <TableRow> data;
+    in property <bool> active;
+    in property <bool> clickable: false;
+    callback clicked();
+    height: 34px;
+    background: active ? Theme.selected : ta.has-hover && clickable ? Theme.text.with-alpha(0.04) : transparent;
+    ta := TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 10px;
+        Text { text: data.c0; color: Theme.text; font-size: 12px; font-weight: 600; horizontal-stretch: 3; vertical-alignment: center; overflow: elide; }
+        Text { text: data.c1; color: Theme.muted; font-size: 12px; horizontal-stretch: 2; vertical-alignment: center; overflow: elide; }
+        Text { text: data.c2; color: Theme.text; font-size: 12px; horizontal-stretch: 2; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+        Text { text: data.c3; color: Theme.text; font-size: 12px; horizontal-stretch: 2; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+        Text { text: data.c4; color: data.negative ? Theme.negative : Theme.muted; font-size: 12px; horizontal-stretch: 2; horizontal-alignment: right; vertical-alignment: center; overflow: elide; }
+    }
+}
+
+component TableHeader inherits Rectangle {
+    in property <[string]> columns;
+    height: 28px;
+    background: Theme.text.with-alpha(0.04);
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 10px;
+        Text { text: columns.length > 0 ? columns[0] : ""; color: Theme.muted; font-size: 11px; font-weight: 700; horizontal-stretch: 3; vertical-alignment: center; }
+        Text { text: columns.length > 1 ? columns[1] : ""; color: Theme.muted; font-size: 11px; font-weight: 700; horizontal-stretch: 2; vertical-alignment: center; }
+        Text { text: columns.length > 2 ? columns[2] : ""; color: Theme.muted; font-size: 11px; font-weight: 700; horizontal-stretch: 2; horizontal-alignment: right; vertical-alignment: center; }
+        Text { text: columns.length > 3 ? columns[3] : ""; color: Theme.muted; font-size: 11px; font-weight: 700; horizontal-stretch: 2; horizontal-alignment: right; vertical-alignment: center; }
+        Text { text: columns.length > 4 ? columns[4] : ""; color: Theme.muted; font-size: 11px; font-weight: 700; horizontal-stretch: 2; horizontal-alignment: right; vertical-alignment: center; }
     }
 }
 
@@ -248,6 +350,67 @@ export component MainWindow inherits Window {
     in-out property <bool> transfer-open: false;
     in property <[string]> transfer-accounts;
     in-out property <string> transfer-status;
+    // ---- navigation and views (views_ui.rs)
+    in property <[SideRow]> side-rows;
+    in-out property <string> side-selected: "all";
+    in-out property <int> group-mode: 0;
+    in-out property <string> side-query;
+    callback side-click(string);
+    callback side-fold(string);
+    callback side-controls-changed();
+    // 0 = bookings, 1 = depot / Sachwerte, 2 = Vermögen, 3 = Geplant, 4 = Lastschriften, 5 = Belege
+    in property <int> view-mode: 0;
+    in property <string> view-title;
+    in property <string> view-total;
+    in property <string> view-note;
+    in property <string> view-status;
+    in-out property <int> period-index: 0;
+    in-out property <int> depot-tab: 0;
+    in-out property <int> wealth-tab: 0;
+    in-out property <int> interval-index: 0;
+    in property <[string]> period-labels;
+    in property <[string]> interval-labels;
+    in property <[KpiTile]> kpis;
+    in property <[ShareBar]> shares;
+    in property <[string]> table-columns;
+    in property <[TableRow]> table-rows;
+    in property <string> table-empty;
+    in-out property <int> table-selected: -1;
+    callback view-changed();
+    callback table-select(int);
+    in property <[string]> doc-accounts;
+    in-out property <int> doc-account-index: 0;
+    in property <bool> doc-selected: false;
+    in property <bool> doc-linked: false;
+    callback doc-attach();
+    callback doc-open();
+    callback doc-link-open();
+    callback doc-unlink();
+    in-out property <bool> link-open: false;
+    in property <[TableRow]> link-results;
+    in-out property <string> link-query;
+    in property <string> link-status;
+    callback link-search(string);
+    callback link-pick(int);
+    in-out property <bool> rules-open: false;
+    in property <[RuleItem]> rule-items;
+    in property <[string]> rule-category-names;
+    in property <[string]> rule-field-labels;
+    in property <[string]> rule-kind-labels;
+    in-out property <int> rule-selected: -1;
+    in-out property <string> rule-name;
+    in-out property <string> rule-pattern;
+    in-out property <int> rule-category: 0;
+    in-out property <int> rule-field: 0;
+    in-out property <int> rule-kind: 0;
+    in-out property <bool> rule-enabled: true;
+    in property <bool> rule-armed: false;
+    in property <string> rule-status;
+    callback rules-request();
+    callback rule-select(int);
+    callback rule-new();
+    callback rule-save(string, string, int, int, int, bool);
+    callback rule-delete();
     callback select-booking(int);
     callback set-category(int);
     callback set-checked(bool);
@@ -346,33 +509,32 @@ export component MainWindow inherits Window {
                 padding: 12px;
                 spacing: 8px;
                 Text { text: "GiroCrab"; font-size: 18px; font-weight: 700; color: Theme.text; x: 4px; }
-                Rectangle {
-                    height: 56px;
-                    border-radius: 12px;
-                    background: root.selected == 0 ? Theme.selected : all-ta.has-hover ? Theme.text.with-alpha(0.05) : Theme.surface;
-                    border-width: 1px;
-                    border-color: root.selected == 0 ? Theme.accent.with-alpha(0.6) : Theme.border;
-                    all-ta := TouchArea { clicked => { root.select-account(0); } }
-                    HorizontalLayout {
-                        padding-left: 14px;
-                        padding-right: 14px;
-                        spacing: 8px;
-                        VerticalLayout {
-                            horizontal-stretch: 1;
-                            alignment: center;
-                            spacing: 1px;
-                            Text { text: "Alle Konten"; color: Theme.text; font-size: 13px; font-weight: 700; }
-                            Text { text: "Gesamtsaldo"; color: Theme.muted; font-size: 11px; }
-                        }
-                        Text { text: root.total; color: Theme.text; font-size: 14px; font-weight: 700; vertical-alignment: center; horizontal-alignment: right; }
-                    }
-                }
                 ListView {
                     vertical-stretch: 1;
-                    for a in root.accounts: AccountCard {
-                        account: a;
-                        active: root.selected == a.id;
-                        clicked => { root.select-account(a.id); }
+                    for r in root.side-rows: Rectangle {
+                        height: r.kind == 5 ? 76px : r.kind == 1 ? 30px : r.kind == 2 ? 24px : r.progress >= 0 ? 50px : 32px;
+                        if r.kind == 5: VerticalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            spacing: 6px;
+                            HorizontalLayout {
+                                spacing: 4px;
+                                SegButton { text: "Gruppen"; checked: root.group-mode == 0; clicked => { root.group-mode = 0; root.side-controls-changed(); } }
+                                SegButton { text: "Banken"; checked: root.group-mode == 1; clicked => { root.group-mode = 1; root.side-controls-changed(); } }
+                                SegButton { text: "Kontoart"; checked: root.group-mode == 2; clicked => { root.group-mode = 2; root.side-controls-changed(); } }
+                            }
+                            LineEdit {
+                                placeholder-text: "Konten filtern";
+                                text <=> root.side-query;
+                                edited => { root.side-controls-changed(); }
+                            }
+                        }
+                        if r.kind != 5: SideLine {
+                            r: r;
+                            active: root.side-selected == r.key;
+                            clicked => { root.side-click(r.key); }
+                            fold => { root.side-fold(r.key); }
+                        }
                     }
                 }
                 Rectangle { height: 1px; background: Theme.border; }
@@ -404,6 +566,7 @@ export component MainWindow inherits Window {
                 GhostButton { text: "Überweisung …"; enabled: !root.busy && root.transfer-accounts.length > 0; clicked => { root.transfer-start(); } }
                 GhostButton { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
                 GhostButton { text: "Kategorien"; clicked => { root.categories-open(); } }
+                GhostButton { text: "Regeln …"; clicked => { root.rules-request(); } }
                 GhostButton { text: "Info"; clicked => { root.about-open = true; } }
                 Rectangle { horizontal-stretch: 1; }
                 PillToggle {
@@ -413,7 +576,7 @@ export component MainWindow inherits Window {
                 }
                 GhostButton { text: "Sperren"; clicked => { root.lock(); } }
             }
-            Rectangle {
+            if root.view-mode == 0: Rectangle {
                 height: 88px;
                 background: Theme.surface;
                 border-radius: 12px;
@@ -463,7 +626,7 @@ export component MainWindow inherits Window {
                 text: root.sync-status; color: Theme.muted; font-size: 11px; wrap: word-wrap;
             }
             // filter bar
-            HorizontalLayout {
+            if root.view-mode == 0: HorizontalLayout {
                 spacing: 10px;
                 search-edit := LineEdit {
                     horizontal-stretch: 1;
@@ -471,6 +634,7 @@ export component MainWindow inherits Window {
                     text <=> root.search-text;
                     edited => { root.search-changed(); }
                 }
+                ChangeTrigger { width: 0px; height: 0px; tick: root.search-focus-tick; fire => { search-edit.focus(); } }
                 ComboBox {
                     width: 150px;
                     model: ["Alle Umsätze", "Ungeprüft", "Geprüft", "Ausgaben", "Einnahmen"];
@@ -483,7 +647,7 @@ export component MainWindow inherits Window {
                     toggled => { root.search-changed(); }
                 }
             }
-            HorizontalLayout {
+            if root.view-mode == 0: HorizontalLayout {
                 spacing: 12px;
                 Rectangle {
                     horizontal-stretch: 1;
@@ -492,7 +656,6 @@ export component MainWindow inherits Window {
                     border-width: 1px;
                     border-color: Theme.border;
                     clip: true;
-                    ChangeTrigger { tick: root.search-focus-tick; fire => { search-edit.focus(); } }
                     if root.bookings.length == 0: Text {
                         text: (root.search-text == "" && !root.uncategorized-only && root.status-index == 0) ? "Keine Umsätze" : "Keine Treffer";
                         color: Theme.muted;
@@ -547,6 +710,118 @@ export component MainWindow inherits Window {
                             Button { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
                         }
                         Rectangle { vertical-stretch: 1; }
+                    }
+                }
+            }
+            // ---- data pane: depot / Sachwerte, Vermögen, Geplant, Lastschriften, Belege
+            if root.view-mode != 0: VerticalLayout {
+                vertical-stretch: 1;
+                spacing: 12px;
+                Rectangle {
+                    height: root.view-mode == 1 || root.view-mode == 2 ? 88px : 56px;
+                    background: Theme.surface;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    HorizontalLayout {
+                        padding: 16px;
+                        spacing: 12px;
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            alignment: center;
+                            spacing: 4px;
+                            Text { text: root.view-title; font-size: root.view-mode == 1 || root.view-mode == 2 ? 16px : 18px; font-weight: 700; color: Theme.text; overflow: elide; }
+                            if root.view-mode == 1 || root.view-mode == 2: Text { text: root.view-total; font-size: 24px; font-weight: 700; color: Theme.text; overflow: elide; }
+                        }
+                        if root.view-mode == 1: ComboBox {
+                            y: (parent.height - self.height) / 2;
+                            width: 190px;
+                            model: root.period-labels;
+                            current-index <=> root.period-index;
+                            selected => { root.view-changed(); }
+                        }
+                        if root.view-mode == 3: ComboBox {
+                            y: (parent.height - self.height) / 2;
+                            width: 190px;
+                            model: root.interval-labels;
+                            current-index <=> root.interval-index;
+                            selected => { root.view-changed(); }
+                        }
+                        if root.view-mode == 5: HorizontalLayout {
+                            alignment: end;
+                            spacing: 8px;
+                            ComboBox {
+                                y: (parent.height - self.height) / 2;
+                                width: 170px;
+                                model: root.doc-accounts;
+                                current-index <=> root.doc-account-index;
+                            }
+                            GhostButton { y: (parent.height - self.height) / 2; text: "Datei hinzufügen …"; enabled: !root.busy && root.doc-accounts.length > 0; clicked => { root.doc-attach(); } }
+                        }
+                    }
+                }
+                if root.view-note != "": Text { text: root.view-note; color: Theme.muted; font-size: 11px; wrap: word-wrap; }
+                if root.view-mode == 2: HorizontalLayout {
+                    spacing: 6px;
+                    for label[i] in ["Alles", "Cash", "Wertpapiere", "Sachwerte"]: SegButton {
+                        text: label;
+                        checked: root.wealth-tab == i;
+                        clicked => { root.wealth-tab = i; root.view-changed(); }
+                    }
+                    Rectangle { horizontal-stretch: 2; }
+                }
+                if root.view-mode == 1: HorizontalLayout {
+                    spacing: 10px;
+                    for k in root.kpis: KpiCard { k: k; }
+                }
+                if (root.view-mode == 1 || root.view-mode == 2) && root.shares.length > 0: Rectangle {
+                    height: 44px + root.shares.length * 26px;
+                    background: Theme.surface;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    VerticalLayout {
+                        padding: 14px;
+                        spacing: 4px;
+                        Text { text: "Zusammensetzung"; color: Theme.muted; font-size: 11px; font-weight: 700; }
+                        for s in root.shares: ShareBarLine { s: s; }
+                    }
+                }
+                if root.view-mode == 1: HorizontalLayout {
+                    spacing: 6px;
+                    SegButton { text: "Positionen"; checked: root.depot-tab == 0; clicked => { root.depot-tab = 0; root.view-changed(); } }
+                    SegButton { text: "Aktivitäten"; checked: root.depot-tab == 1; clicked => { root.depot-tab = 1; root.view-changed(); } }
+                    Rectangle { horizontal-stretch: 4; }
+                }
+                if root.view-mode == 5: HorizontalLayout {
+                    spacing: 8px;
+                    GhostButton { text: "Öffnen"; enabled: root.doc-selected && !root.busy; clicked => { root.doc-open(); } }
+                    GhostButton { text: "Mit Umsatz verknüpfen …"; enabled: root.doc-selected && !root.busy; clicked => { root.doc-link-open(); } }
+                    GhostButton { text: "Verknüpfung lösen"; enabled: root.doc-linked && !root.busy; clicked => { root.doc-unlink(); } }
+                    Rectangle { horizontal-stretch: 1; }
+                }
+                if root.view-status != "": Text { text: root.view-status; color: Theme.muted; font-size: 11px; wrap: word-wrap; }
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: Theme.surface;
+                    border-radius: 12px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    clip: true;
+                    VerticalLayout {
+                        TableHeader { columns: root.table-columns; }
+                        Rectangle {
+                            vertical-stretch: 1;
+                            if root.table-rows.length == 0: Text { text: root.table-empty; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; wrap: word-wrap; }
+                            ListView {
+                                for r[i] in root.table-rows: TableLine {
+                                    data: r;
+                                    clickable: root.view-mode == 5;
+                                    active: root.view-mode == 5 && root.table-selected == i;
+                                    clicked => { if (root.view-mode == 5) { root.table-select(i); } }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -771,6 +1046,83 @@ export component MainWindow inherits Window {
             Rectangle { horizontal-stretch: 1; }
             Button { text: "Schließen"; primary: true; clicked => { root.cat-open = false; root.refocus(); } }
         }
+    }
+
+    // ---- rules dialog: create / edit / delete auto-categorisation rules
+    if rules-open: Dialog {
+        dialog-width: 640px;
+        Text { text: "Regeln"; font-size: 18px; font-weight: 700; color: Theme.text; }
+        Text { text: "Eine Regel ordnet passende Umsätze einer Kategorie zu. Angewendet wird sie mit „Regeln anwenden“."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+        Rectangle {
+            height: 190px;
+            border-width: 1px;
+            border-color: Theme.border;
+            border-radius: 8px;
+            clip: true;
+            if root.rule-items.length == 0: Text { text: "Noch keine Regeln"; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+            ListView {
+                for r[i] in root.rule-items: Rectangle {
+                    height: 44px;
+                    background: root.rule-selected == i ? Theme.accent.with-alpha(0.18) : transparent;
+                    TouchArea { clicked => { root.rule-select(i); } }
+                    VerticalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        alignment: center;
+                        spacing: 2px;
+                        Text { text: r.title; color: Theme.text; font-size: 13px; font-weight: 600; overflow: elide; }
+                        Text { text: r.detail; color: Theme.muted; font-size: 11px; overflow: elide; }
+                    }
+                }
+            }
+        }
+        LineEdit { placeholder-text: "Name (optional)"; text <=> root.rule-name; }
+        LineEdit { placeholder-text: "Suchmuster, z. B. REWE|EDEKA"; text <=> root.rule-pattern; }
+        Text { text: "Kategorie"; font-size: 11px; color: Theme.muted; }
+        ComboBox { model: root.rule-category-names; current-index <=> root.rule-category; }
+        HorizontalLayout {
+            spacing: 8px;
+            ComboBox { horizontal-stretch: 1; model: root.rule-field-labels; current-index <=> root.rule-field; }
+            ComboBox { horizontal-stretch: 1; model: root.rule-kind-labels; current-index <=> root.rule-kind; }
+        }
+        CheckBox { text: "Regel aktiv"; checked <=> root.rule-enabled; }
+        if root.rule-status != "": Text { text: root.rule-status; color: Theme.negative; font-size: 12px; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 8px;
+            Button { text: "Neue Regel"; clicked => { root.rule-new(); } }
+            Button { text: root.rule-selected >= 0 ? "Speichern" : "Anlegen"; primary: true; clicked => { root.rule-save(root.rule-name, root.rule-pattern, root.rule-category, root.rule-field, root.rule-kind, root.rule-enabled); } }
+            Button { text: root.rule-armed ? "Wirklich löschen?" : "Löschen"; enabled: root.rule-selected >= 0; clicked => { root.rule-delete(); } }
+            Rectangle { horizontal-stretch: 1; }
+            Button { text: "Schließen"; clicked => { root.rules-open = false; root.refocus(); } }
+        }
+    }
+
+    // ---- link a document to a booking
+    if link-open: Dialog {
+        dialog-width: 560px;
+        Text { text: "Beleg mit Umsatz verknüpfen"; font-size: 18px; font-weight: 700; color: Theme.text; }
+        LineEdit {
+            placeholder-text: "Umsatz suchen (Gegenpartei, Verwendungszweck)";
+            text <=> root.link-query;
+            edited(t) => { root.link-search(t); }
+        }
+        Rectangle {
+            height: 240px;
+            border-width: 1px;
+            border-color: Theme.border;
+            border-radius: 8px;
+            clip: true;
+            if root.link-results.length == 0: Text { text: "Keine Umsätze"; color: Theme.muted; horizontal-alignment: center; vertical-alignment: center; }
+            ListView {
+                for r[i] in root.link-results: TableLine {
+                    data: r;
+                    clickable: true;
+                    clicked => { root.link-pick(i); }
+                }
+            }
+        }
+        if root.link-status != "": Text { text: root.link-status; color: Theme.negative; font-size: 12px; wrap: word-wrap; }
+        HorizontalLayout { alignment: end; Button { text: "Abbrechen"; clicked => { root.link-open = false; root.refocus(); } } }
     }
 
     // ---- About

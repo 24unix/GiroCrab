@@ -10,6 +10,8 @@ pub enum Modal {
     AddBank,
     Account,
     Categories,
+    Rules,
+    Link,
     About,
 }
 
@@ -21,6 +23,8 @@ pub struct Modals {
     pub add_bank: bool,
     pub account: bool,
     pub categories: bool,
+    pub rules: bool,
+    pub link: bool,
     pub about: bool,
 }
 
@@ -32,6 +36,8 @@ impl Modals {
             (self.transfer, Modal::Transfer),
             (self.add_bank, Modal::AddBank),
             (self.account, Modal::Account),
+            (self.link, Modal::Link),
+            (self.rules, Modal::Rules),
             (self.categories, Modal::Categories),
             (self.about, Modal::About),
         ]
@@ -318,6 +324,23 @@ mod tests {
         };
         assert_eq!(m.top(), Some(Modal::Transfer));
         assert_eq!(Modals::default().top(), None);
+    }
+
+    #[test]
+    fn rules_and_link_dialogs_close_with_escape() {
+        let mut c = ctx();
+        c.modals.rules = true;
+        assert_eq!(
+            route("\u{1b}", false, &c),
+            Some(Command::CloseModal(Modal::Rules))
+        );
+        // The booking picker lies over the documents view and closes first.
+        c.modals.link = true;
+        assert_eq!(
+            route("\u{1b}", false, &c),
+            Some(Command::CloseModal(Modal::Link))
+        );
+        assert_eq!(route("l", true, &c), None);
     }
 
     #[test]
