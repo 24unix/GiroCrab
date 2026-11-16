@@ -1044,6 +1044,7 @@ private struct SelectionScroller: View {
 /// ("Ohne Kategorie" like the sidebar entry, in the warning colour).
 struct BookingCategoryLabel: View {
     let booking: Booking
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         let none = booking.categoryName.isEmpty
@@ -1051,8 +1052,8 @@ struct BookingCategoryLabel: View {
         HStack(spacing: 3) {
             Image(systemName: none ? "questionmark.folder" : (booking.categorySymbol.isEmpty ? "tag.fill" : booking.categorySymbol))
                 .appFont(.caption)
-            Text(none ? String(localized: "Ohne Kategorie") : booking.categoryName)
-                .sensitive(none ? [] : .labels)
+            Text(none ? model.uncategorizedLabel : booking.categoryName)
+                .sensitive(.labels)
                 .appFont(.callout, weight: .medium)
                 .lineLimit(1)
         }

@@ -200,6 +200,8 @@ enum GroupDialog {
     case editOwner(Account)
     /// "Umbenennen …" of a category (same alert as for groups and accounts).
     case renameCategory(GiroCrabCore.Category)
+    /// "Umbenennen …" of the „Ohne Kategorie“ row (#597); empty text restores the default.
+    case renameUncategorized
     case delete(UserGroup)
     /// iOS swipe "Gruppe …".
     case moveAccount(Account)
@@ -209,7 +211,7 @@ enum GroupDialog {
     /// Text-input alert vs. confirmation dialog.
     var needsText: Bool {
         switch self {
-        case .create, .rename, .renameAccount, .renameCategory, .editOwner: true
+        case .create, .rename, .renameAccount, .renameCategory, .renameUncategorized, .editOwner: true
         case .delete, .moveAccount, .merge: false
         }
     }
@@ -221,6 +223,7 @@ enum GroupDialog {
         case .rename: Text("Gruppe umbenennen")
         case .renameAccount: Text("Konto umbenennen")
         case .renameCategory: Text("Kategorie umbenennen")
+        case .renameUncategorized: Text("Bezeichnung ändern")
         case .editOwner: Text("Kontoinhaber")
         case .delete(let g): Text("Gruppe „\(g.name)“ löschen?")
         case .moveAccount(let a): Text("„\(a.name)“ verschieben nach")
@@ -242,6 +245,7 @@ enum GroupDialog {
         case .renameAccount(let a): a.name
         case .editOwner(let a): a.owner
         case .renameCategory(let c): c.name
+        case .renameUncategorized: ""
         default: ""
         }
     }

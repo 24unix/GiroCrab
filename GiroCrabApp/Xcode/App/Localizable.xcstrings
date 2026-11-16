@@ -6195,6 +6195,17 @@
         }
       }
     },
+    "Bezeichnung ändern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change label"
+          }
+        }
+      }
+    },
     "Bis" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22435,6 +22446,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Restore the default order and show all sections"
+          }
+        }
+      }
+    },
+    "Standardbezeichnung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default label"
           }
         }
       }

@@ -491,7 +491,7 @@ struct AccountGroupDialogs: ViewModifier {
                     }
                 case .merge(let from, let into):
                     Button("Zusammenführen") { model.mergeUserGroups(from, into: into) }
-                case .create, .rename, .renameAccount, .renameCategory, .editOwner:
+                case .create, .rename, .renameAccount, .renameCategory, .renameUncategorized, .editOwner:
                     EmptyView()
                 }
                 Button("Abbrechen", role: .cancel) {}
@@ -509,6 +509,7 @@ struct AccountGroupDialogs: ViewModifier {
     private func submit(_ d: GroupDialog) {
         let name = text.trimmingCharacters(in: .whitespaces)
         if case .editOwner(let a) = d { model.setAccountOwner(a.id, to: name); return }
+        if case .renameUncategorized = d { model.setUncategorizedName(name); return }
         guard !name.isEmpty else { return }
         switch d {
         case .create(let accountID, let parent): model.createUserGroup(name: name, moving: accountID, parent: parent?.uuid)
@@ -517,7 +518,7 @@ struct AccountGroupDialogs: ViewModifier {
             if let next = model.renameUserGroup(g, to: name) { DispatchQueue.main.async { dialog = next } }
         case .renameAccount(let a): model.renameAccount(a.id, to: name)
         case .renameCategory(let c): model.renameCategory(c.id, to: name)
-        case .delete, .moveAccount, .merge, .editOwner: break
+        case .delete, .moveAccount, .merge, .editOwner, .renameUncategorized: break
         }
     }
 }

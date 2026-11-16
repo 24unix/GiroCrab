@@ -129,8 +129,14 @@ struct SidebarView: View {
                 Group {
                     HStack(spacing: 8) {
                         Image(systemName: "questionmark.folder").foregroundStyle(Theme.warning).frame(width: 20)
-                        Text("Ohne Kategorie").appDefaultFont()
+                        Text(model.uncategorizedLabel).appDefaultFont().sensitive(.labels)
                         Spacer()
+                    }
+                    .contextMenu {
+                        Button("Umbenennen …", systemImage: "pencil") { model.groupDialog = .renameUncategorized }
+                        if !model.uncategorizedName.isEmpty {
+                            Button("Standardbezeichnung", systemImage: "arrow.uturn.backward") { model.setUncategorizedName("") }
+                        }
                     }
                     .badge(model.uncategorizedCount)
                     .tag(SidebarItem.uncategorized)

@@ -487,7 +487,7 @@ struct SplitSheet: View {
             ForEach($parts) { $p in
                 HStack(spacing: 8) {
                     Picker("Kategorie", selection: $p.categoryID) {
-                        Text("Ohne Kategorie").tag(Int64?.none)
+                        Text(model.uncategorizedLabel).tag(Int64?.none)
                         ForEach(model.categories, id: \.id) { c in Text(c.path).tag(Int64?.some(c.id)) }
                     }
                     .labelsHidden().frame(maxWidth: 190)

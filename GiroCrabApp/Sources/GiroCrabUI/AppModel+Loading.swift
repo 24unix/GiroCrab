@@ -620,7 +620,7 @@ extension AppModel {
         case .userGroup(let uuid): return userGroups.first { $0.uuid == uuid }?.name ?? String(localized: "Gruppe")
         case .account(let id): return allAccounts.first { $0.id == id }?.name ?? String(localized: "Konto")
         case .category(let id): return categories.first { $0.id == id }?.path ?? String(localized: "Kategorie")
-        case .uncategorized: return String(localized: "Ohne Kategorie")
+        case .uncategorized: return uncategorizedLabel
         case .documents: return String(localized: "Belege & PostBox")
         case .newBookings: return String(localized: "Neue Umsätze")
         case .planned: return String(localized: "Geplant")
@@ -733,6 +733,8 @@ extension AppModel {
         let accounts = allAccounts
         accountsByID = Dictionary(accounts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         if let vault {
+            uncategorizedName = (((try? vault.getSetting(key: "ui.uncategorized_name")) ?? nil) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             accountNotes = Dictionary(accounts.compactMap { a in
                 let n = ((try? vault.getSetting(key: "account.note.\(a.id)")) ?? nil)?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

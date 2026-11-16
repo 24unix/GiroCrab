@@ -46,6 +46,8 @@ public final class AppModel {
     var accountMarkers: [Int64: AccountMarker] = [:]
     /// Account notes (vault setting `account.note.<id>`), loaded with the account index.
     var accountNotes: [Int64: String] = [:]
+    /// Custom label for „Ohne Kategorie“ (vault setting `ui.uncategorized_name`, #597); empty = default.
+    var uncategorizedName = ""
     var categories: [GiroCrabCore.Category] = []
     /// Live tags in list order with their booking counts (#228).
     var tags: [GiroCrabCore.Tag] = []
@@ -1463,5 +1465,18 @@ extension AppModel {
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
         runCore { try vault.setSetting(key: "account.note.\(accountID)", value: trimmed) }
         accountNotes[accountID] = trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Label of the uncategorized row, list chips and title (#597).
+    var uncategorizedLabel: String {
+        uncategorizedName.isEmpty ? String(localized: "Ohne Kategorie") : uncategorizedName
+    }
+
+    /// Stores the custom label; an empty text restores the default.
+    func setUncategorizedName(_ name: String) {
+        guard let vault else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        runCore { try vault.setSetting(key: "ui.uncategorized_name", value: trimmed) }
+        uncategorizedName = trimmed
     }
 }

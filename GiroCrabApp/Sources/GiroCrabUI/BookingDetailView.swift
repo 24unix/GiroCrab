@@ -502,7 +502,7 @@ struct CategoryGridCard: View {
             HStack {
                 Text("Kategorie").appFont(.subheadline, weight: .semibold)
                 Spacer()
-                Text(booking.categoryPath.isEmpty ? String(localized: "Ohne Kategorie") : booking.categoryPath)
+                Text(booking.categoryPath.isEmpty ? model.uncategorizedLabel : booking.categoryPath)
                     .appFont(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 6)], spacing: 6) {
