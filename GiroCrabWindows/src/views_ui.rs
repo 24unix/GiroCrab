@@ -128,7 +128,7 @@ fn slint_row(r: &nav::SideRow) -> SideRow {
         progress: r.progress,
         dot,
         has_dot: matches!(r.kind, nav::kind::ACCOUNT | nav::kind::CATEGORY),
-        glyph: crate::monogram(&r.label).into(),
+        icon: r.icon.clone().into(),
         depth: r.depth,
         fold: r.fold,
     }

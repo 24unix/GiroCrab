@@ -3,7 +3,7 @@ import { Button, ListView, LineEdit, Palette, ComboBox, CheckBox, TextEdit } fro
 export struct AccountRow { id: int, name: string, bank: string, iban: string, header: string, monogram: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
 export struct CategoryRow { id: int, name: string, depth: int, color: color }
 export struct BookingRow { id: int, checked: bool, date: string, counterparty: string, category: string, category-color: color, purpose: string, amount: string, negative: bool }
-export struct SideRow { kind: int, key: string, label: string, detail: string, badge: string, amount: string, negative: bool, progress: float, dot: color, has-dot: bool, glyph: string, depth: int, fold: int }
+export struct SideRow { kind: int, key: string, label: string, detail: string, badge: string, amount: string, negative: bool, progress: float, dot: color, has-dot: bool, icon: string, depth: int, fold: int }
 export struct TableRow { id: int, c0: string, c1: string, c2: string, c3: string, c4: string, negative: bool }
 export struct KpiTile { label: string, value: string, negative: bool }
 export struct ShareBar { label: string, value: string, share: float, color: color }
@@ -22,10 +22,58 @@ global Theme {
     out property <color> text: dark ? #f0f4f8 : #1d1d1f;
     out property <color> amount: dark ? #e6edf3 : #1d1d1f;
     out property <color> muted: dark ? #8b949e : #6e6e73;
-    out property <color> accent: #3b82f6;
-    out property <color> primary: #2563eb;
+    out property <color> accent: #388bfd;
+    out property <color> primary: #2f6feb;
     out property <color> positive: dark ? #3fb950 : #1e8449;
-    out property <color> negative: dark ? #ff7b6e : #c0392b;
+    out property <color> negative: dark ? #f47067 : #c0392b;
+}
+
+// Vector icons (16x16 viewbox, 1.5px strokes). Unknown names draw nothing.
+component Icon inherits Path {
+    in property <string> name;
+    in property <color> tint: Theme.muted;
+    width: 16px;
+    height: 16px;
+    viewbox-width: 16;
+    viewbox-height: 16;
+    fill: transparent;
+    stroke: root.tint;
+    stroke-width: 1.5px;
+    stroke-line-cap: round;
+    stroke-line-join: round;
+    commands:
+        name == "bank" ? "M 2 6 L 8 2 L 14 6 Z M 3.5 8 L 3.5 12 M 6.5 8 L 6.5 12 M 9.5 8 L 9.5 12 M 12.5 8 L 12.5 12 M 2 14 L 14 14"
+        : name == "card" ? "M 2.5 4 L 13.5 4 L 13.5 12 L 2.5 12 Z M 2.5 7 L 13.5 7 M 4.5 10 L 7 10"
+        : name == "house" ? "M 2 8 L 8 2.5 L 14 8 M 3.5 7 L 3.5 13.5 L 12.5 13.5 L 12.5 7 M 6.5 13.5 L 6.5 9.5 L 9.5 9.5 L 9.5 13.5"
+        : name == "banknote" ? "M 1.5 4.5 L 14.5 4.5 L 14.5 11.5 L 1.5 11.5 Z M 6 8 A 2 2 0 1 0 10 8 A 2 2 0 1 0 6 8"
+        : name == "chart" ? "M 2.5 2.5 L 13.5 2.5 L 13.5 13.5 L 2.5 13.5 Z M 4.5 10.5 L 7 7.5 L 9 9 L 11.5 5.5"
+        : name == "diamond" ? "M 8 2 L 13.5 6.5 L 8 14 L 2.5 6.5 Z M 2.5 6.5 L 13.5 6.5"
+        : name == "inbox" ? "M 2 9 L 4 3 L 12 3 L 14 9 L 14 13 L 2 13 Z M 2 9 L 5.5 9 L 6.5 10.5 L 9.5 10.5 L 10.5 9 L 14 9"
+        : name == "pie" ? "M 2 8 A 6 6 0 1 0 14 8 A 6 6 0 1 0 2 8 M 8 2 L 8 8 L 12.2 12.2"
+        : name == "grid" ? "M 2.5 2.5 L 7 2.5 L 7 7 L 2.5 7 Z M 9 2.5 L 13.5 2.5 L 13.5 7 L 9 7 Z M 2.5 9 L 7 9 L 7 13.5 L 2.5 13.5 Z M 9 9 L 13.5 9 L 13.5 13.5 L 9 13.5 Z"
+        : name == "person" ? "M 5.5 5 A 2.5 2.5 0 1 0 10.5 5 A 2.5 2.5 0 1 0 5.5 5 M 2.5 14 C 2.5 10.5 5 9.5 8 9.5 C 11 9.5 13.5 10.5 13.5 14"
+        : name == "clock" ? "M 2 8 A 6 6 0 1 0 14 8 A 6 6 0 1 0 2 8 M 8 4.5 L 8 8 L 10.5 9.5"
+        : name == "calendar" ? "M 2.5 3.5 L 13.5 3.5 L 13.5 13.5 L 2.5 13.5 Z M 2.5 6.5 L 13.5 6.5 M 5.5 2 L 5.5 5 M 10.5 2 L 10.5 5"
+        : name == "arrow-in" ? "M 9 2.5 L 13.5 2.5 L 13.5 13.5 L 9 13.5 M 2 8 L 10 8 M 7 5 L 10 8 L 7 11"
+        : name == "document" ? "M 4 2 L 9.5 2 L 12.5 5 L 12.5 14 L 4 14 Z M 9.5 2 L 9.5 5 L 12.5 5 M 6 8 L 10.5 8 M 6 10.5 L 10.5 10.5"
+        : name == "folder" ? "M 2 4 L 6.5 4 L 8 5.5 L 14 5.5 L 14 12.5 L 2 12.5 Z"
+        : name == "search" ? "M 2.5 7 A 4.5 4.5 0 1 0 11.5 7 A 4.5 4.5 0 1 0 2.5 7 M 10.5 10.5 L 14 14"
+        : "";
+}
+
+// Disclosure chevron (12x12 viewbox): down when expanded, right when collapsed.
+component Chevron inherits Path {
+    in property <bool> expanded;
+    width: 12px;
+    height: 12px;
+    viewbox-width: 12;
+    viewbox-height: 12;
+    fill: transparent;
+    stroke: #8b949e;
+    stroke-width: 1.5px;
+    stroke-line-cap: round;
+    stroke-line-join: round;
+    commands: expanded ? "M 2 4 L 6 8 L 10 4" : "M 4 2 L 8 6 L 4 10";
 }
 
 // Subtle ghost button for the toolbar and headers.
@@ -68,7 +116,7 @@ component SideLine inherits Rectangle {
     callback fold();
     property <bool> all-card: r.key == "all";
     property <bool> subtitle: r.kind == 3 && r.progress < 0 && r.detail != "";
-    height: r.kind == 1 ? 26px : r.kind == 2 ? 22px : all-card ? 34px : r.progress >= 0 ? 48px : subtitle ? 40px : 30px;
+    height: r.kind == 1 ? 26px : r.kind == 2 ? 22px : all-card ? 34px : r.progress >= 0 ? 40px : subtitle ? 40px : 30px;
     border-radius: all-card ? 7px : 8px;
     border-width: all-card ? 1px : 0px;
     border-color: Theme.border;
@@ -82,7 +130,7 @@ component SideLine inherits Rectangle {
         spacing: 6px;
         if r.fold != 0: Rectangle {
             width: 16px;
-            Text { text: r.fold == 2 ? "›" : "⌄"; color: Theme.muted; font-size: 12px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            Chevron { expanded: r.fold != 2; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
             if r.kind == 4: TouchArea { clicked => { root.fold(); } }
         }
         if r.fold == 0 && (r.kind == 3 || r.kind == 4): Rectangle {
@@ -93,10 +141,14 @@ component SideLine inherits Rectangle {
             height: 26px;
             y: (parent.height - self.height) / 2;
             border-radius: 6px;
-            background: r.dot.with-alpha(0.2);
+            background: r.dot.with-alpha(0.12);
             border-width: 1px;
-            border-color: r.dot.with-alpha(0.45);
-            Text { text: r.glyph; color: r.dot; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            border-color: r.dot.with-alpha(0.22);
+            Icon { name: r.icon; tint: r.dot; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; }
+        }
+        if r.icon != "" && (r.kind == 0 || r.kind == 2): Icon {
+            name: r.icon;
+            y: (parent.height - self.height) / 2;
         }
         if r.fold == 0 && r.kind == 4: Rectangle {
             width: 16px;
@@ -114,13 +166,20 @@ component SideLine inherits Rectangle {
                 letter-spacing: r.kind == 1 || r.kind == 2 ? 0.8px : 0px;
                 overflow: elide;
             }
-            if r.progress >= 0: Rectangle {
-                height: 4px;
-                border-radius: 2px;
-                background: Theme.text.with-alpha(0.12);
-                Rectangle { x: 0px; width: parent.width * r.progress; border-radius: 2px; background: Theme.positive; }
+            if r.progress >= 0: HorizontalLayout {
+                height: 14px;
+                spacing: 8px;
+                Rectangle {
+                    horizontal-stretch: 1;
+                    height: 4px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 2px;
+                    background: #21262d;
+                    Rectangle { x: 0px; width: parent.width * r.progress; border-radius: 2px; background: #6e7681; }
+                }
+                Text { text: r.detail; color: Theme.muted; font-size: 10px; vertical-alignment: center; }
             }
-            if r.progress >= 0 || subtitle: Text { text: r.detail; color: Theme.muted; font-size: r.progress >= 0 ? 10px : 11px; overflow: elide; }
+            if subtitle: Text { text: r.detail; color: Theme.muted; font-size: r.progress >= 0 ? 10px : 11px; overflow: elide; }
         }
         if r.badge != "": Rectangle {
             width: max(badge-text.preferred-width + 12px, 20px);
@@ -530,7 +589,7 @@ export component MainWindow inherits Window {
                 ListView {
                     vertical-stretch: 1;
                     for r in root.side-rows: Rectangle {
-                        height: r.kind == 5 ? 68px : r.kind == 1 ? 26px : r.kind == 2 ? 22px : r.key == "all" ? 38px : r.progress >= 0 ? 48px : (r.kind == 3 && r.detail != "") ? 40px : 30px;
+                        height: r.kind == 5 ? 68px : r.kind == 1 ? 26px : r.kind == 2 ? 22px : r.key == "all" ? 38px : r.progress >= 0 ? 40px : (r.kind == 3 && r.detail != "") ? 40px : 30px;
                         if r.kind == 5: VerticalLayout {
                             padding-left: 6px;
                             padding-right: 6px;
@@ -557,15 +616,17 @@ export component MainWindow inherits Window {
                                 HorizontalLayout {
                                     padding-left: 8px;
                                     padding-right: 6px;
-                                    spacing: 6px;
-                                    Text { text: "🔍"; font-size: 11px; color: Theme.muted; vertical-alignment: center; }
+                                    spacing: 8px;
+                                    Icon { name: "search"; width: 13px; height: 13px; y: (parent.height - self.height) / 2; }
                                     TextInput {
+                                        horizontal-stretch: 1;
+                                        horizontal-alignment: left;
                                         text <=> root.side-query;
                                         font-size: 12px;
                                         color: Theme.text;
                                         vertical-alignment: center;
                                         edited => { root.side-controls-changed(); }
-                                        Text { visible: parent.text == ""; text: "Konten filtern"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+                                        Text { visible: parent.text == ""; x: 0px; width: parent.width; horizontal-alignment: left; text: "Konten filtern"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
                                     }
                                 }
                             }

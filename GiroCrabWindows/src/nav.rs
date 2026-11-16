@@ -118,6 +118,8 @@ pub struct SideRow {
     /// Repayment progress of a loan 0.0..=1.0; negative = none.
     pub progress: f32,
     pub color_hex: String,
+    /// Vector icon name drawn by the sidebar (empty = none).
+    pub icon: String,
     pub depth: i32,
     /// `0` = nothing to fold, `1` = open, `2` = folded.
     pub fold: i32,
@@ -135,6 +137,7 @@ impl SideRow {
             negative: false,
             progress: -1.0,
             color_hex: String::new(),
+            icon: String::new(),
             depth: 0,
             fold: 0,
         }
@@ -287,6 +290,39 @@ fn grouped<'a>(
     out
 }
 
+/// Icon of an account badge by account type.
+fn account_icon(kind: AccountKind) -> &'static str {
+    match kind {
+        AccountKind::Checking => "bank",
+        AccountKind::Savings | AccountKind::Cash => "banknote",
+        AccountKind::CreditCard | AccountKind::PaymentService => "card",
+        AccountKind::Brokerage => "chart",
+        AccountKind::Loan => "house",
+    }
+}
+
+/// Icon of a group header: by well-known group names, else by account-type group.
+fn group_icon(label: &str) -> &'static str {
+    let l = label.to_lowercase();
+    if l.contains("alltag") {
+        "person"
+    } else if l.contains("sparen") || l.contains("vorsorge") {
+        "clock"
+    } else if l.contains("haus") || l.contains("darlehen") {
+        "house"
+    } else if l.contains("girokonten") {
+        "bank"
+    } else if l.contains("sparkonten") || l.contains("bargeld") {
+        "banknote"
+    } else if l.contains("kreditkarten") || l.contains("zahlungsdienste") {
+        "card"
+    } else if l.contains("depot") {
+        "chart"
+    } else {
+        ""
+    }
+}
+
 /// Builds the whole sidebar. `money` formats cents with a currency, as everywhere in the app.
 pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<SideRow> {
     let hide = |text: String| {
@@ -301,6 +337,7 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
 
     let new_count = unchecked_total(input.accounts);
     let mut new_row = SideRow::new(kind::ITEM, Target::NewBookings.key(), "Neue Umsätze");
+    new_row.icon = "inbox".into();
     if new_count > 0 {
         new_row.badge = new_count.to_string();
     }
@@ -314,6 +351,7 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
         .map(|a| a.balance_cents)
         .sum();
     wealth.amount = hide(money(total, "EUR"));
+    wealth.icon = "pie".into();
     rows.push(wealth);
 
     // ---- Konten
@@ -330,6 +368,7 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
         let mut all = SideRow::new(kind::ITEM, Target::AllAccounts.key(), "Alle Konten");
         all.depth = 1;
         all.amount = hide(money(total, "EUR"));
+        all.icon = "grid".into();
         rows.push(all);
         let visible: Vec<&Account> = input
             .accounts
@@ -357,6 +396,7 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
                 head.amount = hide(money(sum, "EUR"));
                 head.negative = sum < 0 && !input.privacy;
             }
+            head.icon = group_icon(label.trim()).into();
             rows.push(head);
             if is_folded {
                 continue;
@@ -368,6 +408,7 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
                 r.amount = hide(money(a.balance_cents, &a.currency));
                 r.negative = a.balance_cents < 0 && !input.privacy;
                 r.color_hex = a.color_hex.clone();
+                r.icon = account_icon(a.kind).into();
                 if a.new_count > 0 {
                     r.badge = a.new_count.to_string();
                 }
@@ -388,10 +429,12 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
         let mut planned = SideRow::new(kind::ITEM, Target::Planned.key(), "Geplant");
         planned.depth = 1;
         planned.badge = input.planned_count.to_string();
+        planned.icon = "calendar".into();
         rows.push(planned);
         let mut debits = SideRow::new(kind::ITEM, Target::Mandates.key(), "Lastschriften");
         debits.depth = 1;
         debits.badge = input.mandate_count.to_string();
+        debits.icon = "arrow-in".into();
         rows.push(debits);
     }
 
@@ -400,6 +443,7 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
     if !folded("documents") {
         let mut docs = SideRow::new(kind::ITEM, Target::Documents.key(), "Belege & PostBox");
         docs.depth = 1;
+        docs.icon = "document".into();
         rows.push(docs);
     }
 
@@ -417,6 +461,7 @@ pub fn build(input: &SidebarInput, money: &dyn Fn(i64, &str) -> String) -> Vec<S
         if open > 0 {
             none.badge = open.to_string();
         }
+        none.icon = "folder".into();
         rows.push(none);
         let mut skip_below: Option<u32> = None;
         for (i, c) in input.categories.iter().enumerate() {
