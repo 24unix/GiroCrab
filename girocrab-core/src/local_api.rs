@@ -237,6 +237,8 @@ pub enum ApiErrorCode {
     Unauthorized,
     /// The vault is locked (socket only).
     Locked,
+    /// All connections in use; try again later (socket only).
+    Busy,
     UnsupportedVersion,
     UnknownMethod,
     InvalidParams,
@@ -250,6 +252,7 @@ impl ApiErrorCode {
             ApiErrorCode::Disabled => "disabled",
             ApiErrorCode::Unauthorized => "unauthorized",
             ApiErrorCode::Locked => "locked",
+            ApiErrorCode::Busy => "busy",
             ApiErrorCode::UnsupportedVersion => "unsupported_version",
             ApiErrorCode::UnknownMethod => "unknown_method",
             ApiErrorCode::InvalidParams => "invalid_params",
@@ -302,10 +305,11 @@ impl Vault {
     /// Stores what is shared. The token stays as stored (`token_sha256` of
     /// `scope` is ignored), so saving a toggle never revokes or restores access.
     pub fn set_local_api_scope(&self, scope: ShareScope) -> Result<(), CoreError> {
-        let token_sha256 = self.local_api_scope()?.token_sha256;
-        self.store_local_api_scope(&ShareScope {
-            token_sha256,
-            ..scope
+        self.update_local_api_scope(|stored| {
+            *stored = ShareScope {
+                token_sha256: std::mem::take(&mut stored.token_sha256),
+                ..scope
+            }
         })
     }
 
@@ -316,28 +320,37 @@ impl Vault {
         let mut raw = [0u8; 32];
         rand::rng().fill_bytes(&mut raw);
         let token = format!("gcapi_{}", hex::encode(raw));
-        self.store_local_api_scope(&ShareScope {
-            token_sha256: token_hash(&token),
-            ..self.local_api_scope()?
-        })?;
+        self.update_local_api_scope(|s| s.token_sha256 = token_hash(&token))?;
         Ok(token)
     }
 
     /// Revokes access: socket requests are refused until a new token exists.
     pub fn revoke_local_api_token(&self) -> Result<(), CoreError> {
-        self.store_local_api_scope(&ShareScope {
-            token_sha256: String::new(),
-            ..self.local_api_scope()?
-        })
+        self.update_local_api_scope(|s| s.token_sha256.clear())
     }
 }
 
 impl Vault {
-    fn store_local_api_scope(&self, scope: &ShareScope) -> Result<(), CoreError> {
-        let json = serde_json::to_string(scope).map_err(|e| CoreError::InvalidInput {
+    /// Read, change and write the stored scope under one vault lock, so a
+    /// settings save and a new token at the same moment cannot undo each other.
+    fn update_local_api_scope(
+        &self,
+        change: impl FnOnce(&mut ShareScope),
+    ) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let mut scope: ShareScope = Vault::setting_inner(&db, SCOPE_SETTING)?
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+        change(&mut scope);
+        let json = serde_json::to_string(&scope).map_err(|e| CoreError::InvalidInput {
             message: e.to_string(),
         })?;
-        self.set_setting(SCOPE_SETTING.into(), json)
+        db.execute(
+            "INSERT INTO settings(key, value, is_secret) VALUES (?1, ?2, 0)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            rusqlite::params![SCOPE_SETTING, json],
+        )?;
+        Ok(())
     }
 
     /// Answers one JSON request (`{"v":1,"method":"…","params":{…}}`) with
@@ -362,12 +375,8 @@ impl Vault {
             ));
         }
         let scope = self.local_api_scope()?;
-        if !scope.enabled {
-            return Err(ApiError::new(
-                ApiErrorCode::Disabled,
-                "external access is turned off in GiroCrab",
-            ));
-        }
+        // Token first: without it, a socket client learns nothing, not even
+        // whether access is switched on.
         if require_token {
             let given = req.token.as_deref().map(token_hash).unwrap_or_default();
             if scope.token_sha256.is_empty() || !same_bytes(&given, &scope.token_sha256) {
@@ -376,6 +385,12 @@ impl Vault {
                     "missing or wrong access token",
                 ));
             }
+        }
+        if !scope.enabled {
+            return Err(ApiError::new(
+                ApiErrorCode::Disabled,
+                "external access is turned off in GiroCrab",
+            ));
         }
         fn params<T: for<'de> Deserialize<'de> + Default>(v: Value) -> ApiResult<T> {
             if v.is_null() {

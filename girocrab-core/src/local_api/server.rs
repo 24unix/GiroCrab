@@ -7,16 +7,20 @@
 //!   hash is stored in the vault, and the scope is read on every request.
 //! - The server holds the vault weakly: once the app drops it (locked, swapped),
 //!   requests answer `locked`. The app also stops the server when it locks.
-//! - Bounded: at most `MAX_CLIENTS` connections, `MAX_LINE` bytes per request,
-//!   idle connections close after `IDLE`.
+//! - Bounded: at most `MAX_CLIENTS` connections (more get `busy`), `MAX_LINE`
+//!   bytes per request, idle connections close after `IDLE`, a client that does
+//!   not read its answer is dropped after `WRITE_TIMEOUT`.
+//! - `stop()` never waits: it sets a flag and removes the socket file; the
+//!   threads end on their own within `TICK` (or `WRITE_TIMEOUT`).
+//! - Several instances (a debug build next to the app): a live socket is never
+//!   replaced, and a server only removes the socket file it created itself.
 
 use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, Weak};
-use std::thread::JoinHandle;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use super::{response, ApiError, ApiErrorCode};
@@ -28,13 +32,15 @@ const MAX_LINE: usize = 64 * 1024;
 const IDLE: Duration = Duration::from_secs(300);
 /// How often blocked accepts and reads look at the stop flag.
 const TICK: Duration = Duration::from_millis(100);
+const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The running socket; `stop()` (or dropping it) closes it and removes the file.
 #[derive(uniffi::Object)]
 pub struct LocalApiServer {
     path: PathBuf,
+    /// (device, inode) of the socket file this server created.
+    file_id: (u64, u64),
     stop: Arc<AtomicBool>,
-    thread: Mutex<Option<JoinHandle<()>>>,
 }
 
 #[uniffi::export]
@@ -45,29 +51,34 @@ impl LocalApiServer {
     pub fn start(vault: Arc<Vault>, socket_path: String) -> Result<Arc<Self>, CoreError> {
         let path = PathBuf::from(&socket_path);
         let listener = bind(&path)?;
+        let file_id = std::fs::symlink_metadata(&path)
+            .map(|m| (m.dev(), m.ino()))
+            .map_err(io_error)?;
         let stop = Arc::new(AtomicBool::new(false));
         let vault = Arc::downgrade(&vault);
-        let thread = {
+        {
             let stop = stop.clone();
-            std::thread::Builder::new()
+            if let Err(e) = std::thread::Builder::new()
                 .name("girocrab-local-api".into())
                 .spawn(move || accept_loop(listener, vault, stop))
-                .map_err(io_error)?
-        };
+            {
+                remove_own_socket(&path, file_id);
+                return Err(io_error(e));
+            }
+        }
         Ok(Arc::new(Self {
             path,
+            file_id,
             stop,
-            thread: Mutex::new(Some(thread)),
         }))
     }
 
-    /// Closes the socket and removes its file; open connections end within `TICK`.
+    /// Removes the socket file and lets the threads end (within `TICK`, a
+    /// request still being written within `WRITE_TIMEOUT`). Returns at once:
+    /// safe on the main thread.
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
-        if let Some(t) = self.thread.lock().ok().and_then(|mut t| t.take()) {
-            let _ = t.join();
-        }
-        remove_socket(&self.path);
+        remove_own_socket(&self.path, self.file_id);
     }
 
     pub fn socket_path(&self) -> String {
@@ -108,6 +119,10 @@ fn bind(path: &Path) -> Result<UnixListener, CoreError> {
     }
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(io_error)?;
     match std::fs::symlink_metadata(path) {
+        // Someone answers there (another GiroCrab): never take its socket away.
+        Ok(m) if m.file_type().is_socket() && UnixStream::connect(path).is_ok() => {
+            return Err(invalid("another GiroCrab already serves this socket"))
+        }
         Ok(m) if m.file_type().is_socket() => std::fs::remove_file(path).map_err(io_error)?,
         Ok(_) => return Err(invalid("socket path exists and is not a socket")),
         Err(e) if e.kind() == ErrorKind::NotFound => {}
@@ -119,49 +134,54 @@ fn bind(path: &Path) -> Result<UnixListener, CoreError> {
     Ok(listener)
 }
 
-fn remove_socket(path: &Path) {
-    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_socket()) {
+/// Removes the socket file only if it is still the one this server created.
+fn remove_own_socket(path: &Path, file_id: (u64, u64)) {
+    if std::fs::symlink_metadata(path)
+        .is_ok_and(|m| m.file_type().is_socket() && (m.dev(), m.ino()) == file_id)
+    {
         let _ = std::fs::remove_file(path);
+    }
+}
+
+/// Counts a connection while it lives, also if its request panics.
+struct ClientSlot(Arc<AtomicUsize>);
+
+impl Drop for ClientSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
 fn accept_loop(listener: UnixListener, vault: Weak<Vault>, stop: Arc<AtomicBool>) {
     let clients = Arc::new(AtomicUsize::new(0));
-    let mut workers: Vec<JoinHandle<()>> = Vec::new();
     while !stop.load(Ordering::SeqCst) {
-        workers.retain(|w| !w.is_finished());
         match listener.accept() {
             Ok((mut stream, _)) => {
                 // BSD hands the listener's O_NONBLOCK on to the accepted socket.
-                if stream.set_nonblocking(false).is_err() || !same_user(&stream) {
+                if stream.set_nonblocking(false).is_err()
+                    || stream.set_write_timeout(Some(WRITE_TIMEOUT)).is_err()
+                    || !same_user(&stream)
+                {
                     continue;
                 }
                 if clients.load(Ordering::SeqCst) >= MAX_CLIENTS {
-                    let busy = ApiError::new(ApiErrorCode::Internal, "too many connections");
+                    let busy = ApiError::new(ApiErrorCode::Busy, "too many connections, try again");
                     let _ = writeln!(stream, "{}", response(Err(busy)));
                     continue;
                 }
                 clients.fetch_add(1, Ordering::SeqCst);
-                let (vault, stop, counter) = (vault.clone(), stop.clone(), clients.clone());
-                let worker = std::thread::Builder::new()
+                let slot = ClientSlot(clients.clone());
+                let (vault, stop) = (vault.clone(), stop.clone());
+                // On a spawn error the closure (and with it `slot`) is dropped.
+                let _ = std::thread::Builder::new()
                     .name("girocrab-local-api-client".into())
                     .spawn(move || {
+                        let _slot = slot;
                         serve(stream, &vault, &stop);
-                        counter.fetch_sub(1, Ordering::SeqCst);
                     });
-                match worker {
-                    Ok(w) => workers.push(w),
-                    Err(_) => {
-                        clients.fetch_sub(1, Ordering::SeqCst);
-                    }
-                }
             }
-            Err(e) if e.kind() == ErrorKind::WouldBlock => std::thread::sleep(TICK),
             Err(_) => std::thread::sleep(TICK),
         }
-    }
-    for w in workers {
-        let _ = w.join();
     }
 }
 
@@ -439,6 +459,90 @@ mod tests {
         assert_eq!(c.send_raw(&big)["error"]["code"], "invalid_params");
         let mut rest = String::new();
         assert_eq!(c.reader.read_line(&mut rest).unwrap_or(0), 0, "closed");
+        server.stop();
+    }
+
+    #[test]
+    fn stop_returns_at_once_even_with_a_client_that_never_reads() {
+        let d = ShortDir::new();
+        let (_v, vault, token) = vault();
+        let server =
+            LocalApiServer::start(vault.clone(), d.socket().to_string_lossy().into()).unwrap();
+        let s = UnixStream::connect(d.socket()).unwrap();
+        let mut w = s.try_clone().unwrap();
+        // Many large answers, never read: the worker blocks in its write.
+        let req = json!({ "token": token, "method": "transactions", "params": { "limit": 500 } });
+        for _ in 0..20 {
+            let _ = writeln!(w, "{req}");
+        }
+        std::thread::sleep(Duration::from_millis(300));
+        let t = std::time::Instant::now();
+        server.stop();
+        assert!(t.elapsed() < Duration::from_millis(50), "{:?}", t.elapsed());
+        assert!(!d.socket().exists());
+        drop(s);
+    }
+
+    #[test]
+    fn a_live_socket_of_another_instance_is_left_alone() {
+        let d = ShortDir::new();
+        let (_v, vault, _) = vault();
+        let path: String = d.socket().to_string_lossy().into();
+        let first = LocalApiServer::start(vault.clone(), path.clone()).unwrap();
+        assert!(LocalApiServer::start(vault.clone(), path.clone()).is_err());
+        assert!(
+            UnixStream::connect(&path).is_ok(),
+            "first one still reachable"
+        );
+        first.stop();
+        let second = LocalApiServer::start(vault.clone(), path.clone()).unwrap();
+        // The first one stopping (again) or going away must not take the second's file.
+        first.stop();
+        drop(first);
+        assert!(UnixStream::connect(&path).is_ok());
+        second.stop();
+    }
+
+    #[test]
+    fn a_fifth_connection_is_told_to_wait() {
+        let d = ShortDir::new();
+        let (_v, vault, token) = vault();
+        let server =
+            LocalApiServer::start(vault.clone(), d.socket().to_string_lossy().into()).unwrap();
+        let mut open: Vec<Client> = (0..MAX_CLIENTS)
+            .map(|_| Client::connect(&d.socket()))
+            .collect();
+        for c in &mut open {
+            assert!(c.call(&token, "info")["result"].is_object());
+        }
+        let mut extra = Client::connect(&d.socket());
+        let mut line = String::new();
+        extra.reader.read_line(&mut line).unwrap();
+        let v: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["error"]["code"], "busy");
+        drop(open);
+        std::thread::sleep(Duration::from_millis(300));
+        let mut again = Client::connect(&d.socket());
+        assert!(again.call(&token, "info")["result"].is_object());
+        server.stop();
+    }
+
+    #[test]
+    fn without_the_token_nothing_tells_whether_access_is_on() {
+        let d = ShortDir::new();
+        let (_v, vault, token) = vault();
+        let server =
+            LocalApiServer::start(vault.clone(), d.socket().to_string_lossy().into()).unwrap();
+        let scope = vault.local_api_scope().unwrap();
+        vault
+            .set_local_api_scope(ShareScope {
+                enabled: false,
+                ..scope
+            })
+            .unwrap();
+        let mut c = Client::connect(&d.socket());
+        assert_eq!(c.call("", "info")["error"]["code"], "unauthorized");
+        assert_eq!(c.call(&token, "info")["error"]["code"], "disabled");
         server.stop();
     }
 }

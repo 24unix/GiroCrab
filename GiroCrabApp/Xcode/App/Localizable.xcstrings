@@ -10476,17 +10476,6 @@
         }
       }
     },
-    "Externe Analyse konnte nicht starten: %@" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "External analysis could not start: %@"
-          }
-        }
-      }
-    },
     "FNZ: %lld Konten/Depots aktualisiert, %lld neue PDFs." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -17989,6 +17978,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Not Found?"
+          }
+        }
+      }
+    },
+    "Nicht gestartet: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not started: %@"
           }
         }
       }

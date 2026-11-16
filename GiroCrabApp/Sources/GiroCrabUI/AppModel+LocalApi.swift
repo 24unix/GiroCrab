@@ -39,30 +39,37 @@ extension AppModel {
             guard self.localApiServer == nil else { return }
             _ = Self.localApiQuitObserver
             do {
-                self.localApiServer = try LocalApiServer.start(vault: v, socketPath: Self.localApiSocketPath)
+                let server = try LocalApiServer.start(vault: v, socketPath: Self.localApiSocketPath)
+                self.localApiServer = server
+                Self.runningLocalApiServer = server
+                self.localApiStartError = nil
             } catch {
-                self.toast = String(localized: "Externe Analyse konnte nicht starten: \(describe(error))")
+                // Kept for the status line: a toast alone would leave "starting" forever.
+                self.localApiStartError = describe(error)
             }
         }
         #endif
     }
 
     #if os(macOS)
-    /// Quit: `stop()` is not reached on exit, so the socket file goes here
-    /// (only a socket; a stale one is also replaced on the next start).
+    /// The server this process runs, for the quit observer (no model there).
+    @MainActor static weak var runningLocalApiServer: LocalApiServer?
+
+    /// Quit: nothing else stops the server on exit. `stop()` removes only the
+    /// socket file this server created and returns at once.
     static let localApiQuitObserver: NSObjectProtocol = NotificationCenter.default.addObserver(
         forName: NSApplication.willTerminateNotification, object: nil, queue: .main
     ) { _ in
-        var st = Darwin.stat()
-        let path = AppModel.localApiSocketPath
-        if lstat(path, &st) == 0, st.st_mode & S_IFMT == S_IFSOCK { unlink(path) }
+        MainActor.assumeIsolated { AppModel.runningLocalApiServer?.stop() }
     }
     #endif
 
     /// Closes the socket and removes its file (lock, demo, settings turned off).
+    /// Returns at once: the core's `stop()` does not wait for its threads.
     func stopLocalApiServer() {
         localApiServer?.stop()
         localApiServer = nil
+        localApiStartError = nil
     }
 
     func loadLocalApiScope() async -> ShareScope? {
@@ -71,13 +78,20 @@ extension AppModel {
     }
 
     /// Saves what is shared (the token stays) and starts or stops the socket.
+    /// Saves run in order: quick toggles must not let an older copy win.
     func saveLocalApiScope(_ scope: ShareScope) async {
         guard holdsRealData else { return }
-        do {
-            _ = try await vaultOffMain { try $0.setLocalApiScope(scope: scope) }
-        } catch {
-            errorMessage = describe(error)
+        let previous = localApiSaveTask
+        let save = Task {
+            await previous?.value
+            do {
+                _ = try await self.vaultOffMain { try $0.setLocalApiScope(scope: scope) }
+            } catch {
+                self.errorMessage = describe(error)
+            }
         }
+        localApiSaveTask = save
+        await save.value
         refreshLocalApiServer()
     }
 

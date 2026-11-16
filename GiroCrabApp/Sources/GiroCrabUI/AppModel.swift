@@ -363,6 +363,10 @@ public final class AppModel {
     private(set) var ownVault: Vault?
     /// Socket of the read-only interface for external analysis (#136), see AppModel+LocalApi.
     var localApiServer: LocalApiServer?
+    /// Why the socket did not start (shown in Einstellungen › Analyse); nil = no error.
+    var localApiStartError: String?
+    /// The last settings save: saves run one after another, the newest wins.
+    var localApiSaveTask: Task<Void, Never>?
     var activeChallenge: ActiveChallenge?
     var payeeCheck: PendingPayeeCheck?
     var syncingConnectionID: Int64?

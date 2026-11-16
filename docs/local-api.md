@@ -41,7 +41,9 @@ Wechsel zur Demo und beim Beenden wird der Socket geschlossen.
 ```
 
 Fehler: `{"v":1,"error":{"code":"…","message":"…"}}` mit `disabled`, `unauthorized`, `locked`,
-`unsupported_version`, `unknown_method`, `invalid_params`, `not_shared`, `internal`.
+`unsupported_version`, `unknown_method`, `invalid_params`, `not_shared`, `busy` (zu viele
+Verbindungen, später erneut versuchen), `internal`. Ohne gültigen Schlüssel antwortet der Socket immer mit
+`unauthorized`, auch wenn die Freigabe ausgeschaltet ist.
 
 ## Methoden (Version 1)
 

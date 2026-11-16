@@ -87,4 +87,33 @@ final class LocalApiServerTests: XCTestCase {
         await model.saveLocalApiScope(scope)
         try await awaitRunning(false)
     }
+
+    func testAStartErrorIsKeptForTheStatus() async throws {
+        // Longer than sun_path (104 bytes): bind fails.
+        AppModel.localApiSocketPathOverride = dir.appendingPathComponent(String(repeating: "x", count: 120)).path
+        try await enable()
+        _ = await model.createLocalApiToken()
+        for _ in 0..<300 where model.localApiStartError == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertNotNil(model.localApiStartError)
+        XCTAssertFalse(model.isLocalApiRunning)
+        model.lock()
+        XCTAssertNil(model.localApiStartError)
+    }
+
+    func testQuickSavesKeepTheNewest() async throws {
+        let loaded = await model.loadLocalApiScope()
+        var scope = try XCTUnwrap(loaded)
+        scope.enabled = true
+        var saves: [Task<Void, Never>] = []
+        for ids in [[1], [1, 2], [1, 2, 3]] as [[Int64]] {
+            scope.accountIds = ids
+            let copy = scope
+            saves.append(Task { await model.saveLocalApiScope(copy) })
+        }
+        for s in saves { await s.value }
+        let stored = await model.loadLocalApiScope()
+        XCTAssertEqual(stored?.accountIds, [1, 2, 3])
+    }
 }

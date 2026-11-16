@@ -119,6 +119,7 @@ struct ExternalAccessSettings: View {
 
     private func status(_ scope: ShareScope) -> String {
         if scope.tokenSha256.isEmpty { return String(localized: "Wartet auf einen Zugangsschlüssel") }
+        if let error = model.localApiStartError { return String(localized: "Nicht gestartet: \(error)") }
         if scope.accountIds.isEmpty { return String(localized: "Aktiv, noch kein Konto geteilt") }
         return model.isLocalApiRunning ? String(localized: "Aktiv") : String(localized: "Wird gestartet …")
     }
