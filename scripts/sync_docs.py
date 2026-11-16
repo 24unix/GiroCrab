@@ -21,6 +21,8 @@ from pathlib import Path
 VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+$")
 
 START, END = "<!-- sync:connectors:start -->", "<!-- sync:connectors:end -->"
+# The website uses its own markers (the filter input sits above them, outside the generated part).
+SITE_START, SITE_END = "<!-- BEGIN GENERATED BANKS TABLE -->", "<!-- END GENERATED BANKS TABLE -->"
 REPO_URL = "https://github.com/GiroCrab/GiroCrab"
 
 CAPS = ["Transactions", "Balances", "Securities", "Transfers", "StandingOrders", "Documents"]
@@ -165,10 +167,10 @@ def matrix_text(lang, matrix, n_fints, fmt="md"):
             f'<p class="matrix-note"><small>{html.escape(legend)}</small></p>')
 
 
-def replace_block(text, new_inner):
+def replace_block(text, new_inner, start=START, end=END):
     """Replace the content of every marker block; keeps the markers. Returns (text, n_blocks)."""
-    pat = re.compile(re.escape(START) + r".*?" + re.escape(END), re.S)
-    return pat.subn(lambda m: f"{START}{new_inner(m)}{END}", text)
+    pat = re.compile(re.escape(start) + r".*?" + re.escape(end), re.S)
+    return pat.subn(lambda m: f"{start}{new_inner(m)}{end}", text)
 
 
 def replace_version(text, version):
@@ -231,9 +233,10 @@ def run_site(root, site, version):
 
     def fix(text):
         text = replace_version(text, version)
-        text, k = replace_block(text, lambda m: f"\n{matrix_text('de', matrix, n, 'html')}\n")
+        text, k = replace_block(text, lambda m: f"\n{matrix_text('de', matrix, n, 'html')}\n",
+                                SITE_START, SITE_END)
         if k < 1:
-            sys.exit("error: index.html has no sync:connectors block")
+            sys.exit("error: index.html has no BEGIN/END GENERATED BANKS TABLE block")
         return text
 
     edit(site / "index.html", fix)

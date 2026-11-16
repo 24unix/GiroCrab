@@ -400,9 +400,11 @@ struct SplashView: View {
                 BrandCrabLogo()
                 ProgressView().tint(.white).offset(y: BrandBackdrop.logoSize * 0.5 + 44)
             } else {
-                Theme.canvas.ignoresSafeArea()
-                StartLogo()
-                ProgressView().offset(y: 96)
+                MacLaunchBackground()
+                VStack(spacing: 20) {
+                    MacHeroIcon(phase: .idle)
+                    ProgressView()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -530,13 +532,16 @@ struct LockView: View {
     }
 
     private var standardBody: some View {
-        VStack(spacing: 18) {
-            AnimatedCrabLogoView(size: 120, phase: crabPhase)
+        VStack(spacing: 16) {
+            MacHeroIcon(phase: crabPhase)
+                .padding(.bottom, -22)
             Text("GiroCrab ist gesperrt")
                 .appFont(.title, weight: .bold)
             Text("Ihre Buchungen liegen in einem verschlüsselten Tresor.\nDer Schlüssel verlässt nie den Schlüsselbund dieses Geräts.")
+                .appFont(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Theme.secondary)
+                .padding(.bottom, 6)
             Button {
                 model.unlock()
             } label: {
@@ -573,7 +578,7 @@ struct LockView: View {
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.canvas)
+        .background(MacLaunchBackground())
     }
 }
 
@@ -872,15 +877,45 @@ struct MainSplitView: View {
     }
 }
 
-/// Start logo in a Mac window (iOS: `BrandCrabLogo` on the brand backdrop, like `LaunchLogo`).
-private struct StartLogo: View {
+/// Full-window background of the Mac start and lock screen: soft light surface (#F8FAFC to #EEF2F6)
+/// in Light Mode, deep slate navy (#0B1120 to #162033) in Dark Mode.
+struct MacLaunchBackground: View {
+    @Environment(\.colorScheme) private var scheme
+
     var body: some View {
-        // Square #263040 (no squircle corners), crab on top.
+        LinearGradient(
+            colors: scheme == .dark
+                ? [Color(hex: 0x0B1120), Color(hex: 0x162033)]
+                : [Color(hex: 0xF8FAFC), Color(hex: 0xEEF2F6)],
+            startPoint: .top, endPoint: .bottom
+        )
+        .ignoresSafeArea()
+    }
+}
+
+/// Hero icon for start and lock screen in a Mac window: the cut-out crab (no app-icon squircle),
+/// 270 pt wide, with a soft contact shadow; in Dark Mode with a subtle ambient glow.
+struct MacHeroIcon: View {
+    var phase: AnimatedCrabLogoView.Phase
+    var size: CGFloat = 270
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let dark = scheme == .dark
         ZStack {
-            Rectangle().fill(Color(red: 0x26 / 255, green: 0x30 / 255, blue: 0x40 / 255))
-            AnimatedCrabLogoView(size: 120, phase: .idle, showBackgroundSquircle: false)
+            if dark {
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [Color(hex: 0x3B4C6B, opacity: 0.45), Color(hex: 0x3B4C6B, opacity: 0)],
+                        center: .center, startRadius: size * 0.1, endRadius: size * 0.95))
+                    .frame(width: size * 2, height: size * 2)
+                    .allowsHitTesting(false)
+            }
+            AnimatedCrabLogoView(size: size, phase: phase, showBackgroundSquircle: false)
+                .shadow(color: .black.opacity(dark ? 0.45 : 0.20), radius: size * 0.074, x: 0, y: size * 0.063)
+                .shadow(color: .black.opacity(dark ? 0.30 : 0.10), radius: size * 0.016, x: 0, y: size * 0.011)
         }
-        .frame(width: 120, height: 120)
+        .frame(width: size * 1.3, height: size * 1.3)
     }
 }
 

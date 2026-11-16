@@ -92,7 +92,7 @@ struct AccountsSectionHeader: View {
                 Image(systemName: "magnifyingglass")
                     .appFont(.caption)
                     .foregroundStyle(Theme.tertiary)
-                TextField("Name, Kontoinhaber, IBAN …", text: $model.sidebarAccountSearch)
+                TextField("Suchen…", text: $model.sidebarAccountSearch)
                     .textFieldStyle(.plain)
                     .sensitive() // typed owner names / IBANs (#301)
                     .appFont(.caption)
@@ -135,11 +135,7 @@ struct UserGroupHeader: View {
     var body: some View {
         HStack(spacing: 5) {
             Button(action: toggle) {
-                Image(systemName: "chevron.right")
-                    .appFont(.caption, weight: .bold)
-                    .rotationEffect(.degrees(open ? 90 : 0))
-                    .frame(width: 12, height: 18)
-                    .contentShape(Rectangle())
+                DisclosureChevron(open: open)
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)

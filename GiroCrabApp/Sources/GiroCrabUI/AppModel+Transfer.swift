@@ -7,8 +7,10 @@ import GiroCrabCore
 extension AppModel {
     /// Checking accounts that are connected via FinTS (HKCCS-capable banks).
     var transferAccounts: [Account] {
-        allAccounts.filter {
+        let readOnly = Set(connections.filter { usesRah10($0) }.map(\.id))
+        return allAccounts.filter {
             $0.kind == .checking && !$0.iban.isEmpty && !$0.isArchived
+                && !($0.connectionId.map { readOnly.contains($0) } ?? false)
                 && [.volksbankKasselGoettingen, .direkt1822, .finTsGeneric, .bunq].contains($0.connector)
         }
     }

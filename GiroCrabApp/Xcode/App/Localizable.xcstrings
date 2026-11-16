@@ -4242,6 +4242,17 @@
         }
       }
     },
+    "Ausblenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide"
+          }
+        }
+      }
+    },
     "Ausführung" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22354,6 +22365,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Totals of the category"
+          }
+        }
+      }
+    },
+    "Summen gefiltert – %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Totals filtered – %@"
           }
         }
       }

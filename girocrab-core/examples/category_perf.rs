@@ -10,7 +10,9 @@
 //!   list_account_groups / _user_groups  1.8 ms each (41 ms before the covering indexes)
 //!   list_rules                      0.6 ms (84 ms before the covering indexes)
 //!   investment_dashboard           150 ms
-//!   merchant_stats / selection_flow ~150 ms each (a full pass over all bookings)
+//!   selection_flow                 ~150 ms (a full pass over all bookings)
+//!   merchant_stats                  25 ms (153 ms via list_transactions before #591)
+//!   merchant_history                32 ms (total + own account; was 2 × merchant_stats)
 //!   local_api transactions(limit 100)  ~1.2 ms (first page, cursor page, single account; 2026-11-15)
 //!   local_api summary                  ~1.2 ms per year, 2.4 ms for the three-year maximum
 //! RULE_INDEX=1 creates the covering indexes by hand on a vault that lacks them.
@@ -131,10 +133,12 @@ fn main() {
         "sum", total
     );
     println!();
-    time(
-        "merchant_stats (off main, ×2: reloadBookings + reloadMerchantStats)",
-        || vault.merchant_stats(b.merchant.key.clone()),
-    );
+    time("merchant_stats (total only, one pass)", || {
+        vault.merchant_stats(b.merchant.key.clone())
+    });
+    time("merchant_history (off main: loadMerchantStats)", || {
+        vault.merchant_history(b.merchant.key.clone(), b.account_id)
+    });
     time(
         "list_transactions(all, no limit) – what the dashboard reads",
         || {

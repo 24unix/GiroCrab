@@ -37,7 +37,8 @@ extension AppModel {
         guard let vault else { return }
         let (from, to) = periodRange
         runCore {
-            categories = try vault.listCategories(dateFrom: from, dateTo: to)
+            let sums = categorySumFilter
+            categories = try vault.listCategoriesFiltered(dateFrom: from, dateTo: to, accountIds: sums.accounts, checked: sums.checked, direction: sums.direction)
             categoryTree = Self.buildTree(categories)
         }
     }
@@ -87,8 +88,9 @@ extension AppModel {
     }
 
     /// Merchant history of the selected booking. The core scans every booking
-    /// for it, so it runs off the main thread and is cached per merchant; the
-    /// short delay keeps arrow-key navigation from queueing one scan per row.
+    /// once for it (total and own account together), so it runs off the main
+    /// thread and is cached per merchant; the short delay keeps arrow-key
+    /// navigation from queueing one scan per row.
     /// `keepShown`: after a data change the shown history of the same merchant
     /// stays until the fresh one arrives (no flicker).
     func loadMerchantStats(keepShown: Bool = false) {
@@ -108,10 +110,9 @@ extension AppModel {
             guard !Task.isCancelled else { return }
             let stats = await Task.detached(priority: .userInitiated) {
                 Perf.interval("merchantStats") {
-                    guard let all = try? vault.merchantStats(merchantKey: key),
-                          let own = try? vault.merchantStatsInAccount(merchantKey: key, accountId: accountId)
+                    guard let h = try? vault.merchantHistory(merchantKey: key, accountId: accountId)
                     else { return nil as (MerchantStats, MerchantStats)? }
-                    return (all, own)
+                    return (h.all, h.account)
                 }
             }.value
             // A vault switch or data change in the meantime cancels this task.
@@ -224,6 +225,23 @@ extension AppModel {
         var next = Set(categoryAccountIDs)
         if !next.insert(id).inserted { next.remove(id) }
         categoryAccountFilter = next.count == allAccounts.count ? [] : next
+    }
+
+    /// What the sidebar's category sums count besides the period (#621): the same accounts
+    /// (only in the category views, where the list offers that filter) and status as the booking list.
+    var categorySumFilter: (accounts: [Int64], checked: Bool?, direction: BookingDirection) {
+        (showsCategoryAccountFilter ? categoryAccountIDs : [], statusFilter == .all ? nil : statusFilter == .checked, directionFilter)
+    }
+
+    /// Hint under the sidebar's „Kategorien“ header while a filter narrows the sums; nil = none.
+    /// Names no account (the sidebar is part of bug report screenshots).
+    var categorySumNote: String? {
+        var parts: [String] = []
+        if statusFilter != .all { parts.append(String(localized: "Status: \(statusFilter.title)")) }
+        if directionFilter != .all { parts.append(directionFilter == .income ? String(localized: "Einnahmen") : String(localized: "Ausgaben")) }
+        let chosen = categorySumFilter.accounts.count
+        if chosen > 0 { parts.append(String(localized: "Konten: \(chosen) von \(allAccounts.count)")) }
+        return parts.isEmpty ? nil : String(localized: "Summen gefiltert – \(parts.joined(separator: " · "))")
     }
 
     /// Label of the account menu; never names an account (the header is part of bug report screenshots).

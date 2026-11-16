@@ -457,6 +457,22 @@ It is **not a payment initiation service and not an account information service 
 
 ---
 
+## FinTS-Produktregistrierung / FinTS product registration
+
+**Deutsch:** Offiziell signierte Releases enthalten GiroCrabs eigene, bei der Deutschen Kreditwirtschaft registrierte
+Produkt-ID (nur im FinTS-Segment HKVVB an die Bank, nie im Quellcode). Selbst gebaute Open-Source-Binaries enthalten
+sie **nicht**: Dort verwendet die App ausschließlich eine ID, die Sie selbst eintragen, oder beim Entwickeln per
+`GIROCRAB_FINTS_PRODUCT_ID_OVERRIDE=<ID>` setzen (nur Debug-Builds). Eigene Builds mit eingebauter ID entstehen, wenn beim
+Build `GIROCRAB_FINTS_PRODUCT_ID` gesetzt ist (siehe `docs/fints-registrierung.md`).
+
+**English:** Officially signed releases include GiroCrab's own product ID registered with the Deutsche Kreditwirtschaft
+(sent to the bank only in the FinTS HKVVB segment, never in source code). Self-built open-source binaries do **not**
+include it: they use only an ID you enter yourself, or, for development, one set via
+`GIROCRAB_FINTS_PRODUCT_ID_OVERRIDE=<ID>` (debug builds only). To build your own binary with an embedded ID, set
+`GIROCRAB_FINTS_PRODUCT_ID` at build time (see `docs/fints-registrierung.md`).
+
+---
+
 ## Security / Sicherheit
 
 XChaCha20-Poly1305 + Argon2id encrypted vault, key in the Keychain (`ThisDeviceOnly`), PINs/TANs only in memory

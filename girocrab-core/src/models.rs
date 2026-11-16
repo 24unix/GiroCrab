@@ -87,7 +87,8 @@ impl ConnectorKind {
     }
     /// BLZ of a `fints:<8 digits>` connector key (any FinTS bank).
     pub fn fints_blz(key: &str) -> Option<&str> {
-        let blz = key.strip_prefix("fints:")?;
+        let rest = key.strip_prefix("fints:")?;
+        let blz = rest.strip_suffix(":rah10").unwrap_or(rest);
         (blz.len() == 8 && blz.bytes().all(|b| b.is_ascii_digit())).then_some(blz)
     }
     /// Connector key stored in the DB for a generic FinTS bank.
@@ -696,6 +697,15 @@ pub struct MerchantStats {
     pub average_cents: i64,
     pub first_date: String,
     pub last_date: String,
+}
+
+/// Merchant history of a selected booking: all accounts and the booking's own
+/// account, computed in one pass (#591).
+#[derive(Debug, Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct MerchantHistory {
+    pub all: MerchantStats,
+    pub account: MerchantStats,
 }
 
 /// KPI tiles: flows of a selection (accounts + period), all positive.

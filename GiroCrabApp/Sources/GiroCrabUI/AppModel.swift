@@ -158,6 +158,7 @@ public final class AppModel {
             guard statusFilter != oldValue else { return }
             listLimit = Self.defaultListLimit
             reloadBookings()
+            reloadCategories() // the sidebar sums follow the status (#621)
         }
     }
 
@@ -179,6 +180,7 @@ public final class AppModel {
             guard directionFilter != oldValue else { return }
             listLimit = Self.defaultListLimit
             reloadBookings()
+            reloadCategories() // the sidebar sums follow the direction (#621)
         }
     }
     /// Accounts whose bookings the category views show („Ohne Kategorie“ and
@@ -187,7 +189,7 @@ public final class AppModel {
         didSet {
             guard categoryAccountFilter != oldValue, showsCategoryAccountFilter else { return }
             listLimit = Self.defaultListLimit
-            reloadSelection(periodChanged: false)
+            reloadSelection(periodChanged: true) // also the sidebar sums (#621)
         }
     }
     var searchText: String = "" { didSet { scheduleSearch() } }
@@ -1339,6 +1341,11 @@ public final class AppModel {
 /// vault itself; every call runs off the main thread.
 struct VaultPin: Sendable {
     fileprivate let vault: Vault
+
+    /// Async core calls use the same pinned vault without exposing it to views.
+    func runAsync<T: Sendable>(_ work: @escaping @Sendable (Vault) async throws -> T) async throws -> T {
+        try await work(vault)
+    }
 
     func run<T: Sendable>(_ work: @escaping @Sendable (Vault) throws -> T) async throws -> T {
         let vault = vault

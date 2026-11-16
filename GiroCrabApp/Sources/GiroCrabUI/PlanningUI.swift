@@ -61,6 +61,28 @@ extension AppModel {
     }
 }
 
+// MARK: - Collapse chevron (GitHub #603)
+
+struct CardChevron: View {
+    @Binding var collapsed: Bool
+    var customTitle: LocalizedStringKey? = nil
+    var body: some View {
+        let title: LocalizedStringKey = customTitle ?? (collapsed ? "Einblenden" : "Ausblenden")
+        Button {
+            withAnimation(Motion.animation(.easeInOut(duration: 0.25))) { collapsed.toggle() }
+        } label: {
+            Image(systemName: collapsed ? "chevron.down" : "chevron.up")
+                .appFont(.caption, weight: .semibold)
+                .foregroundStyle(Theme.secondary)
+                .padding(4)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(title)
+    }
+}
+
 // MARK: - Budget bar
 
 enum BudgetTone {
@@ -91,28 +113,44 @@ struct BudgetProgressCard: View {
     @State private var editing: IDBox?
     /// Budget row under the pointer: shows its pencil.
     @State private var hovered: Int64?
+    @AppStorage(ViewLayout.budgetsCollapsedKey) private var collapsed = false
+
+    private var totalSpent: Int64 { items.reduce(0) { $0 + $1.spentCents } }
+    private var totalBudget: Int64 { items.reduce(0) { $0 + $1.budgetCents } }
+    private var totalPercent: Double { totalBudget > 0 ? Double(totalSpent) / Double(totalBudget) * 100 : 0 }
 
     private var token: String {
         model.categories.map { "\($0.id):\($0.budgetCents ?? 0):\($0.totalCents)" }.joined(separator: ",") + "#\(model.bookings.count)"
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: ViewLayout.cardSpacing) {
             HStack {
+                CardChevron(collapsed: $collapsed)
                 Text("Monatsbudgets").appFont(.subheadline, weight: .semibold)
                 Spacer()
+                if collapsed {
+                    if !items.isEmpty {
+                        Text("\(Money.format(totalSpent)) / \(Money.format(totalBudget))")
+                            .sensitive()
+                            .appFont(.subheadline, weight: .semibold, monospacedDigit: true).foregroundStyle(BudgetTone.color(totalPercent))
+                            .fixedSize()
+                        BudgetBar(percent: totalPercent).frame(width: 60)
+                    }
+                } else {
                 Menu {
                     ForEach(model.categories.filter { $0.budgetCents == nil }, id: \.id) { c in
                         Button(c.path) { editing = IDBox(id: c.id) }
                     }
                 } label: { Label("Budget hinzufügen", systemImage: "plus.circle") }
                 .menuStyle(.borderlessButton).fixedSize()
+                }
             }
-            if items.isEmpty {
+            if !collapsed && items.isEmpty {
                 Text("Noch keine Budgets. Legen Sie über das Kontextmenü einer Kategorie ein Monatsbudget fest.")
                     .appFont(.caption).foregroundStyle(Theme.secondary)
             }
-            ForEach(items, id: \.categoryId) { s in
+            if !collapsed { ForEach(items, id: \.categoryId) { s in
                 Button { editing = IDBox(id: s.categoryId) } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -143,9 +181,9 @@ struct BudgetProgressCard: View {
                         model.setBudget(nil, for: s.categoryId)
                     }
                 }
-            }
+            } }
         }
-        .card()
+        .card(padding: ViewLayout.cardPadding, vertical: ViewLayout.cardVerticalPadding(collapsed: collapsed))
         .task(id: token) {
             let now = Calendar(identifier: .gregorian).dateComponents([.year, .month], from: Date())
             if let loaded = await model.budgetProgress(year: now.year ?? 2025, month: now.month ?? 1) { items = loaded }
@@ -235,6 +273,7 @@ struct CashflowCard: View {
     @AppStorage("chartColorPalette") private var paletteRaw = ChartColorPalette.girocrab.rawValue
     @State private var granularity: PeriodGranularity = .month
     @State private var rows: [PeriodCashflow] = []
+    @AppStorage(ViewLayout.cashflowCollapsedKey) private var collapsed = false
 
     private struct Bar: Identifiable {
         let id = UUID()
@@ -259,10 +298,21 @@ struct CashflowCard: View {
             [Bar(period: label(r.key), kind: income, euros: Double(r.incomeCents) / 100),
              Bar(period: label(r.key), kind: expense, euros: Double(r.expenseCents) / 100)]
         }
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: ViewLayout.cardSpacing) {
             HStack {
+                CardChevron(collapsed: $collapsed)
                 Text("Cashflow").appFont(.subheadline, weight: .semibold)
                 Spacer()
+                if collapsed {
+                    if let last = rows.last {
+                        let net = last.incomeCents - last.expenseCents
+                        Text("\(label(last.key)): \(Money.format(net))")
+                            .sensitive()
+                            .appFont(.subheadline, weight: .semibold, monospacedDigit: true)
+                            .foregroundStyle(net >= 0 ? Theme.inflow : Theme.outflow)
+                            .fixedSize()
+                    }
+                } else {
                 Menu {
                     Picker("Farbschema", selection: $paletteRaw) {
                         ForEach(ChartColorPalette.allCases) { Text($0.title).tag($0.rawValue) }
@@ -279,7 +329,9 @@ struct CashflowCard: View {
                     Text("Jahr").tag(PeriodGranularity.year)
                 }
                 .pickerStyle(.segmented).labelsHidden().macFrame(width: 220)
+                }
             }
+            if !collapsed {
             Chart(bars) { b in
                 BarMark(x: .value("Zeitraum", b.period), y: .value("€", b.euros))
                     .foregroundStyle(by: .value("Art", b.kind))
@@ -310,8 +362,9 @@ struct CashflowCard: View {
                 legendDot(palette.expenseDot, expense)
             }
             .appFont(.caption).foregroundStyle(Theme.secondary)
+            }
         }
-        .card()
+        .card(padding: ViewLayout.cardPadding, vertical: ViewLayout.cardVerticalPadding(collapsed: collapsed))
         .task(id: "\(granularity)#\(model.bookings.count)") {
             if let loaded = await model.cashflow(granularity, count: granularity == .year ? 5 : 6) { rows = loaded }
         }

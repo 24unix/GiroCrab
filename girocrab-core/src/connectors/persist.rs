@@ -977,6 +977,32 @@ impl Vault {
                     }
                 }
             }
+            let rah_key = format!("fints.rah10.private.{connection_id}");
+            if let Some(value) = Vault::setting_inner(&db, &rah_key)? {
+                // Reserve before any network access, even if sync is cancelled or fails.
+                // The vault mutex serializes reservations for concurrent local sessions.
+                let counter_key = format!("fints.rah10.counter.{connection_id}");
+                let first: u64 = Vault::setting_inner(&db, &counter_key)?
+                    .and_then(|v| v.parse().ok())
+                    .ok_or(CoreError::SessionClosed)?;
+                let limit = first
+                    .checked_add(10_000)
+                    .filter(|n| *n < 10_000_000_000_000_000)
+                    .ok_or(CoreError::SessionClosed)?;
+                db.execute(
+                    "UPDATE settings SET value = ?1 WHERE key = ?2",
+                    params![limit.to_string(), counter_key],
+                )?;
+                let bank_keys_key = format!("fints.rah10.bank_keys.{connection_id}");
+                if let Some(keys) = Vault::setting_inner(&db, &bank_keys_key)? {
+                    settings.insert(bank_keys_key, SecretString::new(keys));
+                }
+                settings.insert(rah_key, SecretString::new(value));
+                settings.insert(
+                    "fints.rah10.counter_start".into(),
+                    SecretString::new(first.to_string()),
+                );
+            }
             let tm_key = format!("fints.tan_medium.{connection_id}");
             if let Some(v) = Vault::setting_inner(&db, &tm_key)? {
                 if !v.trim().is_empty() {
@@ -1572,6 +1598,11 @@ impl Vault {
             })?;
             (cid, row.1, row.2)
         };
+        if self.is_rah10_connection(connection_id)? {
+            return Err(CoreError::InvalidInput {
+                message: "RAH-10 unterstützt zunächst nur Kontoabrufe.".into(),
+            });
+        }
         let (key_str, login_name): (String, String) = {
             let db = self.db()?;
             db.query_row(

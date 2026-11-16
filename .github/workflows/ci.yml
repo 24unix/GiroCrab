@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly: new advisories appear without any change in this repository.
+  schedule:
+    - cron: "0 5 * * 1"
 
 # Read-only token: CI never needs to write to the repository.
 permissions:
@@ -24,6 +27,7 @@ jobs:
   # expensive steps are skipped when the PR cannot affect them. The cheap lint steps of
   # `rust` (fonts, brand names, catalogs, ...) also guard Swift and docs, so they always run.
   changes:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -47,11 +51,26 @@ jobs:
           echo "rust=$rust" >> "$GITHUB_OUTPUT"
           echo "swift=$swift" >> "$GITHUB_OUTPUT"
 
+  # Known vulnerabilities / unmaintained crates in Cargo.lock (RustSec). Warnings fail the job;
+  # accepted exceptions live in `.cargo/audit.toml` with a reason.
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: cargo audit
+        run: cargo audit --deny warnings
+
   # `rust` and `swift` deliberately run in parallel and independently: a red
   # fmt/Clippy/Rust test run must not hide the Swift build, and vice versa.
   # The job names stay unchanged so existing required checks keep matching.
   rust:
     needs: changes
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -100,6 +119,7 @@ jobs:
 
   swift:
     needs: changes
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 45
     steps:

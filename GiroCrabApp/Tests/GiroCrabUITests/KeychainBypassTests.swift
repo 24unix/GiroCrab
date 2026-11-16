@@ -1,4 +1,5 @@
 import XCTest
+import GiroCrabCore
 @testable import GiroCrabUI
 
 @MainActor
@@ -43,6 +44,18 @@ final class KeychainBypassTests: XCTestCase {
         #endif
         setenv("GIROCRAB_DEMO_SEED", "1", 1)
         XCTAssertFalse(VaultKeyManager.biometricsPromptInBypass)
+    }
+
+    func testBypassNeverSyncsToICloud() async throws {
+        setenv("GIROCRAB_NO_KEYCHAIN", "1", 1)
+        let path = NSTemporaryDirectory() + "bypass-\(UUID().uuidString).girocrab"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let vault = try Vault.open(path: path, key: Data(repeating: 0x42, count: 32))
+        let cloud = CloudSyncManager.shared
+        let before = cloud.lastSync
+        await cloud.sync(vault: vault)
+        XCTAssertEqual(cloud.lastSync, before)
+        XCTAssertNil(cloud.lastError)
     }
 
     func testBypassSetRequireBiometricsOnlyChangesPreference() async throws {

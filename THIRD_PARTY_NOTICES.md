@@ -7,17 +7,23 @@ The macOS user interface uses only native Apple system frameworks (`SwiftUI`, `A
 
 | Crate | Version | License | Repository |
 |---|---|---|---|
+| **`aes`** | `0.9.4` | `MIT OR Apache-2.0` | [https://github.com/RustCrypto/block-ciphers](https://github.com/RustCrypto/block-ciphers) |
 | **`async-trait`** | `0.1.92` | `MIT OR Apache-2.0` | [https://github.com/dtolnay/async-trait](https://github.com/dtolnay/async-trait) |
 | **`base64`** | `0.22.1` | `MIT OR Apache-2.0` | [https://github.com/marshallpierce/rust-base64](https://github.com/marshallpierce/rust-base64) |
 | **`base64`** | `0.23.1` | `MIT OR Apache-2.0` | [https://github.com/marshallpierce/rust-base64](https://github.com/marshallpierce/rust-base64) |
+| **`cbc`** | `0.2.1` | `MIT OR Apache-2.0` | [https://github.com/RustCrypto/block-modes](https://github.com/RustCrypto/block-modes) |
 | **`chrono`** | `0.4.45` | `MIT OR Apache-2.0` | [https://github.com/chronotope/chrono](https://github.com/chronotope/chrono) |
+| **`crypto-primes`** | `0.7.2` | `Apache-2.0 OR MIT` | [https://github.com/entropyxyz/crypto-primes](https://github.com/entropyxyz/crypto-primes) |
+| **`des`** | `0.9.0` | `MIT OR Apache-2.0` | [https://github.com/RustCrypto/block-ciphers](https://github.com/RustCrypto/block-ciphers) |
 | **`futures-util`** | `0.3.34` | `MIT OR Apache-2.0` | [https://github.com/rust-lang/futures-rs](https://github.com/rust-lang/futures-rs) |
 | **`getrandom`** | `0.4.3` | `MIT OR Apache-2.0` | [https://github.com/rust-random/getrandom](https://github.com/rust-random/getrandom) |
 | **`hex`** | `0.4.3` | `MIT OR Apache-2.0` | [https://github.com/KokaKiwi/rust-hex](https://github.com/KokaKiwi/rust-hex) |
+| **`hmac`** | `0.13.0` | `MIT OR Apache-2.0` | [https://github.com/RustCrypto/MACs](https://github.com/RustCrypto/MACs) |
 | **`jsonwebtoken`** | `12.0.0` | `MIT` | [https://github.com/Keats/jsonwebtoken](https://github.com/Keats/jsonwebtoken) |
-| **`miniz_oxide`** | `0.9.1` | `MIT OR Zlib OR Apache-2.0` | [https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide) |
 | **`libc`** | `0.2.191` | `MIT OR Apache-2.0` | [https://github.com/rust-lang/libc](https://github.com/rust-lang/libc) |
+| **`miniz_oxide`** | `0.9.1` | `MIT OR Zlib OR Apache-2.0` | [https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide](https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide) |
 | **`p256`** | `0.14.0` | `Apache-2.0 OR MIT` | [https://github.com/RustCrypto/elliptic-curves](https://github.com/RustCrypto/elliptic-curves/tree/master/p256) |
+| **`pbkdf2`** | `0.13.0` | `MIT OR Apache-2.0` | [https://github.com/RustCrypto/password-hashes](https://github.com/RustCrypto/password-hashes) |
 | **`rand`** | `0.9.5` | `MIT OR Apache-2.0` | [https://github.com/rust-random/rand](https://github.com/rust-random/rand) |
 | **`rand`** | `0.10.3` | `MIT OR Apache-2.0` | [https://github.com/rust-random/rand](https://github.com/rust-random/rand) |
 | **`regex`** | `1.13.1` | `MIT OR Apache-2.0` | [https://github.com/rust-lang/regex](https://github.com/rust-lang/regex) |
@@ -94,11 +100,12 @@ The Flatpak runs on the KDE runtime (`org.kde.Platform`, Qt 6 and Kirigami, see 
 ## Complete Transitive Dependency Tree
 
 <details>
-<summary>Click to expand all transitive Rust crates (331 packages)</summary>
+<summary>Click to expand all transitive Rust crates (337 packages)</summary>
 
 | Crate | Version | License | Authors / Repository |
 |---|---|---|---|
 | `adler2` | `2.0.1` | `0BSD OR MIT OR Apache-2.0` | [Repo](https://github.com/oyvindln/adler2) (Jonas Schievink <jonasschievink@gmail.com>, oyvindln <oyvind) |
+| `aes` | `0.9.4` | `MIT OR Apache-2.0` | [Repo](https://github.com/RustCrypto/block-ciphers) (RustCrypto Developers) |
 | `aho-corasick` | `1.1.5` | `Unlicense OR MIT` | [Repo](https://github.com/BurntSushi/aho-corasick) (Andrew Gallant <jamslam@gmail.com>) |
 | `android_system_properties` | `0.1.6` | `MIT OR Apache-2.0` | [Repo](https://github.com/nical/android_system_properties) (Nicolas Silva <nical@fastmail.com>) |
 | `anstyle` | `1.0.14` | `MIT OR Apache-2.0` | [Repo](https://github.com/rust-cli/anstyle.git) |
@@ -120,16 +127,19 @@ The Flatpak runs on the KDE runtime (`org.kde.Platform`, Qt 6 and Kirigami, see 
 | `basic-toml` | `0.1.10` | `MIT OR Apache-2.0` | [Repo](https://github.com/dtolnay/basic-toml) (Alex Crichton <alex@alexcrichton.com>, David Tolnay <dtolnay) |
 | `bitflags` | `2.13.2` | `MIT OR Apache-2.0` | [Repo](https://github.com/bitflags/bitflags) (The Rust Project Developers) |
 | `block-buffer` | `0.12.1` | `MIT OR Apache-2.0` | [Repo](https://github.com/RustCrypto/utils) (RustCrypto Developers) |
+| `block-padding` | `0.4.2` | `MIT OR Apache-2.0` | [Repo](https://github.com/RustCrypto/utils) (RustCrypto Developers) |
 | `bumpalo` | `3.20.3` | `MIT OR Apache-2.0` | [Repo](https://github.com/fitzgen/bumpalo) (Nick Fitzgerald <fitzgen@gmail.com>) |
 | `bytes` | `1.12.1` | `MIT` | [Repo](https://github.com/tokio-rs/bytes) (Carl Lerche <me@carllerche.com>, Sean McArthur <sean@seanmon) |
 | `camino` | `1.2.6` | `MIT OR Apache-2.0` | [Repo](https://github.com/camino-rs/camino) (Without Boats <saoirse@without.boats>, Ashley Williams <ashl) |
 | `cargo-platform` | `0.3.3` | `MIT OR Apache-2.0` | [Repo](https://github.com/rust-lang/cargo) |
 | `cargo_metadata` | `0.23.1` | `MIT` | [Repo](https://github.com/oli-obk/cargo_metadata) (Oliver Schneider <git-spam-no-reply9815368754983@oli-obk.de>) |
+| `cbc` | `0.2.1` | `MIT OR Apache-2.0` | [Repo](https://github.com/RustCrypto/block-modes) (RustCrypto Developers) |
 | `cc` | `1.11.1` | `MIT OR Apache-2.0` | [Repo](https://github.com/rust-lang/cc-rs) |
 | `cfg-if` | `1.0.5` | `MIT OR Apache-2.0` | [Repo](https://github.com/rust-lang/cfg-if) (Alex Crichton <alex@alexcrichton.com>) |
 | `cfg_aliases` | `0.2.2` | `MIT` | [Repo](https://github.com/katharostech/cfg_aliases) (Zicklag <zicklag@katharostech.com>) |
 | `chacha20` | `0.10.2` | `MIT OR Apache-2.0` | [Repo](https://github.com/RustCrypto/stream-ciphers) (RustCrypto Developers) |
 | `chrono` | `0.4.45` | `MIT OR Apache-2.0` | [Repo](https://github.com/chronotope/chrono) |
+| `cipher` | `0.5.2` | `MIT OR Apache-2.0` | [Repo](https://github.com/RustCrypto/traits) (RustCrypto Developers) |
 | `clap` | `4.6.7` | `MIT OR Apache-2.0` | [Repo](https://github.com/clap-rs/clap) |
 | `clap_builder` | `4.6.7` | `MIT OR Apache-2.0` | [Repo](https://github.com/clap-rs/clap) |
 | `clap_derive` | `4.6.7` | `MIT OR Apache-2.0` | [Repo](https://github.com/clap-rs/clap) |
@@ -154,6 +164,7 @@ The Flatpak runs on the KDE runtime (`org.kde.Platform`, Qt 6 and Kirigami, see 
 | `data-encoding` | `2.11.1` | `MIT` | [Repo](https://github.com/ia0/data-encoding) |
 | `der` | `0.8.3` | `Apache-2.0 OR MIT` | [Repo](https://github.com/RustCrypto/formats) (RustCrypto Developers) |
 | `deranged` | `0.5.9` | `MIT OR Apache-2.0` | [Repo](https://github.com/jhpratt/deranged) (Jacob Pratt <jacob@jhpratt.dev>) |
+| `des` | `0.9.0` | `MIT OR Apache-2.0` | [Repo](https://github.com/RustCrypto/block-ciphers) (RustCrypto Developers) |
 | `digest` | `0.11.3` | `MIT OR Apache-2.0` | [Repo](https://github.com/RustCrypto/traits) (RustCrypto Developers) |
 | `displaydoc` | `0.2.7` | `MIT OR Apache-2.0` | [Repo](https://github.com/yaahc/displaydoc) (Jane Lusby <jlusby@yaah.dev>) |
 | `document-features` | `0.2.12` | `MIT OR Apache-2.0` | [Repo](https://github.com/slint-ui/document-features) (Slint Developers <info@slint.dev>) |
@@ -211,6 +222,7 @@ The Flatpak runs on the KDE runtime (`org.kde.Platform`, Qt 6 and Kirigami, see 
 | `idna` | `1.1.0` | `MIT OR Apache-2.0` | [Repo](https://github.com/servo/rust-url/) (The rust-url developers) |
 | `idna_adapter` | `1.2.2` | `Apache-2.0 OR MIT` | [Repo](https://github.com/hsivonen/idna_adapter) (The rust-url developers) |
 | `indexmap` | `2.14.2` | `Apache-2.0 OR MIT` | [Repo](https://github.com/indexmap-rs/indexmap) |
+| `inout` | `0.2.6` | `MIT OR Apache-2.0` | [Repo](https://github.com/RustCrypto/utils) (RustCrypto Developers) |
 | `ipnet` | `2.12.2` | `MIT OR Apache-2.0` | [Repo](https://github.com/krisprice/ipnet) (Kris Price <kris@krisprice.nz>) |
 | `itoa` | `1.0.19` | `MIT OR Apache-2.0` | [Repo](https://github.com/dtolnay/itoa) (David Tolnay <dtolnay@gmail.com>) |
 | `jni` | `0.22.4` | `MIT OR Apache-2.0` | [Repo](https://github.com/jni-rs/jni-rs) (jni team) |
@@ -243,6 +255,7 @@ The Flatpak runs on the KDE runtime (`org.kde.Platform`, Qt 6 and Kirigami, see 
 | `openssl-sys` | `0.9.118` | `MIT` | [Repo](https://github.com/rust-openssl/rust-openssl) (Alex Crichton <alex@alexcrichton.com>, Steven Fackler <sfack) |
 | `p256` | `0.14.0` | `Apache-2.0 OR MIT` | [Repo](https://github.com/RustCrypto/elliptic-curves) (RustCrypto Developers) |
 | `p384` | `0.14.0` | `Apache-2.0 OR MIT` | [Repo](https://github.com/RustCrypto/elliptic-curves) (RustCrypto Developers, Frank Denis <github@pureftpd.org>) |
+| `pbkdf2` | `0.13.0` | `MIT OR Apache-2.0` | [Repo](https://github.com/RustCrypto/password-hashes) (RustCrypto Developers) |
 | `pem` | `4.0.0` | `MIT` | [Repo](https://github.com/jcreekmore/pem-rs.git) (Jonathan Creekmore <jonathan@thecreekmores.org>) |
 | `pem-rfc7468` | `1.0.0` | `Apache-2.0 OR MIT` | [Repo](https://github.com/RustCrypto/formats) (RustCrypto Developers) |
 | `percent-encoding` | `2.3.2` | `MIT OR Apache-2.0` | [Repo](https://github.com/servo/rust-url/) (The rust-url developers) |

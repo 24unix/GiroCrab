@@ -59,7 +59,7 @@ struct BookingStreamView: View {
                         // cards sat a few points higher than after launch (GitHub #423).
                         Color.clear.frame(height: Self.topGap).id(Self.topID)
                         #endif
-                        VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: ViewLayout.cardGap) {
                         #if os(iOS)
                         // iPhone: header scrolls away so bookings get the screen.
                         header(isOverview: isOverview, emptyVault: emptyVault, scope: $model.scope)
@@ -79,7 +79,7 @@ struct BookingStreamView: View {
                             #if os(iOS)
                             if cards.cashflow {
                                 DisclosureGroup("Cashflow-Analyse", isExpanded: $showCashflowIOS) {
-                                    VStack(spacing: 14) {
+                                    VStack(spacing: ViewLayout.cardGap) {
                                         CashflowCard()
                                         if cards.budgets { BudgetProgressCard() }
                                     }
@@ -133,7 +133,7 @@ struct BookingStreamView: View {
                             }) { item in
                                 switch item {
                                 case .header(let day):
-                                    DayHeader(day: day).padding(.top, 14).id(day.id)
+                                    DayHeader(day: day).padding(.top, day.id == firstDayID ? ViewLayout.cardGap : 14).id(day.id)
                                 case .row(let b, let isLast):
                                     DayCardRow(booking: b, isLast: isLast)
                                         .id(b.id)
@@ -290,7 +290,7 @@ struct BookingStreamView: View {
 
     @ViewBuilder
     private func header(isOverview: Bool, emptyVault: Bool, scope: Binding<BookingScope>) -> some View {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: ViewLayout.cardGap) {
                     // Marketing screenshots (`--screenshot`) look like a real vault: no demo banner.
                     if model.demoActive && LaunchOptions.current.screenshotPath == nil {
                         DemoBanner()
@@ -328,7 +328,7 @@ struct BookingStreamView: View {
                 #else
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
-                .padding(.bottom, 10)
+                .padding(.bottom, ViewLayout.cardGap)
                 #endif
                 .frame(maxWidth: .infinity)
                 .padding(.trailing, scrollerInset)
@@ -346,10 +346,15 @@ struct BookingStreamView: View {
         #endif
     }
 
+    private var firstDayID: String? {
+        for case .header(let d) in model.streamItems { return d.id }
+        return nil
+    }
+
     private static let topID = "stream-top"
     #if !os(iOS)
     /// Gap between the fixed header and the first card of the scroll content.
-    static let topGap: CGFloat = 18
+    static let topGap: CGFloat = ViewLayout.cardGap
     #endif
 
 

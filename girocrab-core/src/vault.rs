@@ -27,6 +27,7 @@ mod backup;
 mod bookings;
 mod categories;
 mod merge;
+mod rah10;
 mod rules;
 mod settings;
 mod transfer_pairs;
