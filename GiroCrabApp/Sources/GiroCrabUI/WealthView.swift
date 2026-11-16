@@ -230,6 +230,8 @@ struct WealthView: View {
     @State private var income = WealthIncome()
     @State private var classified: [Int64: [ClassifiedAsset]] = [:]
     @State private var editingClassification: ClassificationEditRequest?
+    /// Yesterday's value of one piece per automatically priced Sachwert (item id): the day change.
+    @State private var tangiblePreviousUnit: [Int64: Int64] = [:]
     /// "Nach Konto" keeps the cash history, gains and income cards; the class view is opt-in.
     @AppStorage("wealth.grouping") private var storedGrouping = WealthGrouping.account
     private var grouping: WealthGrouping { storedGrouping.effective(in: scope) }
@@ -823,14 +825,58 @@ struct WealthView: View {
         let name: String
         let subtitle: String
         let valueCents: Int64
+        /// The item behind the row: navigation, editor and context menu act on it.
+        let item: AssetItem
+        let symbol: String
+        /// Gain or loss against the purchase price; nil while no purchase price is known.
+        let gainCents: Int64?
+        let gainPercent: Double?
+        /// Change since the previous day; automatically priced items only.
+        let dayChangeCents: Int64?
+        var automatic: Bool { item.setup.priceSource != "manual" }
+
+        init(item: AssetItem, previousUnitCents: Int64? = nil) {
+            id = "i\(item.id)"
+            name = item.setup.name
+            subtitle = WealthView.tangibleSubtitle(item)
+            valueCents = item.holding.valueCents
+            self.item = item
+            symbol = AssetSymbols.symbol(of: item)
+            let gain = WealthView.tangibleGain(item)
+            gainCents = gain?.cents
+            gainPercent = gain?.percent
+            dayChangeCents = WealthView.tangibleDayChange(item, previousUnitCents: previousUnitCents)
+        }
+    }
+
+    /// Gain or loss of a tangible item. The total paid is exact while nothing was sold or added;
+    /// after that the per-piece purchase price of the holding applies, like for securities.
+    static func tangibleGain(_ item: AssetItem) -> (cents: Int64, percent: Double)? {
+        let h = item.holding
+        if let paid = item.setup.purchasePriceCents, paid > 0, h.valueCents >= 0,
+           h.quantity > 0, h.quantity == item.setup.quantity {
+            let (gain, overflow) = h.valueCents.subtractingReportingOverflow(paid)
+            if !overflow { return (gain, Double(gain) / Double(paid) * 100) }
+        }
+        return DepotPositionsView.calculatedGain(h)
+    }
+
+    /// Today's price of one piece against yesterday's, times the pieces held; manual items have no
+    /// daily price. Per piece, so an unchanged price is exactly 0 (no rounding residue of the total).
+    static func tangibleDayChange(_ item: AssetItem, previousUnitCents: Int64?) -> Int64? {
+        let h = item.holding
+        guard item.setup.priceSource != "manual", !item.sold, let previousUnitCents, previousUnitCents > 0,
+              h.currentPriceCents > 0, h.quantity.isFinite, h.quantity > 0 else { return nil }
+        let change = (h.quantity * Double(h.currentPriceCents - previousUnitCents)).rounded()
+        guard change.isFinite, abs(change) < Double(Int64.max) else { return nil }
+        return Int64(change)
     }
 
     private func tangibleRows(_ s: WealthSummary) -> [TangibleRow] {
         let hiddenIds = hideDirectProperty ? Set(classified.values.flatMap { $0 }.filter(WealthAssetSelection.isDirectProperty).compactMap(\.assetItemId)) : []
         return s.tangibles.flatMap { account in
             model.assetItems(account.id).filter { !$0.sold && !hiddenIds.contains($0.id) }.map { item in
-                TangibleRow(id: "i\(item.id)", name: item.setup.name,
-                            subtitle: WealthView.tangibleSubtitle(item), valueCents: item.holding.valueCents)
+                TangibleRow(item: item, previousUnitCents: tangiblePreviousUnit[item.id])
             }
         }
         .sorted { $0.valueCents > $1.valueCents }
@@ -852,29 +898,91 @@ struct WealthView: View {
         if !rows.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Positionen der Sachwerte").appFont(.headline)
-                Divider()
-                ForEach(rows) { r in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(r.name).sensitive().lineLimit(1)
-                            if !r.subtitle.isEmpty {
-                                Text(r.subtitle).sensitive().appFont(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
-                            }
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 1) {
-                            Text(Money.format(r.valueCents)).sensitive().monospacedDigit()
-                            if total > 0 {
-                                Text((Double(r.valueCents) / Double(total)).formatted(.percent.precision(.fractionLength(1))))
-                                    .sensitive()
-                                    .appFont(.caption2).foregroundStyle(Theme.secondary).monospacedDigit()
-                            }
-                        }
+                let day = rows.compactMap(\.dayChangeCents)
+                let gain = rows.compactMap(\.gainCents)
+                if !day.isEmpty || !gain.isEmpty {
+                    HStack(spacing: 18) {
+                        if !day.isEmpty { change("Heute", day.reduce(0, +)) }
+                        if !gain.isEmpty { change("Gewinn/Verlust", gain.reduce(0, +)) }
+                    }
+                    // only automatically priced items (gold) have a daily price
+                    let automatic = rows.filter(\.automatic).count
+                    if day.count < automatic || gain.count < rows.count {
+                        Text("Nur Bestände mit verfügbaren Daten: Heute \(day.count) von \(automatic), Gewinn/Verlust \(gain.count) von \(rows.count).")
+                            .appFont(.caption).foregroundStyle(Theme.secondary)
                     }
                 }
+                Divider()
+                ForEach(rows) { r in tangibleRow(r, total: total) }
             }
             .card(padding: 18)
         }
+    }
+
+    private func tangibleRow(_ r: TangibleRow, total: Int64) -> some View {
+        let item = r.item
+        let classification = classified[item.accountId]?.first { $0.assetItemId == item.id }?.classification
+        return HStack(spacing: 10) {
+            AssetSymbolTile(symbol: r.symbol, size: 30)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(r.name).sensitive().lineLimit(1)
+                if !r.subtitle.isEmpty {
+                    Text(r.subtitle).sensitive().appFont(.caption2).foregroundStyle(Theme.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(Money.format(r.valueCents)).sensitive().monospacedDigit()
+                if let cents = r.gainCents, let percent = r.gainPercent {
+                    Text(verbatim: Self.gainText(cents: cents, percent: percent))
+                        .sensitive().appFont(.caption2).foregroundStyle(tone(cents)).monospacedDigit()
+                }
+                if total > 0 {
+                    Text((Double(r.valueCents) / Double(total)).formatted(.percent.precision(.fractionLength(1))))
+                        .sensitive()
+                        .appFont(.caption2).foregroundStyle(Theme.secondary).monospacedDigit()
+                }
+            }
+            .lineLimit(1)
+            .fixedSize()
+        }
+        .contentShape(Rectangle())
+        // double click first: a single click leaves this view for the account
+        .onTapGesture(count: 2) { model.openAssetEditor(accountId: item.accountId, itemId: item.id) }
+        .onTapGesture { showTangible(item) }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { showTangible(item) }
+        .contextMenu {
+            if let classification, classification.securityKey != nil {
+                Button("Klassifizierung bearbeiten", systemImage: "pencil") {
+                    editingClassification = ClassificationEditRequest(name: item.setup.name, classification: classification)
+                }
+            }
+            Button("Sachwert bearbeiten …") { model.openAssetEditor(accountId: item.accountId, itemId: item.id) }
+            // gold follows the price API; only manual items carry own values
+            if item.setup.priceSource == "manual" {
+                Button("Bewertungen bearbeiten …") { model.openAssetAction(.values, itemId: item.id) }
+            }
+            Button("Anzahl bearbeiten …") { model.openAssetAction(.quantities, itemId: item.id) }
+            if !item.sold {
+                Button("Sachwert verkaufen …") { model.openAssetAction(.sell, itemId: item.id) }
+            }
+        }
+    }
+
+    /// Opens the item's account with the item selected (its own value chart in the header).
+    private func showTangible(_ item: AssetItem) {
+        model.interactiveSidebarSelection = .account(item.accountId)
+        // `selectAssetItem` toggles: an item that is still selected stays selected
+        if model.assetStore.selected != item.id { model.selectAssetItem(item.id) }
+    }
+
+    /// "+12,34 € (+5,67 %)".
+    static func gainText(cents: Int64, percent: Double) -> String {
+        let sign = cents > 0 ? "+" : ""
+        return "\(sign)\(Money.format(cents)) (\(sign)\(percent.formatted(.number.precision(.fractionLength(2)))) %)"
     }
 
     private func classCards(_ d: Derived) -> some View {
@@ -1028,13 +1136,22 @@ struct WealthView: View {
         let ids = depots.map(\.id)
         let since = (Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date())
             .formatted(.iso8601.year().month().day())
+        // day change of the automatically priced Sachwerte: yesterday's value of one piece
+        let yesterday = DateText.iso(Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        let priced = tangibles.flatMap { model.assetItems($0.id) }
+            .filter { !$0.sold && $0.setup.priceSource != "manual" }.map(\.id)
         let loaded = try? await model.vaultOffMain { vault in
             (try Dictionary(uniqueKeysWithValues: (depots + tangibles).map { ($0.id, try vault.classifiedAssets(accountId: $0.id)) }),
-             try ids.flatMap { try vault.listSecurityTransactions(accountId: $0) })
+             try ids.flatMap { try vault.listSecurityTransactions(accountId: $0) },
+             // a missing price leaves the day change unknown, it does not fail the load
+             Dictionary(uniqueKeysWithValues: priced.compactMap { id in
+                 ((try? vault.assetUnitValueOn(itemId: id, date: yesterday)) ?? nil).map { (id, $0) }
+             }))
         }
         guard !Task.isCancelled else { return }
-        if let (assets, transactions) = loaded {
+        if let (assets, transactions, previousUnits) = loaded {
             classified = assets
+            tangiblePreviousUnit = previousUnits
             income = WealthIncome.make(transactions, since: since)
             // (developer) `--demo-sheet classification`: the assign queue of the open positions
             if model.options.demoSheet == "classification", editingClassification == nil {
