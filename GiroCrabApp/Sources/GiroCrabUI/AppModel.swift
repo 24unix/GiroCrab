@@ -327,9 +327,26 @@ public final class AppModel {
     var ruleDraft: Rule?
     var showSettings = false
     var showCommandPalette = false
+    /// macOS: the "Problem melden" window is open. Greys out its menu item
+    /// (a second report would silently discard the markings of this one).
+    var isReportOpen = false
     /// Set while the bug report takes its screenshot (#301): the main window
     /// draws `.sensitive()` content as placeholders.
-    var reportRedaction: ReportRedaction = []
+    var reportRedaction: ReportRedaction = [] {
+        // dialogs read it there: a sheet does not reliably get the main window's environment
+        didSet { ReportRedactionState.shared.current = reportRedaction }
+    }
+    /// "Andere Ansicht aufnehmen" (#384, iOS): the report is closed and the
+    /// main view shows a floating capture button until the user picks a view.
+    /// Non-nil while picking, with the report's choices for the report it
+    /// opens. Ended by that report, or by locking (no bar after the next unlock).
+    var reportPick: BugReport.Options? {
+        didSet {
+            #if os(iOS)
+            if (oldValue == nil) != (reportPick == nil) { ReportPickOverlay.sync(model: self) }
+            #endif
+        }
+    }
     /// The balance chart has keyboard focus (Return there jumps to its day,
     /// instead of editing the selected booking's note).
     @ObservationIgnored var chartHasKeyboardFocus = false
@@ -573,7 +590,7 @@ public final class AppModel {
         }
         if options.demoSeed {
             openDemoVault()
-            if options.demoSheet == "account-selection" || options.demoSettings == "banks:select" {
+            if options.demoSheetName == "account-selection" || options.demoSettings == "banks:select" {
                 // a second login reaching accounts the first one delivers (#346)
                 _ = try? vault?.seedDemoAccountSelection()
                 reloadAll()
@@ -609,7 +626,8 @@ public final class AppModel {
                let item = assetItems(id).first(where: { $0.setup.name.lowercased().contains(q) }) {
                 selectAssetItem(item.id)
             }
-            if let sheet = options.demoSheet {
+            if let sheet = options.demoSheetName {
+                // --demo-sheet report:<sheet> opens the bug report over that sheet
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(nanoseconds: 600_000_000)
                     self?.presentDemoSheet(sheet)
@@ -734,7 +752,8 @@ public final class AppModel {
         case let n where n == "add-bank" || n.hasPrefix("add-bank:"):
             // the original spelling (LaunchOptions lowercases --demo-sheet): "Sparkasse Köln"
             let args = CommandLine.arguments
-            let raw = args.firstIndex(of: "--demo-sheet").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? n
+            let raw = LaunchOptions.droppingReportPrefix(
+                args.firstIndex(of: "--demo-sheet").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? n)
             demoAddBank = String(raw.dropFirst("add-bank".count)).trimmingCharacters(in: CharacterSet(charactersIn: ":"))
             showAddBank = true
         case "moneymoney-db":
@@ -1208,6 +1227,7 @@ public final class AppModel {
 
     /// Cancels every task, drops the vault and clears what it loaded (shared by `lock()` and the app reset).
     func releaseVaultState() {
+        reportPick = nil
         scopeLoadTask?.cancel()
         categoryRefreshTask?.cancel()
         dashboardTask?.cancel()

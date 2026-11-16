@@ -26,7 +26,7 @@ struct AccountDocumentsSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Dokumente / Kontoauszüge").appFont(.title3, weight: .semibold)
-                    Text(account.name).appFont(.caption).foregroundStyle(Theme.secondary)
+                    Text(account.name).appFont(.caption).foregroundStyle(Theme.secondary).sensitive()
                 }
                 Spacer()
                 if model.canFetchStatements(account) {
@@ -61,7 +61,7 @@ struct AccountDocumentsSheet: View {
                         HStack(spacing: 10) {
                             Image(systemName: docSymbol(d)).foregroundStyle(Theme.accent).frame(width: 20)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(d.title).lineLimit(1)
+                                Text(d.title).lineLimit(1).sensitive()
                                 Text("\(DateText.medium(d.docDate)) · \(ByteCountFormatter.string(fromByteCount: Int64(d.sizeBytes), countStyle: .file))")
                                     .appFont(.caption2).foregroundStyle(Theme.secondary)
                             }
@@ -77,7 +77,7 @@ struct AccountDocumentsSheet: View {
         #if os(macOS)
         .desktopFrame(minWidth: 520, minHeight: 440)
         #endif
-        .sheet(item: $preview) { d in DocumentPreviewSheet(doc: d) }
+        .capturableSheet(item: $preview) { d in DocumentPreviewSheet(doc: d) }
     }
 }
 
@@ -112,7 +112,7 @@ struct DocumentPreviewSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(doc.title).appFont(.headline).lineLimit(1)
+                Text(doc.title).appFont(.headline).lineLimit(1).sensitive()
                 Spacer()
                 Button { exporting = true } label: { Label("Sichern …", systemImage: "square.and.arrow.down") }
                     .disabled(data == nil)

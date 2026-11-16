@@ -134,6 +134,7 @@ enum QuirionScripts {
 }
 
 struct QuirionWebSheet: View {
+    @Environment(\.reportRedaction) private var redaction
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let connection: BankConnection
@@ -151,7 +152,7 @@ struct QuirionWebSheet: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(connection.displayName) – quirion").appFont(.headline)
+                    Text("\(redaction.masking(connection.displayName)) – quirion").appFont(.headline)
                     if running { Text(progress).appFont(.caption) }
                     else if let notice { Text(notice).appFont(.caption).foregroundStyle(.orange) }
                     else { Text(ready ? String(localized: "Angemeldet – Depot, Konten und Historie können abgerufen werden.") : String(localized: "Melden Sie sich bei quirion an und bestätigen Sie gegebenenfalls die Anmeldung.")).appFont(.caption) }

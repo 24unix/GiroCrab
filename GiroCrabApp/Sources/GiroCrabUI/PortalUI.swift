@@ -411,6 +411,7 @@ struct PortalWebView: UIViewRepresentable {
 // MARK: - Sheet
 
 struct PortalWebSheet: View {
+    @Environment(\.reportRedaction) private var redaction
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let connection: BankConnection
@@ -455,7 +456,7 @@ struct PortalWebSheet: View {
             HStack(spacing: 10) {
                 SymbolTile(symbol: "safari", tint: connection.connector.tint, size: 28)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("\(connection.displayName) – Direkt-Login").appFont(.headline)
+                    Text("\(redaction.masking(connection.displayName)) – Direkt-Login").appFont(.headline)
                     Text(info).appFont(.caption).foregroundStyle(Theme.secondary)
                 }
                 Spacer()

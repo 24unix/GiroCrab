@@ -199,7 +199,7 @@ struct SidebarView: View {
             default: EmptyView()
             }
         }
-        .sheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
+        .capturableSheet(item: $budgetCategory) { box in BudgetEditorSheet(categoryID: box.id).environment(model) }
     }
 
     /// "Nach Kontoart": the fixed kind sections.
@@ -297,7 +297,7 @@ struct SidebarView: View {
                 .contextMenu {
                     UserGroupMenu(group: group)
                 }
-                .popover(isPresented: model.iconColorBinding(.group(group.uuid)), arrowEdge: .trailing) {
+                .capturablePopover(isPresented: model.iconColorBinding(.group(group.uuid)), arrowEdge: .trailing) {
                     IconColorPopover(target: .group(group.uuid)).environment(model)
                 }
                 // no custom preview: the drag shows the row itself, like MoneyMoney
@@ -381,7 +381,7 @@ struct SidebarView: View {
             .listRowInsets(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 6))
             .tag(SidebarItem.account(account.id))
             .contextMenu { accountMenu(account) }
-            .popover(isPresented: model.iconColorBinding(.account(account.id)), arrowEdge: .trailing) {
+            .capturablePopover(isPresented: model.iconColorBinding(.account(account.id)), arrowEdge: .trailing) {
                 IconColorPopover(target: .account(account.id)).environment(model)
             }
             #if os(iOS)
@@ -627,7 +627,7 @@ struct AccountRow: View {
                     }
                     Spacer(minLength: 4)
                     Text(Money.format(account.balanceCents, currency: account.currency))
-                        .sensitive()
+                        .sensitive(.amounts)
                         .appFont(.subheadline, monospacedDigit: true)
                         .fixedSize() // the subtitle truncates, never the balance (#343)
                         .foregroundStyle(onSelection ? AnyShapeStyle(.primary) : AnyShapeStyle(account.kind == .loan ? Theme.loan : (account.balanceCents < 0 ? Theme.negative : Theme.text)))
@@ -673,7 +673,7 @@ struct CategoryRow: View {
             Spacer(minLength: 4)
             if category.totalCents != 0 {
                 Text(Money.format(category.totalCents))
-                    .sensitive()
+                    .sensitive(.amounts)
                     .appFont(.caption, monospacedDigit: true)
                     .fixedSize()
                     .foregroundStyle(.secondary) // follows selection, Dark Mode, Increase Contrast
@@ -822,7 +822,7 @@ private struct CategoryIconColorPopover: ViewModifier {
     let id: Int64
 
     func body(content: Content) -> some View {
-        content.popover(isPresented: model.iconColorBinding(.category(id)), arrowEdge: .trailing) {
+        content.capturablePopover(isPresented: model.iconColorBinding(.category(id)), arrowEdge: .trailing) {
             IconColorPopover(target: .category(id)).environment(model)
         }
     }

@@ -61,7 +61,7 @@ struct VaultBackupSection: View {
             Text("Die Sicherung enthält alle Konten, Buchungen, Kategorien, Regeln und Einstellungen des Tresors, verschlüsselt mit einem Passwort Ihrer Wahl. Sie lässt sich auf jedem Gerät wiederherstellen, auch ohne diesen Schlüsselbund – aber nicht ohne das Passwort.")
                 .appFont(.callout).foregroundStyle(.secondary)
         } header: { Text("Sicherung").appSectionHeader() }
-        .sheet(item: $step) { step in
+        .capturableSheet(item: $step) { step in
             switch step {
             case .backup:
                 BackupPasswordSheet(restoring: false) { password in
@@ -125,6 +125,7 @@ private struct BackupPasswordSheet: View {
                 if let suggestion {
                     HStack {
                         Text(suggestion).appFont(.body, design: .monospaced).textSelection(.enabled)
+                            .sensitive() // a password in clear text
                         Spacer()
                         Button(copied ? "Kopiert" : "Kopieren", systemImage: copied ? "checkmark" : "doc.on.doc") {
                             VaultKeyManager.copyToPasteboard(suggestion)

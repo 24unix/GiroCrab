@@ -110,8 +110,10 @@ struct RuleEditorView: View {
                             Image(systemName: rule.enabled ? "wand.and.stars" : "pause.circle")
                                 .foregroundStyle(rule.enabled ? Color.readable(hex: color(of: rule)) : .secondary)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(rule.name).lineLimit(1)
+                                // rule names are mostly payees ("Miete Müller")
+                                Text(rule.name).lineLimit(1).sensitive()
                                 Text("→ " + categoryName(rule.categoryId)).appFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    .sensitive(.labels)
                             }
                             Spacer()
                             Text("\(rule.matchCount)")
@@ -270,6 +272,7 @@ struct RuleForm: View {
                             Text(String(repeating: "    ", count: Int(c.depth)) + c.name).tag(c.id)
                         }
                     }
+                    .sensitive(.labels)
                     Toggle("Aktiv", isOn: $rule.enabled)
                 } header: { Text("Regel").appSectionHeader() }
                 Section {
@@ -340,12 +343,13 @@ struct RuleForm: View {
                         ForEach(preview.matches.prefix(40)) { b in
                             HStack {
                                 Text(DateText.medium(b.bookingDate)).foregroundStyle(.secondary).monospacedDigit()
-                                Text(b.counterparty).lineLimit(1)
+                                Text(b.counterparty).lineLimit(1).sensitive()
                                 Spacer()
                                 if b.categorySource == .manual {
                                     Image(systemName: "hand.raised.fill").foregroundStyle(.secondary).help("Manuell zugeordnet – die Regel ändert das nicht")
                                 }
                                 Text(Money.format(b.amountCents)).monospacedDigit().foregroundStyle(Money.ink(b.amountCents))
+                                    .sensitive(.amounts)
                             }
                             .appFont(.callout)
                         }

@@ -38,7 +38,7 @@ struct DepotPositionsView: View {
                 classified = assets
             }
         }
-        .sheet(item: $editingClassification) { request in AssetClassificationSheet(request: request).environment(model) }
+        .capturableSheet(item: $editingClassification) { request in AssetClassificationSheet(request: request).environment(model) }
         .onChange(of: account.id) { model.selectAssetItem(nil) }
         .confirmationDialog("„\(deleting?.setup.name ?? "")“ löschen?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             Button("Löschen", role: .destructive) {
@@ -295,12 +295,12 @@ struct PositionRow: View {
             if !(dimmed && valueCents == 0) {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(Money.format(valueCents))
-                        .sensitive()
+                        .sensitive(.amounts)
                         .appFont(.body, weight: .medium, monospacedDigit: true)
                         .foregroundStyle(Theme.text)
                     if let gain {
                         Text("GuV (berechnet): \(Money.format(gain.cents)) (\(gain.percent.formatted(.number.precision(.fractionLength(2)))) %)")
-                            .sensitive()
+                            .sensitive(.amounts)
                             .appFont(.caption, monospacedDigit: true)
                             .foregroundStyle(gain.cents < 0 ? Color.red : Color.green)
                     }

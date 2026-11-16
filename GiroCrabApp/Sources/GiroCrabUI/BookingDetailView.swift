@@ -89,7 +89,7 @@ struct ReceiptCard: View {
                     .buttonStyle(.borderless).controlSize(.small).appFont(.caption)
                     .help("Gegenpartei und Verwendungszweck korrigieren")
             }
-            .popover(isPresented: $editing) {
+            .capturablePopover(isPresented: $editing) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Gegenpartei").appFont(.caption).foregroundStyle(Theme.secondary)
                     TextField("Gegenpartei", text: $draftName).textFieldStyle(.roundedBorder)
