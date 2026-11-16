@@ -6,6 +6,7 @@ import GiroCrabCore
 /// with the daily sum in the card header.
 struct BookingStreamView: View {
     @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
+    @Environment(\.textScale) private var textScale
     /// The empty state repeats the search text, which is drawn as a parameter
     /// `Text` and cannot carry `.sensitive()`.
     @Environment(\.reportRedaction) private var redaction
@@ -258,7 +259,7 @@ struct BookingStreamView: View {
             }
             return .handled
         }
-        .searchable(text: $model.searchText, placement: .toolbar, prompt: "Händler, Zweck, IBAN / Kontonummer, Betrag")
+        .searchable(text: $model.searchText, placement: .toolbar, prompt: textScale > 1 ? "Händler, Zweck, IBAN …" : "Händler, Zweck, IBAN / Kontonummer, Betrag")
         #if os(iOS)
         .modifier(MainToolbar())
         #endif

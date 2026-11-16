@@ -540,6 +540,8 @@ struct SectionHeader: View {
                 .accessibilityHidden(true)
             Text(name)
                 .sensitive(nameRedaction)
+                .lineLimit(2) // a second line instead of "…" at large text sizes (#571)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer()
             Text(Money.format(balanceCents))
                 .sensitive()
@@ -615,7 +617,8 @@ struct AccountRow: View {
                             .frame(maxWidth: 44)
                             .help("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
                         Text("\(repaid.formatted(.percent.precision(.fractionLength(0)))) getilgt")
-                            .appFont(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                            .appFont(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     } else if let date = account.archivedDate {
                         Text("Archiviert \(date.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)))")
                             .appFont(.caption2).foregroundStyle(.secondary).lineLimit(1)

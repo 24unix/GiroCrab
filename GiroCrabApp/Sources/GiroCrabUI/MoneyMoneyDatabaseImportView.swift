@@ -20,6 +20,7 @@ struct MoneyMoneyDatabaseImportView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.reportRedaction) private var redaction
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.textScale) private var textScale
     /// Tells the sheet that an import is running.
     @Binding var running: Bool
     /// Database or export file – switchable on the first step only.
@@ -308,18 +309,18 @@ struct MoneyMoneyDatabaseImportView: View {
             Table(rows, selection: $tableSelection) {
                 TableColumn("") { r in selectCell(r.a) }.width(22)
                 TableColumn("Konto") { r in nameCell(r.a) }
-                TableColumn("Buchungen") { r in bookingsCell(r.a) }.width(80)
-                TableColumn("Saldo") { r in balanceCell(r.a) }.width(110)
-                TableColumn("Kontoart") { r in kindCell(r.a) }.width(150)
+                TableColumn("Buchungen") { r in bookingsCell(r.a) }.width(80 * textScale)
+                TableColumn("Saldo") { r in balanceCell(r.a) }.width(110 * textScale)
+                TableColumn("Kontoart") { r in kindCell(r.a) }.width(150 * textScale)
             }
         } else {
             Table(rows, selection: $tableSelection) {
                 TableColumn("") { r in selectCell(r.a) }.width(22)
                 TableColumn("Konto") { r in nameCell(r.a) }
-                TableColumn("Buchungen") { r in bookingsCell(r.a) }.width(80)
-                TableColumn("Saldo") { r in balanceCell(r.a) }.width(110)
-                TableColumn("Kontoart") { r in kindCell(r.a) }.width(150)
-                TableColumn("Ziel") { r in targetCell(r.a) }.width(170)
+                TableColumn("Buchungen") { r in bookingsCell(r.a) }.width(80 * textScale)
+                TableColumn("Saldo") { r in balanceCell(r.a) }.width(110 * textScale)
+                TableColumn("Kontoart") { r in kindCell(r.a) }.width(150 * textScale)
+                TableColumn("Ziel") { r in targetCell(r.a) }.width(170 * textScale)
             }
         }
     }

@@ -146,7 +146,7 @@ struct UserGroupHeader: View {
                 .foregroundStyle(selected || group.colorHex.isEmpty
                                  ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.readable(hex: group.colorHex)))
                 .frame(width: 20)
-            Text(group.name).lineLimit(1).sensitive(.labels)
+            Text(group.name).lineLimit(2).fixedSize(horizontal: false, vertical: true).sensitive(.labels)
             if !group.inTotal {
                 Image(systemName: "eye.slash")
                     .appFont(.caption)

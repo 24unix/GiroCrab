@@ -125,6 +125,7 @@ private enum WeightUnit: String, CaseIterable, Identifiable {
 /// Create / edit a Sachwert. Quantity changes, value points and a missing
 /// price are saved right away (edit mode only).
 struct AssetEditorSheet: View {
+    @Environment(\.textScale) private var textScale
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let request: AssetEditorRequest
@@ -240,7 +241,7 @@ struct AssetEditorSheet: View {
             }
             .padding(16)
         }
-        .frame(minWidth: 520, idealWidth: 560, minHeight: 620)
+        .frame(minWidth: 520 * textScale, idealWidth: 560 * textScale, minHeight: 620)
         .onAppear(perform: load)
         .modifier(prefillTriggers)
         .onChange(of: priceMode) { _, new in convertPrice(to: new) }
@@ -543,6 +544,7 @@ private struct PrefillTriggers: ViewModifier {
 private struct BestandRow: View {
     let item: AssetItem
     let onSet: (String, Double) -> Void
+    @Environment(\.textScale) private var textScale
     @State private var date = Date()
     @State private var text = ""
 
@@ -551,11 +553,14 @@ private struct BestandRow: View {
             DatePicker("Ab", selection: $date, in: (DateText.date(item.setup.purchaseDate) ?? .distantPast)...Date(), displayedComponents: .date)
                 .labelsHidden()
             TextField("Neue Anzahl", text: $text, prompt: Text("Neue Anzahl"))
+                .labelsHidden()
+                .frame(minWidth: 90 * textScale)
             Button("Eintragen") {
                 guard let q = NumberText.double(text), q >= 0 else { return }
                 onSet(DateText.iso(date), q)
                 text = ""
             }
+            .fixedSize()
             .disabled(NumberText.double(text).map { $0 < 0 } ?? true)
         }
     }
@@ -564,6 +569,7 @@ private struct BestandRow: View {
 /// The new-value row of "Bewertungen bearbeiten": a value on a date, typed as total or per piece
 /// (like the purchase price), plus the other amount read-only.
 private struct ValueEntryRows: View {
+    @Environment(\.textScale) private var textScale
     @Environment(AppModel.self) private var model
     let item: AssetItem
     /// (ISO date, value per piece)
@@ -604,11 +610,13 @@ private struct ValueEntryRows: View {
             TextField("Wert", text: $text, prompt: Text("Wert"))
                 .labelsHidden()
                 .multilineTextAlignment(.trailing)
+                .frame(minWidth: 90 * textScale)
             Button("Eintragen") {
                 guard let c = perPiece else { return }
                 onSet(day, c)
                 text = ""
             }
+            .fixedSize()
             .disabled(perPiece == nil)
         }
         // prefilled with the value the chosen day has so far
@@ -647,6 +655,7 @@ extension AssetItem {
 
 /// Small sheet frame shared by the value, quantity and sell sheets.
 private struct AssetQuickSheet<Fields: View>: View {
+    @Environment(\.textScale) private var textScale
     @Environment(\.dismiss) private var dismiss
     let title: LocalizedStringKey
     /// nil: changes are saved as they are made; the sheet only closes ("Fertig").
@@ -683,7 +692,7 @@ private struct AssetQuickSheet<Fields: View>: View {
             }
             .padding(16)
         }
-        .frame(minWidth: 420, idealWidth: 440)
+        .frame(minWidth: 420 * textScale, idealWidth: 440 * textScale)
         #else
         NavigationStack {
             Form {

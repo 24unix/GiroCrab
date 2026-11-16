@@ -113,8 +113,8 @@ struct RuleEditorView: View {
                                 .accessibilityHidden(rule.enabled)
                             VStack(alignment: .leading, spacing: 1) {
                                 // rule names are mostly payees ("Miete Müller")
-                                Text(rule.name).lineLimit(1).sensitive()
-                                Text("→ " + categoryName(rule.categoryId)).appFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                Text(rule.name).lineLimit(2).sensitive()
+                                Text("→ " + categoryName(rule.categoryId)).appFont(.caption).foregroundStyle(.secondary).lineLimit(2)
                                     .sensitive(.labels)
                             }
                             Spacer()
