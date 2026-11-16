@@ -76,16 +76,15 @@ extension AppModel {
     }
 
     private func addConnectionChecked(_ kind: ConnectorKind, login: String) {
-        if demoActive, let ov = ownVault {
-            useVault(ov, demo: false)
-        }
-        guard let vault else { return }
-        var newID: Int64?
-        runCore { newID = try vault.addBankConnection(connector: kind, displayName: "", loginName: login) }
-        reloadAccounts()
-        if let id = newID, let conn = connections.first(where: { $0.id == id }) {
-            toast = String(localized: "\(conn.displayName) hinzugefügt")
-            requestSync(conn)
+        runInOwnVault(allowDemo: Self.isMagicDemoLogin(login)) { [self] in
+            guard let vault else { return }
+            var newID: Int64?
+            runCore { newID = try vault.addBankConnection(connector: kind, displayName: "", loginName: login) }
+            reloadAccounts()
+            if let id = newID, let conn = connections.first(where: { $0.id == id }) {
+                toast = String(localized: "\(conn.displayName) hinzugefügt")
+                requestSync(conn)
+            }
         }
     }
 
@@ -98,17 +97,16 @@ extension AppModel {
     }
 
     private func addFinTsConnectionChecked(name: String, blz: String, url: String, login: String, tanMedium: String) {
-        if demoActive, let ov = ownVault {
-            useVault(ov, demo: false)
-        }
-        guard let vault else { return }
-        var newID: Int64?
-        runCore { newID = try vault.addFintsConnection(blz: blz, url: url, displayName: name, loginName: login, tanMedium: tanMedium) }
-        reloadSettings()
-        reloadAccounts()
-        if let id = newID, let conn = connections.first(where: { $0.id == id }) {
-            toast = String(localized: "\(conn.displayName) hinzugefügt")
-            requestSync(conn)
+        runInOwnVault(allowDemo: Self.isMagicDemoLogin(login)) { [self] in
+            guard let vault else { return }
+            var newID: Int64?
+            runCore { newID = try vault.addFintsConnection(blz: blz, url: url, displayName: name, loginName: login, tanMedium: tanMedium) }
+            reloadSettings()
+            reloadAccounts()
+            if let id = newID, let conn = connections.first(where: { $0.id == id }) {
+                toast = String(localized: "\(conn.displayName) hinzugefügt")
+                requestSync(conn)
+            }
         }
     }
 
@@ -122,16 +120,15 @@ extension AppModel {
     }
 
     private func addEnableBankingConnectionChecked(aspsp: String, country: String, name: String, label: String) {
-        if demoActive, let ov = ownVault {
-            useVault(ov, demo: false)
-        }
-        guard let vault else { return }
-        var newID: Int64?
-        runCore { newID = try vault.addEnableBankingConnection(aspsp: aspsp, country: country, displayName: name, loginName: label) }
-        reloadAccounts()
-        if let id = newID, let conn = connections.first(where: { $0.id == id }) {
-            toast = String(localized: "\(conn.displayName) hinzugefügt")
-            requestSync(conn)
+        runInOwnVault(allowDemo: Self.isMagicDemoLogin(label)) { [self] in
+            guard let vault else { return }
+            var newID: Int64?
+            runCore { newID = try vault.addEnableBankingConnection(aspsp: aspsp, country: country, displayName: name, loginName: label) }
+            reloadAccounts()
+            if let id = newID, let conn = connections.first(where: { $0.id == id }) {
+                toast = String(localized: "\(conn.displayName) hinzugefügt")
+                requestSync(conn)
+            }
         }
     }
 

@@ -732,8 +732,8 @@ public final class AppModel {
     /// Opens the MoneyMoney import. An import belongs in the own vault, so the
     /// demo data an empty vault starts with is left first.
     func openMoneyMoneyImport() {
-        if isDemo && !options.demoSeed { showOwnVault() }
-        showMoneyMoneyImport = true
+        if options.demoSeed { showMoneyMoneyImport = true; return }
+        runInOwnVault { [self] in showMoneyMoneyImport = true }
     }
 
     var isDemo: Bool { demoActive }
@@ -942,24 +942,13 @@ public final class AppModel {
                     return (v, try v.accountCount() == 0 && connections.isEmpty)
                 }
                 StartupClock.mark("own vault opened (background)")
-                self.ownVault = v
-                // Let the crab's unlock hop play on the lock screen before the main view replaces it.
-                self.unlockCelebrating = !Motion.reduced
-                defer { self.unlockCelebrating = false }
-                let hop = Task { if !Motion.reduced { try? await Task.sleep(for: .milliseconds(320)) } }
-                if isEmpty {
-                    // Nothing synced yet: show demo bookings so the UI can be judged.
-                    UserDefaults.standard.set(false, forKey: Self.realDataKey)
-                    await hop.value
-                    await self.openDemoVaultAsync()
-                    self.toast = String(localized: "Ihr Tresor ist noch leer – Sie sehen Demo-Daten")
-                } else {
-                    await self.useOwnVaultAfterUnlock(v, hop: hop)
-                }
+                await self.adoptOpenedOwnVault(v, isEmpty: isEmpty)
                 if CloudSyncManager.shared.isEnabled {
                     await self.performSyncOrAutoAdopt(vault: v)
                 }
             } catch {
+                // Cancelled or failed: the action that asked for the own vault never runs in the demo.
+                self.pendingOwnVaultAction = nil
                 if self.ownVault == nil && !Self.vaultMayHoldRealData {
                     // Cancelled before any real data exists: back to the demo, never a dead end.
                     self.openDemoVault()
@@ -967,6 +956,54 @@ public final class AppModel {
                     self.vaultState = .failed(describe(error))
                 }
             }
+        }
+    }
+
+    /// The own vault is open after `unlock()`. An empty vault normally shows demo
+    /// data, except when an add/import asked for the own vault (`runInOwnVault`):
+    /// then the empty vault is shown and that action runs in it (#487).
+    func adoptOpenedOwnVault(_ v: Vault, isEmpty: Bool) async {
+        ownVault = v
+        // Let the crab's unlock hop play on the lock screen before the main view replaces it.
+        unlockCelebrating = !Motion.reduced
+        defer { unlockCelebrating = false }
+        let hop = Task { if !Motion.reduced { try? await Task.sleep(for: .milliseconds(320)) } }
+        let pending = pendingOwnVaultAction
+        pendingOwnVaultAction = nil
+        if isEmpty && pending == nil {
+            // Nothing synced yet: show demo bookings so the UI can be judged.
+            UserDefaults.standard.set(false, forKey: Self.realDataKey)
+            await hop.value
+            await openDemoVaultAsync()
+            toast = String(localized: "Ihr Tresor ist noch leer – Sie sehen Demo-Daten")
+        } else {
+            await useOwnVaultAfterUnlock(v, hop: hop)
+            if vault === v, !demoActive { pending?() }
+        }
+    }
+
+    /// Set while the lock screen / unlock runs on behalf of an add or import
+    /// that must not land in the demo vault; runs once the own vault is open.
+    @ObservationIgnored var pendingOwnVaultAction: (() -> Void)?
+    /// Starts the unlock for `runInOwnVault` (tests replace it: no Keychain, no vault file).
+    @ObservationIgnored var requestOwnVaultUnlock: (() -> Void)?
+
+    /// Runs `action` (add an account, import data) in the own vault, never in the demo.
+    /// Demo shown and own vault open: switches, then runs. Own vault not open yet
+    /// (fresh install): the unlock / key creation comes first, and the empty vault is
+    /// kept instead of falling back to the demo; `action` runs after it opened.
+    /// `allowDemo`: the explicit demo bank may stay in the demo while no own vault exists.
+    func runInOwnVault(allowDemo: Bool = false, _ action: @escaping () -> Void) {
+        guard demoActive else { action(); return }
+        if let ov = ownVault {
+            useVault(ov, demo: false)
+            action()
+        } else if allowDemo {
+            action()
+        } else {
+            pendingOwnVaultAction = action
+            vaultState = .locked
+            if let request = requestOwnVaultUnlock { request() } else { unlock() }
         }
     }
 

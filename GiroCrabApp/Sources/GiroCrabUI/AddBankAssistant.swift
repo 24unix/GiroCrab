@@ -266,7 +266,7 @@ struct AddBankSheet: View {
                 #if os(macOS)
                 Button("Vorhandene Daten importieren …") {
                     dismiss()
-                    model.showMoneyMoneyImport = true
+                    model.openMoneyMoneyImport()
                 }
                 #endif
             }
