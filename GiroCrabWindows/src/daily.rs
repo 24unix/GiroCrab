@@ -74,6 +74,14 @@ pub struct Row {
     pub monogram: String,
     pub tint_hex: String,
     pub recurring: bool,
+    /// Grouping key of its recurring series (`series_key`), "" = not groupable.
+    pub series_key: String,
+    /// Counts as salary (flag, signal or marked sender).
+    pub salary: bool,
+    /// The user's decision: `Some(true)` salary, `Some(false)` not salary, `None` automatic.
+    pub salary_flag: Option<bool>,
+    /// The booking looks like salary by itself (purpose code, keyword).
+    pub salary_signal: bool,
     /// The tags the booking carries.
     pub tags: Vec<girocrab_core::tags::BookingTag>,
 }
@@ -110,6 +118,10 @@ impl From<&Booking> for Row {
             monogram: b.merchant.monogram.clone(),
             tint_hex: b.merchant.color_hex.clone(),
             recurring: !b.recurrence_key.is_empty(),
+            series_key: girocrab_core::recurring::series_key(b),
+            salary: b.is_salary,
+            salary_flag: b.salary_flag,
+            salary_signal: girocrab_core::salary::salary_signal(b),
             tags: b.tags.clone(),
         }
     }
@@ -287,6 +299,10 @@ mod tests {
             monogram: String::new(),
             tint_hex: String::new(),
             recurring: false,
+            series_key: String::new(),
+            salary: false,
+            salary_flag: None,
+            salary_signal: false,
             tags: Vec::new(),
         }
     }

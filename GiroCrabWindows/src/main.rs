@@ -12,6 +12,8 @@ mod nav;
 mod planning;
 mod policy;
 mod portfolio;
+mod recurring_ui;
+mod recurring_view;
 mod sync_flow;
 mod tags_ui;
 mod transfer_flow;
@@ -302,11 +304,7 @@ fn booking_row(st: &State, b: &Row, privacy: bool) -> BookingRow {
             b.category_name.clone().into()
         },
         category_color: tint(&b.category_color_hex),
-        detail: daily::mask(
-            &detail,
-            privacy,
-        )
-        .into(),
+        detail: daily::mask(&detail, privacy).into(),
         amount: daily::mask(&money(b.amount_cents, &b.currency), privacy).into(),
         negative: b.amount_cents < 0 && !privacy,
         checked: b.checked,

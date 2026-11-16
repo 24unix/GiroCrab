@@ -1,0 +1,186 @@
+// "Wiederkehrend & Geplant": mark the selected booking as recurring / salary, the recurring items
+// of the month, planned payments and standing orders. The panel is the content of a `Dialog` in
+// main.slint (which owns the theme), so colours come in as properties.
+import { Button, ListView, LineEdit, ComboBox } from "std-widgets.slint";
+
+export struct RecLine { id: int, title: string, detail: string, amount: string, negative: bool }
+
+component Frame inherits Rectangle {
+    in property <length> list-height: 170px;
+    in property <color> line;
+    height: list-height;
+    border-width: 1px;
+    border-color: line;
+    border-radius: 8px;
+    clip: true;
+}
+
+component Lines inherits Frame {
+    in property <[RecLine]> rows;
+    in property <string> empty;
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> accent;
+    in property <color> negative;
+    in-out property <int> selected: -1;
+    callback pick(int);
+    if root.rows.length == 0: Text { text: root.empty; color: root.muted; horizontal-alignment: center; vertical-alignment: center; }
+    ListView {
+        for r[i] in root.rows: Rectangle {
+            height: 44px;
+            background: root.selected == i ? root.accent.with-alpha(0.18) : transparent;
+            TouchArea { clicked => { root.selected = i; root.pick(i); } }
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 8px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    Text { text: r.title; color: root.ink; font-size: 13px; font-weight: 600; overflow: elide; }
+                    Text { text: r.detail; color: root.muted; font-size: 11px; overflow: elide; }
+                }
+                Text { text: r.amount; color: r.negative ? root.negative : root.ink; font-size: 13px; vertical-alignment: center; }
+            }
+        }
+    }
+}
+
+component Tab inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    in property <color> accent;
+    in property <color> ink;
+    callback clicked();
+    height: 30px;
+    border-radius: 6px;
+    background: active ? accent.with-alpha(0.2) : transparent;
+    TouchArea { clicked => { root.clicked(); } }
+    Text { text: root.text; color: root.ink; font-size: 12px; font-weight: root.active ? 700 : 400; horizontal-alignment: center; vertical-alignment: center; }
+}
+
+export component RecurringPanel inherits VerticalLayout {
+    in property <color> ink;
+    in property <color> muted;
+    in property <color> line;
+    in property <color> accent;
+    in property <color> negative;
+    in-out property <int> tab: 0;
+    in property <string> status;
+    in property <string> salary-cycle;
+    // selected booking
+    in property <bool> has-booking;
+    in property <string> booking-title;
+    in property <string> series-text;
+    in property <string> salary-state;
+    in property <bool> can-salary;
+    in property <bool> has-series;
+    in property <[string]> interval-names;
+    in-out property <int> interval-index: 0;
+    in-out property <string> custom-dates;
+    // month
+    in property <string> month-summary;
+    in property <[RecLine]> month-rows;
+    in property <[RecLine]> ignored-rows;
+    // planned and standing orders
+    in property <string> planned-summary;
+    in property <[RecLine]> planned-rows;
+    in property <[RecLine]> standing-rows;
+    in property <string> limits-text;
+    callback tab-changed(int);
+    callback mark(int, string);
+    callback ignore();
+    callback reset();
+    callback salary(int);
+    callback restore(int);
+    callback standing-select(int);
+    callback refresh();
+    callback close();
+    spacing: 8px;
+    Text { text: "Wiederkehrend & Geplant"; color: root.ink; font-size: 18px; font-weight: 700; }
+    Text { text: root.salary-cycle; color: root.muted; font-size: 11px; wrap: word-wrap; }
+    HorizontalLayout {
+        spacing: 4px;
+        Tab { text: "Buchung"; active: root.tab == 0; accent: root.accent; ink: root.ink; clicked => { root.tab = 0; root.tab-changed(0); } }
+        Tab { text: "Monat"; active: root.tab == 1; accent: root.accent; ink: root.ink; clicked => { root.tab = 1; root.tab-changed(1); } }
+        Tab { text: "Geplant"; active: root.tab == 2; accent: root.accent; ink: root.ink; clicked => { root.tab = 2; root.tab-changed(2); } }
+        Tab { text: "Daueraufträge"; active: root.tab == 3; accent: root.accent; ink: root.ink; clicked => { root.tab = 3; root.tab-changed(3); } }
+    }
+    // ---- 0: the selected booking
+    if root.tab == 0: VerticalLayout {
+        spacing: 8px;
+        Text {
+            text: root.has-booking ? "Ausgewählte Buchung: " + root.booking-title : "Keine Buchung ausgewählt.";
+            color: root.ink; font-size: 12px; wrap: word-wrap;
+        }
+        Text { text: root.series-text; color: root.muted; font-size: 11px; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: "Intervall"; color: root.muted; font-size: 12px; vertical-alignment: center; }
+            ComboBox { horizontal-stretch: 1; model: root.interval-names; current-index <=> root.interval-index; enabled: root.has-booking; }
+        }
+        if root.interval-index == 4: LineEdit {
+            placeholder-text: "Feste Tage, z. B. 15.03., 15.08.";
+            text <=> root.custom-dates;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Button { text: "Als wiederkehrend markieren"; enabled: root.has-booking; clicked => { root.mark(root.interval-index, root.custom-dates); } }
+            Button { text: "Nicht wiederkehrend"; enabled: root.has-booking && root.has-series; clicked => { root.ignore(); } }
+            Button { text: "Zurücksetzen"; enabled: root.has-booking; clicked => { root.reset(); } }
+        }
+        Text { text: "Gehalt"; color: root.ink; font-size: 13px; font-weight: 700; }
+        Text { text: root.salary-state; color: root.muted; font-size: 11px; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 8px;
+            Button { text: "Ist Gehalt"; enabled: root.has-booking && root.can-salary; clicked => { root.salary(1); } }
+            Button { text: "Ist kein Gehalt"; enabled: root.has-booking && root.can-salary; clicked => { root.salary(2); } }
+            Button { text: "Automatisch"; enabled: root.has-booking && root.can-salary; clicked => { root.salary(0); } }
+        }
+    }
+    // ---- 1: the month
+    if root.tab == 1: VerticalLayout {
+        spacing: 8px;
+        Text { text: root.month-summary; color: root.muted; font-size: 11px; wrap: word-wrap; }
+        Lines {
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent; negative: root.negative;
+            rows: root.month-rows; empty: "Keine wiederkehrenden Umsätze in diesem Monat";
+        }
+        Text { text: "Ausgeblendet („Nicht wiederkehrend“) – Auswahl zeigt die Serie wieder an"; color: root.muted; font-size: 11px; }
+        Lines {
+            list-height: 100px;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent; negative: root.negative;
+            rows: root.ignored-rows; empty: "Nichts ausgeblendet";
+            pick(i) => { root.restore(i); }
+        }
+    }
+    // ---- 2: planned payments
+    if root.tab == 2: VerticalLayout {
+        spacing: 8px;
+        Text { text: root.planned-summary; color: root.muted; font-size: 11px; wrap: word-wrap; }
+        Lines {
+            list-height: 250px;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent; negative: root.negative;
+            rows: root.planned-rows; empty: "Keine geplanten Zahlungen";
+        }
+    }
+    // ---- 3: standing orders
+    if root.tab == 3: VerticalLayout {
+        spacing: 8px;
+        Lines {
+            list-height: 200px;
+            line: root.line; ink: root.ink; muted: root.muted; accent: root.accent; negative: root.negative;
+            rows: root.standing-rows; empty: "Keine Daueraufträge gespeichert (Abruf bei der Bank nötig)";
+            pick(i) => { root.standing-select(i); }
+        }
+        Text { text: root.limits-text; color: root.muted; font-size: 11px; wrap: word-wrap; }
+    }
+    Text { text: root.status; color: root.muted; font-size: 11px; wrap: word-wrap; }
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: end;
+        Button { text: "Aktualisieren"; clicked => { root.refresh(); } }
+        Button { text: "Schließen"; clicked => { root.close(); } }
+    }
+}

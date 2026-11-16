@@ -1,6 +1,8 @@
 import { Button, ListView, LineEdit, Palette, ComboBox, CheckBox, TextEdit, Switch, ScrollView } from "std-widgets.slint";
 import { TagRow, SplitRow, BudgetRow, TemplateRow, TagsPanel, SplitsPanel, BudgetsPanel, TemplatesPanel } from "tags_dialog.slint";
 export { TagRow, SplitRow, BudgetRow, TemplateRow }
+import { RecLine, RecurringPanel } from "recurring_dialog.slint";
+export { RecLine }
 
 export struct AccountRow { id: int, name: string, bank: string, iban: string, header: string, monogram: string, dot: color, balance: string, currency: string, negative: bool, archived: bool }
 export struct CategoryRow { id: int, name: string, depth: int, color: color }
@@ -648,6 +650,36 @@ export component MainWindow inherits Window {
     in property <string> link-status;
     callback link-search(string);
     callback link-pick(int);
+    // ---- recurring, planned, salary (recurring_ui.rs; panel in recurring_dialog.slint)
+    in-out property <bool> rc-open: false;
+    in-out property <int> rc-tab: 0;
+    in property <string> rc-status;
+    in property <string> rc-salary-cycle;
+    in property <bool> rc-has-booking: false;
+    in property <string> rc-booking-title;
+    in property <string> rc-series-text;
+    in property <string> rc-salary-state;
+    in property <bool> rc-can-salary: false;
+    in property <bool> rc-has-series: false;
+    in property <[string]> rc-interval-names;
+    in-out property <int> rc-interval: 0;
+    in-out property <string> rc-custom-dates;
+    in property <string> rc-month-summary;
+    in property <[RecLine]> rc-month-rows;
+    in property <[RecLine]> rc-ignored-rows;
+    in property <string> rc-planned-summary;
+    in property <[RecLine]> rc-planned-rows;
+    in property <[RecLine]> rc-standing-rows;
+    in property <string> rc-limits;
+    callback rc-request();
+    callback rc-tab-changed(int);
+    callback rc-mark(int, string);
+    callback rc-ignore();
+    callback rc-reset();
+    callback rc-salary(int);
+    callback rc-restore(int);
+    callback rc-standing-select(int);
+    callback rc-refresh();
     // ---- tags, splits, budgets, templates (tags_ui.rs; panels in tags_dialog.slint)
     in-out property <bool> tags-open: false;
     in property <[TagRow]> tg-rows;
@@ -918,6 +950,7 @@ export component MainWindow inherits Window {
                 GhostButton { text: "Tags …"; clicked => { root.tags-request(); } }
                 GhostButton { text: "Budgets …"; clicked => { root.budgets-request(); } }
                 GhostButton { text: "Vorlagen …"; clicked => { root.templates-request(); } }
+                GhostButton { text: "Wiederkehrend …"; clicked => { root.rc-request(); } }
                 GhostButton { text: "Info"; clicked => { root.about-open = true; } }
                 Rectangle { horizontal-stretch: 1; }
                 PillToggle {
@@ -1258,6 +1291,7 @@ export component MainWindow inherits Window {
                                 padding-right: 14px;
                                 Text { text: "Wiederkehrend"; font-size: 12px; font-weight: 700; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
                                 Text { text: root.inspector.recurring ? "Erkannt" : "Nicht erkannt"; font-size: 11px; color: root.inspector.recurring ? Theme.positive : Theme.muted; vertical-alignment: center; }
+                                GhostButton { text: "Ändern …"; enabled: !root.inspector.read-only; clicked => { root.rc-request(); } }
                             }
                         }
                         // category tiles
@@ -1637,6 +1671,30 @@ export component MainWindow inherits Window {
             save(a, b, c, d, e, f) => { root.template-save(a, b, c, d, e, f); }
             remove() => { root.template-delete(); }
             close() => { root.templates-open = false; root.refocus(); }
+        }
+    }
+
+    // ---- recurring / planned / salary dialog
+    if rc-open: Dialog {
+        dialog-width: 640px;
+        RecurringPanel {
+            ink: Theme.text; muted: Theme.muted; line: Theme.border; accent: Theme.accent; negative: Theme.negative;
+            tab <=> root.rc-tab; status: root.rc-status; salary-cycle: root.rc-salary-cycle;
+            has-booking: root.rc-has-booking; booking-title: root.rc-booking-title; series-text: root.rc-series-text;
+            salary-state: root.rc-salary-state; can-salary: root.rc-can-salary; has-series: root.rc-has-series;
+            interval-names: root.rc-interval-names; interval-index <=> root.rc-interval; custom-dates <=> root.rc-custom-dates;
+            month-summary: root.rc-month-summary; month-rows: root.rc-month-rows; ignored-rows: root.rc-ignored-rows;
+            planned-summary: root.rc-planned-summary; planned-rows: root.rc-planned-rows;
+            standing-rows: root.rc-standing-rows; limits-text: root.rc-limits;
+            tab-changed(t) => { root.rc-tab-changed(t); }
+            mark(i, d) => { root.rc-mark(i, d); }
+            ignore() => { root.rc-ignore(); }
+            reset() => { root.rc-reset(); }
+            salary(c) => { root.rc-salary(c); }
+            restore(i) => { root.rc-restore(i); }
+            standing-select(i) => { root.rc-standing-select(i); }
+            refresh() => { root.rc-refresh(); }
+            close() => { root.rc-open = false; root.refocus(); }
         }
     }
 

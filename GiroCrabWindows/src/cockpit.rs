@@ -367,6 +367,10 @@ mod tests {
             monogram: String::new(),
             tint_hex: String::new(),
             recurring: false,
+            series_key: String::new(),
+            salary: false,
+            salary_flag: None,
+            salary_signal: false,
             tags: Vec::new(),
         }
     }
@@ -426,7 +430,7 @@ mod tests {
         assert_eq!(nice_max(0), 100);
         assert_eq!(nice_max(123_400), 200_000);
         assert_eq!(axis_label(120_000), "1.200");
-        assert_eq!(axis_label(500_000_00), "500.000");
+        assert_eq!(axis_label(50_000_000), "500.000");
         assert_eq!(axis_label(0), "0");
     }
 
