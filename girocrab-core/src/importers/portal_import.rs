@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use rusqlite::{params, OptionalExtension};
 use serde_json::Value;
 
 use crate::connectors::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
@@ -334,13 +335,18 @@ fn parse_tx_object(obj: &serde_json::Map<String, Value>, kind: ConnectorKind) ->
     })
 }
 
-fn walk(
-    v: &Value,
-    kind: ConnectorKind,
-    pending: bool,
-    out: &mut Vec<Parsed>,
-    out_pending: &mut Vec<Parsed>,
-) {
+/// What one portal capture holds: posted bookings, pending (not yet posted)
+/// card charges and the card balance.
+#[derive(Debug, Default)]
+pub(crate) struct Capture {
+    pub posted: Vec<Parsed>,
+    pub pending: Vec<Parsed>,
+    /// A pending list (possibly empty) was among the captured responses (diagnostics).
+    pub pending_listed: bool,
+    pub balance: Option<(String, i64)>,
+}
+
+fn walk(v: &Value, kind: ConnectorKind, pending: bool, out: &mut Capture) {
     match v {
         Value::Array(items) => {
             let parsed: Vec<Parsed> = items
@@ -349,25 +355,21 @@ fn walk(
                 .collect();
             if !parsed.is_empty() {
                 if pending {
-                    out_pending.extend(parsed)
+                    out.pending.extend(parsed)
                 } else {
-                    out.extend(parsed)
+                    out.posted.extend(parsed)
                 }
             } else {
-                items
-                    .iter()
-                    .for_each(|i| walk(i, kind, pending, out, out_pending));
+                items.iter().for_each(|i| walk(i, kind, pending, out));
             }
         }
         Value::Object(o) => {
             for (k, val) in o {
-                walk(
-                    val,
-                    kind,
-                    pending || k.to_lowercase().contains("pending"),
-                    out,
-                    out_pending,
-                );
+                let pending_key = k.to_lowercase().contains("pending");
+                if pending_key && val.is_array() {
+                    out.pending_listed = true;
+                }
+                walk(val, kind, pending || pending_key, out);
             }
         }
         _ => {}
@@ -478,35 +480,32 @@ fn candidate_keys(v: &Value, out: &mut std::collections::BTreeSet<String>) {
     }
 }
 
+/// Posted bookings and balance of a capture (pending charges are left out).
 pub fn parse_json_bodies(bodies: &[String], kind: ConnectorKind) -> (Vec<Parsed>, Option<i64>) {
-    let (txs, bal) = parse_json_bodies_keyed(bodies, kind);
-    (txs, bal.map(|(_, c)| c))
+    let c = parse_capture(bodies, kind);
+    (c.posted, c.balance.map(|(_, c)| c))
 }
 
-fn parse_json_bodies_keyed(
-    bodies: &[String],
-    kind: ConnectorKind,
-) -> (Vec<Parsed>, Option<(String, i64)>) {
-    let mut txs = Vec::new();
-    let mut pending = Vec::new();
-    let mut balance = None;
+pub(crate) fn parse_capture(bodies: &[String], kind: ConnectorKind) -> Capture {
+    let mut c = Capture::default();
     for b in bodies {
         let Ok(v) = serde_json::from_str::<Value>(b) else {
             continue;
         };
-        walk(&v, kind, false, &mut txs, &mut pending);
-        if balance.is_none() {
-            balance = find_balance(&v, kind);
+        walk(&v, kind, false, &mut c);
+        if c.balance.is_none() {
+            c.balance = find_balance(&v, kind);
         }
     }
-    // Pending items change id/amount once posted – only use them when nothing is posted yet.
-    if txs.is_empty() {
-        txs = pending;
-    }
     // The portal re-sends overlapping pages; drop exact repeats of the same source id.
+    // Pending charges get a new id (and often a longer text) once posted, so they are
+    // never stored as regular bookings: only as holds, see `to_fetch`.
     let mut seen = std::collections::HashSet::new();
-    txs.retain(|t| t.id.as_ref().is_none_or(|id| seen.insert(id.clone())));
-    (txs, balance)
+    c.posted
+        .retain(|t| t.id.as_ref().is_none_or(|id| seen.insert(id.clone())));
+    c.pending
+        .retain(|t| t.id.as_ref().is_none_or(|id| seen.insert(id.clone())));
+    c
 }
 
 /// Keys-only structure of JSON bodies: every string/number/bool is masked, so the
@@ -787,43 +786,69 @@ pub fn parse_statement_bytes(
 
 // ------------------------------------------------------------------ store
 
+/// `external_id` prefix of pending card charges ("vorgemerkt"); `Booking.is_pending`
+/// relies on the `pending-` start. A hold is never dropped silently: only when its
+/// posted booking arrives ([`resolve_holds`]) or when the user discards it
+/// ([`Vault::discard_portal_holds`]). The generic 14-day expiry in `persist.rs` skips it.
+pub(crate) const HOLD_PREFIX: &str = "pending-hold-portal-";
+
+/// Days a posted booking may lie before / after the pending charge it settles.
+const SETTLE_DAYS_BEFORE: i64 = 1;
+const SETTLE_DAYS_AFTER: i64 = 5;
+
+/// A pending charge the portal no longer lists as open whose posted booking was not
+/// found yet (#629): the user browses older billing periods or discards it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PortalHold {
+    pub id: i64,
+    pub booking_date: String,
+    pub amount_cents: i64,
+    pub counterparty: String,
+}
+
+/// Holds need a reported balance: without one the balance is accumulated from the
+/// stored bookings, and a hold resolved later would stay in it.
 fn to_fetch(
     connection_id: i64,
     name: &str,
     kind: ConnectorKind,
     parsed: Vec<Parsed>,
+    holds: Vec<Parsed>,
     balance: Option<i64>,
 ) -> FetchResult {
-    let account_ref = format!(
-        "portal-{}-{}",
-        kind.as_str().replace(':', "-"),
-        connection_id
-    );
+    let account_ref = account_ref(kind, connection_id);
     let today = crate::connectors::today();
-    let mut seen: HashMap<(String, i64, String), u32> = HashMap::new();
     let mut transactions = Vec::new();
-    let mut ids_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for p in parsed {
-        let mut t = RemoteTransaction {
-            account_ref: account_ref.clone(),
-            external_id: String::new(),
-            booking_date: p.date.clone(),
-            value_date: p.date.clone(),
-            amount_cents: p.cents,
-            currency: "EUR".into(),
-            counterparty: p.text.clone(),
-            counterparty_iban: String::new(),
-            purpose: String::new(),
-            booking_text: "Kartenumsatz".into(),
-            ..Default::default()
-        };
-        let n = seen.entry((p.date, p.cents, p.text)).or_insert(0);
-        t.external_id = match p.id {
-            Some(id) if ids_seen.insert(id.clone()) => format!("id:{id}"),
-            _ => t.content_id(*n),
-        };
-        *n += 1;
-        transactions.push(t);
+    let mut push = |list: Vec<Parsed>, prefix: &str, booking_text: &str| {
+        let mut seen: HashMap<(String, i64, String), u32> = HashMap::new();
+        let mut ids_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for p in list {
+            let mut t = RemoteTransaction {
+                account_ref: account_ref.clone(),
+                external_id: String::new(),
+                booking_date: p.date.clone(),
+                value_date: p.date.clone(),
+                amount_cents: p.cents,
+                currency: "EUR".into(),
+                counterparty: p.text.clone(),
+                counterparty_iban: String::new(),
+                purpose: String::new(),
+                booking_text: booking_text.into(),
+                ..Default::default()
+            };
+            let n = seen.entry((p.date, p.cents, p.text)).or_insert(0);
+            t.external_id = match p.id {
+                Some(id) if ids_seen.insert(id.clone()) => format!("{prefix}id:{id}"),
+                _ => format!("{prefix}{}", t.content_id(*n)),
+            };
+            *n += 1;
+            transactions.push(t);
+        }
+    };
+    push(parsed, "", "Kartenumsatz");
+    if balance.is_some() {
+        push(holds, HOLD_PREFIX, "Kartenumsatz (vorgemerkt)");
     }
     FetchResult {
         accounts: vec![RemoteAccount {
@@ -843,6 +868,207 @@ fn to_fetch(
         adjust_balances: balance.is_none(),
         ..Default::default()
     }
+}
+
+fn account_ref(kind: ConnectorKind, connection_id: i64) -> String {
+    format!(
+        "portal-{}-{}",
+        kind.as_str().replace(':', "-"),
+        connection_id
+    )
+}
+
+/// SQL condition for the open holds of an account (`t` = transactions). Amex syncs
+/// before #629 stored pending charges as regular bookings (`id:P…`): they are
+/// treated like holds, under the hold id they would have today.
+fn hold_sql(legacy: bool) -> &'static str {
+    if legacy {
+        "(t.external_id LIKE 'pending-hold-portal-%' OR t.external_id LIKE 'id:P%')"
+    } else {
+        "t.external_id LIKE 'pending-hold-portal-%'"
+    }
+}
+
+/// Settles holds whose posted booking has arrived: same amount, posted from
+/// [`SETTLE_DAYS_BEFORE`] days before to [`SETTLE_DAYS_AFTER`] days after the charge,
+/// stored after the hold, each posted booking settles one hold. Category, note and
+/// check mark go to the posted booking when it has none; the hold is deleted (syncs).
+/// A pre-#629 copy of a charge that is a hold again merges into that hold.
+/// Holds with splits or documents stay (user work). Returns the number settled.
+pub(crate) fn resolve_holds(
+    db: &rusqlite::Connection,
+    account_id: i64,
+    legacy: bool,
+) -> Result<u32, CoreError> {
+    let mut settled = 0u32;
+    if legacy {
+        let pairs: Vec<(i64, i64)> = {
+            let mut q = db.prepare(
+                "SELECT c.id, h.id FROM transactions c JOIN transactions h
+                    ON h.account_id = c.account_id AND h.deleted_ms IS NULL
+                   AND h.external_id = 'pending-hold-portal-' || c.external_id
+                 WHERE c.account_id = ?1 AND c.deleted_ms IS NULL AND c.external_id LIKE 'id:P%'",
+            )?;
+            let rows = q.query_map([account_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            rows.collect::<Result<_, _>>()?
+        };
+        for (copy, hold) in pairs {
+            hand_over(db, copy, hold)?;
+            settled += 1;
+        }
+    }
+    let holds: Vec<(i64, String, i64, String)> = {
+        let mut q = db.prepare(&format!(
+            "SELECT t.id, t.booking_date, t.amount_cents, t.counterparty FROM transactions t
+              WHERE t.account_id = ?1 AND t.deleted_ms IS NULL AND {}
+                AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)
+                AND NOT EXISTS (SELECT 1 FROM booking_documents d WHERE d.booking_id = t.id)
+              ORDER BY t.booking_date, t.id",
+            hold_sql(legacy)
+        ))?;
+        let rows = q.query_map([account_id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })?;
+        rows.collect::<Result<_, _>>()?
+    };
+    // (posted id, amount, counterparty) stored after `hold` within the settle window
+    let candidates = |hold: i64, date: &str| -> Result<Vec<(i64, i64, String)>, CoreError> {
+        let mut q = db.prepare(
+            "SELECT p.id, p.amount_cents, p.counterparty FROM transactions p
+              WHERE p.account_id = ?1 AND p.deleted_ms IS NULL AND p.id > ?2
+                AND p.external_id NOT LIKE 'pending-%' AND p.external_id NOT LIKE 'id:P%'
+                AND p.booking_date BETWEEN date(?3, ?4) AND date(?3, ?5)
+              ORDER BY abs(julianday(p.booking_date) - julianday(?3)), p.id",
+        )?;
+        let rows = q.query_map(
+            params![
+                account_id,
+                hold,
+                date,
+                format!("-{SETTLE_DAYS_BEFORE} days"),
+                format!("+{SETTLE_DAYS_AFTER} days")
+            ],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    };
+    let mut used = std::collections::HashSet::new();
+    let mut open = Vec::new();
+    // 1. the same amount (closest date first), so exact matches claim their posting first
+    for (hold, date, cents, text) in holds {
+        let posted = candidates(hold, &date)?
+            .into_iter()
+            .find(|(p, c, _)| *c == cents && !used.contains(p));
+        match posted {
+            Some((p, _, _)) => {
+                used.insert(p);
+                hand_over(db, hold, p)?;
+                settled += 1;
+            }
+            None => open.push((hold, date, cents, text)),
+        }
+    }
+    // 2. a pre-authorisation settled lower (hotel, fuel): same merchant, smaller or equal
+    //    amount of the same sign, and only when exactly one posting fits
+    for (hold, date, cents, text) in open {
+        let Some(key) = merchant_key(&text) else {
+            continue;
+        };
+        let fits: Vec<i64> = candidates(hold, &date)?
+            .into_iter()
+            .filter(|(p, c, t)| {
+                !used.contains(p)
+                    && c.signum() == cents.signum()
+                    && c.abs() <= cents.abs()
+                    && merchant_key(t).as_deref() == Some(key.as_str())
+            })
+            .map(|(p, _, _)| p)
+            .collect();
+        if let [p] = fits[..] {
+            used.insert(p);
+            hand_over(db, hold, p)?;
+            settled += 1;
+        }
+    }
+    if legacy {
+        convert_legacy_copies(db, account_id)?;
+    }
+    Ok(settled)
+}
+
+/// Pre-#629 copies (`id:P…`) still open after settling become regular holds, so they
+/// are shown as pending ("vorgemerkt"). The id is not changed in place (the iCloud
+/// merge would bring the old row back): the row is copied under its hold id with all
+/// its data and the old row is deleted (tombstone). A copy whose hold id is taken
+/// (a discarded hold) is deleted. Copies with splits or documents stay.
+fn convert_legacy_copies(db: &rusqlite::Connection, account_id: i64) -> Result<u32, CoreError> {
+    let cols: Vec<String> = {
+        let mut q = db.prepare("SELECT name FROM pragma_table_info('transactions')")?;
+        let rows = q.query_map([], |r| r.get::<_, String>(0))?;
+        rows.collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter(|c| !["id", "external_id", "booking_text", "deleted_ms"].contains(&c.as_str()))
+            .collect()
+    };
+    let list = cols.join(", ");
+    let copy_sql = format!(
+        "INSERT OR IGNORE INTO transactions(external_id, booking_text, {list})
+         SELECT '{HOLD_PREFIX}' || external_id, 'Kartenumsatz (vorgemerkt)', {list}
+           FROM transactions WHERE id = ?1"
+    );
+    let copies: Vec<i64> = {
+        let mut q = db.prepare(
+            "SELECT t.id FROM transactions t
+              WHERE t.account_id = ?1 AND t.deleted_ms IS NULL AND t.external_id LIKE 'id:P%'
+                AND NOT EXISTS (SELECT 1 FROM transaction_splits s WHERE s.transaction_id = t.id)
+                AND NOT EXISTS (SELECT 1 FROM booking_documents d WHERE d.booking_id = t.id)",
+        )?;
+        let rows = q.query_map([account_id], |r| r.get(0))?;
+        rows.collect::<Result<_, _>>()?
+    };
+    for id in &copies {
+        db.execute(&copy_sql, [id])?;
+        crate::sync_merge::soft_delete_booking(db, *id)?;
+    }
+    Ok(copies.len() as u32)
+}
+
+/// First word of a card counterparty, lower case, letters and digits only
+/// ("ARAL PAYBACK PAY  BOCHUM" -> "aral"); `None` when shorter than 3 characters.
+fn merchant_key(text: &str) -> Option<String> {
+    let word: String = text
+        .split_whitespace()
+        .next()?
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect();
+    (word.chars().count() >= 3).then_some(word)
+}
+
+/// Moves category, note and check mark from `from` to `to` where `to` has none,
+/// then deletes `from` (tombstone, so other devices drop it too).
+fn hand_over(db: &rusqlite::Connection, from: i64, to: i64) -> Result<(), CoreError> {
+    let now = crate::user_groups::now_ms();
+    db.execute(
+        "UPDATE transactions SET (category_id, category_source, rule_id, category_ms) =
+                (SELECT f.category_id, f.category_source, f.rule_id, ?3 FROM transactions f WHERE f.id = ?1)
+          WHERE id = ?2 AND category_id IS NULL
+            AND (SELECT category_id FROM transactions WHERE id = ?1) IS NOT NULL",
+        params![from, to, now],
+    )?;
+    db.execute(
+        "UPDATE transactions SET (note, note_ms) = (SELECT f.note, ?3 FROM transactions f WHERE f.id = ?1)
+          WHERE id = ?2 AND trim(note) = ''
+            AND trim((SELECT note FROM transactions WHERE id = ?1)) != ''",
+        params![from, to, now],
+    )?;
+    db.execute(
+        "UPDATE transactions SET checked = 1, checked_ms = ?3
+          WHERE id = ?2 AND checked = 0 AND (SELECT checked FROM transactions WHERE id = ?1) = 1",
+        params![from, to, now],
+    )?;
+    crate::sync_merge::soft_delete_booking(db, from)
 }
 
 impl Vault {
@@ -866,24 +1092,46 @@ impl Vault {
         Ok((kind, name))
     }
 
+    /// The connection's card account, if it exists yet.
+    fn portal_account(
+        &self,
+        kind: ConnectorKind,
+        connection_id: i64,
+    ) -> Result<Option<i64>, CoreError> {
+        let db = self.db()?;
+        Ok(db
+            .query_row(
+                "SELECT id FROM accounts WHERE connection_id = ?1 AND external_ref = ?2 AND deleted_ms IS NULL",
+                params![connection_id, account_ref(kind, connection_id)],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
     fn import_parsed(
         &self,
         connection_id: i64,
         parsed: Vec<Parsed>,
+        holds: Vec<Parsed>,
         balance: Option<i64>,
     ) -> Result<SyncSummary, CoreError> {
         let (kind, name) = self.portal_connection(connection_id)?;
-        if parsed.is_empty() {
+        if parsed.is_empty() && (holds.is_empty() || balance.is_none()) {
             return Err(CoreError::InvalidInput {
                 message: tr("Keine Umsätze erkannt.").into(),
             });
         }
-        let summary = store_fetch(
-            self,
-            kind,
-            connection_id,
-            to_fetch(connection_id, &name, kind, parsed, balance),
-        )?;
+        let fetch = to_fetch(connection_id, &name, kind, parsed, holds, balance);
+        let summary = store_fetch(self, kind, connection_id, fetch)?;
+        if let Some(account) = self.portal_account(kind, connection_id)? {
+            let db = self.db()?;
+            let tx = db.unchecked_transaction()?;
+            let n = resolve_holds(&tx, account, kind == ConnectorKind::AmericanExpress)?;
+            tx.commit()?;
+            if n > 0 {
+                crate::depot_debug::log(&format!("portal import: settled {n} pending charge(s)"));
+            }
+        }
         // Fold the import into the main file; best effort, it is committed.
         let _ = self.checkpoint();
         Ok(summary)
@@ -901,9 +1149,9 @@ impl Vault {
         dom_rows_json: String,
     ) -> Result<SyncSummary, CoreError> {
         let (kind, _) = self.portal_connection(connection_id)?;
-        let (mut parsed, keyed) = parse_json_bodies_keyed(&json_bodies, kind);
-        let balance = keyed.as_ref().map(|(_, c)| *c);
-        match &keyed {
+        let capture = parse_capture(&json_bodies, kind);
+        let balance = capture.balance.as_ref().map(|(_, c)| *c);
+        match &capture.balance {
             Some((k, _)) => {
                 crate::depot_debug::log(&format!("portal matched balance: key={}", safe_key(k)))
             }
@@ -934,20 +1182,29 @@ impl Vault {
                 serde_json::to_string(&hints).unwrap_or_default()
             ));
         }
+        let Capture {
+            posted: mut parsed,
+            pending,
+            pending_listed,
+            ..
+        } = capture;
         let from_json = parsed.len();
-        if parsed.is_empty() {
+        // The visible table only when the JSON held no bookings at all (it may mix in pending rows).
+        if parsed.is_empty() && pending.is_empty() {
             let rows: Vec<Vec<String>> = serde_json::from_str(&dom_rows_json).unwrap_or_default();
             parsed = parse_dom_rows(&rows, kind);
         }
         crate::depot_debug::log(&format!(
-            "portal import: {:?} bodies={} json_txs={} total_txs={} balance_found={}",
+            "portal import: {:?} bodies={} json_txs={} total_txs={} pending={} pending_listed={} balance_found={}",
             kind,
             json_bodies.len(),
             from_json,
             parsed.len(),
+            pending.len(),
+            pending_listed,
             balance.is_some()
         ));
-        self.import_parsed(connection_id, parsed, balance)
+        self.import_parsed(connection_id, parsed, pending, balance)
     }
 
     /// How many bookings `import_portal_capture` would extract right now (nothing is stored).
@@ -958,12 +1215,19 @@ impl Vault {
         dom_rows_json: String,
     ) -> Result<u32, CoreError> {
         let (kind, _) = self.portal_connection(connection_id)?;
-        let (mut parsed, _) = parse_json_bodies(&json_bodies, kind);
-        if parsed.is_empty() {
+        let c = parse_capture(&json_bodies, kind);
+        // pending charges count only where they would be stored (as holds)
+        let holds = if c.balance.is_some() {
+            c.pending.len()
+        } else {
+            0
+        };
+        let mut n = c.posted.len() + holds;
+        if c.posted.is_empty() && c.pending.is_empty() {
             let rows: Vec<Vec<String>> = serde_json::from_str(&dom_rows_json).unwrap_or_default();
-            parsed = parse_dom_rows(&rows, kind);
+            n = parse_dom_rows(&rows, kind).len();
         }
-        Ok(parsed.len() as u32)
+        Ok(n as u32)
     }
 
     /// 1-click CSV / PDF statement import (no API keys). `pdf_text_hint` is optional
@@ -977,7 +1241,95 @@ impl Vault {
     ) -> Result<SyncSummary, CoreError> {
         let (kind, _) = self.portal_connection(connection_id)?;
         let parsed = parse_statement_bytes(&file_name, &bytes, &pdf_text_hint, kind);
-        self.import_parsed(connection_id, parsed, None)
+        self.import_parsed(connection_id, parsed, Vec::new(), None)
+    }
+
+    /// Pending charges (#629) the captured portal pages no longer list as open and whose
+    /// posted booking was not found: the posted booking may sit in an older billing
+    /// period. Empty while the capture holds no posted bookings (portal not loaded yet).
+    pub fn portal_open_holds(
+        self: Arc<Self>,
+        connection_id: i64,
+        json_bodies: Vec<String>,
+    ) -> Result<Vec<PortalHold>, CoreError> {
+        let (kind, name) = self.portal_connection(connection_id)?;
+        let c = parse_capture(&json_bodies, kind);
+        if c.posted.is_empty() {
+            return Ok(Vec::new());
+        }
+        let Some(account) = self.portal_account(kind, connection_id)? else {
+            return Ok(Vec::new());
+        };
+        // ids the charges still listed as pending have as holds
+        let listed: std::collections::HashSet<String> =
+            to_fetch(connection_id, &name, kind, Vec::new(), c.pending, Some(0))
+                .transactions
+                .into_iter()
+                .map(|t| t.external_id)
+                .collect();
+        let db = self.db()?;
+        let mut q = db.prepare(&format!(
+            "SELECT t.id, t.external_id, t.booking_date, t.amount_cents, t.counterparty FROM transactions t
+              WHERE t.account_id = ?1 AND t.deleted_ms IS NULL AND {}
+              ORDER BY t.booking_date, t.id",
+            hold_sql(kind == ConnectorKind::AmericanExpress)
+        ))?;
+        let rows = q.query_map([account], |r| {
+            Ok((
+                r.get::<_, String>(1)?,
+                PortalHold {
+                    id: r.get(0)?,
+                    booking_date: r.get(2)?,
+                    amount_cents: r.get(3)?,
+                    counterparty: r.get(4)?,
+                },
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (ext, hold) = row?;
+            let key = if ext.starts_with(HOLD_PREFIX) {
+                ext
+            } else {
+                format!("{HOLD_PREFIX}{ext}")
+            };
+            if !listed.contains(&key) {
+                out.push(hold);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Deletes pending charges the user gave up on (`portal_open_holds`); only holds of
+    /// this connection's card. The deletion syncs. Returns the number deleted.
+    pub fn discard_portal_holds(
+        self: Arc<Self>,
+        connection_id: i64,
+        ids: Vec<i64>,
+    ) -> Result<u32, CoreError> {
+        let (kind, _) = self.portal_connection(connection_id)?;
+        let Some(account) = self.portal_account(kind, connection_id)? else {
+            return Ok(0);
+        };
+        let db = self.db()?;
+        let tx = db.unchecked_transaction()?;
+        let sql = format!(
+            "SELECT 1 FROM transactions t WHERE t.id = ?1 AND t.account_id = ?2 AND t.deleted_ms IS NULL AND {}",
+            hold_sql(kind == ConnectorKind::AmericanExpress)
+        );
+        let mut n = 0u32;
+        for id in ids {
+            if tx
+                .query_row(&sql, params![id, account], |_| Ok(()))
+                .optional()?
+                .is_some()
+            {
+                crate::sync_merge::soft_delete_booking(&tx, id)?;
+                n += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(n)
     }
 }
 
@@ -1225,12 +1577,12 @@ mod tests {
             (-2350, "REWE BERLIN", Some("R1"))
         );
         assert_eq!(bal, Some(-123456));
+        // #629: pending charges are never regular bookings, not even without posted ones
         let only_pending = r#"{"pending_transactions":[{"charge_date":"2025-04-05","amount":9.9,"description":"X","identifier":"P1"}]}"#;
-        assert_eq!(
+        assert!(
             parse_json_bodies(&[only_pending.to_string()], ConnectorKind::AmericanExpress)
                 .0
-                .len(),
-            1
+                .is_empty()
         );
     }
 
@@ -1352,5 +1704,348 @@ mod privacy_tests {
             d.contains("BOOKED"),
             "letters-only status stays readable: {d}"
         );
+    }
+}
+
+/// #629: pending card charges of the web portal become holds that are settled by
+/// their posted booking or discarded by the user, never dropped silently. Invented data.
+#[cfg(test)]
+mod hold_tests {
+    use super::*;
+
+    const KIND: ConnectorKind = ConnectorKind::AmericanExpress;
+
+    fn vault() -> (Arc<Vault>, i64, crate::test_support::TempDir) {
+        let dir = crate::test_support::TempDir::new("girocrab-portal-holds");
+        let v = Vault::open(
+            dir.join("v.db").to_string_lossy().to_string(),
+            vec![7u8; 32],
+        )
+        .unwrap();
+        let conn = v
+            .add_bank_connection(KIND, "Karte".into(), "max".into())
+            .unwrap();
+        (v, conn, dir)
+    }
+
+    /// external ids of the live bookings, by date.
+    fn ids(v: &Vault) -> Vec<String> {
+        let db = v.db().unwrap();
+        let mut q = db
+            .prepare(
+                "SELECT external_id FROM transactions WHERE deleted_ms IS NULL
+                  ORDER BY booking_date, external_id",
+            )
+            .unwrap();
+        q.query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    fn posted(id: &str, date: &str, amount: &str, text: &str) -> String {
+        format!(
+            r#"{{"post_date":"{date}","billing_amount":"{amount}","description":"{text}","reference_number":"{id}"}}"#
+        )
+    }
+
+    fn pending(id: &str, date: &str, amount: &str, text: &str) -> String {
+        format!(
+            r#"{{"charge_date":"{date}","amount":"{amount}","description":"{text}","identifier":"{id}"}}"#
+        )
+    }
+
+    fn body(posted: &[String], pending: Option<&[String]>) -> String {
+        let mut b = format!(
+            r#"{{"summary":{{"total_balance":{{"amount":"50,00"}}}},"transactions":[{}]"#,
+            posted.join(",")
+        );
+        if let Some(p) = pending {
+            b.push_str(&format!(r#","pending_transactions":[{}]"#, p.join(",")));
+        }
+        b.push('}');
+        b
+    }
+
+    fn sync(v: &Arc<Vault>, conn: i64, body: &str) -> Result<SyncSummary, CoreError> {
+        v.clone()
+            .import_portal_capture(conn, vec![body.to_string()], "[]".into())
+    }
+
+    fn open_holds(v: &Arc<Vault>, conn: i64, body: &str) -> Vec<String> {
+        v.clone()
+            .portal_open_holds(conn, vec![body.to_string()])
+            .unwrap()
+            .into_iter()
+            .map(|h| format!("{} {}", h.booking_date, h.amount_cents))
+            .collect()
+    }
+
+    fn sql(v: &Vault, sql: &str) {
+        v.db().unwrap().execute_batch(sql).unwrap();
+    }
+
+    #[test]
+    fn capture_separates_pending_and_notes_the_list() {
+        let old = posted("R1", "2026-01-02", "10,00", "SHOP A");
+        let c = parse_capture(&[body(std::slice::from_ref(&old), None)], KIND);
+        assert_eq!(
+            (c.posted.len(), c.pending.len(), c.pending_listed),
+            (1, 0, false)
+        );
+        let c = parse_capture(&[body(std::slice::from_ref(&old), Some(&[]))], KIND);
+        assert!(c.pending_listed, "an empty pending list counts as listed");
+        let p = pending("P1", "2026-01-05", "1,87", "SHOP B");
+        let c = parse_capture(&[body(&[old], Some(&[p]))], KIND);
+        assert_eq!((c.posted.len(), c.pending.len()), (1, 1));
+        assert_eq!(c.pending[0].id.as_deref(), Some("P1"));
+    }
+
+    #[test]
+    fn pending_charge_is_a_hold_until_its_posted_booking_arrives() {
+        let (v, conn, _dir) = vault();
+        let old = posted("R1", "2026-01-02", "10,00", "SHOP A");
+        let p = pending("P1", "2026-01-05", "1,87", "SHOP B");
+        let day1 = body(std::slice::from_ref(&old), Some(&[p]));
+        sync(&v, conn, &day1).unwrap();
+        assert_eq!(ids(&v), ["id:R1", &format!("{HOLD_PREFIX}id:P1")]);
+        assert!(
+            open_holds(&v, conn, &day1).is_empty(),
+            "still listed as pending"
+        );
+        sql(
+            &v,
+            "UPDATE transactions SET note = 'Notiz', checked = 1 WHERE external_id LIKE 'pending-%';
+             -- older than the generic 14-day expiry of pending rows: must not matter
+             UPDATE transactions SET imported_unix = imported_unix - 30 * 86400;",
+        );
+        // neither listed nor posted (the posting is in another billing period)
+        let day3 = body(std::slice::from_ref(&old), Some(&[]));
+        sync(&v, conn, &day3).unwrap();
+        assert_eq!(ids(&v).len(), 2, "never dropped silently");
+        assert_eq!(open_holds(&v, conn, &day3), ["2026-01-05 -187"]);
+        // the older period holds the posting: a day before the charge, longer text
+        let older = body(
+            &[old, posted("AT9", "2026-01-04", "1,87", "SHOP B   CITY")],
+            Some(&[]),
+        );
+        sync(&v, conn, &older).unwrap();
+        assert_eq!(ids(&v), ["id:R1", "id:AT9"]);
+        assert!(open_holds(&v, conn, &older).is_empty());
+        let (note, checked): (String, bool) = v
+            .db()
+            .unwrap()
+            .query_row(
+                "SELECT note, checked FROM transactions WHERE external_id = 'id:AT9'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((note.as_str(), checked), ("Notiz", true));
+    }
+
+    #[test]
+    fn an_older_posting_with_the_same_amount_does_not_settle_a_hold() {
+        let (v, conn, _dir) = vault();
+        // posted before the charge was even pending: a different purchase
+        let same = posted("AT1", "2026-01-05", "1,87", "SHOP B");
+        sync(&v, conn, &body(std::slice::from_ref(&same), Some(&[]))).unwrap();
+        let p = pending("P1", "2026-01-05", "1,87", "SHOP B");
+        sync(&v, conn, &body(&[same], Some(&[p]))).unwrap();
+        assert_eq!(ids(&v).len(), 2);
+    }
+
+    #[test]
+    fn a_reduced_pre_authorisation_settles_by_merchant() {
+        let (v, conn, _dir) = vault();
+        let old = posted("R1", "2026-01-02", "10,00", "SHOP A");
+        let p = pending("P1", "2026-01-05", "100,00", "ARAL STATION 12");
+        sync(&v, conn, &body(std::slice::from_ref(&old), Some(&[p]))).unwrap();
+        let b = body(
+            &[
+                old,
+                posted("AT9", "2026-01-06", "72,54", "ARAL PAYBACK   CITY"),
+            ],
+            Some(&[]),
+        );
+        sync(&v, conn, &b).unwrap();
+        assert_eq!(ids(&v), ["id:R1", "id:AT9"]);
+        assert!(open_holds(&v, conn, &b).is_empty());
+    }
+
+    #[test]
+    fn two_fitting_merchant_postings_settle_nothing() {
+        let (v, conn, _dir) = vault();
+        let old = posted("R1", "2026-01-02", "10,00", "SHOP A");
+        let p = pending("P1", "2026-01-05", "100,00", "ARAL STATION 12");
+        sync(&v, conn, &body(std::slice::from_ref(&old), Some(&[p]))).unwrap();
+        let b = body(
+            &[
+                old,
+                posted("AT8", "2026-01-05", "40,00", "ARAL STATION 12"),
+                posted("AT9", "2026-01-06", "72,54", "ARAL STATION 12"),
+            ],
+            Some(&[]),
+        );
+        sync(&v, conn, &b).unwrap();
+        assert_eq!(
+            open_holds(&v, conn, &b),
+            ["2026-01-05 -10000"],
+            "ambiguous: ask the user"
+        );
+    }
+
+    #[test]
+    fn merchant_keys() {
+        assert_eq!(
+            merchant_key("ARAL PAYBACK PAY  BOCHUM").as_deref(),
+            Some("aral")
+        );
+        assert_eq!(merchant_key("LIDL 2038").as_deref(), Some("lidl"));
+        assert_eq!(merchant_key("DM-DROGERIE").as_deref(), Some("dmdrogerie"));
+        assert_eq!(merchant_key("H&M").as_deref(), None);
+        assert_eq!(merchant_key("").as_deref(), None);
+    }
+
+    #[test]
+    fn discarding_removes_only_holds() {
+        let (v, conn, _dir) = vault();
+        let old = posted("R1", "2026-01-02", "10,00", "SHOP A");
+        let p = pending("P1", "2026-01-05", "1,87", "SHOP B");
+        sync(&v, conn, &body(std::slice::from_ref(&old), Some(&[p]))).unwrap();
+        let gone = body(&[old], Some(&[]));
+        let all: Vec<i64> = v
+            .db()
+            .unwrap()
+            .prepare("SELECT id FROM transactions")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(v.clone().discard_portal_holds(conn, all).unwrap(), 1);
+        assert_eq!(ids(&v), ["id:R1"]);
+        assert!(open_holds(&v, conn, &gone).is_empty());
+        // deleted holds stay deleted, the posted booking still arrives later
+        sync(&v, conn, &gone).unwrap();
+        assert_eq!(ids(&v), ["id:R1"]);
+    }
+
+    #[test]
+    fn open_holds_wait_for_posted_bookings() {
+        let (v, conn, _dir) = vault();
+        let p = pending("P1", "2026-01-05", "1,87", "SHOP B");
+        sync(
+            &v,
+            conn,
+            &body(&[posted("R1", "2026-01-02", "10,00", "SHOP A")], Some(&[p])),
+        )
+        .unwrap();
+        // login page / summary only: nothing posted captured yet, no verdict
+        assert!(open_holds(&v, conn, &body(&[], Some(&[]))).is_empty());
+    }
+
+    #[test]
+    fn holds_need_a_reported_balance() {
+        let (v, conn, _dir) = vault();
+        let p = pending("P1", "2026-01-05", "1,87", "SHOP B");
+        let no_balance = format!(r#"{{"pending_transactions":[{p}]}}"#);
+        assert_eq!(
+            v.clone()
+                .preview_portal_capture(conn, vec![no_balance.clone()], "[]".into())
+                .unwrap(),
+            0
+        );
+        assert!(sync(&v, conn, &no_balance).is_err(), "nothing to store");
+        assert!(ids(&v).is_empty());
+    }
+
+    #[test]
+    fn hold_never_adopts_an_imported_row() {
+        let (v, conn, _dir) = vault();
+        let old = posted("R1", "2026-01-02", "10,00", "SHOP A");
+        sync(&v, conn, &body(std::slice::from_ref(&old), Some(&[]))).unwrap();
+        sql(
+            &v,
+            "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents,
+                    currency, counterparty, counterparty_iban, purpose, booking_text)
+             SELECT id, 'mm-0123456789abcdef', '2026-01-05', '2026-01-05', -187, 'EUR', 'SHOP B', '', '', ''
+               FROM accounts",
+        );
+        let p = pending("P1", "2026-01-05", "1,87", "SHOP B");
+        let b = body(&[old], Some(&[p]));
+        sync(&v, conn, &b).unwrap();
+        sync(&v, conn, &b).unwrap();
+        let ids = ids(&v);
+        assert!(
+            ids.contains(&"mm-0123456789abcdef".to_string())
+                && ids.contains(&format!("{HOLD_PREFIX}id:P1")),
+            "imported row and hold side by side: {ids:?}"
+        );
+    }
+
+    #[test]
+    fn pre_629_copies_are_settled_like_holds() {
+        let (v, conn, _dir) = vault();
+        let old = posted("R1", "2026-01-02", "10,00", "SHOP A");
+        sync(&v, conn, &body(std::slice::from_ref(&old), Some(&[]))).unwrap();
+        // what versions before #629 stored for a pending-only capture
+        sql(
+            &v,
+            "INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents,
+                    currency, counterparty, counterparty_iban, purpose, booking_text, note, checked)
+             SELECT id, 'id:P1', '2026-01-05', '2026-01-05', -187, 'EUR', 'SHOP', '', '', 'Kartenumsatz', 'Notiz', 1
+               FROM accounts;
+             INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents,
+                    currency, counterparty, counterparty_iban, purpose, booking_text)
+             SELECT id, 'id:P2', '2026-01-06', '2026-01-06', -999, 'EUR', 'SHOP', '', '', 'Kartenumsatz'
+               FROM accounts;
+             INSERT INTO transactions(account_id, external_id, booking_date, value_date, amount_cents,
+                    currency, counterparty, counterparty_iban, purpose, booking_text)
+             SELECT id, 'id:P3', '2026-01-07', '2026-01-07', -500, 'EUR', 'SHOP', '', '', 'Kartenumsatz'
+               FROM accounts;",
+        );
+        // P1 posts under a new id; P2 is gone without a posting; P3 is still pending
+        let b = body(
+            &[old, posted("AT9", "2026-01-07", "1,87", "SHOP   CITY")],
+            Some(&[pending("P3", "2026-01-07", "5,00", "SHOP")]),
+        );
+        sync(&v, conn, &b).unwrap();
+        assert_eq!(
+            ids(&v),
+            [
+                "id:R1",
+                &format!("{HOLD_PREFIX}id:P2"),
+                "id:AT9",
+                &format!("{HOLD_PREFIX}id:P3")
+            ],
+            "P1 settled, P3 merged into its hold"
+        );
+        assert_eq!(open_holds(&v, conn, &b), ["2026-01-06 -999"]);
+        // the open copy P2 became a hold (shown as pending); the old row is a tombstone
+        let db = v.db().unwrap();
+        let (text, old_deleted): (String, bool) = db
+            .query_row(
+                "SELECT h.booking_text, o.deleted_ms IS NOT NULL FROM transactions h, transactions o
+                  WHERE h.external_id = 'pending-hold-portal-id:P2' AND o.external_id = 'id:P2'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (text.as_str(), old_deleted),
+            ("Kartenumsatz (vorgemerkt)", true)
+        );
+        drop(db);
+        let note: String = v
+            .db()
+            .unwrap()
+            .query_row(
+                "SELECT note FROM transactions WHERE external_id = 'id:AT9'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(note, "Notiz");
     }
 }

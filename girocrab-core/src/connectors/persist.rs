@@ -485,17 +485,20 @@ pub(crate) fn store_fetch(
                     continue;
                 }
                 // Already imported from MoneyMoney? Adopt that row (keeps category + note).
-                if crate::importers::moneymoney_import::adopt_import(
-                    &tx,
-                    *acc_id,
-                    &t.external_id,
-                    &t.booking_date,
-                    t.amount_cents,
-                    &t.counterparty_iban,
-                    &t.counterparty,
-                    &t.purpose,
-                    &t.booking_text,
-                )? {
+                // Never for a hold: it is dropped once posted and would take the row with it.
+                if !t.external_id.starts_with("pending-")
+                    && crate::importers::moneymoney_import::adopt_import(
+                        &tx,
+                        *acc_id,
+                        &t.external_id,
+                        &t.booking_date,
+                        t.amount_cents,
+                        &t.counterparty_iban,
+                        &t.counterparty,
+                        &t.purpose,
+                        &t.booking_text,
+                    )?
+                {
                     continue;
                 }
                 let n = ins.execute(params![
@@ -525,16 +528,19 @@ pub(crate) fn store_fetch(
                 imported += n;
                 if n == 0 {
                     // Old duplicate: bank row exists although an MoneyMoney twin does too.
-                    if crate::importers::moneymoney_import::merge_synced_twin(
-                        &tx,
-                        *acc_id,
-                        &t.external_id,
-                        &t.booking_date,
-                        t.amount_cents,
-                        &t.counterparty_iban,
-                        &t.counterparty,
-                        &t.purpose,
-                    )? {
+                    // (Not for holds, see above.)
+                    if !t.external_id.starts_with("pending-")
+                        && crate::importers::moneymoney_import::merge_synced_twin(
+                            &tx,
+                            *acc_id,
+                            &t.external_id,
+                            &t.booking_date,
+                            t.amount_cents,
+                            &t.counterparty_iban,
+                            &t.counterparty,
+                            &t.purpose,
+                        )?
+                    {
                         continue;
                     }
                     // Existing row: heal corrupted text (U+FFFD / mojibake) with freshly decoded text.
@@ -623,7 +629,9 @@ pub(crate) fn store_fetch(
         // (same account, amount and recipient IBAN; a batch: amount only) or after 14 days.
         tx.execute(
             "UPDATE transactions SET deleted_ms = ?1
-              WHERE external_id LIKE 'pending-%' AND deleted_ms IS NULL AND (
+              WHERE external_id LIKE 'pending-%' AND deleted_ms IS NULL
+                -- web-portal holds (#629) are settled or discarded explicitly
+                AND external_id NOT LIKE 'pending-hold-portal-%' AND (
                 imported_unix < strftime('%s','now') - 14*86400 OR EXISTS (
                     SELECT 1 FROM transactions r WHERE r.account_id = transactions.account_id
                       AND r.deleted_ms IS NULL

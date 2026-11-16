@@ -52,6 +52,23 @@ extension AppModel {
         return Int((try? await vaultOffMain { try $0.previewPortalCapture(connectionId: id, jsonBodies: bodies, domRowsJson: domRowsJSON) }) ?? 0)
     }
 
+    /// Pending charges the portal no longer lists as open whose posting was not found yet (#629).
+    func portalOpenHolds(_ c: BankConnection, bodies: [String]) async -> [PortalHold] {
+        let id = c.id
+        return (try? await vaultOffMain { try $0.portalOpenHolds(connectionId: id, jsonBodies: bodies) }) ?? []
+    }
+
+    /// Deletes pending charges the user gave up on (after the warning in the portal sheet).
+    func discardPortalHolds(_ c: BankConnection, ids: [Int64]) async {
+        let id = c.id
+        do {
+            _ = try await requireVaultOffMain { try $0.discardPortalHolds(connectionId: id, ids: ids) }
+            reloadAll()
+        } catch {
+            showError(String(localized: "Vormerkungen konnten nicht verworfen werden"), describe(error))
+        }
+    }
+
     func importStatement(_ c: BankConnection, url: URL) {
         guard let vault else { return }
         let ok = url.startAccessingSecurityScopedResource()
@@ -88,6 +105,9 @@ extension ConnectorKind {
         default: return nil
         }
     }
+    /// The portal shows one billing period at a time; older ones are picked in the portal
+    /// itself while the sheet stays open (#629).
+    var portalHasBillingPeriods: Bool { self == .americanExpress }
     /// Page with the booking list, opened once right after sign-in when the portal
     /// lands elsewhere (Open Bank starts on its overview, which loads no bookings).
     var portalTransactionsURL: URL? {
@@ -425,6 +445,15 @@ struct PortalWebSheet: View {
     @State private var importedCount = 0
     /// The portal offers older history ("Umsätze anzeigen" + SMS code).
     @State private var olderOffered = false
+    /// The user browses older billing periods (#629): no automatic import, the blue button
+    /// imports everything recognised and closes. Bookings are only stored on closing.
+    @State private var browsingHistory = false
+    /// Pending charges no longer open whose posting is not among the captured pages (#629).
+    @State private var openHolds: [PortalHold] = []
+    @State private var confirmDiscard = false
+    /// Stored pending charges the portal no longer lists, found before importing: they are
+    /// matched on the blue button, so the automatic import (which closes) stays off.
+    @State private var holdsToCheck = 0
     /// The booking list was opened after sign-in (only once, so the user may browse freely).
     @State private var openedTransactions = false
     /// Labels logged once at the end of the list (to adapt to portal changes).
@@ -443,6 +472,18 @@ struct PortalWebSheet: View {
             return String(localized: "Unsichere Seite blockiert (\(blocked)) – nur HTTPS-Seiten werden geöffnet.")
         }
         if browser.onLoginPage { return String(localized: "Melden Sie sich wie gewohnt an (Benutzername, Passwort, 2FA) und öffnen Sie die Umsatzübersicht.") }
+        if !openHolds.isEmpty && importedCount > 0 {
+            return String(localized: "\(importedCount) Umsätze übernommen. \(openHolds.count) vorgemerkte Umsätze sind nicht mehr offen, ihre Buchung wurde aber noch nicht gefunden. Öffnen Sie im Portal den vorherigen Abrechnungszeitraum.")
+        }
+        if !openHolds.isEmpty {
+            return String(localized: "\(openHolds.count) vorgemerkte Umsätze sind nicht mehr offen, ihre Buchung wurde aber noch nicht gefunden. Öffnen Sie im Portal den vorherigen Abrechnungszeitraum.")
+        }
+        if holdsToCheck > 0 {
+            return String(localized: "\(holdsToCheck) vorgemerkte Umsätze sind nicht mehr offen. „Umsätze übernehmen“ gleicht sie mit den Buchungen ab – liegt eine Buchung in einem früheren Abrechnungszeitraum, öffnen Sie diesen vorher im Portal.")
+        }
+        if browsingHistory {
+            return String(localized: "Öffnen Sie im Portal frühere Abrechnungszeiträume. „Umsätze übernehmen“ übernimmt alle erkannten Umsätze und schließt das Fenster.")
+        }
         if importedCount > 0 && olderOffered {
             return String(localized: "\(importedCount) Umsätze übernommen. Für ältere Umsätze im Portal „Umsätze anzeigen“ wählen und den SMS-Code bestätigen – die Übernahme läuft danach automatisch weiter.")
         }
@@ -471,8 +512,14 @@ struct PortalWebSheet: View {
                 .macFrame(minWidth: 760, minHeight: 520)
             Divider()
             HStack {
-                Button(importedCount > 0 ? "Fertig" : "Abbrechen", role: .cancel) { close() }
+                Button(importedCount > 0 ? "Fertig" : "Abbrechen", role: .cancel) { requestClose() }
                     .keyboardShortcut(.cancelAction)
+                if connection.connector.portalHasBillingPeriods && !browsingHistory {
+                    Button { browsingHistory = true } label: {
+                        Label("Ältere Abrechnungen laden", systemImage: "clock.arrow.circlepath")
+                    }
+                    .help("Lässt dieses Fenster offen, damit Sie im Portal frühere Abrechnungszeiträume öffnen können.")
+                }
                 Button { importing = true } label: { Label("CSV- oder PDF-Kontoauszug importieren …", systemImage: "doc.badge.plus") }
                 // Developer tool, hidden from everyday use (--developer). Also offered on
                 // the login page: the dump records `on_login_page` itself.
@@ -481,7 +528,7 @@ struct PortalWebSheet: View {
                         .help("Speichert nur Feldnamen und Typen (keine Werte) nach /tmp/girocrab-portal-schema.json")
                 }
                 Spacer()
-                Button("Umsätze übernehmen (\(recognized) erkannt)") { Task { await attempt() } }
+                Button("Umsätze übernehmen (\(recognized) erkannt)") { Task { await attempt(fromButton: true) } }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .disabled(busy || recognized == 0)
@@ -495,8 +542,13 @@ struct PortalWebSheet: View {
             }
         }
         .task {
+            // Billing-period portals: the first sync of a connection offers the older periods.
+            if connection.connector.portalHasBillingPeriods && !UserDefaults.standard.bool(forKey: historyOfferedKey) {
+                browsingHistory = true
+            }
             // Count recognised bookings live; auto-import only when >= 1 booking is
             // recognised, the user is past login/2FA and the count has been stable for 4 s.
+            // Never while browsing older periods: the automatic import closes the sheet.
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 guard !busy else { continue }
@@ -522,29 +574,75 @@ struct PortalWebSheet: View {
                         AppModel.debugLog("portal pager: older=\(pager.older) buttons=\(pager.labels.joined(separator: " | "))")
                     }
                 }
-                if n > importedCount, !away, !pager.more, Date().timeIntervalSince(lastChange) > 4 {
+                if !browsingHistory, n > importedCount, !away, !pager.more, Date().timeIntervalSince(lastChange) > 4 {
+                    // The automatic import closes the sheet, so it never runs while stored pending
+                    // charges are no longer listed: they are matched (or discarded) via the button.
+                    let unlisted = await model.portalOpenHolds(connection, bodies: browser.bodies)
+                    if !unlisted.isEmpty {
+                        holdsToCheck = unlisted.count
+                        browsingHistory = true
+                        continue
+                    }
                     // First sync with older history on offer: store what is there, but keep
                     // the sheet open so the user can unlock the rest (SMS code).
-                    let keepOpen = pager.older && importedCount == 0
-                        && !UserDefaults.standard.bool(forKey: historyOfferedKey)
+                    let firstSync = importedCount == 0 && !UserDefaults.standard.bool(forKey: historyOfferedKey)
+                    let keepOpen = pager.older && firstSync
                     if await attempt(closing: !keepOpen) {
-                        if !keepOpen { return }
+                        if !keepOpen && openHolds.isEmpty { return }
                         importedCount = n
                     }
                 }
             }
         }
+        .interactiveDismissDisabled(!openHolds.isEmpty)
+        .alert("Vorgemerkte Umsätze nicht gefunden", isPresented: $confirmDiscard) {
+            Button("Weiter suchen", role: .cancel) {}
+            Button("Verwerfen und schließen", role: .destructive) {
+                Task {
+                    await model.discardPortalHolds(connection, ids: openHolds.map(\.id))
+                    close()
+                }
+            }
+        } message: {
+            Text(discardMessage)
+        }
         .onDisappear { browser.teardown() }
     }
 
+    /// Imports what is recognised and closes. Unresolved pending charges (#629) keep the
+    /// sheet open in history mode: from the button with the discard warning right away,
+    /// from the automatic import with the hint only.
     @discardableResult
-    private func attempt(closing: Bool = true) async -> Bool {
+    private func attempt(closing: Bool = true, fromButton: Bool = false) async -> Bool {
         busy = true
         defer { busy = false }
         let rows = await browser.domRowsJSON()
         let ok = model.importPortalCapture(connection, bodies: browser.bodies, domRowsJSON: rows)
-        if ok, closing { close() }
-        return ok
+        guard ok else { return false }
+        importedCount = max(importedCount, recognized)
+        holdsToCheck = 0
+        openHolds = await model.portalOpenHolds(connection, bodies: browser.bodies)
+        if !openHolds.isEmpty {
+            // its posting may be in an older billing period
+            browsingHistory = true
+            if fromButton { confirmDiscard = true }
+            return true
+        }
+        if closing { close() }
+        return true
+    }
+
+    /// Closing with unresolved pending charges asks first: they would be discarded.
+    private func requestClose() {
+        if openHolds.isEmpty { close() } else { confirmDiscard = true }
+    }
+
+    /// Alert text (alerts are never part of a bug report picture).
+    private var discardMessage: String {
+        let lines = openHolds.map { h in
+            "\(DateText.medium(h.bookingDate)) · \(h.counterparty) · \(Money.format(h.amountCents))"
+        }
+        return String(localized: "Zu diesen Vormerkungen wurde weder ein offener noch ein gebuchter Umsatz gefunden. Sie werden verworfen:") + "\n\n" + lines.joined(separator: "\n")
     }
 
     /// Keys-only structure dump (all strings/numbers masked) for debugging portal changes.

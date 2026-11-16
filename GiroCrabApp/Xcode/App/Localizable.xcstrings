@@ -985,6 +985,17 @@
         }
       }
     },
+    "%lld Umsätze übernommen. %lld vorgemerkte Umsätze sind nicht mehr offen, ihre Buchung wurde aber noch nicht gefunden. Öffnen Sie im Portal den vorherigen Abrechnungszeitraum." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld transactions imported. %2$lld pending transactions are no longer open, but their posted transaction was not found yet. Open the previous billing period in the portal."
+          }
+        }
+      }
+    },
     "%lld Umsätze übernommen. Für ältere Umsätze im Portal „Umsätze anzeigen“ wählen und den SMS-Code bestätigen – die Übernahme läuft danach automatisch weiter." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1234,6 +1245,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld of %lld selected"
+          }
+        }
+      }
+    },
+    "%lld vorgemerkte Umsätze sind nicht mehr offen, ihre Buchung wurde aber noch nicht gefunden. Öffnen Sie im Portal den vorherigen Abrechnungszeitraum." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld pending transactions are no longer open, but their posted transaction was not found yet. Open the previous billing period in the portal."
+          }
+        }
+      }
+    },
+    "%lld vorgemerkte Umsätze sind nicht mehr offen. „Umsätze übernehmen“ gleicht sie mit den Buchungen ab – liegt eine Buchung in einem früheren Abrechnungszeitraum, öffnen Sie diesen vorher im Portal." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld pending transactions are no longer open. “Import Transactions” matches them with the posted transactions – if a posting is in an earlier billing period, open it in the portal first."
           }
         }
       }
@@ -16929,6 +16962,17 @@
         }
       }
     },
+    "Lässt dieses Fenster offen, damit Sie im Portal frühere Abrechnungszeiträume öffnen können." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keeps this window open so you can open earlier billing periods in the portal."
+          }
+        }
+      }
+    },
     "Löschen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24931,6 +24975,17 @@
         }
       }
     },
+    "Verwerfen und schließen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discard and close"
+          }
+        }
+      }
+    },
     "Viele Banken begrenzen Echtzeitüberweisungen (oft auf 100.000 € oder ein eigenes Limit). Die Bank kann den Auftrag dann ablehnen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25129,6 +25184,17 @@
         }
       }
     },
+    "Vorgemerkte Umsätze nicht gefunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending transactions not found"
+          }
+        }
+      }
+    },
     "Vorgewählt, weil die Datei zu diesem Konto passt. Bereits vorhandene Buchungen werden nicht doppelt übernommen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25257,6 +25323,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Templates"
+          }
+        }
+      }
+    },
+    "Vormerkungen konnten nicht verworfen werden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending transactions could not be discarded"
           }
         }
       }
@@ -25510,6 +25587,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Continue"
+          }
+        }
+      }
+    },
+    "Weiter suchen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep searching"
           }
         }
       }
@@ -26412,6 +26500,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Walking"
+          }
+        }
+      }
+    },
+    "Zu diesen Vormerkungen wurde weder ein offener noch ein gebuchter Umsatz gefunden. Sie werden verworfen:" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neither an open nor a posted transaction was found for these pending transactions. They will be discarded:"
           }
         }
       }
@@ -27561,6 +27660,17 @@
         }
       }
     },
+    "Ältere Abrechnungen laden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load older statements"
+          }
+        }
+      }
+    },
     "Ältere Buchungen (nicht gezählt)" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27623,6 +27733,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Review Change"
+          }
+        }
+      }
+    },
+    "Öffnen Sie im Portal frühere Abrechnungszeiträume. „Umsätze übernehmen“ übernimmt alle erkannten Umsätze und schließt das Fenster." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open earlier billing periods in the portal. “Import Transactions” imports all recognised transactions and closes the window."
           }
         }
       }
