@@ -13553,6 +13553,17 @@
         }
       }
     },
+    "Kategorie in der Buchungszeile anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show category in transaction row"
+          }
+        }
+      }
+    },
     "Kategorie löschen …" : {
       "extractionState" : "manual",
       "localizations" : {

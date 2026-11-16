@@ -798,11 +798,16 @@ private extension View {
     /// (HIG: no large empty panes); iOS: the sheet decides.
     @ViewBuilder
     func settingsPane(height: CGFloat) -> some View {
+        // Own row under the pane: a grouped Form scrolls beneath a safe-area inset.
+        let pane = VStack(spacing: 0) {
+            self
+            AppVersionFooter()
+        }
         #if os(macOS)
         // wider with larger text (#343); the panes scroll, so the height stays
-        modifier(SettingsPaneFrame(height: height))
+        return pane.modifier(SettingsPaneFrame(height: height))
         #else
-        self
+        return pane
         #endif
     }
 }

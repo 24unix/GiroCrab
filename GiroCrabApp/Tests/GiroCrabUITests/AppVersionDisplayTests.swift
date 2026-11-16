@@ -16,3 +16,22 @@ final class AppVersionDisplayTests: XCTestCase {
         XCTAssertEqual(AppVersionDisplay.text(core: "0.6.2", bundleVersion: nil, build: nil), "0.6.2")
     }
 }
+
+final class AppVersionTests: XCTestCase {
+    func testBundleVersionWithBuild() {
+        XCTAssertEqual(AppVersion.text(bundleVersion: "0.7.5", build: "18", core: "0.7.5"), "GiroCrab 0.7.5 (18)")
+    }
+
+    func testBuildEqualToVersionIsNotRepeated() {
+        XCTAssertEqual(AppVersion.text(bundleVersion: "0.7.5", build: "0.7.5", core: "0.7.5"), "GiroCrab 0.7.5")
+    }
+
+    func testSwiftRunFallsBackToCargoVersion() {
+        XCTAssertEqual(AppVersion.text(bundleVersion: nil, build: nil, core: "0.7.5"), "GiroCrab 0.7.5 (dev)")
+        XCTAssertEqual(AppVersion.text(bundleVersion: " ", build: "1", core: "0.7.5"), "GiroCrab 0.7.5 (dev)")
+    }
+
+    func testDevFallbackUsesWorkspaceVersion() {
+        XCTAssertTrue(AppVersion.displayString.hasPrefix("GiroCrab "))
+    }
+}
