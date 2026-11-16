@@ -447,6 +447,8 @@ public final class AppModel {
     @ObservationIgnored var autoSyncTask: Task<Void, Never>?
     /// The running sync was started by the schedule: no login prompts, no error dialogs.
     var quietSyncConnectionID: Int64?
+    /// What the last scheduled fetch did, for the menu bar popover (GitHub #546).
+    var autoSyncStatus = AutoSyncStatus()
     var pollTask: Task<Void, Never>?
     var searchTask: Task<Void, Never>?
     var scopeLoadTask: Task<Void, Never>?
@@ -1187,6 +1189,8 @@ public final class AppModel {
         webLoginConnection = nil
         syncingConnectionID = nil
         quietSyncConnectionID = nil
+        // the failure text may name a bank: gone with the vault
+        autoSyncStatus = AutoSyncStatus()
         statementsAccountID = nil
         syncGeneration &+= 1
         resetSyncBatch()

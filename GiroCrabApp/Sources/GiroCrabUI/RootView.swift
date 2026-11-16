@@ -51,6 +51,7 @@ public struct GiroCrabScenes: Scene {
                 .modifier(AutoLockOnBackground(model: model))
                 #if os(macOS)
                 .appTextSize(textSize.effective)
+                .modifier(MenuBarBridge(model: model))
                 // Keep the minimum independent of the split columns' ideal heights.
                 .frame(minHeight: 480, maxHeight: .infinity)
                 #endif

@@ -2272,6 +2272,17 @@
         }
       }
     },
+    "Abruf" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetch"
+          }
+        }
+      }
+    },
     "Abruf fehlgeschlagen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2448,6 +2459,17 @@
         }
       }
     },
+    "Aktualisieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh"
+          }
+        }
+      }
+    },
     "Aktualisiert %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2554,6 +2576,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "All %lld accounts match"
+          }
+        }
+      }
+    },
+    "Alle %lld Stunden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every %lld hours"
           }
         }
       }
@@ -2697,6 +2730,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Show all documents, your receipts or bank documents"
+          }
+        }
+      }
+    },
+    "Alle Einstellungen …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All Settings …"
           }
         }
       }
@@ -2939,6 +2983,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Export All…"
+          }
+        }
+      }
+    },
+    "Alle gewählten Konten anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show all chosen accounts"
           }
         }
       }
@@ -4524,6 +4579,17 @@
         }
       }
     },
+    "Automatischer Abruf pausiert, bis der Tresor entsperrt ist." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatic fetch paused until the vault is unlocked."
+          }
+        }
+      }
+    },
     "Automatischer Abruf übersprungen: Die Bank verlangt eine neue Freigabe." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5151,6 +5217,17 @@
         }
       }
     },
+    "Bei „Nur Symbol“ steht der Betrag nur im Popover." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With “Icon only” the amount appears only in the popover."
+          }
+        }
+      }
+    },
     "Beim Entsperren %@ verlangen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5769,6 +5846,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Amount missing"
+          }
+        }
+      }
+    },
+    "Betrag in der Menüleiste" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amount in the menu bar"
+          }
+        }
+      }
+    },
+    "Beträge und Kontonamen sind verdeckt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amounts and account names are hidden."
           }
         }
       }
@@ -7719,6 +7818,28 @@
         }
       }
     },
+    "Der letzte automatische Abruf ist fehlgeschlagen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The last automatic fetch failed."
+          }
+        }
+      }
+    },
+    "Der letzte automatische Abruf ist fehlgeschlagen: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The last automatic fetch failed: %@"
+          }
+        }
+      }
+    },
     "Der ursprüngliche Kreditbetrag ist keine gültige Zahl." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8040,6 +8161,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The accounts appear under their bank login. The first fetch takes them over without creating duplicates."
+          }
+        }
+      }
+    },
+    "Die Konten für die Menüleiste wählst du unter Einstellungen › Allgemein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the accounts for the menu bar under Settings › General."
           }
         }
       }
@@ -8734,6 +8866,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Domain assignment removed"
+          }
+        }
+      }
+    },
+    "Doppelklick öffnet dieses Konto in GiroCrab" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Double-click opens this account in GiroCrab"
           }
         }
       }
@@ -11285,6 +11428,17 @@
         }
       }
     },
+    "Gesamtsumme" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Total"
+          }
+        }
+      }
+    },
     "Geschenk" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11494,6 +11648,17 @@
         }
       }
     },
+    "GiroCrab beenden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit GiroCrab"
+          }
+        }
+      }
+    },
     "GiroCrab darf den Sync-Ordner „%@“ nicht lesen. Wählen Sie ihn mit „Ordner wählen …“ aus oder erlauben Sie den Zugriff in den Systemeinstellungen unter Datenschutz & Sicherheit › Dateien und Ordner (iCloud Drive)." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -11677,6 +11842,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Reset GiroCrab?"
+          }
+        }
+      }
+    },
+    "GiroCrab öffnen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open GiroCrab"
           }
         }
       }
@@ -12981,6 +13157,17 @@
         }
       }
     },
+    "In der Menüleiste" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In the menu bar"
+          }
+        }
+      }
+    },
     "In der bunq-App freigeben" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13307,6 +13494,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Every savings bank and cooperative bank is a bank of its own. Search for it by its name (usually with the town), the bank code or your IBAN."
+          }
+        }
+      }
+    },
+    "Jede Stunde" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every hour"
           }
         }
       }
@@ -14125,6 +14323,17 @@
         }
       }
     },
+    "Keine Konten ausgewählt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No accounts selected"
+          }
+        }
+      }
+    },
     "Keine Konten – Konto lange drücken, um es zuzuordnen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -14616,6 +14825,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Linked or removed accounts in Enable Banking? That only takes effect after “Reconnect”."
+          }
+        }
+      }
+    },
+    "Konten in der Menüleiste anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show accounts in the menu bar"
           }
         }
       }
@@ -16129,6 +16349,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copy Message"
+          }
+        }
+      }
+    },
+    "Menüleiste" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menu bar"
           }
         }
       }
@@ -18037,6 +18268,17 @@
         }
       }
     },
+    "Nur Symbol" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Icon only"
+          }
+        }
+      }
+    },
     "Nur bei Einnahmen sichtbar" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18187,6 +18429,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Next step"
+          }
+        }
+      }
+    },
+    "Nächstes Konto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next account"
           }
         }
       }
@@ -19159,6 +19412,28 @@
         }
       }
     },
+    "Privatmodus" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Private mode"
+          }
+        }
+      }
+    },
+    "Privatmodus aktiv" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Private mode on"
+          }
+        }
+      }
+    },
     "Privatperson" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19905,6 +20180,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Round up"
+          }
+        }
+      }
+    },
+    "Ruft die Kontostände im gewählten Abstand ab, solange GiroCrab läuft und der Tresor entsperrt ist. Bei gesperrtem Tresor wird der Abruf übersprungen und nach dem Entsperren nachgeholt. Es werden nur Zugänge mit gespeicherter PIN oder gültiger Freigabe abgerufen, nie mit einem Anmeldedialog." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetches the balances at the chosen interval while GiroCrab is running and the vault is unlocked. While the vault is locked the fetch is skipped and made up for after unlocking. Only logins with a stored PIN or a valid consent are fetched, never with a login dialog."
           }
         }
       }
@@ -21709,6 +21995,17 @@
         }
       }
     },
+    "Summe der gewählten Konten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Total of the chosen accounts"
+          }
+        }
+      }
+    },
     "Summe im Zeitraum" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21793,6 +22090,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Icon for “%@”"
+          }
+        }
+      }
+    },
+    "Symbol und Betrag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Icon and amount"
           }
         }
       }
@@ -22281,6 +22589,17 @@
         }
       }
     },
+    "Tresor entsperren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unlock vault"
+          }
+        }
+      }
+    },
     "Tresor ersetzen?" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -22288,6 +22607,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Replace Vault?"
+          }
+        }
+      }
+    },
+    "Tresor gesperrt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vault locked"
           }
         }
       }
@@ -23046,6 +23376,17 @@
         }
       }
     },
+    "Verdeckt Beträge und Kontonamen in der Menüleiste und im Popover." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hides amounts and account names in the menu bar and in the popover."
+          }
+        }
+      }
+    },
     "Verfahren" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -23559,6 +23900,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Previous Transaction"
+          }
+        }
+      }
+    },
+    "Vorheriges Konto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Previous account"
           }
         }
       }
@@ -24461,6 +24813,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Debtor"
+          }
+        }
+      }
+    },
+    "Zeigt das GiroCrab-Symbol in der Menüleiste. Ein Klick öffnet ein Popover mit dem Kontostand eines gewählten Kontos oder der Gesamtsumme, ein Rechtsklick ein Menü. Bei gesperrtem Tresor oder im Privatmodus erscheinen weder Beträge noch Kontonamen." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows the GiroCrab icon in the menu bar. A click opens a popover with the balance of a chosen account or the total, a right-click opens a menu. While the vault is locked or in private mode, no amounts or account names appear."
           }
         }
       }

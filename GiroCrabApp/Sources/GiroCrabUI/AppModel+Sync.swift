@@ -506,6 +506,7 @@ extension AppModel {
             syncingConnectionID = nil
             let name = connections.first { $0.id == quietID }?.displayName ?? ""
             toast = String(localized: "\(name): automatischer Abruf fehlgeschlagen – \(describe(error))")
+            autoSyncStatus.failureDetail = describe(error)
             return
         }
         statementsAccountID = nil

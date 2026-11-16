@@ -74,9 +74,14 @@ extension AppModel {
 
     // MARK: scheduled sync
 
-    /// Hours between automatic PSD2 syncs (setting `sync.psd2_auto_hours`, 0 = off).
+    /// Hours between automatic fetches (Einstellungen › Allgemein, `AutoSync.hoursKey`,
+    /// 0 = off). Falls back to the former hidden vault setting `sync.psd2_auto_hours`
+    /// until the picker has been used once.
     var autoSyncHours: Int {
-        Int(settingEntry("sync.psd2_auto_hours")?.value.trimmingCharacters(in: .whitespaces) ?? "") ?? 0
+        if let stored = UserDefaults.standard.object(forKey: AutoSync.hoursKey) as? Int {
+            return AutoSync.hours(stored: stored)
+        }
+        return Int(settingEntry("sync.psd2_auto_hours")?.value.trimmingCharacters(in: .whitespaces) ?? "") ?? 0
     }
 
     func startAutoSync() {
@@ -108,14 +113,26 @@ extension AppModel {
         guard hours > 0 else { return }
         // Sachwerte: missing gold prices (at most one request a day, none without gold items)
         refreshAssetPrices()
-        guard let due = connections.first(where: {
-            $0.connector == .enableBanking && bankingGate(for: $0) == nil
-                && PSD2Consent.autoSyncDue(lastSyncUnix: $0.lastSyncUnix, consentEnd: consentEnd($0), hours: hours, now: now)
+        let defaults = UserDefaults.standard
+        guard let due = connections.first(where: { c in
+            // never a login prompt: PSD2 needs a valid consent, the others a stored PIN or session
+            guard !usesPortal(c), !c.allAccountsArchived, bankingGate(for: c) == nil else { return false }
+            if c.connector == .enableBanking {
+                guard let end = consentEnd(c), end > now else { return false }
+            } else {
+                guard let st = connectionStatus(c.id), st.hasPin || st.hasSession,
+                      missingSettings(for: c).isEmpty else { return false }
+            }
+            let attempt = defaults.double(forKey: AutoSync.attemptKey(c.id))
+            return AutoSync.decide(hours: hours, isUnlocked: vault != nil, lastSyncUnix: c.lastSyncUnix,
+                                   lastAttemptUnix: attempt > 0 ? Int64(attempt) : nil, now: now) == .run
         }) else { return }
         // Quiet as well: a blocked login is simply not synced (the banner explains why).
         withFreshBankingPolicy { [self] in
             guard bankingGate(for: due) == nil, syncingConnectionID == nil else { return }
             quietSyncConnectionID = due.id
+            defaults.set(now.timeIntervalSince1970, forKey: AutoSync.attemptKey(due.id))
+            autoSyncStatus = AutoSyncStatus(lastRun: now, failureDetail: nil)
             startSync(due, secret: "")
         }
     }

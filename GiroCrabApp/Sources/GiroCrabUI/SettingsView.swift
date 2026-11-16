@@ -129,6 +129,10 @@ struct GeneralSettings: View {
             } header: { Text("Buchungen").appSectionHeader() }
             BalanceChartSettingsSection()
             MerchantLogoSettingsSection()
+            #if os(macOS)
+            AutoSyncSettingsSection()
+            MenuBarSettingsSection()
+            #endif
             #if os(iOS)
             Section {
                 Button {
