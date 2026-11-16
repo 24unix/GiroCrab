@@ -130,6 +130,7 @@ struct DocumentsCard: View {
                     Spacer()
                     Button { model.quickLook(d) } label: { Image(systemName: "eye") }
                         .buttonStyle(.borderless).help("QuickLook (Leertaste)")
+                        .accessibilityLabel("QuickLook")
                     Menu {
                         #if os(macOS)
                         Button("Im Finder anzeigen") { model.showInFinder(d) }

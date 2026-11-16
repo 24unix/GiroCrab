@@ -320,6 +320,7 @@ struct IconColorPopover: View {
                     .foregroundStyle(.secondary)
                     .focusEffectDisabled()
                     .help(account != nil ? Text("Standardfarbe") : Text("Keine Farbe"))
+                    .accessibilityLabel(account != nil ? Text("Standardfarbe") : Text("Keine Farbe"))
                 }
                 // any other colour: the system colour well (like the category sheet)
                 ColorPicker("Eigene Farbe", selection: Binding(

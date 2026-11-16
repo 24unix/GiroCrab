@@ -181,6 +181,18 @@ struct FlowChartCard: View {
                 }
             }
             .frame(height: 140)
+            .accessibilityLabel("Konsum vs. Investition")
+            .accessibilityChartDescriptor(BarChartDescriptor(
+                title: String(localized: "Konsum vs. Investition"),
+                summary: String(localized: "Monatliche Ausgaben für Konsum und Investitionen"),
+                categoryTitle: String(localized: "Monat"),
+                categories: dashboard.monthly.map { DateText.monthLabel($0.month) },
+                valueTitle: String(localized: "Betrag"),
+                series: [
+                    .init(name: consumption, values: dashboard.monthly.map { Double($0.consumptionCents) / 100 }),
+                    .init(name: invested, values: dashboard.monthly.map { Double($0.investmentCents) / 100 }),
+                ]
+            ))
         }
         .card()
     }

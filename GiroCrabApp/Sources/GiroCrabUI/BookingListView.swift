@@ -766,6 +766,7 @@ struct BookingRow: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .help(amazonExpanded ? "Artikel einklappen" : "Alle Artikel anzeigen")
+                                .accessibilityLabel(amazonExpanded ? Text("Artikel einklappen") : Text("Alle Artikel anzeigen"))
                             }
                         } else if density == .compact, !density.purpose(for: booking).isEmpty {
                             Text(density.purpose(for: booking))

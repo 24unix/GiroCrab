@@ -104,8 +104,37 @@ struct CategorySumChart: View {
                 }
             }
             .accessibilityLabel("Summen der Kategorie")
+            .accessibilityChartDescriptor(Descriptor(bars: bars, unit: unit, flip: flip))
             .overlay(alignment: .topLeading) { unitMenu }
             .contextMenu { unitPicker }
+        }
+    }
+
+    /// Audio Graph of the drawn bars (flipped heights included). Built only when
+    /// assistive technology asks, not on every hover re-render.
+    struct Descriptor: AXChartDescriptorRepresentable {
+        let bars: [Bar]
+        let unit: Calendar.Component
+        let flip: Bool
+
+        func makeChartDescriptor() -> AXChartDescriptor {
+            let summary = switch (unit, flip) {
+            case (.day, false): String(localized: "Summe je Tag")
+            case (.day, true): String(localized: "Ausgaben je Tag")
+            case (.year, false): String(localized: "Summe je Jahr")
+            case (.year, true): String(localized: "Ausgaben je Jahr")
+            case (_, false): String(localized: "Summe je Monat")
+            case (_, true): String(localized: "Ausgaben je Monat")
+            }
+            let name = flip ? String(localized: "Ausgaben") : String(localized: "Summe")
+            return BarChartDescriptor(
+                title: String(localized: "Summen der Kategorie"),
+                summary: summary,
+                categoryTitle: String(localized: "Zeitraum"),
+                categories: bars.map { $0.start.formatted(CategorySumChart.tooltipFormat(unit)) },
+                valueTitle: name,
+                series: [.init(name: name, values: bars.map { Double(flip ? -$0.cents : $0.cents) / 100 })]
+            ).makeChartDescriptor()
         }
     }
 

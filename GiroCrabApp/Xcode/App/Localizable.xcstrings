@@ -522,6 +522,28 @@
         }
       }
     },
+    "%lld %% des Budgets verbraucht" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld %% of the budget used"
+          }
+        }
+      }
+    },
+    "%lld %% des Budgets verbraucht, überschritten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld %% of the budget used, exceeded"
+          }
+        }
+      }
+    },
     "%lld Belege an „%@“ angehängt" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4379,6 +4401,39 @@
         }
       }
     },
+    "Ausgaben je Jahr" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expenses per year"
+          }
+        }
+      }
+    },
+    "Ausgaben je Monat" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expenses per month"
+          }
+        }
+      }
+    },
+    "Ausgaben je Tag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expenses per day"
+          }
+        }
+      }
+    },
     "Ausgeblendet" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6576,6 +6631,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Show Budgets"
+          }
+        }
+      }
+    },
+    "Budgetverbrauch" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budget used"
           }
         }
       }
@@ -9739,6 +9805,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Income and Expenses"
+          }
+        }
+      }
+    },
+    "Einnahmen und Ausgaben je Zeitraum" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Income and expenses per period"
           }
         }
       }
@@ -16995,6 +17072,17 @@
         }
       }
     },
+    "Monatliche Ausgaben für Konsum und Investitionen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monthly spending on consumption and investments"
+          }
+        }
+      }
+    },
     "Monatliche Sparpläne" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -19489,6 +19577,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Repeat password"
+          }
+        }
+      }
+    },
+    "Pausiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paused"
           }
         }
       }
@@ -22461,6 +22560,39 @@
         }
       }
     },
+    "Summe je Jahr" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sum per year"
+          }
+        }
+      }
+    },
+    "Summe je Monat" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sum per month"
+          }
+        }
+      }
+    },
+    "Summe je Tag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sum per day"
+          }
+        }
+      }
+    },
     "Summe, Buchungsliste und Saldoverlauf einer Gruppe enthalten auch ihre Untergruppen." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25283,6 +25415,17 @@
         }
       }
     },
+    "Wird synchronisiert" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Syncing"
+          }
+        }
+      }
+    },
     "Wochen" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -25719,6 +25862,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Create Access Key"
+          }
+        }
+      }
+    },
+    "Zugriff entzogen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Access revoked"
           }
         }
       }

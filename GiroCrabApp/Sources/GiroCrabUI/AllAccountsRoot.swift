@@ -73,6 +73,7 @@ struct AllAccountsRow: View {
                 Color.clear.frame(width: DisclosureChevron.width, height: 18) // keeps the icon axis
             }
             Image(systemName: "square.grid.2x2").foregroundStyle(Theme.secondary).frame(width: 20)
+                .accessibilityHidden(true)
             Text("Alle Konten").fontWeight(.medium).lineLimit(1).appDefaultFont()
             Spacer(minLength: 2)
             ForEach(AllAccountsTotal.totals(of: model.allAccounts), id: \.currency) { total in

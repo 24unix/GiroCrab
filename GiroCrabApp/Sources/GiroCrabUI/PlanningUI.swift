@@ -103,6 +103,17 @@ struct BudgetBar: View {
             }
         }
         .frame(height: 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Budgetverbrauch"))
+        .accessibilityValue(Self.spokenValue(percent))
+    }
+
+    /// "85 % des Budgets verbraucht"; over budget (red bar) is never spoken as 100 %.
+    static func spokenValue(_ percent: Double) -> Text {
+        let rounded = Int(percent.rounded())
+        return percent > 100
+            ? Text("\(max(rounded, 101)) % des Budgets verbraucht, überschritten")
+            : Text("\(min(rounded, 100)) % des Budgets verbraucht")
     }
 }
 
@@ -171,6 +182,8 @@ struct BudgetProgressCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // the button merges its children; keep the bar's value
+                .accessibilityValue(BudgetBar.spokenValue(s.percent))
                 .onHover { inside in
                     if inside { hovered = s.categoryId } else if hovered == s.categoryId { hovered = nil }
                 }
@@ -323,6 +336,7 @@ struct CashflowCard: View {
                 }
                 .menuStyle(.borderlessButton).fixedSize()
                 .help(Text("Farbschema"))
+                .accessibilityLabel(Text("Farbschema"))
                 Picker("Zeitraum", selection: $granularity) {
                     Text("Monat").tag(PeriodGranularity.month)
                     Text("Quartal").tag(PeriodGranularity.quarter)
@@ -357,11 +371,24 @@ struct CashflowCard: View {
                 }
             }
             .frame(height: 160)
+            .accessibilityLabel("Cashflow")
+            .accessibilityChartDescriptor(BarChartDescriptor(
+                title: String(localized: "Cashflow"),
+                summary: String(localized: "Einnahmen und Ausgaben je Zeitraum"),
+                categoryTitle: String(localized: "Zeitraum"),
+                categories: rows.map { label($0.key) },
+                valueTitle: String(localized: "Betrag"),
+                series: [
+                    .init(name: income, values: rows.map { Double($0.incomeCents) / 100 }),
+                    .init(name: expense, values: rows.map { Double($0.expenseCents) / 100 }),
+                ]
+            ))
             HStack(spacing: 14) {
                 legendDot(palette.incomeDot, income)
                 legendDot(palette.expenseDot, expense)
             }
             .appFont(.caption).foregroundStyle(Theme.secondary)
+            .accessibilityHidden(true)   // the chart descriptor names both series
             }
         }
         .card(padding: ViewLayout.cardPadding, vertical: ViewLayout.cardVerticalPadding(collapsed: collapsed))

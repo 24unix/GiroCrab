@@ -109,6 +109,8 @@ struct RuleEditorView: View {
                                 .frame(minWidth: 22, alignment: .trailing)
                             Image(systemName: rule.enabled ? "wand.and.stars" : "pause.circle")
                                 .foregroundStyle(rule.enabled ? Color.readable(hex: color(of: rule)) : .secondary)
+                                .accessibilityLabel(Text("Pausiert"))
+                                .accessibilityHidden(rule.enabled)
                             VStack(alignment: .leading, spacing: 1) {
                                 // rule names are mostly payees ("Miete Müller")
                                 Text(rule.name).lineLimit(1).sensitive()
@@ -120,6 +122,7 @@ struct RuleEditorView: View {
                                 .appFont(.caption, monospacedDigit: true)
                                 .padding(.horizontal, 6).padding(.vertical, 1)
                                 .background(Capsule().fill(.quaternary))
+                                .accessibilityLabel(Text("\(Int(rule.matchCount)) Treffer"))
                         }
                         .tag(rule.id)
                         .contextMenu {

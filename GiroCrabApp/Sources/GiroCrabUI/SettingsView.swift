@@ -250,9 +250,12 @@ struct BankConnectionsSettings: View {
                         Button { editing = c } label: { Image(systemName: "slider.horizontal.3") }
                             .buttonStyle(.borderless)
                             .help("Bearbeiten / Details")
+                            .accessibilityLabel("Bearbeiten / Details")
                         Button { model.requestSync(c) } label: { Image(systemName: "arrow.triangle.2.circlepath") }
                             .buttonStyle(.borderless)
                             .help(model.bankingGate(for: c)?.message ?? String(localized: "Jetzt abrufen"))
+                            .accessibilityLabel("Jetzt abrufen")
+                            .accessibilityHint(Text(verbatim: model.bankingGate(for: c)?.message ?? ""))
                             .disabled(model.bankingGate(for: c) != nil)
                         Button(role: .destructive) { confirmRemove = c } label: { Label("Bankzugang entfernen …", systemImage: "trash") }
                             .labelStyle(.iconOnly)

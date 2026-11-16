@@ -480,6 +480,7 @@ struct ConnectionEditSheet: View {
         }
         .buttonStyle(.borderless)
         .help(revealed.contains(key) ? "Verbergen" : "Anzeigen")
+        .accessibilityLabel(revealed.contains(key) ? Text("Verbergen") : Text("Anzeigen"))
     }
 
     private func binding(_ key: String) -> Binding<String> {

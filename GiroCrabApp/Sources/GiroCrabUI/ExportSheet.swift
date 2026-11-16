@@ -405,6 +405,7 @@ struct ExportSheet: View {
             }
             .buttonStyle(.plain)
             .help(expanded ? String(localized: "Zuklappen") : String(localized: "Aufklappen"))
+            .accessibilityLabel(expanded ? Text("Zuklappen") : Text("Aufklappen"))
 
             Button {
                 if options.format.isCamt {

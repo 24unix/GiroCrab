@@ -124,6 +124,7 @@ struct EnableBankingSetupSection: View {
                 Button { copy(redirect) } label: { Image(systemName: "doc.on.doc") }
                     .buttonStyle(.borderless)
                     .help("Redirect-URL kopieren")
+                    .accessibilityLabel("Redirect-URL kopieren")
             }
             .padding(.leading, 22)
             Text("Für „Privacy URL“ und „Terms URL“ genügt z. B. https://girocrab.de oder https://github.com/GiroCrab/GiroCrab.")

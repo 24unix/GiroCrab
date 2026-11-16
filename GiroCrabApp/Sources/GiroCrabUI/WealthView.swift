@@ -540,7 +540,9 @@ struct WealthView: View {
                 }
             }
             .frame(height: 6)
+            .accessibilityHidden(true)   // the share bar only repeats the title and amount
         }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: composition donut
@@ -1031,6 +1033,7 @@ struct WealthView: View {
                                     Button { editingClassification = ClassificationEditRequest(name: row.name, classification: row.classification) } label: {
                                         Image(systemName: "pencil")
                                     }.buttonStyle(.borderless).help("Klassifizierung bearbeiten")
+                                        .accessibilityLabel("Klassifizierung bearbeiten")
                                 }
                             }
                         }
