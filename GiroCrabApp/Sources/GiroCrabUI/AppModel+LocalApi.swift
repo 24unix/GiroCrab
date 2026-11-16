@@ -23,8 +23,20 @@ extension AppModel {
 
     var isLocalApiRunning: Bool { localApiServer != nil }
 
+    /// The one rule, checked whenever `ownVault` or `demoActive` changes: a
+    /// server runs only for the own vault while it is shown, and only for the
+    /// vault it was started on. Starting is `refreshLocalApiServer`'s job.
+    func enforceLocalApiServerVault() {
+        if holdsRealData {
+            if localApiServer != nil, localApiServerVault !== ownVault { stopLocalApiServer() }
+        } else if localApiServer != nil || localApiStartError != nil {
+            stopLocalApiServer()
+        }
+    }
+
     /// Starts or stops the socket to match the stored settings. Called when a vault
-    /// opens (`useVault`) and after every settings change.
+    /// opens (`useVault`), after every settings change and, after a failed start,
+    /// when the app becomes active again.
     /// Only the newest refresh acts: an older one may have read the scope before
     /// a later save turned access off.
     func refreshLocalApiServer() {
@@ -33,7 +45,8 @@ extension AppModel {
         let generation = localApiRefreshGeneration
         guard holdsRealData, let v = ownVault else { stopLocalApiServer(); return }
         Task {
-            let read = await Task.detached { Result { try v.localApiScope() } }.value
+            let read: Result<ShareScope, Error>
+            do { read = .success(try await Self.offMain { try v.localApiScope() }) } catch { read = .failure(error) }
             // Locked, swapped, switched to the demo or a newer refresh meanwhile.
             guard generation == self.localApiRefreshGeneration,
                   self.holdsRealData, self.ownVault === v else { return }
@@ -49,11 +62,17 @@ extension AppModel {
                 self.stopLocalApiServer()
                 return
             }
-            guard self.localApiServer == nil else { return }
+            if self.localApiServer != nil {
+                if self.localApiServerVault === v { return }
+                self.stopLocalApiServer()
+            }
             _ = Self.localApiQuitObserver
+            _ = Self.localApiActivationObserver
+            Self.localApiRetryTarget = self
             do {
                 let server = try LocalApiServer.start(vault: v, socketPath: Self.localApiSocketPath)
                 self.localApiServer = server
+                self.localApiServerVault = v
                 Self.runningLocalApiServer = server
                 self.localApiStartError = nil
             } catch {
@@ -69,9 +88,24 @@ extension AppModel {
         #endif
     }
 
+    /// After a failed start (e.g. another instance served the socket): try again.
+    func retryLocalApiStart() {
+        if localApiStartError != nil { refreshLocalApiServer() }
+    }
+
     #if os(macOS)
     /// The server this process runs, for the quit observer (no model there).
     @MainActor static weak var runningLocalApiServer: LocalApiServer?
+
+    /// The model whose start the activation observer retries.
+    @MainActor static weak var localApiRetryTarget: AppModel?
+
+    /// Coming back to the app (the other instance may have quit meanwhile).
+    static let localApiActivationObserver: NSObjectProtocol = NotificationCenter.default.addObserver(
+        forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+    ) { _ in
+        MainActor.assumeIsolated { AppModel.localApiRetryTarget?.retryLocalApiStart() }
+    }
 
     /// Quit: nothing else stops the server on exit. `stop()` removes only the
     /// socket file this server created and returns at once.
@@ -87,6 +121,7 @@ extension AppModel {
     func stopLocalApiServer() {
         localApiServer?.stop()
         localApiServer = nil
+        localApiServerVault = nil
         localApiStartError = nil
     }
 
@@ -102,7 +137,7 @@ extension AppModel {
         let job = Task { () -> Result<T, Error>? in
             await previous?.value
             guard self.ownVault === v else { return nil }
-            return await Task.detached { Result { try work(v) } }.value
+            do { return .success(try await Self.offMain { try work(v) }) } catch { return .failure(error) }
         }
         localApiQueue = Task { _ = await job.value }
         return try await job.value?.get()
@@ -113,13 +148,16 @@ extension AppModel {
     }
 
     /// Saves what is shared (the token stays) and starts or stops the socket.
-    func saveLocalApiScope(_ scope: ShareScope) async {
+    /// false when nothing was written (failed, or the own vault went away first).
+    @discardableResult
+    func saveLocalApiScope(_ scope: ShareScope) async -> Bool {
+        defer { refreshLocalApiServer() }
         do {
-            _ = try await localApiCall { try $0.setLocalApiScope(scope: scope) }
+            return try await localApiCall { try $0.setLocalApiScope(scope: scope) } != nil
         } catch {
             errorMessage = describe(error)
+            return false
         }
-        refreshLocalApiServer()
     }
 
     /// A new access token, shown once; the previous one stops working.

@@ -125,9 +125,10 @@ final class LocalApiServerTests: XCTestCase {
         let on = scope
         scope.enabled = false
         let off = scope
-        async let first: Void = model.saveLocalApiScope(on)
-        async let second: Void = model.saveLocalApiScope(off)
-        _ = await (first, second)
+        // Tasks made on the main actor start in order (async let would not).
+        let first = Task { await model.saveLocalApiScope(on) }
+        let second = Task { await model.saveLocalApiScope(off) }
+        _ = await (first.value, second.value)
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertFalse(model.isLocalApiRunning)
         XCTAssertFalse(socketExists)
@@ -146,5 +147,29 @@ final class LocalApiServerTests: XCTestCase {
         model.showOwnVault()
         let stored = await model.loadLocalApiScope()
         XCTAssertEqual(stored?.accountIds, [7])
+    }
+
+    func testAFailedStartIsRetried() async throws {
+        let good = AppModel.localApiSocketPath
+        AppModel.localApiSocketPathOverride = dir.appendingPathComponent(String(repeating: "x", count: 120)).path
+        try await enable()
+        _ = await model.createLocalApiToken()
+        for _ in 0..<300 where model.localApiStartError == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertNotNil(model.localApiStartError)
+        AppModel.localApiSocketPathOverride = good // the obstacle is gone
+        model.retryLocalApiStart()
+        try await awaitRunning(true)
+        XCTAssertNil(model.localApiStartError)
+    }
+
+    func testASaveThatCannotRunSaysSo() async throws {
+        let loaded = await model.loadLocalApiScope()
+        let scope = try XCTUnwrap(loaded)
+        model.showDemo()
+        let saved = await model.saveLocalApiScope(scope)
+        XCTAssertFalse(saved)
+        model.showOwnVault()
     }
 }

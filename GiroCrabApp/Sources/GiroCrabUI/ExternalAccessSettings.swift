@@ -12,6 +12,8 @@ struct ExternalAccessSettings: View {
     @State private var scope: ShareScope?
     /// The token just created; shown until the pane closes.
     @State private var newToken: String?
+    /// The stored hash right after `newToken` was made: another hash means it is gone.
+    @State private var newTokenHash: String?
     @State private var confirmRevoke = false
 
     var body: some View {
@@ -31,7 +33,12 @@ struct ExternalAccessSettings: View {
             }
         }
         .formStyle(.grouped)
-        .task(id: model.holdsRealData) { scope = await model.loadLocalApiScope() }
+        .task(id: model.holdsRealData) {
+            // Locked, demo or back: a shown key is never shown again.
+            newToken = nil
+            scope = await model.loadLocalApiScope()
+            model.retryLocalApiStart()
+        }
         .confirmationDialog("Zugriff widerrufen?", isPresented: $confirmRevoke, titleVisibility: .visible) {
             Button("Widerrufen", role: .destructive) {
                 Task {
@@ -104,8 +111,10 @@ struct ExternalAccessSettings: View {
             HStack {
                 Button(scope.tokenSha256.isEmpty ? "Zugangsschlüssel erzeugen" : "Neuen Schlüssel erzeugen") {
                     Task {
-                        newToken = await model.createLocalApiToken()
+                        let token = await model.createLocalApiToken()
                         await reloadToken()
+                        newToken = token
+                        newTokenHash = token == nil ? nil : self.scope?.tokenSha256
                     }
                 }
                 if !scope.tokenSha256.isEmpty {
@@ -151,11 +160,15 @@ struct ExternalAccessSettings: View {
     private func reloadToken() async {
         guard let stored = await model.loadLocalApiScope() else { return }
         scope?.tokenSha256 = stored.tokenSha256
+        if stored.tokenSha256 != newTokenHash { newToken = nil }
     }
 
+    /// Shown at once; if the write did not happen, the pane goes back to what is stored.
     private func save(_ s: ShareScope) {
         scope = s
-        Task { await model.saveLocalApiScope(s) }
+        Task {
+            if await !model.saveLocalApiScope(s) { scope = await model.loadLocalApiScope() }
+        }
     }
 
     private func copy(_ s: String) {

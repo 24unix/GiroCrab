@@ -353,16 +353,20 @@ public final class AppModel {
     /// Showing the throw-away demo vault (also when the own vault is still empty).
     /// The external analysis never serves while the demo is shown (#136).
     var demoActive = false {
-        didSet { if demoActive { stopLocalApiServer() } }
+        didSet { enforceLocalApiServerVault() }
     }
     /// Where the own Enable Banking application is shared between devices.
     @ObservationIgnored var enableBankingKeyStore: EnableBankingKeyStore = KeychainEnableBankingKeyStore()
     /// Taken over from another device; shown once unless the user turned it off.
     var enableBankingAdoptNotice: EnableBankingAdoptNotice?
     /// The personal vault while demo data is shown (nil if never unlocked).
-    private(set) var ownVault: Vault?
+    private(set) var ownVault: Vault? {
+        didSet { enforceLocalApiServerVault() }
+    }
     /// Socket of the read-only interface for external analysis (#136), see AppModel+LocalApi.
     var localApiServer: LocalApiServer?
+    /// The vault `localApiServer` serves (see `enforceLocalApiServerVault`).
+    @ObservationIgnored weak var localApiServerVault: Vault?
     /// Why the socket did not start (shown in Einstellungen › Analyse); nil = no error.
     var localApiStartError: String?
     /// The last queued settings/token call: they run one after another (AppModel+LocalApi).
@@ -1213,7 +1217,6 @@ public final class AppModel {
         loanStore.loadTask?.cancel()
         loanStore.loans = []; loanStore.linkByBooking = [:]
         stopAutoSync()
-        stopLocalApiServer()
         endBankDialogsForLock()
         quickLookURL = nil
         Self.removeQuickLookFiles()

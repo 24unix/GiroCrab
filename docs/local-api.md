@@ -33,7 +33,11 @@ Wechsel zur Demo und beim Beenden wird der Socket geschlossen.
   `~/Library/Application Support/GiroCrab/local-api/girocrab.sock`
   (Ordner `0700`, Socket `0600`; Verbindungen anderer Benutzer werden sofort geschlossen).
 - Eine JSON-Anfrage pro Zeile, eine JSON-Antwort pro Zeile; mehrere Anfragen pro Verbindung.
-- Höchstens 4 Verbindungen, 64 KiB pro Anfrage, Verbindungen ohne Daten enden nach einer Minute.
+- Höchstens 4 Verbindungen, 64 KiB pro Anfrage; eine Anfrage muss innerhalb von 10 Sekunden vollständig
+  ankommen, Verbindungen ohne Anfrage enden nach einer Minute.
+- Anfragen werden nacheinander beantwortet, nach jeder folgt eine Pause so lang wie die Anfrage (höchstens
+  0,25 s): Die App bleibt bedienbar, auch wenn ein Programm ständig abfragt.
+- `girocrab.lock` neben dem Socket legt fest, welche GiroCrab-Instanz ihn bereitstellt.
 
 ```
 → {"v":1,"token":"gcapi_…","method":"transactions","params":{"date_from":"2026-01-01","limit":50}}
