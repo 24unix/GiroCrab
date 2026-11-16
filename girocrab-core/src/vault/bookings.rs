@@ -634,9 +634,13 @@ impl Vault {
 
     /// Number of bookings matching `filter` (`limit`/`offset` ignored) as one SQL
     /// count, without enriching every row like `list_transactions` (#266). Scope
-    /// and merchant depend on the enriched booking: those filters take the list.
+    /// and merchant depend on the enriched booking: those filters take the list;
+    /// so does "Ohne Kategorie", which leaves out detected own transfers (#302).
     pub fn count_transactions(&self, filter: BookingFilter) -> Result<u32, CoreError> {
-        if !matches!(filter.scope, BookingScope::All) || filter.merchant_key.is_some() {
+        if !matches!(filter.scope, BookingScope::All)
+            || filter.merchant_key.is_some()
+            || filter.uncategorized_only
+        {
             return Ok(self
                 .list_transactions(BookingFilter {
                     limit: 1,
@@ -692,7 +696,8 @@ impl Vault {
                 .as_ref()
                 .map(|k| *k == t.merchant.key)
                 .unwrap_or(true);
-            if !keep {
+            // Detected own transfers are no open work for "Ohne Kategorie" (#302).
+            if !keep || (filter.uncategorized_only && t.flow == FlowKind::Transfer) {
                 continue;
             }
             // One KPI definition (`kpi_side`) for the page sums and `SelectionFlow`;
@@ -1149,6 +1154,29 @@ mod paging_tests {
         assert_eq!(ids.len() as u32, everyday);
         // what is outside the scope stays new
         assert_eq!(count(BookingScope::All), all - everyday);
+        let _ = std::fs::remove_file(p);
+    }
+
+    #[test]
+    fn uncategorized_leaves_out_detected_own_transfers() {
+        let (v, p) = demo();
+        let all = v.list_transactions(BookingFilter::default()).unwrap();
+        let open: Vec<_> = all
+            .transactions
+            .iter()
+            .filter(|b| b.category_id.is_none() && b.flow != FlowKind::Transfer)
+            .collect();
+        let unc = BookingFilter {
+            uncategorized_only: true,
+            ..Default::default()
+        };
+        let page = v.list_transactions(unc.clone()).unwrap();
+        assert!(page
+            .transactions
+            .iter()
+            .all(|b| b.flow != FlowKind::Transfer));
+        assert_eq!(page.total_count as usize, open.len());
+        assert_eq!(v.count_transactions(unc).unwrap() as usize, open.len());
         let _ = std::fs::remove_file(p);
     }
 
