@@ -783,6 +783,7 @@ struct KeyPasteSheet: View {
     @State private var text = ""
 
     private var valid: Bool { (try? VaultKeyManager.parseKey(text)) != nil }
+    private var working: Bool { model.keyAdoption == .working }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -793,21 +794,28 @@ struct KeyPasteSheet: View {
             SecureField("Schlüssel (Base64 oder Hex)", text: $text)
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled()
+                .disabled(working)
+            if case .failed(let message) = model.keyAdoption {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .appFont(.caption).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack {
                 Button("Abbrechen", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Übernehmen") {
-                    model.adoptSyncKey(text)
-                    text = ""
-                    dismiss()
-                }
+                if working { ProgressView().controlSize(.small) }
+                Button("Übernehmen") { model.adoptSyncKey(text) }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(!valid)
+                .disabled(!valid || working)
             }
         }
         .padding(24)
         .macFrame(minWidth: 420)
+        .onAppear { model.keyAdoption = .idle }
+        .onChange(of: model.keyAdoption) { _, state in
+            if state == .done { text = ""; dismiss() }
+        }
     }
 }
 

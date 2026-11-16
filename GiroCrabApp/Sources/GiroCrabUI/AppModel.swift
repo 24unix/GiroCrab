@@ -816,6 +816,8 @@ public final class AppModel {
         openDemoVault()
     }
     var hasOwnVault: Bool { ownVault != nil }
+    /// State of „Tresor-Schlüssel einfügen“ (key paste sheet).
+    var keyAdoption: KeyAdoptionState = .idle
 
     // MARK: - Vault lifecycle
 
@@ -1078,20 +1080,44 @@ public final class AppModel {
     /// Secondary device: the user pasted the vault key of the iCloud snapshot.
     /// Merges the snapshot with it, then switches this device's vault and
     /// keychain to that key so both devices share one key from now on.
+    /// Progress and failure are published in `keyAdoption`, so the sheet stays open
+    /// and shows the reason instead of vanishing (#646).
     func adoptSyncKey(_ text: String) {
+        guard keyAdoption != .working else { return }
+        let pasted: Data
+        do { pasted = try VaultKeyManager.parseKey(text) } catch {
+            keyAdoption = .failed(describe(error)); return
+        }
         guard let v = ownVault else {
-            // Locked or still in the demo: nothing to rekey. Say so instead of silently doing nothing.
-            toast = String(localized: "Bitte zuerst Ihren eigenen Tresor öffnen („Eigenen Tresor anzeigen“), dann den Schlüssel einfügen.")
+            if demoActive {
+                // Fresh install showing the demo: open (create) the own, empty vault first, then adopt.
+                keyAdoption = .working
+                pendingOwnVaultAction = { [weak self] in
+                    guard let self else { return }
+                    self.keyAdoption = .idle
+                    self.adoptSyncKey(text)
+                }
+                vaultState = .locked
+                if let request = requestOwnVaultUnlock { request() } else { unlock() }
+            } else {
+                keyAdoption = .failed(String(localized: "Bitte zuerst Ihren eigenen Tresor öffnen, dann den Schlüssel einfügen."))
+            }
             return
         }
+        keyAdoption = .working
         Task {
             do {
-                let pasted = try VaultKeyManager.parseKey(text)
                 let current = try await VaultKeyManager.shared.unlock()
                 let cloud = CloudSyncManager.shared
                 await cloud.sync(vault: v, remoteKey: pasted, mergeOnly: true)
-                guard cloud.lastError == nil else { self.toast = cloud.lastError; return }
+                if let e = cloud.lastError { self.keyAdoption = .failed(e); self.toast = e; return }
                 if pasted != current {
+                    let hasData = ((try? v.accountCount()) ?? 0) > 0 || connectionsExist(v)
+                    if !cloud.lastMergeFoundSnapshot && !hasData {
+                        let msg = String(localized: "Noch kein iCloud-Tresor gefunden. Aktivieren Sie iCloud Sync auf dem anderen Gerät, warten Sie auf den ersten Upload und versuchen Sie es erneut.")
+                        self.keyAdoption = .failed(msg); self.toast = msg
+                        return
+                    }
                     try v.rekey(newKey: pasted)
                     do {
                         // On failure importKey writes `current` back into the keychain.
@@ -1104,9 +1130,10 @@ public final class AppModel {
                 }
                 await cloud.sync(vault: v)
                 self.finishKeyAdoption(vault: v)
+                self.keyAdoption = .done
                 self.toast = String(localized: "Tresor-Schlüssel übernommen – iCloud Sync aktiv")
             } catch {
-                self.toast = describe(error)
+                self.keyAdoption = .failed(describe(error)); self.toast = describe(error)
             }
         }
     }

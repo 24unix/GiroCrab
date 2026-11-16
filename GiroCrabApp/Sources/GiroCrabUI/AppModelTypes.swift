@@ -559,3 +559,9 @@ enum TagEntryIntent: Equatable {
     /// Longer than the core accepts: Return does nothing.
     case tooLong
 }
+
+/// Progress of pasting the vault key of another device (iCloud restore, #646).
+enum KeyAdoptionState: Equatable {
+    case idle, working, done
+    case failed(String)
+}

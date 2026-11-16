@@ -4,9 +4,13 @@ import GiroCrabCore
 /// Shown above the stream while demo data is visible.
 struct DemoBanner: View {
     @Environment(AppModel.self) private var model
+    @State private var showRestore = false
 
     var body: some View {
         let button = HStack(spacing: 14) {
+            if !AppModel.vaultMayHoldRealData {
+                Button("Aus iCloud wiederherstellen …") { CloudSyncManager.shared.isEnabled = true; showRestore = true }
+            }
             Button(model.hasOwnVault || AppModel.vaultMayHoldRealData ? "Zurück zum eigenen Tresor" : "Eigenes Konto anlegen") { model.showOwnVault() }
             if !model.hasOwnVault && !AppModel.vaultMayHoldRealData {
                 Button("Sperrbildschirm testen") { model.previewLock() }
@@ -41,6 +45,7 @@ struct DemoBanner: View {
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.selection))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent.opacity(0.18), lineWidth: 1))
+        .capturableSheet(isPresented: $showRestore) { KeyPasteSheet().environment(model) }
     }
 }
 
@@ -78,6 +83,7 @@ struct DemoHintBanner: View {
 struct EmptyVaultCard: View {
     @Environment(AppModel.self) private var model
     @State private var showAddBank = false
+    @State private var showRestore = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -108,6 +114,9 @@ struct EmptyVaultCard: View {
                 Label("Vorhandene Daten importieren", systemImage: "square.and.arrow.down.on.square")
             }
             #endif
+            Button { CloudSyncManager.shared.isEnabled = true; showRestore = true } label: {
+                Label("Aus iCloud wiederherstellen …", systemImage: "icloud.and.arrow.down")
+            }
             Divider()
             HStack {
                 Text("Erst einmal ansehen?").appFont(.caption).foregroundStyle(Theme.secondary)
@@ -120,6 +129,7 @@ struct EmptyVaultCard: View {
             AddBankSheet()
                 .environment(model)
         }
+        .capturableSheet(isPresented: $showRestore) { KeyPasteSheet().environment(model) }
     }
 
     private func step(_ n: Int, _ text: LocalizedStringKey) -> some View {

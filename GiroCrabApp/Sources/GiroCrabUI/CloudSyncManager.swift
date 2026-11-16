@@ -63,6 +63,8 @@ public final class CloudSyncManager {
     public private(set) var isSyncing = false
     public private(set) var lastError: String?
     public private(set) var keyMismatch = false
+    /// The last merge read at least one snapshot of another device.
+    public private(set) var lastMergeFoundSnapshot = false
     /// The user picked the sync folder („Ordner wählen …“): it beats the app's
     /// own iCloud container, so a device with a container can join a device
     /// without one, e.g. the iPhone a Mac that syncs via iCloud Drive (#484).
@@ -234,6 +236,7 @@ public final class CloudSyncManager {
     /// Stores what a merge did: last sync time and summary, the peers'
     /// modification dates, a key mismatch or per-file errors.
     private func record(_ result: SyncMergeResult, _ written: SyncWrite = SyncWrite()) {
+        lastMergeFoundSnapshot = !result.stats.isEmpty
         seen.merge(result.seen) { $1 }
         if let m = written.legacyModified { seen[SyncFolder.legacyName] = m }
         failed.merge(result.failed) { $1 }

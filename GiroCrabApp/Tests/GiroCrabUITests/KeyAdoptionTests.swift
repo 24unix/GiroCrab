@@ -42,9 +42,27 @@ final class KeyAdoptionTests: XCTestCase {
         XCTAssertEqual(UserDefaults.standard.object(forKey: realDataKey) as? Bool, false)
     }
 
-    func test_adopt_without_own_vault_tells_the_user() {
+    func test_invalid_key_fails_inline_without_leaving_the_sheet_state() {
         let model = AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))
+        XCTAssertEqual(model.keyAdoption, .idle)
+        model.adoptSyncKey("kein schluessel")
+        guard case .failed = model.keyAdoption else { return XCTFail("expected .failed, got \(model.keyAdoption)") }
+    }
+
+    func test_paste_in_demo_without_own_vault_opens_own_vault_and_defers_adoption() {
+        let model = AppModel(options: LaunchOptions(arguments: ["--demo-seed"], environment: [:]))
+        var unlockRequested = false
+        model.requestOwnVaultUnlock = { unlockRequested = true }
         model.adoptSyncKey(String(repeating: "ab", count: 32))
-        XCTAssertNotNil(model.toast)
+        XCTAssertTrue(unlockRequested, "the own vault is created first, not a silent toast + dismiss (#646)")
+        XCTAssertEqual(model.keyAdoption, .working)
+        XCTAssertNotNil(model.pendingOwnVaultAction)
+    }
+
+    func test_paste_while_locked_outside_demo_reports_error() throws {
+        let model = AppModel(options: LaunchOptions(arguments: [], environment: [:]))
+        guard !model.demoActive, !model.hasOwnVault else { throw XCTSkip("needs a locked, non-demo model") }
+        model.adoptSyncKey(String(repeating: "ab", count: 32))
+        guard case .failed = model.keyAdoption else { return XCTFail("expected .failed") }
     }
 }
