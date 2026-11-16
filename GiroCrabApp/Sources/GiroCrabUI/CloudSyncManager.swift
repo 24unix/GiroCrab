@@ -199,6 +199,8 @@ public final class CloudSyncManager {
     ///     vault's key doesn't open.
     ///   - mergeOnly: merge but don't write (used while adopting a pasted key).
     public func sync(vault: Vault, remoteKey: Data? = nil, mergeOnly: Bool = false) async {
+        // Dev bypass (`tresor-dev.girocrab`, throw-away key): never write into the user's iCloud folder.
+        guard !VaultKeyManager.keychainBypassed else { return }
         guard !isSyncing else { return }
         isSyncing = true; lastError = nil; keyMismatch = false; folderAccessDenied = false
         defer { isSyncing = false }
@@ -304,7 +306,7 @@ public final class CloudSyncManager {
     /// when they change. `onMerged` runs after a merge that brought changes.
     public func startAutoSync(vault: Vault, onMerged: @escaping @MainActor () -> Void) {
         stopAutoSync()
-        guard isEnabled else { return }
+        guard isEnabled, !VaultKeyManager.keychainBypassed else { return }
         autoVault = vault
         self.onMerged = onMerged
         autoState = AutoSyncState()
