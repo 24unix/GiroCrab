@@ -65,6 +65,7 @@ pub mod suggestions;
 pub mod sync_log;
 mod sync_merge;
 pub mod tags;
+pub mod tax_allowance;
 pub mod text;
 pub mod user_groups;
 pub mod vault;
