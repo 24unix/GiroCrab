@@ -64,6 +64,7 @@ mod schema;
 pub mod search_expr;
 pub mod secret;
 pub mod security_transactions;
+pub mod smart_search;
 pub mod standing_orders;
 pub mod suggestions;
 pub mod sync_log;
