@@ -463,6 +463,12 @@ fun SettingsScreen(
             ListItem(headlineContent = { Text("Tags (${state.data.tags.size})") }, modifier = Modifier.clickable(onClick = onOpenTags))
         }
 
+        SettingsSection("Freistellungsaufträge & Sparer-Pauschbetrag (1.000 € / 2.000 €)") {
+            ListItem(headlineContent = { Text("Gesamt: 1.000 € (Einzelperson) / 2.000 € (Zusammenveranlagung)") })
+            ListItem(headlineContent = { Text("Erteilt je Bank") }, supportingContent = { Text("Noch keine Freistellungsaufträge erfasst") })
+            ListItem(headlineContent = { Text("Realisierte Kapitalerträge") }, supportingContent = { Text("0,00 €") })
+        }
+
         SettingsSection("Allgemein") {
             Text("Sprache", style = MaterialTheme.typography.labelMedium)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
