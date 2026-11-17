@@ -155,6 +155,8 @@ const IMPLEMENTED: &[(&str, &[u32])] = &[
     ("HKQTG", &[1]),
     ("HKWPD", &[5, 6]),
     ("HKKKU", &[1]),
+    // card bookings, predecessor of HKKKU (comdirect, #807)
+    ("DKKKU", &[2]),
 ];
 
 /// What the bank allows for batch transfers (BPD HICCMS).
@@ -1014,6 +1016,29 @@ impl FinTsConnector {
         }
         for s in &reply.segments {
             let id = s.id();
+            // Bank-specific parameter segments (DI…S) announce DK… business
+            // transactions; only those GiroCrab sends (`IMPLEMENTED`) are ever used.
+            if id.starts_with("DI") && id.ends_with('S') && id.len() == 6 {
+                let tx = format!("DK{}", &id[2..5]);
+                let v = self.st.versions.entry(tx).or_default();
+                if !v.contains(&s.version()) {
+                    v.push(s.version());
+                }
+                if id == "DIKKUS" || id == "DIKKSS" {
+                    // bank parameters only (same for every customer)
+                    let params: Vec<String> = s
+                        .elements
+                        .iter()
+                        .skip(4)
+                        .map(|el| el.iter().map(|v| v.text()).collect::<Vec<_>>().join(":"))
+                        .collect();
+                    crate::depot_debug::log(&format!(
+                        "fints BPD {id} v{} params={}",
+                        s.version(),
+                        params.join("+")
+                    ));
+                }
+            }
             if id.starts_with("HI") && id.ends_with('S') && id.len() == 6 {
                 let tx = format!("HK{}", &id[2..5]);
                 let v = self.st.versions.entry(tx).or_default();
@@ -1054,7 +1079,7 @@ impl FinTsConnector {
                 if let Some(el) = s.elements.last() {
                     let texts: Vec<&str> = el.iter().map(|v| v.text()).collect();
                     for pair in texts.windows(2) {
-                        if pair[0].starts_with("HK")
+                        if (pair[0].starts_with("HK") || pair[0].starts_with("DK"))
                             && pair[0].len() == 5
                             && (pair[1] == "J" || pair[1] == "N")
                         {
@@ -1067,10 +1092,23 @@ impl FinTsConnector {
             }
         }
         // HIKKUS: storage days : max entries allowed : date range allowed : account required
-        if let Some(p) = reply.all("HIKKUS").last() {
+        // DIKKUS (DKKKU, the predecessor; comdirect) is read the same way: a value that
+        // does not fit leaves the default (unknown period, date range, account).
+        if let Some(p) = reply
+            .all("HIKKUS")
+            .last()
+            .or_else(|| reply.all("DIKKUS").last())
+        {
             self.st.kku_storage_days = p.get(4, 0).parse().unwrap_or(0);
             self.st.kku_no_date_range = p.get(4, 2) == "N";
             self.st.kku_no_account = p.get(4, 3) == "N";
+        }
+        if crate::depot_debug::enabled() && reply.all("HIPINS").next().is_some() {
+            let card: Vec<String> = ["HKKKU", "DKKKU"]
+                .iter()
+                .filter_map(|t| self.st.tan_required.get(*t).map(|r| format!("{t}={r}")))
+                .collect();
+            crate::depot_debug::log(&format!("fints HIPINS cards: [{}]", card.join(",")));
         }
         for cazs in reply.all("HICAZS") {
             for el in &cazs.elements {
@@ -1686,15 +1724,58 @@ impl FinTsConnector {
         Ok((txs, closing))
     }
 
-    /// HKKKU: bookings and balance of a credit card account, all pages.
+    /// The card-bookings transaction a card account can be fetched with: HKKKU, or
+    /// its predecessor DKKKU (comdirect, #807), each only when the bank offers it
+    /// (BPD) and the account lists it (HIUPD).
+    fn card_tx(&self, upd: Option<&UpdAccount>) -> Option<&'static str> {
+        let allowed = |tx: &str| upd.is_some_and(|u| u.allowed.contains(tx));
+        ["HKKKU", "DKKKU"]
+            .into_iter()
+            .find(|tx| self.bank_supports(tx) && allowed(tx))
+    }
+
+    /// HKKKU v1 / DKKKU v2 request: account, card number, sub-account, date range,
+    /// max. entries, touchdown. HKKKU names the account by KTI, DKKKU (older) by KTV;
+    /// `account = false` leaves it out (HIKKUS: not required).
+    fn card_request(
+        tx: &str,
+        version: u32,
+        acc: &SepaAccount,
+        account: bool,
+        from: &str,
+        to: &str,
+        touchdown: Option<&str>,
+    ) -> Vec<u8> {
+        let account = match (account, tx) {
+            (false, _) => String::new(),
+            (true, "DKKKU") => Self::ktv(acc),
+            (true, _) => Self::kti(acc),
+        };
+        let mut b = SegmentBuilder::new(tx, 3, version)
+            .raw(&account)
+            .de(&[&acc.account_number])
+            .de(&[&acc.sub_account])
+            .raw(from)
+            .raw(to)
+            .raw("");
+        if let Some(t) = touchdown {
+            b = b.de(&[t]);
+        }
+        b.build()
+    }
+
+    /// HKKKU / DKKKU (`tx`): bookings and balance of a credit card account, all pages.
     async fn statements_card(
         &mut self,
         ctx: &ConnectContext,
+        tx: &str,
         acc: &SepaAccount,
         label: &str,
         currency: &str,
     ) -> CoreResult<(Vec<super::RemoteTransaction>, Option<kku::CardBalance>)> {
-        let v = self.version("HKKKU");
+        let v = self.version(tx);
+        // HIKKU / DIKKU
+        let reply_id = format!("{}I{}", &tx[..1], &tx[2..]);
         let (from, to) = if self.st.kku_no_date_range {
             (String::new(), String::new())
         } else {
@@ -1702,36 +1783,38 @@ impl FinTsConnector {
             let since = card_since(&ctx.since, &super::today(), self.st.kku_storage_days);
             (since.replace('-', ""), super::today().replace('-', ""))
         };
-        let account = if self.st.kku_no_account {
-            String::new()
-        } else {
-            Self::kti(acc)
-        };
         let mut touchdown: Option<String> = None;
         let mut txs = Vec::new();
         let mut balance = None;
         for page in 0..50 {
-            let mut b = SegmentBuilder::new("HKKKU", 3, v)
-                .raw(&account)
-                .de(&[&acc.account_number])
-                .de(&[&acc.sub_account])
-                .raw(&from)
-                .raw(&to)
-                .raw("");
-            if let Some(t) = &touchdown {
-                b = b.de(&[t]);
-            }
-            let r = self.request(ctx, "HKKKU", b.build()).await?;
-            let (t, bal) = kku::parse(r.all("HIKKU"), label, currency);
-            crate::depot_debug::log(&format!(
-                "fints HKKKU page {page}: HIKKU segments={} groups={:?} parsed={} balance={}",
-                r.all("HIKKU").count(),
-                r.all("HIKKU")
+            let seg = Self::card_request(
+                tx,
+                v,
+                acc,
+                !self.st.kku_no_account,
+                &from,
+                &to,
+                touchdown.as_deref(),
+            );
+            let r = self.request(ctx, tx, seg).await?;
+            let (t, bal) = kku::parse(r.all(&reply_id), label, currency);
+            if crate::depot_debug::enabled() {
+                let groups: Vec<usize> = r
+                    .all(&reply_id)
                     .map(|s| s.elements.len().saturating_sub(6))
-                    .collect::<Vec<_>>(),
-                t.len(),
-                bal.is_some()
-            ));
+                    .collect();
+                crate::depot_debug::log(&format!(
+                    "fints {tx} v{v} page {page}: {reply_id} segments={} groups={groups:?} parsed={} balance={}",
+                    groups.len(),
+                    t.len(),
+                    bal.is_some()
+                ));
+                // Layout check without content: kind of every field of the first
+                // segment head and of the first booking group.
+                if let Some(s) = r.all(&reply_id).next() {
+                    crate::depot_debug::log(&format!("fints {reply_id} shape: {}", kku::shape(s)));
+                }
+            }
             txs.extend(t);
             if balance.is_none() {
                 balance = bal;
@@ -2777,7 +2860,7 @@ fn merge_upd_with_sepa(
     for u in upd {
         // Only accounts of this bank with at least one usable transaction
         let usable = u.allowed.is_empty()
-            || ["HKSAL", "HKCAZ", "HKKAZ", "HKWPD", "HKKKU"]
+            || ["HKSAL", "HKCAZ", "HKKAZ", "HKWPD", "HKKKU", "DKKKU"]
                 .iter()
                 .any(|t| u.allowed.contains(*t));
         if crate::depot_debug::enabled() {
@@ -3396,14 +3479,16 @@ impl BankConnector for FinTsConnector {
             // included only when HIUPD permits it (or lists nothing); every request is
             // its own FinTS message, so a 9050 on one loan is just collected in `errors`.
             let mut txs = Vec::new();
-            // Credit cards the bank serves through HKKKU (explicitly allowed in HIUPD).
-            let can_card = self.bank_supports("HKKKU")
-                && upd.as_ref().is_some_and(|u| u.allowed.contains("HKKKU"));
-            if can_card {
+            // Credit cards the bank serves through HKKKU or DKKKU (explicitly allowed
+            // in HIUPD). comdirect reports its cards with Kontoart 1 (#807).
+            if let Some(card_tx) = self.card_tx(upd.as_ref()) {
                 if kind == AccountKind::Checking {
                     kind = AccountKind::CreditCard;
                 }
-                match self.statements_card(ctx, acc, &label, &currency).await {
+                match self
+                    .statements_card(ctx, card_tx, acc, &label, &currency)
+                    .await
+                {
                     Ok((t, bal)) => {
                         txs = t;
                         if let Some(b) = bal {
@@ -3417,7 +3502,10 @@ impl BankConnector for FinTsConnector {
                         }
                         ok_any = true;
                     }
-                    Err(e) => errors.push(trf("{0}: Kartenumsätze (HKKKU) – {1}", &[&label, &e])),
+                    Err(e) => errors.push(trf(
+                        "{0}: Kartenumsätze ({1}) – {2}",
+                        &[&label, &card_tx, &e],
+                    )),
                 }
             } else {
                 let can_camt = self.bank_supports("HKCAZ")
@@ -3973,6 +4061,72 @@ mod tests {
         // A bank offering both keeps the format-based HKEKA.
         c.learn_bpd(&reply(b"HIEKAS:32:5:3+1+1+0+J:J:N:3'"));
         assert_eq!(c.statement_tx(), Some("HKEKA"));
+    }
+
+    #[test]
+    fn dkkku_is_learned_from_dikkus_and_hipins() {
+        // comdirect (#807): card bookings only as the bank-specific DKKKU v2.
+        let mut c = FinTsConnector::new("20041155");
+        assert!(!c.bank_supports("DKKKU"));
+        c.learn_bpd(&reply(
+            b"DIKKUS:40:2:3+1+1+0+400:J:J:J'HIPINS:41:1:3+1+1+0+:::::HKSAL:N:DKKKU:J:HKKKU:N'",
+        ));
+        assert!(c.bank_supports("DKKKU"));
+        assert_eq!(c.version("DKKKU"), 2);
+        assert!(!c.bank_supports("HKKKU"), "only the DK variant is offered");
+        assert!(c.needs_hktan("DKKKU"));
+        assert!(!c.needs_hktan("HKKKU"));
+        // DIKKUS is read like HIKKUS when the values fit
+        assert_eq!(c.st.kku_storage_days, 400);
+        assert!(!c.st.kku_no_date_range && !c.st.kku_no_account);
+    }
+
+    #[test]
+    fn card_tx_prefers_hkkku_and_needs_bank_and_account() {
+        let mut c = FinTsConnector::new("20041155");
+        let card = upd_acc("5232000011112222", "", "", "Visa", &["DKKKU", "DKKKS"]);
+        assert_eq!(c.card_tx(Some(&card)), None, "bank offers nothing yet");
+        c.learn_bpd(&reply(b"DIKKUS:40:2:3+1+1+0+400:J:J:J'"));
+        assert_eq!(c.card_tx(Some(&card)), Some("DKKKU"));
+        let giro = upd_acc("1234567", "", IBAN_A, "Girokonto", &["HKSAL", "HKCAZ"]);
+        assert_eq!(c.card_tx(Some(&giro)), None, "not allowed for this account");
+        assert_eq!(c.card_tx(None), None);
+        c.learn_bpd(&reply(b"HIKKUS:42:1:3+1+1+0+775:N:J:J'"));
+        let both = upd_acc("5232000011112222", "", "", "Visa", &["DKKKU", "HKKKU"]);
+        assert_eq!(c.card_tx(Some(&both)), Some("HKKKU"));
+    }
+
+    #[test]
+    fn builds_dkkku_with_ktv_and_hkkku_with_kti() {
+        let acc = sepa_acc("", "5232000011112222");
+        assert_eq!(
+            FinTsConnector::card_request("DKKKU", 2, &acc, true, "20260901", "20261117", None),
+            b"DKKKU:3:2+5232000011112222::280:20041155+5232000011112222++20260901+20261117'"
+                .to_vec()
+        );
+        assert_eq!(
+            FinTsConnector::card_request("HKKKU", 1, &acc, true, "", "", Some("A:1")),
+            b"HKKKU:3:1+::5232000011112222::280:20041155+5232000011112222+++++A?:1'".to_vec()
+        );
+        assert_eq!(
+            FinTsConnector::card_request("DKKKU", 2, &acc, false, "", "", None),
+            b"DKKKU:3:2++5232000011112222'".to_vec()
+        );
+    }
+
+    #[test]
+    fn card_account_with_dkkku_only_is_usable() {
+        // comdirect: Kontoart 1, no IBAN, only DKKKU/DKKKS/DKKAU besides admin ones.
+        let upd = [upd_acc(
+            "5232000011112222",
+            "",
+            "",
+            "Visa",
+            &["DKKAU", "DKKKS", "DKKKU", "HKSPA", "HKTAN"],
+        )];
+        let out = merge_upd_with_sepa(&upd, Vec::new(), "20041155");
+        assert_eq!(out.len(), 1);
+        assert_eq!(account_label(&out[0].0), "5232000011112222");
     }
 
     #[test]

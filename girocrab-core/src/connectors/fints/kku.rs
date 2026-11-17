@@ -18,6 +18,10 @@
 //!
 //! Original amount, currency and rate are empty for payments in the account
 //! currency.
+//!
+//! DIKKU version 2 (answer to the proprietary DKKKU, comdirect, #807) has the same
+//! head but 22 components per booking (`DIKKU_V2`). `shape` logs the kind of every
+//! field, never the content, so a layout deviation shows up in the debug log.
 
 use super::syntax::{Segment, Value};
 use crate::connectors::RemoteTransaction;
@@ -69,17 +73,67 @@ fn signed(amount: &str, mark: &str) -> Option<i64> {
     Some(if mark == "D" { -cents } else { cents })
 }
 
-fn booking(c: &[String], account_ref: &str, fallback_currency: &str) -> Option<RemoteTransaction> {
+/// Where the fields of one booking group are. HIKKU v1 has 25 components (see the
+/// module docs). DIKKU v2 has 22, measured at comdirect (#807): no statement date,
+/// so amounts sit one position earlier, nine description lines, then billed flag and
+/// booking reference; no country, merchant or terminal.
+struct Layout {
+    receipt_date: usize,
+    booking_date: usize,
+    value_date: usize,
+    /// original amount, currency, C/D mark, then exchange rate
+    original: usize,
+    /// booked amount, currency, C/D mark
+    booked: usize,
+    lines: std::ops::RangeInclusive<usize>,
+    merchant: Option<usize>,
+}
+
+const HIKKU_V1: Layout = Layout {
+    receipt_date: 1,
+    booking_date: 2,
+    value_date: 4,
+    original: 5,
+    booked: 9,
+    lines: 12..=19,
+    merchant: Some(21),
+};
+
+const DIKKU_V2: Layout = Layout {
+    receipt_date: 1,
+    booking_date: 2,
+    value_date: 3,
+    original: 4,
+    booked: 8,
+    lines: 11..=19,
+    merchant: None,
+};
+
+fn layout(s: &Segment) -> &'static Layout {
+    if s.id() == "DIKKU" {
+        &DIKKU_V2
+    } else {
+        &HIKKU_V1
+    }
+}
+
+fn booking(
+    l: &Layout,
+    c: &[String],
+    account_ref: &str,
+    fallback_currency: &str,
+) -> Option<RemoteTransaction> {
     let get = |i: usize| c.get(i).map(|s| s.trim()).unwrap_or("");
+    let (o, b) = (l.original, l.booked);
     // Booked amount in the account currency; some banks only fill the original.
-    let (amount, currency) = match signed(get(9), get(11)) {
-        Some(a) => (a, get(10)),
-        None => (signed(get(5), get(7))?, get(6)),
+    let (amount, currency) = match signed(get(b), get(b + 2)) {
+        Some(a) => (a, get(b + 1)),
+        None => (signed(get(o), get(o + 2))?, get(o + 1)),
     };
-    let booking_date = iso_date(get(2)).or_else(|| iso_date(get(1)))?;
-    let value_date = iso_date(get(4)).unwrap_or_else(|| booking_date.clone());
-    let lines: Vec<&str> = (12..=19).map(get).filter(|l| !l.is_empty()).collect();
-    let merchant = get(21);
+    let booking_date = iso_date(get(l.booking_date)).or_else(|| iso_date(get(l.receipt_date)))?;
+    let value_date = iso_date(get(l.value_date)).unwrap_or_else(|| booking_date.clone());
+    let lines: Vec<&str> = l.lines.clone().map(get).filter(|l| !l.is_empty()).collect();
+    let merchant = l.merchant.map(get).unwrap_or("");
     let counterparty = if merchant.is_empty() {
         lines.first().copied().unwrap_or("")
     } else {
@@ -91,9 +145,9 @@ fn booking(c: &[String], account_ref: &str, fallback_currency: &str) -> Option<R
         .map(|l| l.to_string())
         .collect();
     // Foreign currency: keep what was actually charged abroad.
-    let (orig_amount, orig_currency) = (get(5), get(6));
+    let (orig_amount, orig_currency) = (get(o), get(o + 1));
     if !orig_amount.is_empty() && !orig_currency.is_empty() && orig_currency != currency {
-        let rate = get(8);
+        let rate = get(o + 3);
         purpose.push(if rate.is_empty() {
             format!("{orig_amount} {orig_currency}")
         } else {
@@ -117,7 +171,7 @@ fn booking(c: &[String], account_ref: &str, fallback_currency: &str) -> Option<R
     })
 }
 
-/// Bookings and balance of all HIKKU segments of one reply. The balance is
+/// Bookings and balance of all HIKKU / DIKKU segments of one reply. The balance is
 /// taken from the first segment that carries one.
 pub fn parse<'a>(
     segments: impl Iterator<Item = &'a Segment>,
@@ -136,14 +190,67 @@ pub fn parse<'a>(
                 });
             }
         }
+        let l = layout(s);
         for el in s.elements.iter().skip(6) {
             let c = components(el);
-            if let Some(t) = booking(&c, account_ref, fallback_currency) {
+            if let Some(t) = booking(l, &c, account_ref, fallback_currency) {
                 txs.push(t);
             }
         }
     }
     (txs, balance)
+}
+
+/// Kind of one field, never its content: `-` empty, `d` date (YYYYMMDD),
+/// `n` amount, `#` other digits, `c` currency, `m` C/D mark, `j` J/N, `t` text.
+fn kind(s: &str) -> char {
+    let s = s.trim();
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    if s.is_empty() {
+        '-'
+    } else if iso_date(s).is_some() {
+        'd'
+    } else if digits(s) {
+        '#'
+    } else if s.contains(',') && parse_cents(s).is_ok() {
+        'n'
+    } else if s == "C" || s == "D" {
+        'm'
+    } else if s == "J" || s == "N" {
+        'j'
+    } else if s.len() == 3 && s.bytes().all(|b| b.is_ascii_uppercase()) {
+        'c'
+    } else {
+        't'
+    }
+}
+
+/// Layout of a card-bookings segment for the debug log, without any content:
+/// the kinds of the head elements (`:` between components) and of the components
+/// of the first booking group, e.g. `head=[#|#|m:n:c:d|d|d] group1(25)=[#d d-d…]`.
+pub fn shape(s: &Segment) -> String {
+    let head: Vec<String> = s
+        .elements
+        .iter()
+        .skip(1)
+        .take(5)
+        .map(|el| el.iter().map(|v| kind(v.text())).collect())
+        .map(|k: String| k.chars().map(String::from).collect::<Vec<_>>().join(":"))
+        .collect();
+    let groups = s.elements.len().saturating_sub(6);
+    let first = s
+        .elements
+        .get(6)
+        .map(|el| {
+            let c = components(el);
+            format!(
+                " group1({})=[{}]",
+                c.len(),
+                c.iter().map(|v| kind(v)).collect::<String>()
+            )
+        })
+        .unwrap_or_default();
+    format!("head=[{}] groups={groups}{first}", head.join("|"))
 }
 
 #[cfg(test)]
@@ -261,6 +368,116 @@ mod tests {
         assert_eq!(t.value_date, "2026-10-05");
         assert_eq!(t.counterparty, "GUTSCHRIFT");
         assert_eq!(t.purpose, "");
+    }
+
+    /// One DIKKU v2 booking group (22 components) from (position, value) pairs.
+    fn group22(fields: &[(usize, &str)]) -> String {
+        let mut c = vec![String::new(); 22];
+        for (i, v) in fields {
+            c[*i] = v.replace(':', "?:");
+        }
+        c.join(":")
+    }
+
+    /// Invented DIKKU v2 answer with exactly the shape comdirect sent (#807):
+    /// head `#|-|m:n:c:d:#|-|-`, group `#dd-ncmnncmt--------j#`.
+    fn dikku_v2() -> String {
+        let purchase = group22(&[
+            (0, CARD),
+            (1, "20260905"),
+            (2, "20260907"),
+            (4, "23,90"),
+            (5, "EUR"),
+            (6, "D"),
+            (7, "1,00000"),
+            (8, "23,90"),
+            (9, "EUR"),
+            (10, "D"),
+            (11, "BAECKEREI SONNE BERLIN"),
+            (20, "J"),
+            (21, "123456789"),
+        ]);
+        let foreign = group22(&[
+            (0, CARD),
+            (1, "20260910"),
+            (2, "20260912"),
+            (4, "50,00"),
+            (5, "USD"),
+            (6, "D"),
+            (7, "1,08520"),
+            (8, "46,07"),
+            (9, "EUR"),
+            (10, "D"),
+            (11, "BOOKSHOP NEW YORK"),
+            (20, "N"),
+            (21, "123456790"),
+        ]);
+        format!("DIKKU:4:2:3+{CARD}++D:69,97:EUR:20261117:1200+++{purchase}+{foreign}'")
+    }
+
+    #[test]
+    fn dikku_v2_fixture_has_the_measured_shape() {
+        let raw = dikku_v2();
+        let segs = parse_response(raw.as_bytes()).unwrap();
+        assert_eq!(
+            shape(&segs[0]),
+            "head=[#|-|m:n:c:d:#|-|-] groups=2 group1(22)=[#dd-ncmnncmt--------j#]"
+        );
+    }
+
+    #[test]
+    fn dikku_v2_bookings_and_balance() {
+        let raw = dikku_v2();
+        let segs = parse_response(raw.as_bytes()).unwrap();
+        let (txs, balance) = parse(segs.iter(), "card", "EUR");
+        assert_eq!(txs.len(), 2);
+        assert_eq!(txs[0].amount_cents, -2390);
+        assert_eq!(txs[0].booking_date, "2026-09-07");
+        assert_eq!(
+            txs[0].value_date, "2026-09-07",
+            "no value date: booking date"
+        );
+        assert_eq!(txs[0].counterparty, "BAECKEREI SONNE BERLIN");
+        assert_eq!(txs[0].purpose, "", "same currency: no conversion note");
+        assert_eq!(txs[1].amount_cents, -4607);
+        assert_eq!(txs[1].currency, "EUR");
+        assert_eq!(txs[1].purpose, "50,00 USD, Kurs 1,08520");
+        let b = balance.unwrap();
+        assert_eq!(
+            (b.cents, b.currency.as_str(), b.date.as_str()),
+            (-6997, "EUR", "2026-11-17")
+        );
+    }
+
+    #[test]
+    fn hikku_v1_layout_is_unchanged() {
+        // the same groups under the v1 id are not misread as v2
+        let raw = format!(
+            "HIKKU:4:1:3+{CARD}++D:655,56:EUR:20261004+20261003+20261103+{}'",
+            purchase()
+        );
+        let segs = parse_response(raw.as_bytes()).unwrap();
+        let (txs, _) = parse(segs.iter(), "card", "EUR");
+        assert_eq!(txs.len(), 1);
+        assert_eq!(txs[0].amount_cents, -1250);
+        assert_eq!(txs[0].counterparty, "KAFFEEBAR");
+    }
+
+    #[test]
+    fn shape_shows_field_kinds_but_no_content() {
+        let raw = format!(
+            "HIKKU:4:1:3+{CARD}++D:655,56:EUR:20261004+20261003+20261103+{}'",
+            purchase()
+        );
+        let segs = parse_response(raw.as_bytes()).unwrap();
+        let s = shape(&segs[0]);
+        assert_eq!(
+            s,
+            "head=[#|-|m:n:c:d|d|d] groups=1 group1(25)=[#dd-d----ncmtt------tt-jt]"
+        );
+        for secret in [CARD, "655,56", "KAFFEEBAR", "20261004", "REF0001"] {
+            assert!(!s.contains(secret), "{secret} leaked into {s}");
+        }
     }
 
     #[test]
