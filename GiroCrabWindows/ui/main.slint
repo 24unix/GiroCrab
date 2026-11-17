@@ -133,6 +133,7 @@ component SideLine inherits Rectangle {
     in property <bool> active;
     callback clicked();
     callback fold();
+    callback add();
     property <bool> all-card: r.key == "all";
     property <bool> subtitle: r.kind == 3 && r.progress < 0 && r.detail != "";
     height: r.kind == 1 ? 26px : r.kind == 2 ? 22px : all-card ? 34px : r.progress >= 0 ? 40px : subtitle ? 40px : 30px;
@@ -215,6 +216,28 @@ component SideLine inherits Rectangle {
                 spacing: 6px;
                 Text { text: r.detail; color: Theme.muted; font-size: 11px; horizontal-stretch: 1; overflow: elide; }
                 if r.amount != "": Text { text: r.amount; color: r.negative ? Theme.negative : Theme.muted; font-size: 11px; font-weight: 600; horizontal-alignment: right; }
+            }
+        }
+        if r.kind == 1 && r.key == "toggle:accounts": Rectangle {
+            width: 20px;
+            height: 20px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 4px;
+            background: add-ta.pressed ? Theme.text.with-alpha(0.16) : add-ta.has-hover ? Theme.text.with-alpha(0.09) : transparent;
+            accessible-role: button;
+            accessible-label: "Konto hinzufügen";
+            Text { text: "+"; color: Theme.muted; font-size: 15px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            add-ta := TouchArea { clicked => { root.add(); } }
+            if add-ta.has-hover: Rectangle {
+                x: parent.width - 104px;
+                y: parent.height + 2px;
+                width: 104px;
+                height: 20px;
+                border-radius: 4px;
+                background: Theme.surface;
+                border-width: 1px;
+                border-color: Theme.control-border;
+                Text { text: "Konto hinzufügen"; color: Theme.text; font-size: 11px; horizontal-alignment: center; vertical-alignment: center; }
             }
         }
         if r.badge != "" && !subtitle: Rectangle {
@@ -1184,6 +1207,11 @@ export component MainWindow inherits Window {
                             active: root.side-selected == r.key;
                             clicked => { root.side-click(r.key); }
                             fold => { root.side-fold(r.key); }
+                            add => {
+                                root.add-status = "";
+                                root.bank-search("");
+                                root.add-open = true;
+                            }
                         }
                     }
                 }
