@@ -1171,7 +1171,7 @@ struct MainToolbar: ViewModifier {
                         Button { model.lock() } label: { Label("Tresor sperren", systemImage: "lock") }
                     }
                     if model.demoActive && (model.hasOwnVault || AppModel.vaultMayHoldRealData) {
-                        Button { model.showOwnVault() } label: { Label("Zurück zum eigenen Tresor", systemImage: "lock.open") }
+                        Button { model.showOwnVault() } label: { Label(AppModel.vaultMayHoldRealData ? "Zurück zum eigenen Tresor" : "Eigenes Konto anlegen", systemImage: "lock.open") }
                     } else if !model.demoActive {
                         Button { model.showDemo() } label: { Label("Demo-Daten-Vorschau starten", systemImage: "theatermasks") }
                     }

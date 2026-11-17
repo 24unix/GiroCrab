@@ -11,7 +11,7 @@ struct DemoBanner: View {
             if !AppModel.vaultMayHoldRealData {
                 Button("Aus iCloud wiederherstellen …") { CloudSyncManager.shared.isEnabled = true; showRestore = true }
             }
-            Button(model.hasOwnVault || AppModel.vaultMayHoldRealData ? "Zurück zum eigenen Tresor" : "Eigenes Konto anlegen") { model.showOwnVault() }
+            Button(AppModel.vaultMayHoldRealData ? "Zurück zum eigenen Tresor" : "Eigenes Konto anlegen") { model.showOwnVault() }
             if !model.hasOwnVault && !AppModel.vaultMayHoldRealData {
                 Button("Sperrbildschirm testen") { model.previewLock() }
             }
