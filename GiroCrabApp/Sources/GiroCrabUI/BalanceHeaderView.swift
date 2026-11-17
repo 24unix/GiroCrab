@@ -63,6 +63,7 @@ struct StreamHeaderCard: View {
     @State private var showAmountFilter = false
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics: Bool = true
     @AppStorage(ViewLayout.compactHeaderKey) private var compactHeader: Bool = false
+    @AppStorage(ViewLayout.lastFetchKey) private var showLastFetch: Bool = false
     @AppStorage(BalanceChartStyle.defaultsKey) private var chartStyle: BalanceChartStyle = .line
     @AppStorage(ViewLayout.headerChartCollapsedKey) private var chartCollapsed: Bool = false
     @AppStorage(BalanceBarUnit.defaultsKey) private var barUnit: BalanceBarUnit = .automatic
@@ -141,6 +142,14 @@ struct StreamHeaderCard: View {
                             .minimumScaleFactor(0.6)
                         if !compactHeader {
                             Text(hb.label).appFont(.caption).foregroundStyle(Theme.secondary)
+                            if showLastFetch, let a = account, let fetch = model.lastFetchText(for: a) {
+                                Text(fetch.text)
+                                    .sensitive()
+                                    .appFont(.caption)
+                                    .foregroundStyle(Theme.secondary)
+                                    .lineLimit(1)
+                                    .help(fetch.help ?? "")
+                            }
                         }
                         if account == nil, let split = model.headerTotalSplit {
                             Text("Zusätzlich: \(split.others.map { Money.format($0.cents, currency: $0.currency) }.joined(separator: " · "))")

@@ -22,6 +22,8 @@ enum ViewLayout {
     /// Cashflow / monthly budget cards folded to a one-line header (GitHub #603).
     static let cashflowCollapsedKey = "cashflowCollapsed"
     static let budgetsCollapsedKey = "budgetsCollapsed"
+    /// „Abgerufen vor …“ under the balance of a single account; off by default (#815).
+    static let lastFetchKey = "showLastFetch"
     /// Header chart folded to its title row; balance, KPIs and filters stay (#634).
     static let headerChartCollapsedKey = "headerChartCollapsed"
     /// Shared card spacing so the three cards above the list line up (GitHub #603).

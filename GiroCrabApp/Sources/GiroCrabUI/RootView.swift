@@ -16,6 +16,7 @@ public struct GiroCrabScenes: Scene {
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
     @AppStorage(ViewLayout.runningBalanceKey) private var showRunningBalance = false
+    @AppStorage(ViewLayout.lastFetchKey) private var showLastFetch = false
     @AppStorage(ViewLayout.compactHeaderKey) private var compactHeader = false
     @AppStorage(BalanceChartStyle.defaultsKey) private var chartStyle: BalanceChartStyle = .line
     @AppStorage(ViewLayout.headerChartCollapsedKey) private var chartCollapsed = false
@@ -232,6 +233,8 @@ public struct GiroCrabScenes: Scene {
                 Toggle("Saldo anzeigen", isOn: $showRunningBalance)
                     .disabled(!model.isUnlocked)
                 Toggle("Kopfbereich minimieren", isOn: $compactHeader)
+                    .disabled(!model.isUnlocked)
+                Toggle("Letzten Abruf anzeigen", isOn: $showLastFetch)
                     .disabled(!model.isUnlocked)
                 // the header chart (#634): same switches as its title row
                 Toggle("Diagramm anzeigen", isOn: Binding(get: { !chartCollapsed }, set: { chartCollapsed = !$0 }))

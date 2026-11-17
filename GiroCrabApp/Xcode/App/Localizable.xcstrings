@@ -2582,6 +2582,17 @@
         }
       }
     },
+    "Abgerufen %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetched %@"
+          }
+        }
+      }
+    },
     "Abgleich mit den importierten Daten" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18587,6 +18598,17 @@
         }
       }
     },
+    "Letzten Abruf anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Last Fetch"
+          }
+        }
+      }
+    },
     "Letzter Abruf" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -21213,6 +21235,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Never"
+          }
+        }
+      }
+    },
+    "Noch nie abgerufen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Never fetched"
           }
         }
       }
@@ -29292,6 +29325,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Shows the balance after each booking and at the end of each day, to check it against the bank statement. For several accounts, the sum of the euro accounts without depots and loans. Within a day the order may differ from the bank's; the end-of-day balance is always exact. Can also be switched in the View menu."
+          }
+        }
+      }
+    },
+    "Zeigt unter dem Kontostand, wann die Bankverbindung des Kontos zuletzt abgerufen wurde. Der Zeitpunkt gilt je Bankverbindung, Konten derselben Bank zeigen also denselben Wert. Nur in der Ansicht eines einzelnen Kontos und bei ausgeklapptem Kopfbereich. Auch im Menü Ansicht umschaltbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows below the balance when the account's bank connection was last fetched. The time applies per bank connection, so accounts of the same bank show the same value. Only in the view of a single account and with the header expanded. Also available in the View menu."
           }
         }
       }
