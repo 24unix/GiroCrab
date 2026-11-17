@@ -211,6 +211,7 @@ Kurz: `girocrab-core` (Rust, per UniFFI) enthält Tresor, Regeln, Händler-Erken
 | EquatePlus | Web-Portal | – | ✓ | ✓ | – | – | – | 🧪 Test gesucht |
 | FFB (FIL Fondsbank) | Web-Portal | ✓ | ✓ | ✓ | – | – | – | 🧪 Test gesucht |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
+| Ford Money | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Test gesucht |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verifiziert |
 | Schwäbisch Hall (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Test gesucht [#290](https://github.com/GiroCrab/GiroCrab/issues/290) |
 | Trade Republic | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ⚠️ Mit Einschränkungen |
@@ -432,6 +433,7 @@ your bank directly. Optional iCloud sync exchanges an encrypted snapshot via you
 | EquatePlus | Web-Portal | – | ✓ | ✓ | – | – | – | 🧪 Testing wanted |
 | FFB (FIL Fondsbank) | Web-Portal | ✓ | ✓ | ✓ | – | – | – | 🧪 Testing wanted |
 | FNZ Bank | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
+| Ford Money | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Testing wanted |
 | quirion | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ✅ Verified |
 | Schwäbisch Hall (Bausparen) | Web-Portal | ✓ | ✓ | – | – | – | ✓ | 🧪 Testing wanted [#290](https://github.com/GiroCrab/GiroCrab/issues/290) |
 | Trade Republic | Web-Portal | ✓ | ✓ | ✓ | – | – | ✓ | ⚠️ Limited |

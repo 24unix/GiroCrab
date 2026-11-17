@@ -1082,6 +1082,7 @@ impl Vault {
                     | ConnectorKind::VolksbankKasselGoettingen
                     | ConnectorKind::Direkt1822
                     | ConnectorKind::Easybank
+                    | ConnectorKind::FordMoney
             )
         });
         if !supports_statements {

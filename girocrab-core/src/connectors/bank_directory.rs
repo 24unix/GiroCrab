@@ -153,6 +153,11 @@ fn own_api() -> Vec<(ConnectorKind, &'static str, &'static str)> {
         ),
         (ConnectorKind::Fnz, "FNZ Bank", "fnz bank ebase finvesto"),
         (
+            ConnectorKind::FordMoney,
+            "Ford Money",
+            "ford money fordmoney fordbank tagesgeld festgeld",
+        ),
+        (
             ConnectorKind::Ffb,
             "FFB (FIL Fondsbank)",
             "ffb fil fondsbank fidelity fondsdepot fonds vl sparplan",
@@ -240,6 +245,8 @@ fn fints_result(b: FinTsBankInfo) -> BankSearchResult {
 const ALTE_LEIPZIGER_BLZ: &str = "50012800";
 /// FIL Fondsbank (FFB), no FinTS: served by its own web connector.
 const FFB_BLZ: &str = "50021120";
+/// Ford Bank (Ford Money), no FinTS: served by its own web connector.
+const FORD_BANK_BLZ: &str = "37021548";
 const SCHWAEBISCH_HALL_BLZ: &str = "62220000";
 
 fn own_result(kind: ConnectorKind, name: &str) -> BankSearchResult {
@@ -317,6 +324,8 @@ pub fn search(
             out.push(fints_result(b));
         } else if blz == "70013000" {
             out.push(own_result(ConnectorKind::Fnz, "FNZ Bank"));
+        } else if blz == FORD_BANK_BLZ {
+            out.push(own_result(ConnectorKind::FordMoney, "Ford Money"));
         } else if blz == FFB_BLZ {
             out.push(own_result(ConnectorKind::Ffb, "FFB (FIL Fondsbank)"));
         } else if blz == ALTE_LEIPZIGER_BLZ {

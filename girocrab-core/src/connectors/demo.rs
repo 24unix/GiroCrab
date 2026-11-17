@@ -73,13 +73,14 @@ impl BankConnector for DemoConnector {
     async fn begin(&mut self, _ctx: &ConnectContext) -> CoreResult<Phase> {
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
         let c = match self.kind {
-            ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822 | ConnectorKind::FinTsGeneric | ConnectorKind::Comdirect | ConnectorKind::ScalableCapital | ConnectorKind::VolkswagenBank => Challenge {
+            ConnectorKind::VolksbankKasselGoettingen | ConnectorKind::Direkt1822 | ConnectorKind::FinTsGeneric | ConnectorKind::Comdirect | ConnectorKind::ScalableCapital | ConnectorKind::VolkswagenBank | ConnectorKind::FordMoney => Challenge {
                 kind: ChallengeKind::DecoupledPush,
                 title: tr("Bitte in der Banking-App freigeben").into(),
                 message: tr("Demo: Eine Push-Nachricht wurde „gesendet“. Die Freigabe wird nach wenigen Sekunden simuliert.").into(),
                 method_name: match self.kind {
                     ConnectorKind::VolksbankKasselGoettingen => "SecureGo plus (Demo)".into(),
                     ConnectorKind::Direkt1822 | ConnectorKind::VolkswagenBank => "pushTAN (Demo)".into(),
+                    ConnectorKind::FordMoney => "Security-App (Demo)".into(),
                     ConnectorKind::ScalableCapital => "Browser-Anmeldung (Demo)".into(),
                     _ => "photoTAN push (Demo)".into(),
                 },

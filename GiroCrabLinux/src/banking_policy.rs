@@ -394,6 +394,7 @@ pub fn display_name(id: &str) -> String {
         "schwaebischhall" => "Schwäbisch Hall",
         "fin4u" => "Alte Leipziger",
         "ffb" => "FFB",
+        "fordmoney" => "Ford Money",
         other => other,
     };
     match tail {
