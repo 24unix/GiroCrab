@@ -21,12 +21,12 @@ import androidx.compose.ui.unit.sp
 
 /** Brand: crab accent (coral red), emerald for positive amounts. */
 object GiroColors {
-    val Crab = Color(0xFFE2503A)
-    val CrabDark = Color(0xFFFF8A73)
-    val Emerald = Color(0xFF0E9F6E)
+    val Crab = Color(0xFF007AFF)
+    val CrabDark = Color(0xFF0A84FF)
+    val Emerald = Color(0xFF15803D)
     val EmeraldDark = Color(0xFF34D399)
-    val Negative = Color(0xFFB42318)
-    val NegativeDark = Color(0xFFF97066)
+    val Negative = Color(0xFFB91C1C)
+    val NegativeDark = Color(0xFFF87171)
 }
 
 /** Semantic colours Material 3 has no slot for. */
@@ -42,41 +42,54 @@ val LocalGiroColors = staticCompositionLocalOf {
     GiroExtraColors(GiroColors.Emerald, GiroColors.Negative, Color.White, Color(0xFFE5E7EB))
 }
 
+val GiroBorderLight = Color(0xFFE5E7EB)
+val GiroBorderDark = Color(0xFF2C2C2E)
+
 private val LightScheme = lightColorScheme(
     primary = GiroColors.Crab,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFFFDAD2),
-    onPrimaryContainer = Color(0xFF410A02),
+    primaryContainer = Color(0xFFD6E6FF),
+    onPrimaryContainer = Color(0xFF004E8C),
     secondary = GiroColors.Emerald,
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFD6E6FF),
     onSecondaryContainer = Color(0xFF004E8C),
-    background = Color(0xFFF5F6F8),
+    background = Color(0xFFF2F2F7),
     onBackground = Color(0xFF111418),
     surface = Color.White,
     onSurface = Color(0xFF111418),
-    surfaceVariant = Color(0xFFECEEF2),
+    surfaceVariant = Color(0xFFF2F2F7),
+    surfaceTint = Color.Transparent,
+    surfaceContainer = Color.White,
+    surfaceContainerLow = Color.White,
+    surfaceContainerHigh = Color.White,
+    surfaceContainerHighest = Color.White,
     onSurfaceVariant = Color(0xFF5B6470),
-    outline = Color(0xFFD5D9E0),
+    outline = Color(0xFFE5E7EB),
     error = GiroColors.Negative,
 )
 
 private val DarkScheme = darkColorScheme(
     primary = GiroColors.CrabDark,
-    onPrimary = Color(0xFF5C1408),
-    primaryContainer = Color(0xFF7F2616),
-    onPrimaryContainer = Color(0xFFFFDAD2),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF1F3A60),
+    onPrimaryContainer = Color(0xFFD6E6FF),
     secondary = GiroColors.EmeraldDark,
     onSecondary = Color(0xFF00382A),
     secondaryContainer = Color(0xFF1F3A60),
     onSecondaryContainer = Color(0xFFD6E6FF),
-    background = Color(0xFF0E1013),
+    background = Color(0xFF000000),
     onBackground = Color(0xFFE6E8EC),
-    surface = Color(0xFF181B20),
+    surface = Color(0xFF1C1C1E),
     onSurface = Color(0xFFE6E8EC),
-    surfaceVariant = Color(0xFF22262D),
+    surfaceVariant = Color(0xFF2C2C2E),
+    surfaceTint = Color.Transparent,
+    surfaceContainer = Color(0xFF1C1C1E),
+    surfaceContainerLow = Color(0xFF1C1C1E),
+    surfaceContainerHigh = Color(0xFF1C1C1E),
+    surfaceContainerHighest = Color(0xFF1C1C1E),
     onSurfaceVariant = Color(0xFFA3ABB7),
-    outline = Color(0xFF363B44),
+    outline = Color(0xFF2C2C2E),
     error = GiroColors.NegativeDark,
 )
 

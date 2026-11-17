@@ -499,7 +499,7 @@ private fun MonthHeader(g: MonthGroup, masked: Boolean) {
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
         )
-        Text(formatMoney(g.income, masked = masked), fontFamily = tabular, style = tnum, fontSize = 12.sp, color = Color(0xFF2E7D32))
+        Text(formatMoney(g.income, masked = masked), fontFamily = tabular, style = tnum, fontSize = 12.sp, color = Color(0xFF15803D))
         Spacer(Modifier.width(10.dp))
         Text(formatMoney(g.expense, masked = masked), fontFamily = tabular, style = tnum, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -623,7 +623,7 @@ private fun BookingRow(
             formatMoney(booking.amountCents, booking.currency, masked),
             fontFamily = tabular, style = tnum,
             fontWeight = FontWeight.Medium,
-            color = if (booking.amountCents > 0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface,
+            color = if (booking.amountCents > 0) Color(0xFF15803D) else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             softWrap = false,
         )

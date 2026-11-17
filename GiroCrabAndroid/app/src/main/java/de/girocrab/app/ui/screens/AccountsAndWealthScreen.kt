@@ -363,8 +363,8 @@ fun WealthOverview(w: WealthBreakdown, masked: Boolean, modifier: Modifier = Mod
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SectionTitle("Vermögen")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            WealthCard("Vermögenswerte", w.assets, Color(0xFF2E7D32), masked, Modifier.weight(1f))
-            WealthCard("Verbindlichkeiten", w.liabilities, Color(0xFFC62828), masked, Modifier.weight(1f))
+            WealthCard("Vermögenswerte", w.assets, Color(0xFF15803D), masked, Modifier.weight(1f))
+            WealthCard("Verbindlichkeiten", w.liabilities, Color(0xFFB91C1C), masked, Modifier.weight(1f))
         }
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
             Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -378,7 +378,7 @@ fun WealthOverview(w: WealthBreakdown, masked: Boolean, modifier: Modifier = Mod
             Triple("Sachwerte", w.tangibles, Color(0xFFF9A825)),
         ))
         CompositionBar("Zusammensetzung Verbindlichkeiten", w.liabilities, masked, listOf(
-            Triple("Kredite", w.loans, Color(0xFFC62828)),
+            Triple("Kredite", w.loans, Color(0xFFB91C1C)),
             Triple("Kreditkarten", w.creditCards, Color(0xFFEF6C00)),
         ))
     }

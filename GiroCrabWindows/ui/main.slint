@@ -29,9 +29,9 @@ export struct InspectorData { counterparty: string, iban: string, purpose: strin
 
 global Theme {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
-    out property <color> window: dark ? #202020 : #f3f3f3;
+    out property <color> window: dark ? #202020 : #f2f2f7;
     out property <color> surface: dark ? #2b2b2b : #ffffff;
-    out property <color> sidebar: dark ? #202020 : #f3f3f3;
+    out property <color> sidebar: dark ? #202020 : #f2f2f7;
     out property <color> selected: dark ? #373737 : #eaeaea;
     out property <color> bar: dark ? #2b2b2b : #f9f9f9;
     out property <color> warning-bg: dark ? #3a2f12 : #fff4d6;
@@ -41,10 +41,10 @@ global Theme {
     out property <color> text: dark ? #f0f4f8 : #1d1d1f;
     out property <color> amount: dark ? #e6edf3 : #1d1d1f;
     out property <color> muted: dark ? #8b949e : #6e6e73;
-    out property <color> accent: dark ? #60cdff : #0067c0;
-    out property <color> primary: dark ? #60cdff : #0067c0;
-    out property <color> positive: dark ? #6ccb5f : #0f7b0f;
-    out property <color> negative: dark ? #ff99a4 : #c42b1c;
+    out property <color> accent: dark ? #60cdff : #007aff;
+    out property <color> primary: dark ? #60cdff : #007aff;
+    out property <color> positive: dark ? #34d399 : #15803d;
+    out property <color> negative: dark ? #f87171 : #b91c1c;
 }
 
 // Vector icons (16x16 viewbox, 1.5px strokes). Unknown names draw nothing.
@@ -143,7 +143,7 @@ component SideLine inherits Rectangle {
     border-color: Theme.border;
     background: active ? Theme.selected : all-card ? Theme.surface : (ta.has-hover && !ta.pressed && r.kind != 1 && r.kind != 2) ? Theme.text.with-alpha(0.05) : transparent;
     ta := TouchArea { clicked => { root.clicked(); } }
-    if active && r.kind != 1 && r.kind != 2: Rectangle { x: 0px; y: (parent.height - 16px) / 2; width: 3px; height: 16px; border-radius: 1.5px; background: #0067c0; }
+    if active && r.kind != 1 && r.kind != 2: Rectangle { x: 0px; y: (parent.height - 16px) / 2; width: 3px; height: 16px; border-radius: 1.5px; background: #007aff; }
     HorizontalLayout {
         padding-left: all-card ? 10px : 6px + max(r.depth - 1, 0) * 22px;
         padding-right: all-card ? 10px : 8px;

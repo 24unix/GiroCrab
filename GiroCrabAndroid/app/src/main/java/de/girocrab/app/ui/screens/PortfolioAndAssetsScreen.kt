@@ -46,8 +46,8 @@ import java.util.Currency
 import java.util.Locale
 import kotlin.math.abs
 
-private val GainGreen = Color(0xFF2E7D32)
-private val LossRed = Color(0xFFC62828)
+private val GainGreen = Color(0xFF15803D)
+private val LossRed = Color(0xFFB91C1C)
 private const val MASK = "•••••"
 
 private fun money(cents: Long, currency: String = "EUR", masked: Boolean = false): String {

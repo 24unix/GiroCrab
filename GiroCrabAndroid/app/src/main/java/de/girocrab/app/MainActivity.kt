@@ -193,7 +193,10 @@ fun GiroCrabRoot(
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp,
+            ) {
                 MainTab.entries.filter { it != MainTab.Portfolio }.forEach { t ->
                     NavigationBarItem(
                         selected = tab == t || (t == MainTab.Accounts && tab == MainTab.Portfolio),
@@ -355,7 +358,7 @@ private fun GiroCrabIntro(skip: Boolean) {
     }
     val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
     val dark = androidx.compose.foundation.isSystemInDarkTheme() || hour >= 19 || hour < 7
-    val bg = androidx.compose.ui.graphics.Color(if (dark) 0xFF0F141C else 0xFFF8F9FB)
+    val bg = androidx.compose.ui.graphics.Color(if (dark) 0xFF000000 else 0xFFF2F2F7)
     val fg = androidx.compose.ui.graphics.Color(if (dark) 0xFFF9FAFB else 0xFF111827)
     val sub = androidx.compose.ui.graphics.Color(if (dark) 0xFF9CA3AF else 0xFF6B7280)
     val scale by androidx.compose.animation.core.animateFloatAsState(

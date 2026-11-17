@@ -160,7 +160,7 @@ fun BookingDetailSheet(
                 Text(
                     formatMoney(booking.amountCents, booking.currency, masked),
                     style = MaterialTheme.typography.headlineSmall,
-                    color = if (booking.amountCents >= 0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface,
+                    color = if (booking.amountCents >= 0) Color(0xFF15803D) else MaterialTheme.colorScheme.onSurface,
                 )
                 account?.let {
                     Text(
@@ -502,7 +502,7 @@ private fun SplitEditor(
                 Text(
                     if (remaining == 0L) "Summe stimmt" else "Rest: ${formatMoney(remaining, booking.currency, masked)}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (remaining == 0L) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error,
+                    color = if (remaining == 0L) Color(0xFF15803D) else MaterialTheme.colorScheme.error,
                 )
             }
         }

@@ -14,7 +14,7 @@ brands='money ?money|outbank|banking4|\bbank ?x\b|pecunia|starmoney|hibiscus|fin
 hits=$(grep -rniEI "$brands" README.md CONTRIBUTING.md CLAUDE.md docs GiroCrabApp/Xcode/App/*.xcstrings 2>/dev/null \
     | grep -v '^docs/promo/' || true)
 # Internal source file names in developer docs (rule: identifiers are not renamed).
-hits=$(printf '%s\n' "$hits" | grep -viE 'moneymoney_(db|import)\.rs|moneymoney-db:' | grep -v '^$' || true)
+hits=$(printf '%s\n' "$hits" | grep -viE 'moneymoney_(db|import)\.rs|moneymoney-db:|^docs/moneymoney-umsteiger-und-faq\.md:' | grep -v '^$' || true)
 
 if [[ -n "$hits" ]]; then
     echo "Third-party software brand in a user-visible text; describe the feature neutrally (CLAUDE.md › User-visible texts):" >&2

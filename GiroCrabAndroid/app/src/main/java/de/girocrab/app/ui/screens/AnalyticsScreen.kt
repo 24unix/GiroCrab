@@ -29,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -50,9 +51,11 @@ import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.abs
 
-private val IncomeColor = Color(0xFF2E7D32)
-private val ExpenseColor = Color(0xFFC62828)
-private val NetColor = Color(0xFF1565C0)
+private val IncomeColor = Color(0xFF15803D)
+private val ExpenseColor = Color(0xFFB91C1C)
+private val IncomeBar = Color(0xFF22C55E).copy(alpha = 0.85f)
+private val ExpenseBar = Color(0xFFF87171).copy(alpha = 0.82f)
+private val NetColor = Color(0xFF007AFF)
 
 private data class MonthFlow(val month: YearMonth, val incomeCents: Long, val expenseCents: Long) {
     val netCents get() = incomeCents - expenseCents
@@ -89,7 +92,9 @@ private fun shortEur(cents: Long): String {
     return if (v >= 1000) String.format(Locale.GERMANY, "%.1fk", v / 1000.0) else v.toString()
 }
 
+private val IosPalette = listOf(0xFF007AFF, 0xFF5856D6, 0xFF34C759, 0xFFFF9500, 0xFFAF52DE, 0xFF5AC8FA).map { Color(it) }
 private fun parseColor(hex: Long) = Color(hex)
+private fun paletteColor(i: Int) = IosPalette[i % IosPalette.size]
 
 @Composable
 fun AnalyticsScreen(
@@ -133,8 +138,8 @@ fun AnalyticsScreen(
         }
         sums.map { (id, cents) ->
             val c = id?.let { byId[it] }
-            CategoryShare(id, c?.name ?: "Ohne Kategorie", c?.let { parseColor(it.colorHex) } ?: Color.Gray, cents)
-        }.sortedByDescending { it.cents }
+            CategoryShare(id, c?.name ?: "Ohne Kategorie", Color.Gray, cents)
+        }.sortedByDescending { it.cents }.mapIndexed { i, s -> s.copy(color = paletteColor(i)) }
     }
 
     val tags = remember(inPeriod, state.data.tags) {
@@ -322,16 +327,20 @@ private fun CashflowChart(data: List<MonthFlow>, hide: Boolean) {
             fun y(v: Long) = size.height * (1f - (v - minNet) / range)
             val zeroY = y(0)
             val slot = size.width / data.size
-            val barW = slot * 0.3f
+            val barW = slot * 0.26f
 
+            for (g in 1..3) {
+                val gy = size.height * g / 4f
+                drawLine(Color(0xFFE5E7EB), Offset(0f, gy), Offset(size.width, gy), strokeWidth = 1.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 8f)))
+            }
             drawLine(axis, Offset(0f, zeroY), Offset(size.width, zeroY), strokeWidth = 2f)
 
             data.forEachIndexed { i, m ->
                 val cx = slot * i + slot / 2
                 val incTop = y(m.incomeCents)
-                drawRect(IncomeColor, Offset(cx - barW - 1f, incTop), Size(barW, zeroY - incTop))
+                drawRoundRect(IncomeBar, Offset(cx - barW - 4.dp.toPx() / 2, incTop), Size(barW, (zeroY - incTop).coerceAtLeast(0f)), CornerRadius(6.dp.toPx()))
                 val expTop = y(m.expenseCents)
-                drawRect(ExpenseColor, Offset(cx + 1f, expTop), Size(barW, zeroY - expTop))
+                drawRoundRect(ExpenseBar, Offset(cx + 4.dp.toPx() / 2, expTop), Size(barW, (zeroY - expTop).coerceAtLeast(0f)), CornerRadius(6.dp.toPx()))
             }
 
             val path = Path()
@@ -341,6 +350,7 @@ private fun CashflowChart(data: List<MonthFlow>, hide: Boolean) {
             }
             drawPath(path, NetColor, style = Stroke(width = 5f, cap = StrokeCap.Round))
             data.forEachIndexed { i, m ->
+                drawCircle(Color.White, 10f, Offset(slot * i + slot / 2, y(m.netCents)))
                 drawCircle(NetColor, 7f, Offset(slot * i + slot / 2, y(m.netCents)))
             }
         }
