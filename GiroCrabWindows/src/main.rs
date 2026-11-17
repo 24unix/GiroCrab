@@ -2071,7 +2071,6 @@ fn main() -> Result<(), slint::PlatformError> {
     win.run()
 }
 
-
 type VaultEdit = Box<dyn Fn(&Vault, &[i64]) -> Result<(), String>>;
 
 /// Multi-select and batch actions of the booking list.
@@ -2110,9 +2109,7 @@ fn wire_batch_actions(win: &MainWindow, vault: Arc<Mutex<Option<Arc<Vault>>>>) {
     let run = {
         let (weak, vault) = (win.as_weak(), vault.clone());
         Arc::new(
-            move |ids: Vec<i64>,
-                  f: VaultEdit,
-                  apply: Box<dyn Fn(&mut Row)>| {
+            move |ids: Vec<i64>, f: VaultEdit, apply: Box<dyn Fn(&mut Row)>| {
                 let (Some(win), Some(v)) = (weak.upgrade(), vault.lock().unwrap().clone()) else {
                     return;
                 };
