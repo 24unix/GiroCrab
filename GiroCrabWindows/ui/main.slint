@@ -962,6 +962,21 @@ export component MainWindow inherits Window {
     in property <[color]> palette;
     in property <string> app-version;
     in-out property <bool> about-open: false;
+    // ---- Mehrere Tresore (#410) und Tresor-Synchronisation (Cloud-Ordner)
+    in-out property <bool> vaults-open: false;
+    in property <[string]> vault-names: ["Haupttresor"];
+    in-out property <int> vault-index: 0;
+    in-out property <string> vault-new-name;
+    in property <string> vault-status;
+    in-out property <bool> vault-sync-enabled: false;
+    in-out property <string> vault-sync-folder;
+    callback vault-switch(int);
+    callback vault-create(string);
+    callback vault-delete(int);
+    callback vault-sync-toggled(bool);
+    callback vault-sync-folder-changed(string);
+    callback vault-sync-now();
+    callback vault-copy-key();
     in-out property <bool> acct-open: false;
     in-out property <bool> acct-edit: false;
     in-out property <string> acct-name;
@@ -1075,17 +1090,19 @@ export component MainWindow inherits Window {
                     MenuEntry { text: root.demo-active ? "Demo-Daten beenden" : "Demo-Daten ansehen"; clicked => { root.demo-switch(); } }
                 }
                 MenuTitle {
-                    text: "Werkzeuge"; menu-height: 200px;
+                    text: "Werkzeuge"; menu-height: 256px;
                     MenuEntry { text: "Regeln …"; clicked => { root.rules-request(); } }
                     MenuEntry { text: "Tags verwalten …"; clicked => { root.tags-request(); } }
                     MenuEntry { text: "Kategorien …"; clicked => { root.categories-open(); } }
                     MenuEntry { text: "Bankverbindungen …"; clicked => { root.add-open = true; } }
+                    MenuEntry { text: "Tresor wechseln / Neuer Tresor …"; clicked => { root.vaults-open = true; } }
+                    MenuEntry { text: "Tresor-Synchronisation …"; clicked => { root.vaults-open = true; } }
                     MenuSep {}
                     MenuEntry { text: "Einstellungen …"; hint: "Strg+,"; clicked => { SettingsImportState.request(); SettingsImportState.tab = 3; } }
                     MenuEntry { text: "Info"; clicked => { root.about-open = true; } }
                 }
                 MenuTitle {
-                    text: "Mehr"; menu-height: 344px;
+                    text: "Mehr"; menu-height: 370px;
                     MenuEntry { text: "Regeln anwenden"; enabled: !root.busy; clicked => { root.apply-rules(); } }
                     MenuEntry { text: "Kategorien"; clicked => { root.categories-open(); } }
                     MenuEntry { text: "Regeln …"; clicked => { root.rules-request(); } }
@@ -1097,6 +1114,7 @@ export component MainWindow inherits Window {
                     MenuEntry { text: "Vorlagen …"; clicked => { root.templates-request(); } }
                     MenuEntry { text: "Wiederkehrend …"; clicked => { root.rc-request(); } }
                     MenuEntry { text: "Import & Export …"; enabled: !root.busy; clicked => { SettingsImportState.request(); } }
+                    MenuEntry { text: "Tresor wechseln / Neuer Tresor …"; clicked => { root.vaults-open = true; } }
                     MenuEntry { text: "Info"; clicked => { root.about-open = true; } }
                 }
                 Rectangle { horizontal-stretch: 1; }
@@ -2213,6 +2231,44 @@ export component MainWindow inherits Window {
         }
         if root.link-status != "": Text { text: root.link-status; color: Theme.negative; font-size: 12px; wrap: word-wrap; }
         HorizontalLayout { alignment: end; Button { text: "Abbrechen"; clicked => { root.link-open = false; root.refocus(); } } }
+    }
+
+    // ---- Tresore & Synchronisation
+    if vaults-open: Dialog {
+        dialog-width: 520px;
+        Text { text: "Tresor wechseln / Neuer Tresor …"; font-size: 18px; font-weight: 700; color: Theme.text; }
+        Text { text: "Aktiver Tresor: " + (root.vault-index >= 0 && root.vault-index < root.vault-names.length ? root.vault-names[root.vault-index] : "–"); font-size: 12px; color: Theme.muted; }
+        HorizontalLayout {
+            spacing: 8px;
+            vcb := ComboBox { model: root.vault-names; current-index: root.vault-index; horizontal-stretch: 1; }
+            Button { text: "Wechseln"; enabled: vcb.current-index != root.vault-index; clicked => { root.vault-switch(vcb.current-index); } }
+            Button { text: "Löschen"; enabled: root.vault-names.length > 1 && vcb.current-index > 0; clicked => { root.vault-delete(vcb.current-index); } }
+        }
+        Text { text: "Jeder Tresor ist getrennt verschlüsselt (z. B. Haupttresor, Familie / Kinder, Geschäftlich). Das Löschen betrifft nur den gewählten Tresor, nicht die ganze App."; font-size: 11px; color: Theme.muted; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit { placeholder-text: "Name des neuen Tresors"; text <=> root.vault-new-name; horizontal-stretch: 1; }
+            Button { text: "Neuer Tresor"; primary: true; enabled: root.vault-new-name != ""; clicked => { root.vault-create(root.vault-new-name); } }
+        }
+        Rectangle { height: 1px; background: Theme.border; }
+        Text { text: "Tresor-Synchronisation (iCloud Drive / Cloud-Ordner)"; font-size: 14px; font-weight: 700; color: Theme.text; }
+        HorizontalLayout {
+            spacing: 8px;
+            Switch { text: "Synchronisation aktiv"; checked <=> root.vault-sync-enabled; toggled => { root.vault-sync-toggled(root.vault-sync-enabled); } }
+        }
+        LineEdit {
+            placeholder-text: "Ordnerpfad, z. B. C:\\Users\\Name\\iCloudDrive\\GiroCrab";
+            text <=> root.vault-sync-folder;
+            enabled: root.vault-sync-enabled;
+            edited(t) => { root.vault-sync-folder-changed(t); }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Button { text: "Jetzt synchronisieren"; primary: true; enabled: root.vault-sync-enabled && root.vault-sync-folder != "" && !root.busy; clicked => { root.vault-sync-now(); } }
+            Button { text: "Tresor-Schlüssel kopieren"; clicked => { root.vault-copy-key(); } }
+        }
+        if root.vault-status != "": Text { text: root.vault-status; font-size: 12px; color: Theme.muted; wrap: word-wrap; }
+        HorizontalLayout { alignment: end; Button { text: "Schließen"; primary: true; clicked => { root.vaults-open = false; root.refocus(); } } }
     }
 
     // ---- About

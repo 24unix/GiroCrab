@@ -442,6 +442,13 @@ fun SettingsScreen(
     onOpenCategories: () -> Unit,
     onAddBank: () -> Unit,
     onOpenPortfolio: () -> Unit = {},
+    onSyncNow: (folder: String) -> Unit = {},
+    onCopyVaultKey: () -> Unit = {},
+    onVaultSwitch: (String) -> Unit = {},
+    onVaultCreate: (String) -> Unit = {},
+    onVaultDelete: (String) -> Unit = {},
+    vaultNames: List<String> = listOf("Haupttresor"),
+    activeVault: String = vaultNames.firstOrNull() ?: "Haupttresor",
     verifiedAnnouncements: List<Announcement> = state.data.announcements,
     modifier: Modifier = Modifier,
 ) {
@@ -492,6 +499,53 @@ fun SettingsScreen(
             } else {
                 Text("Die integrierte Registrierung wird verwendet; es wird keine Produkt-ID abgefragt.", style = MaterialTheme.typography.bodySmall)
             }
+        }
+
+        SettingsSection("Tresor wechseln / Neuer Tresor …") {
+            var newVault by rememberSaveable { mutableStateOf("") }
+            var pendingDelete by remember { mutableStateOf<String?>(null) }
+            Text("Aktiver Tresor: $activeVault", style = MaterialTheme.typography.labelMedium)
+            vaultNames.forEach { name ->
+                ListItem(
+                    headlineContent = { Text(name) },
+                    trailingContent = {
+                        if (name != vaultNames.first()) {
+                            TextButton(onClick = { pendingDelete = name }) { Text("Löschen") }
+                        }
+                    },
+                    modifier = Modifier.clickable { onVaultSwitch(name) },
+                )
+            }
+            Text("Jeder Tresor ist getrennt verschlüsselt (z. B. Familie / Kinder, Geschäftlich). Löschen betrifft nur den gewählten Tresor.", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(newVault, { newVault = it }, label = { Text("Name des neuen Tresors") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Button(onClick = { onVaultCreate(newVault.trim()); newVault = "" }, enabled = newVault.isNotBlank() && !state.demoActive) { Text("Neuer Tresor") }
+            pendingDelete?.let { victim ->
+                AlertDialog(
+                    onDismissRequest = { pendingDelete = null },
+                    title = { Text("Tresor „$victim“ löschen?") },
+                    text = { Text("Nur dieser Tresor wird gelöscht, die übrigen Tresore bleiben erhalten.") },
+                    confirmButton = { TextButton(onClick = { onVaultDelete(victim); pendingDelete = null }) { Text("Löschen") } },
+                    dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Abbrechen") } },
+                )
+            }
+        }
+
+        SettingsSection("Tresor-Synchronisation (iCloud Drive / Cloud-Ordner)") {
+            var syncOn by rememberSaveable { mutableStateOf(false) }
+            var syncFolder by rememberSaveable { mutableStateOf("") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("Synchronisation aktiv", Modifier.weight(1f))
+                Switch(checked = syncOn, onCheckedChange = { syncOn = it })
+            }
+            OutlinedTextField(
+                syncFolder, { syncFolder = it }, label = { Text("Ordnerpfad") },
+                singleLine = true, enabled = syncOn, modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { onSyncNow(syncFolder) }, enabled = syncOn && syncFolder.isNotBlank() && !state.demoActive) { Text("Jetzt synchronisieren") }
+                OutlinedButton(onClick = onCopyVaultKey, enabled = !state.demoActive) { Text("Tresor-Schlüssel kopieren") }
+            }
+            if (state.demoActive) Text("Im Demo-Modus nicht verfügbar.", style = MaterialTheme.typography.bodySmall)
         }
 
         SettingsSection("Verschlüsseltes Backup") {
