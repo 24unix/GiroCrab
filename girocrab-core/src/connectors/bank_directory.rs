@@ -680,7 +680,8 @@ mod tests {
     fn deutsche_bank_is_found_by_name_bank_code_and_bic() {
         let blzs = ["10070000", "50070010", "50070024"];
         // name
-        let r = search("Deutsche Bank", vec![], 20);
+        // the directory holds hundreds of branches named "Deutsche Bank …"
+        let r = search("Deutsche Bank", vec![], 1000);
         for blz in blzs {
             let b = r.iter().find(|b| b.blz == blz);
             assert!(b.is_some(), "name: {blz}");
