@@ -800,9 +800,16 @@ export component MainWindow inherits Window {
     in property <string> view-status;
     in-out property <int> period-index: 0;
     // Freistellungsaufträge (#616): total allowance, allocation per bank, realized capital income
+    in-out property <bool> allowance-couple: false;
     in property <string> allowance-total: "1.000 € / 2.000 €";
     in property <[string]> allowance-banks: [];
     in property <string> allowance-income: "0,00 €";
+    in property <int> allowance-allocated: 0;
+    in-out property <int> export-format: 0;
+    in-out property <int> export-range: 0;
+    in-out property <bool> export-iban: false;
+    in-out property <bool> export-tags: false;
+    callback export-statements(int, int, bool, bool);
     in-out property <int> depot-tab: 0;
     in-out property <int> wealth-tab: 0;
     in-out property <int> interval-index: 0;
@@ -1431,15 +1438,39 @@ export component MainWindow inherits Window {
                 changed => { root.cashflow-changed(); }
             }
             if root.view-mode == 0 && root.cards-open: Rectangle {
-                height: 52px + max(root.allowance-banks.length, 1) * 20px;
+                height: 112px + max(root.allowance-banks.length, 1) * 20px;
                 background: Theme.surface;
                 border-radius: 8px;
                 VerticalLayout {
                     padding: 10px; spacing: 4px;
-                    Text { text: "Freistellungsaufträge & Sparer-Pauschbetrag (1.000 € / 2.000 €)"; font-size: 13px; font-weight: 700; color: Theme.text; overflow: elide; }
-                    Text { text: "Gesamt: " + root.allowance-total + " · Realisierte Kapitalerträge: " + root.allowance-income; font-size: 12px; color: Theme.text; overflow: elide; }
+                    Text { text: "Freistellungsaufträge & Sparer-Pauschbetrag (#616)"; font-size: 13px; font-weight: 700; color: Theme.text; overflow: elide; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: root.allowance-couple ? "Ehepaar (2.000 €)" : "Einzelperson (1.000 €)"; font-size: 12px; color: Theme.text; vertical-alignment: center; }
+                        Switch { checked <=> root.allowance-couple; }
+                        Rectangle { horizontal-stretch: 1; }
+                    }
+                    Text { text: "Verfügbar / Nicht verteilt: " + ((root.allowance-couple ? 2000 : 1000) - root.allowance-allocated) + " €"; font-size: 12px; color: Theme.text; }
+                    Text { text: root.allowance-income; font-size: 12px; color: Theme.text; overflow: elide; }
                     if root.allowance-banks.length == 0: Text { text: "Keine Freistellungsaufträge je Bank erfasst."; font-size: 12px; color: Theme.text; }
                     for b in root.allowance-banks: Text { text: b; font-size: 12px; color: Theme.text; overflow: elide; }
+                }
+            }
+            if root.view-mode == 0 && root.cards-open: Rectangle {
+                height: 84px;
+                background: Theme.surface;
+                border-radius: 8px;
+                VerticalLayout {
+                    padding: 10px; spacing: 6px;
+                    Text { text: "Umsätze exportieren … (#831)"; font-size: 13px; font-weight: 700; color: Theme.text; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        ComboBox { model: ["PDF", "CSV", "CAMT.053"]; current-index <=> root.export-format; }
+                        ComboBox { model: ["Dieser Monat", "Dieses Jahr", "Alles"]; current-index <=> root.export-range; }
+                        CheckBox { text: "IBAN"; checked <=> root.export-iban; enabled: root.export-format == 1; }
+                        CheckBox { text: "Tags"; checked <=> root.export-tags; enabled: root.export-format == 1; }
+                        GhostButton { text: "Exportieren …"; clicked => { root.export-statements(root.export-format, root.export-range, root.export-iban, root.export-tags); } }
+                    }
                 }
             }
             if root.view-mode == 0 && root.cards-open: Rectangle {

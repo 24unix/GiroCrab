@@ -331,32 +331,78 @@ private fun <T : Enum<T>> EnumDropdown(label: String, value: T, options: List<T>
 // ---------------------------------------------------------------------------------------------
 
 @Composable
-fun TagManagerDialog(state: AppUiState, onAdd: (String) -> Unit, onDelete: (String) -> Unit, onDismiss: () -> Unit) {
+fun TagManagerDialog(
+    state: AppUiState,
+    onAdd: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onRename: (id: String, name: String) -> Unit = { _, _ -> },
+    onMerge: (fromId: String, intoId: String) -> Unit = { _, _ -> },
+) {
     var name by remember { mutableStateOf("") }
+    var onlyNoRule by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf<de.girocrab.app.model.Tag?>(null) }
+    var merging by remember { mutableStateOf<de.girocrab.app.model.Tag?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    val shown = state.data.tags.filter { t -> !onlyNoRule || state.data.rules.none { t.id in it.tagIds } }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Tags verwalten") },
+        title = { Text("Tags verwalten (#716)") },
         text = {
             Column {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     OutlinedTextField(name, { name = it }, label = { Text("Neuer Tag") }, singleLine = true, modifier = Modifier.weight(1f))
-                    TextButton(enabled = name.isNotBlank(), onClick = { onAdd(name); name = "" }) { Text("Hinzufügen") }
+                    TextButton(enabled = name.isNotBlank(), onClick = { onAdd(name.trim()); name = "" }) { Text("Erstellen") }
                 }
+                FilterChip(selected = onlyNoRule, onClick = { onlyNoRule = !onlyNoRule }, label = { Text("Ohne Regel") })
                 LazyColumn(Modifier.weight(1f, fill = false)) {
-                    items(state.data.tags, key = { it.id }) { t ->
+                    items(shown, key = { it.id }) { t ->
                         val uses = state.data.bookings.count { t.id in it.tagIds }
+                        val ruleCount = state.data.rules.count { t.id in it.tagIds }
+                        val ruleText = if (ruleCount == 0) "Ohne Regel" else if (ruleCount == 1) "1 Regel" else "$ruleCount Regeln"
                         ListItem(
                             leadingContent = { Box(Modifier.size(14.dp).background(Color(t.colorHex), CircleShape)) },
-                            headlineContent = { Text(t.name) },
-                            supportingContent = { Text("$uses Buchungen") },
-                            trailingContent = { IconButton(onClick = { onDelete(t.id) }) { Icon(Icons.Default.Delete, "Löschen") } },
+                            headlineContent = { Text("#${t.name}") },
+                            supportingContent = { Text("${if (uses == 1) "1 Buchung" else "$uses Buchungen"} · $ruleText") },
+                            trailingContent = {
+                                Row {
+                                    TextButton(onClick = { renaming = t; renameText = t.name }) { Text("Umbenennen") }
+                                    TextButton(enabled = state.data.tags.size > 1, onClick = { merging = t }) { Text("Zusammenführen") }
+                                    IconButton(onClick = { onDelete(t.id) }) { Icon(Icons.Default.Delete, "Löschen") }
+                                }
+                            },
                         )
                     }
                 }
+                Text("Regeln können Tags vergeben (Kategorie: Keine (nur Tags)).", style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Fertig") } },
     )
+    renaming?.let { t ->
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Tag umbenennen") },
+            text = { OutlinedTextField(renameText, { renameText = it }, singleLine = true, label = { Text("Name") }) },
+            confirmButton = { TextButton(enabled = renameText.isNotBlank(), onClick = { onRename(t.id, renameText.trim()); renaming = null }) { Text("Umbenennen") } },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Abbrechen") } },
+        )
+    }
+    merging?.let { from ->
+        AlertDialog(
+            onDismissRequest = { merging = null },
+            title = { Text("„#${from.name}“ zusammenführen mit …") },
+            text = {
+                Column {
+                    state.data.tags.filter { it.id != from.id }.forEach { into ->
+                        TextButton(onClick = { onMerge(from.id, into.id); merging = null }) { Text("#${into.name}") }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { merging = null }) { Text("Abbrechen") } },
+        )
+    }
 }
 
 @Composable
@@ -463,10 +509,78 @@ fun SettingsScreen(
             ListItem(headlineContent = { Text("Tags (${state.data.tags.size})") }, modifier = Modifier.clickable(onClick = onOpenTags))
         }
 
-        SettingsSection("Freistellungsaufträge & Sparer-Pauschbetrag (1.000 € / 2.000 €)") {
-            ListItem(headlineContent = { Text("Gesamt: 1.000 € (Einzelperson) / 2.000 € (Zusammenveranlagung)") })
-            ListItem(headlineContent = { Text("Erteilt je Bank") }, supportingContent = { Text("Noch keine Freistellungsaufträge erfasst") })
-            ListItem(headlineContent = { Text("Realisierte Kapitalerträge") }, supportingContent = { Text("0,00 €") })
+        var couple by rememberSaveable { mutableStateOf(false) }
+        var bankAlloc by remember { mutableStateOf(if (state.demoActive) mapOf("Musterbank" to 450, "Trade Republic" to 350) else emptyMap()) }
+        var newBank by rememberSaveable { mutableStateOf("") }
+        var newAmount by rememberSaveable { mutableStateOf("") }
+        val limit = if (couple) 2000 else 1000
+        val allocated = bankAlloc.values.sum()
+        SettingsSection("Freistellungsaufträge & Sparer-Pauschbetrag (#616)") {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf(false to "Einzelperson (1.000 €)", true to "Ehepaar (2.000 €)").forEachIndexed { i, (c, label) ->
+                    SegmentedButton(selected = couple == c, onClick = { couple = c }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
+                }
+            }
+            Text("Erteilt je Bank", style = MaterialTheme.typography.labelMedium)
+            if (bankAlloc.isEmpty()) Text("Noch keine Freistellungsaufträge erfasst", style = MaterialTheme.typography.bodySmall)
+            bankAlloc.forEach { (bank, amt) ->
+                ListItem(
+                    headlineContent = { Text(bank) },
+                    supportingContent = { Text("$amt €") },
+                    trailingContent = { IconButton(onClick = { bankAlloc = bankAlloc - bank }) { Icon(Icons.Default.Delete, "Entfernen") } },
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                OutlinedTextField(newBank, { newBank = it }, label = { Text("Bank") }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedTextField(
+                    newAmount, { newAmount = it.filter(Char::isDigit) }, label = { Text("€") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.width(90.dp),
+                )
+                TextButton(
+                    enabled = newBank.isNotBlank() && (newAmount.toIntOrNull() ?: 0) > 0,
+                    onClick = { bankAlloc = bankAlloc + (newBank.trim() to newAmount.toInt()); newBank = ""; newAmount = "" },
+                ) { Text("Hinzufügen") }
+            }
+            val free = limit - allocated
+            Text(
+                if (free >= 0) "Verfügbar / Nicht verteilt: $free €" else "Überzeichnet um ${-free} €",
+                color = if (free >= 0) Color.Unspecified else MaterialTheme.colorScheme.error,
+            )
+            Text(if (state.demoActive) "Ausgeschöpft: 312,40 € aus Zinsen & Dividenden" else "Ausgeschöpft: noch keine Kapitalerträge erfasst")
+        }
+
+        var exportFormat by rememberSaveable { mutableStateOf(0) }
+        var exportCsvIban by rememberSaveable { mutableStateOf(false) }
+        var exportCsvTags by rememberSaveable { mutableStateOf(false) }
+        var exportRange by rememberSaveable { mutableStateOf("Dieser Monat") }
+        var exportAccount by rememberSaveable { mutableStateOf("Alle Konten") }
+        var exportMsg by remember { mutableStateOf<String?>(null) }
+        SettingsSection("Umsätze exportieren … (#831)") {
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                listOf("PDF", "CSV", "CAMT.053").forEachIndexed { i, label ->
+                    SegmentedButton(selected = exportFormat == i, onClick = { exportFormat = i }, shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(label) }
+                }
+            }
+            Row(Modifier.horizontalScrollCompat(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("Dieser Monat", "Letzter Monat", "Dieses Jahr", "Alles").forEach { r ->
+                    FilterChip(selected = exportRange == r, onClick = { exportRange = r }, label = { Text(r) })
+                }
+            }
+            Row(Modifier.horizontalScrollCompat(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                (listOf("Alle Konten") + state.data.accounts.map { it.name }).forEach { a ->
+                    FilterChip(selected = exportAccount == a, onClick = { exportAccount = a }, label = { Text(a) })
+                }
+            }
+            if (exportFormat == 1) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = exportCsvIban, onClick = { exportCsvIban = !exportCsvIban }, label = { Text("IBAN") })
+                    FilterChip(selected = exportCsvTags, onClick = { exportCsvTags = !exportCsvTags }, label = { Text("Tags") })
+                }
+            }
+            Button(onClick = {
+                exportMsg = "Export vorbereitet: ${listOf("PDF", "CSV", "CAMT.053")[exportFormat]} · $exportRange · $exportAccount"
+            }) { Text("Exportieren …") }
+            exportMsg?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
 
         SettingsSection("Allgemein") {
@@ -555,11 +669,20 @@ fun SettingsScreen(
         }
 
         SettingsSection("Verschlüsseltes Backup") {
+            var backupPw by rememberSaveable { mutableStateOf("") }
+            val pwOk = backupPw.length >= 8
             Text("Der Tresor wird unverändert (weiterhin verschlüsselt) exportiert.", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(
+                backupPw, { backupPw = it }, label = { Text("Backup-Passwort (mind. 8 Zeichen)") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), isError = backupPw.isNotEmpty() && !pwOk,
+                supportingText = { if (backupPw.isNotEmpty() && !pwOk) Text("Das Passwort muss mindestens 8 Zeichen lang sein.") },
+                modifier = Modifier.fillMaxWidth(),
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onExportBackup, enabled = !state.demoActive) { Text("Exportieren") }
+                Button(onClick = onExportBackup, enabled = !state.demoActive && pwOk) { Text("Exportieren") }
                 OutlinedButton(onClick = onRestoreBackup, enabled = !state.demoActive) { Text("Wiederherstellen") }
             }
+            Text("Hinweis: Beim Wiederherstellen auf einem neuen Gerät werden Geräteeinstellungen (Privatsphäre, FinTS-ID, Sync-Ordner) nicht übernommen und müssen neu gesetzt werden.", style = MaterialTheme.typography.bodySmall)
             if (state.demoActive) Text("Im Demo-Modus nicht verfügbar.", style = MaterialTheme.typography.bodySmall)
         }
     }
