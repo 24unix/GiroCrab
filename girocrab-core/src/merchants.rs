@@ -1038,6 +1038,25 @@ fn contains_any(text: &str, needles: &[&str]) -> bool {
     needles.iter().any(|n| text.contains(n))
 }
 
+/// Category name or path ("Finanzen/Investments -> Kauf") of an investment group,
+/// e.g. imported from other apps. A bare "Kauf" outside such a group does not match.
+fn is_investment_category_path(path: &str) -> bool {
+    let p = path.to_lowercase();
+    contains_any(
+        &p,
+        &[
+            "investment",
+            "invest",
+            "wertpapier",
+            "aktie",
+            "etf",
+            "depot",
+            "sparen",
+            "vorsorge",
+        ],
+    )
+}
+
 /// Classifies a booking. `top_category` is the immutable role of the top-level
 /// category, using the original German catalog keys (empty for custom entries).
 pub fn classify(
@@ -1058,7 +1077,20 @@ pub fn classify(
     }
     if top_category == "Sparen & Investieren"
         || matches!(merchant.kind, K::Etf | K::Crypto | K::Stock)
-        || contains_any(&t, &["sparplan", "wertpapierkauf", "kauf order"])
+        || contains_any(
+            &t,
+            &[
+                "sparplan",
+                "wertpapierkauf",
+                "kauf order",
+                "wertp.abrechn",
+                "wertp abrechn",
+                "wertpapierabrechnung",
+                "wp-abrechnung",
+                "wp abrechnung",
+            ],
+        )
+        || is_investment_category_path(top_category)
     {
         return FlowKind::Investment;
     }
@@ -1564,6 +1596,27 @@ mod tests {
                 AccountKind::Checking
             ),
             FlowKind::Income
+        );
+    }
+
+    #[test]
+    fn investment_category_paths_and_securities_texts_are_investments() {
+        let m = MerchantResolver::resolve("", "");
+        let flow = |cp: &str, purpose: &str, cat: &str| {
+            classify(-500_00, cp, purpose, "", &m, cat, AccountKind::Checking)
+        };
+        assert_eq!(
+            flow("", "", "Finanzen/Investments -> Kauf"),
+            FlowKind::Investment
+        );
+        assert_eq!(
+            flow("", "Depot 123456 Wertp.Abrechn.", ""),
+            FlowKind::Investment
+        );
+        assert_eq!(flow("", "WP-Abrechnung", ""), FlowKind::Investment);
+        assert_eq!(
+            flow("Lidl", "Einkauf", "Lebensmittel"),
+            FlowKind::Consumption
         );
     }
 
