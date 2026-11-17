@@ -599,6 +599,7 @@ fn wire_export(win: &MainWindow) {
             category: gs.get_col_category(),
             note: gs.get_col_note(),
             daily_balance: false,
+            running_balance: false,
         };
         let with_balance = gs.get_col_balance();
         spawn(

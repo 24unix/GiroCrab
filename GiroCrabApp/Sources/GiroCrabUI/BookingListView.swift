@@ -121,10 +121,10 @@ struct BookingStreamView: View {
                             }) { item in
                                 switch item {
                                 case .header(let day):
-                                    DayHeader(day: day).padding(.top, day.id == firstDayID ? ViewLayout.cardGap : 14)
+                                    DayHeader(day: day, balance: model.listBalances.days[day.date]).padding(.top, day.id == firstDayID ? ViewLayout.cardGap : 14)
                                         .trackScrollDay(day.date).id(day.id)
                                 case .row(let b, let isLast):
-                                    DayCardRow(booking: b, isLast: isLast)
+                                    DayCardRow(booking: b, isLast: isLast, balance: model.listBalances.bookings[b.id])
                                         .trackScrollDay(b.bookingDate)
                                         .id(b.id)
                                 }
@@ -448,6 +448,8 @@ struct DayHeader: View {
     @AppStorage(BookingDensity.defaultsKey) private var density: BookingDensity = .standard
     @Environment(AppModel.self) private var model
     let day: DayGroup
+    /// End-of-day balance (#577); nil = none shown.
+    var balance: RunningBalance?
 
     var body: some View {
         // this day is the one the balance chart's marker points to (#593)
@@ -461,6 +463,15 @@ struct DayHeader: View {
                     .appFont(.subheadline, weight: .semibold)
                     .foregroundStyle(marked ? Theme.accent : Theme.text)
                 Spacer()
+                // end-of-day balance (#577): exact, whatever the order within the day
+                if let balance {
+                    Text("Saldo \(balance.text)")
+                        .sensitive(.amounts)
+                        .appFont(.caption, monospacedDigit: true)
+                        .foregroundStyle(Theme.secondary)
+                        .lineLimit(1).fixedSize()
+                        .help("Kontostand am Ende des Tages")
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, density == .compact ? 4 : 10)
@@ -531,12 +542,14 @@ struct DayCardRow: View {
     @Environment(AppModel.self) private var model
     let booking: Booking
     let isLast: Bool
+    /// Balance after this booking (#577); nil = none shown.
+    var balance: RunningBalance?
     @State private var compactDetailsCollapsed = false
 
     var body: some View {
         let b = booking
         VStack(spacing: 0) {
-                BookingRow(booking: b, compactDetailsCollapsed: compactDetailsCollapsed)
+                BookingRow(booking: b, compactDetailsCollapsed: compactDetailsCollapsed, balance: balance)
                     .dropDestination(for: URL.self) { urls, _ in
                         guard model.attach(urls, to: b) else { return false }
                         model.selectedBookingID = b.id
@@ -658,6 +671,7 @@ struct BookingRow: View {
     @Environment(AppModel.self) private var model
     let booking: Booking
     var compactDetailsCollapsed = false
+    var balance: RunningBalance?
     /// Amazon orders: drill-down of all items (and the refunded order's items)
     /// below the row; collapsed rows keep the uniform list height.
     @State private var amazonExpanded = false
@@ -873,30 +887,44 @@ struct BookingRow: View {
                     .help("Vorgemerkt – noch nicht gebucht")
                     .accessibilityLabel("Vorgemerkt")
             }
-            if let ref = amazonRef {
-                // Order account: the direction is never colour alone — charges get a
-                // minus, refunds a plus (and a spoken label); both are badged
-                // symmetrically (same padding, same alignment).
-                Text(ref.isRefund ? Money.signed(booking.amountCents) : Money.format(-abs(booking.amountCents)))
-                    .sensitive(.amounts)
-                    .appFont(.body, weight: .semibold, monospacedDigit: true)
-                    .foregroundStyle(ref.isRefund ? Theme.inflow : Theme.charge)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Capsule().fill(ref.isRefund ? Theme.inflowBadge : Theme.outflowBadge))
-                    .lineLimit(1).fixedSize()
-                    .help(ref.isRefund ? "Gutschrift (Erstattung)" : "Bestellung")
-                    .accessibilityLabel(Text(verbatim: "\(ref.isRefund ? String(localized: "Erstattung") : String(localized: "Belastung")): \(redaction.masking(Money.format(abs(booking.amountCents)), .amounts))"))
-            } else {
-                AmountLabel(cents: booking.amountCents)
-                    .lineLimit(1)
-                    .fixedSize()
-                    .padding(.horizontal, booking.isPending ? 6 : 0)
-                    .padding(.vertical, booking.isPending ? 2 : 0)
-                    .overlay {
-                        if booking.isPending {
-                            Capsule().strokeBorder(Theme.secondary, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            // compact rows stay one line: the balance goes next to the amount
+            let amountLayout = isSingleLine ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(alignment: .trailing, spacing: 1))
+            amountLayout {
+                if let ref = amazonRef {
+                    // Order account: the direction is never colour alone — charges get a
+                    // minus, refunds a plus (and a spoken label); both are badged
+                    // symmetrically (same padding, same alignment).
+                    Text(ref.isRefund ? Money.signed(booking.amountCents) : Money.format(-abs(booking.amountCents)))
+                        .sensitive(.amounts)
+                        .appFont(.body, weight: .semibold, monospacedDigit: true)
+                        .foregroundStyle(ref.isRefund ? Theme.inflow : Theme.charge)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Capsule().fill(ref.isRefund ? Theme.inflowBadge : Theme.outflowBadge))
+                        .lineLimit(1).fixedSize()
+                        .help(ref.isRefund ? "Gutschrift (Erstattung)" : "Bestellung")
+                        .accessibilityLabel(Text(verbatim: "\(ref.isRefund ? String(localized: "Erstattung") : String(localized: "Belastung")): \(redaction.masking(Money.format(abs(booking.amountCents)), .amounts))"))
+                } else {
+                    AmountLabel(cents: booking.amountCents)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, booking.isPending ? 6 : 0)
+                        .padding(.vertical, booking.isPending ? 2 : 0)
+                        .overlay {
+                            if booking.isPending {
+                                Capsule().strokeBorder(Theme.secondary, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                            }
                         }
-                    }
+                }
+                // balance after this booking (#577); pending ones have none
+                if let balance {
+                    Text(balance.text)
+                        .sensitive(.amounts)
+                        .appFont(.caption, monospacedDigit: true)
+                        .foregroundStyle(Theme.tertiary)
+                        .lineLimit(1).fixedSize()
+                        .help("Saldo nach dieser Buchung")
+                        .accessibilityLabel(Text(verbatim: "\(String(localized: "Saldo")): \(redaction.masking(balance.text, .amounts))"))
+                }
             }
         }
         if (showsDetails || density == .standard), amazonRef == nil, !visiblePurpose.isEmpty {

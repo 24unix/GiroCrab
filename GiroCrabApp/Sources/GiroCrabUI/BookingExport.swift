@@ -206,6 +206,8 @@ struct ExportOptions: Codable, Equatable {
     /// Current live balance – off for Umsatzliste; period opening/closing are used instead.
     var showCurrentBalance = false
     var showDailyBalance = false
+    /// CSV: balance after each booking (#577).
+    var showRunningBalance = false
     var firstLineOnly = true
     var direction: PrintDirection = .all
     /// Oldest first (statement convention).
@@ -243,6 +245,7 @@ struct ExportOptions: Codable, Equatable {
         groupByAccount = try c.decodeIfPresent(Bool.self, forKey: .groupByAccount) ?? d.groupByAccount
         showCurrentBalance = try c.decodeIfPresent(Bool.self, forKey: .showCurrentBalance) ?? d.showCurrentBalance
         showDailyBalance = try c.decodeIfPresent(Bool.self, forKey: .showDailyBalance) ?? d.showDailyBalance
+        showRunningBalance = try c.decodeIfPresent(Bool.self, forKey: .showRunningBalance) ?? d.showRunningBalance
         firstLineOnly = try c.decodeIfPresent(Bool.self, forKey: .firstLineOnly) ?? d.firstLineOnly
         direction = try c.decodeIfPresent(PrintDirection.self, forKey: .direction) ?? d.direction
         newestFirst = try c.decodeIfPresent(Bool.self, forKey: .newestFirst) ?? d.newestFirst
@@ -252,7 +255,7 @@ struct ExportOptions: Codable, Equatable {
         case format, scope, periodPreset, customFrom, customTo, selectedAccountIDs, accountOutput
         case accountID, bulkPerAccount // legacy decode only
         case showCategory, showNote, showTotals, groupByAccount, showCurrentBalance
-        case showDailyBalance, firstLineOnly, direction, newestFirst
+        case showDailyBalance, showRunningBalance, firstLineOnly, direction, newestFirst
     }
 
     func encode(to encoder: Encoder) throws {
@@ -270,6 +273,7 @@ struct ExportOptions: Codable, Equatable {
         try c.encode(groupByAccount, forKey: .groupByAccount)
         try c.encode(showCurrentBalance, forKey: .showCurrentBalance)
         try c.encode(showDailyBalance, forKey: .showDailyBalance)
+        try c.encode(showRunningBalance, forKey: .showRunningBalance)
         try c.encode(firstLineOnly, forKey: .firstLineOnly)
         try c.encode(direction, forKey: .direction)
         try c.encode(newestFirst, forKey: .newestFirst)
@@ -309,6 +313,7 @@ struct ExportOptions: Codable, Equatable {
         if let b = json["groupByAccount"] as? Bool { o.groupByAccount = b }
         if let b = json["showCurrentBalance"] as? Bool { o.showCurrentBalance = b }
         if let b = json["showDailyBalance"] as? Bool { o.showDailyBalance = b }
+        if let b = json["showRunningBalance"] as? Bool { o.showRunningBalance = b }
         if let b = json["firstLineOnly"] as? Bool { o.firstLineOnly = b }
         if let b = json["newestFirst"] as? Bool { o.newestFirst = b }
         return o
@@ -326,6 +331,7 @@ struct ExportOptions: Codable, Equatable {
         return showCategory != d.showCategory
             || showNote != d.showNote
             || showDailyBalance != d.showDailyBalance
+            || showRunningBalance != d.showRunningBalance
             || groupByAccount != d.groupByAccount
             || firstLineOnly != d.firstLineOnly
             || newestFirst != d.newestFirst
@@ -424,10 +430,12 @@ enum BookingExportBuilder {
                 date: r.date, accountName: r.accountName, counterparty: r.counterparty,
                 purpose: PrintReportBuilder.displayPurpose(r, firstLineOnly: options.firstLineOnly),
                 category: r.category, note: r.note, amountCents: r.amountCents, currency: r.currency,
-                dayBalanceCents: dayBalance)
+                dayBalanceCents: dayBalance,
+                balanceCents: report.runningBalances[r.id])
         }
         let columns = ExportCsvColumns(category: options.showCategory, note: options.showNote,
-                                       dailyBalance: options.showDailyBalance)
+                                       dailyBalance: options.showDailyBalance,
+                                       runningBalance: options.showRunningBalance)
         return exportCsv(rows: out, columns: columns, balanceLines: lines)
     }
 

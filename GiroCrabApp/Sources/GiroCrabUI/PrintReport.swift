@@ -148,6 +148,9 @@ struct PrintReport {
     var accounts: [PrintAccount] = []
     /// End-of-day balances per account id; key 0 = all printed accounts combined.
     var dailyBalances: [Int64: [String: Int64]] = [:]
+    /// Balance after each booking (key = booking id) for the CSV „Saldo“ column (#577):
+    /// of its account, or the sum of the exported accounts.
+    var runningBalances: [Int64: Int64] = [:]
     var generatedAt = Date()
     /// App icon as `data:image/png;base64,…`; nil = no logo available on this platform.
     var logoDataURI: String?

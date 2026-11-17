@@ -198,7 +198,7 @@ extension AppModel {
     /// so far is fetched again, so scrolling stays smooth.
     func loadMoreBookings() {
         guard let vault, hasMoreBookings, !isLoadingMoreBookings, selectionLoadTask == nil else { return }
-        var next = currentFilter
+        var next = listFilter
         next.offset = UInt32(bookings.count)
         next.limit = appendPageSize
         let filter = next
@@ -214,6 +214,7 @@ extension AppModel {
             self.isLoadingMoreBookings = false
             guard let next, !next.transactions.isEmpty else { return }
             Perf.interval("publishBookings") {
+                self.listBalances.merge(next)
                 self.bookings.append(contentsOf: next.transactions)
             }
             // an edit reloads exactly what is on screen
@@ -328,6 +329,14 @@ extension AppModel {
         )
     }
 
+    /// `currentFilter` for the list's own pages: with the running balances it shows (#577).
+    /// Other callers (print, counts, exports) use `currentFilter` and skip that work.
+    var listFilter: BookingFilter {
+        var f = currentFilter
+        f.withBalances = listHasBalances
+        return f
+    }
+
     /// Opens the compact export dialog (PDF / CSV / XML).
     /// - Parameter selection: use the current multi-/single selection (context menu).
     func openBookingExport(selection: Bool = false) {
@@ -368,7 +377,7 @@ extension AppModel {
         dropPendingPage()
         guard let vault else { return }
         runCore {
-            let filter = currentFilter
+            let filter = listFilter
             let p = try Perf.interval("listTransactions") { try vault.listTransactions(filter: filter) }
             Perf.interval("publishBookings") { publish(p) }
         }
@@ -395,12 +404,46 @@ extension AppModel {
     /// inspector after an edit moved it out of the filter).
     func publish(_ p: BookingPage) {
         page = p
+        var balances = ListBalances(currency: balanceCurrency)
+        balances.merge(p)
+        listBalances = balances
         bookings = keepingLingeringRow(p.transactions)
         if let id = selectedBookingID, booking(withID: id) == nil, stickyBooking?.id != id {
             // „Neue Umsätze“: no booking selected unasked, auto review would check it
             selectedBookingID = sidebarSelection == .newBookings ? nil : p.transactions.first?.id
         }
         pruneMultiSelection()
+    }
+
+    /// Running balances (#577) fit only a selection of accounts (one account, a
+    /// group, all accounts), not a category or „Neue Umsätze“, whose rows come
+    /// from accounts the view does not name. The list and the CSV export share it.
+    var selectionHasBalances: Bool {
+        switch sidebarSelection {
+        case .account, .group, .bank, .userGroup, .allAccounts: true
+        default: false
+        }
+    }
+
+    /// The list shows running balances: Ansicht › Saldo anzeigen and a selection of accounts.
+    var listHasBalances: Bool {
+        UserDefaults.standard.bool(forKey: ViewLayout.runningBalanceKey) && selectionHasBalances
+    }
+
+    /// Currency of the running balances: one account's own, else the EUR sum (as the core sums).
+    var balanceCurrency: String {
+        if case .account(let id) = sidebarSelection, let a = account(for: id) { return a.currency }
+        return "EUR"
+    }
+
+    /// Ansicht › Saldo anzeigen changed (also from the settings window): switching it on
+    /// reloads a list that can show balances; switching it off only drops them.
+    func runningBalanceSettingChanged(on: Bool) {
+        if on, selectionHasBalances {
+            reloadBookings()
+        } else {
+            listBalances = ListBalances()
+        }
     }
 
     /// The lingering booking (checked while selected) at its old place in a
@@ -440,7 +483,7 @@ extension AppModel {
         scopeLoadTask?.cancel()
         dropPendingPage()
         guard let vault else { return }
-        let filter = currentFilter
+        let filter = listFilter
         scopeLoadTask = Task { [weak self] in
             guard !Task.isCancelled else { return }
             let load = Task.detached(priority: .userInitiated) {

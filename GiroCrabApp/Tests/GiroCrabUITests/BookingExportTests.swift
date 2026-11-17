@@ -52,6 +52,42 @@ final class BookingExportTests: XCTestCase {
         XCTAssertFalse(csv.contains("Wocheneinkauf"))
     }
 
+    func testCSVRunningBalanceColumn() throws {
+        var o = ExportOptions()
+        o.format = .csv
+        o.showRunningBalance = true
+        var r = report()
+        r.runningBalances = [1: 1_004_599]
+        let csv = BookingExportBuilder.csv(r, options: o)
+        let lines = csv.split(separator: "\r\n").map(String.init)
+        XCTAssertTrue(try XCTUnwrap(lines.first { $0.contains("Datum;") }).hasSuffix(";Betrag;Währung;Saldo"))
+        XCTAssertTrue(try XCTUnwrap(lines.first { $0.hasPrefix("2025-03-01") }).hasSuffix(";EUR;10045,99"))
+        // no balance known (e.g. pending): empty cell
+        XCTAssertTrue(try XCTUnwrap(lines.first { $0.hasPrefix("2025-03-02") }).hasSuffix(";EUR;"))
+        o.showRunningBalance = false
+        XCTAssertFalse(BookingExportBuilder.csv(r, options: o).contains("Saldo"))
+    }
+
+    /// The balance after each exported booking walks back by its amount (#577).
+    func testExportPageCarriesRunningBalances() async throws {
+        let model = demoModel()
+        let account = try camtAccount(model)
+        model.sidebarSelection = .account(account.id)
+        let page = try await model.loadExportPage(
+            accountIDs: [account.id], period: .all, bookingIDs: nil, options: nil, withBalances: true)
+        let loaded = try XCTUnwrap(page)
+        let booked = loaded.bookings.filter { !$0.isPending }
+        XCTAssertGreaterThan(booked.count, 2)
+        for (newer, older) in zip(booked, booked.dropFirst()) {
+            let a = try XCTUnwrap(loaded.balances[newer.id]), b = try XCTUnwrap(loaded.balances[older.id])
+            XCTAssertEqual(a - b, newer.amountCents)
+        }
+        let plainPage = try await model.loadExportPage(
+            accountIDs: [account.id], period: .all, bookingIDs: nil, options: nil)
+        let plain = try XCTUnwrap(plainPage)
+        XCTAssertTrue(plain.balances.isEmpty)
+    }
+
     // MARK: - CAMT.053
 
     private func demoModel() -> AppModel {
@@ -61,9 +97,9 @@ final class BookingExportTests: XCTestCase {
     }
 
     private func demoBookings(_ model: AppModel, account: Int64? = nil) async throws -> [Booking] {
-        let rows = try await model.loadExportBookings(
+        let rows = try await model.loadExportPage(
             accountIDs: account.map { [$0] }, period: .all, bookingIDs: nil, options: nil)
-        return try XCTUnwrap(rows)
+        return try XCTUnwrap(rows?.bookings)
     }
 
     /// A demo account a CAMT.053 statement may cover.
@@ -315,9 +351,9 @@ final class BookingExportTests: XCTestCase {
         let model = demoModel()
         let account = try XCTUnwrap(model.allAccounts.first { !$0.iban.isEmpty })
         let all = try await demoBookings(model)
-        let loaded = try await model.loadExportBookings(
+        let loaded = try await model.loadExportPage(
             accountIDs: [account.id], period: .lastMonth, bookingIDs: nil, options: nil)
-        let one = try XCTUnwrap(loaded)
+        let one = try XCTUnwrap(loaded?.bookings)
         XCTAssertTrue(one.allSatisfy { $0.accountId == account.id })
         let (from, to) = Period.previousMonth().range
         XCTAssertTrue(one.allSatisfy { $0.bookingDate >= from! && $0.bookingDate <= to! })

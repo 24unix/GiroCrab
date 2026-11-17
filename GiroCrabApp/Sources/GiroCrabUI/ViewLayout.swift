@@ -2,6 +2,11 @@ import SwiftUI
 
 /// Persisted view-layout switches shared by the View menu, the toolbar and
 /// the settings (GitHub #233, #234).
+extension UserDefaults {
+    /// `ViewLayout.runningBalanceKey` for KVO: the model reloads when it changes (#577).
+    @objc dynamic var showRunningBalance: Bool { bool(forKey: ViewLayout.runningBalanceKey) }
+}
+
 enum ViewLayout {
     /// Charts and analysis cards above the booking list.
     static let statisticsKey = "showStatistics"
@@ -9,6 +14,8 @@ enum ViewLayout {
     static let inspectorKey = "showInspector"
     /// Monthly budgets: the card above the list and „Monatsbudget festlegen …“.
     static let budgetsKey = "showBudgets"
+    /// Balance after each booking and at the end of each day in the list (#577).
+    static let runningBalanceKey = "showRunningBalance"
     /// Header card reduced to title, balance and the filter row: no balance
     /// chart, KPIs or loan progress, more room for the bookings (GitHub #358).
     static let compactHeaderKey = "compactHeader"

@@ -108,6 +108,7 @@ extension AppModel {
         isLoadingSelection = true
         page = nil
         bookings = []
+        listBalances = ListBalances()
         history = []
         categoryHistory = []
     }
@@ -147,7 +148,7 @@ extension AppModel {
                 let cycle = try await Self.offMain { try vault.salaryCycle(accountIds: ids) }
                 guard !Task.isCancelled, let self else { return }
                 self.salaryCycle = cycle
-                let filter = self.currentFilter
+                let filter = self.listFilter
                 let (from, to) = self.periodRange
                 let chart = self.historyRequest
                 let categoryChart = self.categoryHistoryRequest

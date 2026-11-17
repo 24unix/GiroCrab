@@ -30,6 +30,10 @@ pub struct ExportCsvRow {
     pub currency: String,
     /// End-of-day balance, set on the last row of a day; `None` = empty cell.
     pub day_balance_cents: Option<i64>,
+    /// Balance after this booking (#577); `None` = empty cell.
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub balance_cents: Option<i64>,
 }
 
 /// `# Konto;Saldo;Währung;Datum` line above the header.
@@ -49,6 +53,10 @@ pub struct ExportCsvColumns {
     pub category: bool,
     pub note: bool,
     pub daily_balance: bool,
+    /// "Saldo" after each booking (#577).
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub running_balance: bool,
 }
 
 /// Excel CSV (UTF-8 BOM, semicolon, decimal comma, CRLF).
@@ -76,6 +84,9 @@ pub fn export_csv(
         header.push("Notiz");
     }
     header.extend(["Betrag", "Währung"]);
+    if columns.running_balance {
+        header.push("Saldo");
+    }
     if columns.daily_balance {
         header.push("Tagessaldo");
     }
@@ -96,6 +107,9 @@ pub fn export_csv(
         }
         cols.push(csv_amount(r.amount_cents));
         cols.push(csv_field(&r.currency, false));
+        if columns.running_balance {
+            cols.push(r.balance_cents.map(csv_amount).unwrap_or_default());
+        }
         if columns.daily_balance {
             cols.push(r.day_balance_cents.map(csv_amount).unwrap_or_default());
         }
@@ -180,7 +194,7 @@ struct CamtEntry {
 
 /// Day part of a stored date (`2025-03-01T10:00:00` → `2025-03-01`).
 const DAY_SQL: &str = "substr(t.booking_date, 1, 10)";
-const PENDING_SQL: &str = "t.external_id LIKE 'pending-%'";
+pub(crate) const PENDING_SQL: &str = "t.external_id LIKE 'pending-%'";
 
 #[uniffi::export]
 impl Vault {
@@ -1616,6 +1630,7 @@ mod tests {
             amount_cents: -4_599,
             currency: "EUR".into(),
             day_balance_cents: Some(1_000_000),
+            balance_cents: Some(2_500),
         };
         let line = ExportCsvBalanceLine {
             name: "=HYPERLINK(\"x\")".into(),
@@ -1627,15 +1642,16 @@ mod tests {
             category: true,
             note: true,
             daily_balance: true,
+            running_balance: true,
         };
         let csv = export_csv(vec![row.clone()], all, vec![line]);
         assert!(csv.starts_with('\u{FEFF}'));
         assert!(csv.contains("# \"'=HYPERLINK(\"\"x\"\")\";10000,00;EUR;2025-03-31\r\n"));
         assert!(csv.contains(
-            "Datum;Konto;Name;Verwendungszweck;Kategorie;Notiz;Betrag;Währung;Tagessaldo\r\n"
+            "Datum;Konto;Name;Verwendungszweck;Kategorie;Notiz;Betrag;Währung;Saldo;Tagessaldo\r\n"
         ));
         assert!(csv.contains(
-            "2025-03-02;Giro;Supermarkt <Nord>;Einkauf;Lebensmittel;Woche;-45,99;EUR;10000,00\r\n"
+            "2025-03-02;Giro;Supermarkt <Nord>;Einkauf;Lebensmittel;Woche;-45,99;EUR;25,00;10000,00\r\n"
         ));
         let lean = export_csv(vec![row], ExportCsvColumns::default(), vec![]);
         assert!(lean.contains("Datum;Konto;Name;Verwendungszweck;Betrag;Währung\r\n"));

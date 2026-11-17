@@ -63,6 +63,7 @@ struct GeneralSettings: View {
     @State private var showHelp = false
     @AppStorage(ViewLayout.statisticsKey) private var showStatistics = true
     @AppStorage(ViewLayout.budgetsKey) private var showBudgets = true
+    @AppStorage(ViewLayout.runningBalanceKey) private var showRunningBalance = false
     @AppStorage(NegativeAmountStyle.defaultsKey) private var negativeAmountStyle: NegativeAmountStyle = .neutral
     @AppStorage(AppTextSize.defaultsKey) private var textSize: AppTextSize = .standard
     @AppStorage(PrivacyMode.enabledKey) private var privacyMode = false
@@ -122,6 +123,9 @@ struct GeneralSettings: View {
                     .appFont(.caption).foregroundStyle(.secondary)
                 Toggle("Budgets anzeigen", isOn: $showBudgets)
                 Text("Wer keine Monatsbudgets nutzt, blendet die Budget-Karte und „Monatsbudget festlegen …“ ganz aus. Auch im Menü Ansicht umschaltbar.")
+                    .appFont(.caption).foregroundStyle(.secondary)
+                Toggle("Saldo in der Buchungsliste anzeigen", isOn: $showRunningBalance)
+                Text("Zeigt den Kontostand nach jeder Buchung und am Ende jedes Tages, zum Abgleich mit dem Kontoauszug. Bei mehreren Konten die Summe der Euro-Konten ohne Depots und Darlehen. Innerhalb eines Tages kann die Reihenfolge von der Bank abweichen, der Tagessaldo stimmt immer. Auch im Menü Ansicht umschaltbar.")
                     .appFont(.caption).foregroundStyle(.secondary)
                 Picker("Negative Beträge", selection: $negativeAmountStyle) {
                     ForEach(NegativeAmountStyle.allCases) { Text($0.title).tag($0) }

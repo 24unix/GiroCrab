@@ -17754,6 +17754,17 @@
         }
       }
     },
+    "Kontostand am Ende des Tages" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance at the end of the day"
+          }
+        }
+      }
+    },
     "Kontostand bisher" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -23412,6 +23423,17 @@
         }
       }
     },
+    "Saldo %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance %@"
+          }
+        }
+      }
+    },
     "Saldo GiroCrab" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -23419,6 +23441,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GiroCrab balance"
+          }
+        }
+      }
+    },
+    "Saldo anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Balance"
           }
         }
       }
@@ -23434,6 +23467,17 @@
         }
       }
     },
+    "Saldo in der Buchungsliste anzeigen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show balance in the booking list"
+          }
+        }
+      }
+    },
     "Saldo laut Import" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -23445,6 +23489,17 @@
         }
       }
     },
+    "Saldo nach dieser Buchung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance after this booking"
+          }
+        }
+      }
+    },
     "Saldo von der Bank" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -23452,6 +23507,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "balance from the bank"
+          }
+        }
+      }
+    },
+    "Saldo-Spalte (nach jeder Buchung)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balance column (after each booking)"
           }
         }
       }
@@ -28690,6 +28756,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Shows the GiroCrab icon in the menu bar. A click opens a popover with the balance of a chosen account or the total, a right-click opens a menu. While the vault is locked or with “Hide amounts in menu bar” on, no amounts or account names appear."
+          }
+        }
+      }
+    },
+    "Zeigt den Kontostand nach jeder Buchung und am Ende jedes Tages, zum Abgleich mit dem Kontoauszug. Bei mehreren Konten die Summe der Euro-Konten ohne Depots und Darlehen. Innerhalb eines Tages kann die Reihenfolge von der Bank abweichen, der Tagessaldo stimmt immer. Auch im Menü Ansicht umschaltbar." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows the balance after each booking and at the end of each day, to check it against the bank statement. For several accounts, the sum of the euro accounts without depots and loans. Within a day the order may differ from the bank's; the end-of-day balance is always exact. Can also be switched in the View menu."
           }
         }
       }

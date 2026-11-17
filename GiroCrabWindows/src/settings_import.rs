@@ -279,6 +279,7 @@ pub fn export_rows(list: &[Booking]) -> Vec<ExportCsvRow> {
             amount_cents: b.amount_cents,
             currency: b.currency.clone(),
             day_balance_cents: None,
+            balance_cents: None,
         })
         .collect()
 }

@@ -1023,12 +1023,21 @@ impl Vault {
         let db = self.db()?;
         // Exports and other (almost) unlimited lists read every row anyway.
         let big_page = with_rows && (filter.limit == 0 || filter.limit > 5_000);
-        if !big_page {
-            if let Some(page) = self.list_page_cached(&db, &filter, with_rows)? {
-                return Ok(page);
-            }
+        let cached = if !big_page {
+            self.list_page_cached(&db, &filter, with_rows)?
+        } else {
+            None
+        };
+        let mut page = match cached {
+            Some(page) => page,
+            None => self.list_page_full(&db, &filter)?,
+        };
+        // same lock as the page: a sync in between cannot shift the balances (#577)
+        if filter.with_balances {
+            (page.running_balances, page.day_balances) =
+                super::balances::page_balances(&db, &filter.account_ids, &page.transactions)?;
         }
-        self.list_page_full(&db, &filter)
+        Ok(page)
     }
 
     /// The light path of `list_page`; `None` when the full one has to answer (a booking the
@@ -1134,6 +1143,8 @@ impl Vault {
             investment_cents: investment,
             perk_cents: perk,
             flow,
+            running_balances: Vec::new(),
+            day_balances: Vec::new(),
         }))
     }
 
@@ -1190,6 +1201,8 @@ impl Vault {
             investment_cents: investment,
             perk_cents: perk,
             flow,
+            running_balances: Vec::new(),
+            day_balances: Vec::new(),
         })
     }
 }

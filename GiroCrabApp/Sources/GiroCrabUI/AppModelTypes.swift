@@ -273,6 +273,31 @@ struct DayJump: Equatable {
     let token = UUID()
 }
 
+/// A running balance (#577) as the list shows it, passed into rows as a value so
+/// a new page re-renders only the rows whose balance changed. Formatted once.
+struct RunningBalance: Equatable {
+    let cents: Int64
+    let text: String
+
+    init(cents: Int64, currency: String) {
+        self.cents = cents
+        text = Money.format(cents, currency: currency)
+    }
+}
+
+/// Running balances of the loaded list pages (#577), by booking and by day.
+struct ListBalances {
+    /// One account's own currency, else EUR (the core sums only EUR accounts).
+    var currency = "EUR"
+    private(set) var bookings: [Booking.ID: RunningBalance] = [:]
+    private(set) var days: [String: RunningBalance] = [:]
+
+    mutating func merge(_ page: BookingPage) {
+        for b in page.runningBalances { bookings[b.bookingId] = RunningBalance(cents: b.balanceCents, currency: currency) }
+        for d in page.dayBalances { days[d.date] = RunningBalance(cents: d.balanceCents, currency: currency) }
+    }
+}
+
 struct DayGroup: Identifiable {
     let date: String
     let bookings: [Booking]

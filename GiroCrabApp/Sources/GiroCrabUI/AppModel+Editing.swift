@@ -99,7 +99,7 @@ extension AppModel {
         dropPendingPage()
         guard let vault else { return }
         let generation = listGeneration
-        let filter = currentFilter
+        let filter = listFilter
         let (from, to) = periodRange
         let sums = categorySumFilter
         let listHasFlow = filter.listHasFlow

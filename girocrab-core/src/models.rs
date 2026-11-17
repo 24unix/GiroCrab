@@ -591,6 +591,10 @@ pub struct BookingFilter {
     #[uniffi(default)]
     #[cfg_attr(feature = "serde", serde(default))]
     pub untagged_only: bool,
+    /// Fill `BookingPage::running_balances` / `day_balances` (#577).
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub with_balances: bool,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -610,6 +614,24 @@ pub struct BookingPage {
     pub perk_cents: i64,
     /// KPI flows of all matching bookings (not only the loaded page).
     pub flow: SelectionFlow,
+    /// Balance after each booking of the page (#577), only with
+    /// `BookingFilter::with_balances`: of the chosen account, or the sum of
+    /// the chosen accounts (see `vault/balances.rs`). Pending bookings, rows of
+    /// other accounts and days before an opening balance have none.
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub running_balances: Vec<BookingBalance>,
+    /// End-of-day balance for every day on the page (same accounts).
+    #[uniffi(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub day_balances: Vec<DailyBalance>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct BookingBalance {
+    pub booking_id: i64,
+    pub balance_cents: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]

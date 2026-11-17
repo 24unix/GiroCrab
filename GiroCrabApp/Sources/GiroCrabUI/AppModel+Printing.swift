@@ -129,15 +129,21 @@ extension AppModel {
 
     /// Bookings for an export, read off the main thread (`list_transactions` enriches every
     /// row). `nil` when the vault was locked or swapped meanwhile.
-    func loadExportBookings(accountIDs: [Int64]?, period: ExportPeriodPreset, bookingIDs: Set<Int64>?,
-                            options: ExportOptions?, ignoreListFilters: Bool = false) async throws -> [Booking]? {
-        let filter = exportFilter(accountIDs: accountIDs, period: period, options: options,
+    /// `withBalances`: also the balance after each booking (#577, CSV „Saldo“ column),
+    /// only for a selection of accounts, as in the list.
+    func loadExportPage(accountIDs: [Int64]?, period: ExportPeriodPreset, bookingIDs: Set<Int64>?,
+                        options: ExportOptions?, ignoreListFilters: Bool = false, withBalances: Bool = false)
+        async throws -> (bookings: [Booking], balances: [Int64: Int64])? {
+        var filter = exportFilter(accountIDs: accountIDs, period: period, options: options,
                                   ignoreListFilters: ignoreListFilters)
-        guard var rows = try await vaultOffMain({ try $0.listTransactions(filter: filter).transactions }) else {
+        filter.withBalances = withBalances && selectionHasBalances
+        guard let page = try await vaultOffMain({ try $0.listTransactions(filter: filter) }) else {
             return nil
         }
+        var rows = page.transactions
         if let bookingIDs { rows = rows.filter { bookingIDs.contains($0.id) } }
-        return rows
+        let balances = Dictionary(uniqueKeysWithValues: page.runningBalances.map { ($0.bookingId, $0.balanceCents) })
+        return (rows, balances)
     }
 
     /// Report for already loaded export bookings (cheap: no vault access).

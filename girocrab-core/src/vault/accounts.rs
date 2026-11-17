@@ -9,6 +9,10 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::{role_name, tr, trf};
 use crate::models::*;
 
+/// The account's own switch for the overall total (`a`, its user group `g`);
+/// `excluded_from_total` adds the groups a parent group excludes.
+pub(crate) const IN_TOTAL_SQL: &str = "(IFNULL(g.include_in_total, 1) AND a.archived_unix IS NULL)";
+
 impl Vault {
     /// Fills `initial_balance_cents` from the largest historical absolute
     /// balance, reconstructed backwards from the current balance over the
@@ -436,7 +440,7 @@ impl Vault {
                         JOIN transactions t ON t.id = sp.transaction_id
                         WHERE t.account_id = a.id AND sp.category_id IS NULL AND t.deleted_ms IS NULL),
                     (SELECT count(*) FROM transactions t WHERE t.account_id = a.id AND t.checked = 0 AND t.deleted_ms IS NULL),
-                    a.initial_balance_cents, g.uuid, IFNULL(g.include_in_total, 1) AND a.archived_unix IS NULL,
+                    a.initial_balance_cents, g.uuid, {in_total},
                     a.color_hex, IFNULL(c.connector, ''), IFNULL(c.bank_code, ''), IFNULL(c.login_name, ''), a.external_ref,
                     a.archived_unix, a.access_revoked,
                     o.opening_cents, IFNULL(o.opening_date, ''), {derived}
@@ -445,7 +449,8 @@ impl Vault {
              LEFT JOIN opening_balances o ON o.account_id = a.id
              WHERE a.deleted_ms IS NULL
              ORDER BY a.sort_order, a.id",
-            derived = crate::opening_balance::DERIVED_SQL
+            derived = crate::opening_balance::DERIVED_SQL,
+            in_total = IN_TOTAL_SQL
         ))?;
         let mut color_hashes: HashMap<i64, u64> = HashMap::new();
         let rows = stmt.query_map([], |r| {
@@ -521,14 +526,7 @@ impl Vault {
                 && a.transaction_count > 0
                 && !(a.balance_derived && a.opening_balance_cents.is_some())
         }) {
-            let mut st = db.prepare(
-                "SELECT booking_date, amount_cents, counterparty || ' ' || purpose || ' ' || booking_text
-                 FROM transactions WHERE account_id = ?1 AND deleted_ms IS NULL ORDER BY booking_date, id",
-            )?;
-            let tx_rows: Vec<(String, i64, String)> = st
-                .query_map([a.id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-                .collect::<Result<_, _>>()?;
-            if let Some(open) = crate::connectors::open_card_balance(&tx_rows) {
+            if let Some(open) = crate::connectors::card_open_balance(&db, a.id)? {
                 a.balance_cents = open;
             }
         }
@@ -609,24 +607,22 @@ impl Vault {
         if !ids.is_empty() {
             let db = self.db()?;
             for a in &chosen {
-                let bdate = a.balance_date.trim();
-                if !a.balance_derived && bdate.len() == 10 {
-                    let after: i64 = db
-                        .query_row(
-                            "SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE account_id = ?1 AND booking_date > ?2 AND deleted_ms IS NULL AND external_id NOT LIKE 'pending-%'",
-                            params![a.id, bdate],
-                            |r| r.get(0),
-                        )
-                        .unwrap_or(0);
-                    balance += after;
+                if !a.balance_derived {
+                    balance += super::balances::booked_after(&db, a.id, &a.balance_date)?;
                 }
             }
             let list = (0..ids.len())
                 .map(|n| format!("?{}", n + 2))
                 .collect::<Vec<_>>()
                 .join(",");
+            // the same bookings move it as in the list's running balance (#577):
+            // a computed balance counts pending ones and starts at its opening date
             let mut stmt = db.prepare(&format!(
-                "SELECT booking_date, SUM(amount_cents) FROM transactions WHERE account_id IN ({list}) AND booking_date > ?1 AND deleted_ms IS NULL AND external_id NOT LIKE 'pending-%' GROUP BY booking_date"
+                "SELECT t.booking_date, SUM(t.amount_cents) {}
+                  WHERE t.account_id IN ({list}) AND t.booking_date > ?1 AND t.deleted_ms IS NULL AND {}
+                  GROUP BY t.booking_date",
+                super::balances::COUNTED_FROM,
+                super::balances::counts_sql()
             ))?;
             let date = start.format("%Y-%m-%d").to_string();
             let args: Vec<rusqlite::types::Value> = std::iter::once(date.into())

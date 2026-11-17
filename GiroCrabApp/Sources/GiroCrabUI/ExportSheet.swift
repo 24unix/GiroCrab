@@ -593,6 +593,9 @@ struct ExportSheet: View {
             Toggle("Notizen", isOn: $options.showNote)
             DisclosureGroup(isExpanded: $showDetails) {
                 Toggle("Tagessaldo-Spalte", isOn: $options.showDailyBalance)
+                if options.format == .csv {
+                    Toggle("Saldo-Spalte (nach jeder Buchung)", isOn: $options.showRunningBalance)
+                }
                 Toggle("Nach Konto gruppieren", isOn: $options.groupByAccount)
                 Toggle("Nur erste Zeile Verwendungszweck", isOn: $options.firstLineOnly)
                 Picker("Reihenfolge", selection: $options.newestFirst) {
@@ -678,7 +681,7 @@ struct ExportSheet: View {
         previewCount = nil
         do {
             guard let bookings = try await loadBookings(accountIDs: key.accountIDs, bookingIDs: key.bookingIDs,
-                                                        options: key.options),
+                                                        options: key.options)?.bookings,
                   !Task.isCancelled, key == previewKey else { return }
             let report = model.exportReport(bookings: bookings, accountIDs: key.accountIDs, period: exportPeriod,
                                             bookingIDs: key.bookingIDs, options: key.options)
@@ -708,12 +711,14 @@ struct ExportSheet: View {
 
     /// Bookings for an export, off the main thread. CAMT.053 ignores the list's search,
     /// category and direction filters so its closing balance matches the bank's.
-    private func loadBookings(accountIDs: [Int64], bookingIDs: Set<Int64>?,
-                              options: ExportOptions) async throws -> [Booking]? {
-        try await model.loadExportBookings(
+    /// `withBalances`: the CSV „Saldo“ column (#577); the preview count needs none.
+    private func loadBookings(accountIDs: [Int64], bookingIDs: Set<Int64>?, options: ExportOptions,
+                              withBalances: Bool = false) async throws -> (bookings: [Booking], balances: [Int64: Int64])? {
+        try await model.loadExportPage(
             accountIDs: accountIDs.isEmpty ? nil : accountIDs,
             period: options.scope == .selection ? .current : options.periodPreset,
-            bookingIDs: bookingIDs, options: options, ignoreListFilters: options.format.isCamt)
+            bookingIDs: bookingIDs, options: options, ignoreListFilters: options.format.isCamt,
+            withBalances: withBalances)
     }
 
     @MainActor
@@ -797,12 +802,14 @@ struct ExportSheet: View {
                                    options: ExportOptions) async throws -> (data: Data, filename: String)? {
         let period = options.scope == .selection ? ExportPeriodPreset.current : options.periodPreset
         // nil = vault locked or swapped while loading: nothing to export.
-        guard let bookings = try await loadBookings(accountIDs: accountIDs, bookingIDs: bookingIDs, options: options) else {
+        guard let loaded = try await loadBookings(accountIDs: accountIDs, bookingIDs: bookingIDs, options: options,
+                                                  withBalances: options.format == .csv && options.showRunningBalance) else {
             throw CancellationError()
         }
-        guard !bookings.isEmpty else { return nil }
-        var report = model.exportReport(bookings: bookings, accountIDs: accountIDs, period: period,
+        guard !loaded.bookings.isEmpty else { return nil }
+        var report = model.exportReport(bookings: loaded.bookings, accountIDs: accountIDs, period: period,
                                         bookingIDs: bookingIDs, options: options)
+        report.runningBalances = loaded.balances
         report.generatedAt = Date()
         report.logoDataURI = nil
         report = BookingExportBuilder.prepareStatement(report)

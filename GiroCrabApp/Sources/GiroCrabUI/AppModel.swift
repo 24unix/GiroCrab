@@ -63,6 +63,11 @@ public final class AppModel {
     private(set) var streamItems: [StreamItem] = []
     @ObservationIgnored var bookingIndexByID: [Booking.ID: Int] = [:]
     var page: BookingPage?
+    /// Balance after each loaded booking and per loaded day (#577); empty unless
+    /// Ansicht › Saldo anzeigen and the selection is accounts (`listHasBalances`).
+    var listBalances = ListBalances()
+    /// Watches Ansicht › Saldo anzeigen, which the settings window can change too.
+    @ObservationIgnored private var runningBalanceObserver: NSKeyValueObservation?
     /// Flows of the selected account/group in the selected period; nil = not loaded yet.
     var selectionFlow: (consumption: Int64, invested: Int64, income: Int64)?
     var dashboard: InvestmentDashboard?
@@ -660,6 +665,10 @@ public final class AppModel {
     public init(options: LaunchOptions = .current) {
         self.options = options
         StartupClock.mark("AppModel.init begin")
+        runningBalanceObserver = UserDefaults.standard.observe(\.showRunningBalance, options: [.old, .new]) { [weak self] _, change in
+            guard let on = change.newValue, on != change.oldValue else { return }
+            Task { @MainActor in self?.runningBalanceSettingChanged(on: on) }
+        }
         if options.freshVault || options.demoSeed {
             // Developer switches only (screenshots): synchronous, not the normal start path.
             GiroCrabCore.setLanguage(code: Bundle.main.preferredLocalizations.first ?? "de")
@@ -1260,7 +1269,7 @@ public final class AppModel {
         UserDefaults.standard.set(true, forKey: Self.realDataKey)
         logoCache = [:]
         // nothing of the vault shown before (demo) may appear under the new one
-        page = nil; bookings = []; history = []
+        page = nil; bookings = []; history = []; listBalances = ListBalances()
         assetClassificationVersion += 1
         // cheap, indexed calls; everything that scans bookings goes off the main thread
         reloadAccounts()
@@ -1376,7 +1385,7 @@ public final class AppModel {
         demoActive = false
         vault = nil
         groups = []; userGroups = []; accountsByID = [:]; accountMarkers = [:]; bookings = []; categories = []; categoryTree = []; rules = []; tags = []; tagFilter = BookingTagFilter(); showTagFilter = false; showTagManager = false; tagDraft = TagDraft(); connections = []; settings = []
-        page = nil; dashboard = nil; merchantStats = nil; merchantAccountStats = nil; logoCache = [:]
+        page = nil; listBalances = ListBalances(); dashboard = nil; merchantStats = nil; merchantAccountStats = nil; logoCache = [:]
     }
 
     /// Locking ends every bank dialog: no session keeps writing into the vault,
