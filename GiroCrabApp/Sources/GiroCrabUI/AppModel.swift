@@ -58,7 +58,7 @@ public final class AppModel {
     /// Live tags in list order with their booking counts (#228).
     var tags: [GiroCrabCore.Tag] = []
     var categoryTree: [CategoryNode] = []
-    var bookings: [Booking] = [] { didSet { rebuildBookingIndex() } }
+    var bookings: [Booking] = [] { didSet { rebuildBookingIndex(); loadListSuggestions() } }
     /// Derived from `bookings` once per reload instead of on every view access.
     var dayGroups: [DayGroup] = [] { didSet { streamItems = StreamItem.flatten(dayGroups) } }
     /// `dayGroups` flattened into headers and rows for the lazy booking stream.
@@ -80,6 +80,8 @@ public final class AppModel {
     var merchantAccountStats: (accountId: Int64, stats: MerchantStats)?
     /// Category earlier bookings of the selected booking's payee got (#664); nil = none.
     var categorySuggestion: CategorySuggestion?
+    /// The same for the uncategorised rows of the list, by booking.
+    var listSuggestions: [Booking.ID: CategorySuggestion] = [:]
     var rules: [Rule] = []
     var history: [DailyBalance] = []
     /// Monthly sums of the selected category incl. subcategories (chart above its bookings, #502).
@@ -604,6 +606,7 @@ public final class AppModel {
     /// Merchant whose history `merchantStats` currently shows.
     @ObservationIgnored var merchantStatsKey: String?
     @ObservationIgnored var categorySuggestionTask: Task<Void, Never>?
+    @ObservationIgnored var listSuggestionsTask: Task<Void, Never>?
 
     // MARK: State used by AppModel+Loading.swift
 
@@ -1403,6 +1406,7 @@ public final class AppModel {
         merchantStatsTask?.cancel()
         merchantStatsCache = [:]
         categorySuggestionTask?.cancel()
+        listSuggestionsTask?.cancel()
         searchTask?.cancel()
         loanStore.loadTask?.cancel()
         loanStore.loans = []; loanStore.linkByBooking = [:]
@@ -1415,7 +1419,7 @@ public final class AppModel {
         demoActive = false
         vault = nil
         groups = []; userGroups = []; accountsByID = [:]; accountMarkers = [:]; bookings = []; categories = []; categoryTree = []; rules = []; tags = []; tagFilter = BookingTagFilter(); showTagFilter = false; showTagManager = false; tagDraft = TagDraft(); connections = []; settings = []
-        page = nil; listBalances = ListBalances(); dashboard = nil; merchantStats = nil; merchantAccountStats = nil; categorySuggestion = nil; logoCache = [:]
+        page = nil; listBalances = ListBalances(); dashboard = nil; merchantStats = nil; merchantAccountStats = nil; categorySuggestion = nil; listSuggestions = [:]; logoCache = [:]
     }
 
     /// Locking ends every bank dialog: no session keeps writing into the vault,

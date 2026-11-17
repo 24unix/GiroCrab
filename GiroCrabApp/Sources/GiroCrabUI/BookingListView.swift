@@ -1064,8 +1064,32 @@ struct BookingCategoryLabel: View {
                 .sensitive(.labels)
                 .appFont(.callout, weight: .medium)
                 .lineLimit(1)
+                .foregroundStyle(color)
+            if none { BookingSuggestionHint(booking: booking) }
         }
         .foregroundStyle(color)
+    }
+}
+
+/// The history's suggestion (#664) behind "Ohne Kategorie": the category the
+/// booking would get, in the secondary colour so it never reads as assigned.
+/// A view of its own, so only uncategorised rows depend on the suggestions.
+private struct BookingSuggestionHint: View {
+    let booking: Booking
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let s = model.listSuggestions[booking.id],
+           let category = model.categories.first(where: { $0.id == s.categoryId }) {
+            HStack(spacing: 3) {
+                Image(systemName: "clock.arrow.circlepath").appFont(.caption)
+                Text(category.name).sensitive(.labels).appFont(.callout).lineLimit(1)
+            }
+            .foregroundStyle(Theme.secondary)
+            .padding(.leading, 4)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text("Vorschlag: \(category.name)"))
+        }
     }
 }
 

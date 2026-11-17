@@ -33,6 +33,13 @@ struct CategoryAssignMenu: View {
         let targets = model.categorizeTargets(for: booking)
         let assigned = Set(targets.map(\.categoryId))
         Menu("Kategorie", systemImage: "tag") {
+            if targets.count == 1, booking.categoryId == nil, let s = model.listSuggestions[booking.id],
+               let category = model.categories.first(where: { $0.id == s.categoryId }) {
+                Button("Vorschlag übernehmen: \(category.name)", systemImage: "clock.arrow.circlepath") {
+                    model.setCategory(category.id, for: targets)
+                }
+                Divider()
+            }
             CategoryMenuItems(nodes: model.categoryTree, current: assigned.count == 1 ? assigned.first ?? nil : nil) {
                 model.setCategory($0, for: targets)
             }

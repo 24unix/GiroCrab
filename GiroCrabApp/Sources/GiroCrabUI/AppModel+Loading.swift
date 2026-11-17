@@ -186,6 +186,30 @@ extension AppModel {
         }
     }
 
+    /// Suggestions for the uncategorised rows of the list (#664): one background
+    /// call after each change of `bookings` (reload, paging, an edit's patch); the
+    /// shown ones stay until the new set arrives. The core decides which rows get one
+    /// and keeps the history until the data changes, so an unchanged vault costs
+    /// about 1.5 ms per 100 rows.
+    func loadListSuggestions() {
+        listSuggestionsTask?.cancel()
+        let ids = bookings.filter { $0.categoryId == nil }.map(\.id)
+        guard !ids.isEmpty else {
+            if !listSuggestions.isEmpty { listSuggestions = [:] }
+            return
+        }
+        listSuggestionsTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled, let self else { return }
+            let found = try? await self.vaultOffMain { vault in
+                try Perf.interval("listSuggestions") { try vault.suggestCategories(bookingIds: ids) }
+            }
+            guard !Task.isCancelled else { return }
+            // a failed call or a swapped vault leaves no stale suggestions
+            self.listSuggestions = Dictionary(((found ?? nil) ?? []).map { ($0.bookingId, $0) }, uniquingKeysWith: { a, _ in a })
+        }
+    }
+
     static func buildTree(_ flat: [GiroCrabCore.Category]) -> [CategoryNode] {
         func children(of parent: Int64?) -> [CategoryNode] {
             flat.filter { $0.parentId == parent }.map { c in

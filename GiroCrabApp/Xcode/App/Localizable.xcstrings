@@ -28210,6 +28210,28 @@
         }
       }
     },
+    "Vorschlag übernehmen: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply Suggestion: %@"
+          }
+        }
+      }
+    },
+    "Vorschlag: %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suggestion: %@"
+          }
+        }
+      }
+    },
     "WKN" : {
       "extractionState" : "manual",
       "localizations" : {

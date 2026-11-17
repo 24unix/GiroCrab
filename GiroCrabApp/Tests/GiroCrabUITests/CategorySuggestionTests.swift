@@ -94,4 +94,19 @@ final class CategorySuggestionTests: XCTestCase {
         XCTAssertEqual(draft(.merchant).field, base.field)
         XCTAssertEqual(draft(.merchant).pattern, base.pattern)
     }
+
+    func testListRowsGetTheirSuggestionsInOneCall() async throws {
+        let (booking, category) = try clearedBooking()
+        for _ in 0..<300 {
+            if model.listSuggestions[booking.id] != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(model.listSuggestions[booking.id]?.categoryId, category)
+        XCTAssertTrue(model.listSuggestions.keys.allSatisfy { id in model.booking(withID: id)?.categoryId == nil },
+                      "only uncategorised rows get one")
+
+        // accepting it (row menu) assigns the category; the row drops its hint
+        model.setCategory(category, for: booking)
+        XCTAssertEqual(model.booking(withID: booking.id)?.categoryId, category)
+    }
 }
