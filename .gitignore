@@ -31,6 +31,7 @@ tresor/
 *.sta
 *.camt
 *.csv
+!girocrab-core/tests/fixtures/c24_categories.csv
 exports/
 
 # --- Secrets / credentials ---

@@ -98,9 +98,16 @@ impl LocalApiServer {
     /// within `WRITE_TIMEOUT`), removes the socket file and releases the lock.
     /// Returns at once: safe on the main thread.
     pub fn stop(&self) {
+        let mut lock = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        if lock.is_none() {
+            return;
+        }
+        // Cleanup belongs to the first stop only, while we still hold the
+        // instance lock. After it is released, another server may bind this
+        // path and the filesystem may even reuse our old socket's inode.
         self.stopper.stop();
         remove_own_socket(&self.path, self.file_id);
-        self.lock.lock().unwrap_or_else(|e| e.into_inner()).take();
+        lock.take();
     }
 }
 
@@ -744,6 +751,29 @@ mod tests {
         drop(first);
         assert!(UnixStream::connect(&path).is_ok());
         second.stop();
+    }
+
+    #[test]
+    fn a_stopped_server_never_unlinks_a_replacement_with_a_reused_inode() {
+        for stop_again in [false, true] {
+            let d = ShortDir::new();
+            let (_v, vault, _) = vault();
+            let path: String = d.socket().to_string_lossy().into();
+            let mut first = LocalApiServer::start(vault.clone(), path.clone()).unwrap();
+            first.stop();
+            let second = LocalApiServer::start(vault.clone(), path.clone()).unwrap();
+            // Model inode reuse deterministically, independent of the host
+            // filesystem's allocation policy. The old server no longer owns
+            // this path even when the replacement has the same file identity.
+            Arc::get_mut(&mut first).unwrap().file_id = second.file_id;
+            if stop_again {
+                first.stop();
+                assert!(UnixStream::connect(&path).is_ok(), "repeated stop");
+            }
+            drop(first);
+            assert!(UnixStream::connect(&path).is_ok(), "drop after stop");
+            second.stop();
+        }
     }
 
     #[test]

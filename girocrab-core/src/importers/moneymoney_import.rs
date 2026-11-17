@@ -1,7 +1,8 @@
-//! MoneyMoney migration: lossless import of MoneyMoney CSV / XML exports.
+//! Import of MoneyMoney CSV / XML exports and C24 CSV exports.
 //!
 //! * Parses German and English CSV headers (`;` `,` or tab) and the XML
 //!   `<transactions><transaction>…` export.
+//! * Reads C24 category / subcategory columns as literal tree components.
 //! * Keeps hierarchical categories (`Haushalt\Lebensmittel`, `Steuern / Büro`)
 //!   as a category tree and the user's notes in `transactions.note`.
 //! * Idempotent: every row gets a deterministic fingerprint
@@ -175,6 +176,7 @@ enum Field {
     Date,
     Value,
     Category,
+    Subcategory,
     Name,
     Purpose,
     Iban,
@@ -203,6 +205,7 @@ fn field_for(header: &str) -> Option<Field> {
             Field::Value
         }
         "kategorie" | "category" => Field::Category,
+        "unterkategorie" | "subcategory" => Field::Subcategory,
         "name"
         | "empfänger"
         | "empfaenger"
@@ -301,7 +304,7 @@ pub fn parse_csv_export(text: &str) -> CoreResult<Vec<MmRow>> {
         .collect::<Vec<_>>()
         .join("\n");
     let rows = split_csv(&body, delim);
-    let (hi, cols) = rows
+    let (hi, mut cols) = rows
         .iter()
         .enumerate()
         .find_map(|(i, r)| {
@@ -312,6 +315,23 @@ pub fn parse_csv_export(text: &str) -> CoreResult<Vec<MmRow>> {
         .ok_or_else(|| CoreError::InvalidInput {
             message: tr("Keine Kopfzeile (Datum/Buchungstag und Betrag) gefunden.").into(),
         })?;
+    // C24's Kontonummer belongs to the source account, not the counterparty.
+    // Keep the two category columns as literal path components (names may
+    // contain separators that MoneyMoney uses for its single category field).
+    // Resolve format-specific columns once, rather than normalising and
+    // searching the same headers again for every booking.
+    let headers: Vec<String> = rows[hi].iter().map(|h| norm(h)).collect();
+    let has_subcategory = cols.contains(&Some(Field::Subcategory));
+    let is_c24 = has_subcategory && headers.iter().any(|h| h == "transaktionstyp");
+    if is_c24 {
+        for (header, field) in headers.iter().zip(cols.iter_mut()) {
+            if header == "kontonummer" {
+                *field = None;
+            }
+        }
+    }
+    let booking_text_columns =
+        ["beschreibung", "transaktionstyp"].map(|name| headers.iter().position(|h| h == name));
     let mut out = Vec::new();
     for r in rows.iter().skip(hi + 1) {
         // First column wins when a header occurs twice (e.g. "Konto" + "IBAN").
@@ -324,7 +344,23 @@ pub fn parse_csv_export(text: &str) -> CoreResult<Vec<MmRow>> {
                 }
             }
         }
-        if let Some(row) = build_row(|f| seen.get(&f).cloned().unwrap_or_default()) {
+        if let Some(mut row) = build_row(|f| seen.get(&f).cloned().unwrap_or_default()) {
+            if has_subcategory {
+                row.category_parts = [Field::Category, Field::Subcategory]
+                    .iter()
+                    .filter_map(|f| seen.get(f))
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
+            if is_c24 {
+                row.booking_text = booking_text_columns
+                    .iter()
+                    .flatten()
+                    .find_map(|&i| r.get(i).filter(|s| !s.trim().is_empty()))
+                    .map(|s| crate::text::clean_bank_text(s.trim()))
+                    .unwrap_or_default();
+            }
             out.push(row);
         }
     }
@@ -1147,14 +1183,11 @@ fn sample(r: &MmRow, i: i64, account_id: i64) -> Booking {
         purpose: r.stored_purpose(),
         booking_text: r.booking_text.clone(),
         category_id: None,
-        category_name: split_category(&r.category)
-            .last()
-            .cloned()
-            .unwrap_or_default(),
-        category_path: split_category(&r.category).join(" › "),
+        category_name: r.category_path().last().cloned().unwrap_or_default(),
+        category_path: r.category_path().join(" › "),
         category_color_hex: String::new(),
         category_symbol: String::new(),
-        category_source: if r.category.is_empty() {
+        category_source: if r.category_path().is_empty() {
             CategorySource::None
         } else {
             CategorySource::Manual
@@ -1211,7 +1244,7 @@ impl Vault {
         let st = run(&tx, &rows, &file_name, target_account_id, true, true)?;
         let mut cats: Vec<String> = rows
             .iter()
-            .map(|r| split_category(&r.category).join(" › "))
+            .map(|r| r.category_path().join(" › "))
             .filter(|c| !c.is_empty())
             .collect();
         cats.sort();
@@ -1290,6 +1323,190 @@ mod tests {
     const CSV: &str = "\"Datum\";\"Wertstellung\";\"Kategorie\";\"Name\";\"Verwendungszweck\";\"Konto\";\"Bank\";\"Betrag\";\"Währung\";\"Notiz\"\n\
 \"15.03.2012\";\"15.03.2012\";\"Haushalt\\Supermarkt\";\"REWE Markt\";\"Einkauf Kartenzahlung\";\"DE02120300000000202051\";\"BYLADEM1001\";\"-1.234,56\";\"EUR\";\"Wocheneinkauf\"\n\
 \"01.04.2026\";\"01.04.2026\";\"Steuern / Büro\";\"Finanzamt\";\"Erstattung\";\"\";\"\";\"2.000,00\";\"EUR\";\"\"\n";
+
+    // Synthetic booking rows using the headers supplied in #705. The attached
+    // category-only sample has no actual dates/amounts and must not create bookings.
+    const C24: &str = "Transaktionstyp;Buchungsdatum;Karteneinsatz;Betrag;Zahlungsempfänger;IBAN;BIC;Verwendungszweck;Beschreibung;Kontonummer;Kontoname;Kategorie;Unterkategorie;Bargeldabhebung\n\
+Kartenzahlung;01.01.2030;;-5,00;Bäcker;;;Brötchen;Kartenzahlung;123456;Pocket;Essen;Backwaren;Nein\n\
+Überweisung;02.01.2030;;100,00;Alice;DE02120300000000202051;;Erstattung;;123456;Pocket;Freizeit & Unterhaltung;Streaming & Pay TV;Nein\n";
+
+    #[test]
+    fn c24_reporter_fixture_preserves_all_category_pairs() {
+        let data = include_bytes!("../../tests/fixtures/c24_categories.csv");
+        // Category-only rows must never create zero-value / phantom bookings.
+        assert!(parse_export(data).is_err());
+        let text = decode(data);
+        let mut records = split_csv(&text, ',');
+        assert_eq!(records.len(), 66);
+        for (i, record) in records.iter_mut().skip(1).enumerate() {
+            record[1] = "17.11.2026".into();
+            record[3] = format!("-{},00", i + 1);
+            record[4] = "Testzahlung".into();
+        }
+        let csv = records
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .map(|cell| format!("\"{}\"", cell.replace('"', "\"\"")))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let rows = parse_export(csv.as_bytes()).unwrap();
+        assert_eq!(rows.len(), 65);
+        for (row, record) in rows.iter().zip(records.iter().skip(1)) {
+            assert_eq!(
+                row.category_path(),
+                vec![record[11].clone(), record[12].clone()]
+            );
+        }
+        let (_dir, v) = vault();
+        let result = v
+            .import_moneymoney_data(csv.as_bytes().to_vec(), "c24.csv".into(), None, true, true)
+            .unwrap();
+        assert_eq!(result.imported, 65);
+        let again = v
+            .import_moneymoney_data(
+                csv.as_bytes().to_vec(),
+                "c24.csv".into(),
+                Some(result.account_id),
+                true,
+                true,
+            )
+            .unwrap();
+        assert_eq!((again.imported, again.duplicates), (0, 65));
+        let without_categories = v
+            .import_moneymoney_data(
+                csv.as_bytes().to_vec(),
+                "plain.csv".into(),
+                None,
+                false,
+                false,
+            )
+            .unwrap();
+        assert_eq!(without_categories.categories_created, 0);
+        let page = v
+            .list_transactions(BookingFilter {
+                account_ids: vec![without_categories.account_id],
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(page.transactions.iter().all(|b| b.category_id.is_none()));
+    }
+
+    #[test]
+    fn c24_columns_preserve_category_components_and_counterparty_iban() {
+        let rows = parse_export(C24.as_bytes()).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].category_path(), vec!["Essen", "Backwaren"]);
+        assert_eq!(rows[0].iban, "");
+        assert_eq!(rows[0].amount_cents, -500);
+        assert_eq!(rows[0].booking_text, "Kartenzahlung");
+        assert_eq!(rows[1].iban, "DE02120300000000202051");
+        assert_eq!(rows[1].amount_cents, 10000);
+        let without_child = C24.replace("Essen;Backwaren", "Essen;");
+        assert_eq!(
+            parse_export(without_child.as_bytes()).unwrap()[0].category_path(),
+            vec!["Essen"]
+        );
+        assert_eq!(
+            rows[1].category_path(),
+            vec!["Freizeit & Unterhaltung", "Streaming & Pay TV"]
+        );
+        let literal = C24.replace("Essen;Backwaren", "Essen / Trinken;Backwaren / Café");
+        assert_eq!(
+            parse_export(literal.as_bytes()).unwrap()[0].category_path(),
+            vec!["Essen / Trinken", "Backwaren / Café"]
+        );
+        let only_categories = "Transaktionstyp;Buchungsdatum;Betrag;Kategorie;Unterkategorie\n;;;Freizeit;Streaming\n";
+        assert!(parse_export(only_categories.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn c24_header_mapping_handles_column_order_and_short_rows() {
+        // Source account comes before the (empty) counterparty IBAN. A short
+        // row has no description and must fall back to the transaction type.
+        let csv = "Kontonummer;IBAN;Transaktionstyp;Betrag;Buchungsdatum;Kategorie;Unterkategorie;Beschreibung\n\
+123456;;Kartenzahlung;-5,00;01.01.2030;Essen;Backwaren;Beim Bäcker\n\
+123456;;Überweisung;10,00;02.01.2030;Einkommen;Erstattung\n";
+        let rows = parse_export(csv.as_bytes()).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|r| r.iban.is_empty()));
+        assert_eq!(rows[0].booking_text, "Beim Bäcker");
+        assert_eq!(rows[1].booking_text, "Überweisung");
+        assert_eq!(rows[1].category_path(), vec!["Einkommen", "Erstattung"]);
+    }
+
+    #[test]
+    fn c24_enriches_api_booking_and_reimport_keeps_manual_category() {
+        let (_dir, v) = vault();
+        let account = v
+            .import_moneymoney_data(
+                CSV.as_bytes().to_vec(),
+                "account.csv".into(),
+                None,
+                true,
+                true,
+            )
+            .unwrap()
+            .account_id;
+        {
+            let db = v.db().unwrap();
+            db.execute("INSERT INTO transactions(account_id, external_id, booking_date, amount_cents, counterparty, purpose)
+                VALUES (?1, 'enable-banking-1', '2030-01-01', -500, 'Bäcker', 'Brötchen')", [account]).unwrap();
+        }
+        let preview = v
+            .preview_moneymoney_import(C24.as_bytes().to_vec(), "c24.csv".into(), Some(account))
+            .unwrap();
+        assert_eq!(
+            (preview.new_bookings, preview.duplicates_skipped_or_enriched),
+            (1, 1)
+        );
+        assert!(preview
+            .detected_categories
+            .contains(&"Essen › Backwaren".into()));
+        assert_eq!(
+            preview.sample_bookings[0].category_path,
+            "Essen › Backwaren"
+        );
+        let result = v
+            .import_moneymoney_data(
+                C24.as_bytes().to_vec(),
+                "c24.csv".into(),
+                Some(account),
+                true,
+                true,
+            )
+            .unwrap();
+        assert_eq!(
+            (result.imported, result.duplicates, result.enriched),
+            (1, 1, 1)
+        );
+        let changed = C24.replace("Essen;Backwaren", "Andere;Kategorie");
+        let result = v
+            .import_moneymoney_data(
+                changed.as_bytes().to_vec(),
+                "c24.csv".into(),
+                Some(account),
+                true,
+                true,
+            )
+            .unwrap();
+        assert_eq!(
+            (result.imported, result.duplicates, result.enriched),
+            (0, 2, 0)
+        );
+        let page = v
+            .list_transactions(BookingFilter {
+                account_ids: vec![account],
+                search: Some("Bäcker".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(page.total_count, 1);
+        assert_eq!(page.transactions[0].category_path, "Essen › Backwaren");
+    }
 
     const XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <transactions>
