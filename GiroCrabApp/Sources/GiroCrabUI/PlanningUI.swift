@@ -30,8 +30,11 @@ extension AppModel {
     }
 
     /// `nil` = locked, cancelled or the vault changed meanwhile (keep what is shown).
-    func cashflow(_ g: PeriodGranularity, count: Int) async -> [PeriodCashflow]? {
-        try? await vaultOffMain { try $0.cashflowByPeriod(granularity: g, count: UInt32(count)) }
+    /// `accountIds` empty = all accounts.
+    func cashflow(_ g: PeriodGranularity, count: Int, accountIds: [Int64] = []) async -> [PeriodCashflow]? {
+        try? await vaultOffMain {
+            try $0.cashflowByPeriod(granularity: g, count: UInt32(count), accountIds: accountIds)
+        }
     }
 
     func transferTemplates() async -> [TransferTemplate] {
@@ -392,9 +395,17 @@ struct CashflowCard: View {
             }
         }
         .card(padding: ViewLayout.cardPadding, vertical: ViewLayout.cardVerticalPadding(collapsed: collapsed))
-        .task(id: "\(granularity)#\(model.bookings.count)") {
-            if let loaded = await model.cashflow(granularity, count: granularity == .year ? 5 : 6) { rows = loaded }
+        // Follows the sidebar: overview = all accounts, account/group = its accounts (#731).
+        .task(id: "\(granularity)#\(model.bookings.count)#\(accountIds)") {
+            if let loaded = await model.cashflow(granularity, count: granularity == .year ? 5 : 6, accountIds: accountIds) {
+                rows = loaded
+            }
         }
+    }
+
+    /// Accounts of the sidebar selection; a category view keeps its account filter.
+    private var accountIds: [Int64] {
+        model.currentFilter.accountIds
     }
 }
 

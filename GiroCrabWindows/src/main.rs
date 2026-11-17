@@ -462,7 +462,7 @@ fn refresh_dashboard(win: &MainWindow, vault: Arc<Vault>) {
         // One account: sum its loaded bookings; everything else: the core's all-account figures.
         let flow = match account_flow {
             Some(f) => f,
-            None => vault.cashflow_by_period(gran, 6).unwrap_or_default(),
+            None => vault.cashflow_by_period(gran, 6, None).unwrap_or_default(),
         };
         let status = vault
             .list_category_budget_progress(year, month)

@@ -1123,7 +1123,7 @@ vault_methods! {
     // insights / planning / recurring
     merchant_stats(merchant_key) merchant_history(merchant_key, account_id)
     selection_flow(account_ids, date_from, date_to)
-    cashflow_by_period(granularity, count)
+    cashflow_by_period(granularity, count, account_ids)
     list_category_budget_progress(year, month)
     list_recurring(account_ids) recurring_month(account_ids, year, month)
     // settings
