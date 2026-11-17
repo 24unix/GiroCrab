@@ -583,6 +583,18 @@ pub fn sidebar_hierarchy_indent_px(depth: u32, compact_mode: bool) -> i32 {
     depth as i32 * if compact_mode { 16 } else { 22 }
 }
 
+/// Fixed sidebar width in pixels (#600): the structure no longer resizes with its content.
+pub const SIDEBAR_FIXED_WIDTH_PX: i32 = 256;
+
+/// Whether `section` (the id behind a `toggle:<id>` section key) is one of the sidebar's
+/// fixed top-level sections, which keep their order and cannot be moved or removed (#600).
+pub fn is_sidebar_section_pinned(section: &str) -> bool {
+    matches!(
+        section,
+        "accounts" | "payments" | "documents" | "categories"
+    )
+}
+
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
@@ -953,5 +965,27 @@ mod tests {
         assert_eq!(ids, [1, 2, 3]);
         let mut empty: Vec<i64> = Vec::new();
         assert!(!move_category_in_order(&mut empty, 1, false));
+    }
+
+    #[test]
+    fn test_sidebar_fixed_width_and_pinned_structure() {
+        assert_eq!(SIDEBAR_FIXED_WIDTH_PX, 256);
+        for id in ["accounts", "payments", "documents", "categories"] {
+            assert!(is_sidebar_section_pinned(id), "{id}");
+        }
+        assert!(!is_sidebar_section_pinned("g:Bank"));
+        assert!(!is_sidebar_section_pinned("c:5"));
+        assert!(!is_sidebar_section_pinned(""));
+        // Every section the builder emits is pinned.
+        let accounts = [testing::account(1, "Giro", "A", AccountKind::Checking, 0)];
+        let folded = HashSet::new();
+        let rows = build(
+            &input(&accounts, &[], &folded, GroupMode::Banks, ""),
+            &money,
+        );
+        for r in rows.iter().filter(|r| r.kind == kind::SECTION) {
+            let id = toggle_id(&r.key).unwrap();
+            assert!(is_sidebar_section_pinned(id), "{}", r.key);
+        }
     }
 }
