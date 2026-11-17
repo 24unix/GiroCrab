@@ -11,7 +11,7 @@
 //! Ported from the MoneyMoney extension `amazon-bestellungen.lua`; Business /
 //! analytics-report handling is intentionally not included.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use regex::Regex;
 use serde::Deserialize;
@@ -106,11 +106,11 @@ const MONTHS: [(&str, u32); 21] = [
 
 /// "12. März 2025", "March 12, 2025", "12.03.2025" -> "2025-03-12".
 pub fn parse_date(s: &str) -> Option<String> {
+    static DMY: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(\d{1,2})\.(\d{1,2})\.(\d{4})").unwrap());
+    static NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
     let s = s.trim();
-    if let Some(c) = Regex::new(r"(\d{1,2})\.(\d{1,2})\.(\d{4})")
-        .ok()?
-        .captures(s)
-    {
+    if let Some(c) = DMY.captures(s) {
         return iso(c[3].parse().ok()?, c[2].parse().ok()?, c[1].parse().ok()?);
     }
     let lower = s.to_lowercase();
@@ -119,8 +119,7 @@ pub fn parse_date(s: &str) -> Option<String> {
         .filter(|(name, _)| lower.contains(name))
         .max_by_key(|(name, _)| name.len())
         .map(|(_, m)| *m)?;
-    let nums: Vec<u32> = Regex::new(r"\d+")
-        .ok()?
+    let nums: Vec<u32> = NUMBER
         .find_iter(&lower)
         .filter_map(|m| m.as_str().parse().ok())
         .collect();
@@ -138,8 +137,10 @@ fn iso(y: u32, m: u32, d: u32) -> Option<String> {
 /// English ("€1,329.00", "€45.98"); a German-only pattern read "€1,329.00" as
 /// 1,32 € and missed every amount below 1.000 €.
 pub fn price_cents(s: &str) -> Option<i64> {
-    let re = Regex::new(r"-?\s*(?:€\s*)?(?:\d{1,3}(?:[.,]\d{3})+|\d+)[.,]\d{2}\b").ok()?;
-    let m = re.find(s)?;
+    static PRICE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"-?\s*(?:€\s*)?(?:\d{1,3}(?:[.,]\d{3})+|\d+)[.,]\d{2}\b").unwrap()
+    });
+    let m = PRICE.find(s)?;
     parse_amount(m.as_str())
 }
 

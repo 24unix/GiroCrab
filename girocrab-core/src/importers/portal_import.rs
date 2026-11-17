@@ -12,8 +12,9 @@
 //! description is treated as a transaction list.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
+use regex::Regex;
 use rusqlite::{params, OptionalExtension};
 use serde_json::Value;
 
@@ -144,6 +145,15 @@ fn month_num(m: &str) -> Option<u32> {
 
 /// Many date spellings -> "YYYY-MM-DD".
 pub fn parse_date(s: &str) -> Option<String> {
+    static ISO: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})").unwrap());
+    static DMY: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(\d{1,2})[./](\d{1,2})[./](\d{4}|\d{2})\b").unwrap());
+    static DAY_MONTH_NAME: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?i)^(\d{1,2})\.?\s+([A-Za-zäÄ]{3,9}\.?)\s+(\d{4})").unwrap()
+    });
+    static MONTH_NAME_DAY: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})").unwrap());
     let s = s.trim();
     let ymd = |y: i32, m: u32, d: u32| {
         chrono::NaiveDate::from_ymd_opt(y, m, d).map(|x| x.format("%Y-%m-%d").to_string())
@@ -152,20 +162,16 @@ pub fn parse_date(s: &str) -> Option<String> {
         let n: i32 = y.parse().ok()?;
         Some(if y.len() == 2 { 2000 + n } else { n })
     };
-    let re_iso = regex::Regex::new(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})").unwrap();
-    if let Some(c) = re_iso.captures(s) {
+    if let Some(c) = ISO.captures(s) {
         return ymd(c[1].parse().ok()?, c[2].parse().ok()?, c[3].parse().ok()?);
     }
-    let re_dmy = regex::Regex::new(r"^(\d{1,2})[./](\d{1,2})[./](\d{4}|\d{2})\b").unwrap();
-    if let Some(c) = re_dmy.captures(s) {
+    if let Some(c) = DMY.captures(s) {
         return ymd(year(&c[3])?, c[2].parse().ok()?, c[1].parse().ok()?);
     }
-    let re_text = regex::Regex::new(r"(?i)^(\d{1,2})\.?\s+([A-Za-zäÄ]{3,9}\.?)\s+(\d{4})").unwrap();
-    if let Some(c) = re_text.captures(s) {
+    if let Some(c) = DAY_MONTH_NAME.captures(s) {
         return ymd(c[3].parse().ok()?, month_num(&c[2])?, c[1].parse().ok()?);
     }
-    let re_us = regex::Regex::new(r"(?i)^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})").unwrap();
-    if let Some(c) = re_us.captures(s) {
+    if let Some(c) = MONTH_NAME_DAY.captures(s) {
         return ymd(c[3].parse().ok()?, month_num(&c[1])?, c[2].parse().ok()?);
     }
     None
@@ -719,10 +725,13 @@ pub fn parse_csv(text: &str, kind: ConnectorKind) -> Vec<Parsed> {
 /// Line-based best effort on extracted statement text:
 /// `DD.MM.[YY[YY]]  Beschreibung …  1.234,56[-| CR| H]`.
 pub fn parse_statement_text(text: &str, kind: ConnectorKind) -> Vec<Parsed> {
-    let re = regex::Regex::new(r"^\s*(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+(?:(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+)?(.+?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})\s*(-|CR|H|S|\+)?\s*$").unwrap();
+    static LINE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^\s*(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+(?:(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+)?(.+?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})\s*(-|CR|H|S|\+)?\s*$").unwrap()
+    });
     // statement year from any full date or "Abrechnung … 2025"
-    let year_re = regex::Regex::new(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b").unwrap();
-    let default_year: i32 = year_re
+    static FULL_DATE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b").unwrap());
+    let default_year: i32 = FULL_DATE
         .captures(text)
         .and_then(|c| c[3].parse().ok())
         .unwrap_or_else(|| {
@@ -731,7 +740,9 @@ pub fn parse_statement_text(text: &str, kind: ConnectorKind) -> Vec<Parsed> {
         });
     let mut out = Vec::new();
     for line in text.lines() {
-        let Some(c) = re.captures(line) else { continue };
+        let Some(c) = LINE.captures(line) else {
+            continue;
+        };
         let date_s = if c[1].matches('.').count() == 2 && c[1].ends_with('.') {
             format!("{}{}", &c[1], default_year)
         } else {

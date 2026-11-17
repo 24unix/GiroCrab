@@ -7,7 +7,7 @@
 //! scrubbed before it is stored ([`scrub`]). Rows older than seven days go,
 //! and the oldest rows go once the log passes 10 MB.
 
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExtension};
@@ -112,22 +112,14 @@ pub struct SyncLogFilter {
     pub limit: u32,
 }
 
-pub(crate) fn re(cell: &'static OnceLock<Regex>, pattern: &str) -> &'static Regex {
-    cell.get_or_init(|| Regex::new(pattern).expect("static pattern"))
-}
-
 /// Country, check digits, then letters and digits, in any case, with up to
 /// two blanks (space, tab, non-breaking or narrow non-breaking space) between
 /// any two of them. Only a candidate: see [`replace_ibans`]. The letter
 /// classes are spelled out instead of `(?i)`: Unicode case folding would let
 /// `[A-Z]` match the 3-byte KELVIN SIGN, and the byte slicing below would panic.
-fn iban_candidates() -> &'static Regex {
-    static IBAN: OnceLock<Regex> = OnceLock::new();
-    re(
-        &IBAN,
-        r"\b[A-Za-z]{2}[0-9]{2}(?:[ \t\u{00A0}\u{202F}]{0,2}[A-Za-z0-9]){11,30}",
-    )
-}
+static IBAN_CANDIDATE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\b[A-Za-z]{2}[0-9]{2}(?:[ \t\u{00A0}\u{202F}]{0,2}[A-Za-z0-9]){11,30}").unwrap()
+});
 
 /// Every IBAN carries at least eight digits; "ab12 test case" does not.
 fn is_iban(compact: &str) -> bool {
@@ -167,7 +159,7 @@ pub(crate) fn replace_ibans(s: &str, f: impl Fn(&str) -> String) -> String {
     let continues_word = |rest: &str| rest.starts_with(char::is_alphanumeric);
     let mut out = String::with_capacity(s.len());
     let (mut last, mut at) = (0, 0);
-    while let Some(m) = iban_candidates().find_at(s, at) {
+    while let Some(m) = IBAN_CANDIDATE.find_at(s, at) {
         let text = m.as_str();
         let mut end = text.len();
         if let Some(length) = iban_length(&text[..2].to_ascii_uppercase()) {
@@ -213,38 +205,29 @@ pub(crate) fn replace_ibans(s: &str, f: impl Fn(&str) -> String) -> String {
 /// debugging; the public report strips their paths. The result is cut to
 /// [`MAX_MESSAGE_CHARS`].
 pub(crate) fn scrub(message: &str, login: &str) -> String {
-    static SECRET: OnceLock<Regex> = OnceLock::new();
-    static SPACED_PIN: OnceLock<Regex> = OnceLock::new();
-    static BEARER: OnceLock<Regex> = OnceLock::new();
-    static COOKIE: OnceLock<Regex> = OnceLock::new();
-    static PHONE: OnceLock<Regex> = OnceLock::new();
-    static TOKEN: OnceLock<Regex> = OnceLock::new();
-    static DIGITS: OnceLock<Regex> = OnceLock::new();
     let mut s = message.trim().to_string();
     let login = login.trim();
     if login.chars().count() >= 4 {
         s = s.replace(login, "•••");
     }
     // before the key rule, or `Authorization: Bearer <token>` would leave the token behind
-    s = re(&BEARER, r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}")
-        .replace_all(&s, "$1 •••")
-        .into_owned();
+    static BEARER: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}").unwrap());
+    s = BEARER.replace_all(&s, "$1 •••").into_owned();
     // A cookie header holds several `name=value` pairs: drop the rest of the line.
-    s = re(&COOKIE, r"(?i)\b(set-cookie|cookie)\s*:[^\r\n]*")
-        .replace_all(&s, "$1: •••")
-        .into_owned();
+    static COOKIE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)\b(set-cookie|cookie)\s*:[^\r\n]*").unwrap());
+    s = COOKIE.replace_all(&s, "$1: •••").into_owned();
     // Longer keys match as a suffix ("accessToken", "JSESSIONID"); `pin` and
     // `tan` only as whole words, or "Bestand: 12" would lose its value.
-    s = re(
-        &SECRET,
-        r#"(?i)("?\b(?:pin|tan|[a-z_]*(?:passwort|password|kennwort|token|secret|api[-_ ]?key|authorization|session_?id|cookie))\b"?)\s*[:=]\s*("[^"]*"|'[^']*'|\S+)"#,
-    )
-    .replace_all(&s, "$1: •••")
-    .into_owned();
+    static SECRET: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?i)("?\b(?:pin|tan|[a-z_]*(?:passwort|password|kennwort|token|secret|api[-_ ]?key|authorization|session_?id|cookie))\b"?)\s*[:=]\s*("[^"]*"|'[^']*'|\S+)"#).unwrap()
+    });
+    s = SECRET.replace_all(&s, "$1: •••").into_owned();
     // "PIN 12345": only a value with a digit, so "TAN eingeben" stays readable.
-    s = re(&SPACED_PIN, r"(?i)\b(pin|tan)\s+[a-z]*\d[a-z0-9]*\b")
-        .replace_all(&s, "$1 •••")
-        .into_owned();
+    static SPACED_PIN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)\b(pin|tan)\s+[a-z]*\d[a-z0-9]*\b").unwrap());
+    s = SPACED_PIN.replace_all(&s, "$1 •••").into_owned();
     s = replace_ibans(&s, |compact| {
         let n = compact.chars().count();
         format!(
@@ -255,16 +238,15 @@ pub(crate) fn scrub(message: &str, login: &str) -> String {
     });
     // German and international phone numbers, also grouped ("0170 123 45 67"),
     // before the digit rule would leave the short groups behind.
-    s = re(
-        &PHONE,
-        r"(?:\+\d{1,3}[ /-]?|\b0)\d{2,5}(?:[ /-]\d{2,8}){1,4}\b",
-    )
-    .replace_all(&s, "•••")
-    .into_owned();
+    static PHONE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?:\+\d{1,3}[ /-]?|\b0)\d{2,5}(?:[ /-]\d{2,8}){1,4}\b").unwrap()
+    });
+    s = PHONE.replace_all(&s, "•••").into_owned();
     // JWTs and other base64 tokens: long runs mixing digits with letters
     // beyond hex. Hex ids and UUIDs (consent, request ids) stay for support;
     // plain words and digit runs fall through (the latter to the digit rule).
-    s = re(&TOKEN, r"[A-Za-z0-9_\-.]{24,}")
+    static TOKEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Za-z0-9_\-.]{24,}").unwrap());
+    s = TOKEN
         .replace_all(&s, |c: &regex::Captures| {
             let m = c.get(0).expect("whole match");
             let t = m.as_str();
@@ -283,7 +265,8 @@ pub(crate) fn scrub(message: &str, login: &str) -> String {
             }
         })
         .into_owned();
-    s = re(&DIGITS, r"\d{6,}").replace_all(&s, "•••").into_owned();
+    static DIGITS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d{6,}").unwrap());
+    s = DIGITS.replace_all(&s, "•••").into_owned();
     if s.chars().count() > MAX_MESSAGE_CHARS {
         s = s.chars().take(MAX_MESSAGE_CHARS).collect::<String>() + "…";
     }

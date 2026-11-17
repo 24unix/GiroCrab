@@ -13,11 +13,11 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use regex::{Regex, RegexBuilder};
 
-use crate::sync_log::{re, replace_ibans, scrub};
+use crate::sync_log::{replace_ibans, scrub};
 
 /// Replacement for a known personal term.
 pub const REDACTED: &str = "[REDACTED]";
@@ -118,14 +118,12 @@ const VERSION_WORDS: &[&str] = &[
 /// ("14.11.2026", "192.168.10.10") is a date or address; one right after a
 /// version word is a version.
 fn mask_dot_amounts(s: &str) -> String {
-    static DOT_AMOUNT: OnceLock<Regex> = OnceLock::new();
-    let pattern = re(
-        &DOT_AMOUNT,
-        r"[-+−]?\b(?:(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}|\d{1,3}(?:\.\d{3})+)\b",
-    );
+    static DOT_AMOUNT: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"[-+−]?\b(?:(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}|\d{1,3}(?:\.\d{3})+)\b").unwrap()
+    });
     let mut out = String::with_capacity(s.len());
     let mut last = 0;
-    for m in pattern.find_iter(s) {
+    for m in DOT_AMOUNT.find_iter(s) {
         let dotted_before = s[..m.start()].ends_with('.');
         let mut after = s[m.end()..].chars();
         let dotted_after =
@@ -150,66 +148,56 @@ fn mask_dot_amounts(s: &str) -> String {
 }
 
 fn sanitize_line(line: &str, terms: &[Regex]) -> String {
-    static SCRUBBED_AMOUNT: OnceLock<Regex> = OnceLock::new();
-    static EMAIL: OnceLock<Regex> = OnceLock::new();
-    static SHORT_IBAN: OnceLock<Regex> = OnceLock::new();
-    static URL_PATH: OnceLock<Regex> = OnceLock::new();
-    static AMOUNT_AFTER: OnceLock<Regex> = OnceLock::new();
-    static AMOUNT_BEFORE: OnceLock<Regex> = OnceLock::new();
-    static BARE_AMOUNT: OnceLock<Regex> = OnceLock::new();
-
     if line.trim().is_empty() {
         return String::new();
     }
-    let mut s = re(
-        &EMAIL,
-        r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}",
-    )
-    .replace_all(line, "[E-Mail]")
-    .into_owned();
+    static EMAIL: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}").unwrap()
+    });
+    let mut s = EMAIL.replace_all(line, "[E-Mail]").into_owned();
     // Paths name customers and accounts too ("/customers/<name>/…").
-    s = re(&URL_PATH, r"(https?://[^\s/?#]+)[/?#]\S*")
-        .replace_all(&s, "$1/…")
-        .into_owned();
+    static URL_PATH: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(https?://[^\s/?#]+)[/?#]\S*").unwrap());
+    s = URL_PATH.replace_all(&s, "$1/…").into_owned();
     for pattern in terms {
         s = pattern.replace_all(&s, REDACTED).into_owned();
     }
     s = replace_ibans(&s, |_| "[IBAN]".to_string());
     // Amounts before `scrub`, whose digit rule would cut "1234567,89" apart.
     // German form, also without a currency: "1.234,56", "1 234,56", "-12,30".
-    s = re(
-        &BARE_AMOUNT,
-        r"[-+−]?\b(?:\d{1,3}(?:[ .\u{00A0}\u{202F}]\d{3})+|\d+),\d{2}\b",
-    )
-    .replace_all(&s, "[Betrag]")
-    .into_owned();
+    static BARE_AMOUNT: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"[-+−]?\b(?:\d{1,3}(?:[ .\u{00A0}\u{202F}]\d{3})+|\d+),\d{2}\b").unwrap()
+    });
+    s = BARE_AMOUNT.replace_all(&s, "[Betrag]").into_owned();
     // Thousands with a currency: dot, comma, apostrophe or a non-breaking
     // space, never a plain one ("HTTP 403 500 EUR" is a status code and an
     // amount). The currency may be glued on ("USD1,000.00", "12EUR").
     const NUMBER: &str = r"\d{1,3}(?:[.,\u{00A0}\u{202F}']?\d{3})*(?:[.,]\d{1,2})?";
-    s = re(
-        &AMOUNT_AFTER,
-        &format!(r"[-+−]?\b{NUMBER}\s?(?:€|EUR\b|USD\b|\$|CHF\b|GBP\b|£)"),
-    )
-    .replace_all(&s, "[Betrag]")
-    .into_owned();
-    s = re(
-        &AMOUNT_BEFORE,
-        &format!(r"(?:€|\bEUR|\bUSD|\$|\bCHF|\bGBP|£)\s?[-+−]?\s?{NUMBER}\b"),
-    )
-    .replace_all(&s, "[Betrag]")
-    .into_owned();
+    static AMOUNT_AFTER: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(&format!(
+            r"[-+−]?\b{NUMBER}\s?(?:€|EUR\b|USD\b|\$|CHF\b|GBP\b|£)"
+        ))
+        .unwrap()
+    });
+    static AMOUNT_BEFORE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(&format!(
+            r"(?:€|\bEUR|\bUSD|\$|\bCHF|\bGBP|£)\s?[-+−]?\s?{NUMBER}\b"
+        ))
+        .unwrap()
+    });
+    s = AMOUNT_AFTER.replace_all(&s, "[Betrag]").into_owned();
+    s = AMOUNT_BEFORE.replace_all(&s, "[Betrag]").into_owned();
     // Secrets, tokens, IBANs and long digit runs (also trims the line).
     s = scrub(&s, "");
     // The Abrufprotokoll stores IBANs as `DE12…3456`; no boundary after it:
     // the IBAN may be glued to text ("DE12…3456abc").
-    s = re(&SHORT_IBAN, r"(?i)\b[A-Z]{2}\d{2}…[A-Z0-9]{4}")
-        .replace_all(&s, "[IBAN]")
-        .into_owned();
+    static SHORT_IBAN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?i)\b[A-Z]{2}\d{2}…[A-Z0-9]{4}").unwrap());
+    s = SHORT_IBAN.replace_all(&s, "[IBAN]").into_owned();
     // A stored log line may carry a large amount already cut by `scrub`.
-    s = re(&SCRUBBED_AMOUNT, r"[-+−]?•••[.,]\d{2}\b")
-        .replace_all(&s, "[Betrag]")
-        .into_owned();
+    static SCRUBBED_AMOUNT: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"[-+−]?•••[.,]\d{2}\b").unwrap());
+    s = SCRUBBED_AMOUNT.replace_all(&s, "[Betrag]").into_owned();
     mask_dot_amounts(&s)
 }
 

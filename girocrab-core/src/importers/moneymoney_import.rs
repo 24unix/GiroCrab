@@ -11,6 +11,7 @@
 //!   FinTS sync adopts imported rows (see [`adopt_import`]).
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -153,8 +154,9 @@ fn amount(s: &str) -> Option<i64> {
         return Some(v);
     }
     // "1.234" / "-1.234.567": German grouping without decimals.
-    let re = Regex::new(r"^([+-]?)(\d{1,3}(?:\.\d{3})+)$").unwrap();
-    re.captures(t).and_then(|c| {
+    static GROUPED: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^([+-]?)(\d{1,3}(?:\.\d{3})+)$").unwrap());
+    GROUPED.captures(t).and_then(|c| {
         let digits: String = c[2].chars().filter(|c| c.is_ascii_digit()).collect();
         let v: i64 = digits.parse::<i64>().ok()?.checked_mul(100)?;
         Some(if &c[1] == "-" { -v } else { v })
@@ -330,14 +332,15 @@ pub fn parse_csv_export(text: &str) -> CoreResult<Vec<MmRow>> {
 }
 
 fn xml_unescape(s: &str) -> String {
+    static CHAR_REF: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"&#(x?[0-9a-fA-F]+);").unwrap());
     let s = s.trim();
     let s = s
         .strip_prefix("<![CDATA[")
         .and_then(|x| x.strip_suffix("]]>"))
         .map(|x| x.to_string())
         .unwrap_or_else(|| {
-            let re = Regex::new(r"&#(x?[0-9a-fA-F]+);").unwrap();
-            let t = re.replace_all(s, |c: &regex::Captures| {
+            let t = CHAR_REF.replace_all(s, |c: &regex::Captures| {
                 let v = &c[1];
                 let n = match v.strip_prefix('x') {
                     Some(h) => u32::from_str_radix(h, 16).ok(),
@@ -357,13 +360,16 @@ fn xml_unescape(s: &str) -> String {
 }
 
 pub fn parse_xml_export(text: &str) -> CoreResult<Vec<MmRow>> {
-    let block = Regex::new(r"(?is)<transaction(?:\s[^>]*)?>(.*?)</transaction\s*>").unwrap();
-    let leaf = Regex::new(r"(?is)<([A-Za-z_][\w.\-]*)(?:\s[^>]*)?>(.*?)</([A-Za-z_][\w.\-]*)\s*>")
-        .unwrap();
+    static BLOCK: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?is)<transaction(?:\s[^>]*)?>(.*?)</transaction\s*>").unwrap()
+    });
+    static LEAF: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?is)<([A-Za-z_][\w.\-]*)(?:\s[^>]*)?>(.*?)</([A-Za-z_][\w.\-]*)\s*>").unwrap()
+    });
     let mut out = Vec::new();
-    for b in block.captures_iter(text) {
+    for b in BLOCK.captures_iter(text) {
         let mut fields: HashMap<Field, String> = HashMap::new();
-        for l in leaf.captures_iter(&b[1]) {
+        for l in LEAF.captures_iter(&b[1]) {
             if !l[1].eq_ignore_ascii_case(&l[3]) {
                 continue;
             }
@@ -589,25 +595,28 @@ pub(crate) fn find_or_create_category(
 /// several statements name no single account.
 fn statement_account(text: &str) -> Option<(String, String)> {
     use crate::connectors::fints::sepa;
+    static STMT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<(?:\w+:)?Stmt>").unwrap());
+    static ACCT: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?s)<(?:\w+:)?Acct>(.*?)</(?:\w+:)?Acct>").unwrap());
+    static IBAN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"<(?:\w+:)?IBAN>\s*([^<]+?)\s*<").unwrap());
+    static CCY: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"<(?:\w+:)?Ccy>\s*([^<]+?)\s*<").unwrap());
+    static FIELD_25: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^:25:(.+)$").unwrap());
     if text.contains("BkToCstmr") {
-        let stmt = Regex::new(r"<(?:\w+:)?Stmt>").unwrap();
-        if stmt.find_iter(text).count() != 1 {
+        if STMT.find_iter(text).count() != 1 {
             return None;
         }
-        let acct = Regex::new(r"(?s)<(?:\w+:)?Acct>(.*?)</(?:\w+:)?Acct>").unwrap();
-        let block = acct.captures(text)?.get(1)?.as_str();
-        let iban = Regex::new(r"<(?:\w+:)?IBAN>\s*([^<]+?)\s*<").unwrap();
-        let ccy = Regex::new(r"<(?:\w+:)?Ccy>\s*([^<]+?)\s*<").unwrap();
-        let i = sepa::normalize_iban(iban.captures(block)?.get(1)?.as_str());
-        let c = ccy
+        let block = ACCT.captures(text)?.get(1)?.as_str();
+        let i = sepa::normalize_iban(IBAN.captures(block)?.get(1)?.as_str());
+        let c = CCY
             .captures(block)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().to_uppercase())
             .unwrap_or_default();
         return sepa::validate_iban(&i).then_some((i, c));
     }
-    let f25 = Regex::new(r"(?m)^:25:(.+)$").unwrap();
-    let mut it = f25.captures_iter(text);
+    let mut it = FIELD_25.captures_iter(text);
     let first = sepa::normalize_iban(it.next()?.get(1)?.as_str().trim());
     if it.any(|c| sepa::normalize_iban(c[1].trim()) != first) {
         return None;
@@ -1790,5 +1799,59 @@ mod tests {
         assert_eq!(rows[0].booking_date, "2025-01-02");
         assert_eq!(rows[0].name, "Markt GmbH");
         assert_eq!(rows[1].amount_cents, 250000);
+    }
+
+    #[test]
+    fn xml_values_unescape_entities_and_cdata() {
+        assert_eq!(
+            xml_unescape(" Strom &amp; Gas &#65;&#x47; "),
+            "Strom & Gas AG"
+        );
+        assert_eq!(
+            xml_unescape("&lt;b&gt; &quot;x&quot; &apos;y&apos;"),
+            "<b> \"x\" 'y'"
+        );
+        assert_eq!(xml_unescape("<![CDATA[ a &amp; b ]]>"), "a &amp; b");
+        // an invalid code point is dropped
+        assert_eq!(xml_unescape("a&#xD800;b"), "ab");
+    }
+
+    #[test]
+    fn amounts_with_german_grouping_and_no_cents() {
+        assert_eq!(amount("1.234"), Some(123_400));
+        assert_eq!(amount("-1.234.567"), Some(-123_456_700));
+        assert_eq!(amount("EUR"), None);
+    }
+
+    #[test]
+    fn statement_account_from_camt_and_mt940() {
+        let camt = CAMT053
+            .replace("DE44520900000012345601", "DE89370400440532013000")
+            .replace("</Id></Acct>", "</Id><Ccy>eur</Ccy></Acct>");
+        assert_eq!(
+            statement_account(&camt),
+            Some(("DE89370400440532013000".into(), "EUR".into()))
+        );
+        let two = camt.replace("</Stmt>", "</Stmt><Stmt></Stmt>");
+        assert_eq!(statement_account(&two), None);
+
+        let mt = |accounts: &[&str]| -> String {
+            accounts
+                .iter()
+                .map(|a| {
+                    format!(":20:STARTUMS\r\n:25:{a}\r\n:61:2501020102DR23,45NDDTNONREF\r\n-\r\n")
+                })
+                .collect()
+        };
+        let iban = "DE89 3704 0044 0532 0130 00";
+        assert_eq!(
+            statement_account(&mt(&[iban, iban])),
+            Some(("DE89370400440532013000".into(), String::new()))
+        );
+        assert_eq!(statement_account(&mt(&["52090000/0012345678"])), None);
+        assert_eq!(
+            statement_account(&mt(&[iban, "DE02120300000000202051"])),
+            None
+        );
     }
 }

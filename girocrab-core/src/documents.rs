@@ -7,6 +7,7 @@
 //! amount, date and merchant name.
 
 use std::collections::HashSet;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -265,11 +266,12 @@ fn find(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
 
 /// Amounts (cents, positive) mentioned in a text: "56,13", "1.234,56 €", "EUR 12.50".
 pub fn amounts_in(text: &str) -> Vec<i64> {
-    let re =
+    static AMOUNT: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"(?:^|[^\d,.])(\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2}|\d+\.\d{2})(?:[^\d]|$)")
-            .unwrap();
+            .unwrap()
+    });
     let mut out: Vec<i64> = Vec::new();
-    for c in re.captures_iter(text) {
+    for c in AMOUNT.captures_iter(text) {
         if let Ok(v) = crate::money::parse_cents(&c[1]) {
             let v = v.abs();
             if v > 0 && !out.contains(&v) {
@@ -282,9 +284,12 @@ pub fn amounts_in(text: &str) -> Vec<i64> {
 
 /// Dates mentioned in a text as ISO strings.
 pub fn dates_in(text: &str) -> Vec<String> {
+    static GERMAN: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})\b").unwrap());
+    static ISO: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(?:^|\D)(20\d{2})[-_]?(\d{2})[-_]?(\d{2})(?:\D|$)").unwrap());
     let mut out = Vec::new();
-    let de = Regex::new(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})\b").unwrap();
-    for c in de.captures_iter(text) {
+    for c in GERMAN.captures_iter(text) {
         let (d, m): (u32, u32) = (c[1].parse().unwrap_or(0), c[2].parse().unwrap_or(0));
         let y: i32 = if c[3].len() == 2 {
             2000 + c[3].parse::<i32>().unwrap_or(0)
@@ -295,8 +300,7 @@ pub fn dates_in(text: &str) -> Vec<String> {
             out.push(format!("{y:04}-{m:02}-{d:02}"));
         }
     }
-    let iso = Regex::new(r"(?:^|\D)(20\d{2})[-_]?(\d{2})[-_]?(\d{2})(?:\D|$)").unwrap();
-    for c in iso.captures_iter(text) {
+    for c in ISO.captures_iter(text) {
         let s = format!("{}-{}-{}", &c[1], &c[2], &c[3]);
         if chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").is_ok() && !out.contains(&s) {
             out.push(s);
