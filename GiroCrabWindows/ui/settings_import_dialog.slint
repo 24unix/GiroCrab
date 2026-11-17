@@ -102,7 +102,7 @@ component Tab inherits Rectangle {
     border-radius: 6px;
     background: active ? accent.with-alpha(0.2) : transparent;
     TouchArea { clicked => { root.clicked(); } }
-    Text { text: root.text; color: root.ink; font-size: 12px; font-weight: root.active ? 700 : 400; horizontal-alignment: center; vertical-alignment: center; padding-left: 8px; padding-right: 8px; }
+    Text { text: root.text; color: root.ink; font-size: 12px; font-weight: root.active ? 700 : 400; horizontal-alignment: center; vertical-alignment: center; }
 }
 
 component Caption inherits Text {

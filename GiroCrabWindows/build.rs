@@ -1,3 +1,4 @@
 fn main() {
-    slint_build::compile("ui/main.slint").expect("slint compile");
+    let config = slint_build::CompilerConfiguration::new().with_style("fluent".into());
+    slint_build::compile_with_config("ui/main.slint", config).expect("slint compile");
 }

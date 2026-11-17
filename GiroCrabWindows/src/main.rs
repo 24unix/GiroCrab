@@ -503,7 +503,7 @@ fn render_bookings(win: &MainWindow) {
                 iban: i.iban.into(),
                 purpose: i.purpose.into(),
                 booking_date: german_date(&i.booking_date).into(),
-                value_date: i.value_date.into(),
+                value_date: german_date(&i.value_date).into(),
                 account: i.account.into(),
                 amount: i.amount.into(),
                 note: i.note.into(),
@@ -1071,7 +1071,6 @@ fn render_header(
     selected: Option<i64>,
 ) -> Result<Option<i64>, String> {
     let (rows, total) = account_rows(vault, win.get_privacy())?;
-    let first = rows.first().map(|r| r.id as i64);
     let header: Vec<(i64, String, String, String)> = rows
         .iter()
         .map(|r| {
@@ -1085,7 +1084,7 @@ fn render_header(
         .collect();
     win.set_accounts(ModelRc::new(VecModel::from(rows)));
     win.set_total(total.clone().into());
-    let sel = selected.or(first);
+    let sel = selected.or(Some(0));
     win.set_selected(sel.map_or(-1, |s| s as i32));
     let cur = if sel == Some(0) {
         ("Alle Konten".to_string(), total, "EUR".to_string())
