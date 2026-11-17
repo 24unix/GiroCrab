@@ -66,8 +66,6 @@ jobs:
             exit 0
           fi
 
-          # GitHub only allows assigning non-collaborators after their comment/issue is indexed.
-          # Retry up to 4 times via REST API and verify that `.assignees` actually contains $ACTOR.
           assigned_ok=false
           for attempt in 1 2 3 4; do
             gh api -X POST "repos/$GH_REPO/issues/$ISSUE_NUMBER/assignees" -f "assignees[]=$ACTOR" >/dev/null 2>&1 || true
