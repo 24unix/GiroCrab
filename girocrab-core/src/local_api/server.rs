@@ -596,7 +596,11 @@ mod tests {
             }
         }
         fn send_raw(&mut self, line: &str) -> Value {
-            writeln!(self.writer, "{line}").unwrap();
+            // A line over the limit is answered and the connection closed while
+            // the client is still writing, so `writeln!` may fail with EPIPE or
+            // ECONNRESET. The answer is already queued then: ignore the write
+            // error. If a normal request fails to send, `read` below fails.
+            let _ = writeln!(self.writer, "{line}");
             self.read()
         }
         fn read(&mut self) -> Value {
