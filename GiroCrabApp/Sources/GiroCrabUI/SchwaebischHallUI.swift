@@ -218,9 +218,9 @@ struct SchwaebischHallWebSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(redaction.masking(connection.displayName)) – Schwäbisch Hall").appFont(.headline)
                     if running { Text(progress).appFont(.caption) }
-                    else if let notice { Text(notice).appFont(.caption).foregroundStyle(.orange) }
+                    else if let notice { Text(notice).appFont(.caption).foregroundStyle(Theme.warning) }
                     else if let blocked = browser.blockedHost {
-                        Text("Unsichere Seite blockiert (\(blocked)) – nur HTTPS-Seiten werden geöffnet.").appFont(.caption).foregroundStyle(.orange)
+                        Text("Unsichere Seite blockiert (\(blocked)) – nur HTTPS-Seiten werden geöffnet.").appFont(.caption).foregroundStyle(Theme.warning)
                     }
                     else if ready { Text("Angemeldet – Bausparverträge, Umsätze und Postfach können abgerufen werden.").appFont(.caption) }
                     else { Text("Melden Sie sich bei „Mein Konto“ von Schwäbisch Hall an.").appFont(.caption) }

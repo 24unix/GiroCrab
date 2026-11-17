@@ -107,7 +107,7 @@ struct BankingPolicyBanner: View {
     private func content(_ gate: BankingGate) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: "exclamationmark.shield.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(Theme.negative)
                 .appFont(.title3)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 8) {
@@ -198,7 +198,7 @@ struct BankingPolicySection: View {
             if BankingPolicy.usesDebugOverrides {
                 Label("Debug-Build: Adresse, Schlüssel, Version oder Build-Datum sind per Umgebungsvariable überschrieben.", systemImage: "hammer")
                     .appFont(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
             }
             HStack {
                 if policy.isEnabled {

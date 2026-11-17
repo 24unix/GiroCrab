@@ -192,10 +192,10 @@ struct ConnectionEditSheet: View {
                     switch stage {
                     case .expired:
                         Label("abgelaufen", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Theme.negative)
                     case .expiringSoon:
                         Label("noch \(max(0, PSD2Consent.daysLeft(until: end))) Tage", systemImage: "clock.badge.exclamationmark")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Theme.warning)
                     default:
                         EmptyView()
                     }
@@ -208,7 +208,7 @@ struct ConnectionEditSheet: View {
         if st.revokedAccountCount > 0 {
             LabeledContent("Ohne Zugriff") {
                 Label("\(st.revokedAccountCount) Konten", systemImage: "lock.slash")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
                     .help("Diese Konten sind in der Zustimmung nicht mehr enthalten. Buchungen bleiben erhalten; Konto bei Bedarf selbst löschen.")
             }
         }

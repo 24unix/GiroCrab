@@ -88,9 +88,9 @@ struct PayeeCheckSheet: View {
 
     private func tint(_ r: PayeeMatch) -> Color {
         switch r {
-        case .match: return .green
-        case .closeMatch: return .orange
-        case .noMatch: return .red
+        case .match: return Theme.inflow
+        case .closeMatch: return Theme.warning
+        case .noMatch: return Theme.negative
         case .notPossible: return .secondary
         }
     }

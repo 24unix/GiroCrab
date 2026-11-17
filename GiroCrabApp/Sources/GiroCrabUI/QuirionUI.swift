@@ -154,7 +154,7 @@ struct QuirionWebSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(redaction.masking(connection.displayName)) – quirion").appFont(.headline)
                     if running { Text(progress).appFont(.caption) }
-                    else if let notice { Text(notice).appFont(.caption).foregroundStyle(.orange) }
+                    else if let notice { Text(notice).appFont(.caption).foregroundStyle(Theme.warning) }
                     else { Text(ready ? String(localized: "Angemeldet – Depot, Konten und Historie können abgerufen werden.") : String(localized: "Melden Sie sich bei quirion an und bestätigen Sie gegebenenfalls die Anmeldung.")).appFont(.caption) }
                 }
                 Spacer()

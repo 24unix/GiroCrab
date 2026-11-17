@@ -138,7 +138,7 @@ struct FinTsAddForm: View {
         Group {
             if (!blz.isEmpty && !blzValid) || (!url.isEmpty && !urlValid) {
                 Label("Bankleitzahl: genau 8 Ziffern · FinTS-Adresse: beginnt mit https://", systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
             } else if blzValid, found == nil {
                 Text("Diese Bankleitzahl steht nicht im Verzeichnis. Tragen Sie die FinTS-Adresse Ihrer Bank selbst ein.")
                     .foregroundStyle(.secondary)

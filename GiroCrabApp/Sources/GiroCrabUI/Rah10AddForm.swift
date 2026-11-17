@@ -47,7 +47,7 @@ struct Rah10AddForm: View {
                         .disabled(busy)
                 }
             }
-            if let fileError { Text(fileError).foregroundStyle(.red) }
+            if let fileError { Text(fileError).foregroundStyle(Theme.negative) }
             if busy { ProgressView("Einrichtung läuft …") }
         } header: {
             Text("Schlüsseldatei").appSectionHeader()
@@ -100,7 +100,7 @@ struct Rah10AddForm: View {
                         .autocorrectionDisabled()
                         if normalized(expected[key.keyType] ?? "") == key.fingerprint {
                             Label("Prüfwerte stimmen überein", systemImage: "checkmark.shield")
-                                .foregroundStyle(.green).appFont(.caption)
+                                .foregroundStyle(Theme.inflow).appFont(.caption)
                         }
                     }
                     .padding(.vertical, 4)

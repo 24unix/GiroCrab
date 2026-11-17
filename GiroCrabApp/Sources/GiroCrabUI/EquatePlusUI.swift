@@ -231,7 +231,7 @@ struct EquatePlusWebSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(connection.displayName) – EquatePlus").appFont(.headline)
                     if running { Text(progress ?? String(localized: "Programme und Bestände abrufen …")).appFont(.caption) }
-                    else if let notice { Text(notice).appFont(.caption).foregroundStyle(.orange) }
+                    else if let notice { Text(notice).appFont(.caption).foregroundStyle(Theme.warning) }
                     else { Text(ready ? String(localized: "Angemeldet – verfügbare und gesperrte Bestände können abgerufen werden.") : String(localized: "Melden Sie sich bei EquatePlus an und bestätigen Sie mit EquateAccess oder der angebotenen Alternative.")).appFont(.caption) }
                 }
                 Spacer()

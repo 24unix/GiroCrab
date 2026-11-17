@@ -1310,10 +1310,40 @@
     "%lld neue Buchungen" : {
       "extractionState" : "manual",
       "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld neue Buchung"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld neue Buchungen"
+                }
+              }
+            }
+          }
+        },
         "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld new bookings"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld new booking"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld new bookings"
+                }
+              }
+            }
           }
         }
       }
@@ -5361,6 +5391,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "BIC (optional)"
+          }
+        }
+      }
+    },
+    "BIC gültig" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BIC valid"
+          }
+        }
+      }
+    },
+    "BIC ungültig" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BIC invalid"
           }
         }
       }

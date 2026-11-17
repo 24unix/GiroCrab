@@ -87,7 +87,7 @@ struct PositionRow: View {
                         Text("GuV (berechnet): \(Money.format(gain.cents)) (\(gain.percent.formatted(.number.precision(.fractionLength(2)))) %)")
                             .sensitive(.amounts)
                             .appFont(.caption, monospacedDigit: true)
-                            .foregroundStyle(gain.cents < 0 ? Color.red : Color.green)
+                            .foregroundStyle(gain.cents < 0 ? Theme.negative : Theme.inflow)
                     }
                 }
                 .lineLimit(1)

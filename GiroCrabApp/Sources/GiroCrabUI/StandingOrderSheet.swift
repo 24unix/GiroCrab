@@ -49,7 +49,7 @@ struct StandingOrderSheet: View {
             #endif
             if let e = model.transferError {
                 Label(e, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red).appFont(.callout)
+                    .foregroundStyle(Theme.negative).appFont(.callout)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20).padding(.vertical, 8)

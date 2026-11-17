@@ -339,7 +339,7 @@ struct RuleForm: View {
                 } header: { Text("Betrag").appSectionHeader() }
                 Section {
                     if let err = preview.error {
-                        Label(err, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Label(err, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning)
                     } else {
                         Text("\(preview.matches.count >= 200 ? "200+" : String(preview.matches.count)) passende Buchungen")
                             .appFont(.headline)

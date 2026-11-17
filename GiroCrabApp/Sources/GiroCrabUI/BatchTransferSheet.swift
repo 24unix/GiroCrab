@@ -35,7 +35,7 @@ struct BatchTransferSheet: View {
             if reviewing { review } else { editor }
             if let e = model.transferError {
                 Label(e, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red).appFont(.callout)
+                    .foregroundStyle(Theme.negative).appFont(.callout)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20).padding(.vertical, 8)
@@ -190,7 +190,7 @@ struct BatchTransferSheet: View {
                         }
                         TextField("IBAN", text: $r.iban, prompt: Text("DE00 …"))
                             .appFont(.caption, design: .monospaced)
-                            .foregroundStyle(r.ibanValid ? Theme.secondary : Color.red)
+                            .foregroundStyle(r.ibanValid ? Theme.secondary : Theme.negative)
                         TextField("Zweck", text: $r.purpose, prompt: Text("Verwendungszweck"))
                             .appFont(.caption).foregroundStyle(Theme.secondary)
                     }

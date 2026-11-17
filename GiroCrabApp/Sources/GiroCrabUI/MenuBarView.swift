@@ -198,7 +198,7 @@ public struct MenuBarLabel: View {
             .opacity(visibility == .locked ? 0.5 : 1)
             if !title.isEmpty {
                 Text(title).appFont(.body, monospacedDigit: true)
-                    .foregroundStyle(negative ? Color.red : Color.primary)
+                    .foregroundStyle(negative ? Theme.negative : Color.primary)
                     .sensitive()
             }
         }
@@ -297,7 +297,7 @@ public struct MenuBarPopover: View {
                 Spacer(minLength: 8)
                 Text(amount)
                     .appFont(.callout, monospacedDigit: true)
-                    .foregroundStyle(negative ? Color.red : Color.primary)
+                    .foregroundStyle(negative ? Theme.negative : Color.primary)
                     .fixedSize()
                     .sensitive()
             }
@@ -378,7 +378,7 @@ public struct MenuBarPopover: View {
         .buttonStyle(.borderless)
         Text(account.map(MenuBarSummary.balanceText) ?? MenuBarSummary.totalText(of: selected))
             .font(.system(size: 38 * textScale, weight: .bold, design: .default).monospacedDigit())
-            .foregroundStyle((account.map(MenuBarSummary.isNegative) ?? MenuBarSummary.totalIsNegative(of: selected)) ? Color.red : Color.primary)
+            .foregroundStyle((account.map(MenuBarSummary.isNegative) ?? MenuBarSummary.totalIsNegative(of: selected)) ? Theme.negative : Color.primary)
             .lineLimit(1).minimumScaleFactor(0.5)
             .sensitive()
             .contentShape(Rectangle())

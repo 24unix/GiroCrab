@@ -110,7 +110,7 @@ struct TransferSheetView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if let e = model.transferError {
                         Label(e, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red).appFont(.callout)
+                            .foregroundStyle(Theme.negative).appFont(.callout)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     if let reason = model.transferInstantDeclined {
@@ -248,8 +248,9 @@ struct TransferSheetView: View {
                             .sensitive()
                         if !draft.wrappedValue.iban.isEmpty {
                             Image(systemName: ibanValid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(ibanValid ? Color.green : Color.red)
+                                .foregroundStyle(ibanValid ? Theme.inflow : Theme.negative)
                                 .help(ibanValid ? "Prüfsumme korrekt" : "IBAN ungültig (Prüfsumme/Länge)")
+                                .accessibilityLabel(ibanValid ? "Prüfsumme korrekt" : "IBAN ungültig (Prüfsumme/Länge)")
                         }
                     }
                 }
@@ -263,7 +264,9 @@ struct TransferSheetView: View {
                             .sensitive()
                         if !bicText.isEmpty {
                             Image(systemName: bicValid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(bicValid ? Color.green : Color.red)
+                                .foregroundStyle(bicValid ? Theme.inflow : Theme.negative)
+                                .help(bicValid ? "BIC gültig" : "BIC ungültig")
+                                .accessibilityLabel(bicValid ? "BIC gültig" : "BIC ungültig")
                         }
                     }
                 }
@@ -293,12 +296,12 @@ struct TransferSheetView: View {
             } footer: {
                 HStack {
                     if !draft.wrappedValue.amountText.isEmpty && cents == nil {
-                        Text("Betrag > 0 eingeben").foregroundStyle(.red)
+                        Text("Betrag > 0 eingeben").foregroundStyle(Theme.negative)
                     }
                     Spacer()
                     Text("\(draft.wrappedValue.purpose.count)/\(maxPurpose)")
                         .monospacedDigit()
-                        .foregroundStyle(draft.wrappedValue.purpose.count >= maxPurpose ? Color.red : Theme.tertiary)
+                        .foregroundStyle(draft.wrappedValue.purpose.count >= maxPurpose ? Theme.negative : Theme.tertiary)
                 }
             }
 
@@ -387,7 +390,7 @@ struct TransferSheetView: View {
             Text("Kommt in Sekunden an und ist nicht rückholbar. Bietet die Bank sie nicht an, wird nichts gesendet; Sie können sie dann als normale Überweisung senden.")
             if let c = cents, c >= 10_000_000 {
                 Label("Viele Banken begrenzen Echtzeitüberweisungen (oft auf 100.000 € oder ein eigenes Limit). Die Bank kann den Auftrag dann ablehnen.", systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
             }
         }
     }

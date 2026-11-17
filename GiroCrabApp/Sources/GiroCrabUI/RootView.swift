@@ -639,7 +639,7 @@ struct LockView: View {
                 }
             }
             if let error {
-                Text(error).appFont(.callout).foregroundStyle(.red).multilineTextAlignment(.center)
+                Text(error).appFont(.callout).foregroundStyle(Theme.negative).multilineTextAlignment(.center)
             }
             if model.lockPreview && !AppModel.vaultMayHoldRealData && model.vaultState != .unlocking {
                 Button("Zurück zur Demo") { model.endLockPreview() }

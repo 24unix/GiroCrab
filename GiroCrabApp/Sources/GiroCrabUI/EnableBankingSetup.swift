@@ -172,18 +172,18 @@ struct EnableBankingSetupSection: View {
     @ViewBuilder private var checkResult: some View {
         if let checkError {
             Label(checkError, systemImage: "xmark.octagon.fill")
-                .appFont(.caption).foregroundStyle(.red)
+                .appFont(.caption).foregroundStyle(Theme.negative)
                 .fixedSize(horizontal: false, vertical: true)
         } else if let check {
             if check.problems.isEmpty {
                 Label("Anwendung „\(check.name)“ ist bereit (Production, aktiv, Redirect-URL eingetragen).", systemImage: "checkmark.seal.fill")
-                    .appFont(.caption).foregroundStyle(.green)
+                    .appFont(.caption).foregroundStyle(Theme.inflow)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(check.problems, id: \.self) { p in
                         Label(p, systemImage: "exclamationmark.triangle.fill")
-                            .appFont(.caption).foregroundStyle(.orange)
+                            .appFont(.caption).foregroundStyle(Theme.warning)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }

@@ -706,7 +706,7 @@ struct AccountRow: View {
                     if account.accessRevoked {
                         Image(systemName: "lock.slash")
                             .appFont(.caption2)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Theme.warning)
                             .help("Zugriff entzogen: Die Bank liefert dieses Konto nicht mehr. Buchungen bleiben erhalten.")
                             .accessibilityLabel(Text("Zugriff entzogen"))
                     }

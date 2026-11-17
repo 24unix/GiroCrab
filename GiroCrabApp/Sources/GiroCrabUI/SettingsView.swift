@@ -556,7 +556,7 @@ struct UpdateSettings: View {
                             Text("Update-Kanal")
                         } else {
                             Label("Update-Kanal", systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(Theme.warning)
                         }
                     }
                 }
@@ -642,19 +642,19 @@ struct ICloudSyncSection: View {
                 LabeledContent("Ordner") { Text(sync.folderName ?? "iCloud Drive / GiroCrab").sensitive() }
                 if sync.folderNotice {
                     Text("Der Ordner „GiroCrab“ in iCloud Drive enthält bereits andere Dateien. Ihre bisherigen Daten bleiben unverändert im bisherigen Ordner und werden dort weiter synchronisiert.")
-                        .appFont(.caption).foregroundStyle(.orange)
+                        .appFont(.caption).foregroundStyle(Theme.warning)
                 }
                 if sync.legacyFolderWritten {
                     Text("Ein anderes Gerät nutzt noch eine ältere GiroCrab-Version und schreibt in den alten Ordner. Bitte alle Geräte aktualisieren.")
-                        .appFont(.caption).foregroundStyle(.orange)
+                        .appFont(.caption).foregroundStyle(Theme.warning)
                 }
                 if sync.folderBothVaults {
                     Text("Der bisherige Ordner und der Ordner „GiroCrab“ in iCloud Drive enthalten beide einen Tresor. GiroCrab wechselt nicht automatisch und nutzt weiter den bisherigen Ordner. Bitte prüfen Sie, welcher Tresor aktuell ist, bevor Sie Daten zusammenführen.")
-                        .appFont(.caption).foregroundStyle(.orange)
+                        .appFont(.caption).foregroundStyle(Theme.warning)
                 }
                 if sync.repickFolderHint {
                     Label("Die Daten wurden in den Ordner „GiroCrab“ in iCloud Drive verschoben. Bitte wechseln Sie über „Ordner wählen …“ zu diesem Ordner, damit alle Geräte denselben Ordner nutzen.", systemImage: "exclamationmark.triangle.fill")
-                        .appFont(.callout).foregroundStyle(.orange)
+                        .appFont(.callout).foregroundStyle(Theme.warning)
                 }
                 if sync.location == .folder {
                     HStack {
@@ -684,7 +684,7 @@ struct ICloudSyncSection: View {
                     LabeledContent("Letzter Sync", value: d.formatted(date: .abbreviated, time: .shortened))
                 }
                 if let s = sync.lastStats { Text(s).appFont(.caption).foregroundStyle(.secondary) }
-                if let e = sync.lastError { Text(e).appFont(.caption).foregroundStyle(.red) }
+                if let e = sync.lastError { Text(e).appFont(.caption).foregroundStyle(Theme.negative) }
                 #if os(macOS)
                 // „Ordner wählen …“ above grants access as well, without the system settings.
                 if sync.folderAccessDenied {
@@ -712,7 +712,7 @@ struct ICloudSyncSection: View {
                 }
                 if sync.keyMismatch {
                     Label("Der iCloud-Tresor nutzt einen anderen Schlüssel. Fügen Sie den Schlüssel von Ihrem anderen Gerät ein.", systemImage: "exclamationmark.triangle.fill")
-                        .appFont(.caption).foregroundStyle(.orange)
+                        .appFont(.caption).foregroundStyle(Theme.warning)
                 }
             }
             Text(sync.location == .container
@@ -813,7 +813,7 @@ struct KeyPasteSheet: View {
                 .disabled(working)
             if case .failed(let message) = model.keyAdoption {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .appFont(.caption).foregroundStyle(.red)
+                    .appFont(.caption).foregroundStyle(Theme.negative)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {

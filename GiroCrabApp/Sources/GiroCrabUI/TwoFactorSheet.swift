@@ -141,7 +141,7 @@ struct TwoFactorSheet: View {
                     }
                 }
                 if let e = active.error {
-                    Text(e).foregroundStyle(.red).appFont(.callout)
+                    Text(e).foregroundStyle(Theme.negative).appFont(.callout)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
