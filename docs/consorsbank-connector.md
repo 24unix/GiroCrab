@@ -91,7 +91,7 @@ Anything not marked as confirmed is unverified.
 
 ---
 
-## Gap analysis against `girocrab-core/src/connectors/fints/mod.rs`
+## Gap analysis against `girocrab-core/src/connectors/fints/`
 
 | Quirk | GiroCrab today | Action |
 | --- | --- | --- |

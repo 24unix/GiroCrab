@@ -1,14 +1,18 @@
-//! Standing orders (Dauerauftrag Bestand): reads HICDB (v1/v2) and the pain.001
-//! it carries. Field layout after the public DK specification (as mirrored in
-//! hbci4java): header, KTI, SEPA descriptor, pain.001 (binary), order id,
-//! schedule (first date, M/W, interval, execution day, [v2: time,] last date),
-//! suspension, "may change", "may skip", "may delete".
+//! Standing orders (Dauerauftrag Bestand): fetches them with HKCDB and reads
+//! HICDB (v1/v2) and the pain.001 it carries. Field layout after the public DK
+//! specification (as mirrored in hbci4java): header, KTI, SEPA descriptor,
+//! pain.001 (binary), order id, schedule (first date, M/W, interval, execution
+//! day, [v2: time,] last date), suspension, "may change", "may skip", "may
+//! delete".
 
-use super::syntax::Segment;
-use crate::connectors::RemoteStandingOrder;
+use super::syntax::{Segment, SegmentBuilder};
+use super::{sepa, FinTsConnector, SepaAccount};
+use crate::connectors::{ConnectContext, RemoteStandingOrder};
+use crate::error::{CoreError, CoreResult};
+use crate::i18n::tr;
 
 /// One HICDB segment; `None` when it lacks account, schedule or payment.
-pub(super) fn parse_hicdb(seg: &Segment, account_ref: &str) -> Option<RemoteStandingOrder> {
+fn parse_hicdb(seg: &Segment, account_ref: &str) -> Option<RemoteStandingOrder> {
     let first = super::fints_date(seg.get(5, 0))?;
     let time_unit = seg.get(5, 1).to_string();
     if time_unit != "M" && time_unit != "W" {
@@ -46,7 +50,7 @@ pub(super) fn parse_hicdb(seg: &Segment, account_ref: &str) -> Option<RemoteStan
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct PainPayment {
+struct PainPayment {
     pub name: String,
     pub iban: String,
     pub cents: i64,
@@ -55,7 +59,7 @@ pub(super) struct PainPayment {
 
 /// First payment of a pain.001: creditor name, IBAN, amount, purpose. A
 /// small tag scanner (namespace prefixes ignored): the file is only read.
-pub(super) fn pain_payment(xml: &str) -> Option<PainPayment> {
+fn pain_payment(xml: &str) -> Option<PainPayment> {
     let tx = tag_start(xml, "CdtTrfTxInf", 0)?;
     let amount = tag_text(xml, "InstdAmt", tx)?;
     let cents = crate::money::parse_cents(&amount.replace('.', ",")).ok()?;
@@ -101,6 +105,50 @@ fn unescape(s: &str) -> String {
         .replace("&quot;", "\"")
         .replace("&apos;", "'")
         .replace("&amp;", "&")
+}
+
+impl FinTsConnector {
+    /// HKCDB: the standing orders of an account (all pages). Orders the client
+    /// cannot read (no payment in the pain.001) are left out.
+    pub(super) async fn standing_orders(
+        &mut self,
+        ctx: &ConnectContext,
+        acc: &SepaAccount,
+        label: &str,
+    ) -> CoreResult<Vec<RemoteStandingOrder>> {
+        let v = self.version("HKCDB");
+        let descriptor = self
+            .pain_version("HKCDB")
+            .unwrap_or(sepa::PainVersion::V03)
+            .descriptor();
+        let mut out = Vec::new();
+        let mut touchdown: Option<String> = None;
+        for _ in 0..20 {
+            let mut seg = SegmentBuilder::new("HKCDB", 3, v)
+                .raw(&Self::kti(acc))
+                .de(&[descriptor]);
+            if let Some(t) = &touchdown {
+                // order id and max. entries empty, then the touchdown
+                seg = seg.raw("").raw("").de(&[t]);
+            }
+            let r = self.request(ctx, "HKCDB", seg.build()).await?;
+            for s in r.all("HICDB") {
+                if let Some(o) = parse_hicdb(s, label) {
+                    out.push(o);
+                }
+            }
+            touchdown = r.code("3040").and_then(|c| c.3.first().cloned());
+            if touchdown.is_none() {
+                return Ok(out);
+            }
+        }
+        // 20 pages and the bank still has more: not complete, so the caller keeps the stored list
+        Err(CoreError::Bank {
+            code: "HKCDB".into(),
+            message: tr("Die Bank lieferte die Daueraufträge nicht vollständig (zu viele Seiten).")
+                .into(),
+        })
+    }
 }
 
 #[cfg(test)]

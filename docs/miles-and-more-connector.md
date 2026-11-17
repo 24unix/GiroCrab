@@ -84,11 +84,11 @@ The SEPA account list (`HKSPA`) is empty ("keine Einträge").
 | Part | Where |
 | --- | --- |
 | `HIKKU` parser (bookings, balance), unit tests on invented data | `girocrab-core/src/connectors/fints/kku.rs` |
-| `HKKKU` request, paging, storage-period limit, `HIKKUS` flags | `statements_card`, `card_since`, `learn_bpd` in `fints/mod.rs` |
-| Card accounts count as usable; stored as credit card | `account_list`, fetch loop in `fints/mod.rs` |
-| Pending approval: success code required, timeout is an error | `approval_pending`, `request` in `fints/mod.rs` |
-| `9210` without a TAN medium: message telling the user what to enter | `open_dialog` in `fints/mod.rs` |
-| `SO:` prefix tried once if the plain medium name is rejected | `open_dialog`, `has_so_prefix` in `fints/mod.rs` |
+| `HKKKU` request, paging, storage-period limit, `HIKKUS` flags | `statements_card`, `card_since` in `fints/statements.rs`; `learn_bpd` in `fints/bpd.rs` |
+| Card accounts count as usable; stored as credit card | `account_list` in `fints/accounts.rs`, fetch loop in `fints/mod.rs` |
+| Pending approval: success code required, timeout is an error | `approval_pending`, `request` in `fints/dialog.rs` |
+| `9210` without a TAN medium: message telling the user what to enter | `open_dialog` in `fints/dialog.rs` |
+| `SO:` prefix tried once if the plain medium name is rejected | `open_dialog`, `has_so_prefix` in `fints/dialog.rs` |
 | TAN medium editable on an existing connection | `ConnectionsUI.swift` |
 | Directory row, search words | `data/fints_directory.tsv`, `bank_directory.rs` |
 | Add-form hints, required TAN medium, colour and monogram | `FinTsAddForm.swift`, `Formatting.swift` |
