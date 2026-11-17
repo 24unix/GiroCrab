@@ -35,6 +35,7 @@ pub mod demo;
 pub mod depot_debug;
 pub mod depot_values;
 pub mod documents;
+pub mod ebon;
 pub mod error;
 pub mod export;
 mod ffi;
