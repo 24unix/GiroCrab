@@ -13,7 +13,11 @@ Sheet {
     property bool destructive: true
     /// Title of the cancel button (role: .cancel), e.g. "Weiter suchen".
     property string cancelTitle: qsTr("Abbrechen")
+    /// Optional third, neutral button between cancel and action (empty = none),
+    /// e.g. "Vorerst behalten"; emits `secondary()`.
+    property string secondaryTitle: ""
     signal confirmed()
+    signal secondary()
     sheetWidth: 400
     ColumnLayout {
         width: dlg.availableWidth
@@ -24,6 +28,11 @@ Sheet {
             Layout.fillWidth: true
             Item { Layout.fillWidth: true }
             Button { text: dlg.cancelTitle; onClicked: dlg.close(); focus: true }
+            Button {
+                visible: dlg.secondaryTitle !== ""
+                text: dlg.secondaryTitle
+                onClicked: { dlg.close(); dlg.secondary() }
+            }
             Button {
                 text: AppModel.menuText(dlg.actionTitle)   // may carry names with "&"
                 palette.buttonText: dlg.destructive ? Theme.negative : Theme.text

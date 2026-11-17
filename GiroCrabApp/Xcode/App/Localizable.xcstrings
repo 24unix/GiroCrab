@@ -28438,6 +28438,17 @@
         }
       }
     },
+    "Vorerst behalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep for now"
+          }
+        }
+      }
+    },
     "Vorgaben für den Einzug" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -30077,13 +30088,13 @@
         }
       }
     },
-    "Zu diesen Vormerkungen wurde weder ein offener noch ein gebuchter Umsatz gefunden. Sie werden verworfen:" : {
+    "Zu diesen Vormerkungen wurde weder ein offener noch ein gebuchter Umsatz gefunden:" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Neither an open nor a posted transaction was found for these pending transactions. They will be discarded:"
+            "value" : "Neither an open nor a posted transaction was found for these pending transactions:"
           }
         }
       }
@@ -32233,6 +32244,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "“Save” writes directly to Downloads. “Save as…” asks for a location."
+          }
+        }
+      }
+    },
+    "„Vorerst behalten“ lässt sie als Vormerkung stehen; beim nächsten Abruf wird erneut gesucht." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Keep for now” leaves them as pending transactions; the next sync looks for them again."
           }
         }
       }

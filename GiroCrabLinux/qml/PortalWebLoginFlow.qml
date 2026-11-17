@@ -232,8 +232,9 @@ WebLoginFlow {
         if (openHolds.length === 0) close(false); else confirmDiscard.open()
     }
     /// discardMessage (an alert on the Mac, never part of a bug report picture)
-    readonly property string discardMessage: qsTr("Zu diesen Vormerkungen wurde weder ein offener noch ein gebuchter Umsatz gefunden. Sie werden verworfen:")
+    readonly property string discardMessage: qsTr("Zu diesen Vormerkungen wurde weder ein offener noch ein gebuchter Umsatz gefunden:")
         + "\n\n" + openHolds.map(h => Fmt.medium(h.booking_date) + " · " + h.counterparty + " · " + Fmt.money(h.amount_cents)).join("\n")
+        + "\n\n" + qsTr("„Vorerst behalten“ lässt sie als Vormerkung stehen; beim nächsten Abruf wird erneut gesucht.")
     ConfirmDialog {
         id: confirmDiscard
         heading: qsTr("Vorgemerkte Umsätze nicht gefunden")
@@ -241,6 +242,9 @@ WebLoginFlow {
         actionTitle: qsTr("Verwerfen und schließen")
         // "Weiter suchen" is the cancel button of the Mac's alert
         cancelTitle: qsTr("Weiter suchen")
+        // holds stay pending and are checked again on the next sync (#864)
+        secondaryTitle: qsTr("Vorerst behalten")
+        onSecondary: flow.close(true)
         onConfirmed: {
             AppModel.coreAsync("discard_portal_holds", { connection_id: flow.connection.id, ids: flow.openHolds.map(h => h.id) }, () => {
                 AppModel.reloadAll()

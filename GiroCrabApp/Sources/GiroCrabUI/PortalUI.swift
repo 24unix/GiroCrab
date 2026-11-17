@@ -612,6 +612,8 @@ struct PortalWebSheet: View {
         .interactiveDismissDisabled(!openHolds.isEmpty)
         .alert("Vorgemerkte Umsätze nicht gefunden", isPresented: $confirmDiscard) {
             Button("Weiter suchen", role: .cancel) {}
+            // Holds stay pending and are checked again on the next sync.
+            Button("Vorerst behalten") { close() }
             Button("Verwerfen und schließen", role: .destructive) {
                 Task {
                     await model.discardPortalHolds(connection, ids: openHolds.map(\.id))
@@ -657,7 +659,9 @@ struct PortalWebSheet: View {
         let lines = openHolds.map { h in
             "\(DateText.medium(h.bookingDate)) · \(h.counterparty) · \(Money.format(h.amountCents))"
         }
-        return String(localized: "Zu diesen Vormerkungen wurde weder ein offener noch ein gebuchter Umsatz gefunden. Sie werden verworfen:") + "\n\n" + lines.joined(separator: "\n")
+        return String(localized: "Zu diesen Vormerkungen wurde weder ein offener noch ein gebuchter Umsatz gefunden:")
+            + "\n\n" + lines.joined(separator: "\n") + "\n\n"
+            + String(localized: "„Vorerst behalten“ lässt sie als Vormerkung stehen; beim nächsten Abruf wird erneut gesucht.")
     }
 
     /// Keys-only structure dump (all strings/numbers masked) for debugging portal changes.

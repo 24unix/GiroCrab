@@ -335,18 +335,48 @@ pub(crate) struct Capture {
     pub balance: Option<(String, i64)>,
 }
 
+/// Status fields that mark a single item as pending.
+const STATUS_KEYS: &[&str] = &["status", "transaction_status", "transactionstatus"];
+
+/// A pending charge outside a `pending…` list: a status field says so, or (Amex) the
+/// id is an authorisation number. Amex delivers open charges in a plain `transactions`
+/// list; their ids are `P` + digits, posted ones never are (`AT…`, `1000…`).
+fn item_is_pending(obj: &serde_json::Map<String, Value>, p: &Parsed, kind: ConnectorKind) -> bool {
+    let status = get_ci(obj, STATUS_KEYS)
+        .and_then(value_text)
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+    if ["pending", "pdng", "authori", "vorgemerkt"]
+        .iter()
+        .any(|w| status.contains(w))
+    {
+        return true;
+    }
+    kind == ConnectorKind::AmericanExpress
+        && p.id.as_deref().is_some_and(|id| {
+            id.len() >= 11 && id.starts_with('P') && id[1..].chars().all(|c| c.is_ascii_digit())
+        })
+}
+
 fn walk(v: &Value, kind: ConnectorKind, pending: bool, out: &mut Capture) {
     match v {
         Value::Array(items) => {
-            let parsed: Vec<Parsed> = items
+            let parsed: Vec<(Parsed, bool)> = items
                 .iter()
-                .filter_map(|i| i.as_object().and_then(|o| parse_tx_object(o, kind)))
+                .filter_map(|i| {
+                    let o = i.as_object()?;
+                    let p = parse_tx_object(o, kind)?;
+                    let is_pending = pending || item_is_pending(o, &p, kind);
+                    Some((p, is_pending))
+                })
                 .collect();
             if !parsed.is_empty() {
-                if pending {
-                    out.pending.extend(parsed)
-                } else {
-                    out.posted.extend(parsed)
+                for (p, is_pending) in parsed {
+                    if is_pending {
+                        out.pending.push(p)
+                    } else {
+                        out.posted.push(p)
+                    }
                 }
             } else {
                 items.iter().for_each(|i| walk(i, kind, pending, out));
@@ -1768,6 +1798,64 @@ mod hold_tests {
 
     fn sql(v: &Vault, sql: &str) {
         v.db().unwrap().execute_batch(sql).unwrap();
+    }
+
+    #[test]
+    fn amex_pending_charges_in_the_posted_list_are_recognised() {
+        // Amex lists open charges in a plain `transactions` list (no `pending…` key)
+        let b = body(
+            &[
+                posted("AT000000000000000000001", "2026-01-02", "10,00", "SHOP A"),
+                posted("P0000000000000000000001", "2026-01-05", "1,87", "SHOP B"),
+                posted("10000000000000000000001", "2026-01-03", "-24,09", "ZAHLUNG"),
+            ],
+            None,
+        );
+        let c = parse_capture(std::slice::from_ref(&b), KIND);
+        assert_eq!(
+            c.pending
+                .iter()
+                .map(|p| p.id.as_deref())
+                .collect::<Vec<_>>(),
+            [Some("P0000000000000000000001")]
+        );
+        assert_eq!(c.posted.len(), 2);
+        // other portals: a `P…` id is just an id
+        let c = parse_capture(&[b], ConnectorKind::AmazonVisa);
+        assert!(c.pending.is_empty());
+        // an explicit status counts everywhere
+        let s = r#"{"items":[{"date":"2026-01-05","amount":-5,"description":"X","id":"T1","status":"PENDING"}]}"#;
+        let c = parse_capture(&[s.to_string()], ConnectorKind::AmazonVisa);
+        assert_eq!(c.pending.len(), 1);
+    }
+
+    #[test]
+    fn a_charge_pending_in_this_sync_is_never_offered_for_discarding() {
+        // regression: it was stored as `id:P…`, turned into a hold and reported unresolved
+        let (v, conn, _dir) = vault();
+        let b = body(
+            &[
+                posted("AT1", "2026-01-02", "10,00", "SHOP A"),
+                posted("P0000000000000000000001", "2026-01-05", "4,05", "SHOP B"),
+            ],
+            None,
+        );
+        sync(&v, conn, &b).unwrap();
+        assert_eq!(
+            ids(&v),
+            [
+                "id:AT1",
+                &format!("{HOLD_PREFIX}id:P0000000000000000000001")
+            ]
+        );
+        assert!(
+            open_holds(&v, conn, &b).is_empty(),
+            "still open, nothing to ask"
+        );
+        // a vault hit before the fix (tombstoned `id:P…` + hold) heals on the next sync
+        sync(&v, conn, &b).unwrap();
+        assert!(open_holds(&v, conn, &b).is_empty());
+        assert_eq!(ids(&v).len(), 2);
     }
 
     #[test]
