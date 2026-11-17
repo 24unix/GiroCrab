@@ -79,7 +79,7 @@ import java.util.Locale
 import kotlin.math.abs
 
 enum class TimeRange(val label: String) {
-    All("Gesamter Zeitraum"), Days30("30 Tage"), Days90("90 Tage"), ThisYear("Dieses Jahr");
+    All("Zeitraum"), Days30("30 Tage"), Days90("90 Tage"), ThisYear("Dieses Jahr");
 
     fun from(today: LocalDate): LocalDate? = when (this) {
         All -> null
@@ -350,11 +350,11 @@ private fun FilterBar(
     onAnalytics: (Boolean) -> Unit,
     count: Int,
 ) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
         androidx.compose.foundation.text.BasicTextField(
             value = search,
             onValueChange = onSearch,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(38.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).height(34.dp),
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
@@ -377,9 +377,9 @@ private fun FilterBar(
             },
         )
         LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             item { DropdownChip(range.label, TimeRange.entries.map { it.label to { onRange(it) } }, selected = range != TimeRange.All) }
@@ -396,25 +396,28 @@ private fun FilterBar(
                 FilterChip(
                     selected = analytics,
                     onClick = { onAnalytics(!analytics) },
-                    label = { Text("Analysen") },
+                    label = { Text("Analysen", Modifier.padding(horizontal = 6.dp)) },
+                    modifier = Modifier.height(30.dp),
                     leadingIcon = { Icon(Icons.Filled.Insights, null, Modifier.size(16.dp)) },
                 )
             }
             item {
-                FilterChip(selected = compact, onClick = { onCompact(!compact) }, label = { Text("Kompakt") })
+                FilterChip(selected = compact, onClick = { onCompact(!compact) }, label = { Text("Kompakt", Modifier.padding(horizontal = 6.dp)) }, modifier = Modifier.height(30.dp))
             }
             items(tags, key = { it.id }) { t ->
                 FilterChip(
                     selected = tagId == t.id,
                     onClick = { onTag(if (tagId == t.id) null else t.id) },
-                    label = { Text("#${t.name}") },
+                    label = { Text("#${t.name}", Modifier.padding(horizontal = 6.dp)) },
+                    modifier = Modifier.height(30.dp),
                 )
             }
             item {
                 FilterChip(
                     selected = docsOnly,
                     onClick = { onDocs(!docsOnly) },
-                    label = { Text("Dokumente") },
+                    label = { Text("Dokumente", Modifier.padding(horizontal = 6.dp)) },
+                    modifier = Modifier.height(30.dp),
                     leadingIcon = { Icon(Icons.Filled.AttachFile, null, Modifier.size(16.dp)) },
                 )
             }
@@ -428,8 +431,9 @@ private fun DropdownChip(label: String, options: List<Pair<String, () -> Unit>>,
     Box {
         AssistChip(
             onClick = { open = true },
-            label = { Text(label, maxLines = 1) },
-            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null, Modifier.size(18.dp)) },
+            label = { Text(label, Modifier.padding(horizontal = 6.dp), maxLines = 1) },
+            modifier = Modifier.height(30.dp),
+            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null, Modifier.size(16.dp)) },
             border = if (selected) androidx.compose.material3.AssistChipDefaults.assistChipBorder(
                 enabled = true, borderColor = MaterialTheme.colorScheme.primary,
             ) else androidx.compose.material3.AssistChipDefaults.assistChipBorder(enabled = true),
@@ -485,13 +489,13 @@ private fun SumRow(label: String, cents: Long, masked: Boolean) {
 @Composable
 private fun MonthHeader(g: MonthGroup, masked: Boolean) {
     Row(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().height(26.dp).background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             "${g.month.month.getDisplayName(TextStyle.FULL, DE)} ${g.month.year}",
             Modifier.weight(1f),
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
         )
         Text(formatMoney(g.income, masked = masked), fontFamily = tabular, style = tnum, fontSize = 12.sp, color = Color(0xFF2E7D32))
@@ -516,14 +520,14 @@ private fun BookingRow(
 ) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = if (compact) 2.dp else 6.dp),
+            .padding(horizontal = 12.dp, vertical = 5.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Box(Modifier.size(20.dp).clickable(onClick = onToggleChecked), contentAlignment = Alignment.Center) {
             if (unchecked) Box(Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF1E88E5)))
         }
         Surface(
-            modifier = Modifier.padding(end = 12.dp).size(if (compact) 28.dp else 38.dp),
+            modifier = Modifier.padding(end = 12.dp).size(32.dp),
             shape = CircleShape,
             color = MaterialTheme.colorScheme.secondaryContainer,
         ) {
@@ -531,13 +535,15 @@ private fun BookingRow(
                 Text(
                     if (masked) "••" else merchantInitials(booking.counterparty),
                     style = MaterialTheme.typography.labelLarge,
+                    fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
         }
-        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+        Column(Modifier.weight(1f).padding(end = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 if (masked) "••••••" else booking.counterparty.ifBlank { "—" },
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (unchecked) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )

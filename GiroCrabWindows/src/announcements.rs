@@ -8,6 +8,7 @@ use serde_json::Value;
 
 const BUNDLED_JSON: &[u8] = include_bytes!("../../policy/announcements.json");
 const BUNDLED_SIG: &[u8] = include_bytes!("../../policy/announcements.json.sig");
+#[allow(dead_code)]
 pub const DISMISSED_KEY: &str = "announcements.dismissed";
 
 #[derive(Debug, Deserialize)]

@@ -263,6 +263,7 @@ pub fn planned_lines(
 }
 
 /// Entries of the horizon picker of "Geplant" (like macOS `PlannedHorizon`).
+#[allow(dead_code)]
 pub const HORIZON_LABELS: [&str; 4] = ["30 Tage", "90 Tage", "1 Jahr", "Alle"];
 
 /// Days ahead for a horizon index; `None` = open end.
