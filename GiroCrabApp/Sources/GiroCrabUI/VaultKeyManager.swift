@@ -51,6 +51,30 @@ public final class VaultKeyManager: @unchecked Sendable {
 
     public static let shared = VaultKeyManager()
 
+    /// Whether this build may use the data-protection keychain that iCloud Keychain
+    /// sharing needs. The notarized Mac app has no keychain entitlement (#909):
+    /// the switch could only fail there, so Settings disables it up front.
+    public static let canShareViaICloudKeychain = iCloudKeychainAvailable(probe: probeDataProtectionKeychain())
+
+    /// Only a missing entitlement rules sharing out; "not found" means the keychain is reachable.
+    static func iCloudKeychainAvailable(probe status: OSStatus) -> Bool {
+        status != errSecMissingEntitlement
+    }
+
+    /// Looks up an item that never exists, without any prompt.
+    private static func probeDataProtectionKeychain() -> OSStatus {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        let q: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "de.girocrab.keychain-probe",
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecUseAuthenticationContext as String: context,
+        ]
+        return SecItemCopyMatching(q as CFDictionary, nil)
+    }
+
     private let service = "de.girocrab.vault"
     private let account = "sqlcipher-master-key"
 
@@ -301,6 +325,9 @@ public final class VaultKeyManager: @unchecked Sendable {
     /// reads this type.
     public static let keyPasteboardType = "de.girocrab.tresor-key"
 
+    /// How long the copied key stays on the clipboard; Settings counts it down.
+    public static let keyClipboardLifetime: TimeInterval = 60
+
     #if os(macOS)
     /// Puts the key on `pasteboard` under [`keyPasteboardType`] only, marked
     /// concealed/transient for clipboard managers (nspasteboard.org); cleared after 60 s.
@@ -314,7 +341,7 @@ public final class VaultKeyManager: @unchecked Sendable {
         pb.setData(Data(), forType: concealed)
         pb.setData(Data(), forType: transient)
         let count = pb.changeCount
-        DispatchQueue.main.asyncAfter(deadline: .now() + 60) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + keyClipboardLifetime) {
             if pb.changeCount == count { pb.clearContents() }
         }
     }
@@ -326,7 +353,7 @@ public final class VaultKeyManager: @unchecked Sendable {
     #else
     @MainActor public static func copyKeyToPasteboard(_ text: String) {
         UIPasteboard.general.setItems([[keyPasteboardType: Data(text.utf8)]],
-                                      options: [.expirationDate: Date().addingTimeInterval(60), .localOnly: true])
+                                      options: [.expirationDate: Date().addingTimeInterval(keyClipboardLifetime), .localOnly: true])
     }
 
     @MainActor public static func keyFromPasteboard() -> String? {

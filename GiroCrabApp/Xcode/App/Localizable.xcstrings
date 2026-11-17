@@ -15765,6 +15765,17 @@
         }
       }
     },
+    "In dieser Version nicht verfügbar. Übertragen Sie den Schlüssel mit „Tresor-Schlüssel kopieren“ und fügen Sie ihn auf dem anderen Gerät mit „Schlüssel einfügen …“ ein." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not available in this version. Transfer the key with “Copy vault key” and paste it on the other device with “Paste key…”."
+          }
+        }
+      }
+    },
     "Inaktiv" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -24681,6 +24692,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Key copied (60 s)"
+          }
+        }
+      }
+    },
+    "Schlüssel noch %lld s in der Zwischenablage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Key on the clipboard for another %lld s"
           }
         }
       }

@@ -152,8 +152,10 @@ enum ICloudFolderMigration {
         }
     }
 
-    /// Folder name for the UI; the old name is never shown.
+    /// Folder name for the UI: the real name, also of the former folder (#909).
+    /// It is the user's folder, not a text of ours, so the brand rule for UI
+    /// texts does not apply; hiding it made the label "iCloud Drive / iCloud Drive".
     static func displayName(for url: URL) -> String {
-        isLegacyFolder(url) ? "iCloud Drive" : url.lastPathComponent
+        url.lastPathComponent
     }
 }

@@ -88,8 +88,11 @@ final class ICloudFolderMigrationTests: XCTestCase {
         XCTAssertEqual(ICloudFolderMigration.resolve(cloudDocs: root).url, new)
     }
 
-    func test_ui_name_hides_old_folder() {
-        XCTAssertEqual(ICloudFolderMigration.displayName(for: old), "iCloud Drive")
+    /// The real folder name, also for the former one (#909): "iCloud Drive / iCloud Drive"
+    /// said nothing about where the vault lies. A user's folder name is not a text of
+    /// ours, so the brand rule for UI texts does not apply to it.
+    func test_ui_name_is_the_real_folder_name() {
+        XCTAssertEqual(ICloudFolderMigration.displayName(for: old), ICloudFolderMigration.legacyFolderName)
         XCTAssertEqual(ICloudFolderMigration.displayName(for: new), "GiroCrab")
     }
 }
