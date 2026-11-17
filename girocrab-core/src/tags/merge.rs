@@ -14,6 +14,7 @@ use rusqlite::{params, Connection};
 
 use super::{fold, normalize_links};
 use crate::error::CoreResult;
+use crate::schema::has_table;
 
 #[derive(Clone, PartialEq)]
 struct Row {
@@ -45,14 +46,6 @@ impl Row {
         self.deleted_ms = self.deleted_ms.max(o.deleted_ms);
         self.merged_into = self.merged_into.clone().max(o.merged_into.clone());
     }
-}
-
-fn has_table(conn: &Connection, schema: &str, name: &str) -> CoreResult<bool> {
-    Ok(conn.query_row(
-        &format!("SELECT count(*) FROM {schema}.sqlite_master WHERE type = 'table' AND name = ?1"),
-        [name],
-        |r| r.get::<_, i64>(0),
-    )? > 0)
 }
 
 fn load(conn: &Connection, schema: &str) -> CoreResult<BTreeMap<String, Row>> {

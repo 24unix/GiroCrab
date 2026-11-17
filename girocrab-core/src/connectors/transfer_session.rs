@@ -315,5 +315,5 @@ pub(super) fn new_end_to_end_id() -> String {
 
 /// ISO 13616 Mod-97 IBAN check (whitespace and case ignored).
 pub fn validate_iban(iban: String) -> bool {
-    crate::connectors::fints::sepa::validate_iban(&iban)
+    crate::iban::validate_iban(&iban)
 }

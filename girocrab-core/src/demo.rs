@@ -234,7 +234,7 @@ const DEMO_TAGS: [DemoTag; 12] = [
 ];
 
 fn demo_tags(conn: &Connection) -> CoreResult<()> {
-    let now = crate::user_groups::now_ms();
+    let now = crate::dates::now_ms();
     for (i, (name, color, counterparties, purposes)) in DEMO_TAGS.iter().enumerate() {
         conn.execute(
             "INSERT INTO tags(uuid, name, color_hex, sort_order, updated_ms) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -1532,7 +1532,7 @@ impl Vault {
         }
         // A few fetch-log rows so the Abruf-Protokoll window is not empty in the demo (#238).
         {
-            let now_ms = chrono::Utc::now().timestamp_millis();
+            let now_ms = crate::dates::now_ms();
             let hour = 3_600_000_i64;
             let rows: [(ConnectorKind, &str, i64, &str, &str, &str, i64); 6] = [
                 (

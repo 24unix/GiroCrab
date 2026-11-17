@@ -42,8 +42,8 @@ use std::sync::{Arc, Mutex};
 use chrono::{Datelike, NaiveDate};
 use rusqlite::Connection;
 
-use crate::connectors::fints::sepa::normalize_iban;
 use crate::error::{CoreError, CoreResult};
+use crate::iban::normalize_iban;
 use crate::merchants::{FlowKind, MerchantInfo, MerchantKind, MerchantResolver};
 use crate::models::{CategorySource, MatchKind, Rule};
 use crate::vault::Vault;

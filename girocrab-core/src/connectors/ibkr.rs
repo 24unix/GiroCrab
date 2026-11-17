@@ -67,17 +67,14 @@ impl IbkrConnector {
     }
 
     fn client(&mut self) -> CoreResult<reqwest::Client> {
-        if self.client.is_none() {
-            self.client = Some(
-                reqwest::Client::builder()
-                    .user_agent(concat!("GiroCrab/", env!("CARGO_PKG_VERSION")))
-                    .connect_timeout(CONNECT_TIMEOUT)
-                    .timeout(Duration::from_secs(60))
-                    .build()
-                    .map_err(net_err)?,
-            );
+        if let Some(c) = &self.client {
+            return Ok(c.clone());
         }
-        Ok(self.client.clone().expect("client set above"))
+        let c = super::client_builder(Duration::from_secs(60))
+            .connect_timeout(CONNECT_TIMEOUT)
+            .build()
+            .map_err(net_err)?;
+        Ok(self.client.insert(c).clone())
     }
 
     async fn get(

@@ -18,10 +18,10 @@ use chrono::NaiveDate;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::connectors::group_for;
+use crate::dates::now_ms;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::AccountKind;
-use crate::user_groups::now_ms;
 use crate::vault::Vault;
 
 const EXTERNAL_REF_PREFIX: &str = "offline-";

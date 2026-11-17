@@ -18,8 +18,10 @@ use std::collections::{HashMap, HashSet};
 
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
 
+use crate::dates::now_ms;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
+use crate::schema::has_column;
 use crate::vault::Vault;
 
 pub(crate) mod merge;
@@ -54,12 +56,7 @@ const MAX_NAME: usize = 64;
 /// `transactions.tags_ms`. Idempotent like the steps before it.
 pub(crate) fn tags_tables(conn: &Connection) -> CoreResult<()> {
     conn.execute_batch(TAGS)?;
-    let has: i64 = conn.query_row(
-        "SELECT count(*) FROM pragma_table_info('transactions') WHERE name = 'tags_ms'",
-        [],
-        |r| r.get(0),
-    )?;
-    if has == 0 {
+    if !has_column(conn, "main", "transactions", "tags_ms")? {
         conn.execute_batch(
             "ALTER TABLE transactions ADD COLUMN tags_ms INTEGER NOT NULL DEFAULT 0;",
         )?;
@@ -411,7 +408,7 @@ pub(crate) fn tag_by_rules(
         }
     }
     let ids: Vec<i64> = changed.iter().copied().collect();
-    stamp_bookings(conn, &ids, crate::user_groups::now_ms())?;
+    stamp_bookings(conn, &ids, now_ms())?;
     Ok(changed)
 }
 
@@ -442,7 +439,7 @@ impl Vault {
         )?;
         conn.execute(
             "INSERT INTO tags(uuid, name, sort_order, updated_ms) VALUES (?1, ?2, ?3, ?4)",
-            params![uuid, name, order, crate::user_groups::now_ms()],
+            params![uuid, name, order, now_ms()],
         )?;
         Ok(conn.last_insert_rowid())
     }
@@ -517,7 +514,7 @@ impl Vault {
         }
         db.execute(
             "UPDATE tags SET name = ?2, updated_ms = ?3 WHERE id = ?1",
-            params![id, name, crate::user_groups::now_ms()],
+            params![id, name, now_ms()],
         )?;
         tag_row(&db, id)
     }
@@ -529,7 +526,7 @@ impl Vault {
         ensure_live(&db, id)?;
         db.execute(
             "UPDATE tags SET color_hex = ?2, updated_ms = ?3 WHERE id = ?1",
-            params![id, color, crate::user_groups::now_ms()],
+            params![id, color, now_ms()],
         )?;
         Ok(())
     }
@@ -538,7 +535,7 @@ impl Vault {
     pub fn reorder_tags(&self, ids: Vec<i64>) -> Result<(), CoreError> {
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
-        let now = crate::user_groups::now_ms();
+        let now = now_ms();
         for (i, id) in ids.iter().enumerate() {
             tx.execute(
                 "UPDATE tags SET sort_order = ?2, updated_ms = ?3
@@ -557,7 +554,7 @@ impl Vault {
         let tx = db.unchecked_transaction()?;
         tx.execute(
             "UPDATE tags SET deleted_ms = ?2, updated_ms = ?2 WHERE id = ?1",
-            params![id, crate::user_groups::now_ms()],
+            params![id, now_ms()],
         )?;
         normalize_links(&tx)?;
         tx.commit()?;
@@ -576,7 +573,7 @@ impl Vault {
         ensure_live(&db, source)?;
         ensure_live(&db, target)?;
         let tx = db.unchecked_transaction()?;
-        let now = crate::user_groups::now_ms();
+        let now = now_ms();
         tx.execute(
             "UPDATE tags SET deleted_ms = ?3, updated_ms = ?3,
                     merged_into = (SELECT uuid FROM tags WHERE id = ?2)
@@ -623,7 +620,7 @@ impl Vault {
                 params![booking_id, id],
             )?;
         }
-        stamp_bookings(&tx, &[booking_id], crate::user_groups::now_ms())?;
+        stamp_bookings(&tx, &[booking_id], now_ms())?;
         tx.commit()?;
         Ok(())
     }
@@ -649,7 +646,7 @@ impl Vault {
                 changed.push(id);
             }
         }
-        stamp_bookings(&tx, &changed, crate::user_groups::now_ms())?;
+        stamp_bookings(&tx, &changed, now_ms())?;
         tx.commit()?;
         Ok(changed)
     }
@@ -673,7 +670,7 @@ impl Vault {
                 changed.push(id);
             }
         }
-        stamp_bookings(&tx, &changed, crate::user_groups::now_ms())?;
+        stamp_bookings(&tx, &changed, now_ms())?;
         tx.commit()?;
         Ok(changed)
     }

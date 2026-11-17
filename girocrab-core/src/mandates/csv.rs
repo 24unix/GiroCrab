@@ -3,11 +3,12 @@
 //! their errors. Dates may be `YYYY-MM-DD` or `DD.MM.YYYY`.
 
 use crate::batch_csv::{detect_delimiter, is_blank, split_records};
-use crate::connectors::fints::sepa::{
-    is_sepa_identifier, normalize_iban, validate_bic, validate_iban,
-};
+use crate::connectors::fints::sepa::{is_sepa_identifier, validate_bic};
+use crate::dates::{iso, parse_de_or_iso};
 use crate::i18n::{tr, trf};
+use crate::iban::{normalize_iban, validate_iban};
 use crate::money::parse_cents;
+use crate::text::parse_bool_loose;
 
 use super::{MandateInput, MandateScheme};
 
@@ -105,21 +106,6 @@ fn columns(header: &[String]) -> Option<Columns> {
     known.then_some(cols)
 }
 
-fn parse_date(s: &str) -> Option<String> {
-    let s = s.trim();
-    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
-        .or_else(|_| chrono::NaiveDate::parse_from_str(s, "%d.%m.%Y"))
-        .ok()
-        .map(|d| d.format("%Y-%m-%d").to_string())
-}
-
-fn yes(s: &str) -> bool {
-    matches!(
-        s.trim().to_lowercase().as_str(),
-        "ja" | "j" | "yes" | "y" | "1" | "true" | "x"
-    )
-}
-
 /// Undoes the export's formula guard (see `field`).
 fn unguard(s: String) -> String {
     match s.strip_prefix('\'') {
@@ -158,7 +144,7 @@ fn to_row(line: u32, f: &[String], cols: Columns) -> MandateCsvRow {
                 .to_string(),
         );
     }
-    let signed_date = match parse_date(&get(cols.date)) {
+    let signed_date = match parse_de_or_iso(&get(cols.date)).map(iso) {
         Some(d) => d,
         None => {
             errors.push(tr("Das Datum der Mandatsunterschrift fehlt.").to_string());
@@ -198,8 +184,8 @@ fn to_row(line: u32, f: &[String], cols: Columns) -> MandateCsvRow {
         reference,
         signed_date,
         scheme,
-        one_off: yes(&get(cols.one_off)),
-        active: cols.active.is_none() || yes(&get(cols.active)),
+        one_off: parse_bool_loose(&get(cols.one_off)),
+        active: cols.active.is_none() || parse_bool_loose(&get(cols.active)),
         default_amount_cents,
         default_purpose: unguard(get(cols.purpose)),
         errors,

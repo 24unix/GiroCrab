@@ -3,8 +3,8 @@
 //! becomes a row, faulty ones carry their errors so the sheet can show and fix
 //! them. Nothing is sent from here.
 
-use crate::connectors::fints::sepa::{normalize_iban, validate_iban};
 use crate::i18n::{tr, trf};
+use crate::iban::{normalize_iban, validate_iban};
 use crate::money::parse_cents;
 
 const MAX_NAME: usize = 70;

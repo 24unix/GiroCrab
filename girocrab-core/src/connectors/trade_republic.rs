@@ -33,7 +33,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 use super::{
     BankConnector, Challenge, ChallengeKind, ChallengeResponse, ConnectContext, FetchResult, Phase,
-    RemoteAccount, RemoteHolding, RemoteTransaction,
+    RemoteAccount, RemoteHolding, RemoteTransaction, BROWSER_UA,
 };
 use crate::asset_classification::{AssetClass, ClassificationValues, InstrumentKind};
 use crate::error::{CoreError, CoreResult};
@@ -43,7 +43,6 @@ use crate::money::json_number_to_cents;
 
 const API: &str = "https://api.traderepublic.com";
 const WS: &str = "wss://api.traderepublic.com";
-pub const BROWSER_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
 const APP_ORIGIN: &str = "https://app.traderepublic.com";
 
 /// Strict E.164 for German numbers: "0171 1234567", "0049171…", "49171…",

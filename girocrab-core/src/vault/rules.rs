@@ -209,7 +209,7 @@ impl Vault {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![rule.name, category, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
                         rule.min_amount_cents, rule.max_amount_cents, rule.account_ids.iter().min(), rule.priority, rule.enabled as i64,
-                        crate::user_groups::now_ms(), tag_uuids],
+                        crate::dates::now_ms(), tag_uuids],
             )?;
             let id = db.last_insert_rowid();
             crate::rules::store_rule_accounts(&db, id, &rule.account_ids)?;
@@ -221,7 +221,7 @@ impl Vault {
                         max_amount_cents=?8, account_id=?9, priority=?10, enabled=?11, updated_ms=?13, tag_uuids=?14 WHERE id=?12",
                 params![rule.name, category, rule.field.as_str(), kind, rule.pattern, rule.case_sensitive as i64,
                         rule.min_amount_cents, rule.max_amount_cents, rule.account_ids.iter().min(), rule.priority, rule.enabled as i64, rule.id,
-                        crate::user_groups::now_ms(), tag_uuids],
+                        crate::dates::now_ms(), tag_uuids],
             )?;
             crate::rules::store_rule_accounts(&db, rule.id, &rule.account_ids)?;
             Ok(rule.id)
@@ -234,7 +234,7 @@ impl Vault {
         tx.execute("UPDATE transactions SET category_id = NULL, category_source = 'none', rule_id = NULL WHERE rule_id = ?1", [rule_id])?;
         tx.execute(
             "UPDATE rules SET deleted_ms = ?2 WHERE id = ?1 AND deleted_ms IS NULL",
-            params![rule_id, crate::user_groups::now_ms()],
+            params![rule_id, crate::dates::now_ms()],
         )?;
         tx.commit()?;
         Ok(())

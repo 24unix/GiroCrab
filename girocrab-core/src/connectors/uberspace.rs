@@ -25,6 +25,7 @@ use super::{
     http_client, BankConnector, ChallengeResponse, ConnectContext, ContentIds, FetchResult, Phase,
     RemoteAccount, RemoteTransaction,
 };
+use crate::dates::{find_de_date, iso};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
 use crate::models::AccountKind;
@@ -49,8 +50,6 @@ static CELL: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<(td|th)\b[^>]*>(.*?)</(?:td|th)\s*>").unwrap());
 static ANY_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?s)<[^>]*>").unwrap());
 static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<a\b[^>]*>.*?</a\s*>").unwrap());
-static DATE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b").unwrap());
 static ASTEROID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]{0,31}$").unwrap());
 
@@ -325,13 +324,7 @@ fn parse_amount(s: &str) -> Option<i64> {
 
 /// `DD.MM.YYYY` anywhere in the cell → `YYYY-MM-DD`.
 fn parse_date(s: &str) -> Option<String> {
-    let c = DATE.captures(s)?;
-    let d = chrono::NaiveDate::from_ymd_opt(
-        c[3].parse().ok()?,
-        c[2].parse().ok()?,
-        c[1].parse().ok()?,
-    )?;
-    Some(d.format("%Y-%m-%d").to_string())
+    find_de_date(s).map(iso)
 }
 
 /// Balance and bookings of one Asteroid from its accounting page. Rows

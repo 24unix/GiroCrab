@@ -38,6 +38,7 @@ use serde_json::{json, Map, Value};
 
 use super::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
 use crate::{
+    dates::month_from_name,
     error::{CoreError, CoreResult},
     i18n::tr,
     models::{AccountKind, ConnectorKind},
@@ -122,30 +123,6 @@ fn year_of(v: &Value) -> Option<i32> {
     (1950..=2200).contains(&n).then_some(n as i32)
 }
 
-/// Month names and abbreviations (German, English), matched exactly.
-const MONTHS: [&[&str]; 12] = [
-    &["januar", "jänner", "january", "jan"],
-    &["februar", "february", "feb"],
-    &["märz", "maerz", "march", "mär", "mrz", "mar"],
-    &["april", "apr"],
-    &["mai", "may"],
-    &["juni", "june", "jun"],
-    &["juli", "july", "jul"],
-    &["august", "aug"],
-    &["september", "sept", "sep"],
-    &["oktober", "october", "okt", "oct"],
-    &["november", "nov"],
-    &["dezember", "december", "dez", "dec"],
-];
-
-fn month_name(s: &str) -> Option<u32> {
-    let s = s.trim().trim_end_matches('.').to_lowercase();
-    MONTHS
-        .iter()
-        .position(|names| names.contains(&s.as_str()))
-        .map(|i| i as u32 + 1)
-}
-
 /// Month of a `month`/`monat` field: 1–12 as number or string, or a month name.
 fn month_of(v: &Value) -> Option<u32> {
     let n = match v {
@@ -155,7 +132,7 @@ fn month_of(v: &Value) -> Option<u32> {
             if !t.is_empty() && t.len() <= 2 && t.bytes().all(|b| b.is_ascii_digit()) {
                 t.parse().ok()?
             } else {
-                return month_name(t);
+                return month_from_name(t);
             }
         }
         _ => return None,
@@ -169,7 +146,7 @@ fn month_of_key(k: &str) -> Option<u32> {
     if k.len() == 2 && k.bytes().all(|b| b.is_ascii_digit()) {
         return k.parse().ok().filter(|m| (1..=12).contains(m));
     }
-    month_name(k)
+    month_from_name(k)
 }
 
 /// Year/month an object states in its own fields: `year`/`jahr`, and `month`/

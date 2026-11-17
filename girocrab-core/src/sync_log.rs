@@ -12,8 +12,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExtension};
 
+use crate::dates::now_ms;
 use crate::error::CoreResult;
-use crate::user_groups::now_ms;
 use crate::vault::Vault;
 use crate::CoreError;
 
@@ -122,7 +122,7 @@ static IBAN_CANDIDATE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Every IBAN carries at least eight digits; "ab12 test case" does not.
-fn is_iban(compact: &str) -> bool {
+fn looks_like_iban(compact: &str) -> bool {
     compact.chars().filter(char::is_ascii_digit).count() >= 8
 }
 
@@ -153,7 +153,7 @@ fn without_wordy_tail(text: &str, mut end: usize) -> usize {
 /// "… 0044 ungültig"). An unspaced candidate with lower-case letters (hex IDs
 /// look like that) counts only with a valid checksum and nothing glued on.
 pub(crate) fn replace_ibans(s: &str, f: impl Fn(&str) -> String) -> String {
-    use crate::connectors::fints::sepa::{iban_length, validate_iban};
+    use crate::iban::{iban_length, validate_iban};
     // Unicode: "…0044 ungültig" – the candidate (ASCII only) stops at "ü",
     // but the word goes on.
     let continues_word = |rest: &str| rest.starts_with(char::is_alphanumeric);
@@ -183,7 +183,7 @@ pub(crate) fn replace_ibans(s: &str, f: impl Fn(&str) -> String) -> String {
         let lower_token =
             !iban.contains(char::is_whitespace) && iban.chars().any(|c| c.is_ascii_lowercase());
         let glued = continues_word(&s[m.start() + iban.len()..]);
-        if !is_iban(&compact) || (lower_token && (glued || !validate_iban(&compact))) {
+        if !looks_like_iban(&compact) || (lower_token && (glued || !validate_iban(&compact))) {
             at = m.start() + 1; // the match starts with an ASCII letter
             continue;
         }

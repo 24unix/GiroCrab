@@ -7,6 +7,7 @@ use rusqlite::params;
 
 use crate::error::CoreError;
 use crate::i18n::{role_name, tr, trf};
+use crate::iban::normalize_iban;
 use crate::models::*;
 use crate::vault::Vault;
 
@@ -80,7 +81,7 @@ impl Vault {
         let db = self.db()?;
         let n = db.execute(
             "UPDATE categories SET budget_cents = ?1, budget_ms = ?3 WHERE id = ?2",
-            params![budget_cents, category_id, crate::user_groups::now_ms()],
+            params![budget_cents, category_id, crate::dates::now_ms()],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
@@ -251,7 +252,7 @@ impl Vault {
         }
         tx.execute(
             "UPDATE transactions SET splits_ms = ?1 WHERE id = ?2",
-            params![crate::user_groups::now_ms(), transaction_id],
+            params![crate::dates::now_ms(), transaction_id],
         )?;
         tx.commit()?;
         Ok(())
@@ -334,12 +335,7 @@ impl Vault {
     pub fn save_transfer_template(&self, template: TransferTemplate) -> Result<i64, CoreError> {
         let name = template.name.trim().to_string();
         let rname = template.recipient_name.trim().to_string();
-        let iban: String = template
-            .recipient_iban
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>()
-            .to_uppercase();
+        let iban = normalize_iban(&template.recipient_iban);
         if name.is_empty() || rname.is_empty() || iban.is_empty() {
             return Err(CoreError::InvalidInput {
                 message: tr("Name, Empfänger und IBAN der Vorlage dürfen nicht leer sein.").into(),

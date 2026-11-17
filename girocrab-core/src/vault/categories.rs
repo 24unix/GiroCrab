@@ -259,7 +259,7 @@ impl Vault {
                 },
                 color_hex,
                 order,
-                crate::user_groups::now_ms()
+                crate::dates::now_ms()
             ],
         )?;
         let id = db.last_insert_rowid();
@@ -316,7 +316,7 @@ impl Vault {
             _ => name,
         };
         // only fields that really change get a stamp (newest edit wins per field)
-        let now = crate::user_groups::now_ms();
+        let now = crate::dates::now_ms();
         let (old_name, old_parent, old_symbol, old_color, _) = stored.unwrap_or_default();
         db.execute(
             "UPDATE categories SET name = ?1, parent_id = ?2, sf_symbol = ?3, color_hex = ?4,

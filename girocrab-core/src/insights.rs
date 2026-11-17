@@ -824,10 +824,8 @@ impl Vault {
                 }
             }
         }
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(8))
-            .user_agent(concat!("GiroCrab/", env!("CARGO_PKG_VERSION")))
-            .build()?;
+        let client =
+            crate::connectors::client_builder(std::time::Duration::from_secs(8)).build()?;
         // Only the provider the user picked is contacted – no silent fallback.
         let sources = [if provider == "duckduckgo" {
             (

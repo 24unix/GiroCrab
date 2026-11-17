@@ -8,11 +8,11 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::connectors::fints::pain008::{validate_creditor_id, DebitScheme, SequenceType};
-use crate::connectors::fints::sepa::{
-    is_sepa_identifier, normalize_iban, validate_bic, validate_iban,
-};
+use crate::connectors::fints::sepa::{is_sepa_identifier, validate_bic};
+use crate::dates::now_ms;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
+use crate::iban::{normalize_iban, validate_iban};
 use crate::vault::Vault;
 
 mod collect;
@@ -326,7 +326,7 @@ impl Vault {
             .optional()?;
         db.execute("DELETE FROM mandates WHERE id = ?1", [id])?;
         if let Some((account_id, reference)) = key {
-            merge::mark_deleted(&db, account_id, &reference, crate::user_groups::now_ms())?;
+            merge::mark_deleted(&db, account_id, &reference, now_ms())?;
         }
         Ok(())
     }
@@ -353,7 +353,7 @@ impl Vault {
             // kept as an empty value with a stamp: a merge then sees the removal
             db.execute(
                 "UPDATE creditor_ids SET creditor_id = '', updated_ms = ?2 WHERE account_id = ?1",
-                params![account_id, crate::user_groups::now_ms()],
+                params![account_id, now_ms()],
             )?;
             return Ok(());
         }
@@ -363,7 +363,7 @@ impl Vault {
         db.execute(
             "INSERT INTO creditor_ids(account_id, creditor_id, updated_ms) VALUES (?1, ?2, ?3)
              ON CONFLICT(account_id) DO UPDATE SET creditor_id = ?2, updated_ms = ?3",
-            params![account_id, id, crate::user_groups::now_ms()],
+            params![account_id, id, now_ms()],
         )?;
         Ok(())
     }
@@ -406,7 +406,7 @@ pub(crate) fn store_mandate(
             "Diese Mandatsreferenz gibt es für dieses Konto schon.",
         )));
     }
-    let now = crate::user_groups::now_ms();
+    let now = now_ms();
     Ok(match id {
         Some(id) => {
             // a changed reference or account is a deletion of the old key for the merge

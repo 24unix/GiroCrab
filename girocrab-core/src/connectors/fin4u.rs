@@ -30,6 +30,7 @@ use super::{
 };
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
+use crate::iban::{normalize_iban, validate_iban};
 use crate::models::AccountKind;
 use crate::money::{format_cents, json_number_to_cents};
 use crate::secret::SecretString;
@@ -566,8 +567,8 @@ pub(crate) fn complete_from_details(account: &mut RemoteAccount, details: &[Deta
     };
     if account.iban.is_empty() {
         if let Some(iban) = find(&["IBAN"]) {
-            let iban = super::fints::sepa::normalize_iban(&iban);
-            if super::fints::sepa::validate_iban(&iban) {
+            let iban = normalize_iban(&iban);
+            if validate_iban(&iban) {
                 account.iban = iban;
             }
         }

@@ -10,6 +10,7 @@
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
+use crate::iban::{has_iban_shape, normalize_iban};
 use crate::models::{Account, AccountKind};
 use crate::vault::Vault;
 use rusqlite::{params, Connection};
@@ -511,8 +512,8 @@ fn statement_xml(
     let ns = if v08 { "08" } else { "02" };
     // Unique per export (ISO 20022): readers drop a repeated message id.
     let msg_id = format!("GC{}", uuid::Uuid::new_v4().simple());
-    let iban = compact_iban(&account.iban);
-    let own_bic = if is_iban(&iban) {
+    let iban = normalize_iban(&account.iban);
+    let own_bic = if has_iban_shape(&iban) {
         crate::connectors::fints_directory::bic_for_iban(iban.clone()).unwrap_or_default()
     } else {
         String::new()
@@ -705,8 +706,8 @@ fn entry_xml(b: &CamtEntry, account_currency: &str, owner: &str, v08: bool) -> S
         .strip_prefix("camt:")
         .map(str::trim)
         .filter(|s| !s.is_empty() && *s != "NONREF");
-    let peer_iban = compact_iban(&b.counterparty_iban);
-    let peer_bic = if is_iban(&peer_iban) {
+    let peer_iban = normalize_iban(&b.counterparty_iban);
+    let peer_bic = if has_iban_shape(&peer_iban) {
         crate::connectors::fints_directory::bic_for_iban(peer_iban.clone())
     } else {
         None
@@ -855,28 +856,12 @@ fn account_currency_or(s: &str, account_currency: &str) -> String {
 /// `<IBAN>` when `iban` is one, else `<Othr><Id>` (Max34Text): the schema's
 /// IBAN pattern rejects account and card numbers.
 fn account_id_xml(iban: &str, other: &str, fallback: &str) -> String {
-    if is_iban(iban) {
+    if has_iban_shape(iban) {
         return format!("<IBAN>{}</IBAN>", esc(iban));
     }
     let other = other.trim();
     let id = if other.is_empty() { fallback } else { other };
     format!("<Othr><Id>{}</Id></Othr>", esc(&truncate(id, 34)))
-}
-
-fn compact_iban(s: &str) -> String {
-    s.chars()
-        .filter(|c| !c.is_whitespace())
-        .collect::<String>()
-        .to_uppercase()
-}
-
-/// ISO 20022 IBAN2007Identifier: `[A-Z]{2}[0-9]{2}[a-zA-Z0-9]{1,30}`.
-pub fn is_iban(s: &str) -> bool {
-    let b = s.as_bytes();
-    (5..=34).contains(&b.len())
-        && b[..2].iter().all(u8::is_ascii_uppercase)
-        && b[2..4].iter().all(u8::is_ascii_digit)
-        && b[4..].iter().all(u8::is_ascii_alphanumeric)
 }
 
 /// Remittance text as `Ustrd` lines of at most 140 characters (Max140Text).
@@ -1695,8 +1680,8 @@ mod tests {
         assert_eq!(esc("a\u{0}b\u{1f}c\u{fffe}"), "abc");
         assert_eq!(esc("a\tb\nc\r\nd"), "a\tb\nc\r\nd");
         assert_eq!(esc("<&>\"'"), "&lt;&amp;&gt;&quot;&#39;");
-        assert!(is_iban("DE02120300000000202051"));
-        assert!(!is_iban("1234567890"));
-        assert!(!is_iban("de02120300000000202051"));
+        assert!(has_iban_shape("DE02120300000000202051"));
+        assert!(!has_iban_shape("1234567890"));
+        assert!(!has_iban_shape("de02120300000000202051"));
     }
 }

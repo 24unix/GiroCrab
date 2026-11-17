@@ -273,7 +273,7 @@ fn merge_takes_the_newer_opening_balance() {
         .unwrap()
         .execute(
             "UPDATE opening_balances SET opening_cents = NULL, updated_ms = ?1",
-            [crate::user_groups::now_ms() + 1000],
+            [crate::dates::now_ms() + 1000],
         )
         .unwrap();
     a.merge_other_vault(b.file_path(), vec![7u8; 32]).unwrap();

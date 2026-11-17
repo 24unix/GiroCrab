@@ -11,6 +11,8 @@
 //! Once ready, `fetch()` downloads accounts and transactions, which the
 //! `SyncSession` merges into the vault and runs the categorisation rules over.
 
+use std::time::Duration;
+
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::trf;
 
@@ -51,14 +53,25 @@ pub use sync_session::*;
 pub use transfer_session::*;
 pub use types::*;
 
+/// The `User-Agent` GiroCrab sends, except to portals that only serve
+/// browsers: those get [`BROWSER_UA`].
+pub(crate) const USER_AGENT: &str = concat!(
+    "GiroCrab/",
+    env!("CARGO_PKG_VERSION"),
+    " (open source; +https://github.com/)"
+);
+
+pub(crate) const BROWSER_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
+
+/// Client builder with [`USER_AGENT`] and a timeout for the whole request.
+pub(crate) fn client_builder(timeout: Duration) -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .timeout(timeout)
+}
+
 pub(crate) fn http_client() -> CoreResult<reqwest::Client> {
-    Ok(reqwest::Client::builder()
-        .user_agent(concat!(
-            "GiroCrab/",
-            env!("CARGO_PKG_VERSION"),
-            " (open source; +https://github.com/)"
-        ))
-        .timeout(std::time::Duration::from_secs(60))
+    Ok(client_builder(Duration::from_secs(60))
         .cookie_store(true)
         .build()?)
 }
@@ -66,13 +79,7 @@ pub(crate) fn http_client() -> CoreResult<reqwest::Client> {
 /// HTTP client for FinTS: never follows redirects, so POST bodies carrying
 /// PIN/TAN cannot be replayed to a different location.
 pub(crate) fn http_client_no_redirect() -> CoreResult<reqwest::Client> {
-    Ok(reqwest::Client::builder()
-        .user_agent(concat!(
-            "GiroCrab/",
-            env!("CARGO_PKG_VERSION"),
-            " (open source; +https://github.com/)"
-        ))
-        .timeout(std::time::Duration::from_secs(60))
+    Ok(client_builder(Duration::from_secs(60))
         .cookie_store(true)
         .redirect(reqwest::redirect::Policy::none())
         .build()?)

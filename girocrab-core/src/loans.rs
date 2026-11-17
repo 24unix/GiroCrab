@@ -15,10 +15,12 @@ use std::collections::{HashMap, HashSet};
 use chrono::NaiveDate;
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::dates::parse_iso;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::*;
 use crate::rules::RuleRow;
+use crate::schema::has_table;
 use crate::search_expr::SearchExpr;
 use crate::vault::{sql_int_list, Vault, LIVE_BOOKINGS_SQL};
 
@@ -115,10 +117,6 @@ pub struct LoanLink {
     pub by_rule: bool,
 }
 
-fn parse_date(s: &str) -> Option<NaiveDate> {
-    NaiveDate::parse_from_str(s.get(..10).unwrap_or(s), "%Y-%m-%d").ok()
-}
-
 fn compile_expr(src: &str) -> CoreResult<Option<SearchExpr>> {
     if src.trim().is_empty() {
         return Ok(None);
@@ -139,7 +137,7 @@ fn validate(setup: &LoanSetup) -> CoreResult<LoanSetup> {
             &[&MAX_NAME_CHARS],
         )));
     }
-    let Some(date) = parse_date(&setup.anchor_date) else {
+    let Some(date) = parse_iso(&setup.anchor_date) else {
         return Err(CoreError::invalid(tr("Ungültiges Stichtagsdatum.")));
     };
     if date > chrono::Local::now().date_naive() {
@@ -219,9 +217,9 @@ pub(crate) fn compute_status(setup: &LoanSetup, bookings: &[(String, i64)]) -> L
     let ppm = setup.interest_rate_ppm.unwrap_or(0);
     let mut events: Vec<(NaiveDate, &str, i64)> = Vec::new();
     let mut before = 0u32;
-    let anchor = parse_date(&setup.anchor_date);
+    let anchor = parse_iso(&setup.anchor_date);
     for (d, amount) in bookings {
-        match (parse_date(d), anchor) {
+        match (parse_iso(d), anchor) {
             (Some(date), Some(a)) if date > a => events.push((date, d.as_str(), -amount)),
             _ => before += 1,
         }
@@ -338,12 +336,7 @@ fn manual_loan_ids(conn: &Connection) -> CoreResult<Vec<i64>> {
 /// matches, then refreshes every manual loan's balance. Called after every
 /// import (via `apply_rules_inner`) and after loan edits.
 pub(crate) fn apply_loan_rules(conn: &Connection) -> CoreResult<u32> {
-    let has: i64 = conn.query_row(
-        "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'loan_terms'",
-        [],
-        |r| r.get(0),
-    )?;
-    if has == 0 {
+    if !has_table(conn, "main", "loan_terms")? {
         return Ok(0);
     }
     let loans: Vec<(i64, SearchExpr)> = {
@@ -386,12 +379,7 @@ pub(crate) fn apply_loan_rules(conn: &Connection) -> CoreResult<u32> {
 /// Takes over manual loans and their hand-made links from an attached vault
 /// (`other`). Rule links are re-derived afterwards.
 pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> CoreResult<()> {
-    let has: i64 = conn.query_row(
-        "SELECT count(*) FROM other.sqlite_master WHERE type = 'table' AND name IN ('loan_terms', 'loan_links')",
-        [],
-        |r| r.get(0),
-    )?;
-    if has < 2 {
+    if !has_table(conn, "other", "loan_terms")? || !has_table(conn, "other", "loan_links")? {
         return Ok(());
     }
     {
@@ -488,7 +476,7 @@ impl Vault {
             "UPDATE accounts SET name = ?1, name_ms = ?2, initial_balance_cents = ?3 WHERE id = ?4",
             params![
                 s.name,
-                crate::user_groups::now_ms(),
+                crate::dates::now_ms(),
                 s.original_cents.unwrap_or(s.anchor_balance_cents),
                 id
             ],
@@ -523,7 +511,7 @@ pub(crate) fn create_in(conn: &Connection, setup: &LoanSetup) -> CoreResult<i64>
             format!("manual-loan-{}", uuid::Uuid::new_v4()),
             s.name,
             AccountKind::Loan.sf_symbol(),
-            crate::user_groups::now_ms()
+            crate::dates::now_ms()
         ],
     )?;
     let id = conn.last_insert_rowid();

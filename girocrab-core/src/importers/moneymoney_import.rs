@@ -18,11 +18,14 @@ use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::portal_import::{parse_date, split_csv};
+use crate::dates::now_ms;
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
+use crate::iban::{normalize_iban, validate_iban};
 use crate::merchants::{FlowKind, MerchantResolver};
 use crate::models::*;
 use crate::money::parse_cents;
+use crate::text::parse_bool_loose;
 use crate::vault::{enrich, Vault};
 
 const ARCHIVE_GROUP: &str = "Importierte Konten";
@@ -164,13 +167,6 @@ fn amount(s: &str) -> Option<i64> {
     })
 }
 
-fn truthy(s: &str) -> bool {
-    matches!(
-        s.trim().to_lowercase().as_str(),
-        "1" | "true" | "yes" | "ja" | "x" | "✓" | "✔"
-    )
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Field {
     Date,
@@ -279,17 +275,14 @@ fn build_row(get: impl Fn(Field) -> String) -> Option<MmRow> {
             }
         },
         name: clean(get(Field::Name)),
-        iban: get(Field::Iban)
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>(),
+        iban: normalize_iban(&get(Field::Iban)),
         bic: get(Field::Bic).trim().to_string(),
         purpose: clean(get(Field::Purpose)),
         booking_text: clean(get(Field::Text)),
         category: get(Field::Category).trim().to_string(),
         category_parts: Vec::new(),
         note: get(Field::Note).trim().to_string(),
-        checkmark: truthy(&get(Field::Check)),
+        checkmark: parse_bool_loose(&get(Field::Check)),
         mandate_ref: get(Field::Mandate).trim().to_string(),
         creditor_id: get(Field::Creditor).trim().to_string(),
         end_to_end: get(Field::EndToEnd).trim().to_string(),
@@ -625,7 +618,7 @@ pub(crate) fn find_or_create_category(
                 conn.execute(
                     "INSERT INTO categories(parent_id, name, sf_symbol, color_hex, sort_order, name_ms, parent_ms, symbol_ms, color_ms, order_ms)
                      VALUES (?1, ?2, 'tag', '#8E8E93', ?3, ?4, ?4, ?4, ?4, ?4)",
-                    params![parent, part, order, crate::user_groups::now_ms()],
+                    params![parent, part, order, now_ms()],
                 )?;
                 *created += 1;
                 let id = conn.last_insert_rowid();
@@ -656,7 +649,6 @@ pub(crate) fn find_or_create_category(
 /// (IBAN + currency) or MT940 `:25:` when it holds an IBAN. Files with
 /// several statements name no single account.
 fn statement_account(text: &str) -> Option<(String, String)> {
-    use crate::connectors::fints::sepa;
     static STMT: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"<(?:\w+:)?(?:Stmt|Rpt|Ntfctn)>").unwrap());
     static ACCT: LazyLock<Regex> =
@@ -672,20 +664,20 @@ fn statement_account(text: &str) -> Option<(String, String)> {
             return None;
         }
         let block = ACCT.captures(text)?.get(1)?.as_str();
-        let i = sepa::normalize_iban(IBAN.captures(block)?.get(1)?.as_str());
+        let i = normalize_iban(IBAN.captures(block)?.get(1)?.as_str());
         let c = CCY
             .captures(block)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().to_uppercase())
             .unwrap_or_default();
-        return sepa::validate_iban(&i).then_some((i, c));
+        return validate_iban(&i).then_some((i, c));
     }
     let mut it = FIELD_25.captures_iter(text);
-    let first = sepa::normalize_iban(it.next()?.get(1)?.as_str().trim());
-    if it.any(|c| sepa::normalize_iban(c[1].trim()) != first) {
+    let first = normalize_iban(it.next()?.get(1)?.as_str().trim());
+    if it.any(|c| normalize_iban(c[1].trim()) != first) {
         return None;
     }
-    sepa::validate_iban(&first).then(|| (first, String::new()))
+    validate_iban(&first).then(|| (first, String::new()))
 }
 
 /// The existing account an export most likely belongs to, so the assistant
@@ -700,7 +692,6 @@ pub(crate) fn suggest_account(
     rows: &[MmRow],
     file_name: &str,
 ) -> CoreResult<Option<i64>> {
-    use crate::connectors::fints::sepa;
     let mut accounts: Vec<(i64, String, String, String)> = Vec::new();
     {
         let mut q = conn.prepare(
@@ -713,7 +704,7 @@ pub(crate) fn suggest_account(
     if let Some((iban, ccy)) = statement_account(text) {
         let same: Vec<_> = accounts
             .iter()
-            .filter(|a| sepa::normalize_iban(&a.1) == iban)
+            .filter(|a| normalize_iban(&a.1) == iban)
             .collect();
         let pick: Vec<_> = if same.len() > 1 && !ccy.is_empty() {
             same.iter()
@@ -840,7 +831,7 @@ fn run(
                     format!("moneymoney-{}", uuid::Uuid::new_v4()),
                     account_name_from_file(file_name),
                     account_currency,
-                    crate::user_groups::now_ms()
+                    now_ms()
                 ],
             )?;
             st.account_id = conn.last_insert_rowid();
@@ -954,14 +945,14 @@ pub(crate) fn merge_rows(
             if let Some(c) = cat_id.filter(|_| e.category_source != "manual") {
                 conn.execute(
                     "UPDATE transactions SET category_id = ?1, rule_id = NULL, category_source = 'manual', category_ms = ?3 WHERE id = ?2",
-                    params![c, e.id, crate::user_groups::now_ms()],
+                    params![c, e.id, now_ms()],
                 )?;
                 changed = true;
             }
             if !note.is_empty() && e.note.trim().is_empty() {
                 conn.execute(
                     "UPDATE transactions SET note = ?1, note_ms = ?3 WHERE id = ?2",
-                    params![note, e.id, crate::user_groups::now_ms()],
+                    params![note, e.id, now_ms()],
                 )?;
                 st.notes += 1;
                 changed = true;
@@ -991,8 +982,8 @@ pub(crate) fn merge_rows(
             if cat_id.is_some() { "manual" } else { "none" },
             note,
             fp,
-            if cat_id.is_some() { crate::user_groups::now_ms() } else { 0 },
-            if note.is_empty() { 0 } else { crate::user_groups::now_ms() }
+            if cat_id.is_some() { now_ms() } else { 0 },
+            if note.is_empty() { 0 } else { now_ms() }
         ])?;
         st.new += 1;
         st.balance_cents += r.amount_cents;

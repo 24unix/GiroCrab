@@ -13,8 +13,10 @@ use std::collections::HashMap;
 use chrono::{Datelike, Duration, Local, Months, NaiveDate};
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::dates::{iso, parse_iso};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
+use crate::iban::normalize_iban;
 use crate::merchants::FlowKind;
 use crate::models::{Booking, BookingFilter};
 use crate::vault::Vault;
@@ -167,13 +169,6 @@ pub struct RecurringMonthOverview {
     pub booked_expense_cents: i64,
 }
 
-fn normalize_iban(iban: &str) -> String {
-    iban.chars()
-        .filter(|c| !c.is_whitespace())
-        .collect::<String>()
-        .to_ascii_uppercase()
-}
-
 /// Separates a known merchant from the IBAN in a series key (#615).
 const MERCHANT_SEP: &str = "|m:";
 
@@ -218,14 +213,6 @@ fn decision<'a>(stored: &'a HashMap<String, Stored>, key: &str) -> Option<&'a St
         .get(key)
         .or_else(|| legacy_key(key).and_then(|k| stored.get(&k)))?;
     (!s.auto).then_some(s)
-}
-
-fn date(s: &str) -> Option<NaiveDate> {
-    NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()
-}
-
-fn fmt(d: NaiveDate) -> String {
-    d.format("%Y-%m-%d").to_string()
 }
 
 fn median(mut v: Vec<i64>) -> i64 {
@@ -346,7 +333,10 @@ fn load_stored(conn: &Connection) -> CoreResult<HashMap<String, Stored>> {
 /// Interval of a group of bookings (date-sorted) when it looks recurring.
 fn detect_group(list: &[&Booking]) -> Option<RecurrenceInterval> {
     // one booking per day (split payments / corrections)
-    let mut dates: Vec<NaiveDate> = list.iter().filter_map(|b| date(&b.booking_date)).collect();
+    let mut dates: Vec<NaiveDate> = list
+        .iter()
+        .filter_map(|b| parse_iso(&b.booking_date))
+        .collect();
     dates.dedup();
     let i = detect_interval(&dates)?;
     // amounts must be similar (±25 % of the median)
@@ -410,7 +400,7 @@ fn make_series(
     today: NaiveDate,
 ) -> Option<RecurringSeries> {
     let last = *list.last()?;
-    let last_date = date(&last.booking_date)?;
+    let last_date = parse_iso(&last.booking_date)?;
     let next = next_after(last_date, interval, &custom)?;
     // A detected series that missed two cycles has ended (contract cancelled).
     if source == RecurringSource::Detected {
@@ -438,7 +428,7 @@ fn make_series(
         amount_cents: median(recent),
         last_date: last.booking_date.clone(),
         last_booking_id: last.id,
-        next_due: fmt(next),
+        next_due: iso(next),
         occurrences: list.len() as u32,
         source,
     })
@@ -605,7 +595,7 @@ fn month_items(
             }
             continue;
         }
-        let Some(mut due) = date(&s.last_date) else {
+        let Some(mut due) = parse_iso(&s.last_date) else {
             continue;
         };
         // step forward from the last booking into the month (bounded loop)
@@ -620,7 +610,7 @@ fn month_items(
             if due >= start {
                 ov.items.push(RecurringMonthItem {
                     series: s.clone(),
-                    due_date: fmt(due),
+                    due_date: iso(due),
                     booked: false,
                     booking_id: None,
                     amount_cents: s.amount_cents,
@@ -643,7 +633,7 @@ impl Vault {
         let today = Local::now().date_naive();
         let filter = BookingFilter {
             account_ids,
-            date_from: Some(fmt(today - Duration::days(LOOKBACK_DAYS))),
+            date_from: Some(iso(today - Duration::days(LOOKBACK_DAYS))),
             ..Default::default()
         };
         Ok((self.collect_bookings(&*self.db()?, &filter)?, today))

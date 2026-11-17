@@ -188,7 +188,7 @@ impl Vault {
                  SET {column} = ?2, {stamp} = MAX(?3, {stamp} + 1)
                  WHERE security_key = ?1"
             ),
-            params![key, value, crate::user_groups::now_ms()],
+            params![key, value, crate::dates::now_ms()],
         )?;
         tx.commit()?;
         Ok(())

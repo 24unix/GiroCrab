@@ -6,12 +6,12 @@
 //! mixes sequence types or schemes builds one message per group.
 
 use super::sepa::{
-    format_amount, is_sepa_identifier, normalize_iban, sanitize_sepa_text, validate_bic,
-    validate_iban, xml_escape,
+    format_amount, is_sepa_identifier, sanitize_sepa_text, validate_bic, xml_escape,
 };
 use super::standing::{tag_start, tag_text};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
+use crate::iban::{normalize_iban, validate_iban};
 
 pub const PAIN008_02_DESCRIPTOR: &str = "urn:iso:std:iso:20022:tech:xsd:pain.008.003.02";
 pub const PAIN008_08_DESCRIPTOR: &str = "urn:iso:std:iso:20022:tech:xsd:pain.008.001.08";

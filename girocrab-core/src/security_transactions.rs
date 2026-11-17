@@ -10,12 +10,10 @@ use std::collections::HashMap;
 
 use rusqlite::{params, Connection};
 
+use crate::dates::now_ms;
 use crate::error::CoreResult;
 use crate::models::{SecurityDirection, SecurityTransaction};
-
-fn now_ms() -> i64 {
-    crate::user_groups::now_ms()
-}
+use crate::schema::has_table;
 
 /// Inserts or refreshes a transaction of `account_id`, keyed by `external_id`.
 pub(crate) fn upsert(
@@ -271,12 +269,7 @@ pub(crate) fn link_by_external_id(
 /// `(account, external_id)`; the newer edit wins, a deletion stays deleted.
 /// Cash links are local ids and are recomputed instead of copied.
 pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> CoreResult<()> {
-    let has: i64 = conn.query_row(
-        "SELECT count(*) FROM other.sqlite_master WHERE type = 'table' AND name = 'security_transactions'",
-        [],
-        |r| r.get(0),
-    )?;
-    if has == 0 {
+    if !has_table(conn, "other", "security_transactions")? {
         return Ok(());
     }
     struct Other {

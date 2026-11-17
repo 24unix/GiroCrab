@@ -20,6 +20,7 @@ use rusqlite::{params, Connection};
 use super::{get, real_to_cents, select, vint, vreal, vtext};
 use crate::connectors::fints::sepa;
 use crate::error::CoreResult;
+use crate::iban::{normalize_iban, validate_iban};
 
 /// `payments.type` of a transfer template in MoneyMoney.
 const MM_TRANSFER_TEMPLATE: i64 = 12;
@@ -40,7 +41,7 @@ impl SrcTemplate {
     /// GiroCrab cannot take it over: no recipient, invalid IBAN or not euro.
     fn unusable(&self) -> bool {
         self.recipient_name.trim().is_empty()
-            || !sepa::validate_iban(&self.iban)
+            || !validate_iban(&self.iban)
             || !(self.currency.is_empty() || self.currency == "EUR")
     }
 }
@@ -152,7 +153,7 @@ pub(super) fn read_templates(
             vint(get(r, 4)?).unwrap_or(0) != 0,
             SrcTemplate {
                 recipient_name: if name.is_empty() { blob.name } else { name },
-                iban: sepa::normalize_iban(&blob.iban),
+                iban: normalize_iban(&blob.iban),
                 bic: if sepa::validate_bic(&bic) {
                     bic
                 } else {

@@ -345,7 +345,7 @@ impl EasybankConnector {
         }
         let c = reqwest::Client::builder()
             .cookie_provider(self.jar.clone())
-            .user_agent(super::trade_republic::BROWSER_UA)
+            .user_agent(super::BROWSER_UA)
             .timeout(std::time::Duration::from_secs(60))
             .build()?;
         self.client = Some(c.clone());

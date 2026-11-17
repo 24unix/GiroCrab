@@ -118,13 +118,8 @@ impl Vault {
         let legacy = {
             let mut o = Connection::open(&other_path)?;
             Self::apply_key(&o, &key)?;
-            let has_uuid: bool = o
-                .query_row(
-                    "SELECT count(*) > 0 FROM pragma_table_info('categories') WHERE name = 'uuid'",
-                    [],
-                    |r| r.get(0),
-                )
-                .unwrap_or(true);
+            let has_uuid =
+                crate::schema::has_column(&o, "main", "categories", "uuid").unwrap_or(true);
             Self::migrate(&mut o)?;
             crate::sync_merge::fill_missing_uuids(&o)?;
             !has_uuid

@@ -8,8 +8,8 @@
 
 use std::sync::OnceLock;
 
-use super::fints::sepa;
 use crate::data_tables::rows;
+use crate::iban::{normalize_iban, validate_iban};
 
 const FINTS_TSV: &str = include_str!("../../data/fints_directory.tsv");
 const BIC_TSV: &str = include_str!("../../data/bic_directory.tsv");
@@ -157,12 +157,8 @@ pub fn search(query: &str, limit: usize) -> Vec<FinTsBankInfo> {
 /// The 8-digit BLZ of a German IBAN (`DE kk BBBBBBBB KKKKKKKKKK`, characters
 /// 5..12). Spaces and case are ignored; the IBAN checksum must be valid.
 pub fn blz_from_german_iban(iban: &str) -> Option<String> {
-    let s: String = iban
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .collect::<String>()
-        .to_uppercase();
-    if s.len() != 22 || !s.starts_with("DE") || !sepa::validate_iban(&s) {
+    let s = normalize_iban(iban);
+    if s.len() != 22 || !s.starts_with("DE") || !validate_iban(&s) {
         return None;
     }
     Some(s[4..12].to_string())

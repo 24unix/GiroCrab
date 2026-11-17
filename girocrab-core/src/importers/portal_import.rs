@@ -14,11 +14,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 
+use chrono::{Datelike, NaiveDate};
 use regex::Regex;
 use rusqlite::{params, OptionalExtension};
 use serde_json::Value;
 
 use crate::connectors::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
+use crate::dates::{find_de_date, iso, month_from_name};
 use crate::error::CoreError;
 use crate::i18n::{tr, trf};
 use crate::models::{AccountKind, ConnectorKind};
@@ -118,31 +120,6 @@ pub fn parse_amount(s: &str) -> Option<i64> {
     Some(if neg { -cents } else { cents })
 }
 
-fn month_num(m: &str) -> Option<u32> {
-    let m = m.trim_end_matches('.').to_lowercase();
-    let m = m.replace('ä', "a");
-    const NAMES: [&str; 12] = [
-        "jan", "feb", "mar", "apr", "ma", "jun", "jul", "aug", "sep", "okt", "nov", "dez",
-    ];
-    // "mai"/"may" both start with "ma"; disambiguate from "mar"
-    if m.starts_with("mar") {
-        return Some(3);
-    }
-    if m.starts_with("mai") || m.starts_with("may") {
-        return Some(5);
-    }
-    if m.starts_with("oct") {
-        return Some(10);
-    }
-    if m.starts_with("dec") {
-        return Some(12);
-    }
-    NAMES
-        .iter()
-        .position(|n| *n != "ma" && m.starts_with(n))
-        .map(|i| i as u32 + 1)
-}
-
 /// Many date spellings -> "YYYY-MM-DD".
 pub fn parse_date(s: &str) -> Option<String> {
     static ISO: LazyLock<Regex> =
@@ -155,9 +132,7 @@ pub fn parse_date(s: &str) -> Option<String> {
     static MONTH_NAME_DAY: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"(?i)^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})").unwrap());
     let s = s.trim();
-    let ymd = |y: i32, m: u32, d: u32| {
-        chrono::NaiveDate::from_ymd_opt(y, m, d).map(|x| x.format("%Y-%m-%d").to_string())
-    };
+    let ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).map(iso);
     let year = |y: &str| -> Option<i32> {
         let n: i32 = y.parse().ok()?;
         Some(if y.len() == 2 { 2000 + n } else { n })
@@ -169,10 +144,18 @@ pub fn parse_date(s: &str) -> Option<String> {
         return ymd(year(&c[3])?, c[2].parse().ok()?, c[1].parse().ok()?);
     }
     if let Some(c) = DAY_MONTH_NAME.captures(s) {
-        return ymd(c[3].parse().ok()?, month_num(&c[2])?, c[1].parse().ok()?);
+        return ymd(
+            c[3].parse().ok()?,
+            month_from_name(&c[2])?,
+            c[1].parse().ok()?,
+        );
     }
     if let Some(c) = MONTH_NAME_DAY.captures(s) {
-        return ymd(c[3].parse().ok()?, month_num(&c[1])?, c[2].parse().ok()?);
+        return ymd(
+            c[3].parse().ok()?,
+            month_from_name(&c[1])?,
+            c[2].parse().ok()?,
+        );
     }
     None
 }
@@ -729,15 +712,7 @@ pub fn parse_statement_text(text: &str, kind: ConnectorKind) -> Vec<Parsed> {
         Regex::new(r"^\s*(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+(?:(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})?)\s+)?(.+?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})\s*(-|CR|H|S|\+)?\s*$").unwrap()
     });
     // statement year from any full date or "Abrechnung … 2025"
-    static FULL_DATE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b").unwrap());
-    let default_year: i32 = FULL_DATE
-        .captures(text)
-        .and_then(|c| c[3].parse().ok())
-        .unwrap_or_else(|| {
-            use chrono::Datelike;
-            chrono::Local::now().year()
-        });
+    let default_year = find_de_date(text).map_or_else(|| chrono::Local::now().year(), |d| d.year());
     let mut out = Vec::new();
     for line in text.lines() {
         let Some(c) = LINE.captures(line) else {
@@ -1060,7 +1035,7 @@ fn merchant_key(text: &str) -> Option<String> {
 /// Moves category, note and check mark from `from` to `to` where `to` has none,
 /// then deletes `from` (tombstone, so other devices drop it too).
 fn hand_over(db: &rusqlite::Connection, from: i64, to: i64) -> Result<(), CoreError> {
-    let now = crate::user_groups::now_ms();
+    let now = crate::dates::now_ms();
     db.execute(
         "UPDATE transactions SET (category_id, category_source, rule_id, category_ms) =
                 (SELECT f.category_id, f.category_source, f.rule_id, ?3 FROM transactions f WHERE f.id = ?1)

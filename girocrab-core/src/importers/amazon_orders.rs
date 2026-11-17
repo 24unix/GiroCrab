@@ -13,11 +13,13 @@
 
 use std::sync::{Arc, LazyLock};
 
+use chrono::NaiveDate;
 use regex::Regex;
 use serde::Deserialize;
 
 use super::portal_import::parse_amount;
 use crate::connectors::{store_fetch, FetchResult, RemoteAccount, RemoteTransaction, SyncSummary};
+use crate::dates::{find_de_date, iso, month_from_name};
 use crate::error::CoreError;
 use crate::i18n::tr;
 use crate::models::{AccountKind, ConnectorKind};
@@ -80,57 +82,25 @@ pub struct Booking {
     pub item_refs: String,
 }
 
-const MONTHS: [(&str, u32); 21] = [
-    ("januar", 1),
-    ("january", 1),
-    ("februar", 2),
-    ("february", 2),
-    ("märz", 3),
-    ("maerz", 3),
-    ("march", 3),
-    ("april", 4),
-    ("mai", 5),
-    ("may", 5),
-    ("juni", 6),
-    ("june", 6),
-    ("juli", 7),
-    ("july", 7),
-    ("august", 8),
-    ("september", 9),
-    ("oktober", 10),
-    ("october", 10),
-    ("november", 11),
-    ("dezember", 12),
-    ("december", 12),
-];
-
 /// "12. März 2025", "March 12, 2025", "12.03.2025" -> "2025-03-12".
 pub fn parse_date(s: &str) -> Option<String> {
-    static DMY: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b").unwrap());
     static NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\d+").unwrap());
-    let s = s.trim();
-    if let Some(c) = DMY.captures(s) {
-        return iso(c[3].parse().ok()?, c[2].parse().ok()?, c[1].parse().ok()?);
+    if let Some(d) = find_de_date(s) {
+        return Some(iso(d));
     }
-    let lower = s.to_lowercase();
-    let month = MONTHS
-        .iter()
-        .filter(|(name, _)| lower.contains(name))
-        .max_by_key(|(name, _)| name.len())
-        .map(|(_, m)| *m)?;
+    // the longest month word wins: "May be delayed, ordered March 12" is March
+    let month = s
+        .split(|c: char| !c.is_alphabetic())
+        .filter_map(|w| Some((w.chars().count(), month_from_name(w)?)))
+        .max_by_key(|&(len, _)| len)
+        .map(|(_, m)| m)?;
     let nums: Vec<u32> = NUMBER
-        .find_iter(&lower)
+        .find_iter(s)
         .filter_map(|m| m.as_str().parse().ok())
         .collect();
     let year = *nums.iter().find(|n| **n >= 1990)?;
     let day = *nums.iter().find(|n| (1..=31).contains(*n))?;
-    iso(year, month, day)
-}
-
-fn iso(y: u32, m: u32, d: u32) -> Option<String> {
-    chrono::NaiveDate::from_ymd_opt(i32::try_from(y).ok()?, m, d)
-        .map(|_| format!("{y:04}-{m:02}-{d:02}"))
+    NaiveDate::from_ymd_opt(i32::try_from(year).ok()?, month, day).map(iso)
 }
 
 /// First price found in free text ("EUR 12,99", "12,99 €", "Gesamt: 1.234,56 €").
@@ -441,6 +411,14 @@ mod tests {
         assert_eq!(parse_date("12. März 2025").as_deref(), Some("2025-03-12"));
         assert_eq!(parse_date("3. Januar 2024").as_deref(), Some("2024-01-03"));
         assert_eq!(parse_date("March 12, 2025").as_deref(), Some("2025-03-12"));
+        assert_eq!(
+            parse_date("Order placed\nMay 3, 2025").as_deref(),
+            Some("2025-05-03")
+        );
+        assert_eq!(
+            parse_date("May be delayed, ordered March 12, 2025").as_deref(),
+            Some("2025-03-12")
+        );
         assert_eq!(parse_date("05.11.2025").as_deref(), Some("2025-11-05"));
         assert_eq!(parse_date("bald"), None);
         assert_eq!(parse_date("31.02.2025"), None);

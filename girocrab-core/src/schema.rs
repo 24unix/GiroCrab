@@ -46,7 +46,7 @@
 //! `cargo run -p girocrab-core --example make_fixture_vault` and commit the
 //! new fixture (see `docs/ARCHITECTURE.md`).
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 
 use crate::error::{CoreError, CoreResult};
 
@@ -145,7 +145,7 @@ fn rule_tags(conn: &Connection) -> CoreResult<()> {
             conn.execute_batch(&sql)?;
         }
     }
-    if !has_column(conn, "rules", "tag_uuids")? {
+    if !has_column(conn, "main", "rules", "tag_uuids")? {
         conn.execute_batch("ALTER TABLE rules ADD COLUMN tag_uuids TEXT NOT NULL DEFAULT '';")?;
     }
     Ok(())
@@ -160,7 +160,7 @@ fn holding_native_currency(conn: &Connection) -> CoreResult<()> {
         ("native_purchase_price_cents", "INTEGER"),
         ("native_value_cents", "INTEGER"),
     ] {
-        if !has_column(conn, "holdings", col)? {
+        if !has_column(conn, "main", "holdings", col)? {
             conn.execute_batch(&format!("ALTER TABLE holdings ADD COLUMN {col} {def};"))?;
         }
     }
@@ -172,8 +172,8 @@ fn holding_native_currency(conn: &Connection) -> CoreResult<()> {
 fn builtin_roles(conn: &Connection) -> CoreResult<()> {
     // Development vaults may already carry one of the two columns. Repair
     // each table independently, without relabelling explicitly custom rows.
-    let categories_need_roles = !has_column(conn, "categories", "builtin_role")?;
-    let groups_need_roles = !has_column(conn, "account_groups", "builtin_role")?;
+    let categories_need_roles = !has_column(conn, "main", "categories", "builtin_role")?;
+    let groups_need_roles = !has_column(conn, "main", "account_groups", "builtin_role")?;
     if categories_need_roles {
         conn.execute_batch("ALTER TABLE categories ADD COLUMN builtin_role TEXT;")?;
     }
@@ -270,7 +270,7 @@ INSERT OR IGNORE INTO rule_accounts(rule_id, account_id)
 /// separated, one entry per item in purpose order ("" entry = unknown).
 /// "" = none. Idempotent like [`sepa_refs`].
 fn item_refs(conn: &Connection) -> CoreResult<()> {
-    if !has_column(conn, "transactions", "item_refs")? {
+    if !has_column(conn, "main", "transactions", "item_refs")? {
         conn.execute_batch(
             "ALTER TABLE transactions ADD COLUMN item_refs TEXT NOT NULL DEFAULT '';",
         )?;
@@ -318,7 +318,7 @@ fn security_transactions(conn: &Connection) -> CoreResult<()> {
         ("profit_loss_prev_day_rel", "REAL"),
         ("custody_type", "TEXT NOT NULL DEFAULT ''"),
     ] {
-        if !has_column(conn, "holdings", col)? {
+        if !has_column(conn, "main", "holdings", col)? {
             conn.execute_batch(&format!("ALTER TABLE holdings ADD COLUMN {col} {def};"))?;
         }
     }
@@ -330,7 +330,7 @@ fn security_transactions(conn: &Connection) -> CoreResult<()> {
 /// a vault rewound by a test or a development build may carry the columns.
 fn sepa_refs(conn: &Connection) -> CoreResult<()> {
     for col in ["end_to_end_id", "mandate_id", "creditor_id"] {
-        if !has_column(conn, "transactions", col)? {
+        if !has_column(conn, "main", "transactions", col)? {
             conn.execute_batch(&format!(
                 "ALTER TABLE transactions ADD COLUMN {col} TEXT NOT NULL DEFAULT '';"
             ))?;
@@ -371,7 +371,7 @@ pub(crate) const SCHEMA_VERSION: i64 = STEPS.len() as i64;
 /// plus the opening balance per account. Idempotent: vaults opened by a
 /// development build of the feature already carry both at version 8 or 9.
 fn opening_balances(conn: &Connection) -> CoreResult<()> {
-    if !has_column(conn, "accounts", "balance_derived")? {
+    if !has_column(conn, "main", "accounts", "balance_derived")? {
         conn.execute_batch(
             "ALTER TABLE accounts ADD COLUMN balance_derived INTEGER NOT NULL DEFAULT 0;",
         )?;
@@ -444,13 +444,29 @@ fn migrate_transaction(conn: &mut Connection) -> CoreResult<()> {
     Ok(())
 }
 
-fn has_column(conn: &Connection, table: &str, col: &str) -> CoreResult<bool> {
-    let n: i64 = conn.query_row(
-        "SELECT count(*) FROM pragma_table_info(?1) WHERE name = ?2",
-        [table, col],
+/// Whether database `schema` (`main` or an attached one) has `table`; a
+/// view of that name does not count.
+pub(crate) fn has_table(conn: &Connection, schema: &str, table: &str) -> CoreResult<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM pragma_table_list(?1) WHERE schema = ?2 AND type = 'table')",
+        [table, schema],
         |r| r.get(0),
-    )?;
-    Ok(n > 0)
+    )?)
+}
+
+/// Whether `table` in database `schema` (`main` or an attached one) has `col`;
+/// false if the table is missing.
+pub(crate) fn has_column(
+    conn: &Connection,
+    schema: &str,
+    table: &str,
+    col: &str,
+) -> CoreResult<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM pragma_table_info(?1, ?2) WHERE name = ?3)",
+        [table, schema, col],
+        |r| r.get(0),
+    )?)
 }
 
 /// Step 9: the probe-based schema setup of schema 8, run once on every vault.
@@ -458,8 +474,8 @@ fn has_column(conn: &Connection, table: &str, col: &str) -> CoreResult<bool> {
 /// vault left half-migrated by an older build and is a no-op on [`BASELINE`].
 fn repair_to_v8(conn: &Connection) -> CoreResult<()> {
     // v5: loan_principal_cents -> initial_balance_cents (v1 had neither column)
-    if !has_column(conn, "accounts", "initial_balance_cents")? {
-        if has_column(conn, "accounts", "loan_principal_cents")? {
+    if !has_column(conn, "main", "accounts", "initial_balance_cents")? {
+        if has_column(conn, "main", "accounts", "loan_principal_cents")? {
             conn.execute_batch(
                 "ALTER TABLE accounts RENAME COLUMN loan_principal_cents TO initial_balance_cents;",
             )?;
@@ -469,15 +485,7 @@ fn repair_to_v8(conn: &Connection) -> CoreResult<()> {
     }
     // v3: merchant_logo_cache(domain, image_bytes, updated_at, source) – a cache,
     // rebuilt only if it is missing or still has the v2 layout
-    let has_logo_cache: bool = conn
-        .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'merchant_logo_cache'",
-            [],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some();
-    if !has_logo_cache || !has_column(conn, "merchant_logo_cache", "source")? {
+    if !has_column(conn, "main", "merchant_logo_cache", "source")? {
         conn.execute_batch(
             "DROP TABLE IF EXISTS merchant_logo_cache;
              CREATE TABLE merchant_logo_cache (domain TEXT PRIMARY KEY, image_bytes BLOB,
@@ -485,10 +493,10 @@ fn repair_to_v8(conn: &Connection) -> CoreResult<()> {
         )?;
     }
     // v6: user notes + import fingerprint
-    if !has_column(conn, "transactions", "note")? {
+    if !has_column(conn, "main", "transactions", "note")? {
         conn.execute_batch("ALTER TABLE transactions ADD COLUMN note TEXT NOT NULL DEFAULT '';")?;
     }
-    if !has_column(conn, "transactions", "import_fp")? {
+    if !has_column(conn, "main", "transactions", "import_fp")? {
         conn.execute_batch(
             "ALTER TABLE transactions ADD COLUMN import_fp TEXT NOT NULL DEFAULT '';",
         )?;
@@ -497,7 +505,7 @@ fn repair_to_v8(conn: &Connection) -> CoreResult<()> {
         "CREATE INDEX IF NOT EXISTS tx_import_fp ON transactions(account_id, import_fp) WHERE import_fp != '';",
     )?;
     // accounts.access_revoked (PSD2 access withdrawn)
-    if !has_column(conn, "accounts", "access_revoked")? {
+    if !has_column(conn, "main", "accounts", "access_revoked")? {
         conn.execute_batch(
             "ALTER TABLE accounts ADD COLUMN access_revoked INTEGER NOT NULL DEFAULT 0;",
         )?;
@@ -508,13 +516,13 @@ fn repair_to_v8(conn: &Connection) -> CoreResult<()> {
         ("gvc", "TEXT NOT NULL DEFAULT ''"),
         ("salary_flag", "INTEGER"),
     ] {
-        if !has_column(conn, "transactions", col)? {
+        if !has_column(conn, "main", "transactions", col)? {
             conn.execute_batch(&format!("ALTER TABLE transactions ADD COLUMN {col} {def};"))?;
         }
     }
     // v4: encrypted documents (Beleg-Abruf & PostBox)
     conn.execute_batch(crate::documents::DOC_SCHEMA)?;
-    if !has_column(conn, "booking_documents", "exported_at")? {
+    if !has_column(conn, "main", "booking_documents", "exported_at")? {
         conn.execute_batch("ALTER TABLE booking_documents ADD COLUMN exported_at INTEGER;")?;
     }
     conn.execute_batch(crate::insights::OVERRIDE_SCHEMA)?;
@@ -812,6 +820,22 @@ mod tests {
     }
 
     #[test]
+    fn table_and_column_probes_stay_in_their_schema() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "ATTACH DATABASE ':memory:' AS other;
+             CREATE TABLE other.tags (uuid TEXT);
+             CREATE VIEW main.tags AS SELECT 1 AS uuid;",
+        )
+        .unwrap();
+        assert!(has_table(&conn, "other", "tags").unwrap());
+        assert!(!has_table(&conn, "main", "tags").unwrap());
+        assert!(has_column(&conn, "other", "tags", "uuid").unwrap());
+        assert!(!has_column(&conn, "other", "tags", "name").unwrap());
+        assert!(!has_column(&conn, "main", "accounts", "uuid").unwrap());
+    }
+
+    #[test]
     fn failed_role_migration_rolls_back_and_restores_foreign_keys() {
         let mut conn = schema25();
         conn.execute_batch(
@@ -821,8 +845,8 @@ mod tests {
         )
         .unwrap();
         assert!(migrate(&mut conn).is_err());
-        assert!(!has_column(&conn, "categories", "builtin_role").unwrap());
-        assert!(!has_column(&conn, "account_groups", "builtin_role").unwrap());
+        assert!(!has_column(&conn, "main", "categories", "builtin_role").unwrap());
+        assert!(!has_column(&conn, "main", "account_groups", "builtin_role").unwrap());
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
@@ -839,7 +863,7 @@ mod tests {
         conn.execute_batch("ALTER TABLE categories ADD COLUMN builtin_role TEXT;
             INSERT INTO categories(name,sf_symbol,color_hex) VALUES ('Freizeit','sparkles','#2F8F9D');").unwrap();
         migrate(&mut conn).unwrap();
-        assert!(has_column(&conn, "account_groups", "builtin_role").unwrap());
+        assert!(has_column(&conn, "main", "account_groups", "builtin_role").unwrap());
         assert_eq!(
             conn.query_row("SELECT builtin_role FROM categories", [], |r| r
                 .get::<_, Option<String>>(0))
@@ -915,9 +939,9 @@ mod tests {
             "ALTER TABLE transactions DROP COLUMN item_refs; PRAGMA user_version = 15;",
         )
         .unwrap();
-        assert!(!has_column(&conn, "transactions", "item_refs").unwrap());
+        assert!(!has_column(&conn, "main", "transactions", "item_refs").unwrap());
         migrate(&mut conn).unwrap();
-        assert!(has_column(&conn, "transactions", "item_refs").unwrap());
+        assert!(has_column(&conn, "main", "transactions", "item_refs").unwrap());
     }
 
     #[test]

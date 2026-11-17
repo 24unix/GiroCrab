@@ -17,6 +17,7 @@ use super::{sepa, FinTsConnector, PreparedOrder, Vop};
 use crate::connectors::{ConnectContext, Phase, StandingOrderJob};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
+use crate::iban::normalize_iban;
 use crate::models::StandingOrderAction;
 
 /// Execution date in the pain.001 of a standing order: the schedule carries the real ones.
@@ -243,10 +244,10 @@ impl FinTsConnector {
         }
         let mut errors = Vec::new();
         let accounts = self.account_list(ctx, &mut errors).await;
-        let want = sepa::normalize_iban(&job.source_iban);
+        let want = normalize_iban(&job.source_iban);
         let (acc, upd) = accounts
             .into_iter()
-            .find(|(a, _)| sepa::normalize_iban(&a.iban) == want)
+            .find(|(a, _)| normalize_iban(&a.iban) == want)
             .ok_or_else(|| CoreError::NotFound {
                 what: trf(
                     "Konto {0} bei der Bank{1}",

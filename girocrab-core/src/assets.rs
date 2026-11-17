@@ -27,9 +27,11 @@ use std::collections::{HashMap, HashSet};
 use chrono::NaiveDate;
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::dates::{iso, now_ms, parse_iso};
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::models::*;
+use crate::schema::{has_column, has_table};
 use crate::vault::Vault;
 
 pub(crate) const ASSET_SCHEMA: &str = "
@@ -106,18 +108,6 @@ pub(crate) fn migrate(conn: &Connection) -> CoreResult<()> {
         }
     }
     Ok(())
-}
-
-fn has_column(conn: &Connection, schema: &str, table: &str, col: &str) -> CoreResult<bool> {
-    Ok(conn.query_row(
-        "SELECT count(*) FROM pragma_table_info(?1, ?2) WHERE name = ?3",
-        params![table, schema, col],
-        |r| r.get::<_, i64>(0),
-    )? > 0)
-}
-
-fn now_ms() -> i64 {
-    crate::user_groups::now_ms()
 }
 
 /// Sets a dated point (`asset_quantities.quantity` / `asset_values.value_cents`),
@@ -279,14 +269,6 @@ pub struct AssetPriceRefresh {
     pub error: Option<String>,
 }
 
-fn parse_date(s: &str) -> Option<NaiveDate> {
-    NaiveDate::parse_from_str(s.get(..10).unwrap_or(s), "%Y-%m-%d").ok()
-}
-
-fn iso(d: NaiveDate) -> String {
-    d.format("%Y-%m-%d").to_string()
-}
-
 fn today() -> NaiveDate {
     chrono::Local::now().date_naive()
 }
@@ -296,7 +278,7 @@ fn is_manual(source: &str) -> bool {
 }
 
 fn valid_date(s: &str) -> CoreResult<String> {
-    let d = parse_date(s).ok_or_else(|| CoreError::invalid(trf("Ungültiges Datum: {0}", &[&s])))?;
+    let d = parse_iso(s).ok_or_else(|| CoreError::invalid(trf("Ungültiges Datum: {0}", &[&s])))?;
     if d > today() {
         return Err(CoreError::invalid(tr(
             "Das Datum darf nicht in der Zukunft liegen.",
@@ -434,7 +416,7 @@ fn manual_value_at(
     let (d0, v0) = &points[i - 1];
     if interp == AssetInterpolation::Linear {
         if let Some((d1, v1)) = points.get(i) {
-            if let (Some(a), Some(b), Some(x)) = (parse_date(d0), parse_date(d1), parse_date(day)) {
+            if let (Some(a), Some(b), Some(x)) = (parse_iso(d0), parse_iso(d1), parse_iso(day)) {
                 let span = (b - a).num_days() as f64;
                 if span > 0.0 {
                     let t = (x - a).num_days() as f64 / span;
@@ -873,7 +855,7 @@ fn store_item(
                     s.purchase_date,
                     s.purchase_price_cents,
                     s.note,
-                    crate::user_groups::now_ms(),
+                    now_ms(),
                     s.symbol
                 ],
             )?;
@@ -909,14 +891,15 @@ fn store_item(
 /// along, so a deleted item or point does not come back. Vaults of older
 /// development builds lack the stamps: their rows count as oldest.
 pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> CoreResult<()> {
-    let has: i64 = conn.query_row(
-        "SELECT count(*) FROM other.sqlite_master WHERE type = 'table'
-           AND name IN ('asset_items', 'asset_quantities', 'asset_values', 'asset_prices')",
-        [],
-        |r| r.get(0),
-    )?;
-    if has < 4 {
-        return Ok(());
+    for table in [
+        "asset_items",
+        "asset_quantities",
+        "asset_values",
+        "asset_prices",
+    ] {
+        if !has_table(conn, "other", table)? {
+            return Ok(());
+        }
     }
     // a column of `other`, or a stand-in when its vault predates it
     let col = |table: &str, name: &str, fallback: &'static str| -> CoreResult<String> {
@@ -1059,7 +1042,7 @@ fn parse_rates(body: &str) -> CoreResult<Vec<(String, i64)>> {
     })?;
     Ok(rows
         .into_iter()
-        .filter(|r| r.rate.is_finite() && r.rate > 0.0 && parse_date(&r.date).is_some())
+        .filter(|r| r.rate.is_finite() && r.rate > 0.0 && parse_iso(&r.date).is_some())
         .map(|r| (r.date, (r.rate * 100.0).round() as i64))
         .collect())
 }
@@ -1093,7 +1076,7 @@ fn fetch_plan(conn: &Connection, force: bool) -> CoreResult<Vec<(String, String,
     let mut out = vec![];
     for (symbol, oldest) in needed {
         // a week before the oldest purchase: a weekend or holiday has no rate of its own
-        let min_date = parse_date(&oldest)
+        let min_date = parse_iso(&oldest)
             .map(|d| iso(d - chrono::Duration::days(7)))
             .unwrap_or(oldest);
         if !PRICE_SYMBOLS.contains(&symbol.as_str()) {
@@ -1430,7 +1413,7 @@ impl Vault {
             return Ok(vec![]);
         };
         let end = today();
-        let mut day = parse_date(&purchase).unwrap_or(end).min(end);
+        let mut day = parse_iso(&purchase).unwrap_or(end).min(end);
         let mut out = Vec::new();
         while day <= end {
             let key = iso(day);
@@ -1458,10 +1441,8 @@ impl Vault {
             return Ok(out);
         }
         out.requested = true;
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .user_agent(concat!("GiroCrab/", env!("CARGO_PKG_VERSION")))
-            .build()?;
+        let client =
+            crate::connectors::client_builder(std::time::Duration::from_secs(15)).build()?;
         for (symbol, from, to) in plan {
             let resp = client
                 .get(FRANKFURTER_URL)

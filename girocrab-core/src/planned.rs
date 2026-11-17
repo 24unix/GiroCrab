@@ -8,6 +8,7 @@ use rusqlite::{params, Connection};
 
 use crate::connectors::TransferJob;
 use crate::error::{CoreError, CoreResult};
+use crate::schema::{has_column, has_table};
 use crate::vault::Vault;
 
 /// Step 17: scheduled transfers sent to the bank. `end_to_end_id` is the merge
@@ -36,12 +37,7 @@ pub(crate) fn planned_transfers(conn: &Connection) -> CoreResult<()> {
 /// from submitted direct debit collections (`debit`, incoming); amounts stay
 /// positive. Idempotent.
 pub(crate) fn planned_kind(conn: &Connection) -> CoreResult<()> {
-    let has: i64 = conn.query_row(
-        "SELECT count(*) FROM pragma_table_info('planned_transfers') WHERE name = 'kind'",
-        [],
-        |r| r.get(0),
-    )?;
-    if has == 0 {
+    if !has_column(conn, "main", "planned_transfers", "kind")? {
         conn.execute_batch(
             "ALTER TABLE planned_transfers ADD COLUMN kind TEXT NOT NULL DEFAULT 'transfer';",
         )?;
@@ -132,7 +128,7 @@ impl Vault {
                 job.recipient_iban,
                 job.amount_cents,
                 job.purpose,
-                crate::user_groups::now_ms()
+                crate::dates::now_ms()
             ],
         )?;
         Ok(())
@@ -165,7 +161,7 @@ impl Vault {
                 debtor_iban,
                 amount_cents,
                 purpose,
-                crate::user_groups::now_ms()
+                crate::dates::now_ms()
             ],
         )?;
         Ok(())
@@ -326,19 +322,10 @@ pub(crate) fn merge_attached(
     conn: &Connection,
     acc_map: &std::collections::HashMap<i64, i64>,
 ) -> CoreResult<()> {
-    let has: i64 = conn.query_row(
-        "SELECT count(*) FROM other.sqlite_master WHERE type = 'table' AND name = 'planned_transfers'",
-        [],
-        |r| r.get(0),
-    )?;
-    if has == 0 {
+    if !has_table(conn, "other", "planned_transfers")? {
         return Ok(());
     }
-    let has_kind: i64 = conn.query_row(
-        "SELECT count(*) FROM pragma_table_info('planned_transfers', 'other') WHERE name = 'kind'",
-        [],
-        |r| r.get(0),
-    )?;
+    let has_kind = has_column(conn, "other", "planned_transfers", "kind")?;
     let rows: Vec<(
         i64,
         String,
@@ -350,7 +337,7 @@ pub(crate) fn merge_attached(
         i64,
         String,
     )> = {
-        let mut q = conn.prepare(if has_kind > 0 {
+        let mut q = conn.prepare(if has_kind {
             "SELECT account_id, end_to_end_id, execution_date, recipient_name, recipient_iban,
                     amount_cents, purpose, created_ms, kind
              FROM other.planned_transfers"

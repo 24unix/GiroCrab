@@ -11,15 +11,17 @@
 //! - account: `<connection key>|external_ref` (`|external_ref` without connection)
 //! - booking: `<account key>|external_id`
 //!
-//! Stamps are milliseconds from [`crate::user_groups::now_ms`]; `deleted_ms`
+//! Stamps are milliseconds from [`crate::dates::now_ms`]; `deleted_ms`
 //! NULL means live. A merge never stamps anything itself.
 
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use uuid::Uuid;
 
+use crate::dates::now_ms;
 use crate::error::{CoreError, CoreResult};
 use crate::models::ConnectorKind;
+use crate::schema::{has_column, has_table};
 
 /// Fixed namespace for the deterministic (v5) uuids.
 const NAMESPACE: Uuid = Uuid::from_bytes([
@@ -63,12 +65,7 @@ const COLUMNS: &[(&str, &str, &str)] = &[
 /// Repair step up to schema 9 (`schema::repair_to_v8`); new changes go in `schema.rs`.
 pub(crate) fn migrate(conn: &Connection) -> CoreResult<()> {
     for (table, col, def) in COLUMNS {
-        let has: i64 = conn.query_row(
-            "SELECT count(*) FROM pragma_table_info(?1) WHERE name = ?2",
-            [table, col],
-            |r| r.get(0),
-        )?;
-        if has == 0 {
+        if !has_column(conn, "main", table, col)? {
             conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {col} {def};"))?;
         }
     }
@@ -250,11 +247,7 @@ pub(crate) fn fill_missing_uuids(conn: &Connection) -> CoreResult<()> {
     }
     // rules
     // runs during migrations too: before step 24 the column is the account set
-    let has_set: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name = 'rule_accounts')",
-        [],
-        |r| r.get(0),
-    )?;
+    let has_set = has_table(conn, "main", "rule_accounts")?;
     let accounts = if has_set {
         "COALESCE((SELECT group_concat(account_id) FROM rule_accounts
                    WHERE rule_id = rules.id), account_id)"
@@ -336,7 +329,7 @@ fn not_found(what: &str, id: i64) -> CoreError {
 /// before deletions became soft). The uncategorising is a derived change: no
 /// `category_ms` stamp.
 pub(crate) fn soft_delete_categories(conn: &Connection, root: i64) -> CoreResult<()> {
-    let now = crate::user_groups::now_ms();
+    let now = now_ms();
     conn.execute_batch(
         "CREATE TEMP TABLE IF NOT EXISTS doomed_categories(id INTEGER PRIMARY KEY);
          DELETE FROM doomed_categories;",
@@ -380,14 +373,14 @@ pub(crate) fn soft_delete_booking(conn: &Connection, id: i64) -> CoreResult<()> 
     conn.execute("DELETE FROM loan_links WHERE transaction_id = ?1", [id])?;
     conn.execute(
         "UPDATE transactions SET deleted_ms = ?1 WHERE id = ?2 AND deleted_ms IS NULL",
-        params![crate::user_groups::now_ms(), id],
+        params![now_ms(), id],
     )?;
     Ok(())
 }
 
 /// Soft-deletes an account and its bookings (what the FK cascade did).
 pub(crate) fn soft_delete_account(conn: &Connection, id: i64) -> CoreResult<()> {
-    soft_delete_account_at(conn, id, crate::user_groups::now_ms())
+    soft_delete_account_at(conn, id, now_ms())
 }
 
 /// The cascade shares one stamp, so a revive can tell the bookings deleted
@@ -418,7 +411,7 @@ pub(crate) fn soft_delete_connection(conn: &Connection, id: i64) -> CoreResult<(
         let rows = q.query_map([id], |r| r.get(0))?;
         rows.collect::<Result<_, _>>()?
     };
-    let now = crate::user_groups::now_ms();
+    let now = now_ms();
     for a in accounts {
         soft_delete_account_at(conn, a, now)?;
     }
@@ -438,7 +431,7 @@ pub(crate) fn soft_delete_connection(conn: &Connection, id: i64) -> CoreResult<(
 pub(crate) fn revive_connection(conn: &Connection, id: i64) -> CoreResult<()> {
     conn.execute(
         "UPDATE bank_connections SET deleted_ms = NULL, created_ms = ?1 WHERE id = ?2",
-        params![crate::user_groups::now_ms(), id],
+        params![now_ms(), id],
     )?;
     Ok(())
 }
@@ -486,7 +479,7 @@ pub(crate) fn revive_account_if_deleted(conn: &Connection, id: i64) -> CoreResul
                 archived_ms = CASE WHEN archived_unix IS NULL THEN archived_ms ELSE ?1 END,
                 archived_unix = NULL
           WHERE id = ?2",
-        params![crate::user_groups::now_ms(), id],
+        params![now_ms(), id],
     )?;
     conn.execute(
         "UPDATE transactions SET deleted_ms = NULL WHERE account_id = ?1 AND deleted_ms = ?2",
@@ -1114,13 +1107,7 @@ type RawRule = (
 fn load_rules(conn: &Connection, schema: &str) -> CoreResult<Vec<RawRule>> {
     // includes soft-deleted rows
     // a vault from before step 24 has no `rule_accounts`: its column is the set
-    let has_set: bool = conn.query_row(
-        &format!(
-            "SELECT EXISTS(SELECT 1 FROM {schema}.sqlite_master WHERE name = 'rule_accounts')"
-        ),
-        [],
-        |r| r.get(0),
-    )?;
+    let has_set = has_table(conn, schema, "rule_accounts")?;
     let accounts = if has_set {
         format!(
             "COALESCE((SELECT group_concat(account_id) FROM {schema}.rule_accounts

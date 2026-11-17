@@ -8,6 +8,7 @@ use rusqlite::{params, OptionalExtension};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
+use crate::iban::{normalize_iban, validate_iban};
 use crate::models::{
     AccountKind, BatchTransferRequest, ConnectorKind, KnownRecipient, SepaTransferRequest,
 };
@@ -357,7 +358,7 @@ pub(crate) fn store_fetch(
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, (SELECT IFNULL(MAX(sort_order),0)+1 FROM accounts), ?14)",
                         params![connection_id, gid, acc.external_ref, acc.name, bank_name, acc.owner, acc.iban, acc.account_number,
                                 acc.currency, acc.kind.as_str(), acc.balance_cents, acc.balance_date, acc.kind.sf_symbol(),
-                                crate::user_groups::now_ms()],
+                                crate::dates::now_ms()],
                     )?;
                     let id = tx.last_insert_rowid();
                     crate::user_groups::place_new_account(&tx, id)?;
@@ -678,7 +679,7 @@ pub(crate) fn store_fetch(
                                AND (r.booking_text LIKE '%Sammel%' OR r.purpose LIKE '%Sammel%')
                                AND r.booking_date <= date(transactions.booking_date, '+7 days')))
                       AND r.booking_date >= transactions.booking_date))",
-            [crate::user_groups::now_ms()],
+            [crate::dates::now_ms()],
         )?;
         // Card holds: keep exactly the ones the bank still reports as open.
         if let Some(prefix) = data.hold_prefix.as_deref().filter(|p| !p.is_empty()) {
@@ -771,7 +772,7 @@ pub(crate) fn store_fetch(
         // reported per depot. A depot whose inventory came (maybe an empty one) confirms a 0 and
         // closes sold positions; one whose total came without positions (an overview) records the
         // total alone. An unread balance records no total (its positions still count).
-        let observed_ms = chrono::Utc::now().timestamp_millis();
+        let observed_ms = crate::dates::now_ms();
         let unknown: std::collections::HashSet<i64> = data
             .balances_unknown
             .iter()
@@ -1163,7 +1164,7 @@ impl Vault {
                 message: tr("Der Betrag muss größer als 0 sein.").into(),
             });
         }
-        if !sepa::validate_iban(&request.recipient_iban) {
+        if !validate_iban(&request.recipient_iban) {
             return Err(CoreError::InvalidInput {
                 message: tr("Die Empfänger-IBAN ist ungültig.").into(),
             });
@@ -1227,11 +1228,11 @@ impl Vault {
             source_iban: iban,
             source_owner: owner,
             recipient_name: request.recipient_name.trim().to_string(),
-            recipient_iban: sepa::normalize_iban(&request.recipient_iban),
+            recipient_iban: normalize_iban(&request.recipient_iban),
             recipient_bic: request
                 .recipient_bic
                 .filter(|b| !b.trim().is_empty())
-                .map(|b| sepa::normalize_iban(&b)),
+                .map(|b| normalize_iban(&b)),
             amount_cents: request.amount_cents,
             purpose: request.purpose.trim().to_string(),
             instant: request.instant,
@@ -1266,13 +1267,13 @@ impl Vault {
         for (i, p) in request.payments.iter().enumerate() {
             let payment = sepa::BatchPayment {
                 name: p.name.trim().to_string(),
-                iban: sepa::normalize_iban(&p.iban),
+                iban: normalize_iban(&p.iban),
                 bic: p
                     .bic
                     .as_deref()
                     .map(str::trim)
                     .filter(|b| !b.is_empty())
-                    .map(sepa::normalize_iban),
+                    .map(normalize_iban),
                 amount_cents: p.amount_cents,
                 purpose: p.purpose.trim().to_string(),
                 end_to_end_id: new_end_to_end_id(),
@@ -1354,7 +1355,6 @@ impl Vault {
         secret: String,
         demo: bool,
     ) -> Result<Arc<TransferSession>, CoreError> {
-        use crate::connectors::fints::sepa;
         use crate::models::StandingOrderAction as Action;
         let bad = |m: &str| CoreError::InvalidInput { message: m.into() };
         let (connection_id, iban, owner, key_str, kind, demo) =
@@ -1383,8 +1383,8 @@ impl Vault {
                         "Der Verwendungszweck darf höchstens 140 Zeichen lang sein.",
                     )));
                 }
-                let recipient_iban = sepa::normalize_iban(&request.recipient_iban);
-                if !sepa::validate_iban(&recipient_iban) {
+                let recipient_iban = normalize_iban(&request.recipient_iban);
+                if !validate_iban(&recipient_iban) {
                     return Err(bad(tr("Die Empfänger-IBAN ist ungültig.")));
                 }
                 if request.amount_cents <= 0 {
@@ -1448,7 +1448,7 @@ impl Vault {
                         .as_deref()
                         .map(str::trim)
                         .filter(|b| !b.is_empty())
-                        .map(sepa::normalize_iban),
+                        .map(normalize_iban),
                     amount_cents: request.amount_cents,
                     purpose,
                     first_date: first.to_string(),
@@ -1650,7 +1650,7 @@ impl Vault {
                     || r.name.replace(' ', "").to_lowercase().contains(&q)
                     || r.iban.replace(' ', "").to_lowercase().contains(&q)
             })
-            .filter(|r| crate::connectors::fints::sepa::validate_iban(&r.iban))
+            .filter(|r| validate_iban(&r.iban))
             .take(limit as usize)
             .collect())
     }
@@ -1868,7 +1868,7 @@ impl Vault {
                 // the switch-off is an edit: the stamp lets a vault merge carry it over
                 tx.execute(
                     "UPDATE mandates SET active = 0, updated_ms = ?2 WHERE id = ?1",
-                    params![id, crate::user_groups::now_ms()],
+                    params![id, crate::dates::now_ms()],
                 )?;
             }
         }

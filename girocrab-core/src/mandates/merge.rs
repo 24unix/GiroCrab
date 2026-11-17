@@ -12,6 +12,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
 
 use crate::error::CoreResult;
+use crate::schema::has_table;
 
 /// Remembers that the mandate was deleted (the later stamp stays).
 pub(super) fn mark_deleted(
@@ -55,14 +56,6 @@ struct Row {
     updated_ms: i64,
 }
 
-fn has_table(conn: &Connection, name: &str) -> CoreResult<bool> {
-    Ok(conn.query_row(
-        "SELECT count(*) FROM other.sqlite_master WHERE type = 'table' AND name = ?1",
-        [name],
-        |r| r.get::<_, i64>(0),
-    )? > 0)
-}
-
 /// The later of two optional ISO dates.
 fn later(a: Option<String>, b: Option<String>) -> Option<String> {
     match (a, b) {
@@ -74,7 +67,7 @@ fn later(a: Option<String>, b: Option<String>) -> Option<String> {
 /// Vault merge: takes over mandates, deletion marks and creditor IDs of the
 /// attached `other` vault. `acc_map` maps its account ids to ours.
 pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> CoreResult<()> {
-    if !has_table(conn, "mandates")? {
+    if !has_table(conn, "other", "mandates")? {
         return Ok(());
     }
     let rows: Vec<Row> = {
@@ -219,7 +212,7 @@ pub(crate) fn merge_attached(conn: &Connection, acc_map: &HashMap<i64, i64>) -> 
             }
         }
     }
-    if has_table(conn, "creditor_ids")? {
+    if has_table(conn, "other", "creditor_ids")? {
         let ids: Vec<(i64, String, i64)> = {
             let mut q =
                 conn.prepare("SELECT account_id, creditor_id, updated_ms FROM other.creditor_ids")?;

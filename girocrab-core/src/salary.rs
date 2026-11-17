@@ -19,6 +19,7 @@ use rusqlite::{params, Connection};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
+use crate::iban::normalize_iban;
 use crate::models::{Booking, BookingFilter};
 use crate::vault::Vault;
 
@@ -65,13 +66,6 @@ pub fn is_salary(b: &Booking, marked_ibans: &HashSet<String>) -> bool {
                     && marked_ibans.contains(&normalize_iban(&b.counterparty_iban)))
         }
     }
-}
-
-fn normalize_iban(iban: &str) -> String {
-    iban.chars()
-        .filter(|c| !c.is_whitespace())
-        .collect::<String>()
-        .to_ascii_uppercase()
 }
 
 /// Counterparty IBANs of inflows the user explicitly marked as salary.

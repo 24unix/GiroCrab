@@ -2,6 +2,7 @@
 //! SQLCipher-encrypted with a test password).
 
 use super::*;
+use crate::iban::{normalize_iban, validate_iban};
 use crate::models::{BookingFilter, CategorySource, MatchKind};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -2086,7 +2087,7 @@ fn src_acc(id: i64, account: &str, bankcode: &str, iban: &str, currency: &str) -
         id,
         account: account.into(),
         bankcode: bankcode.into(),
-        iban: sepa::normalize_iban(iban),
+        iban: normalize_iban(iban),
         currency: currency.into(),
         ..Default::default()
     }
@@ -2131,7 +2132,7 @@ fn own_accounts_are_found_by_account_number_and_bank_code() {
     assert_eq!(own(&giro, "4711", ""), Some(3));
     // German IBAN pointing at an own account that only has Kto/BLZ
     let iban = "DE77370400440098765432";
-    assert!(sepa::validate_iban(iban));
+    assert!(validate_iban(iban));
     assert_eq!(own(&giro, iban, ""), Some(2));
     // other bank code, foreign account, too short, itself: no match
     assert_eq!(own(&giro, "98765432", "10010010"), None);

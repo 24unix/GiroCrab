@@ -151,7 +151,7 @@ impl Vault {
                 login_name,
                 bank_code.map(str::to_string).unwrap_or(info.bank_code),
                 info.sf_symbol,
-                crate::user_groups::now_ms()
+                crate::dates::now_ms()
             ],
         )?;
         Ok((conn.last_insert_rowid(), true))
@@ -741,7 +741,7 @@ impl Vault {
     pub fn rename_account(&self, account_id: i64, name: String) -> Result<(), CoreError> {
         let n = self.db()?.execute(
             "UPDATE accounts SET name = ?1, name_ms = ?3 WHERE id = ?2",
-            params![name, account_id, crate::user_groups::now_ms()],
+            params![name, account_id, crate::dates::now_ms()],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {

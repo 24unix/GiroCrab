@@ -6,6 +6,7 @@ use chrono::{Datelike, Duration, NaiveDate};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::connectors::{RemoteStandingOrder, StandingOrderJob};
+use crate::dates::parse_iso;
 use crate::error::CoreResult;
 use crate::models::StandingOrderAction;
 use crate::planned::{PlannedKind, PlannedPayment};
@@ -93,7 +94,7 @@ pub(crate) fn replace_for_account(
                 o.exec_day,
                 o.can_change,
                 o.can_delete,
-                crate::user_groups::now_ms()
+                crate::dates::now_ms()
             ],
         )?;
     }
@@ -133,7 +134,7 @@ pub(crate) fn planned_executions(
          WHERE a.deleted_ms IS NULL",
     )?;
     let rows = q.query_map([], |r| {
-        let date = |s: String| NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok();
+        let date = |s: String| parse_iso(&s);
         Ok((
             Row {
                 id: r.get(0)?,
@@ -439,7 +440,7 @@ impl Vault {
                         o.time_unit,
                         o.interval,
                         o.exec_day,
-                        crate::user_groups::now_ms()
+                        crate::dates::now_ms()
                     ],
                 )?;
             }

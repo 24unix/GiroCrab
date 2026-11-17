@@ -12,16 +12,12 @@ use rusqlite::{params, Connection};
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
+use crate::schema::has_column;
 use crate::vault::Vault;
 
 /// Step 22: date up to which the returns of a mandate were acknowledged.
 pub(crate) fn mandate_return_ack(conn: &Connection) -> CoreResult<()> {
-    let has: i64 = conn.query_row(
-        "SELECT count(*) FROM pragma_table_info('mandates') WHERE name = 'returns_ack'",
-        [],
-        |r| r.get(0),
-    )?;
-    if has == 0 {
+    if !has_column(conn, "main", "mandates", "returns_ack")? {
         conn.execute_batch(
             "ALTER TABLE mandates ADD COLUMN returns_ack TEXT NOT NULL DEFAULT '';",
         )?;

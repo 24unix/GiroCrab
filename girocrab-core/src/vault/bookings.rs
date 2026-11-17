@@ -8,6 +8,7 @@ use rusqlite::{params, params_from_iter, ToSql};
 use super::Vault;
 use crate::error::CoreError;
 use crate::i18n::trf;
+use crate::iban::normalize_iban;
 use crate::merchants::{classify, clean_purpose, payment_method, FlowKind, MerchantResolver};
 use crate::models::*;
 use crate::money::parse_cents;
@@ -27,7 +28,7 @@ fn is_own_transfer(t: &Booking, own_ibans: &HashSet<String>, transfer_category: 
     if t.category_id.is_some() || matches!(t.flow, FlowKind::Investment | FlowKind::Perk) {
         return false;
     }
-    let iban = crate::connectors::fints::sepa::normalize_iban(&t.counterparty_iban);
+    let iban = normalize_iban(&t.counterparty_iban);
     !iban.is_empty() && own_ibans.contains(&iban)
 }
 
@@ -359,7 +360,7 @@ impl Vault {
         let ibans = st
             .query_map([], |r| r.get::<_, String>(0))?
             .filter_map(Result::ok)
-            .map(|i| crate::connectors::fints::sepa::normalize_iban(&i))
+            .map(|i| normalize_iban(&i))
             .filter(|i| !i.is_empty())
             .collect();
         Ok(ibans)
@@ -587,7 +588,7 @@ impl Vault {
         ids: &[i64],
         checked: bool,
     ) -> Result<(), CoreError> {
-        let now = crate::user_groups::now_ms();
+        let now = crate::dates::now_ms();
         for chunk in ids.chunks(500) {
             let ph = vec!["?"; chunk.len()].join(",");
             let sql =
@@ -1240,7 +1241,7 @@ impl Vault {
         let db = self.db()?;
         let n = db.execute(
             "UPDATE transactions SET category_id = ?1, rule_id = NULL, category_source = CASE WHEN ?1 IS NULL THEN 'none' ELSE 'manual' END, category_ms = ?3 WHERE id = ?2",
-            params![category_id, transaction_id, crate::user_groups::now_ms()],
+            params![category_id, transaction_id, crate::dates::now_ms()],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {
@@ -1282,7 +1283,7 @@ impl Vault {
     ) -> Result<(), CoreError> {
         self.db()?.execute(
             "UPDATE transactions SET checked = ?1, checked_ms = ?3 WHERE id = ?2",
-            params![checked as i64, transaction_id, crate::user_groups::now_ms()],
+            params![checked as i64, transaction_id, crate::dates::now_ms()],
         )?;
         Ok(())
     }
@@ -1300,7 +1301,7 @@ impl Vault {
                 counterparty.trim(),
                 purpose.trim(),
                 transaction_id,
-                crate::user_groups::now_ms()
+                crate::dates::now_ms()
             ],
         )?;
         if n == 0 {
@@ -1319,7 +1320,7 @@ impl Vault {
     ) -> Result<(), CoreError> {
         let n = self.db()?.execute(
             "UPDATE transactions SET note = ?1, note_ms = ?3 WHERE id = ?2",
-            params![note.trim(), transaction_id, crate::user_groups::now_ms()],
+            params![note.trim(), transaction_id, crate::dates::now_ms()],
         )?;
         if n == 0 {
             return Err(CoreError::NotFound {

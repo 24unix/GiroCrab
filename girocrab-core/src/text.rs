@@ -1,4 +1,5 @@
-//! Text decoding for bank data.
+//! Text decoding for bank data, plus small parsers for text cells of
+//! imported files.
 //!
 //! FinTS 3.0 envelopes are ISO-8859-1 (in practice Windows-1252), embedded
 //! camt.052 XML is UTF-8, MT940 varies by bank. Decoding the wrong way round
@@ -390,9 +391,28 @@ pub(crate) fn decode_html_entities(s: &str) -> String {
     out
 }
 
+/// Whether a cell of an imported file means "yes": `1`, `true`, `yes`/`y`,
+/// `ja`/`j`, `x` or a check mark, in any case. Anything else is "no".
+pub(crate) fn parse_bool_loose(s: &str) -> bool {
+    matches!(
+        s.trim().to_lowercase().as_str(),
+        "1" | "true" | "yes" | "y" | "ja" | "j" | "x" | "✓" | "✔"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loose_bools() {
+        for yes in ["1", "true", "Yes", "y", " JA ", "j", "X", "✓", "✔"] {
+            assert!(parse_bool_loose(yes), "{yes:?}");
+        }
+        for no in ["", "0", "false", "nein", "n", "-", "ok"] {
+            assert!(!parse_bool_loose(no), "{no:?}");
+        }
+    }
 
     #[test]
     fn decodes_html_entities() {

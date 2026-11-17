@@ -1,9 +1,10 @@
-//! SEPA credit transfer helpers: IBAN / BIC validation (ISO 13616 Mod-97,
-//! ISO 9362) and a `pain.001` generator (`.001.03` / `.001.09`) for single
-//! transfers, optionally flagged as SEPA Instant (`LclInstrm` = `INST`).
+//! SEPA credit transfer helpers: BIC validation (ISO 9362) and a `pain.001`
+//! generator (`.001.03` / `.001.09`) for single transfers, optionally flagged
+//! as SEPA Instant (`LclInstrm` = `INST`). IBANs are checked in [`crate::iban`].
 
 use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
+use crate::iban::{normalize_iban, validate_iban};
 
 pub const PAIN_DESCRIPTOR: &str = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.03";
 pub const PAIN_09_DESCRIPTOR: &str = "urn:iso:std:iso:20022:tech:xsd:pain.001.001.09";
@@ -38,101 +39,10 @@ impl PainVersion {
     }
 }
 
-/// IBAN length per country (SEPA area + common neighbours).
-const IBAN_LENGTHS: &[(&str, usize)] = &[
-    ("AD", 24),
-    ("AT", 20),
-    ("BE", 16),
-    ("BG", 22),
-    ("CH", 21),
-    ("CY", 28),
-    ("CZ", 24),
-    ("DE", 22),
-    ("DK", 18),
-    ("EE", 20),
-    ("ES", 24),
-    ("FI", 18),
-    ("FR", 27),
-    ("GB", 22),
-    ("GI", 23),
-    ("GR", 27),
-    ("HR", 21),
-    ("HU", 28),
-    ("IE", 22),
-    ("IS", 26),
-    ("IT", 27),
-    ("LI", 21),
-    ("LT", 20),
-    ("LU", 20),
-    ("LV", 21),
-    ("MC", 27),
-    ("MT", 31),
-    ("NL", 18),
-    ("NO", 15),
-    ("PL", 28),
-    ("PT", 25),
-    ("RO", 24),
-    ("SE", 24),
-    ("SI", 19),
-    ("SK", 24),
-    ("SM", 27),
-    ("VA", 22),
-];
-
-/// IBAN length of `country` (two upper-case letters), if known.
-pub fn iban_length(country: &str) -> Option<usize> {
-    IBAN_LENGTHS
-        .iter()
-        .find(|(c, _)| *c == country)
-        .map(|(_, len)| *len)
-}
-
-/// Removes whitespace and upper-cases.
-pub fn normalize_iban(iban: &str) -> String {
-    iban.chars()
-        .filter(|c| !c.is_whitespace())
-        .collect::<String>()
-        .to_uppercase()
-}
-
-/// Strict IBAN check: characters, country prefix, length, Mod-97 checksum.
-pub fn validate_iban(iban: &str) -> bool {
-    let s = normalize_iban(iban);
-    if s.len() < 15 || s.len() > 34 || !s.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return false;
-    }
-    let b = s.as_bytes();
-    if !(b[0].is_ascii_uppercase()
-        && b[1].is_ascii_uppercase()
-        && b[2].is_ascii_digit()
-        && b[3].is_ascii_digit())
-    {
-        return false;
-    }
-    if iban_length(&s[..2]) != Some(s.len()) {
-        return false;
-    }
-    // Move the first four characters to the end, letters -> 10..35.
-    let mut rem: u32 = 0;
-    for c in s[4..].chars().chain(s[..4].chars()) {
-        let v = c.to_digit(36).unwrap_or(0);
-        rem = if v >= 10 {
-            (rem * 100 + v) % 97
-        } else {
-            (rem * 10 + v) % 97
-        };
-    }
-    rem == 1
-}
-
 /// BIC: 8 or 11 characters (4 letters bank, 2 letters country, 2 alnum
 /// location, optional 3 alnum branch).
 pub fn validate_bic(bic: &str) -> bool {
-    let s: String = bic
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .collect::<String>()
-        .to_uppercase();
+    let s = normalize_iban(bic);
     if s.len() != 8 && s.len() != 11 {
         return false;
     }
@@ -469,25 +379,6 @@ pub fn build_pain001_batch(p: &Pain001Batch) -> CoreResult<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn valid_ibans() {
-        assert!(validate_iban("DE89370400440532013000"));
-        assert!(validate_iban("DE89 3704 0044 0532 0130 00"));
-        assert!(validate_iban("  de89370400440532013000 "));
-        assert!(validate_iban("GB82 WEST 1234 5698 7654 32"));
-        assert!(validate_iban("AT611904300234573201"));
-    }
-
-    #[test]
-    fn invalid_ibans() {
-        assert!(!validate_iban("DE89370400440532013001")); // checksum
-        assert!(!validate_iban("DE8937040044053201300")); // too short for DE
-        assert!(!validate_iban("XX89370400440532013000")); // unknown country
-        assert!(!validate_iban("DE89-3704-0044-0532-0130-00")); // bad characters
-        assert!(!validate_iban(""));
-        assert!(!validate_iban("1234"));
-    }
 
     #[test]
     fn bic_validation() {
