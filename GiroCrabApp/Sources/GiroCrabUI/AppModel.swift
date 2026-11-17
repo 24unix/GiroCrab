@@ -969,8 +969,21 @@ public final class AppModel {
         StartupClock.mark("demo data loaded & shown")
     }
 
+    /// The demo or fresh vault in the temp folder. Unit tests get one per
+    /// process: `swift test --parallel` runs suites in several processes,
+    /// which would otherwise lock each other's file. The app keeps the fixed
+    /// name (`--keep-fresh-vault` reopens it on the next launch).
+    nonisolated static func tempVaultURL(
+        _ name: String,
+        unitTests: Bool = runningUnitTests,
+        pid: Int32 = ProcessInfo.processInfo.processIdentifier
+    ) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent(unitTests ? "\(name)-\(pid).girocrab" : "\(name).girocrab")
+    }
+
     nonisolated private static func makeDemoVault() throws -> Vault {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Demo.girocrab")
+        let url = Self.tempVaultURL("GiroCrab-Demo")
         for suffix in ["", "-wal", "-shm"] {
             try? FileManager.default.removeItem(atPath: url.path + suffix)
         }
@@ -997,7 +1010,7 @@ public final class AppModel {
     }
 
     private func openDemoVault() {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Demo.girocrab")
+        let url = Self.tempVaultURL("GiroCrab-Demo")
         // (developer) GIROCRAB_DEMO_VAULT=<file>: a ready demo vault (e.g. 30k bookings from
         // `OUT=<file> cargo run --release --example category_perf`) opened as is, for profiling.
         let prepared = ProcessInfo.processInfo.environment["GIROCRAB_DEMO_VAULT"].flatMap { $0.isEmpty ? nil : $0 }
@@ -1036,7 +1049,7 @@ public final class AppModel {
     /// (`State(initialValue:)` runs on every `RootView` init), and wiping again
     /// would delete the file the live model is still writing to.
     private func openFreshVault() {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("GiroCrab-Fresh.girocrab")
+        let url = Self.tempVaultURL("GiroCrab-Fresh")
         // --keep-fresh-vault reopens the file as it is (e.g. a restored copy).
         if !Self.freshVaultWiped, !options.keepFreshVault {
             Self.freshVaultWiped = true
