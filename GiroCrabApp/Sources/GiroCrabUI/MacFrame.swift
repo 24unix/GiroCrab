@@ -37,3 +37,41 @@ private struct MacFrame: ViewModifier {
     }
 }
 #endif
+
+/// Heights for sizing a macOS sheet to its scrolling form (#879): the form's
+/// content and visible height, and the whole sheet's height.
+struct FormFit: Equatable {
+    var content: CGFloat = 0
+    var container: CGFloat = 0
+    var total: CGFloat = 0
+
+    /// Sheet height that shows the whole form without scrolling, within
+    /// `min`…`max`; `nil` until the form was measured. The rest of the sheet
+    /// (`total - container`) keeps its height.
+    func height(min: CGFloat, max: CGFloat) -> CGFloat? {
+        guard content > 0, container > 0, total > 0 else { return nil }
+        return Swift.min(Swift.max(total - container + content, min), max)
+    }
+}
+
+extension View {
+    /// Reports a scrolling form's content and visible height into `fit`.
+    /// Needs macOS 15; before that the sheet keeps its fixed height.
+    @ViewBuilder
+    func reportsFormFit(_ fit: Binding<FormFit>) -> some View {
+        #if os(macOS)
+        if #available(macOS 15, *) {
+            onScrollGeometryChange(for: [CGFloat].self) { g in
+                [g.contentSize.height + g.contentInsets.top + g.contentInsets.bottom, g.containerSize.height]
+            } action: { _, h in
+                fit.wrappedValue.content = h[0]
+                fit.wrappedValue.container = h[1]
+            }
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+}
