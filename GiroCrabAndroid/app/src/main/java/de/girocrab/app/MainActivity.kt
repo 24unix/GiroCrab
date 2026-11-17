@@ -1,5 +1,10 @@
 package de.girocrab.app
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+
 import android.app.LocaleManager
 import android.os.Build
 import android.os.Bundle
@@ -102,6 +107,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             GiroCrabTheme {
+              Box(Modifier.fillMaxSize()) {
                 GiroCrabRoot(
                     vm,
                     setSecure = ::setSecure,
@@ -109,6 +115,8 @@ class MainActivity : FragmentActivity() {
                     onExportBackup = { exportLauncher.launch("girocrab-backup.vault") },
                     onRestoreBackup = { restoreLauncher.launch(arrayOf("*/*")) },
                 )
+                GiroCrabIntro(skip = intent?.getBooleanExtra("skip_intro", false) == true)
+              }
             }
         }
     }
@@ -328,4 +336,50 @@ private fun RulesListDialog(state: de.girocrab.app.model.AppUiState, vm: AppView
         confirmButton = { androidx.compose.material3.TextButton(onClick = { creating = true }) { Text("Neue Regel") } },
         dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Fertig") } },
     )
+}
+
+
+/** Brief startup overlay: crab icon + title scale in and fade out after ~850 ms (once per launch; `skip_intro` extra disables it). */
+@Composable
+private fun GiroCrabIntro(skip: Boolean) {
+    var show by rememberSaveable { mutableStateOf(!skip) }
+    var entered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        entered = true
+        if (show) {
+            kotlinx.coroutines.delay(850)
+            show = false
+        }
+    }
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        if (entered) 1f else 0.7f,
+        androidx.compose.animation.core.tween(700),
+        label = "introScale",
+    )
+    androidx.compose.animation.AnimatedVisibility(
+        visible = show,
+        enter = androidx.compose.animation.EnterTransition.None,
+        exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(250)) +
+            androidx.compose.animation.scaleOut(targetScale = 1.08f, animationSpec = androidx.compose.animation.core.tween(250)),
+    ) {
+        Box(
+            Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF0067C0)).clickable(enabled = false) {},
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.scale(scale)) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(R.drawable.girocrab_crab),
+                    contentDescription = null,
+                    modifier = Modifier.size(128.dp),
+                )
+                Text(
+                    "GiroCrab",
+                    color = androidx.compose.ui.graphics.Color.White,
+                    fontSize = 28.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+        }
+    }
 }
