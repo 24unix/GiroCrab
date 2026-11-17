@@ -150,7 +150,7 @@ component SideLine inherits Rectangle {
     border-radius: 4px;
     border-width: all-card ? 1px : 0px;
     border-color: Theme.border;
-    background: active ? Theme.selected : all-card ? Theme.surface : (ta.has-hover && !ta.pressed && r.kind != 1 && r.kind != 2) ? Theme.text.with-alpha(0.05) : transparent;
+    background: active ? Theme.selected : all-card ? Theme.surface : (ta.has-hover && !ta.pressed && ta.mouse-x >= 0px && ta.mouse-x <= root.width && ta.mouse-y >= 0px && ta.mouse-y <= root.height && r.kind != 1 && r.kind != 2) ? Theme.text.with-alpha(0.05) : transparent;
     ta := TouchArea { clicked => { root.clicked(); } }
     if active && r.kind != 1 && r.kind != 2: Rectangle { x: 0px; y: (parent.height - 16px) / 2; width: 3px; height: 16px; border-radius: 1.5px; background: #2563eb; }
     HorizontalLayout {

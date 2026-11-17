@@ -561,6 +561,22 @@ pub fn move_category_in_order(ids: &mut Vec<i64>, target_id: i64, move_up: bool)
     true
 }
 
+/// Sorts `items` by the user-defined order `ordered_ids`. Items whose id is not
+/// listed keep their relative order and follow the listed ones (stable sort).
+pub fn apply_custom_category_order<T, F: Fn(&T) -> i64>(
+    items: &mut [T],
+    ordered_ids: &[i64],
+    id_fn: F,
+) {
+    items.sort_by_key(|item| {
+        let id = id_fn(item);
+        ordered_ids
+            .iter()
+            .position(|&o| o == id)
+            .unwrap_or(usize::MAX)
+    });
+}
+
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
@@ -607,6 +623,14 @@ mod tests {
     }
 
     use super::testing::account;
+
+    #[test]
+    fn custom_category_order_sorts_listed_first_and_keeps_unlisted_stable() {
+        let mut items = vec![(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e")];
+        apply_custom_category_order(&mut items, &[4, 2, 99], |i| i.0);
+        let ids: Vec<i64> = items.iter().map(|i| i.0).collect();
+        assert_eq!(ids, vec![4, 2, 1, 3, 5]);
+    }
 
     fn category(id: i64, parent: Option<i64>, name: &str, depth: u32, total: i64) -> Category {
         Category {
