@@ -217,13 +217,7 @@ impl Drop for Stopper {
 }
 
 fn io_error(e: std::io::Error) -> CoreError {
-    invalid(trf("Lokaler Socket: {0}", &[&e]))
-}
-
-fn invalid(message: impl Into<String>) -> CoreError {
-    CoreError::InvalidInput {
-        message: message.into(),
-    }
+    CoreError::invalid(trf("Lokaler Socket: {0}", &[&e]))
 }
 
 /// Writes one error line; the connection is closed or refused right after.
@@ -238,7 +232,7 @@ fn bind(path: &Path) -> Result<(UnixListener, (u64, u64), File), CoreError> {
     let dir = path
         .parent()
         .filter(|d| !d.as_os_str().is_empty())
-        .ok_or_else(|| invalid(tr("Der Socket-Pfad braucht einen Ordner.")))?;
+        .ok_or_else(|| CoreError::invalid(tr("Der Socket-Pfad braucht einen Ordner.")))?;
     let created = match std::fs::symlink_metadata(dir) {
         Err(e) if e.kind() == ErrorKind::NotFound => {
             // 0700 from the start, also for missing parents (no world-readable window).
@@ -255,7 +249,7 @@ fn bind(path: &Path) -> Result<(UnixListener, (u64, u64), File), CoreError> {
     // SAFETY: getuid has no preconditions.
     let uid = unsafe { libc::getuid() };
     if !meta.is_dir() || meta.uid() != uid {
-        return Err(invalid(tr(
+        return Err(CoreError::invalid(tr(
             "Der Socket-Ordner gehört nicht diesem Benutzer.",
         )));
     }
@@ -263,7 +257,7 @@ fn bind(path: &Path) -> Result<(UnixListener, (u64, u64), File), CoreError> {
         std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(io_error)?;
     } else if meta.mode() & 0o077 != 0 {
         // Never chmod a folder someone else chose (home, a shared folder).
-        return Err(invalid(trf(
+        return Err(CoreError::invalid(trf(
             "Andere Benutzer können den Socket-Ordner öffnen: {0}",
             &[&dir.display()],
         )));
@@ -281,7 +275,7 @@ fn bind(path: &Path) -> Result<(UnixListener, (u64, u64), File), CoreError> {
     if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
         let e = std::io::Error::last_os_error();
         if e.kind() == ErrorKind::WouldBlock {
-            return Err(invalid(tr(
+            return Err(CoreError::invalid(tr(
                 "Eine andere GiroCrab-Instanz verwendet diesen Socket bereits.",
             )));
         }
@@ -290,7 +284,7 @@ fn bind(path: &Path) -> Result<(UnixListener, (u64, u64), File), CoreError> {
     match std::fs::symlink_metadata(path) {
         Ok(m) if m.file_type().is_socket() => std::fs::remove_file(path).map_err(io_error)?,
         Ok(_) => {
-            return Err(invalid(tr(
+            return Err(CoreError::invalid(tr(
                 "Am Socket-Pfad liegt bereits eine andere Datei.",
             )))
         }

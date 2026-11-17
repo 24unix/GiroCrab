@@ -5,9 +5,11 @@
 //! whole whitespace-separated word of the text; punctuation doesn't split.
 
 use std::cell::OnceCell;
+use std::fmt;
 
 use regex::{Regex, RegexBuilder};
 
+use crate::error::CoreError;
 use crate::i18n::{tr, trf};
 
 /// The booking fields an expression can look at.
@@ -129,7 +131,8 @@ enum Tok {
 
 pub struct SearchExpr {
     root: Node,
-    unsupported: Vec<&'static str>,
+    /// First field the expression uses that GiroCrab doesn't store.
+    unsupported: Option<&'static str>,
 }
 
 /// Limits that keep the recursive parser/evaluator (and dropping the tree)
@@ -137,18 +140,71 @@ pub struct SearchExpr {
 const MAX_EXPR_CHARS: usize = 2000;
 const MAX_NESTING: usize = 32;
 
-impl SearchExpr {
-    pub fn parse(src: &str) -> Result<SearchExpr, String> {
-        if src.chars().count() > MAX_EXPR_CHARS {
-            return Err(trf(
+/// Why an expression doesn't parse. `Display` is the localised message shown
+/// in the rule editor; it reaches the app as `CoreError::InvalidInput`.
+#[derive(Debug, PartialEq)]
+pub enum SearchExprError {
+    TooLong,
+    Empty,
+    TooDeep,
+    Incomplete,
+    UnexpectedClose,
+    UnclosedParen,
+    UnclosedQuote,
+    UnclosedRegex,
+    AndWithoutTerm,
+    OrWithoutTerm,
+    EndsAfter(&'static str),
+    MissingValue(String),
+    UnknownField(String),
+    InvalidAmount(String),
+    InvalidRegex(regex::Error),
+    /// Rejected by [`SearchExpr::parse_supported`].
+    UnsupportedField(&'static str),
+}
+
+impl fmt::Display for SearchExprError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use SearchExprError::*;
+        let text = match self {
+            TooLong => trf(
                 "Der Suchausdruck ist zu lang (höchstens {0} Zeichen).",
                 &[&MAX_EXPR_CHARS],
-            ));
+            ),
+            Empty => tr("Der Suchausdruck ist leer.").into(),
+            TooDeep => tr("Der Suchausdruck ist zu tief verschachtelt.").into(),
+            Incomplete => tr("Der Suchausdruck ist unvollständig.").into(),
+            UnexpectedClose => tr("Unerwartete schließende Klammer.").into(),
+            UnclosedParen => tr("Klammer nicht geschlossen.").into(),
+            UnclosedQuote => tr("Anführungszeichen nicht geschlossen.").into(),
+            UnclosedRegex => tr("Regulärer Ausdruck nicht mit / geschlossen.").into(),
+            AndWithoutTerm => tr("„AND“ steht ohne Begriff davor.").into(),
+            OrWithoutTerm => tr("„OR“ steht ohne Begriff davor.").into(),
+            EndsAfter(op) => trf("Der Ausdruck endet nach „{0}“.", &[op]),
+            MissingValue(field) => trf("Nach „{0}:“ fehlt ein Suchbegriff.", &[field]),
+            UnknownField(field) => trf("Unbekanntes Feld „{0}“", &[field]),
+            InvalidAmount(value) => trf("Ungültiger Betrag „{0}“", &[value]),
+            InvalidRegex(e) => trf("Ungültiger regulärer Ausdruck: {0}", &[e]),
+            UnsupportedField(field) => trf("Das Feld „{0}“ wird nicht unterstützt.", &[field]),
+        };
+        f.write_str(&text)
+    }
+}
+
+impl From<SearchExprError> for CoreError {
+    fn from(e: SearchExprError) -> Self {
+        CoreError::invalid(e.to_string())
+    }
+}
+
+impl SearchExpr {
+    pub fn parse(src: &str) -> Result<SearchExpr, SearchExprError> {
+        if src.chars().count() > MAX_EXPR_CHARS {
+            return Err(SearchExprError::TooLong);
         }
-        let mut unsupported = Vec::new();
-        let toks = tokenize(src, &mut unsupported)?;
+        let (toks, unsupported) = tokenize(src)?;
         if toks.is_empty() {
-            return Err(tr("Der Suchausdruck ist leer.").into());
+            return Err(SearchExprError::Empty);
         }
         let mut p = Parser {
             toks,
@@ -157,9 +213,19 @@ impl SearchExpr {
         };
         let root = p.or()?;
         if p.pos < p.toks.len() {
-            return Err(tr("Unerwartete schließende Klammer.").into());
+            return Err(SearchExprError::UnexpectedClose);
         }
         Ok(SearchExpr { root, unsupported })
+    }
+
+    /// Like [`parse`](Self::parse), but rejects fields GiroCrab doesn't store:
+    /// they parse (imported rules keep them) but never match.
+    pub fn parse_supported(src: &str) -> Result<SearchExpr, SearchExprError> {
+        let expr = Self::parse(src)?;
+        match expr.unsupported {
+            Some(field) => Err(SearchExprError::UnsupportedField(field)),
+            None => Ok(expr),
+        }
     }
 
     pub fn matches(&self, t: &ExprInput) -> bool {
@@ -170,11 +236,6 @@ impl SearchExpr {
     /// across all expressions evaluated against the same `Prepared`.
     pub fn matches_prepared(&self, t: &Prepared) -> bool {
         eval(&self.root, t)
-    }
-
-    /// Fields the expression uses that GiroCrab doesn't store, in order of appearance.
-    pub fn unsupported_fields(&self) -> Vec<&'static str> {
-        self.unsupported.clone()
     }
 }
 
@@ -236,7 +297,7 @@ fn fold(s: &str) -> String {
     out
 }
 
-fn wildcard(word: &str) -> Result<Regex, String> {
+fn wildcard(word: &str) -> Result<Regex, SearchExprError> {
     let mut src = String::from("^");
     for c in fold(word).chars() {
         match c {
@@ -246,10 +307,10 @@ fn wildcard(word: &str) -> Result<Regex, String> {
         }
     }
     src.push('$');
-    Regex::new(&src).map_err(|e| e.to_string())
+    Regex::new(&src).map_err(SearchExprError::InvalidRegex)
 }
 
-fn words(text: &str) -> Result<Pattern, String> {
+fn words(text: &str) -> Result<Pattern, SearchExprError> {
     let parts = text
         .split_whitespace()
         .map(wildcard)
@@ -257,13 +318,13 @@ fn words(text: &str) -> Result<Pattern, String> {
     Ok(Pattern::Words(parts))
 }
 
-fn regex(src: &str) -> Result<Pattern, String> {
+fn regex(src: &str) -> Result<Pattern, SearchExprError> {
     RegexBuilder::new(src)
         .case_insensitive(true)
         .size_limit(1 << 20)
         .build()
         .map(Pattern::Regex)
-        .map_err(|e| trf("Ungültiger regulärer Ausdruck: {0}", &[&e]))
+        .map_err(SearchExprError::InvalidRegex)
 }
 
 fn parse_cents(v: &str) -> Option<i64> {
@@ -304,7 +365,7 @@ fn parse_cents(v: &str) -> Option<i64> {
     Some(if neg { -cents } else { cents })
 }
 
-fn amount(rest: &str) -> Result<Node, String> {
+fn amount(rest: &str) -> Result<Node, SearchExprError> {
     let (cmp, value) = [
         ("==", Cmp::Eq),
         ("!=", Cmp::Ne),
@@ -316,8 +377,8 @@ fn amount(rest: &str) -> Result<Node, String> {
     ]
     .iter()
     .find_map(|(op, cmp)| rest.strip_prefix(op).map(|v| (*cmp, v)))
-    .ok_or_else(|| trf("Ungültiger Betrag „{0}“", &[&rest]))?;
-    let cents = parse_cents(value).ok_or_else(|| trf("Ungültiger Betrag „{0}“", &[&value]))?;
+    .ok_or_else(|| SearchExprError::InvalidAmount(rest.into()))?;
+    let cents = parse_cents(value).ok_or_else(|| SearchExprError::InvalidAmount(value.into()))?;
     Ok(Node::Amount(cmp, cents))
 }
 
@@ -340,24 +401,24 @@ fn delimited(chars: &[char], i: &mut usize, end: char) -> Option<String> {
 }
 
 /// A quoted phrase or a `/regex/` starting at `chars[*i]`.
-fn quoted(chars: &[char], i: &mut usize) -> Result<Pattern, String> {
+fn quoted(chars: &[char], i: &mut usize) -> Result<Pattern, SearchExprError> {
     let open = chars[*i];
     *i += 1;
     match open {
         '"' => {
-            let s = delimited(chars, i, '"')
-                .ok_or_else(|| tr("Anführungszeichen nicht geschlossen.").to_string())?;
+            let s = delimited(chars, i, '"').ok_or(SearchExprError::UnclosedQuote)?;
             words(&s)
         }
         _ => {
-            let s = delimited(chars, i, '/')
-                .ok_or_else(|| tr("Regulärer Ausdruck nicht mit / geschlossen.").to_string())?;
+            let s = delimited(chars, i, '/').ok_or(SearchExprError::UnclosedRegex)?;
             regex(&s)
         }
     }
 }
 
-fn tokenize(src: &str, unsupported: &mut Vec<&'static str>) -> Result<Vec<Tok>, String> {
+/// The tokens and the first field GiroCrab doesn't store, if any.
+fn tokenize(src: &str) -> Result<(Vec<Tok>, Option<&'static str>), SearchExprError> {
+    let mut unsupported = None;
     let chars: Vec<char> = src.chars().collect();
     let mut toks = Vec::new();
     let mut i = 0;
@@ -387,18 +448,15 @@ fn tokenize(src: &str, unsupported: &mut Vec<&'static str>) -> Result<Vec<Tok>, 
         let head: String = chars[start..i].iter().collect();
         if i < chars.len() && chars[i] == ':' && is_field_name(&head) {
             let field =
-                Field::parse(&head).ok_or_else(|| trf("Unbekanntes Feld „{0}“", &[&head]))?;
+                Field::parse(&head).ok_or_else(|| SearchExprError::UnknownField(head.clone()))?;
             if let Field::Unsupported(name) = field {
-                if !unsupported.contains(&name) {
-                    unsupported.push(name);
-                }
+                unsupported.get_or_insert(name);
             }
             i += 1;
             let pattern = if field.is_account() && chars.get(i) == Some(&'"') {
                 // "DE89 3704 …" is one account number, not a phrase.
                 i += 1;
-                let s = delimited(&chars, &mut i, '"')
-                    .ok_or_else(|| tr("Anführungszeichen nicht geschlossen.").to_string())?;
+                let s = delimited(&chars, &mut i, '"').ok_or(SearchExprError::UnclosedQuote)?;
                 words(&s.replace(' ', ""))?
             } else if matches!(chars.get(i), Some('"') | Some('/')) {
                 quoted(&chars, &mut i)?
@@ -410,7 +468,7 @@ fn tokenize(src: &str, unsupported: &mut Vec<&'static str>) -> Result<Vec<Tok>, 
                 }
                 let value: String = chars[s..i].iter().collect();
                 if value.is_empty() {
-                    return Err(trf("Nach „{0}:“ fehlt ein Suchbegriff.", &[&head]));
+                    return Err(SearchExprError::MissingValue(head));
                 }
                 if field.is_account() {
                     words(&value.replace(' ', ""))?
@@ -436,7 +494,7 @@ fn tokenize(src: &str, unsupported: &mut Vec<&'static str>) -> Result<Vec<Tok>, 
             w => Tok::Atom(Node::Text(None, words(w)?)),
         });
     }
-    Ok(toks)
+    Ok((toks, unsupported))
 }
 
 /// `name` in `name:` – lowercase letters and underscores only, so words like
@@ -453,10 +511,10 @@ struct Parser {
 }
 
 impl Parser {
-    fn enter(&mut self) -> Result<(), String> {
+    fn enter(&mut self) -> Result<(), SearchExprError> {
         self.depth += 1;
         if self.depth > MAX_NESTING {
-            return Err(tr("Der Suchausdruck ist zu tief verschachtelt.").into());
+            return Err(SearchExprError::TooDeep);
         }
         Ok(())
     }
@@ -465,7 +523,7 @@ impl Parser {
         self.toks.get(self.pos)
     }
 
-    fn or(&mut self) -> Result<Node, String> {
+    fn or(&mut self) -> Result<Node, SearchExprError> {
         let mut left = self.and()?;
         while matches!(self.peek(), Some(Tok::Or)) {
             self.pos += 1;
@@ -475,7 +533,7 @@ impl Parser {
         Ok(left)
     }
 
-    fn and(&mut self) -> Result<Node, String> {
+    fn and(&mut self) -> Result<Node, SearchExprError> {
         let mut left = self.unary()?;
         loop {
             match self.peek() {
@@ -494,7 +552,7 @@ impl Parser {
         }
     }
 
-    fn unary(&mut self) -> Result<Node, String> {
+    fn unary(&mut self) -> Result<Node, SearchExprError> {
         if matches!(self.peek(), Some(Tok::Not)) {
             self.pos += 1;
             self.enter()?;
@@ -508,16 +566,16 @@ impl Parser {
     /// The operand after `op`; an error if the expression ends there.
     fn operand(
         &mut self,
-        op: &str,
-        next: fn(&mut Parser) -> Result<Node, String>,
-    ) -> Result<Node, String> {
+        op: &'static str,
+        next: fn(&mut Parser) -> Result<Node, SearchExprError>,
+    ) -> Result<Node, SearchExprError> {
         if matches!(self.peek(), None | Some(Tok::Close)) {
-            return Err(trf("Der Ausdruck endet nach „{0}“.", &[&op]));
+            return Err(SearchExprError::EndsAfter(op));
         }
         next(self)
     }
 
-    fn primary(&mut self) -> Result<Node, String> {
+    fn primary(&mut self) -> Result<Node, SearchExprError> {
         let tok = self.toks.get_mut(self.pos);
         match tok {
             Some(Tok::Open) => {
@@ -527,7 +585,7 @@ impl Parser {
                 self.depth -= 1;
                 let inner = inner?;
                 if !matches!(self.peek(), Some(Tok::Close)) {
-                    return Err(tr("Klammer nicht geschlossen.").into());
+                    return Err(SearchExprError::UnclosedParen);
                 }
                 self.pos += 1;
                 Ok(inner)
@@ -540,10 +598,10 @@ impl Parser {
                 self.pos += 1;
                 Ok(node)
             }
-            Some(Tok::Close) => Err(tr("Unerwartete schließende Klammer.").into()),
-            Some(Tok::And) => Err(tr("„AND“ steht ohne Begriff davor.").into()),
-            Some(Tok::Or) => Err(tr("„OR“ steht ohne Begriff davor.").into()),
-            Some(Tok::Not) | None => Err(tr("Der Suchausdruck ist unvollständig.").into()),
+            Some(Tok::Close) => Err(SearchExprError::UnexpectedClose),
+            Some(Tok::And) => Err(SearchExprError::AndWithoutTerm),
+            Some(Tok::Or) => Err(SearchExprError::OrWithoutTerm),
+            Some(Tok::Not) | None => Err(SearchExprError::Incomplete),
         }
     }
 }
@@ -724,28 +782,52 @@ mod tests {
 
     #[test]
     fn unsupported_fields_parse_but_never_match() {
-        let e = SearchExpr::parse("reference:ABC OR mandate:X OR reference:Y").unwrap();
-        assert_eq!(e.unsupported_fields(), vec!["reference", "mandate"]);
-        assert!(!e.matches(&inp("ABC", "X", -1)));
+        let src = "mandate:X OR reference:ABC";
+        assert!(!SearchExpr::parse(src)
+            .unwrap()
+            .matches(&inp("ABC", "X", -1)));
+        assert!(matches!(
+            SearchExpr::parse_supported(src),
+            Err(SearchExprError::UnsupportedField("mandate"))
+        ));
+        assert!(SearchExpr::parse_supported("name:ABC").is_ok());
     }
 
     #[test]
     fn syntax_errors_are_reported() {
-        for bad in [
-            "(REWE",
-            "\"REWE",
-            "REWE OR",
-            "NOT",
-            "foo:bar",
-            "amount<abc",
-            "/(/",
-            "",
-            "REWE)",
-            "AND REWE",
-        ] {
-            assert!(SearchExpr::parse(bad).is_err(), "{bad}");
-        }
+        use SearchExprError::*;
+        let err = |src: &str| {
+            SearchExpr::parse(src)
+                .err()
+                .unwrap_or_else(|| panic!("{src:?} parsed"))
+        };
+        assert_eq!(err(""), Empty);
+        assert_eq!(err("("), Incomplete);
+        assert_eq!(err("(REWE"), UnclosedParen);
+        assert_eq!(err("REWE)"), UnexpectedClose);
+        assert_eq!(err("\"REWE"), UnclosedQuote);
+        assert_eq!(err("/REWE"), UnclosedRegex);
+        assert_eq!(err("AND REWE"), AndWithoutTerm);
+        assert_eq!(err("OR REWE"), OrWithoutTerm);
+        assert_eq!(err("REWE OR"), EndsAfter("OR"));
+        assert_eq!(err("NOT"), EndsAfter("NOT"));
+        assert_eq!(err("foo:bar"), UnknownField("foo".into()));
+        assert_eq!(err("name:"), MissingValue("name".into()));
+        assert_eq!(err("amount<abc"), InvalidAmount("abc".into()));
+        assert!(matches!(err("/(/"), InvalidRegex(_)));
     }
+
+    #[test]
+    fn errors_reach_the_app_as_localised_invalid_input() {
+        let Err(e) = SearchExpr::parse("foo:bar") else {
+            panic!("parsed");
+        };
+        assert!(matches!(
+            CoreError::from(e),
+            CoreError::InvalidInput { message } if message == "Unbekanntes Feld „foo“"
+        ));
+    }
+
     #[test]
     fn quoted_account_number_ignores_spaces() {
         let mut t = inp("", "", -1);

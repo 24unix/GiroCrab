@@ -89,20 +89,16 @@ pub struct BookingTag {
     pub color_hex: String,
 }
 
-fn invalid(msg: &str) -> CoreError {
-    CoreError::InvalidInput {
-        message: msg.to_string(),
-    }
-}
-
 /// Trimmed name, inner runs of whitespace collapsed; checked for length.
 fn clean_name(name: &str) -> CoreResult<String> {
     let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
     if name.is_empty() {
-        return Err(invalid(tr("Der Name des Tags fehlt.")));
+        return Err(CoreError::invalid(tr("Der Name des Tags fehlt.")));
     }
     if name.chars().count() > MAX_NAME {
-        return Err(invalid(tr("Der Name des Tags ist länger als 64 Zeichen.")));
+        return Err(CoreError::invalid(tr(
+            "Der Name des Tags ist länger als 64 Zeichen.",
+        )));
     }
     Ok(name)
 }
@@ -112,7 +108,7 @@ fn clean_color(color: &str) -> CoreResult<String> {
     let ok = c.is_empty()
         || (c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|h| h.is_ascii_hexdigit()));
     if !ok {
-        return Err(invalid(tr("Die Farbe ist ungültig (#RRGGBB).")));
+        return Err(CoreError::invalid(tr("Die Farbe ist ungültig (#RRGGBB).")));
     }
     Ok(c.to_uppercase())
 }
@@ -392,7 +388,9 @@ impl Vault {
         let db = self.db()?;
         ensure_live(&db, id)?;
         if live_by_name(&db, &name)?.is_some_and(|other| other != id) {
-            return Err(invalid(tr("Es gibt schon einen Tag mit diesem Namen.")));
+            return Err(CoreError::invalid(tr(
+                "Es gibt schon einen Tag mit diesem Namen.",
+            )));
         }
         db.execute(
             "UPDATE tags SET name = ?2, updated_ms = ?3 WHERE id = ?1",
@@ -447,7 +445,7 @@ impl Vault {
     /// `target` afterwards, `source` is gone (on every device after sync).
     pub fn merge_tag_into(&self, source: i64, target: i64) -> Result<(), CoreError> {
         if source == target {
-            return Err(invalid(tr(
+            return Err(CoreError::invalid(tr(
                 "Ein Tag kann nicht mit sich selbst zusammengeführt werden.",
             )));
         }

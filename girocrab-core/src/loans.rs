@@ -115,10 +115,6 @@ pub struct LoanLink {
     pub by_rule: bool,
 }
 
-fn invalid(message: String) -> CoreError {
-    CoreError::InvalidInput { message }
-}
-
 fn parse_date(s: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(s.get(..10).unwrap_or(s), "%Y-%m-%d").ok()
 }
@@ -127,51 +123,47 @@ fn compile_expr(src: &str) -> CoreResult<Option<SearchExpr>> {
     if src.trim().is_empty() {
         return Ok(None);
     }
-    let expr = SearchExpr::parse(src).map_err(invalid)?;
-    if let Some(f) = expr.unsupported_fields().first() {
-        return Err(invalid(trf("Das Feld „{0}“ wird nicht unterstützt.", &[f])));
-    }
-    Ok(Some(expr))
+    Ok(Some(SearchExpr::parse_supported(src)?))
 }
 
 fn validate(setup: &LoanSetup) -> CoreResult<LoanSetup> {
     let name = setup.name.trim().to_string();
     if name.is_empty() {
-        return Err(invalid(
-            tr("Bitte einen Namen für das Darlehen angeben.").into(),
-        ));
+        return Err(CoreError::invalid(tr(
+            "Bitte einen Namen für das Darlehen angeben.",
+        )));
     }
     if name.chars().count() > MAX_NAME_CHARS {
-        return Err(invalid(trf(
+        return Err(CoreError::invalid(trf(
             "Der Name ist zu lang (höchstens {0} Zeichen).",
             &[&MAX_NAME_CHARS],
         )));
     }
     let Some(date) = parse_date(&setup.anchor_date) else {
-        return Err(invalid(tr("Ungültiges Stichtagsdatum.").into()));
+        return Err(CoreError::invalid(tr("Ungültiges Stichtagsdatum.")));
     };
     if date > chrono::Local::now().date_naive() {
-        return Err(invalid(
-            tr("Der Stichtag darf nicht in der Zukunft liegen.").into(),
-        ));
+        return Err(CoreError::invalid(tr(
+            "Der Stichtag darf nicht in der Zukunft liegen.",
+        )));
     }
     if setup.anchor_balance_cents < 0 {
-        return Err(invalid(
-            tr("Die Restschuld darf nicht negativ sein.").into(),
-        ));
+        return Err(CoreError::invalid(tr(
+            "Die Restschuld darf nicht negativ sein.",
+        )));
     }
     if setup.original_cents.is_some_and(|c| c <= 0) {
-        return Err(invalid(
-            tr("Der Kreditbetrag muss größer als 0 sein.").into(),
-        ));
+        return Err(CoreError::invalid(tr(
+            "Der Kreditbetrag muss größer als 0 sein.",
+        )));
     }
     if setup
         .interest_rate_ppm
         .is_some_and(|r| !(0..=MAX_RATE_PPM).contains(&r))
     {
-        return Err(invalid(
-            tr("Der Zinssatz muss zwischen 0 und 30 % liegen.").into(),
-        ));
+        return Err(CoreError::invalid(tr(
+            "Der Zinssatz muss zwischen 0 und 30 % liegen.",
+        )));
     }
     compile_expr(&setup.match_expr)?;
     Ok(LoanSetup {
@@ -711,10 +703,11 @@ impl Vault {
                     what: trf("Buchung {0}", &[&transaction_id]),
                 })
             }
-            Some("loan") => return Err(invalid(
-                tr("Buchungen eines Darlehenskontos lassen sich keinem anderen Darlehen zuordnen.")
-                    .into(),
-            )),
+            Some("loan") => {
+                return Err(CoreError::invalid(tr(
+                    "Buchungen eines Darlehenskontos lassen sich keinem anderen Darlehen zuordnen.",
+                )))
+            }
             _ => {}
         }
         let previous: Option<(i64, String)> = tx

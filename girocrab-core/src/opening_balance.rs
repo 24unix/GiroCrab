@@ -33,10 +33,6 @@ use crate::vault::Vault;
 pub(crate) const DERIVED_SQL: &str = "a.deleted_ms IS NULL AND a.kind NOT IN ('brokerage', 'loan')
      AND (a.connection_id IS NULL OR a.balance_derived = 1 OR a.external_ref LIKE 'moneymoney-db:%')";
 
-fn invalid(message: String) -> CoreError {
-    CoreError::InvalidInput { message }
-}
-
 fn not_found(account_id: i64) -> CoreError {
     CoreError::NotFound {
         what: trf("Konto {0}", &[&account_id]),
@@ -44,10 +40,7 @@ fn not_found(account_id: i64) -> CoreError {
 }
 
 fn bank_balance() -> CoreError {
-    invalid(
-        tr("Der Saldo dieses Kontos kommt von der Bank. Ein Startsaldo gilt nur für Konten, deren Saldo GiroCrab aus den Umsätzen berechnet.")
-            .to_string(),
-    )
+    CoreError::invalid(tr("Der Saldo dieses Kontos kommt von der Bank. Ein Startsaldo gilt nur für Konten, deren Saldo GiroCrab aus den Umsätzen berechnet."))
 }
 
 fn normalize_date(date: &str) -> CoreResult<String> {
@@ -57,7 +50,7 @@ fn normalize_date(date: &str) -> CoreResult<String> {
     }
     NaiveDate::parse_from_str(d, "%Y-%m-%d")
         .map(|d| d.format("%Y-%m-%d").to_string())
-        .map_err(|_| invalid(trf("Ungültiges Datum: {0}", &[&d])))
+        .map_err(|_| CoreError::invalid(trf("Ungültiges Datum: {0}", &[&d])))
 }
 
 /// Whether `account_id` is a live account with a computed balance.

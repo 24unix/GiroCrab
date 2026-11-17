@@ -10,7 +10,7 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::{tr, trf};
 use crate::vault::Vault;
 
-use super::{invalid, MandateScheme};
+use super::MandateScheme;
 
 /// One debtor to collect from in this run.
 #[derive(Debug, Clone, uniffi::Record)]
@@ -62,7 +62,7 @@ pub struct DebitFile {
 fn check_date(d: &str) -> CoreResult<()> {
     chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
         .map(|_| ())
-        .map_err(|_| invalid(tr("Das Fälligkeitsdatum ist ungültig.")))
+        .map_err(|_| CoreError::invalid(tr("Das Fälligkeitsdatum ist ungültig.")))
 }
 
 /// One scheme/sequence group of a run: becomes one message and one submission.
@@ -90,16 +90,18 @@ impl Vault {
     ) -> CoreResult<CollectionPlan> {
         check_date(collection_date)?;
         if items.is_empty() {
-            return Err(invalid(tr("Der Einzug enthält keine Lastschrift.")));
+            return Err(CoreError::invalid(tr(
+                "Der Einzug enthält keine Lastschrift.",
+            )));
         }
         let account = self
             .list_accounts()?
             .into_iter()
             .find(|a| a.id == account_id)
-            .ok_or_else(|| invalid(tr("Das Konto gibt es nicht mehr.")))?;
+            .ok_or_else(|| CoreError::invalid(tr("Das Konto gibt es nicht mehr.")))?;
         let creditor_id = self.creditor_id(account_id)?;
         if creditor_id.is_empty() {
-            return Err(invalid(tr(
+            return Err(CoreError::invalid(tr(
                 "Für dieses Konto ist keine Gläubiger-ID hinterlegt.",
             )));
         }
@@ -120,27 +122,24 @@ impl Vault {
         for item in items {
             let m = by_id
                 .get(&item.mandate_id)
-                .ok_or_else(|| invalid(tr("Das Mandat gibt es nicht mehr.")))?;
+                .ok_or_else(|| CoreError::invalid(tr("Das Mandat gibt es nicht mehr.")))?;
             if !seen.insert(m.id) {
-                return Err(CoreError::InvalidInput {
-                    message: trf(
-                        "Das Mandat „{0}“ steht mehrfach im Einzug.",
-                        &[&m.reference],
-                    ),
-                });
+                return Err(CoreError::invalid(trf(
+                    "Das Mandat „{0}“ steht mehrfach im Einzug.",
+                    &[&m.reference],
+                )));
             }
             if m.one_off && m.last_collected.is_some() {
-                return Err(CoreError::InvalidInput {
-                    message: trf(
-                        "Das einmalige Mandat „{0}“ wurde schon eingezogen.",
-                        &[&m.reference],
-                    ),
-                });
+                return Err(CoreError::invalid(trf(
+                    "Das einmalige Mandat „{0}“ wurde schon eingezogen.",
+                    &[&m.reference],
+                )));
             }
             if !m.active {
-                return Err(CoreError::InvalidInput {
-                    message: trf("Das Mandat „{0}“ ist nicht aktiv.", &[&m.reference]),
-                });
+                return Err(CoreError::invalid(trf(
+                    "Das Mandat „{0}“ ist nicht aktiv.",
+                    &[&m.reference],
+                )));
             }
             let mut seq = SequenceType::from_code(&m.next_sequence).unwrap_or(SequenceType::First);
             if item.last_collection && seq == SequenceType::Recurring {

@@ -43,12 +43,6 @@ pub struct Rah10KeyfileInfo {
     pub needs_bank_keys: bool,
 }
 
-fn invalid(message: &str) -> CoreError {
-    CoreError::InvalidInput {
-        message: message.into(),
-    }
-}
-
 fn public_key(candidate: &Rah10BankKeyCandidate) -> CoreResult<BankKey> {
     if candidate.public_key_der.len() > 2048
         || candidate.user_id.is_empty()
@@ -57,21 +51,21 @@ fn public_key(candidate: &Rah10BankKeyCandidate) -> CoreResult<BankKey> {
         || candidate.blz.len() != 8
         || !candidate.blz.bytes().all(|b| b.is_ascii_digit())
     {
-        return Err(invalid("Bankschlüssel-Metadaten ungültig."));
+        return Err(CoreError::invalid("Bankschlüssel-Metadaten ungültig."));
     }
     let kind = match candidate.key_type.as_str() {
         "S" => 0,
         "V" => 1,
-        _ => return Err(invalid("Unbekannte Bankschlüsselart.")),
+        _ => return Err(CoreError::invalid("Unbekannte Bankschlüsselart.")),
     };
     let key = PublicKey::from_public_key_der(&candidate.public_key_der)
-        .map_err(|_| invalid("Öffentlicher RSA-Bankschlüssel ungültig."))?;
+        .map_err(|_| CoreError::invalid("Öffentlicher RSA-Bankschlüssel ungültig."))?;
     if key.n().bit_width() < 1984
         || key.n().bit_width() > 8192
         || key.e().bit_width() > 32
         || key.e().bit_width() < 2
     {
-        return Err(invalid(
+        return Err(CoreError::invalid(
             "RSA-Parameter des Bankschlüssels werden nicht unterstützt.",
         ));
     }
@@ -91,7 +85,7 @@ fn fingerprint(key: &BankKey) -> CoreResult<String> {
     let exponent = key.key.e_bytes();
     let size = modulus.len().max(128);
     if exponent.len() > size {
-        return Err(invalid("RSA-Exponent ungültig."));
+        return Err(CoreError::invalid("RSA-Exponent ungültig."));
     }
     let mut data = vec![0u8; 2 * size];
     data[size - exponent.len()..size].copy_from_slice(&exponent);
@@ -113,7 +107,7 @@ pub(crate) fn key_candidate(key: &BankKey) -> CoreResult<Rah10BankKeyCandidate> 
         public_key_der: key
             .key
             .to_public_key_der()
-            .map_err(|_| invalid("RSA-Schlüssel ungültig."))?
+            .map_err(|_| CoreError::invalid("RSA-Schlüssel ungültig."))?
             .as_bytes()
             .to_vec(),
         fingerprint: fingerprint(key)?,
@@ -127,7 +121,7 @@ fn normalized_hash(value: &str) -> CoreResult<String> {
         .filter(|c| !c.is_whitespace() && *c != ':')
         .collect();
     if value.len() != 64 || !value.bytes().all(|c| c.is_ascii_hexdigit()) {
-        return Err(invalid("Bitte den vollständigen SHA-256-Prüfwert (64 Hex-Zeichen) aus einer unabhängigen Commerzbank-Quelle eingeben."));
+        return Err(CoreError::invalid("Bitte den vollständigen SHA-256-Prüfwert (64 Hex-Zeichen) aus einer unabhängigen Commerzbank-Quelle eingeben."));
     }
     Ok(value.to_ascii_uppercase())
 }
@@ -139,24 +133,24 @@ pub(crate) fn confirmed_keys(
     expected: &[String],
 ) -> CoreResult<Vec<BankKey>> {
     if candidates.len() != 2 || expected.len() != 2 {
-        return Err(invalid(
+        return Err(CoreError::invalid(
             "Signatur- und Verschlüsselungsschlüssel müssen separat bestätigt werden.",
         ));
     }
     let mut result = Vec::new();
     for (candidate, expected) in candidates.iter().zip(expected) {
         if candidate.blz != blz {
-            return Err(invalid(
+            return Err(CoreError::invalid(
                 "Bankschlüssel gehört zu einer anderen Bankleitzahl.",
             ));
         }
         let key = public_key(candidate)?;
         let actual = fingerprint(&key)?;
         if normalized_hash(expected)? != actual || candidate.fingerprint != actual {
-            return Err(invalid("Der Bankschlüssel stimmt nicht mit dem unabhängig bestätigten Prüfwert überein. Keine Übernahme."));
+            return Err(CoreError::invalid("Der Bankschlüssel stimmt nicht mit dem unabhängig bestätigten Prüfwert überein. Keine Übernahme."));
         }
         if result.iter().any(|k: &BankKey| k.kind == key.kind) {
-            return Err(invalid("Bankschlüsselart doppelt vorhanden."));
+            return Err(CoreError::invalid("Bankschlüsselart doppelt vorhanden."));
         }
         result.push(key);
     }
@@ -174,7 +168,7 @@ pub fn inspect_rah10_keyfile(bytes: Vec<u8>, password: String) -> CoreResult<Rah
     let password = Zeroizing::new(password);
     let file = KeyFile::open(&bytes, password.as_bytes())?;
     if file.identities.len() != 1 {
-        return Err(invalid(
+        return Err(CoreError::invalid(
             "Bitte eine Schlüsseldatei mit genau einem Bankzugang verwenden.",
         ));
     }
@@ -183,7 +177,7 @@ pub fn inspect_rah10_keyfile(bytes: Vec<u8>, password: String) -> CoreResult<Rah
         identity.host.as_str(),
         "hbci.commerzbank.de" | "fints.commerzbank.de"
     ) {
-        return Err(invalid(
+        return Err(CoreError::invalid(
             "Die Schlüsseldatei enthält keinen unterstützten Commerzbank-Zugang.",
         ));
     }
@@ -259,14 +253,14 @@ fn parse_candidates(raw: &[u8], blz: &str) -> CoreResult<(String, Vec<Rah10BankK
     let head = segments
         .first()
         .filter(|s| s.id() == "HNHBK")
-        .ok_or_else(|| invalid("Unvollständige Antwort beim Bankschlüsselabruf."))?;
+        .ok_or_else(|| CoreError::invalid("Unvollständige Antwort beim Bankschlüsselabruf."))?;
     if head.get(1, 0).parse::<usize>().ok() != Some(raw.len())
         || head.get(4, 0) != "1"
         || segments
             .last()
             .is_none_or(|s| s.id() != "HNHBS" || s.get(1, 0) != "1")
     {
-        return Err(invalid(
+        return Err(CoreError::invalid(
             "Ungültige Nachrichtenhülle beim Bankschlüsselabruf.",
         ));
     }
@@ -281,7 +275,7 @@ fn parse_candidates(raw: &[u8], blz: &str) -> CoreResult<(String, Vec<Rah10BankK
                 .any(|e| e.first().is_some_and(|v| v.text().starts_with('9')))
         })
     {
-        return Err(invalid(
+        return Err(CoreError::invalid(
             "Der Bankschlüsselabruf wurde abgelehnt. Die Antwort ist noch nicht authentifiziert.",
         ));
     }
@@ -294,18 +288,18 @@ fn parse_candidates(raw: &[u8], blz: &str) -> CoreResult<(String, Vec<Rah10BankK
             || segment.get(5, 1) != blz
             || segment.get(6, 2) != "10"
         {
-            return Err(invalid("Unerwartete Bankschlüssel-Antwort."));
+            return Err(CoreError::invalid("Unerwartete Bankschlüssel-Antwort."));
         }
         let component = |index| match segment.element(6).get(index) {
             Some(Value::Binary(b)) if !b.is_empty() && b.len() <= 1024 => Ok(b.as_slice()),
-            _ => Err(invalid("RSA-Schlüsselmaterial fehlt.")),
+            _ => Err(CoreError::invalid("RSA-Schlüsselmaterial fehlt.")),
         };
         let rsa = PublicKey::new_with_size_limits(
             BoxedUint::from_be_slice_vartime(component(3)?),
             BoxedUint::from_be_slice_vartime(component(5)?),
             1984..=8192,
         )
-        .map_err(|_| invalid("RSA-Schlüssel ungültig."))?;
+        .map_err(|_| CoreError::invalid("RSA-Schlüssel ungültig."))?;
         let mut candidate = Rah10BankKeyCandidate {
             blz: blz.into(),
             user_id: segment.get(5, 2).into(),
@@ -313,14 +307,14 @@ fn parse_candidates(raw: &[u8], blz: &str) -> CoreResult<(String, Vec<Rah10BankK
             number: segment
                 .get(5, 4)
                 .parse()
-                .map_err(|_| invalid("Schlüsselnummer ungültig."))?,
+                .map_err(|_| CoreError::invalid("Schlüsselnummer ungültig."))?,
             version: segment
                 .get(5, 5)
                 .parse()
-                .map_err(|_| invalid("Schlüsselversion ungültig."))?,
+                .map_err(|_| CoreError::invalid("Schlüsselversion ungültig."))?,
             public_key_der: rsa
                 .to_public_key_der()
-                .map_err(|_| invalid("RSA-Schlüssel ungültig."))?
+                .map_err(|_| CoreError::invalid("RSA-Schlüssel ungültig."))?
                 .as_bytes()
                 .to_vec(),
             fingerprint: String::new(),
@@ -332,7 +326,7 @@ fn parse_candidates(raw: &[u8], blz: &str) -> CoreResult<(String, Vec<Rah10BankK
             .iter()
             .any(|k: &Rah10BankKeyCandidate| k.key_type == candidate.key_type)
         {
-            return Err(invalid(
+            return Err(CoreError::invalid(
                 "Mehrere Bankschlüssel derselben Art empfangen; keine automatische Auswahl.",
             ));
         }
@@ -342,7 +336,7 @@ fn parse_candidates(raw: &[u8], blz: &str) -> CoreResult<(String, Vec<Rah10BankK
         || !result.iter().any(|k| k.key_type == "S")
         || !result.iter().any(|k| k.key_type == "V")
     {
-        return Err(invalid(
+        return Err(CoreError::invalid(
             "Signatur- und Verschlüsselungsschlüssel wurden nicht vollständig geliefert.",
         ));
     }
@@ -358,7 +352,7 @@ impl Vault {
         blz: String,
     ) -> CoreResult<Vec<Rah10BankKeyCandidate>> {
         if blz.len() != 8 || !blz.bytes().all(|b| b.is_ascii_digit()) {
-            return Err(invalid("Ungültige Bankleitzahl."));
+            return Err(CoreError::invalid("Ungültige Bankleitzahl."));
         }
         crate::banking_gate::check_connector(&format!("fints:{blz}:rah10"))?;
         let mode = self

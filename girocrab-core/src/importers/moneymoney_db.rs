@@ -2351,8 +2351,7 @@ fn import_category_rules(
         if exists {
             continue;
         }
-        let usable = crate::search_expr::SearchExpr::parse(expr)
-            .is_ok_and(|e| e.unsupported_fields().is_empty());
+        let usable = crate::search_expr::SearchExpr::parse_supported(expr).is_ok();
         let enabled = usable && !restricted;
         let leaf = path.last().cloned().unwrap_or_default();
         // GiroCrab can't map the restriction to accounts yet: say so in the

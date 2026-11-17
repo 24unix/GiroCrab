@@ -279,10 +279,6 @@ pub struct AssetPriceRefresh {
     pub error: Option<String>,
 }
 
-fn invalid(message: String) -> CoreError {
-    CoreError::InvalidInput { message }
-}
-
 fn parse_date(s: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(s.get(..10).unwrap_or(s), "%Y-%m-%d").ok()
 }
@@ -300,11 +296,11 @@ fn is_manual(source: &str) -> bool {
 }
 
 fn valid_date(s: &str) -> CoreResult<String> {
-    let d = parse_date(s).ok_or_else(|| invalid(trf("Ungültiges Datum: {0}", &[&s])))?;
+    let d = parse_date(s).ok_or_else(|| CoreError::invalid(trf("Ungültiges Datum: {0}", &[&s])))?;
     if d > today() {
-        return Err(invalid(
-            tr("Das Datum darf nicht in der Zukunft liegen.").to_string(),
-        ));
+        return Err(CoreError::invalid(tr(
+            "Das Datum darf nicht in der Zukunft liegen.",
+        )));
     }
     Ok(iso(d))
 }
@@ -313,10 +309,10 @@ fn validate(s: &AssetItemSetup) -> CoreResult<AssetItemSetup> {
     let mut s = s.clone();
     s.name = s.name.trim().to_string();
     if s.name.is_empty() {
-        return Err(invalid(tr("Bitte einen Namen angeben.").to_string()));
+        return Err(CoreError::invalid(tr("Bitte einen Namen angeben.")));
     }
     if s.name.chars().count() > MAX_NAME_CHARS {
-        return Err(invalid(trf(
+        return Err(CoreError::invalid(trf(
             "Der Name ist zu lang (höchstens {0} Zeichen).",
             &[&MAX_NAME_CHARS],
         )));
@@ -325,45 +321,43 @@ fn validate(s: &AssetItemSetup) -> CoreResult<AssetItemSetup> {
     s.symbol = s.symbol.trim().chars().take(MAX_SYMBOL_CHARS).collect();
     s.purchase_date = valid_date(&s.purchase_date)?;
     if !(s.quantity.is_finite() && s.quantity > 0.0) {
-        return Err(invalid(
-            tr("Die Anzahl muss größer als 0 sein.").to_string(),
-        ));
+        return Err(CoreError::invalid(tr("Die Anzahl muss größer als 0 sein.")));
     }
     if s.purchase_price_cents.is_some_and(|c| c < 0) {
-        return Err(invalid(
-            tr("Der Kaufpreis darf nicht negativ sein.").to_string(),
-        ));
+        return Err(CoreError::invalid(tr(
+            "Der Kaufpreis darf nicht negativ sein.",
+        )));
     }
     if is_manual(&s.price_source) {
         match s.start_value_cents {
             Some(v) if v >= 0 => {}
             _ => {
-                return Err(invalid(
-                    tr("Bitte den Wert zum Kaufdatum angeben.").to_string(),
-                ))
+                return Err(CoreError::invalid(tr(
+                    "Bitte den Wert zum Kaufdatum angeben.",
+                )))
             }
         }
         s.weight_grams = 0.0;
         s.purity_permille = 1000.0;
     } else {
         if !PRICE_SYMBOLS.contains(&s.price_source.as_str()) {
-            return Err(invalid(trf(
+            return Err(CoreError::invalid(trf(
                 "Unbekannte Kursquelle: {0}",
                 &[&s.price_source],
             )));
         }
         if !(s.weight_grams.is_finite() && s.weight_grams > 0.0) {
-            return Err(invalid(
-                tr("Das Gewicht muss größer als 0 sein.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr(
+                "Das Gewicht muss größer als 0 sein.",
+            )));
         }
         if !(s.purity_permille.is_finite()
             && s.purity_permille > 0.0
             && s.purity_permille <= 1000.0)
         {
-            return Err(invalid(
-                tr("Der Feingehalt muss zwischen 0 und 1000 ‰ liegen.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr(
+                "Der Feingehalt muss zwischen 0 und 1000 ‰ liegen.",
+            )));
         }
         s.start_value_cents = None;
     }
@@ -781,7 +775,7 @@ pub(crate) fn create_account_in(conn: &Connection, name: &str) -> CoreResult<i64
         name
     };
     if name.chars().count() > MAX_NAME_CHARS {
-        return Err(invalid(trf(
+        return Err(CoreError::invalid(trf(
             "Der Name ist zu lang (höchstens {0} Zeichen).",
             &[&MAX_NAME_CHARS],
         )));
@@ -818,10 +812,7 @@ fn store_item(
                 |r| r.get(0),
             )?;
             if later_before > 0 {
-                return Err(invalid(
-                    tr("Vor dem neuen Kaufdatum liegen noch Bestands- oder Wertänderungen. Bitte diese zuerst entfernen.")
-                        .to_string(),
-                ));
+                return Err(CoreError::invalid(tr("Vor dem neuen Kaufdatum liegen noch Bestands- oder Wertänderungen. Bitte diese zuerst entfernen.")));
             }
             if !is_manual(&s.price_source) {
                 let values: i64 = conn.query_row(
@@ -830,10 +821,7 @@ fn store_item(
                     |r| r.get(0),
                 )?;
                 if values > 1 {
-                    return Err(invalid(
-                        tr("Der Sachwert hat eingetragene Werte. Bitte diese zuerst entfernen, bevor er über den Kurs bewertet wird.")
-                            .to_string(),
-                    ));
+                    return Err(CoreError::invalid(tr("Der Sachwert hat eingetragene Werte. Bitte diese zuerst entfernen, bevor er über den Kurs bewertet wird.")));
                 }
             }
             conn.execute(
@@ -1220,22 +1208,18 @@ impl Vault {
     ) -> Result<(), CoreError> {
         let date = valid_date(&date)?;
         if !(quantity.is_finite() && quantity >= 0.0) {
-            return Err(invalid(
-                tr("Die Anzahl darf nicht negativ sein.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr(
+                "Die Anzahl darf nicht negativ sein.",
+            )));
         }
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
         let (_, _, purchase) = require_item(&tx, item_id)?;
         if date < purchase {
-            return Err(invalid(
-                tr("Das Datum liegt vor dem Kaufdatum.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr("Das Datum liegt vor dem Kaufdatum.")));
         }
         if date == purchase && quantity == 0.0 {
-            return Err(invalid(
-                tr("Die Anzahl muss größer als 0 sein.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr("Die Anzahl muss größer als 0 sein.")));
         }
         put_point(
             &tx,
@@ -1256,9 +1240,9 @@ impl Vault {
         let tx = db.unchecked_transaction()?;
         let (_, _, purchase) = require_item(&tx, item_id)?;
         if date == purchase {
-            return Err(invalid(
-                tr("Der Kauf selbst kann nicht entfernt werden.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr(
+                "Der Kauf selbst kann nicht entfernt werden.",
+            )));
         }
         drop_points(&tx, "asset_quantities", item_id, "date = ?2", &date)?;
         refresh_balances(&tx)?;
@@ -1275,20 +1259,18 @@ impl Vault {
     ) -> Result<(), CoreError> {
         let date = valid_date(&date)?;
         if value_cents < 0 {
-            return Err(invalid(tr("Der Wert darf nicht negativ sein.").to_string()));
+            return Err(CoreError::invalid(tr("Der Wert darf nicht negativ sein.")));
         }
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
         let (_, source, purchase) = require_item(&tx, item_id)?;
         if !is_manual(&source) {
-            return Err(invalid(
-                tr("Dieser Sachwert wird über den Kurs bewertet.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr(
+                "Dieser Sachwert wird über den Kurs bewertet.",
+            )));
         }
         if date < purchase {
-            return Err(invalid(
-                tr("Das Datum liegt vor dem Kaufdatum.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr("Das Datum liegt vor dem Kaufdatum.")));
         }
         put_point(
             &tx,
@@ -1309,9 +1291,9 @@ impl Vault {
         let tx = db.unchecked_transaction()?;
         let (_, _, purchase) = require_item(&tx, item_id)?;
         if date == purchase {
-            return Err(invalid(
-                tr("Der Wert zum Kaufdatum kann nicht entfernt werden.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr(
+                "Der Wert zum Kaufdatum kann nicht entfernt werden.",
+            )));
         }
         drop_points(&tx, "asset_values", item_id, "date = ?2", &date)?;
         refresh_balances(&tx)?;
@@ -1331,34 +1313,32 @@ impl Vault {
     ) -> Result<(), CoreError> {
         let date = valid_date(&date)?;
         if !(count.is_finite() && count > 0.0) {
-            return Err(invalid(
-                tr("Die Anzahl muss größer als 0 sein.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr("Die Anzahl muss größer als 0 sein.")));
         }
         if price_cents.is_some_and(|p| p < 0) {
-            return Err(invalid(tr("Der Wert darf nicht negativ sein.").to_string()));
+            return Err(CoreError::invalid(tr("Der Wert darf nicht negativ sein.")));
         }
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;
         let (_, source, purchase) = require_item(&tx, item_id)?;
         if date <= purchase {
-            return Err(invalid(
-                tr("Ein Verkauf muss nach dem Kaufdatum liegen.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr(
+                "Ein Verkauf muss nach dem Kaufdatum liegen.",
+            )));
         }
         if price_cents.is_some() && !is_manual(&source) {
-            return Err(invalid(
-                tr("Dieser Sachwert wird über den Kurs bewertet.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr(
+                "Dieser Sachwert wird über den Kurs bewertet.",
+            )));
         }
         let held = load_items(&tx, None, Some(item_id))?
             .first()
             .map(|it| it.quantity_at(&date))
             .unwrap_or(0.0);
         if count > held + 1e-9 {
-            return Err(invalid(
-                tr("Die Anzahl ist größer als der Bestand an diesem Tag.").to_string(),
-            ));
+            return Err(CoreError::invalid(tr(
+                "Die Anzahl ist größer als der Bestand an diesem Tag.",
+            )));
         }
         if let Some(p) = price_cents {
             put_point(&tx, "asset_values", "value_cents", item_id, &date, &p)?;
@@ -1380,10 +1360,13 @@ impl Vault {
     ) -> Result<(), CoreError> {
         let date = valid_date(&date)?;
         if !PRICE_SYMBOLS.contains(&symbol.as_str()) {
-            return Err(invalid(trf("Unbekannte Kursquelle: {0}", &[&symbol])));
+            return Err(CoreError::invalid(trf(
+                "Unbekannte Kursquelle: {0}",
+                &[&symbol],
+            )));
         }
         if price_cents <= 0 {
-            return Err(invalid(tr("Der Kurs muss größer als 0 sein.").to_string()));
+            return Err(CoreError::invalid(tr("Der Kurs muss größer als 0 sein.")));
         }
         let db = self.db()?;
         let tx = db.unchecked_transaction()?;

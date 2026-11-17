@@ -8,7 +8,7 @@ use crate::error::CoreError;
 use crate::i18n::tr;
 use crate::vault::Vault;
 
-use super::{invalid, MandateImportResult, MandateInput, MandateScheme};
+use super::{MandateImportResult, MandateInput, MandateScheme};
 
 #[uniffi::export]
 impl Vault {
@@ -26,7 +26,7 @@ impl Vault {
             .list_accounts()?
             .into_iter()
             .find(|a| a.id == account_id)
-            .ok_or_else(|| invalid(tr("Das Konto gibt es nicht mehr.")))?;
+            .ok_or_else(|| CoreError::invalid(tr("Das Konto gibt es nicht mehr.")))?;
         let blocks = parse_pain008(&xml)?;
         let mut result = MandateImportResult::default();
         let db = self.db()?;
@@ -34,7 +34,7 @@ impl Vault {
         let mut known = super::mandate_index(&tx, account_id)?;
         for (n, block) in blocks.iter().enumerate() {
             if !validate_creditor_iban_matches(&block.creditor_iban, &account.iban) {
-                return Err(invalid(tr(
+                return Err(CoreError::invalid(tr(
                     "Die Datei gehört zu einem anderen Gläubigerkonto als dem gewählten.",
                 )));
             }

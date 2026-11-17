@@ -14,8 +14,6 @@ use crate::error::{CoreError, CoreResult};
 use crate::i18n::tr;
 use crate::vault::Vault;
 
-use super::invalid;
-
 /// Step 22: date up to which the returns of a mandate were acknowledged.
 pub(crate) fn mandate_return_ack(conn: &Connection) -> CoreResult<()> {
     let has: i64 = conn.query_row(
@@ -182,7 +180,7 @@ impl Vault {
     pub fn mandate_bookings(&self, mandate_id: i64) -> Result<Vec<MandateBooking>, CoreError> {
         let m = self
             .mandate(mandate_id)?
-            .ok_or_else(|| invalid(tr("Das Mandat gibt es nicht mehr.")))?;
+            .ok_or_else(|| CoreError::invalid(tr("Das Mandat gibt es nicht mehr.")))?;
         // all mandates of the account take part, so a booking is never claimed by two
         let all = self.list_mandates(Some(m.account_id))?;
         let db = self.db()?;

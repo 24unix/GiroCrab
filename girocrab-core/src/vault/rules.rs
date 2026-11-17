@@ -6,7 +6,7 @@ use rusqlite::{params, params_from_iter, Connection};
 
 use super::{Vault, LIVE_BOOKINGS_SQL};
 use crate::error::{CoreError, CoreResult};
-use crate::i18n::{tr, trf};
+use crate::i18n::tr;
 use crate::models::*;
 use crate::rules::{RuleRow, RuleSet};
 
@@ -154,28 +154,19 @@ impl Vault {
     /// Creates (id == 0) or updates a rule. Validates the pattern first.
     pub fn save_rule(&self, rule: Rule) -> Result<i64, CoreError> {
         if rule.pattern.len() > crate::rules::MAX_PATTERN_LEN {
-            return Err(CoreError::InvalidInput {
-                message: tr("Das Suchmuster ist zu lang.").into(),
-            });
+            return Err(CoreError::invalid(tr("Das Suchmuster ist zu lang.")));
         }
         crate::rules::CompiledRule::compile(rule.clone())?;
         if rule.pattern.trim().is_empty() {
-            return Err(CoreError::InvalidInput {
-                message: tr("Das Suchmuster ist leer.").into(),
-            });
+            return Err(CoreError::invalid(tr("Das Suchmuster ist leer.")));
         }
         let db = self.db()?;
         let kind = match rule.match_kind {
             MatchKind::Keyword => "keyword",
             MatchKind::Regex => "regex",
             MatchKind::Expression => {
-                let expr = crate::search_expr::SearchExpr::parse(&rule.pattern)
-                    .map_err(|message| CoreError::InvalidInput { message })?;
-                if let Some(f) = expr.unsupported_fields().first() {
-                    return Err(CoreError::InvalidInput {
-                        message: trf("Das Feld „{0}“ wird nicht unterstützt.", &[f]),
-                    });
-                }
+                // `compile` keeps unsupported fields for imported rules; a saved rule may not use them.
+                crate::search_expr::SearchExpr::parse_supported(&rule.pattern)?;
                 "expression"
             }
         };

@@ -118,13 +118,12 @@ pub const MAX_PATTERN_LEN: usize = 2048;
 impl CompiledRule {
     pub fn compile(rule: Rule) -> CoreResult<Self> {
         if rule.pattern.len() > MAX_PATTERN_LEN {
-            return Err(CoreError::InvalidInput {
-                message: format!("rule pattern longer than {MAX_PATTERN_LEN} bytes"),
-            });
+            return Err(CoreError::invalid(format!(
+                "rule pattern longer than {MAX_PATTERN_LEN} bytes"
+            )));
         }
         if rule.match_kind == MatchKind::Expression {
-            let expr = SearchExpr::parse(&rule.pattern)
-                .map_err(|message| CoreError::InvalidInput { message })?;
+            let expr = SearchExpr::parse(&rule.pattern)?;
             return Ok(CompiledRule {
                 rule,
                 matcher: Matcher::Expr(expr),

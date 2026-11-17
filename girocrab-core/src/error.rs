@@ -52,6 +52,14 @@ pub enum CoreError {
     },
 }
 
+impl CoreError {
+    pub(crate) fn invalid(message: impl Into<String>) -> Self {
+        CoreError::InvalidInput {
+            message: message.into(),
+        }
+    }
+}
+
 impl From<rusqlite::Error> for CoreError {
     fn from(e: rusqlite::Error) -> Self {
         if let rusqlite::Error::SqliteFailure(err, _) = &e {
@@ -83,9 +91,7 @@ impl From<serde_json::Error> for CoreError {
 
 impl From<regex::Error> for CoreError {
     fn from(e: regex::Error) -> Self {
-        CoreError::InvalidInput {
-            message: format!("Regular expression: {e}"),
-        }
+        CoreError::invalid(trf("Ungültiger regulärer Ausdruck: {0}", &[&e]))
     }
 }
 

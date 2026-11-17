@@ -151,43 +151,41 @@ fn scheme_code(s: MandateScheme) -> &'static str {
     s.debit().code()
 }
 
-pub(crate) fn invalid(msg: &str) -> CoreError {
-    CoreError::InvalidInput {
-        message: msg.to_string(),
-    }
-}
-
 fn check(input: &MandateInput) -> CoreResult<()> {
     if input.debtor_name.trim().is_empty() {
-        return Err(invalid(tr("Der Name des Zahlungspflichtigen fehlt.")));
+        return Err(CoreError::invalid(tr(
+            "Der Name des Zahlungspflichtigen fehlt.",
+        )));
     }
     if !validate_iban(&input.debtor_iban) {
-        return Err(invalid(tr(
+        return Err(CoreError::invalid(tr(
             "Die IBAN des Zahlungspflichtigen ist ungültig.",
         )));
     }
     if !input.debtor_bic.trim().is_empty() && !validate_bic(&input.debtor_bic) {
-        return Err(invalid(tr("Die BIC ist ungültig.")));
+        return Err(CoreError::invalid(tr("Die BIC ist ungültig.")));
     }
     let r = input.reference.trim();
     if r.is_empty() || r.chars().count() > 35 {
-        return Err(invalid(tr(
+        return Err(CoreError::invalid(tr(
             "Die Mandatsreferenz fehlt oder ist länger als 35 Zeichen.",
         )));
     }
     if !is_sepa_identifier(r) {
-        return Err(invalid(tr(
+        return Err(CoreError::invalid(tr(
             "Die Mandatsreferenz enthält Zeichen, die SEPA nicht erlaubt (nur Buchstaben ohne Umlaute, Ziffern und / - ? : ( ) . , ' + Leerzeichen).",
         )));
     }
     if chrono::NaiveDate::parse_from_str(&input.signed_date, "%Y-%m-%d").is_err() {
-        return Err(invalid(tr("Das Datum der Mandatsunterschrift fehlt.")));
+        return Err(CoreError::invalid(tr(
+            "Das Datum der Mandatsunterschrift fehlt.",
+        )));
     }
     if input.default_amount_cents < 0 {
-        return Err(invalid(tr("Der Betrag muss größer als 0 sein.")));
+        return Err(CoreError::invalid(tr("Der Betrag muss größer als 0 sein.")));
     }
     if input.default_amount_cents > crate::connectors::fints::sepa::MAX_AMOUNT_CENTS {
-        return Err(invalid(tr(
+        return Err(CoreError::invalid(tr(
             "Der Betrag ist größer als SEPA erlaubt (999.999.999,99 €).",
         )));
     }
@@ -270,7 +268,7 @@ impl Vault {
             store_mandate(&db, id, &input)?
         };
         self.mandate(new_id)?
-            .ok_or_else(|| invalid(tr("Das Mandat gibt es nicht mehr.")))
+            .ok_or_else(|| CoreError::invalid(tr("Das Mandat gibt es nicht mehr.")))
     }
 
     /// Saves imported rows under the creditor account `account_id`: a row whose
@@ -360,7 +358,7 @@ impl Vault {
             return Ok(());
         }
         if !validate_creditor_id(&id) {
-            return Err(invalid(tr("Die Gläubiger-ID ist ungültig.")));
+            return Err(CoreError::invalid(tr("Die Gläubiger-ID ist ungültig.")));
         }
         db.execute(
             "INSERT INTO creditor_ids(account_id, creditor_id, updated_ms) VALUES (?1, ?2, ?3)
@@ -404,7 +402,7 @@ pub(crate) fn store_mandate(
         )
         .optional()?;
     if clash.is_some_and(|c| Some(c) != id) {
-        return Err(invalid(tr(
+        return Err(CoreError::invalid(tr(
             "Diese Mandatsreferenz gibt es für dieses Konto schon.",
         )));
     }
@@ -441,7 +439,7 @@ pub(crate) fn store_mandate(
                 ],
             )?;
             if n == 0 {
-                return Err(invalid(tr("Das Mandat gibt es nicht mehr.")));
+                return Err(CoreError::invalid(tr("Das Mandat gibt es nicht mehr.")));
             }
             if let Some((acc, old_ref)) = old {
                 if acc != input.account_id || old_ref != reference {
