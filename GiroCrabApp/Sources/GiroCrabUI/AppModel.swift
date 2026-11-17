@@ -622,6 +622,9 @@ public final class AppModel {
     /// Category refresh in flight; only a newer category change or a vault
     /// switch cancels it, so the totals it brings can't get lost.
     @ObservationIgnored var categoryRefreshTask: Task<Void, Never>?
+    /// Last "Geprüft" write for a multiple selection (#725); the next one waits
+    /// for it, so quick toggles reach the vault in order.
+    @ObservationIgnored var checkedWriteTask: Task<Void, Never>?
 
     // MARK: State used by AppModel+Connections.swift
 

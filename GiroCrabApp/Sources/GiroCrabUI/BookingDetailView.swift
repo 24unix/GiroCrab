@@ -680,6 +680,15 @@ struct MultiSelectionCard: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            // #725: like the single booking's "Geprüft" switch, for the whole selection
+            let allChecked = !many.isEmpty && many.allSatisfy(\.checked)
+            Button {
+                if let first = many.first { model.setChecked(!allChecked, for: first) }
+            } label: {
+                Label(allChecked ? "Als neu markieren" : "Als geprüft markieren", systemImage: "checkmark.circle")
+                    .frame(maxWidth: .infinity)
+            }
+            .controlSize(.large)
             Button("Auswahl aufheben") {
                 if let id = model.selectedBookingID { model.selectBooking(id) }
             }

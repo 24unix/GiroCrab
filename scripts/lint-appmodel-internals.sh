@@ -18,7 +18,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 INTERNAL="
-activeSession activeTransfer bootstrapped applyAccountGroups booking bookingIndexByID categoryRefreshTask
+activeSession activeTransfer bootstrapped applyAccountGroups booking bookingIndexByID categoryRefreshTask checkedWriteTask
 dashboardStale dashboardTask dropPendingPage enableBankingSettingSaved endSelectionLoad failedSyncSecret finishSync
 finishTransfer freshBooking handle handleTransfer historyRequest listGeneration loadBookings
 loadDashboard loadMerchantStats loadMoreTask localApi localApiJobs localApiQueue reconcileLocalApiServer stopLocalApiServer loadsSelectionInBackground logoCache logoInflight

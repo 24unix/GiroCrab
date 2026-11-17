@@ -152,7 +152,14 @@ extension AppModel {
     /// The list filters by checked state: a changed booking leaves it.
     private var leavesListWhenChecked: Bool { statusFilter != .all || sidebarSelection == .newBookings }
 
+    /// "Geprüft" for a booking – or, when it is part of a multiple selection, for
+    /// every selected booking (#725, like `categorizeTargets`).
     func setChecked(_ checked: Bool, for booking: Booking) {
+        let targets = categorizeTargets(for: booking)
+        if targets.count > 1 {
+            setChecked(Set(targets.map(\.id)), to: checked)
+            return
+        }
         guard let vault else { return }
         runCore { try vault.setTransactionChecked(transactionId: booking.id, checked: checked) }
         // With "Neu" / "Geprüft" active the booking leaves the list: keep it in the inspector.
@@ -200,8 +207,8 @@ extension AppModel {
             return
         }
         if let um = windowUndoManager {
-            um.registerUndo(withTarget: self) { m in m.setChecked(ids, to: false) }
-            um.setActionName(String(localized: "Alle Buchungen als gelesen markieren"))
+            um.registerUndo(withTarget: self) { m in m.setChecked(ids, to: false, actionName: Self.markAllActionName) }
+            um.setActionName(Self.markAllActionName)
         }
         toast = String(localized: "\(ids.count) Umsätze als gelesen markiert")
         // With "Neu" / "Geprüft" active the bookings leave the list: keep the selected one in the inspector (like setChecked)
@@ -210,16 +217,48 @@ extension AppModel {
         refreshAfterEdit()
     }
 
+    private static var markAllActionName: String { String(localized: "Alle Buchungen als gelesen markieren") }
+
     /// Undo / redo of `markAllChecked` for exactly the bookings it changed.
-    private func setChecked(_ ids: [Int64], to checked: Bool) {
+    private func setChecked(_ ids: [Int64], to checked: Bool, actionName: String) {
         guard let vault else { return }
         do { try vault.setCheckedForIds(ids: ids, checked: checked) } catch { errorMessage = describe(error); return }
         if let um = windowUndoManager {
-            um.registerUndo(withTarget: self) { m in m.setChecked(ids, to: !checked) }
-            um.setActionName(String(localized: "Alle Buchungen als gelesen markieren"))
+            um.registerUndo(withTarget: self) { m in m.setChecked(ids, to: !checked, actionName: actionName) }
+            um.setActionName(actionName)
         }
         patchLoadedRows(Set(ids)) { $0.checked = checked }
         refreshAfterEdit()
+    }
+
+    /// "Geprüft" for a multiple selection (#725): the rows change at once, the
+    /// write runs off the main thread (⌘A can select thousands) after the
+    /// previous one, and Bearbeiten › Widerrufen restores each booking's state.
+    private func setChecked(_ ids: Set<Booking.ID>, to checked: Bool) {
+        guard let vault else { return }
+        let changed = bookings.filter { ids.contains($0.id) && $0.checked != checked }.map(\.id)
+        guard !changed.isEmpty else { return }
+        let actionName = checked ? String(localized: "Als geprüft markieren") : String(localized: "Als neu markieren")
+        // With "Neu" / "Geprüft" active the bookings leave the list: keep the selected one in the inspector.
+        if leavesListWhenChecked, let b = selectedBooking, changed.contains(b.id) { stickyBooking = freshBooking(b) }
+        patchLoadedRows(Set(changed)) { $0.checked = checked }
+        let previous = checkedWriteTask
+        checkedWriteTask = Task { [weak self] in
+            await previous?.value
+            do {
+                try await Self.offMain { try vault.setCheckedForIds(ids: changed, checked: checked) }
+                guard let self, self.vault === vault else { return }
+                if let um = self.windowUndoManager {
+                    um.registerUndo(withTarget: self) { m in m.setChecked(changed, to: !checked, actionName: actionName) }
+                    um.setActionName(actionName)
+                }
+                self.refreshAfterEdit()
+            } catch {
+                guard let self, self.vault === vault else { return }
+                self.errorMessage = describe(error)
+                self.reloadBookings()
+            }
+        }
     }
 
     func updateText(counterparty: String, purpose: String, for booking: Booking) {
